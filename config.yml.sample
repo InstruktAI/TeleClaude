@@ -1,0 +1,49 @@
+computer:
+    name: Mac
+    default_shell: /bin/zsh
+    default_working_dir: ${WORKING_DIR}
+    trustedDirs:
+        - ${HOME}/Documents
+        - ${HOME}/Projects
+        - ${WORKING_DIR}
+
+database:
+    path: ${WORKING_DIR}/teleclaude.db
+
+terminal:
+    default_size: 80x24
+    sizes:
+        small: 60x24 # mobile
+        medium: 100x30 # tablet
+        large: 120x40 # desktop
+    strip_prompts: true
+    strip_ansi: true
+
+recording:
+    enabled: true
+    rolling_window_minutes: 20
+    rotation_interval_seconds: 60
+    storage_path: ${WORKING_DIR}/recordings
+
+output:
+    max_lines_before_truncate: 1000
+    max_size_before_truncate: 102400 # 100KB
+    truncate_keep_last_lines: 100
+    spam_detection_lines_per_sec: 1000
+    stream_interval_seconds: 1.5
+    hybrid_mode_threshold_seconds: 5
+
+sessions:
+    max_total: 100
+    warn_at: 50
+    title_generation_after_commands: 5
+
+uploads:
+    directory: ${WORKING_DIR}/uploads
+    max_file_size_mb: 50
+    append_timestamp_on_duplicate: true
+
+logging:
+    file: ${WORKING_DIR}/logs/teleclaude.log
+    max_size_mb: 10
+    level: INFO

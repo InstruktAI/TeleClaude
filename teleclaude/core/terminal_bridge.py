@@ -1,0 +1,409 @@
+"""Terminal bridge for TeleClaude - handles tmux session management."""
+
+import asyncio
+import logging
+from typing import List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+class TerminalBridge:
+    """Manages tmux terminal sessions."""
+
+    def __init__(self) -> None:
+        """Initialize terminal bridge."""
+        pass
+
+    async def create_tmux_session(
+        self, name: str, shell: str, working_dir: str, cols: int = 80, rows: int = 24
+    ) -> bool:
+        """Create a new tmux session.
+
+        Args:
+            name: Session name
+            shell: Shell to use (e.g., /bin/zsh)
+            working_dir: Initial working directory
+            cols: Terminal columns
+            rows: Terminal rows
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create tmux session in detached mode with login shell
+            cmd = [
+                "tmux",
+                "new-session",
+                "-d",  # Detached
+                "-s",
+                name,  # Session name
+                "-c",
+                working_dir,  # Working directory
+                "-x",
+                str(cols),  # Width
+                "-y",
+                str(rows),  # Height
+                f"{shell} -l",  # Login shell
+            ]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error creating tmux session: {e}")
+            return False
+
+    async def send_keys(
+        self,
+        session_name: str,
+        text: str,
+        shell: str = "/bin/zsh",
+        working_dir: str = "~",
+        cols: int = 80,
+        rows: int = 24,
+    ) -> bool:
+        """Send keys (text) to a tmux session, creating a new session if needed.
+
+        If the session doesn't exist (crashed or never created), creates a fresh
+        session with the same name. Previous state is lost - this is NOT recovery,
+        just creating a new session so the user can continue working.
+
+        Args:
+            session_name: Session name
+            text: Text to send (will be followed by Enter)
+            shell: Shell to use if creating new session (default: /bin/zsh)
+            working_dir: Working directory if creating new session (default: ~)
+            cols: Terminal columns if creating new session (default: 80)
+            rows: Terminal rows if creating new session (default: 24)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Check if session exists, create if not
+            if not await self.session_exists(session_name):
+                logger.info("Session %s not found, creating new session...", session_name)
+                success = await self.create_tmux_session(session_name, shell, working_dir, cols, rows)
+                if not success:
+                    logger.error("Failed to create session %s", session_name)
+                    return False
+                logger.info("Created fresh session %s", session_name)
+
+            # Send text first
+            cmd_text = ["tmux", "send-keys", "-t", session_name, text]
+            result = await asyncio.create_subprocess_exec(
+                *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to send text to session %s: returncode=%d, stderr=%s",
+                    session_name,
+                    result.returncode,
+                    stderr.decode(),
+                )
+                return False
+
+            # Small delay to let text be processed
+            await asyncio.sleep(0.1)
+
+            # Then send C-m (Enter) separately for TUI compatibility (Claude Code, etc)
+            cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
+            result = await asyncio.create_subprocess_exec(
+                *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to send Enter to session %s: returncode=%d, stderr=%s",
+                    session_name,
+                    result.returncode,
+                    stderr.decode(),
+                )
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.exception("Error sending keys to tmux session %s: %s", session_name, e)
+            return False
+
+    async def send_signal(self, session_name: str, signal: str = "SIGINT") -> bool:
+        """Send signal to a tmux session.
+
+        Args:
+            session_name: Session name
+            signal: Signal name (SIGINT, SIGTERM, etc.)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Send Ctrl+C for SIGINT, etc.
+            if signal == "SIGINT":
+                key = "C-c"
+            elif signal == "SIGTERM":
+                key = "C-\\"
+            else:
+                return False
+
+            cmd = ["tmux", "send-keys", "-t", session_name, key]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error sending signal to tmux: {e}")
+            return False
+
+    async def capture_pane(self, session_name: str, lines: Optional[int] = None) -> str:
+        """Capture pane output from tmux session.
+
+        Args:
+            session_name: Session name
+            lines: Number of lines to capture (None = entire scrollback buffer)
+
+        Returns:
+            Captured output as string
+        """
+        try:
+            # -p = print to stdout
+            # -S = start line (-10000 = last 10000 lines from scrollback, - = entire history)
+            # -J = preserve trailing spaces (better for capturing exact output)
+            cmd = ["tmux", "capture-pane", "-t", session_name, "-p", "-J"]
+
+            if lines:
+                # Capture specific number of lines from scrollback
+                cmd.extend(["-S", f"-{lines}"])
+            else:
+                # Capture entire scrollback buffer (from beginning to end)
+                cmd.extend(["-S", "-"])
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await result.communicate()
+
+            if result.returncode == 0:
+                return stdout.decode("utf-8", errors="replace")
+            return ""
+
+        except Exception as e:
+            print(f"Error capturing pane: {e}")
+            return ""
+
+    async def resize_session(self, session_name: str, cols: int, rows: int) -> bool:
+        """Resize a tmux session.
+
+        Args:
+            session_name: Session name
+            cols: New column count
+            rows: New row count
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Set environment variables for terminal size
+            await asyncio.create_subprocess_exec("tmux", "set-environment", "-t", session_name, "COLUMNS", str(cols))
+            await asyncio.create_subprocess_exec("tmux", "set-environment", "-t", session_name, "LINES", str(rows))
+
+            # Resize the window
+            cmd = ["tmux", "resize-window", "-t", session_name, "-x", str(cols), "-y", str(rows)]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error resizing session: {e}")
+            return False
+
+    async def kill_session(self, session_name: str) -> bool:
+        """Kill a tmux session.
+
+        Args:
+            session_name: Session name
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cmd = ["tmux", "kill-session", "-t", session_name]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error killing session: {e}")
+            return False
+
+    async def list_tmux_sessions(self) -> List[str]:
+        """List all tmux sessions.
+
+        Returns:
+            List of session names
+        """
+        try:
+            cmd = ["tmux", "list-sessions", "-F", "#{session_name}"]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await result.communicate()
+
+            if result.returncode == 0:
+                sessions = stdout.decode("utf-8").strip().split("\n")
+                return [s for s in sessions if s]  # Filter empty strings
+            return []
+
+        except Exception as e:
+            print(f"Error listing sessions: {e}")
+            return []
+
+    async def session_exists(self, session_name: str) -> bool:
+        """Check if a tmux session exists.
+
+        Args:
+            session_name: Session name
+
+        Returns:
+            True if session exists, False otherwise
+        """
+        try:
+            cmd = ["tmux", "has-session", "-t", session_name]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.info(
+                    "Session %s does not exist: returncode=%d, stderr=%s",
+                    session_name,
+                    result.returncode,
+                    stderr.decode().strip(),
+                )
+            else:
+                logger.info("Session %s exists", session_name)
+
+            return result.returncode == 0
+
+        except Exception as e:
+            logger.error("Exception in session_exists for %s: %s", session_name, e)
+            return False
+
+    async def rename_session(self, old_name: str, new_name: str) -> bool:
+        """Rename a tmux session.
+
+        Args:
+            old_name: Current session name
+            new_name: New session name
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cmd = ["tmux", "rename-session", "-t", old_name, new_name]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error renaming session: {e}")
+            return False
+
+    async def get_session_pane_id(self, session_name: str) -> Optional[str]:
+        """Get the pane ID for a session (for pipe-pane).
+
+        Args:
+            session_name: Session name
+
+        Returns:
+            Pane ID or None
+        """
+        try:
+            cmd = ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_id}"]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await result.communicate()
+
+            if result.returncode == 0:
+                pane_id = stdout.decode("utf-8").strip()
+                return pane_id if pane_id else None
+            return None
+
+        except Exception as e:
+            print(f"Error getting pane ID: {e}")
+            return None
+
+    async def start_pipe_pane(self, session_name: str, command: str) -> bool:
+        """Start piping pane output to a command.
+
+        Args:
+            session_name: Session name
+            command: Command to pipe output to
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cmd = ["tmux", "pipe-pane", "-t", session_name, "-o", command]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error starting pipe-pane: {e}")
+            return False
+
+    async def stop_pipe_pane(self, session_name: str) -> bool:
+        """Stop piping pane output.
+
+        Args:
+            session_name: Session name
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cmd = ["tmux", "pipe-pane", "-t", session_name]
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            print(f"Error stopping pipe-pane: {e}")
+            return False

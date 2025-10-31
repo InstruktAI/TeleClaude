@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+# TeleClaude Daemon Control Script
+# Cross-platform wrapper for daemon lifecycle management
+#
+# Supports:
+# - macOS: launchd
+# - Linux: systemd
+#
+# The service manager (launchd/systemd) is the ONLY thing that starts/stops
+# the daemon process. This ensures KeepAlive/Restart works for auto-restart.
+
+set -e
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+# Configuration
+PID_FILE="$PROJECT_ROOT/teleclaude.pid"
+LOG_FILE="$PROJECT_ROOT/logs/teleclaude.log"
+
+# Platform-specific config
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    PLATFORM="macos"
+    SERVICE_LABEL="ai.instrukt.teleclaude.daemon"
+    SERVICE_PATH="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
+elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    PLATFORM="linux"
+    SERVICE_LABEL="teleclaude"
+    SERVICE_PATH="/etc/systemd/system/$SERVICE_LABEL.service"
+else
+    echo "Unsupported platform: $OSTYPE"
+    exit 1
+fi
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if service is loaded/enabled
+is_service_loaded() {
+    if [ "$PLATFORM" = "macos" ]; then
+        launchctl list | grep -q "$SERVICE_LABEL"
+    else
+        systemctl is-enabled "$SERVICE_LABEL" >/dev/null 2>&1
+    fi
+}
+
+# Start daemon via service manager
+start_daemon() {
+    log_info "Starting TeleClaude daemon via $PLATFORM service manager..."
+
+    # Verify service file exists
+    if [ ! -f "$SERVICE_PATH" ]; then
+        log_error "Service file not found at $SERVICE_PATH"
+        log_error "Run 'make init' first to set up the service"
+        exit 1
+    fi
+
+    if [ "$PLATFORM" = "macos" ]; then
+        # Load service if not loaded
+        if ! is_service_loaded; then
+            log_info "Loading launchd service..."
+            launchctl load "$SERVICE_PATH"
+            sleep 2
+        else
+            log_info "Service already loaded, kickstarting..."
+            launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+            sleep 2
+        fi
+    else
+        # Linux: systemd
+        log_info "Starting systemd service..."
+        sudo systemctl start "$SERVICE_LABEL"
+        sleep 2
+    fi
+
+    # Verify it's running
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            log_info "Daemon started successfully (PID: $PID)"
+            log_info "Service manager will auto-restart if killed"
+            return 0
+        fi
+    fi
+
+    # If not running, check why
+    if is_service_loaded; then
+        log_error "Service loaded but daemon not running"
+        if [ "$PLATFORM" = "macos" ]; then
+            log_error "Check status: launchctl list | grep teleclaude"
+        else
+            log_error "Check status: sudo systemctl status teleclaude"
+        fi
+        log_error "Check logs: tail -50 $LOG_FILE"
+    else
+        log_error "Failed to load service"
+    fi
+    return 1
+}
+
+# Stop daemon via service manager
+stop_daemon() {
+    log_info "Stopping TeleClaude daemon..."
+
+    if ! is_service_loaded; then
+        log_warn "Service not loaded"
+        return 0
+    fi
+
+    if [ "$PLATFORM" = "macos" ]; then
+        # macOS: unload from launchd
+        log_info "Unloading launchd service..."
+        launchctl unload "$SERVICE_PATH" 2>/dev/null || true
+        sleep 1
+    else
+        # Linux: stop systemd service
+        log_info "Stopping systemd service..."
+        sudo systemctl stop "$SERVICE_LABEL"
+        sleep 1
+    fi
+
+    # Clean up any remaining processes
+    if pgrep -f "teleclaude.daemon" > /dev/null; then
+        log_warn "Daemon still running, force killing..."
+        pkill -9 -f "teleclaude.daemon" 2>/dev/null || true
+        sleep 1
+    fi
+
+    # Clean up PID file
+    if [ -f "$PID_FILE" ]; then
+        rm -f "$PID_FILE"
+    fi
+
+    log_info "Daemon stopped (service unloaded)"
+}
+
+# Check daemon status
+status_daemon() {
+    log_info "Checking daemon status ($PLATFORM)..."
+
+    # Check if service is loaded
+    if ! is_service_loaded; then
+        log_warn "Service NOT loaded/enabled"
+        log_warn "Run './bin/daemon-control.sh start' to start the service"
+        return 1
+    fi
+
+    log_info "Service: LOADED"
+
+    # Check service manager status
+    if [ "$PLATFORM" = "macos" ]; then
+        SERVICE_STATUS=$(launchctl list | grep "$SERVICE_LABEL" || true)
+        log_info "launchctl status: $SERVICE_STATUS"
+
+        # Parse launchctl output: PID STATUS LABEL
+        # STATUS is the exit code - 0 means running normally, non-zero means last exit was abnormal
+        EXIT_CODE=$(echo "$SERVICE_STATUS" | awk '{print $2}')
+        if [ -n "$EXIT_CODE" ] && [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "-" ]; then
+            log_warn "Last exit code: $EXIT_CODE (process may have crashed previously)"
+            if [ "$EXIT_CODE" = "-9" ]; then
+                log_warn "Last instance was killed (SIGKILL)"
+            fi
+        fi
+    else
+        SERVICE_STATUS=$(systemctl is-active "$SERVICE_LABEL" 2>/dev/null || echo "inactive")
+        log_info "systemctl status: $SERVICE_STATUS"
+        if [ "$SERVICE_STATUS" != "active" ]; then
+            log_error "Service is not active: $SERVICE_STATUS"
+            return 1
+        fi
+    fi
+
+    # Check if process is running
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            # Get process uptime
+            if command -v ps >/dev/null; then
+                UPTIME=$(ps -p "$PID" -o etime= | tr -d ' ')
+            else
+                UPTIME="unknown"
+            fi
+
+            log_info "Daemon process: RUNNING (PID: $PID, uptime: $UPTIME)"
+
+            # Check health via HTTP endpoint
+            HTTP_PORT="${PORT:-6666}"
+            if command -v curl >/dev/null 2>&1; then
+                HEALTH_CHECK=$(curl -s -m 2 "http://localhost:${HTTP_PORT}/health" 2>/dev/null || echo "")
+                if [ -n "$HEALTH_CHECK" ]; then
+                    log_info "Daemon health: HEALTHY (health endpoint responding)"
+                else
+                    log_warn "Daemon health: health endpoint not responding"
+                fi
+            else
+                log_info "Daemon health: UNKNOWN (curl not available)"
+            fi
+            return 0
+        else
+            log_warn "PID file exists but process $PID NOT running"
+        fi
+    else
+        log_warn "Daemon process: NOT RUNNING (no PID file)"
+    fi
+
+    log_warn "Daemon appears to be down. Check logs: tail -50 $LOG_FILE"
+    return 1
+}
+
+# Restart daemon via service manager
+restart_daemon() {
+    log_info "Restarting TeleClaude daemon..."
+
+    # Kill current process, service manager will auto-restart it
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            log_info "Killing daemon process (PID: $PID)..."
+            kill "$PID" 2>/dev/null || true
+            sleep 3
+
+            # Verify service manager restarted it
+            if [ -f "$PID_FILE" ]; then
+                NEW_PID=$(cat "$PID_FILE")
+                if [ "$NEW_PID" != "$PID" ]; then
+                    log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
+                    return 0
+                fi
+            fi
+        fi
+    fi
+
+    # If auto-restart didn't work, use service manager restart
+    log_warn "Auto-restart didn't work, using service manager restart..."
+
+    if [ "$PLATFORM" = "macos" ]; then
+        launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+    else
+        sudo systemctl restart "$SERVICE_LABEL"
+    fi
+    sleep 2
+
+    # Verify
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            log_info "Daemon restarted successfully (PID: $PID)"
+            return 0
+        fi
+    fi
+
+    log_error "Restart failed. Try: make kill"
+    return 1
+}
+
+# Kill daemon process (service manager will auto-restart)
+kill_daemon() {
+    log_info "Killing daemon process (service will auto-restart)..."
+
+    if [ ! -f "$PID_FILE" ]; then
+        log_warn "No PID file found"
+        return 1
+    fi
+
+    PID=$(cat "$PID_FILE")
+    if ! ps -p "$PID" > /dev/null 2>&1; then
+        log_warn "Process $PID not running"
+        return 1
+    fi
+
+    log_info "Killing daemon process (PID: $PID)..."
+    kill "$PID" 2>/dev/null || true
+    sleep 3
+
+    # Verify service manager restarted it
+    if [ -f "$PID_FILE" ]; then
+        NEW_PID=$(cat "$PID_FILE")
+        if [ "$NEW_PID" != "$PID" ]; then
+            log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
+            return 0
+        fi
+    fi
+
+    log_warn "Service manager hasn't restarted yet, give it a moment..."
+    sleep 2
+
+    if [ -f "$PID_FILE" ]; then
+        NEW_PID=$(cat "$PID_FILE")
+        if ps -p "$NEW_PID" > /dev/null 2>&1; then
+            log_info "Daemon restarted (PID: $NEW_PID)"
+            return 0
+        fi
+    fi
+
+    log_error "Service manager didn't auto-restart. Check: make status"
+    return 1
+}
+
+# Main command dispatcher
+case "${1:-}" in
+    start)
+        start_daemon
+        ;;
+    stop)
+        stop_daemon
+        ;;
+    restart)
+        restart_daemon
+        ;;
+    kill)
+        kill_daemon
+        ;;
+    status)
+        status_daemon
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|kill|status}"
+        echo ""
+        echo "Commands:"
+        echo "  start   - Start the daemon"
+        echo "  stop    - Stop the daemon (disables service)"
+        echo "  restart - Restart the daemon"
+        echo "  kill    - Kill daemon (service auto-restarts)"
+        echo "  status  - Check daemon status"
+        exit 1
+        ;;
+esac

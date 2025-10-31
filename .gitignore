@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment & Config
+.env
+config.yml
+
+# Runtime
+*.pid
+*.db
+*.db-journal
+
+# Logs
+*.log
+logs/
+
+# Caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Project-specific
+recordings/
+uploads/
+tmp/
+.history
+
+# Backup files
+*.bak*

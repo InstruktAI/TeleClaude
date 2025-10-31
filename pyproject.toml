@@ -1,0 +1,127 @@
+[build-system]
+requires = ["setuptools~=69.0", "wheel~=0.42.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "TeleClaude"
+version = "0.1.0"
+license = { text = "GPL-3.0-only" }
+authors = [{ name = "Maurice Faber", email = "morriz@idiotz.nl" }]
+description = "Control terminal sessions on multiple computers remotely via Telegram"
+readme = "README.md"
+classifiers = [
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Typing :: Typed",
+  "Topic :: Communications :: Chat",
+  "Topic :: System :: Shells",
+]
+keywords = ["telegram", "terminal", "tmux", "remote-control"]
+dynamic = ["dependencies", "optional-dependencies"]
+requires-python = ">=3.11"
+
+
+[project.urls]
+homepage = "https://github.com/morriz/teleclaude"
+"Source Code" = "https://github.com/morriz/teleclaude"
+"Bug Tracker" = "https://github.com/morriz/teleclaude/issues"
+
+[tool.black]
+line-length = 120
+preview = true
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+check_untyped_defs = true
+disable_error_code = ["import-untyped"]
+disallow_any_generics = true
+disallow_untyped_defs = true
+exclude = ["^venv/", "^.venv/"]
+files = ["**/*.py"]
+follow_imports = "skip"
+python_version = "3.11"
+strict_optional = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pylint.'MESSAGES CONTROL']
+# CRITICAL: import-outside-toplevel is enforced via --fail-on flag in bin/lint.sh
+# ALL imports MUST be at the top of the file
+disable = [
+  "invalid-name",
+  "missing-docstring",
+  "missing-module-docstring",
+  "missing-timeout",
+  "no-name-in-module",
+  "redefined-builtin",
+  "too-few-public-methods",
+  "too-many-arguments",
+  "unused-argument",
+  "wrong-import-position",
+]
+
+[tool.pylint.'FORMAT']
+max-line-length = 120
+
+[tool.pyproject-fmt]
+indent = 4
+keep_full_version = false
+max_supported_python = "3.13"
+
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+optional-dependencies = { test = { file = ["requirements-test.txt"] } }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+  "-v",
+  "--strict-markers",
+  "--strict-config",
+  "--tb=short",
+]
+markers = [
+  "unit: Unit tests (fast, isolated, mocked)",
+  "integration: Integration tests (slower, real components)",
+]
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["teleclaude"]
+omit = [
+  "*/tests/*",
+  "*/__pycache__/*",
+  "*/.venv/*",
+  "*/venv/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+  "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "coverage/html"
+
+[tool.coverage.xml]
+output = "coverage/coverage.xml"
+
+[tool.coverage.json]
+output = "coverage/coverage.json"

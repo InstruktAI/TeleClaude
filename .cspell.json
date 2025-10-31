@@ -1,0 +1,20 @@
+{
+  "version": "0.2",
+  "ignorePaths": [],
+  "dictionaryDefinitions": [],
+  "dictionaries": [],
+  "words": [
+    "aiosqlite",
+    "asciinema",
+    "openai",
+    "pydantic",
+    "pyproject",
+    "teleclaude",
+    "tmux",
+    "uvicorn",
+    "venv",
+    "whisper"
+  ],
+  "ignoreWords": [],
+  "import": []
+}
