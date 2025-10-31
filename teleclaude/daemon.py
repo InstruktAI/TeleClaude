@@ -9,9 +9,9 @@ import os
 import re
 import shlex
 import signal
-import subprocess
 import sys
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO
 
@@ -317,11 +317,68 @@ class TeleClaudeDaemon:
         self.api_task = asyncio.create_task(self.uvicorn_server.serve())
         logger.info("REST API started on http://%s:%s", self.rest_api.bind_address, self.rest_api.port)
 
+        # Start periodic cleanup task (runs every hour)
+        self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
+        logger.info("Periodic cleanup task started (72h session lifecycle)")
+
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
+
+    async def _periodic_cleanup(self) -> None:
+        """Periodically clean up inactive sessions (72h lifecycle)."""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Run every hour
+                await self._cleanup_inactive_sessions()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in periodic cleanup: %s", e)
+
+    async def _cleanup_inactive_sessions(self) -> None:
+        """Clean up sessions inactive for 72+ hours."""
+        try:
+            cutoff_time = datetime.now() - timedelta(hours=72)
+            sessions = await self.session_manager.list_sessions()
+
+            for session in sessions:
+                if session.status != "active":
+                    continue
+
+                # Check last_activity timestamp
+                if not session.last_activity:
+                    logger.warning("No last_activity for session %s", session.session_id[:8])
+                    continue
+
+                if session.last_activity < cutoff_time:
+                    logger.info(
+                        "Cleaning up inactive session %s (inactive for %s)",
+                        session.session_id[:8],
+                        datetime.now() - session.last_activity,
+                    )
+
+                    # Kill tmux session
+                    await self.terminal.kill_session(session.tmux_session_name)
+
+                    # Mark as closed
+                    await self.session_manager.update_session(session.session_id, status="closed")
+
+                    logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
+
+        except Exception as e:
+            logger.error("Error cleaning up inactive sessions: %s", e)
 
     async def stop(self) -> None:
         """Stop the daemon."""
         logger.info("Stopping TeleClaude daemon...")
+
+        # Stop periodic cleanup task
+        if hasattr(self, "cleanup_task"):
+            self.cleanup_task.cancel()
+            try:
+                await self.cleanup_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Periodic cleanup task stopped")
 
         # Stop all adapters
         for adapter_name, adapter in self.adapters.items():
@@ -385,9 +442,20 @@ class TeleClaudeDaemon:
 
         # Create topic first with custom title if provided
         if args and len(args) > 0:
-            title = f"[{computer_name}] {' '.join(args)}"
+            base_title = f"[{computer_name}] {' '.join(args)}"
         else:
-            title = f"[{computer_name}] New session"
+            base_title = f"[{computer_name}] New session"
+
+        # Check for duplicate titles and append number if needed
+        title = base_title
+        existing_sessions = await self.session_manager.list_sessions()
+        existing_titles = {s.title for s in existing_sessions if s.status != "closed"}
+
+        if title in existing_titles:
+            counter = 2
+            while f"{base_title} ({counter})" in existing_titles:
+                counter += 1
+            title = f"{base_title} ({counter})"
 
         # Get adapter and create channel
         adapter = self._get_adapter_by_type(adapter_type)

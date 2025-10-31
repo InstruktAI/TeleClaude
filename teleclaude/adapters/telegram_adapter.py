@@ -53,17 +53,26 @@ class TelegramAdapter(BaseAdapter):
         # Create application
         self.app = Application.builder().token(self.bot_token).build()
 
-        # Register handlers
-        self.app.add_handler(CommandHandler("new_session", self._handle_new_session))
-        self.app.add_handler(CommandHandler("list_sessions", self._handle_list_sessions))
-        self.app.add_handler(CommandHandler("cancel", self._handle_cancel))
-        self.app.add_handler(CommandHandler("cancel2x", self._handle_cancel2x))
-        self.app.add_handler(CommandHandler("resize", self._handle_resize))
-        self.app.add_handler(CommandHandler("rename", self._handle_rename))
-        self.app.add_handler(CommandHandler("cd", self._handle_cd))
-        self.app.add_handler(CommandHandler("claude", self._handle_claude))
-        self.app.add_handler(CommandHandler("claude_resume", self._handle_claude_resume))
-        self.app.add_handler(CommandHandler("help", self._handle_help))
+        # Register command handlers
+        # Note: By default CommandHandler only handles NEW messages, not edited ones
+        # We need to add them separately to handle edited commands
+        commands = [
+            ("new_session", self._handle_new_session),
+            ("list_sessions", self._handle_list_sessions),
+            ("cancel", self._handle_cancel),
+            ("cancel2x", self._handle_cancel2x),
+            ("resize", self._handle_resize),
+            ("rename", self._handle_rename),
+            ("cd", self._handle_cd),
+            ("claude", self._handle_claude),
+            ("claude_resume", self._handle_claude_resume),
+            ("help", self._handle_help),
+        ]
+
+        for command_name, handler in commands:
+            # Handle both new messages and edited messages
+            self.app.add_handler(CommandHandler(command_name, handler))
+            self.app.add_handler(CommandHandler(command_name, handler, filters=filters.UpdateType.EDITED_MESSAGE))
 
         # Handle text messages in topics (not commands)
         self.app.add_handler(
@@ -100,13 +109,13 @@ class TelegramAdapter(BaseAdapter):
         commands = [
             BotCommand("new_session", "Create a new terminal session"),
             BotCommand("list_sessions", "List all active sessions"),
-            BotCommand("cancel", "Send CTRL+C to interrupt current command"),
-            BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
-            BotCommand("resize", "Resize terminal window"),
-            BotCommand("rename", "Rename current session"),
-            BotCommand("cd", "Change directory or list trusted directories"),
             BotCommand("claude", "Start Claude Code in GOD mode"),
             BotCommand("claude_resume", "Resume last Claude Code session (GOD mode)"),
+            BotCommand("cancel", "Send CTRL+C to interrupt current command"),
+            BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
+            BotCommand("cd", "Change directory or list trusted directories"),
+            BotCommand("resize", "Resize terminal window"),
+            BotCommand("rename", "Rename current session"),
             BotCommand("help", "Show help message"),
         ]
         await self.app.bot.set_my_commands(commands)
@@ -310,12 +319,12 @@ class TelegramAdapter(BaseAdapter):
             logger.warning("User %s not in whitelist: %s", update.effective_user.id, self.user_whitelist)
             return
 
-        logger.debug("User authorized, emitting command...")
+        logger.debug("User authorized, emitting command with args: %s", context.args)
 
         # Emit command event to daemon
         await self._emit_command(
             "new-session",
-            [],
+            list(context.args) if context.args else [],
             {
                 "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
@@ -706,6 +715,14 @@ Current size: {}
                     msg_type.append("forum_topic_closed")
                 if message.forum_topic_reopened:
                     msg_type.append("forum_topic_reopened")
+                if message.forum_topic_edited:
+                    msg_type.append("forum_topic_edited")
+                if message.delete_chat_photo:
+                    msg_type.append("delete_chat_photo")
+                if message.new_chat_members:
+                    msg_type.append("new_chat_members")
+                if message.left_chat_member:
+                    msg_type.append("left_chat_member")
                 if msg_type:
                     log_parts.append(f"content: [{', '.join(msg_type)}]")
 
@@ -727,8 +744,9 @@ Current size: {}
 
             logger.info(" | ".join(log_parts))
 
-            # Log full update dict in debug mode for detailed inspection
-            logger.debug("Full update data: %s", update_dict)
+            # Always log full update dict for comprehensive event tracking
+            # This ensures we can see ALL events including topic deletions
+            logger.info("Full update data: %s", update_dict)
 
         except Exception as e:
             logger.error("Error logging update: %s", e)
