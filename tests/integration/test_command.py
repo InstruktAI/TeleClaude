@@ -27,7 +27,7 @@ async def test_new_session_creates_session_and_tmux(daemon_with_mocked_telegram)
     assert len(sessions) == 1, "Should create exactly one session"
 
     session = sessions[0]
-    assert session.title == "[TestComputer] Test Session"
+    assert session.title == "# TestComputer - Test Session"
     assert session.computer_name == "TestComputer"
     assert session.status == "active"
     assert session.adapter_type == "telegram"

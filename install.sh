@@ -411,8 +411,8 @@ Environment="PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$INSTALL_DIR/.venv/bin/python -m teleclaude.daemon
 Restart=always
 RestartSec=10
-StandardOutput=append:$INSTALL_DIR/logs/teleclaude.log
-StandardError=append:$INSTALL_DIR/logs/teleclaude.log
+StandardOutput=null
+StandardError=null
 
 [Install]
 WantedBy=multi-user.target
@@ -453,40 +453,39 @@ EOF
 install_launchd_service() {
     local service_name="ai.instrukt.teleclaude.daemon"
     local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local template_file="$INSTALL_DIR/config/ai.instrukt.teleclaude.daemon.plist.template"
 
     # Create LaunchAgents directory if needed
     mkdir -p "$HOME/Library/LaunchAgents"
 
-    # Create plist file
-    print_info "Creating launchd service..."
+    # Create plist file from template
+    print_info "Creating launchd service from template..."
 
-    cat > "$plist_file" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${service_name}</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$INSTALL_DIR/.venv/bin/python</string>
-        <string>-m</string>
-        <string>teleclaude.daemon</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>$INSTALL_DIR</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-    </dict>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-</dict>
-</plist>
-EOF
+    if [ ! -f "$template_file" ]; then
+        print_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    # Detect current PATH to ensure brew and other tools are accessible
+    # Priority: /opt/homebrew/bin (M1/ARM Macs), /usr/local/bin (Intel Macs), system paths
+    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+    # Add brew paths if they exist
+    if [ -d "/opt/homebrew/bin" ]; then
+        launchd_path="/opt/homebrew/bin:$launchd_path"
+    fi
+    if [ -d "/usr/local/bin" ]; then
+        launchd_path="/usr/local/bin:$launchd_path"
+    fi
+
+    # Remove duplicates from PATH
+    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+
+    # Generate plist from template
+    sed -e "s|{{PYTHON_PATH}}|$INSTALL_DIR/.venv/bin/python|g" \
+        -e "s|{{WORKING_DIR}}|$INSTALL_DIR|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        "$template_file" > "$plist_file"
 
     print_success "Created launchd plist file"
 

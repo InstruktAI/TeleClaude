@@ -1,6 +1,8 @@
 """Test /cancel command through the daemon to verify output polling works end-to-end."""
 
 import asyncio
+import tempfile
+import os
 
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.terminal_bridge import TerminalBridge
@@ -25,8 +27,12 @@ class MockAdapter:
 
 async def test_cancel_daemon_flow():
     """Test that daemon's _cancel_command properly polls output."""
+    # Create unique database for this test
+    db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(db_fd)
+
     # Initialize components
-    session_manager = SessionManager("test_sessions.db")
+    session_manager = SessionManager(db_path)
     await session_manager.initialize()
 
     terminal = TerminalBridge()
@@ -133,6 +139,12 @@ async def test_cancel_daemon_flow():
     await terminal.kill_session("test-daemon-cancel")
     await session_manager.delete_session(session.session_id)
     await session_manager.close()
+
+    # Remove temporary database
+    try:
+        os.unlink(db_path)
+    except Exception as e:
+        print(f"Warning: Could not remove temp database: {e}")
 
     return output_captured and len(mock_adapter.messages) > 0
 

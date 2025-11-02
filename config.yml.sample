@@ -2,6 +2,7 @@ computer:
     name: Mac
     default_shell: /bin/zsh
     default_working_dir: ${WORKING_DIR}
+    timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)
     trustedDirs:
         - ${HOME}/Documents
         - ${HOME}/Projects
@@ -32,6 +33,12 @@ output:
     spam_detection_lines_per_sec: 1000
     stream_interval_seconds: 1.5
     hybrid_mode_threshold_seconds: 5
+
+polling:
+    idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)
+    lpoll_extensions: [] # Extend built-in list of long-running interactive processes
+    # Examples: ["my-repl", "watch", "docker logs -f"]
+    # Built-in list includes: claude, vim, vi, nvim, nano, emacs, top, htop, less, more, python, node, etc.
 
 sessions:
     max_total: 100

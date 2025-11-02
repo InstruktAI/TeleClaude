@@ -1,6 +1,8 @@
 """Test that /cancel command now polls terminal output instead of just showing '^C'."""
 
 import asyncio
+import tempfile
+import os
 
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.terminal_bridge import TerminalBridge
@@ -8,8 +10,12 @@ from teleclaude.core.terminal_bridge import TerminalBridge
 
 async def test_cancel_output():
     """Test that cancel command captures terminal output."""
+    # Create unique database for this test
+    db_fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(db_fd)
+
     # Initialize components
-    session_manager = SessionManager("test_sessions.db")
+    session_manager = SessionManager(db_path)
     await session_manager.initialize()
 
     terminal = TerminalBridge()
@@ -90,6 +96,12 @@ async def test_cancel_output():
     await terminal.kill_session("test-cancel")
     await session_manager.delete_session(session.session_id)
     await session_manager.close()
+
+    # Remove temporary database
+    try:
+        os.unlink(db_path)
+    except Exception as e:
+        print(f"Warning: Could not remove temp database: {e}")
 
     return has_output
 

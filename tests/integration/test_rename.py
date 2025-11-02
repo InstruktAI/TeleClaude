@@ -17,7 +17,7 @@ async def test_rename_updates_session_title(daemon_with_mocked_telegram):
     sessions = await daemon.session_manager.list_sessions()
     assert len(sessions) == 1
     session = sessions[0]
-    assert session.title == "[TestComputer] Old Title"
+    assert session.title == "# TestComputer - Old Title"
 
     # Execute rename command
     cmd_context = {"session_id": session.session_id, "user_id": 12345}

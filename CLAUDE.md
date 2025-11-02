@@ -32,7 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Kills the current PID
    - Service manager (launchd/systemd) auto-restarts it in ~1 second via KeepAlive
 3. **Verify**: `make status`
-4. **Monitor logs**: `tail -f logs/teleclaude.log`
+4. **Monitor logs**: `tail -f /var/log/teleclaude.log`
 
 **Never stop the service to check logs** - use `tail -f` instead.
 
@@ -47,7 +47,7 @@ make dev                     # Run in foreground (Ctrl+C to stop)
 make start                   # Re-enable service when done
 ```
 
-For normal development, **always keep the service running** and use `tail -f logs/teleclaude.log`.
+For normal development, **always keep the service running** and use `tail -f /var/log/teleclaude.log`.
 
 #### Service Lifecycle Management
 
@@ -65,6 +65,7 @@ make status                  # Check daemon status and uptime
 If the daemon won't start or is crashing immediately, follow these steps:
 
 1. **Unload the service** (disable auto-restart temporarily):
+
    ```bash
    # macOS
    launchctl unload ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
@@ -74,12 +75,14 @@ If the daemon won't start or is crashing immediately, follow these steps:
    ```
 
 2. **Kill any remaining processes**:
+
    ```bash
    pkill -9 -f teleclaude.daemon
    rm -f teleclaude.pid
    ```
 
 3. **Test daemon startup** (auto-terminates after 5 seconds):
+
    ```bash
    timeout 5 .venv/bin/python -m teleclaude.daemon 2>&1 | tee /tmp/daemon_test.txt
    ```
@@ -87,11 +90,13 @@ If the daemon won't start or is crashing immediately, follow these steps:
    Check the output - if you see "Uvicorn running" and no errors, it works.
 
 4. **If there are errors**, check the captured output:
+
    ```bash
    cat /tmp/daemon_test.txt
    ```
 
 5. **Once startup works, reload the service**:
+
    ```bash
    # macOS
    launchctl load ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
@@ -108,11 +113,13 @@ If the daemon won't start or is crashing immediately, follow these steps:
 **NEVER run the daemon in foreground with `make dev` in production - the service must always be up.**
 
 **Common Issues:**
+
 - **"Another daemon instance is already running"**: Kill all processes with `pkill -9 -f teleclaude.daemon` and remove `teleclaude.pid`
 - **"This Updater is not running!"**: Telegram adapter failed to start - check bot token in `.env`
 - **"Command 'X' is not a valid bot command"**: Telegram commands cannot contain hyphens, use underscores instead
 - **Syntax errors**: Run `make lint` to check for Python syntax issues
 - **Import errors**: Run `make install` to ensure all dependencies are installed
+- **EBADF errors in tmux sessions**: This was caused by pipe file descriptors leaking from the daemon's tmux command calls. Every time the daemon called a tmux command with `stdout=PIPE, stderr=PIPE`, these pipes could leak into the tmux session environment, causing Node.js child_process.spawn() to fail with EBADF. Fixed by removing pipe capture from all tmux commands that don't need output (send-keys, send-signal, kill-session, etc.). Only commands that need output (capture-pane, list-sessions, etc.) use PIPE. tmux creates proper PTYs automatically for sessions
 
 ---
 
@@ -128,6 +135,108 @@ TeleClaude is a Telegram-to-terminal bridge daemon. From a developer perspective
 - aiosqlite for async session/recording persistence
 - Adapter pattern for platform abstraction (enables future WhatsApp, Slack support)
 
+## File Management Philosophy
+
+**Session Output Files:**
+
+- ONE file per active session: `logs/session_output/{session_id[:8]}.txt`
+- Persistent (survives daemon restarts) to support downloads after crashes
+- Updated every second during polling
+- **Deleted when**:
+  - Process exits (tmux session dies)
+  - Session closed with `/exit` command
+- **Never orphaned**: Cleanup in `finally` blocks guarantees deletion
+
+**Temporary Files:**
+
+- Created ONLY when download button clicked
+- Sent immediately to Telegram
+- Deleted in `finally` block (robust exception handling)
+- **Zero persistent temp files**
+
+**No File Leaks:**
+
+- `daemon._get_output_file()` - DRY helper for consistent file paths
+- `daemon.output_dir` - created once in `__init__`
+- All cleanup uses `try/except` to handle failures gracefully
+
+## Output Polling Specification
+
+**Critical Polling Behavior** (daemon.py `_poll_and_send_output`):
+
+1. **Initial delay**: Wait 2 seconds before first poll
+2. **Poll interval**: Poll tmux output every 1 second
+3. **Hybrid editing mode** (UX optimization):
+   - **First 10 seconds**: Edit same Telegram message in-place (clean, live updates)
+   - **After 10 seconds**: Send NEW messages with continued output (preserves history)
+   - This creates predictable UX: fast commands (< 10s) = single edited message, slow commands = multiple messages
+4. **Exit code detection (PRIMARY - ONLY STOP CONDITION)**: Detect when command exits with exit code - stop immediately
+   - Append `; echo "__EXIT__$?__"` to every command sent via `send_keys`
+   - Parse exit code marker from output
+   - Strip marker before showing output to user
+   - **This is the ONLY condition that stops polling**
+5. **Timeout notification (INFORMATIONAL ONLY)**: If no output change after configured idle timeout (default: 60 seconds, configurable via `polling.idle_notification_seconds`), notify user but KEEP POLLING
+   - Send notification as NEW message: "⏸️ No output for {N} seconds - process may be waiting or finished"
+   - Do NOT append to existing output - send as separate message
+   - If output resumes, automatically delete the notification message (ephemeral notification)
+   - **CRITICAL**: This does NOT stop polling - only notifies user
+   - Polling continues until exit code is received
+6. **Session death detection**: Stop if tmux session no longer exists
+7. **Max duration**: Stop after 600 polls (10 minutes)
+
+**DO NOT** use shell prompt detection or string pattern matching. Use explicit exit code markers for reliable command completion detection.
+
+## Output Formatting and Truncation
+
+**Message Format** (daemon.py formats, adapter renders):
+
+```sh
+Terminal output here (in code block with sh syntax highlighting)
+```
+
+⏱️ Running 2m 34s | 📊 145KB | (truncated) | [📎 Download full output button]
+
+**Components:**
+
+1. **Code block**: Terminal output (truncated if needed, showing last ~3400 chars)
+2. **Status line** (outside code block, plain text): Running time, output size, truncation indicator, download button
+3. **Download button** (Telegram inline keyboard): Appears when output > 3800 chars
+
+**Output Buffer Management:**
+
+- **In-memory**: `daemon.session_output_buffers[session_id]` stores full output
+- **Persistent file**: `logs/session_output/{session_id[:8]}.txt` survives daemon restarts
+- **File lifecycle**:
+  - Created when polling starts
+  - Updated every poll (1s interval)
+  - **Survives daemon restarts** (enables downloads after restart)
+  - Deleted when:
+    - Process exits (tmux session dies)
+    - Session closed with `/exit`
+
+**Telegram Truncation & Download:**
+
+When output exceeds ~3800 chars:
+
+1. Truncate to last ~3400 chars in message
+2. Show inline keyboard button: `📎 Download full output`
+3. On button click:
+   - Read from persistent file (or memory fallback)
+   - Create temp file in `/tmp`
+   - Send as Telegram document attachment
+   - Delete temp file in `finally` block (guaranteed cleanup)
+   - **Delete-and-replace**: If clicked again → delete old file message, send new file
+   - Only one file message present at a time (clean UI)
+
+**User Message Deletion During Active Polling:**
+
+When a process is running (polling active):
+
+- User messages sent to session are treated as **input** to the running process
+- Messages **automatically deleted** from Telegram after being sent to tmux
+- Rationale: Maintains clean UI where last message always shows terminal output
+- Tracked via `daemon.active_polling_sessions` set
+
 ## Installation Workflow
 
 **All installation is managed through make commands:**
@@ -138,9 +247,11 @@ TeleClaude is a Telegram-to-terminal bridge daemon. From a developer perspective
    - Installs system dependencies (tmux, ffmpeg)
    - Creates `.env` and `config.yml` from templates
    - Prompts for Telegram bot token, user ID, supergroup ID
-   - Creates and starts system service (launchd on macOS, systemd on Linux)
+   - Generates system service file from template (launchd plist on macOS, systemd unit on Linux)
+   - Starts system service with auto-restart enabled
 
 **Unattended mode** (for CI/automation):
+
 ```bash
 # In CI: environment variables already loaded by CI system
 # Locally: source .env first if needed
@@ -196,7 +307,7 @@ The service (systemd on Linux, launchd on macOS) automatically:
 
 - Starts the daemon on system boot
 - Restarts the daemon if it crashes
-- Manages logging to `logs/teleclaude.log`
+- Manages logging to `/var/log/teleclaude.log`
 
 **Service Commands:**
 
@@ -235,7 +346,7 @@ launchctl unload ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
 launchctl load ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
 
 # View logs
-tail -f logs/teleclaude.log
+tail -f /var/log/teleclaude.log
 ```
 
 **Killing the Process:**
@@ -526,7 +637,53 @@ To add features that use configuration values (like `trustedDirs`):
 3. Access via `self.config[key]` in daemon
 4. Add validation if required field
 
-## Code Style
+## Code Style and Architecture Principles
+
+### CRITICAL: Code Organization Rules
+
+**YOU WILL BE REVIEWED BY WORLD-CLASS ENGINEERS. FOLLOW THESE RULES WITHOUT EXCEPTION.**
+
+1. **File Size Limit: 500 lines maximum**
+
+   - If a file exceeds 500 lines, extract code into separate modules
+   - Use clear module boundaries (core, adapters, utils, etc.)
+
+2. **Extract Utilities to Separate Files**
+
+   - Utility functions NEVER belong in class files
+   - Create `utils.py` or specific utility modules (e.g., `config_utils.py`)
+   - Example: `expand_env_vars()` belongs in `utils.py`, NOT in `daemon.py`
+
+3. **Class Cohesion**
+
+   - Classes should only contain methods related to their core responsibility
+   - NEVER add utility functions as class methods or static methods
+   - If it's not using `self`, it probably doesn't belong in the class
+
+4. **Module-Level Functions vs Class Methods**
+
+   - Use module-level functions for utilities shared across modules
+   - Use class methods only when they manipulate instance state
+   - Static methods are a code smell - use module-level functions instead
+
+5. **Single Responsibility Principle**
+   - Each module, class, and function does ONE thing
+   - If you can't describe it in one sentence, it's doing too much
+
+### Coding Standards and Best Practices
+
+**READ THIS BEFORE WRITING CODE:** `~/.claude/docs/development/coding-best-practices.md`
+
+This document provides comprehensive guidance on:
+- Explicit vs implicit control flow
+- When to use context objects (state encapsulation vs orchestration hiding)
+- Helper anti-patterns (pure utilities vs business logic disguised as helpers)
+- State machines (how to implement them correctly)
+- Coupling and cohesion principles
+- When to abstract vs when to duplicate
+- Testing guidelines (minimal mocks = good design)
+
+**Key principle:** Prefer explicit, clear code over clever abstractions that hide what's happening.
 
 ### Black + isort
 
@@ -547,6 +704,7 @@ To add features that use configuration values (like `trustedDirs`):
 - Private methods: `_snake_case` (e.g., `_acquire_lock`, `_emit_message`)
 - Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_SESSIONS`)
 - Async functions: Same as sync, rely on `async def` keyword
+- Module-level utility functions: `snake_case` without underscore prefix
 
 ### Docstrings
 
@@ -560,7 +718,6 @@ To add features that use configuration values (like `trustedDirs`):
 **Documentation:**
 
 - `README.md` - User-facing documentation (installation, configuration, usage)
-- `CLAUDE.md` - This file (developer guidance)
 - `prds/teleclaude.md` - Complete design document and specification
 
 **Code:**
@@ -586,6 +743,8 @@ To add features that use configuration values (like `trustedDirs`):
 6. **Stateless Adapters**: All state lives in SessionManager, adapters are thin wrappers
 7. **Type Safety**: Full type hints, strict mypy checking
 8. **No Hot Reload**: Config loaded once at start, restart daemon to apply changes
+9. **Configuration as Source of Truth**: `config.yml` is the single source of truth - code MUST read from config, not environment variables or hardcoded values
+10. **Module Organization**: Utilities in `utils.py`, config helpers in dedicated modules, business logic in domain-specific files
 
 ## Critical Operational Insights
 
@@ -609,6 +768,16 @@ To add features that use configuration values (like `trustedDirs`):
 - Control script uses nohup which would hide the process from launchd
 - Both can coexist: launchd for production, control script for development
 
+**Plist Template System (macOS):**
+
+The launchd plist file is generated from a template (`config/ai.instrukt.teleclaude.daemon.plist.template`) during installation. The template uses placeholders:
+
+- `{{PYTHON_PATH}}`: Path to venv Python interpreter
+- `{{WORKING_DIR}}`: Project root directory
+- `{{PATH}}`: Detected system PATH including Homebrew paths
+
+The plist redirects daemon stdout/stderr to `/dev/null` to prevent launchd issues. tmux sessions get their own PTYs (pseudo-terminals) automatically. CRITICAL: Avoid using `stdout=PIPE, stderr=PIPE` in subprocess calls unless you actually need the output - these pipes can leak to child processes and cause EBADF errors.
+
 ### REST API Server
 
 **FastAPI-based REST API runs inside daemon process**
@@ -622,9 +791,31 @@ To add features that use configuration values (like `trustedDirs`):
 
 ### Logging
 
-- Logs to `logs/teleclaude.log`
+- Logs to `/var/log/teleclaude.log`
 - Console output only when stdout is a TTY (interactive mode)
-- Use `tail -f logs/teleclaude.log` to monitor daemon
+- Use `tail -f /var/log/teleclaude.log` to monitor daemon
+
+**CRITICAL: When Debugging Log Issues:**
+
+1. **ALWAYS check timestamps first** - Don't assume logs are current
+2. **Check if logs were rotated/cleared** - Look for gaps in timestamps or check file modification time with `ls -lh /var/log/teleclaude.log`
+3. **Use precise time ranges** - When searching logs, use timestamps from the logs themselves, not assumptions
+4. **Example workflow:**
+
+   ```bash
+   # Check log file age and size
+   ls -lh /var/log/teleclaude.log
+
+   # Check first and last timestamps
+   head -5 /var/log/teleclaude.log  # First entries
+   tail -5 /var/log/teleclaude.log  # Most recent entries
+
+   # Search for specific time range
+   grep "2025-10-31 16:4[0-9]:" /var/log/teleclaude.log | grep -E "(Command|Message|ERROR)"
+   ```
+
+5. **Before testing** - Note the current time and look for log entries AFTER that time
+6. **When user reports an issue** - Ask for the approximate time and search around that timestamp
 
 **Checking macOS System Logs:**
 
@@ -642,6 +833,7 @@ Use the `/usr/bin/log show` command to check system logs for launchd/daemon erro
 ```
 
 **IMPORTANT**:
+
 - Use `/usr/bin/log` (full path) to avoid conflicts with shell built-ins in Bash
 - The `--last` flag takes time units directly (e.g., `5m`, `1h`, `30s`) **without quotes**
 
@@ -654,13 +846,23 @@ make restart      # Restart daemon
 make status       # Check health and uptime
 ```
 
-## Future Enhancements (See PRDs)
+## Future Enhancements
 
-- MCP server for Claude Code integration
-- Terminal recording (text + video with 20-minute rolling window)
-- Voice message transcription (OpenAI Whisper)
-- File upload handling
-- AI-generated session titles (Claude API)
-- Multi-device terminal sizing
-- Quick directory navigation
-- Live config reload
+**High Priority:**
+
+- REST API ingress configuration: `ingress.domain` for public HTTPS links to full output
+- AI-generated session titles: Use Claude API after N commands
+- Live config reload: Watch `config.yml` and reload without daemon restart
+
+**Medium Priority:**
+
+- Terminal recording: Text + video with configurable rolling window
+- Multi-device terminal sizing: Detect device type from Telegram client
+- WhatsApp adapter: Extend adapter pattern to support WhatsApp Business API
+- Slack adapter: Extend adapter pattern for Slack slash commands
+
+**Nice to Have:**
+
+- MCP server: Expose TeleClaude as MCP resource for Claude Code integration
+- Session templates: Predefined terminal setups (dev, ops, etc.)
+- Command aliases: User-configurable shortcuts

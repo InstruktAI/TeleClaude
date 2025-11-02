@@ -39,13 +39,20 @@ class VoiceHandler:
         Raises:
             Exception: If transcription fails
         """
+        logger.info("=== TRANSCRIBE CALLED ===")
+        logger.info("Audio file path: %s", audio_file_path)
+        logger.info("Language: %s", language or "auto-detect")
+
         audio_path = Path(audio_file_path)
         if not audio_path.exists():
+            logger.error("✗ Audio file not found: %s", audio_file_path)
             raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
 
-        logger.info("Transcribing audio file: %s", audio_file_path)
+        file_size = audio_path.stat().st_size
+        logger.info("Audio file exists: size=%s bytes", file_size)
 
         try:
+            logger.info("Opening audio file for transcription...")
             with open(audio_file_path, "rb") as audio_file:
                 # Call Whisper API
                 params = {
@@ -55,14 +62,22 @@ class VoiceHandler:
                 if language:
                     params["language"] = language
 
+                logger.info(
+                    "Calling OpenAI Whisper API with model=%s, language=%s...",
+                    params["model"],
+                    params.get("language", "auto"),
+                )
                 transcript = await self.client.audio.transcriptions.create(**params)
+                logger.info("✓ Whisper API call successful")
 
             transcribed_text = transcript.text.strip()
-            logger.info("Transcription successful: '%s...'", transcribed_text[:100])
+            logger.info(
+                "✓ Transcription successful: '%s' (length: %s chars)", transcribed_text[:100], len(transcribed_text)
+            )
             return transcribed_text
 
         except Exception as e:
-            logger.error("Transcription failed: %s", e)
+            logger.error("✗ Transcription failed: %s", e, exc_info=True)
             raise
 
     async def transcribe_with_retry(

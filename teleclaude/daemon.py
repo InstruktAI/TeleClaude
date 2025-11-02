@@ -6,7 +6,6 @@ import fcntl
 import json
 import logging
 import os
-import re
 import shlex
 import signal
 import sys
@@ -20,18 +19,13 @@ from dotenv import load_dotenv
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
+from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.terminal_bridge import TerminalBridge
 from teleclaude.core.voice_handler import VoiceHandler
 from teleclaude.logging_config import setup_logging
 from teleclaude.rest_api import TeleClaudeAPI
-from teleclaude.utils import (
-    expand_env_vars,
-    format_active_status_line,
-    format_completed_status_line,
-    format_size,
-    format_terminal_message,
-)
+from teleclaude.utils import expand_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +64,7 @@ class TeleClaudeDaemon:
         self.session_manager = SessionManager(db_path)
         self.terminal = TerminalBridge(self.config)
         self.voice_handler = VoiceHandler()
+        self.output_poller = OutputPoller(self.config, self.terminal, self.session_manager)
 
         # Adapter registry - stores all active adapters
         self.adapters: Dict[str, BaseAdapter] = {}
@@ -1104,300 +1099,29 @@ You can now send commands to this session.
         logger.info("Session %s marked as closed", session_id[:8])
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
-        """Poll terminal output and update single message in-place.
+        """Poll terminal output and send to chat adapter.
 
-        Polling behavior (per spec):
-        1. Wait 2 seconds before starting to poll
-        2. Poll every 1 second
-        3. Send notification if output unchanged for configured seconds (but KEEP POLLING)
-        4. ONLY stop when exit code is received or session dies
+        EXPLICIT delegation to OutputPoller
 
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
         """
-        max_message_length = 3800  # Message limit (leave buffer for formatting)
-        poll_interval = 1.0  # Poll every 1 second
-        initial_delay = 1.0  # Wait 1 second before first poll
-        idle_notification_seconds = self.config.get("polling", {}).get("idle_notification_seconds", 60)
-
-        # Check if exit marker was appended to this command
-        # If no exit marker, we can't detect completion via marker
-        has_exit_marker = self.exit_marker_appended.get(session_id, False)
-
-        # Get adapter for sending messages
+        # Get adapter for this session
         adapter = await self._get_adapter_for_session(session_id)
 
-        # Get persistent output file path (survives daemon restarts)
-        output_file = self._get_output_file(session_id)
-
-        current_message_id = None  # Track message being edited
-        notification_message_id = None  # Track notification message (deleted when output resumes)
-        full_buffer = ""  # Complete output buffer (grows indefinitely)
-        last_captured_length = 0  # Track how much we've already captured
-        consecutive_identical = 0  # Count how many times output was identical
-        process_start_time = None  # Track when process started (for status line)
-        last_message_update_time = None  # Track when we last updated the message
-        last_output_change_time = None  # Track when output last changed (for inactivity timeout)
-
-        # Wait 1 second before starting to poll
-        await asyncio.sleep(initial_delay)
-        process_start_time = asyncio.get_event_loop().time()  # Track when process started
-        last_output_change_time = process_start_time  # Initialize to process start time
-
-        # Mark session as having active polling
-        self.active_polling_sessions.add(session_id)
-
-        try:
-            while True:
-                # Check if tmux session still exists (process exit detection)
-                session_exists = await self.terminal.session_exists(tmux_session_name)
-                if not session_exists:
-                    logger.info("Process exited for %s, stopping poll", session_id[:8])
-
-                    # Remove from active polling (VERIFIED EXIT)
-                    self.active_polling_sessions.discard(session_id)
-                    self.exit_marker_appended.pop(session_id, None)
-
-                    # Delete persistent output file (process finished)
-                    try:
-                        if output_file.exists():
-                            output_file.unlink()
-                            logger.debug("Deleted output file for exited session %s", session_id[:8])
-                    except Exception as e:
-                        logger.warning("Failed to delete output file: %s", e)
-
-                    # Send final message about process exit (abort polling as per spec)
-                    exit_msg = "\n\n✅ Process exited"
-                    final_output = full_buffer + exit_msg if full_buffer else exit_msg
-
-                    if current_message_id:
-                        await adapter.edit_message(session_id, current_message_id, final_output)
-                    else:
-                        await adapter.send_message(session_id, final_output)
-                    break
-
-                # Capture current output from terminal
-                current_output = await self.terminal.capture_pane(tmux_session_name)
-
-                if not current_output.strip():
-                    # No output yet, continue polling
-                    await asyncio.sleep(poll_interval)
-                    continue
-
-                # Check for exit code marker (PRIMARY stop condition for commands with markers)
-                # Commands without exit markers rely on inactivity timeout
-                exit_code = None
-                if has_exit_marker:
-                    exit_marker_match = re.search(r"__EXIT__(\d+)__", current_output)
-                    if exit_marker_match:
-                        exit_code = int(exit_marker_match.group(1))
-                        # Strip marker from output before displaying (handles newlines before/after marker)
-                        current_output = re.sub(r"\n?__EXIT__\d+__\n?", "", current_output)
-                        logger.info("Exit code %d detected for %s, stopping poll", exit_code, session_id[:8])
-
-                # Check if output changed (ANY change)
-                output_changed = len(current_output) != last_captured_length
-
-                # Update last_output_change_time if output changed
-                if output_changed:
-                    last_output_change_time = asyncio.get_event_loop().time()
-                current_time = asyncio.get_event_loop().time()
-                time_since_last_update = (
-                    (current_time - last_message_update_time) if last_message_update_time else float("inf")
-                )
-                should_update_timer = time_since_last_update >= 5.0  # Update timer every 5 seconds
-
-                if not output_changed:
-                    # Check if notification was deleted externally (user sent a message)
-                    # If so, reset the idle counter (user interaction breaks the streak)
-                    if notification_message_id and session_id not in self.idle_notifications:
-                        logger.debug("Notification was deleted, resetting idle counter for %s", session_id[:8])
-                        consecutive_identical = 0
-                        notification_message_id = None  # Clear local tracking
-                    elif not notification_message_id:
-                        # Only increment if notification hasn't been sent yet
-                        consecutive_identical += 1
-                        logger.debug(
-                            "No output change, consecutive_identical=%d for %s", consecutive_identical, session_id[:8]
-                        )
-
-                    # Notify user if no output change for configured seconds (but KEEP POLLING)
-                    # Only send once - don't check again after notification is sent
-                    if consecutive_identical == idle_notification_seconds and not notification_message_id:
-                        logger.info(
-                            "No output change for %ds for %s, notifying user", idle_notification_seconds, session_id[:8]
-                        )
-                        # Send notification as NEW message (not appended to output)
-                        notification = (
-                            f"⏸️ No output for {idle_notification_seconds} seconds - "
-                            "process may be waiting or hung up, try cancel"
-                        )
-                        notification_message_id = await adapter.send_message(session_id, notification)
-
-                        # Track notification for later deletion when user sends a command
-                        if notification_message_id:
-                            self.idle_notifications[session_id] = notification_message_id
-                            logger.debug(
-                                "Stored idle notification %s for session %s", notification_message_id, session_id[:8]
-                            )
-
-                        # DO NOT break - keep polling until exit code is received
-
-                    # Skip timer-only updates once notification has been sent
-                    # This prevents the main message from jumping around while notification is visible
-                    if notification_message_id:
-                        await asyncio.sleep(poll_interval)
-                        continue
-
-                    # Skip message update if no output change and timer update not needed
-                    if not should_update_timer:
-                        await asyncio.sleep(poll_interval)
-                        continue
-                else:
-                    # We have new output, reset counter and update
-                    consecutive_identical = 0
-                    last_captured_length = len(current_output)
-
-                    # Don't auto-delete notification - let user interaction handle it
-                    # Notification persists until user sends a new command
-
-                    # Update full buffer (this grows indefinitely)
-                    full_buffer = current_output
-
-                    # Write to persistent file (survives daemon restarts)
-                    try:
-                        output_file.write_text(full_buffer, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("Failed to write output file: %s", e)
-
-                # Format timestamps for status line
-                from datetime import datetime
-                from zoneinfo import ZoneInfo
-
-                # Get timezone from config (default: Europe/Amsterdam)
-                tz_name = self.config.get("computer", {}).get("timezone", "Europe/Amsterdam")
-                tz = ZoneInfo(tz_name)
-
-                started_time = datetime.fromtimestamp(process_start_time, tz=tz).strftime("%H:%M:%S")
-                last_active_time = datetime.fromtimestamp(last_output_change_time, tz=tz).strftime("%H:%M:%S")
-
-                # Status color indicator based on time since last activity
-                idle_seconds = int(asyncio.get_event_loop().time() - last_output_change_time)
-                if idle_seconds <= 5:
-                    status_color = "⚪"
-                elif idle_seconds <= 10:
-                    status_color = "🟡"
-                elif idle_seconds <= 20:
-                    status_color = "🟠"
-                else:
-                    status_color = "🔴"
-
-                # Calculate output size in human-readable format
-                output_size_bytes = len(full_buffer.encode("utf-8"))
-                size_str = format_size(output_size_bytes)
-
-                # Prepare display output (truncate if needed)
-                is_truncated = len(full_buffer) > max_message_length
-
-                if is_truncated:
-                    # Show last N chars (reserve space for status line)
-                    terminal_output = full_buffer[-(max_message_length - 400) :]
-                else:
-                    terminal_output = full_buffer
-
-                # Build message: code block + status line
-                status_line = format_active_status_line(
-                    status_color, started_time, last_active_time, size_str, is_truncated
-                )
-                display_output = format_terminal_message(terminal_output, status_line)
-
-                # Prepare metadata for button if truncated
-                metadata = {"raw_format": True}  # Don't wrap in code block, we already did it
-                if is_truncated:
-                    # Add inline keyboard with download button
-                    # Import InlineKeyboardButton/Markup here to avoid circular imports at module level
-                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-                    keyboard = [
-                        [InlineKeyboardButton("📎 Download full output", callback_data=f"download_full:{session_id}")]
-                    ]
-                    metadata["reply_markup"] = InlineKeyboardMarkup(keyboard)
-
-                # Update or send message
-                if current_message_id:
-                    # Edit existing message - if this fails, the whole operation fails
-                    await adapter.edit_message(session_id, current_message_id, display_output, metadata)
-                    last_message_update_time = asyncio.get_event_loop().time()
-                    logger.debug(
-                        "Edited message for %s, buffer: %s, shown: %s",
-                        session_id[:8],
-                        len(full_buffer),
-                        len(display_output),
-                    )
-                else:
-                    # Send initial message
-                    sent_msg_id = await adapter.send_message(session_id, display_output, metadata)
-                    if not sent_msg_id:
-                        logger.error("Failed to send initial message for session %s", session_id[:8])
-                        break
-                    current_message_id = sent_msg_id
-                    last_message_update_time = asyncio.get_event_loop().time()
-                    logger.debug("Sent initial message for %s, msg_id: %s", session_id[:8], current_message_id)
-
-                # If exit code detected, send final message and stop polling
-                if exit_code is not None:
-                    # Remove from active polling (VERIFIED EXIT)
-                    self.active_polling_sessions.discard(session_id)
-                    self.exit_marker_appended.pop(session_id, None)
-
-                    # Keep output file for downloads (will be deleted when session closes)
-                    # Don't delete here - file persists until /exit or session death
-
-                    # Format final message with code block and status line
-                    output_bytes = len(full_buffer.encode("utf-8"))
-                    size_str = format_size(output_bytes)
-                    status_line = format_completed_status_line(exit_code, process_start_time, size_str, is_truncated)
-                    final_output = format_terminal_message(terminal_output if full_buffer else "", status_line)
-
-                    # Keep download button if output was truncated
-                    final_metadata = {"raw_format": True}
-                    if is_truncated:
-                        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-                        keyboard = [
-                            [
-                                InlineKeyboardButton(
-                                    "📎 Download full output", callback_data=f"download_full:{session_id}"
-                                )
-                            ]
-                        ]
-                        final_metadata["reply_markup"] = InlineKeyboardMarkup(keyboard)
-
-                    if current_message_id:
-                        await adapter.edit_message(session_id, current_message_id, final_output, final_metadata)
-                    else:
-                        await adapter.send_message(session_id, final_output, final_metadata)
-
-                    logger.info(
-                        "Polling stopped for %s (exit code: %d), output file kept for downloads",
-                        session_id[:8],
-                        exit_code,
-                    )
-                    break
-
-                # Wait before next poll
-                await asyncio.sleep(poll_interval)
-        finally:
-            # NOTE: Do NOT remove from active_polling_sessions here!
-            # Only remove when we have VERIFIED exit (exit code or session death).
-            # If polling stops due to timeout/max duration, the process is STILL running.
-
-            # Clean up idle notification tracking (notification message stays in Telegram)
-            self.idle_notifications.pop(session_id, None)
-
-            # Keep buffer in memory for download button (cleared when session exits)
-            logger.debug("Polling ended for session %s, buffer kept in memory for downloads", session_id[:8])
+        # EXPLICIT: Delegate to OutputPoller
+        # Can see exactly what's being called and what it needs
+        await self.output_poller.poll_and_send_output(
+            session_id=session_id,
+            tmux_session_name=tmux_session_name,
+            adapter=adapter,
+            output_dir=self.output_dir,
+            active_polling_sessions=self.active_polling_sessions,
+            long_running_sessions=set(),  # Not used anymore
+            idle_notifications=self.idle_notifications,
+            exit_marker_appended=self.exit_marker_appended,
+        )
 
 
 async def main() -> None:
