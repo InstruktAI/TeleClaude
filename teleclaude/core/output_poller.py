@@ -328,12 +328,13 @@ class OutputPoller:
             message_id: Current message ID
             exit_text: Exit message text
         """
-        final_output = output + f"\n\n{exit_text}" if output else exit_text
+        final_output = format_terminal_message(output if output else "", exit_text)
+        metadata = {"raw_format": True}
 
         if message_id:
-            await adapter.edit_message(session_id, message_id, final_output)
+            await adapter.edit_message(session_id, message_id, final_output, metadata)
         else:
-            await adapter.send_message(session_id, final_output)
+            await adapter.send_message(session_id, final_output, metadata)
 
     async def _send_final_message(
         self,
