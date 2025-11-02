@@ -83,7 +83,7 @@ class TelegramAdapter(BaseAdapter):
         self.app.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
         # Handle voice messages in topics
-        self.app.add_handler(MessageHandler(filters.VOICE & filters.ChatType.SUPERGROUP, self._handle_voice_message))
+        self.app.add_handler(MessageHandler(filters.VOICE, self._handle_voice_message))
 
         # Handle forum topic closed events
         self.app.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self._handle_topic_closed))
