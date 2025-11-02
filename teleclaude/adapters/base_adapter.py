@@ -86,6 +86,19 @@ class BaseAdapter(ABC):
         pass
 
     @abstractmethod
+    async def delete_message(self, session_id: str, message_id: str) -> bool:
+        """Delete a message.
+
+        Args:
+            session_id: Session identifier
+            message_id: Message ID to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        pass
+
+    @abstractmethod
     async def send_file(
         self, session_id: str, file_path: str, caption: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -153,6 +166,18 @@ class BaseAdapter(ABC):
         Args:
             channel_id: Channel identifier
             status: Status ('active', 'waiting', 'slow', 'stalled', 'idle', 'dead')
+
+        Returns:
+            True if successful, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def delete_channel(self, channel_id: str) -> bool:
+        """Delete a channel/topic/thread.
+
+        Args:
+            channel_id: Channel identifier
 
         Returns:
             True if successful, False otherwise

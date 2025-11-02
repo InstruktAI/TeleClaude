@@ -27,12 +27,13 @@ logger = logging.getLogger(__name__)
 class TelegramAdapter(BaseAdapter):
     """Telegram bot adapter using python-telegram-bot."""
 
-    def __init__(self, config: Dict[str, Any], session_manager: Any) -> None:
+    def __init__(self, config: Dict[str, Any], session_manager: Any, daemon: Any) -> None:
         """Initialize Telegram adapter.
 
         Args:
             config: Telegram configuration
             session_manager: SessionManager instance for database queries
+            daemon: Daemon instance for accessing session buffers
         """
         super().__init__(config)
         self.bot_token = config["bot_token"]
@@ -40,6 +41,7 @@ class TelegramAdapter(BaseAdapter):
         self.user_whitelist = config["user_whitelist"]
         self.trusted_dirs = config.get("trusted_dirs", [])
         self.session_manager = session_manager
+        self.daemon = daemon
         self.app: Optional[Application] = None
         self._processed_voice_messages: set[int] = set()  # Track processed voice message IDs
 
@@ -202,6 +204,20 @@ class TelegramAdapter(BaseAdapter):
             logger.error("Failed to edit message: %s", e)
             return False
 
+    async def delete_message(self, session_id: str, message_id: str) -> bool:
+        """Delete a message in the session's topic."""
+        self._ensure_started()
+
+        try:
+            await self.app.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
+            return True
+        except BadRequest as e:
+            logger.warning("Failed to delete message %s: %s", message_id, e)
+            return False
+        except Exception as e:
+            logger.error("Failed to delete message %s: %s", message_id, e)
+            return False
+
     async def send_file(
         self, session_id: str, file_path: str, caption: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -281,6 +297,20 @@ class TelegramAdapter(BaseAdapter):
         new_title = f"{base_title} {emoji}".strip()
 
         return await self.update_channel_title(channel_id, new_title)
+
+    async def delete_channel(self, channel_id: str) -> bool:
+        """Delete/close a forum topic."""
+        self._ensure_started()
+
+        try:
+            await self.app.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=int(channel_id))
+            return True
+        except BadRequest as e:
+            logger.warning("Failed to delete topic %s: %s", channel_id, e)
+            return False
+        except Exception as e:
+            logger.error("Failed to delete topic %s: %s", channel_id, e)
+            return False
 
     # ==================== Helper Methods ====================
 
