@@ -1,12 +1,13 @@
 """Telegram adapter for TeleClaude."""
 
+import asyncio
 import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import BadRequest
+from telegram.error import BadRequest, RetryAfter
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -172,10 +173,17 @@ class TelegramAdapter(BaseAdapter):
         # Format message with code block only if not already formatted
         formatted_text = apply_code_block_formatting(text, metadata or {})
 
+        # Extract reply_markup if present
+        reply_markup = (metadata or {}).get("reply_markup")
+
         # Send message with error handling for deleted topics
         try:
             message = await self.app.bot.send_message(
-                chat_id=self.supergroup_id, message_thread_id=topic_id, text=formatted_text, parse_mode="Markdown"
+                chat_id=self.supergroup_id,
+                message_thread_id=topic_id,
+                text=formatted_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
             )
             return str(message.message_id)
         except BadRequest as e:
@@ -188,6 +196,24 @@ class TelegramAdapter(BaseAdapter):
                 await self._emit_topic_closed(session_id, {"topic_id": topic_id, "reason": "deleted"})
                 return None
             raise
+        except RetryAfter as e:
+            # Rate limit - sleep and retry once
+            retry_seconds = e.retry_after
+            logger.warning("Rate limit hit, sleeping %s seconds and retrying send", retry_seconds)
+            await asyncio.sleep(retry_seconds)
+            try:
+                message = await self.app.bot.send_message(
+                    chat_id=self.supergroup_id,
+                    message_thread_id=topic_id,
+                    text=formatted_text,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup,
+                )
+                logger.info("Retry succeeded after rate limit")
+                return str(message.message_id)
+            except Exception as retry_error:
+                logger.warning("Retry failed after rate limit: %s", retry_error)
+                return None
 
     async def edit_message(
         self, session_id: str, message_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
@@ -199,8 +225,15 @@ class TelegramAdapter(BaseAdapter):
             # Format message with code block only if not already formatted
             formatted_text = apply_code_block_formatting(text, metadata or {})
 
+            # Extract reply_markup if present
+            reply_markup = (metadata or {}).get("reply_markup")
+
             await self.app.bot.edit_message_text(
-                chat_id=self.supergroup_id, message_id=int(message_id), text=formatted_text, parse_mode="Markdown"
+                chat_id=self.supergroup_id,
+                message_id=int(message_id),
+                text=formatted_text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
             )
             return True
         except BadRequest as e:
@@ -212,8 +245,37 @@ class TelegramAdapter(BaseAdapter):
                 # Emit topic deleted event
                 await self._emit_topic_closed(session_id, {"reason": "deleted"})
                 return False
+            if "can't parse entities" in error_msg or "can't find end of" in error_msg:
+                # Parse error - transient issue with complex output, continue polling
+                logger.warning("Markdown parse error editing message %s (continuing polling): %s", message_id, e)
+                return True
             logger.error("Failed to edit message: %s", e)
             return False
+        except RetryAfter as e:
+            # Rate limit - sleep and retry once
+            retry_seconds = e.retry_after
+            logger.warning("Rate limit hit, sleeping %s seconds and retrying edit", retry_seconds)
+            await asyncio.sleep(retry_seconds)
+            try:
+                await self.app.bot.edit_message_text(
+                    chat_id=self.supergroup_id,
+                    message_id=int(message_id),
+                    text=formatted_text,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup,
+                )
+                logger.info("Retry succeeded after rate limit")
+                return True
+            except BadRequest as retry_error:
+                error_msg = str(retry_error).lower()
+                if "can't parse entities" in error_msg or "can't find end of" in error_msg:
+                    logger.warning("Markdown parse error on retry (continuing polling): %s", retry_error)
+                    return True
+                logger.warning("Retry failed after rate limit: %s (continuing polling)", retry_error)
+                return True
+            except Exception as retry_error:
+                logger.warning("Retry failed after rate limit: %s (continuing polling)", retry_error)
+                return True
         except Exception as e:
             logger.error("Failed to edit message: %s", e)
             return False
@@ -592,7 +654,49 @@ Current size: {}
 
         action, *args = data.split(":", 1)
 
-        if action == "cd":
+        if action == "download_full":
+            # Download full output
+            session_id = args[0] if args else None
+            if not session_id:
+                return
+
+            # Read output from file
+            output_dir = Path("session_output")
+            output_file = output_dir / f"{session_id[:8]}.txt"
+
+            if not output_file.exists():
+                await query.edit_message_text("Output file not found", parse_mode="Markdown")
+                return
+
+            try:
+                # Read the full output
+                output_content = output_file.read_text()
+
+                # Create a temporary file to send
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+                    tmp.write(output_content)
+                    tmp_path = tmp.name
+
+                try:
+                    # Send as document
+                    with open(tmp_path, "rb") as f:
+                        await self.app.bot.send_document(
+                            chat_id=query.message.chat_id,
+                            message_thread_id=query.message.message_thread_id,
+                            document=f,
+                            filename=f"output_{session_id[:8]}.txt",
+                            caption="Full terminal output",
+                        )
+                finally:
+                    # Clean up temp file
+                    Path(tmp_path).unlink()
+
+                await query.edit_message_text("✅ Full output sent as file", parse_mode="Markdown")
+            except Exception as e:
+                logger.error("Failed to send output file: %s", e)
+                await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")
+
+        elif action == "cd":
             # Find session from the message's thread
             if not query.message or not query.message.message_thread_id:
                 return

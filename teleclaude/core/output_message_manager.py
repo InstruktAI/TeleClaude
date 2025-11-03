@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -147,11 +148,11 @@ class OutputMessageManager:
             tz = ZoneInfo(tz_name)
             started_time = datetime.fromtimestamp(started_at, tz=tz).strftime("%H:%M:%S")
             # "last active" shows CURRENT time (when message is sent/edited)
-            current_time = asyncio.get_event_loop().time()
+            current_time = time.time()
             last_active_time = datetime.fromtimestamp(current_time, tz=tz).strftime("%H:%M:%S")
 
             # Status color based on idle time
-            idle_seconds = int(asyncio.get_event_loop().time() - last_output_changed_at)
+            idle_seconds = int(time.time() - last_output_changed_at)
             if idle_seconds <= 5:
                 status_color = "⚪"
             elif idle_seconds <= 10:

@@ -6,6 +6,7 @@ Polls tmux and yields output events. Daemon handles all message sending.
 import asyncio
 import logging
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
@@ -103,7 +104,7 @@ class OutputPoller:
         try:
             # Initial delay
             await asyncio.sleep(1.0)
-            started_at = asyncio.get_event_loop().time()
+            started_at = time.time()
             last_output_changed_at = started_at
             logger.debug("Polling started for %s with has_exit_marker=%s", session_id[:8], has_exit_marker)
 
@@ -166,7 +167,7 @@ class OutputPoller:
                     ticks_since_last_update = 0
                     update_interval = 5  # Reset to initial interval
                     next_update_at = update_interval
-                    last_output_changed_at = asyncio.get_event_loop().time()
+                    last_output_changed_at = time.time()
 
                     # Strip exit markers from output before showing to user
                     clean_output = self._strip_exit_markers(output_buffer)

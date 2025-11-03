@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from telegram import Update, User, Message, Chat
 from telegram.ext import ContextTypes
+from telegram.error import RetryAfter
 
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.base_adapter import AdapterError
@@ -574,3 +575,193 @@ class TestCallbackQuery:
             mock_query.answer.assert_called_once()
             # Should NOT emit command when no session
             mock_emit.assert_not_called()
+
+
+@pytest.mark.unit
+class TestRateLimitHandling:
+    """Tests for rate limit handling with retry."""
+
+    @pytest.mark.asyncio
+    async def test_edit_message_rate_limit_retries_and_succeeds(self, telegram_adapter, mock_session_manager):
+        """Test that rate limit on edit sleeps and retries successfully."""
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+
+        # First call raises rate limit, second succeeds
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(
+            side_effect=[RetryAfter(retry_after=0.01), None]  # Use 0.01s for fast test
+        )
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "123"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        result = await telegram_adapter.edit_message("session-123", "789", "updated text")
+
+        # Should return True after retry succeeds
+        assert result is True
+        # Should be called twice (initial + retry)
+        assert telegram_adapter.app.bot.edit_message_text.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_edit_message_rate_limit_retries_and_fails(self, telegram_adapter, mock_session_manager):
+        """Test that rate limit on edit sleeps, retries, and continues on failure."""
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+
+        # Both calls raise rate limit
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(
+            side_effect=RetryAfter(retry_after=0.01)
+        )
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "123"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        result = await telegram_adapter.edit_message("session-123", "789", "updated text")
+
+        # Should still return True (continue polling)
+        assert result is True
+        # Should be called twice (initial + retry)
+        assert telegram_adapter.app.bot.edit_message_text.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_send_message_rate_limit_retries_and_succeeds(self, telegram_adapter, mock_session_manager):
+        """Test that rate limit on send sleeps and retries successfully."""
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+
+        # First call raises rate limit, second succeeds
+        mock_message = MagicMock()
+        mock_message.message_id = 999
+        telegram_adapter.app.bot.send_message = AsyncMock(
+            side_effect=[RetryAfter(retry_after=0.01), mock_message]
+        )
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "123"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        result = await telegram_adapter.send_message("session-123", "test message")
+
+        # Should return message ID after retry succeeds
+        assert result == "999"
+        # Should be called twice (initial + retry)
+        assert telegram_adapter.app.bot.send_message.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_send_message_rate_limit_retries_and_fails(self, telegram_adapter, mock_session_manager):
+        """Test that rate limit on send sleeps, retries, and returns None on failure."""
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+
+        # Both calls raise rate limit
+        telegram_adapter.app.bot.send_message = AsyncMock(
+            side_effect=RetryAfter(retry_after=0.01)
+        )
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "123"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        result = await telegram_adapter.send_message("session-123", "test message")
+
+        # Should return None (message not sent)
+        assert result is None
+        # Should be called twice (initial + retry)
+        assert telegram_adapter.app.bot.send_message.call_count == 2
+
+
+@pytest.mark.unit
+class TestReplyMarkup:
+    """Tests for inline keyboard reply_markup handling."""
+
+    @pytest.mark.asyncio
+    async def test_send_message_with_reply_markup(self, telegram_adapter, mock_session_manager):
+        """Test that send_message passes reply_markup from metadata."""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.send_message = AsyncMock(return_value=MagicMock(message_id=123))
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "456"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        # Create inline keyboard
+        keyboard = [[InlineKeyboardButton("Test Button", callback_data="test:data")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Send message with reply_markup
+        result = await telegram_adapter.send_message(
+            "session-123", "test message", {"reply_markup": reply_markup}
+        )
+
+        assert result == "123"
+        telegram_adapter.app.bot.send_message.assert_called_once()
+        call_kwargs = telegram_adapter.app.bot.send_message.call_args[1]
+        assert "reply_markup" in call_kwargs
+        assert call_kwargs["reply_markup"] == reply_markup
+
+    @pytest.mark.asyncio
+    async def test_edit_message_with_reply_markup(self, telegram_adapter, mock_session_manager):
+        """Test that edit_message passes reply_markup from metadata."""
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.edit_message_text = AsyncMock()
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "456"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        # Create inline keyboard
+        keyboard = [[InlineKeyboardButton("Download", callback_data="download:123")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Edit message with reply_markup
+        result = await telegram_adapter.edit_message(
+            "session-123", "789", "updated text", {"reply_markup": reply_markup}
+        )
+
+        assert result is True
+        telegram_adapter.app.bot.edit_message_text.assert_called_once()
+        call_kwargs = telegram_adapter.app.bot.edit_message_text.call_args[1]
+        assert "reply_markup" in call_kwargs
+        assert call_kwargs["reply_markup"] == reply_markup
+
+    @pytest.mark.asyncio
+    async def test_send_message_without_reply_markup(self, telegram_adapter, mock_session_manager):
+        """Test that send_message works without reply_markup."""
+        # Mock app and bot
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.send_message = AsyncMock(return_value=MagicMock(message_id=123))
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.adapter_metadata = {"channel_id": "456"}
+        mock_session_manager.get_session.return_value = mock_session
+
+        # Send message without reply_markup
+        result = await telegram_adapter.send_message("session-123", "test message")
+
+        assert result == "123"
+        telegram_adapter.app.bot.send_message.assert_called_once()
+        call_kwargs = telegram_adapter.app.bot.send_message.call_args[1]
+        # reply_markup should be None
+        assert call_kwargs.get("reply_markup") is None

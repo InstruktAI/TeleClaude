@@ -9,6 +9,7 @@ import os
 import shlex
 import signal
 import sys
+import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1183,7 +1184,7 @@ You can now send commands to this session.
                             adapter,
                             event.final_output,
                             event.started_at,  # Use actual start time from poller
-                            asyncio.get_event_loop().time(),
+                            time.time(),
                             max_message_length=3800,
                             is_final=True,
                             exit_code=event.exit_code,
