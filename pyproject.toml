@@ -90,8 +90,11 @@ addopts = [
 markers = [
   "unit: Unit tests (fast, isolated, mocked)",
   "integration: Integration tests (slower, real components)",
+  "timeout: Test timeout marker",
 ]
 asyncio_mode = "auto"
+timeout = 5
+timeout_func_only = true
 
 [tool.coverage.run]
 source = ["teleclaude"]

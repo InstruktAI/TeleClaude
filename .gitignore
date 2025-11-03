@@ -45,6 +45,7 @@ coverage/
 
 # Project-specific
 recordings/
+session_output/
 uploads/
 tmp/
 .history

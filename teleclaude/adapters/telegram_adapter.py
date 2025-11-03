@@ -16,6 +16,8 @@ from telegram.ext import (
     filters,
 )
 
+from teleclaude.utils import apply_code_block_formatting
+
 from .base_adapter import AdapterError, BaseAdapter
 
 # Status emoji mapping
@@ -52,8 +54,15 @@ class TelegramAdapter(BaseAdapter):
 
     async def start(self) -> None:
         """Initialize and start Telegram bot."""
-        # Create application
-        self.app = Application.builder().token(self.bot_token).build()
+        # Create application with concurrent updates enabled
+        # CRITICAL: concurrent_updates must be > 0 or updates can be silently dropped
+        # when handlers are busy (e.g., during active polling)
+        self.app = (
+            Application.builder()
+            .token(self.bot_token)
+            .concurrent_updates(True)  # Enable concurrent update processing
+            .build()
+        )
 
         # Register command handlers
         # Note: By default CommandHandler only handles NEW messages, not edited ones
@@ -63,6 +72,8 @@ class TelegramAdapter(BaseAdapter):
             ("list_sessions", self._handle_list_sessions),
             ("cancel", self._handle_cancel),
             ("cancel2x", self._handle_cancel2x),
+            ("escape", self._handle_escape),
+            ("escape2x", self._handle_escape2x),
             ("resize", self._handle_resize),
             ("rename", self._handle_rename),
             ("cd", self._handle_cd),
@@ -115,6 +126,8 @@ class TelegramAdapter(BaseAdapter):
             BotCommand("claude_resume", "Resume last Claude Code session (GOD mode)"),
             BotCommand("cancel", "Send CTRL+C to interrupt current command"),
             BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
+            BotCommand("escape", "Send ESC key (exit Vim insert mode, etc.)"),
+            BotCommand("escape2x", "Send ESC twice (for Claude Code, etc.)"),
             BotCommand("cd", "Change directory or list trusted directories"),
             BotCommand("resize", "Resize terminal window"),
             BotCommand("rename", "Rename current session"),
@@ -156,8 +169,8 @@ class TelegramAdapter(BaseAdapter):
         if not topic_id:
             raise AdapterError(f"Session {session_id} has no channel_id/topic_id")
 
-        # Format message with code block (use 'bash' for better rendering)
-        formatted_text = f"```\n{text}\n```" if text.strip() else text
+        # Format message with code block only if not already formatted
+        formatted_text = apply_code_block_formatting(text, metadata or {})
 
         # Send message with error handling for deleted topics
         try:
@@ -183,7 +196,8 @@ class TelegramAdapter(BaseAdapter):
         self._ensure_started()
 
         try:
-            formatted_text = f"```\n{text}\n```" if text.strip() else text
+            # Format message with code block only if not already formatted
+            formatted_text = apply_code_block_formatting(text, metadata or {})
 
             await self.app.bot.edit_message_text(
                 chat_id=self.supergroup_id, message_id=int(message_id), text=formatted_text, parse_mode="Markdown"
@@ -411,6 +425,38 @@ class TelegramAdapter(BaseAdapter):
             },
         )
 
+    async def _handle_escape(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /escape command - sends ESC key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "escape",
+            [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+            },
+        )
+
+    async def _handle_escape2x(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /escape2x command - sends ESC twice (for nested Vim, etc.)."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "escape2x",
+            [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+            },
+        )
+
     async def _handle_resize(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /resize command - resize terminal."""
         session = await self._get_session_from_topic(update)
@@ -593,6 +639,8 @@ Current size: {}
 /list_sessions - List all active sessions
 /cancel - Send CTRL+C to interrupt current command
 /cancel2x - Send CTRL+C twice (for Claude Code, etc.)
+/escape - Send ESC key (exit Vim insert mode, etc.)
+/escape2x - Send ESC twice (for nested Vim, etc.)
 /resize <size> - Resize terminal (shows presets if no size)
 /rename <name> - Rename current session
 /cd [path] - List trusted directories or change to specified path
@@ -604,10 +652,11 @@ Current size: {}
 2. Send text messages in the session topic to execute commands
 3. Use /cancel to interrupt a running command
 4. Use /cancel2x for stubborn programs (Claude Code)
-5. Use /resize to change terminal size
-6. Use /rename to rename the session
-7. Use /claude to start Claude Code
-8. View output in real-time
+5. Use /escape to exit insert mode in Vim
+6. Use /resize to change terminal size
+7. Use /rename to rename the session
+8. Use /claude to start Claude Code
+9. View output in real-time
         """
 
         await update.effective_message.reply_text(help_text, parse_mode="Markdown")
@@ -630,6 +679,11 @@ Current size: {}
 
     async def _handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages in topics."""
+        logger.info("=== VOICE MESSAGE HANDLER CALLED ===")
+        logger.info("Message ID: %s", update.message.message_id)
+        logger.info("User: %s", update.effective_user.id)
+        logger.info("Thread ID: %s", update.message.message_thread_id if update.message else None)
+
         # Check if we've already processed this message
         message_id = update.message.message_id
         if message_id in self._processed_voice_messages:
@@ -646,6 +700,10 @@ Current size: {}
 
         session = await self._get_session_from_topic(update)
         if not session:
+            logger.warning(
+                "No session found for voice message in thread %s",
+                update.message.message_thread_id if update.message else None,
+            )
             return
 
         # Download voice file to temp location
@@ -661,6 +719,13 @@ Current size: {}
             # Download the file
             await voice_file.download_to_drive(temp_file_path)
             logger.info("Downloaded voice message to: %s", temp_file_path)
+
+            # Delete the voice message from Telegram (keep UI clean)
+            try:
+                await update.message.delete()
+                logger.debug("Deleted voice message %s from Telegram", update.message.message_id)
+            except Exception as e:
+                logger.warning("Failed to delete voice message %s: %s", update.message.message_id, e)
 
             # Emit voice event to daemon
             await self._emit_voice(

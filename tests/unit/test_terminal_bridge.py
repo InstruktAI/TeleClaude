@@ -27,13 +27,13 @@ class TestSendKeys:
             # Mock session exists
             with patch.object(terminal_bridge, 'session_exists', return_value=True):
                 # Execute with append_exit_marker=True
-                result = await terminal_bridge.send_keys(
+                success = await terminal_bridge.send_keys(
                     session_name="test-session",
                     text="ls -la",
                     append_exit_marker=True
                 )
 
-                assert result is True
+                assert success is True
 
                 # Verify send_keys command includes exit marker
                 call_args_list = mock_exec.call_args_list
@@ -59,13 +59,13 @@ class TestSendKeys:
             # Mock session exists
             with patch.object(terminal_bridge, 'session_exists', return_value=True):
                 # Execute with append_exit_marker=False
-                result = await terminal_bridge.send_keys(
+                success = await terminal_bridge.send_keys(
                     session_name="test-session",
                     text="some input",
                     append_exit_marker=False
                 )
 
-                assert result is True
+                assert success is True
 
                 # Verify send_keys command does NOT include exit marker
                 call_args_list = mock_exec.call_args_list
@@ -91,13 +91,13 @@ class TestSendKeys:
             with patch.object(terminal_bridge, 'session_exists', return_value=False):
                 with patch.object(terminal_bridge, 'create_tmux_session', return_value=True) as mock_create:
                     # Execute
-                    result = await terminal_bridge.send_keys(
+                    success = await terminal_bridge.send_keys(
                         session_name="new-session",
                         text="echo test",
                         append_exit_marker=True
                     )
 
-                    assert result is True
+                    assert success is True
                     # Verify create_tmux_session was called
                     mock_create.assert_called_once()
 

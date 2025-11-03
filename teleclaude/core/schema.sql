@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     terminal_size TEXT DEFAULT '80x24',
     working_directory TEXT DEFAULT '~',
     command_count INTEGER DEFAULT 0,
+    output_message_id TEXT,  -- Current output message ID for appending status
+    idle_notification_message_id TEXT,  -- Current idle notification message ID for cleanup
     UNIQUE(computer_name, tmux_session_name)
 );
 

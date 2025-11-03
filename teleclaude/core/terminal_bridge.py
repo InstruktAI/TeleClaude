@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +163,7 @@ class TerminalBridge:
         cols: int = 80,
         rows: int = 24,
         append_exit_marker: bool = True,
-    ) -> Tuple[bool, bool, Optional[str]]:
+    ) -> bool:
         """Send keys (text) to a tmux session, creating a new session if needed.
 
         If the session doesn't exist (crashed or never created), creates a fresh
@@ -180,11 +180,7 @@ class TerminalBridge:
             append_exit_marker: If True, append exit code marker for command completion detection.
                                Set to False when sending input to a running process. (default: True)
 
-        Returns:
-            Tuple of (success, is_long_running, error_msg)
-            - success: True if command was sent successfully
-            - is_long_running: True if command is a long-running interactive process
-            - error_msg: Error message if validation failed, None otherwise
+        Returns: bool (success)
         """
         try:
             # Detect if command is long-running interactive process
@@ -196,7 +192,7 @@ class TerminalBridge:
                     "⚠️ Cannot chain commands with interactive processes (claude, vim, etc.). Run them separately."
                 )
                 logger.warning("Rejected command chaining with long-running process: %s", text)
-                return False, False, error_msg
+                raise ValueError(error_msg)
 
             # Check if session exists, create if not
             if not await self.session_exists(session_name):
@@ -204,33 +200,28 @@ class TerminalBridge:
                 success = await self.create_tmux_session(session_name, shell, working_dir, cols, rows)
                 if not success:
                     logger.error("Failed to create session %s", session_name)
-                    return False, False, None
+                    return False
                 logger.info("Created fresh session %s", session_name)
 
-            # Determine whether to append exit marker
-            # - Long-running processes: NO marker (they don't exit)
-            # - User explicitly disabled: NO marker (sending input to running process)
-            # - Otherwise: YES marker (normal shell commands)
-            should_append_marker = append_exit_marker and not is_long_running
-
-            if should_append_marker:
-                command_with_marker = f'{text}; echo "__EXIT__$?__"'
-                logger.debug("Sending command WITH exit marker to %s", session_name)
+            if not append_exit_marker:
+                # Sending input to running process - no marker
+                command_text = text
+                logger.debug("Sending input WITHOUT exit marker to %s (running process)", session_name)
             else:
-                command_with_marker = text
-                if is_long_running:
-                    logger.debug("Sending long-running command WITHOUT exit marker to %s", session_name)
-                else:
-                    logger.debug("Sending input WITHOUT exit marker to %s (running process)", session_name)
+                command_text = f'{text}; echo "__EXIT__$?__"'
+                # if is_long_running:
+                #     logger.debug("Sending long-running command WITH ; exit marker to %s", session_name)
+                # else:
+                logger.debug("Sending command WITH ; exit marker to %s", session_name)
 
             # Send command with marker (no pipes - don't leak file descriptors)
-            cmd_text = ["tmux", "send-keys", "-t", session_name, command_with_marker]
+            cmd_text = ["tmux", "send-keys", "-t", session_name, command_text]
             result = await asyncio.create_subprocess_exec(*cmd_text)
             await result.wait()
 
             if result.returncode != 0:
                 logger.error("Failed to send text to session %s: returncode=%d", session_name, result.returncode)
-                return False, False, None
+                return False
 
             # Small delay to let text be processed
             await asyncio.sleep(0.1)
@@ -242,13 +233,13 @@ class TerminalBridge:
 
             if result.returncode != 0:
                 logger.error("Failed to send Enter to session %s: returncode=%d", session_name, result.returncode)
-                return False, False, None
+                return False
 
-            return True, is_long_running, None
+            return True
 
         except Exception as e:
             logger.exception("Error sending keys to tmux session %s: %s", session_name, e)
-            return False, False, None
+            return False
 
     async def send_signal(self, session_name: str, signal: str = "SIGINT") -> bool:
         """Send signal to a tmux session.
@@ -394,6 +385,28 @@ class TerminalBridge:
 
         except Exception as e:
             print(f"Error killing session: {e}")
+            return False
+
+    async def clear_history(self, session_name: str) -> bool:
+        """Clear tmux scrollback history for a session.
+
+        Removes all history from the scrollback buffer, including old exit markers.
+
+        Args:
+            session_name: Session name
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            cmd = ["tmux", "clear-history", "-t", session_name]
+            result = await asyncio.create_subprocess_exec(*cmd)
+            await result.wait()
+
+            return result.returncode == 0
+
+        except Exception as e:
+            logger.error("Error clearing tmux history for %s: %s", session_name, e)
             return False
 
     async def list_tmux_sessions(self) -> List[str]:

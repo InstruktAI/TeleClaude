@@ -19,7 +19,13 @@ from dotenv import load_dotenv
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
-from teleclaude.core.output_poller import OutputPoller
+from teleclaude.core.output_message_manager import OutputMessageManager
+from teleclaude.core.output_poller import (
+    IdleDetected,
+    OutputChanged,
+    OutputPoller,
+    ProcessExited,
+)
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.terminal_bridge import TerminalBridge
 from teleclaude.core.voice_handler import VoiceHandler
@@ -63,6 +69,7 @@ class TeleClaudeDaemon:
         db_path = os.path.expanduser(self.config["database"]["path"])
         self.session_manager = SessionManager(db_path)
         self.terminal = TerminalBridge(self.config)
+        self.message_manager = OutputMessageManager(self.config, self.session_manager)
         self.voice_handler = VoiceHandler()
         self.output_poller = OutputPoller(self.config, self.terminal, self.session_manager)
 
@@ -79,7 +86,7 @@ class TeleClaudeDaemon:
         self.idle_notifications: dict[str, str] = {}  # session_id -> notification_message_id
 
         # Output file directory (persistent files for download button)
-        self.output_dir = Path("logs/session_output")
+        self.output_dir = Path("session_output")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize REST API
@@ -259,6 +266,74 @@ class TeleClaudeDaemon:
                 f"No adapter available for type '{adapter_type}'. " f"Available: {list(self.adapters.keys())}"
             )
         return adapter
+
+    async def _execute_terminal_command(
+        self,
+        session_id: str,
+        command: str,
+        append_exit_marker: bool = True,
+    ) -> bool:
+        """Execute command in terminal and start polling if needed.
+
+        Handles the common pattern of:
+        1. Getting session
+        2. Calling terminal.send_keys
+        3. Storing exit_marker_appended
+        4. Starting polling loop
+        5. Sending error messages on failure
+
+        Args:
+            session_id: Session ID
+            command: Command to execute
+            append_exit_marker: Whether to append exit marker (default: True)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        # Get session
+        session = await self.session_manager.get_session(session_id)
+        if not session:
+            logger.error("Session %s not found", session_id[:8])
+            return False
+
+        # Get terminal size
+        cols, rows = 80, 24
+        if session.terminal_size and "x" in session.terminal_size:
+            try:
+                cols, rows = map(int, session.terminal_size.split("x"))
+            except ValueError:
+                pass
+
+        # Send command
+        success = await self.terminal.send_keys(
+            session.tmux_session_name,
+            command,
+            shell=self.config["computer"]["default_shell"],
+            working_dir=session.working_directory,
+            cols=cols,
+            rows=rows,
+            append_exit_marker=append_exit_marker,
+        )
+
+        if not success:
+            adapter = await self._get_adapter_for_session(session_id)
+            await adapter.send_message(session_id, f"Failed to execute command: {command}")
+            logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
+            return False
+
+        # Store exit marker status for polling
+        self.exit_marker_appended[session_id] = append_exit_marker
+
+        # Update activity
+        await self.session_manager.update_last_activity(session_id)
+        await self.session_manager.increment_command_count(session_id)
+
+        # Start polling if exit marker was appended
+        if append_exit_marker:
+            await self._poll_and_send_output(session_id, session.tmux_session_name)
+
+        logger.info("Executed command in session %s: %s", session_id[:8], command)
+        return True
 
     async def _migrate_session_metadata(self) -> None:
         """Migrate old session metadata to new format.
@@ -731,27 +806,8 @@ You can now send commands to this session.
             target_dir = os.path.expanduser(self.config["computer"]["default_working_dir"])
         cd_command = f"cd {shlex.quote(target_dir)}"
 
-        # Send command to terminal
-        success, exit_marker_appended, error_msg = await self.terminal.send_keys(session.tmux_session_name, cd_command)
-
-        if not success:
-            if error_msg:
-                await adapter.send_message(session_id, error_msg)
-            else:
-                logger.error("Failed to send cd command to session %s", session_id[:8])
-                await adapter.send_message(session_id, f"Failed to change directory to: {target_dir}")
-            return
-
-        # Track whether exit marker was appended
-        self.exit_marker_appended[session_id] = exit_marker_appended
-
-        # Update activity
-        await self.session_manager.update_last_activity(session_id)
-        await self.session_manager.increment_command_count(session_id)
-
-        # Poll for output
-        await self._poll_and_send_output(session_id, session.tmux_session_name)
-        logger.info("Changed directory in session %s to: %s", session_id[:8], target_dir)
+        # Execute command and start polling
+        await self._execute_terminal_command(session_id, cd_command)
 
     async def _exit_session(self, context: Dict[str, Any]) -> None:
         """Exit session - kill tmux session and delete topic."""
@@ -808,42 +864,8 @@ You can now send commands to this session.
             logger.warning("Session %s not found", session_id)
             return
 
-        # Parse terminal size
-        cols, rows = map(int, session.terminal_size.split("x"))
-
-        # Get shell from config
-        shell = self.config["computer"]["default_shell"]
-
-        # Send Claude Code command (will create fresh session if needed)
-        success, exit_marker_appended, error_msg = await self.terminal.send_keys(
-            session.tmux_session_name,
-            "claude --dangerously-skip-permissions",
-            shell=shell,
-            working_dir=session.working_directory,
-            cols=cols,
-            rows=rows,
-        )
-
-        adapter = await self._get_adapter_for_session(session_id)
-
-        if not success:
-            if error_msg:
-                await adapter.send_message(session_id, error_msg)
-            else:
-                logger.error("Failed to send claude command to session %s", session_id[:8])
-                await adapter.send_message(session_id, "Failed to start Claude Code")
-            return
-
-        # Track whether exit marker was appended
-        self.exit_marker_appended[session_id] = exit_marker_appended
-
-        # Update activity
-        await self.session_manager.update_last_activity(session_id)
-        await self.session_manager.increment_command_count(session_id)
-
-        # Poll for output
-        await self._poll_and_send_output(session_id, session.tmux_session_name)
-        logger.info("Started Claude Code in session %s", session_id[:8])
+        # Execute command and start polling
+        await self._execute_terminal_command(session_id, "claude --dangerously-skip-permissions")
 
     async def _claude_resume_session(self, context: Dict[str, Any]) -> None:
         """Resume last Claude Code session (claude --continue)."""
@@ -858,44 +880,8 @@ You can now send commands to this session.
             logger.warning("Session %s not found", session_id)
             return
 
-        # Parse terminal size for auto-recovery
-        cols, rows = 80, 24
-        if session.terminal_size and "x" in session.terminal_size:
-            try:
-                cols, rows = map(int, session.terminal_size.split("x"))
-            except ValueError:
-                pass
-
-        # Send "claude --dangerously-skip-permissions --continue" command (will create fresh session if needed)
-        success, exit_marker_appended, error_msg = await self.terminal.send_keys(
-            session.tmux_session_name,
-            "claude --dangerously-skip-permissions --continue",
-            shell=self.config["computer"]["default_shell"],
-            working_dir=session.working_directory,
-            cols=cols,
-            rows=rows,
-        )
-
-        adapter = await self._get_adapter_for_session(session_id)
-
-        if not success:
-            if error_msg:
-                await adapter.send_message(session_id, error_msg)
-            else:
-                logger.error("Failed to send claude --continue command to session %s", session_id[:8])
-                await adapter.send_message(session_id, "Failed to resume Claude Code session")
-            return
-
-        # Track whether exit marker was appended
-        self.exit_marker_appended[session_id] = exit_marker_appended
-
-        # Update activity
-        await self.session_manager.update_last_activity(session_id)
-        await self.session_manager.increment_command_count(session_id)
-
-        # Poll for output
-        await self._poll_and_send_output(session_id, session.tmux_session_name)
-        logger.info("Resumed Claude Code session in %s", session_id[:8])
+        # Execute command and start polling
+        await self._execute_terminal_command(session_id, "claude --dangerously-skip-permissions --continue")
 
     async def handle_message(self, session_id: str, text: str, context: Dict[str, Any]) -> None:
         """Handle incoming text messages (commands for terminal).
@@ -940,7 +926,7 @@ You can now send commands to this session.
 
         # Send command to terminal (will create fresh session if needed)
         # Only append exit marker if starting a NEW command, not sending input to running process
-        success, exit_marker_appended, error_msg = await self.terminal.send_keys(
+        success = await self.terminal.send_keys(
             session.tmux_session_name,
             text,
             shell=self.config["computer"]["default_shell"],
@@ -953,15 +939,12 @@ You can now send commands to this session.
         adapter = await self._get_adapter_for_session(session_id)
 
         if not success:
-            if error_msg:
-                await adapter.send_message(session_id, error_msg)
-            else:
-                logger.error("Failed to send command to session %s", session_id[:8])
-                await adapter.send_message(session_id, "Failed to send command to terminal")
+            logger.error("Failed to send command to session %s", session_id[:8])
+            await adapter.send_message(session_id, "Failed to send command to terminal")
             return
 
         # Track whether exit marker was appended
-        self.exit_marker_appended[session_id] = exit_marker_appended
+        self.exit_marker_appended[session_id] = not is_process_running
 
         # Update activity
         await self.session_manager.update_last_activity(session_id)
@@ -1004,8 +987,47 @@ You can now send commands to this session.
         # Get adapter for sending messages
         adapter = await self._get_adapter_for_session(session_id)
 
-        # Send transcribing message - if this returns None, topic was deleted
-        msg_id = await adapter.send_message(session_id, "🎤 Transcribing...")
+        # Check if a process is currently running (polling active)
+        is_process_running = session_id in self.active_polling_sessions
+
+        # Reject voice messages if no active process to send them to
+        if not is_process_running:
+            await adapter.send_message(session_id, "🎤 Voice input requires an active process (e.g., claude, vim)")
+            # Clean up temp file
+            try:
+                Path(audio_path).unlink()
+                logger.debug("Cleaned up voice file (rejected - no active process): %s", audio_path)
+            except Exception as e:
+                logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
+            return
+
+        # Voice message accepted - transcribe and send to active process
+        output_file = self._get_output_file(session_id)
+
+        # Check if output message exists (polling may have just started)
+        current_message_id = await self.session_manager.get_output_message_id(session_id)
+        if current_message_id is None:
+            logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
+            # Send rejection message
+            await adapter.send_message(
+                session_id, "⚠️ Voice input unavailable - output message not ready yet (try again in 1-2 seconds)"
+            )
+            # Clean up temp file
+            try:
+                Path(audio_path).unlink()
+                logger.debug("Cleaned up voice file (no message_id yet): %s", audio_path)
+            except Exception as e:
+                logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
+            return
+
+        # Send transcribing status (append to existing output)
+        msg_id = await self.message_manager.send_status_message(
+            session_id,
+            adapter,
+            "🎤 Transcribing...",
+            append_to_existing=True,
+            output_file_path=str(output_file),
+        )
         if msg_id is None:
             logger.info("Topic deleted for session %s, skipping transcription", session_id[:8])
             # Clean up temp file before returning
@@ -1027,50 +1049,36 @@ You can now send commands to this session.
             logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
 
         if not transcribed_text:
-            msg_id = await adapter.send_message(session_id, "❌ Transcription failed. Please try again.")
-            if msg_id is None:
-                logger.info("Topic deleted for session %s during transcription failure message", session_id[:8])
+            # Append error to existing message
+            await self.message_manager.send_status_message(
+                session_id,
+                adapter,
+                "❌ Transcription failed. Please try again.",
+                append_to_existing=True,
+                output_file_path=str(output_file),
+            )
             return
 
-        # Show transcription to user
-        msg_id = await adapter.send_message(session_id, f"🎤 Transcribed: {transcribed_text}")
-        if msg_id is None:
-            logger.info("Topic deleted for session %s, skipping command execution", session_id[:8])
-            return
-
-        # Check if a process is currently running (polling active)
-        is_process_running = session_id in self.active_polling_sessions
-
-        # Send transcribed command to terminal
-        # Only append exit marker if starting a NEW command, not sending input to running process
-        success, exit_marker_appended, error_msg = await self.terminal.send_keys(
+        # Send transcribed text as input to the running process
+        logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], transcribed_text)
+        success = await self.terminal.send_keys(
             session.tmux_session_name,
             transcribed_text,
-            append_exit_marker=not is_process_running,
+            append_exit_marker=False,  # Never append exit marker - we're sending input to a running process
         )
 
         if not success:
-            if error_msg:
-                await adapter.send_message(session_id, error_msg)
-            else:
-                logger.error("Failed to send transcribed command to session %s", session_id[:8])
-                await adapter.send_message(session_id, "❌ Failed to send command to terminal")
+            logger.error("Failed to send transcribed input to session %s", session_id[:8])
+            await adapter.send_message(session_id, "❌ Failed to send input to terminal")
             return
-
-        # Track whether exit marker was appended
-        self.exit_marker_appended[session_id] = exit_marker_appended
 
         # Update activity
         await self.session_manager.update_last_activity(session_id)
-        await self.session_manager.increment_command_count(session_id)
 
-        # Only start new poll if not already polling
-        if not is_process_running:
-            await self._poll_and_send_output(session_id, session.tmux_session_name)
-        else:
-            logger.debug(
-                "Voice input sent to running process in session %s, existing poll will capture output", session_id[:8]
-            )
+        # Voice input sent to running process - existing poll will capture output
+        logger.debug(
+            "Voice input sent to running process in session %s, existing poll will capture output", session_id[:8]
+        )
 
     async def handle_topic_closed(self, session_id: str, context: Dict[str, Any]) -> None:
         """Handle topic/channel closure event.
@@ -1101,27 +1109,112 @@ You can now send commands to this session.
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Poll terminal output and send to chat adapter.
 
-        EXPLICIT delegation to OutputPoller
+        Pure orchestration - consumes events from poller, delegates to message manager.
+        SINGLE RESPONSIBILITY: Owns the polling lifecycle for a session.
 
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
         """
+        # GUARD: Prevent duplicate polling (check and add atomically before any await)
+        if session_id in self.active_polling_sessions:
+            logger.warning(
+                "Polling already active for session %s, ignoring duplicate request",
+                session_id[:8],
+            )
+            return
+
+        # Mark as active BEFORE any await (prevents race conditions)
+        self.active_polling_sessions.add(session_id)
+
         # Get adapter for this session
         adapter = await self._get_adapter_for_session(session_id)
 
-        # EXPLICIT: Delegate to OutputPoller
-        # Can see exactly what's being called and what it needs
-        await self.output_poller.poll_and_send_output(
-            session_id=session_id,
-            tmux_session_name=tmux_session_name,
-            adapter=adapter,
-            output_dir=self.output_dir,
-            active_polling_sessions=self.active_polling_sessions,
-            long_running_sessions=set(),  # Not used anymore
-            idle_notifications=self.idle_notifications,
-            exit_marker_appended=self.exit_marker_appended,
+        # Get output file and exit marker status
+        output_file = self._get_output_file(session_id)
+        # Check in-memory first (for current polling), fallback to DB (for resumed polling after restart)
+        has_exit_marker = self.exit_marker_appended.get(
+            session_id, bool(await self.session_manager.get_output_message_id(session_id))
         )
+
+        try:
+            # Consume events from pure poller
+            async for event in self.output_poller.poll(session_id, tmux_session_name, output_file, has_exit_marker):
+                if isinstance(event, OutputChanged):
+                    # Output changed - send update
+                    await self.message_manager.send_output_update(
+                        event.session_id,
+                        adapter,
+                        event.output,
+                        event.started_at,
+                        event.last_changed_at,
+                        max_message_length=3800,
+                    )
+
+                    # Delete idle notification if one exists (output resumed)
+                    notification_id = await self.session_manager.get_idle_notification_message_id(event.session_id)
+                    if notification_id:
+                        await adapter.delete_message(event.session_id, notification_id)
+                        await self.session_manager.set_idle_notification_message_id(event.session_id, None)
+                        logger.debug(
+                            "Deleted idle notification %s for session %s", notification_id, event.session_id[:8]
+                        )
+
+                elif isinstance(event, IdleDetected):
+                    # Idle detected - send notification
+                    notification = (
+                        f"⏸️ No output for {event.idle_seconds} seconds - "
+                        "process may be waiting or hung up, try cancel"
+                    )
+                    notification_id = await adapter.send_message(event.session_id, notification)
+                    if notification_id:
+                        # Persist to DB (survives daemon restart)
+                        await self.session_manager.set_idle_notification_message_id(event.session_id, notification_id)
+                        logger.debug(
+                            "Stored idle notification %s for session %s", notification_id, event.session_id[:8]
+                        )
+
+                elif isinstance(event, ProcessExited):
+                    # Process exited
+                    if event.exit_code is not None:
+                        # Exit with code - send final message (edits existing message)
+                        await self.message_manager.send_output_update(
+                            event.session_id,
+                            adapter,
+                            event.final_output,
+                            event.started_at,  # Use actual start time from poller
+                            asyncio.get_event_loop().time(),
+                            max_message_length=3800,
+                            is_final=True,
+                            exit_code=event.exit_code,
+                        )
+                        logger.info(
+                            "Polling stopped for %s (exit code: %d), output file kept for downloads",
+                            event.session_id[:8],
+                            event.exit_code,
+                        )
+                    else:
+                        # Session died - send exit message
+                        await self.message_manager.send_exit_message(
+                            event.session_id, adapter, event.final_output, "✅ Process exited"
+                        )
+                        # Delete output file on session death
+                        try:
+                            if output_file.exists():
+                                output_file.unlink()
+                                logger.debug("Deleted output file for exited session %s", event.session_id[:8])
+                        except Exception as e:
+                            logger.warning("Failed to delete output file: %s", e)
+
+                    # Clear output_message_id so next input starts fresh
+                    await self.session_manager.set_output_message_id(event.session_id, None)
+
+        finally:
+            # Cleanup
+            self.active_polling_sessions.discard(session_id)
+            self.exit_marker_appended.pop(session_id, None)
+            await self.session_manager.set_idle_notification_message_id(session_id, None)
+            logger.debug("Polling ended for session %s", session_id[:8])
 
 
 async def main() -> None:

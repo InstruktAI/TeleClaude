@@ -40,6 +40,22 @@ class SessionManager:
         await self._db.executescript(schema_sql)
         await self._db.commit()
 
+        # Migration: Add output_message_id column if it doesn't exist
+        try:
+            await self._db.execute("ALTER TABLE sessions ADD COLUMN output_message_id TEXT")
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            # Column already exists
+            pass
+
+        # Migration: Add idle_notification_message_id column if it doesn't exist
+        try:
+            await self._db.execute("ALTER TABLE sessions ADD COLUMN idle_notification_message_id TEXT")
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            # Column already exists
+            pass
+
     async def close(self) -> None:
         """Close database connection."""
         if self._db:
@@ -213,6 +229,58 @@ class SessionManager:
         cursor = await self._db.execute("SELECT command_count FROM sessions WHERE session_id = ?", (session_id,))
         row = await cursor.fetchone()
         return row["command_count"] if row else 0
+
+    async def set_output_message_id(self, session_id: str, message_id: Optional[str]) -> None:
+        """Set output message ID for session.
+
+        Args:
+            session_id: Session ID
+            message_id: Message ID to persist (None to clear)
+        """
+        await self._db.execute(
+            "UPDATE sessions SET output_message_id = ? WHERE session_id = ?", (message_id, session_id)
+        )
+        await self._db.commit()
+
+    async def get_output_message_id(self, session_id: str) -> Optional[str]:
+        """Get output message ID for session.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Message ID or None
+        """
+        cursor = await self._db.execute("SELECT output_message_id FROM sessions WHERE session_id = ?", (session_id,))
+        row = await cursor.fetchone()
+        return row["output_message_id"] if row else None
+
+    async def set_idle_notification_message_id(self, session_id: str, message_id: Optional[str]) -> None:
+        """Set idle notification message ID for session.
+
+        Args:
+            session_id: Session ID
+            message_id: Message ID to persist (None to clear)
+        """
+        await self._db.execute(
+            "UPDATE sessions SET idle_notification_message_id = ? WHERE session_id = ?", (message_id, session_id)
+        )
+        await self._db.commit()
+
+    async def get_idle_notification_message_id(self, session_id: str) -> Optional[str]:
+        """Get idle notification message ID for session.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Message ID or None
+        """
+        cursor = await self._db.execute(
+            "SELECT idle_notification_message_id FROM sessions WHERE session_id = ?", (session_id,)
+        )
+        row = await cursor.fetchone()
+        return row["idle_notification_message_id"] if row else None
 
     async def delete_session(self, session_id: str) -> None:
         """Delete session.

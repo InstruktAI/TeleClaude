@@ -106,3 +106,20 @@ def format_terminal_message(terminal_output: str, status_line: str) -> str:
         message_parts.append(f"```\n{terminal_output}\n```")
     message_parts.append(status_line)
     return "\n".join(message_parts)
+
+
+def apply_code_block_formatting(text: str, metadata: dict[str, Any]) -> str:
+    """Apply code block formatting unless already formatted.
+
+    Args:
+        text: Text to format
+        metadata: Message metadata (checks for raw_format flag)
+
+    Returns:
+        Formatted text (wrapped in backticks if not raw_format)
+    """
+    if metadata.get("raw_format"):
+        # Already formatted, return as-is
+        return text
+    # Wrap in code block
+    return f"```\n{text}\n```" if text.strip() else text

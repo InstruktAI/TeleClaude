@@ -21,6 +21,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **The daemon provides critical infrastructure. Treat restarts as production deployments.**
 
+### 🚨 RULE #1: SINGLE DATABASE ONLY 🚨
+
+**THERE IS ONLY ONE DATABASE FILE: `teleclaude.db` IN PROJECT ROOT.**
+
+- ⚠️ NEVER create additional database files
+- ⚠️ NEVER copy or duplicate the database
+- ⚠️ Database path is configured in `config.yml`: `${WORKING_DIR}/teleclaude.db`
+- ⚠️ If you find multiple `.db` files, DELETE the extras immediately
+- ⚠️ The database contains ALL session state and MUST NOT be fragmented
+
+**Any code that creates a new database file is a CRITICAL BUG.**
+
 ### Development Workflow (KeepAlive Auto-Restart)
 
 **CRITICAL: The service is ALWAYS running (24/7 requirement).** Never manually start the daemon with `python -m teleclaude.daemon` - always use `make` commands.
@@ -460,24 +472,48 @@ All platform-specific code is isolated in adapters. Each adapter implements:
 
 ## Testing
 
+### 🚨 CRITICAL: Proper Test Structure Only 🚨
+
+**NEVER create ad-hoc test scripts or one-off testing files!**
+
+- ❌ NO standalone test scripts (e.g., `test_something.py` in project root)
+- ❌ NO temporary test files for quick validation
+- ❌ NO `if __name__ == "__main__"` test runners outside of `tests/` directory
+- ✅ ONLY create tests in the proper `tests/unit/` or `tests/integration/` directories
+- ✅ ONLY use pytest framework with proper fixtures and markers
+- ✅ ALL tests must be runnable via `make test`, `make test-unit`, or `make test-e2e`
+
+**If you need to test something:**
+1. Create a proper test file in `tests/unit/` or `tests/integration/`
+2. Use pytest fixtures (see `conftest.py`)
+3. Add appropriate markers (`@pytest.mark.unit` or `@pytest.mark.integration`)
+4. Run with `make test-unit` or `make test-e2e`
+
 ### Test Structure
 
 ```
 tests/
+├── conftest.py     # Shared fixtures and configuration
 ├── unit/           # Fast, isolated tests with mocks
 │   └── test_voice.py
 └── integration/    # End-to-end tests with real components
     ├── test_core.py
     ├── test_command.py
     ├── test_full_flow.py
-    └── ...
+    ├── test_output_poller.py
+    └── test_polling_state_machine.py
 ```
 
-- Use `pytest` framework with `pytest-asyncio` for async tests
-- Test files match `test_*.py` pattern (pytest convention)
+**Test Commands:**
+
 - Run all tests: `make test`
 - Run unit tests only: `make test-unit`
 - Run integration tests only: `make test-e2e`
+
+**Test Framework:**
+
+- Use `pytest` framework with `pytest-asyncio` for async tests
+- Test files match `test_*.py` pattern (pytest convention)
 - Markers available: `@pytest.mark.unit` and `@pytest.mark.integration`
 
 ### What to Test
@@ -495,6 +531,14 @@ tests/
 - Terminal bridge tmux commands (real tmux sessions)
 - Adapter message routing with real daemon components
 - End-to-end command flows (cd, cancel, polling)
+
+### Testing Requirements for Code Changes
+
+**Before reporting completion of ANY code change:**
+1. Add proper test case in `tests/unit/` or `tests/integration/`
+2. Run `make test-unit` or `make test-e2e` to verify tests pass
+3. Only report "Done" after automated tests pass
+4. ❌ **NEVER rely on manual inspection** - write automated tests instead
 
 ## Common Development Tasks
 
