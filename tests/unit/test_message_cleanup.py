@@ -413,3 +413,53 @@ class TestIntegrationWithCommandHandlers:
         # Verify: feedback message tracked for deletion
         pending = state_manager.get_pending_deletions(session_id)
         assert feedback_message_id in pending
+
+    async def test_successful_command_deletes_pending_messages(
+        self, mock_session, mock_session_manager, mock_adapter
+    ):
+        """Test that successful command deletes all pending messages.
+
+        Scenario (user's actual use case):
+        1. nano starts (process running)
+        2. /ctrl (no args) → feedback message 100, command message 99
+        3. /ctrl (no args) → feedback message 102, command message 101
+        4. /ctrl x (valid) → should DELETE all tracked messages (99, 100, 101, 102)
+
+        Expected: Successful command triggers cleanup via shared helper
+        """
+        from teleclaude.core import command_handlers
+
+        session_id = mock_session.session_id
+        state_manager.mark_polling(session_id)  # nano is running
+
+        # Simulate two failed /ctrl commands that tracked messages
+        state_manager.add_pending_deletion(session_id, "99")   # First /ctrl command
+        state_manager.add_pending_deletion(session_id, "100")  # First feedback
+        state_manager.add_pending_deletion(session_id, "101")  # Second /ctrl command
+        state_manager.add_pending_deletion(session_id, "102")  # Second feedback
+
+        # Mock terminal_bridge
+        with patch("teleclaude.core.command_handlers.terminal_bridge") as mock_tb:
+            mock_tb.send_ctrl_key = AsyncMock(return_value=True)
+
+            # Now user sends successful /ctrl x command
+            await command_handlers.handle_ctrl_command(
+                context={"session_id": session_id, "message_id": "103"},  # Command message
+                args=["x"],  # Valid args → command succeeds
+                session_manager=mock_session_manager,
+                get_adapter_for_session=AsyncMock(return_value=mock_adapter),
+                start_polling=AsyncMock(),
+            )
+
+        # Verify: ALL tracked messages deleted (99, 100, 101, 102) + command message (103)
+        assert mock_adapter.delete_message.call_count == 5
+        deleted_ids = [call.args[1] for call in mock_adapter.delete_message.call_args_list]
+        assert "99" in deleted_ids, "First /ctrl command should be deleted"
+        assert "100" in deleted_ids, "First feedback should be deleted"
+        assert "101" in deleted_ids, "Second /ctrl command should be deleted"
+        assert "102" in deleted_ids, "Second feedback should be deleted"
+        assert "103" in deleted_ids, "Current /ctrl x command should be deleted"
+
+        # Verify: pending deletions cleared
+        pending_after = state_manager.get_pending_deletions(session_id)
+        assert len(pending_after) == 0, "All pending deletions should be cleared"

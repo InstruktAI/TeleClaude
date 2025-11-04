@@ -69,6 +69,7 @@ class TestHandleMessage:
             mock_state.remove_idle_notification = Mock(return_value="idle-msg-456")
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()
+            mock_state.cleanup_messages_after_success = AsyncMock()
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
@@ -116,6 +117,7 @@ class TestHandleMessage:
             mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()
+            mock_state.cleanup_messages_after_success = AsyncMock()
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
@@ -163,6 +165,7 @@ class TestHandleMessage:
             mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()
+            mock_state.cleanup_messages_after_success = AsyncMock()
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
@@ -268,6 +271,7 @@ class TestHandleMessage:
             # Process is running (polling active)
             mock_state.is_polling = Mock(return_value=True)
             mock_state.set_exit_marker = Mock()
+            mock_state.cleanup_messages_after_success = AsyncMock()
             # No pending deletions (new behavior)
             mock_state.get_pending_deletions = Mock(return_value=[])
             mock_state.clear_pending_deletions = Mock()
@@ -286,11 +290,8 @@ class TestHandleMessage:
                     start_polling=start_polling,
                 )
 
-                # Verify user message deleted (absorbed as input)
-                adapter.delete_message.assert_called_once_with("test-999", "555")
-
-                # Verify pending deletions cleared
-                mock_state.clear_pending_deletions.assert_called_once_with("test-999")
+                # Verify cleanup called with user message ID
+                mock_state.cleanup_messages_after_success.assert_called_once_with("test-999", "555", adapter)
 
                 # Verify exit marker set to False (not appended)
                 mock_state.set_exit_marker.assert_called_once_with("test-999", False)
@@ -331,6 +332,7 @@ class TestHandleMessage:
             mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=True)
             mock_state.set_exit_marker = Mock()
+            mock_state.cleanup_messages_after_success = AsyncMock()
             # No pending deletions
             mock_state.get_pending_deletions = Mock(return_value=[])
             mock_state.clear_pending_deletions = Mock()
@@ -349,11 +351,8 @@ class TestHandleMessage:
                     start_polling=start_polling,
                 )
 
-                # Verify no delete attempt (no message_id)
-                adapter.delete_message.assert_not_called()
-
-                # Verify pending deletions still cleared
-                mock_state.clear_pending_deletions.assert_called_once_with("test-111")
+                # Verify cleanup called with None message_id
+                mock_state.cleanup_messages_after_success.assert_called_once_with("test-111", None, adapter)
 
     async def test_new_command_starts_polling(self):
         """Test starting new poll when sending new command (not input to running process)."""
@@ -384,6 +383,7 @@ class TestHandleMessage:
             # No process running
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()
+            mock_state.cleanup_messages_after_success = AsyncMock()
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)

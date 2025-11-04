@@ -10,7 +10,7 @@ import os
 import shlex
 import uuid
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import get_config
@@ -18,6 +18,43 @@ from teleclaude.core import state_manager, terminal_bridge
 from teleclaude.core.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
+
+
+# Shared helper for ALL command handlers - cleanup logic in ONE place
+async def _execute_and_poll(
+    terminal_action: Callable[..., Awaitable[bool]],
+    session: Any,  # Session object
+    message_id: Optional[str],
+    adapter: Any,
+    start_polling: Callable[[str, str], Awaitable[None]],
+    *terminal_args: Any,
+) -> bool:
+    """Execute terminal action, cleanup messages on success, start polling.
+
+    This is the SINGLE helper used by ALL command handlers (ctrl, cancel, escape, etc.)
+    to avoid duplicating cleanup logic across handlers.
+
+    Args:
+        terminal_action: Terminal bridge function to execute
+        session: Session object (contains session_id and tmux_session_name)
+        message_id: Message ID to cleanup on success
+        adapter: Chat adapter for message cleanup
+        start_polling: Function to start output polling
+        *terminal_args: Arguments for terminal_action
+
+    Returns:
+        True if terminal action succeeded, False otherwise
+    """
+    # Execute terminal action
+    success = await terminal_action(*terminal_args)
+
+    if success:
+        # Cleanup pending messages (only if process running)
+        await state_manager.cleanup_messages_after_success(session.session_id, message_id, adapter)
+        # Start polling for output
+        await start_polling(session.session_id, session.tmux_session_name)
+
+    return success
 
 
 async def handle_create_session(
@@ -176,18 +213,37 @@ async def handle_cancel_command(
         logger.warning("Session %s not found", session_id)
         return
 
+    # Get adapter and message ID for cleanup
+    adapter = await get_adapter_for_session(session_id)
+    command_msg_id = context.get("message_id")
+
     # Send SIGINT (CTRL+C) to the tmux session
-    success = await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+    success = await _execute_and_poll(
+        terminal_bridge.send_signal,
+        session,
+        str(command_msg_id) if command_msg_id else None,
+        adapter,
+        start_polling,
+        session.tmux_session_name,
+        "SIGINT",
+    )
 
     if double and success:
         # Wait a moment then send second SIGINT
         await asyncio.sleep(0.2)
-        success = await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+        # Don't pass message_id for second signal (already deleted)
+        success = await _execute_and_poll(
+            terminal_bridge.send_signal,
+            session,
+            None,
+            adapter,
+            start_polling,
+            session.tmux_session_name,
+            "SIGINT",
+        )
 
     if success:
         logger.info("Sent %s SIGINT to session %s", "double" if double else "single", session_id[:8])
-        # Poll for output (the terminal will show the ^C and any output from the interrupted command)
-        await start_polling(session_id, session.tmux_session_name)
     else:
         logger.error("Failed to send SIGINT to session %s", session_id[:8])
 
@@ -219,18 +275,35 @@ async def handle_escape_command(
         logger.warning("Session %s not found", session_id)
         return
 
+    # Get adapter and message ID for cleanup
+    adapter = await get_adapter_for_session(session_id)
+    command_msg_id = context.get("message_id")
+
     # Send ESCAPE to the tmux session
-    success = await terminal_bridge.send_escape(session.tmux_session_name)
+    success = await _execute_and_poll(
+        terminal_bridge.send_escape,
+        session,
+        str(command_msg_id) if command_msg_id else None,
+        adapter,
+        start_polling,
+        session.tmux_session_name,
+    )
 
     if double and success:
         # Wait a moment then send second ESCAPE
         await asyncio.sleep(0.2)
-        success = await terminal_bridge.send_escape(session.tmux_session_name)
+        # Don't pass message_id for second escape (already deleted)
+        success = await _execute_and_poll(
+            terminal_bridge.send_escape,
+            session,
+            None,
+            adapter,
+            start_polling,
+            session.tmux_session_name,
+        )
 
     if success:
         logger.info("Sent %s ESCAPE to session %s", "double" if double else "single", session_id[:8])
-        # Poll for output (the terminal will show any output from the escape action)
-        await start_polling(session_id, session.tmux_session_name)
     else:
         logger.error("Failed to send ESCAPE to session %s", session_id[:8])
 
@@ -284,13 +357,23 @@ async def handle_ctrl_command(
     # Get the key to send (first argument)
     key = args[0]
 
+    # Get adapter and message ID for cleanup
+    adapter = await get_adapter_for_session(session_id)
+    command_msg_id = context.get("message_id")
+
     # Send CTRL+key to the tmux session
-    success = await terminal_bridge.send_ctrl_key(session.tmux_session_name, key)
+    success = await _execute_and_poll(
+        terminal_bridge.send_ctrl_key,
+        session,
+        str(command_msg_id) if command_msg_id else None,
+        adapter,
+        start_polling,
+        session.tmux_session_name,
+        key,
+    )
 
     if success:
         logger.info("Sent CTRL+%s to session %s", key.upper(), session_id[:8])
-        # Poll for output (the terminal will show any output from the ctrl action)
-        await start_polling(session_id, session.tmux_session_name)
     else:
         logger.error("Failed to send CTRL+%s to session %s", key.upper(), session_id[:8])
 

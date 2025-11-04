@@ -92,30 +92,16 @@ async def handle_message(
     await session_manager.update_last_activity(session_id)
     await session_manager.increment_command_count(session_id)
 
-    # Delete user message if polling is active (message gets absorbed as input)
-    if is_process_running:
-        # Get all pending deletions (feedback messages, previous user messages, etc.)
-        pending_deletions = state_manager.get_pending_deletions(session_id)
+    # Cleanup pending messages after successful send
+    message_id = context.get("message_id")
+    await state_manager.cleanup_messages_after_success(
+        session_id,
+        str(message_id) if message_id else None,
+        adapter,
+    )
 
-        # Add current user message to deletions
-        message_id = context.get("message_id")
-        if message_id:
-            pending_deletions.append(str(message_id))
-
-        # Delete ALL messages underneath the output (feedback + user messages)
-        for msg_id in pending_deletions:
-            try:
-                await adapter.delete_message(session_id, msg_id)
-                logger.debug("Deleted message %s for session %s (cleanup)", msg_id, session_id[:8])
-            except Exception as e:
-                # Resilient to already-deleted messages (user manually deleted, etc.)
-                logger.warning("Failed to delete message %s for session %s: %s", msg_id, session_id[:8], e)
-
-        # Clear pending deletions after cleanup
-        state_manager.clear_pending_deletions(session_id)
-
-        # Don't start new poll - existing poll loop will capture the output
-        logger.debug("Input sent to running process in session %s, existing poll will capture output", session_id[:8])
-    else:
-        # Start new poll loop for this command
+    # Start new poll if process not running, otherwise existing poll continues
+    if not is_process_running:
         await start_polling(session_id, session.tmux_session_name)
+    else:
+        logger.debug("Input sent to running process in session %s, existing poll will capture output", session_id[:8])

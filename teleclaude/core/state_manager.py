@@ -4,7 +4,10 @@ Module-level state for tracking active polling, exit markers, notifications, and
 State is shared across the daemon process - direct access without class wrapper.
 """
 
-from typing import List, Optional
+import logging
+from typing import Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # Module-level state (singleton by nature of Python modules)
 _active_polling_sessions: set[str] = set()
@@ -173,3 +176,48 @@ def clear_pending_deletions(session_id: str) -> None:
         session_id: Session identifier
     """
     _pending_deletions.pop(session_id, None)
+
+
+# Message cleanup helper - called after successful terminal actions
+async def cleanup_messages_after_success(
+    session_id: str,
+    message_id: Optional[str],
+    adapter: Any,
+) -> None:
+    """Clean up pending messages after successful terminal action.
+
+    This helper is called by:
+    - message_handler.py (after send_keys succeeds)
+    - command_handlers.py (_execute_and_poll helper after any command succeeds)
+
+    Only triggers cleanup when a process is running (is_polling = True).
+    Deletes all tracked messages (feedback + previous commands + current message).
+    Clears pending deletions list so new messages can be tracked.
+
+    Args:
+        session_id: Session identifier
+        message_id: Message ID of current command/input (to be deleted)
+        adapter: Chat adapter for deleting messages
+    """
+    # Only cleanup if process is running
+    if not is_polling(session_id):
+        return
+
+    # Get all pending deletions (feedback messages, previous commands, etc.)
+    pending_deletions = get_pending_deletions(session_id)
+
+    # Add current message to deletions
+    if message_id:
+        pending_deletions.append(message_id)
+
+    # Delete ALL messages underneath the output (feedback + user messages)
+    for msg_id in pending_deletions:
+        try:
+            await adapter.delete_message(session_id, msg_id)
+            logger.debug("Deleted message %s for session %s (cleanup)", msg_id, session_id[:8])
+        except Exception as e:
+            # Resilient to already-deleted messages (user manually deleted, etc.)
+            logger.warning("Failed to delete message %s for session %s: %s", msg_id, session_id[:8], e)
+
+    # Clear pending deletions after cleanup
+    clear_pending_deletions(session_id)
