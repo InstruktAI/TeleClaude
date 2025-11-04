@@ -18,10 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE(computer_name, tmux_session_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed);
-CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name);
-CREATE INDEX IF NOT EXISTS idx_sessions_adapter ON sessions(adapter_type);
-CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity);
+-- Indexes created by migration code to avoid conflicts during schema upgrades
 
 CREATE TABLE IF NOT EXISTS recordings (
     recording_id INTEGER PRIMARY KEY AUTOINCREMENT,

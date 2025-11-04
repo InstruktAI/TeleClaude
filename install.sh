@@ -372,8 +372,6 @@ EOF
         print_info "config.yml already exists"
     fi
 
-    # Create logs directory
-    mkdir -p "$INSTALL_DIR/logs"
 }
 
 # Install service

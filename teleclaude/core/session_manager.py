@@ -124,6 +124,13 @@ class SessionManager:
             # Migration already done or column already exists
             pass
 
+        # Ensure indexes exist (for both fresh installs and migrated databases)
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_adapter ON sessions(adapter_type)")
+        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity)")
+        await self._db.commit()
+
     async def close(self) -> None:
         """Close database connection."""
         if self._db:
