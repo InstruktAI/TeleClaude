@@ -76,6 +76,12 @@ class TelegramAdapter(BaseAdapter):
             ("escape", self._handle_escape),
             ("escape2x", self._handle_escape2x),
             ("ctrl", self._handle_ctrl),
+            ("tab", self._handle_tab),
+            ("shift_tab", self._handle_shift_tab),
+            ("key_up", self._handle_key_up),
+            ("key_down", self._handle_key_down),
+            ("key_left", self._handle_key_left),
+            ("key_right", self._handle_key_right),
             ("resize", self._handle_resize),
             ("rename", self._handle_rename),
             ("cd", self._handle_cd),
@@ -131,6 +137,12 @@ class TelegramAdapter(BaseAdapter):
             BotCommand("escape", "Send ESC key (exit Vim insert mode, etc.)"),
             BotCommand("escape2x", "Send ESC twice (for Claude Code, etc.)"),
             BotCommand("ctrl", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
+            BotCommand("tab", "Send TAB key"),
+            BotCommand("shift_tab", "Send SHIFT+TAB key"),
+            BotCommand("key_up", "Send UP arrow key (optional repeat count)"),
+            BotCommand("key_down", "Send DOWN arrow key (optional repeat count)"),
+            BotCommand("key_left", "Send LEFT arrow key (optional repeat count)"),
+            BotCommand("key_right", "Send RIGHT arrow key (optional repeat count)"),
             BotCommand("cd", "Change directory or list trusted directories"),
             BotCommand("resize", "Resize terminal window"),
             BotCommand("rename", "Rename current session"),
@@ -551,6 +563,108 @@ class TelegramAdapter(BaseAdapter):
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,  # Track command message
+            },
+        )
+
+    async def _handle_tab(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /tab command - sends TAB key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "tab",
+            [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_shift_tab(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /shift_tab command - sends SHIFT+TAB key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "shift-tab",
+            [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_key_up(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /key_up command - sends UP arrow key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "key-up",
+            context.args or [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_key_down(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /key_down command - sends DOWN arrow key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "key-down",
+            context.args or [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_key_left(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /key_left command - sends LEFT arrow key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "key-left",
+            context.args or [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_key_right(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /key_right command - sends RIGHT arrow key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "key-right",
+            context.args or [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 

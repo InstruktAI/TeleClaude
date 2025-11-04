@@ -308,6 +308,84 @@ async def send_ctrl_key(session_name: str, key: str) -> bool:
         return False
 
 
+async def send_tab(session_name: str) -> bool:
+    """Send TAB key to a tmux session.
+
+    Args:
+        session_name: Session name
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        cmd = ["tmux", "send-keys", "-t", session_name, "Tab"]
+        result = await asyncio.create_subprocess_exec(*cmd)
+        await result.wait()
+
+        return result.returncode == 0
+
+    except Exception as e:
+        print(f"Error sending tab to tmux: {e}")
+        return False
+
+
+async def send_shift_tab(session_name: str) -> bool:
+    """Send SHIFT+TAB (backtab) key to a tmux session.
+
+    Args:
+        session_name: Session name
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        cmd = ["tmux", "send-keys", "-t", session_name, "BTab"]
+        result = await asyncio.create_subprocess_exec(*cmd)
+        await result.wait()
+
+        return result.returncode == 0
+
+    except Exception as e:
+        print(f"Error sending shift+tab to tmux: {e}")
+        return False
+
+
+async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> bool:
+    """Send arrow key to a tmux session, optionally repeated.
+
+    Args:
+        session_name: Session name
+        direction: Arrow direction ('up', 'down', 'left', 'right')
+        count: Number of times to repeat the key (default: 1)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Validate direction
+        valid_directions = {"up": "Up", "down": "Down", "left": "Left", "right": "Right"}
+        if direction not in valid_directions:
+            print(f"Invalid arrow direction: {direction}")
+            return False
+
+        # Validate count
+        if count < 1:
+            print(f"Invalid count: {count} (must be >= 1)")
+            return False
+
+        # tmux send-keys with -R flag for repeat
+        key_name = valid_directions[direction]
+        cmd = ["tmux", "send-keys", "-t", session_name, "-R", str(count), key_name]
+        result = await asyncio.create_subprocess_exec(*cmd)
+        await result.wait()
+
+        return result.returncode == 0
+
+    except Exception as e:
+        print(f"Error sending arrow key ({direction} x{count}) to tmux: {e}")
+        return False
+
+
 async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
     """Capture pane output from tmux session.
 

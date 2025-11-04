@@ -238,6 +238,192 @@ class TestHasCommandSeparator:
         assert not terminal_bridge.has_command_separator("cat < input.txt")
 
 
+class TestSendTab:
+    """Tests for send_tab() function."""
+
+    @pytest.mark.asyncio
+    async def test_send_tab_success(self):
+        """Test sending TAB key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_tab(session_name="test-session")
+
+            assert success is True
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "Tab")
+
+    @pytest.mark.asyncio
+    async def test_send_tab_failure(self):
+        """Test failure when sending TAB key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 1
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_tab(session_name="test-session")
+
+            assert success is False
+
+
+class TestSendShiftTab:
+    """Tests for send_shift_tab() function."""
+
+    @pytest.mark.asyncio
+    async def test_send_shift_tab_success(self):
+        """Test sending SHIFT+TAB key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_shift_tab(session_name="test-session")
+
+            assert success is True
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "BTab")
+
+    @pytest.mark.asyncio
+    async def test_send_shift_tab_failure(self):
+        """Test failure when sending SHIFT+TAB key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 1
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_shift_tab(session_name="test-session")
+
+            assert success is False
+
+
+class TestSendArrowKey:
+    """Tests for send_arrow_key() function."""
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_up(self):
+        """Test sending UP arrow key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="up",
+                count=1
+            )
+
+            assert success is True
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "1", "Up")
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_down_with_repeat(self):
+        """Test sending DOWN arrow key with repeat count."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="down",
+                count=5
+            )
+
+            assert success is True
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "5", "Down")
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_left(self):
+        """Test sending LEFT arrow key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="left",
+                count=3
+            )
+
+            assert success is True
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "3", "Left")
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_right(self):
+        """Test sending RIGHT arrow key."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="right",
+                count=10
+            )
+
+            assert success is True
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "10", "Right")
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_invalid_direction(self):
+        """Test failure with invalid direction."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="invalid",
+                count=1
+            )
+
+            assert success is False
+            mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_invalid_count(self):
+        """Test failure with invalid count."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="up",
+                count=0
+            )
+
+            assert success is False
+            mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_send_arrow_negative_count(self):
+        """Test failure with negative count."""
+        with patch('asyncio.create_subprocess_exec') as mock_exec:
+            success = await terminal_bridge.send_arrow_key(
+                session_name="test-session",
+                direction="down",
+                count=-5
+            )
+
+            assert success is False
+            mock_exec.assert_not_called()
+
+
 class TestGetLpollList:
     """Tests for _get_lpoll_list() function."""
 

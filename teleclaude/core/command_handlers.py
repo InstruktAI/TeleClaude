@@ -449,6 +449,150 @@ async def handle_ctrl_command(
         logger.error("Failed to send CTRL+%s to session %s", key.upper(), session_id[:8])
 
 
+async def handle_tab_command(
+    context: Dict[str, Any],
+    session_manager: SessionManager,
+    get_adapter_for_session: Callable[[str], Awaitable[BaseAdapter]],
+    start_polling: Callable[[str, str], Awaitable[None]],
+) -> None:
+    """Send TAB key to a session.
+
+    Args:
+        context: Command context with session_id
+        session_manager: Session manager instance
+        get_adapter_for_session: Function to get adapter for session
+        start_polling: Function to start polling for a session
+    """
+    session_id = context.get("session_id")
+    if not session_id:
+        logger.warning("No session_id in tab command context")
+        return
+
+    session = await session_manager.get_session(session_id)
+    if not session:
+        logger.warning("Session %s not found", session_id)
+        return
+
+    adapter = await get_adapter_for_session(session_id)
+    command_msg_id = context.get("message_id")
+
+    success = await _execute_and_poll(
+        terminal_bridge.send_tab,
+        session,
+        str(command_msg_id) if command_msg_id else None,
+        adapter,
+        start_polling,
+        session.tmux_session_name,
+    )
+
+    if success:
+        logger.info("Sent TAB to session %s", session_id[:8])
+    else:
+        logger.error("Failed to send TAB to session %s", session_id[:8])
+
+
+async def handle_shift_tab_command(
+    context: Dict[str, Any],
+    session_manager: SessionManager,
+    get_adapter_for_session: Callable[[str], Awaitable[BaseAdapter]],
+    start_polling: Callable[[str, str], Awaitable[None]],
+) -> None:
+    """Send SHIFT+TAB key to a session.
+
+    Args:
+        context: Command context with session_id
+        session_manager: Session manager instance
+        get_adapter_for_session: Function to get adapter for session
+        start_polling: Function to start polling for a session
+    """
+    session_id = context.get("session_id")
+    if not session_id:
+        logger.warning("No session_id in shift_tab command context")
+        return
+
+    session = await session_manager.get_session(session_id)
+    if not session:
+        logger.warning("Session %s not found", session_id)
+        return
+
+    adapter = await get_adapter_for_session(session_id)
+    command_msg_id = context.get("message_id")
+
+    success = await _execute_and_poll(
+        terminal_bridge.send_shift_tab,
+        session,
+        str(command_msg_id) if command_msg_id else None,
+        adapter,
+        start_polling,
+        session.tmux_session_name,
+    )
+
+    if success:
+        logger.info("Sent SHIFT+TAB to session %s", session_id[:8])
+    else:
+        logger.error("Failed to send SHIFT+TAB to session %s", session_id[:8])
+
+
+async def handle_arrow_key_command(
+    context: Dict[str, Any],
+    args: List[str],
+    session_manager: SessionManager,
+    get_adapter_for_session: Callable[[str], Awaitable[BaseAdapter]],
+    start_polling: Callable[[str, str], Awaitable[None]],
+    direction: str,
+) -> None:
+    """Send arrow key to a session with optional repeat count.
+
+    Args:
+        context: Command context with session_id
+        args: Command arguments (optional repeat count)
+        session_manager: Session manager instance
+        get_adapter_for_session: Function to get adapter for session
+        start_polling: Function to start polling for a session
+        direction: Arrow direction ('up', 'down', 'left', 'right')
+    """
+    session_id = context.get("session_id")
+    if not session_id:
+        logger.warning("No session_id in arrow key command context")
+        return
+
+    session = await session_manager.get_session(session_id)
+    if not session:
+        logger.warning("Session %s not found", session_id)
+        return
+
+    # Parse repeat count from args (default: 1)
+    count = 1
+    if args:
+        try:
+            count = int(args[0])
+            if count < 1:
+                logger.warning("Invalid repeat count %d (must be >= 1), using 1", count)
+                count = 1
+        except ValueError:
+            logger.warning("Invalid repeat count '%s', using 1", args[0])
+            count = 1
+
+    adapter = await get_adapter_for_session(session_id)
+    command_msg_id = context.get("message_id")
+
+    success = await _execute_and_poll(
+        terminal_bridge.send_arrow_key,
+        session,
+        str(command_msg_id) if command_msg_id else None,
+        adapter,
+        start_polling,
+        session.tmux_session_name,
+        direction,
+        count,
+    )
+
+    if success:
+        logger.info("Sent %s arrow key (x%d) to session %s", direction.upper(), count, session_id[:8])
+    else:
+        logger.error("Failed to send %s arrow key to session %s", direction.upper(), session_id[:8])
+
+
 async def handle_resize_session(
     context: Dict[str, Any],
     args: List[str],

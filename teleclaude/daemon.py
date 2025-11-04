@@ -400,6 +400,30 @@ class TeleClaudeDaemon:
             await command_handlers.handle_ctrl_command(
                 context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
             )
+        elif command == "tab":
+            await command_handlers.handle_tab_command(
+                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
+            )
+        elif command == "shift-tab":
+            await command_handlers.handle_shift_tab_command(
+                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
+            )
+        elif command == "key-up":
+            await command_handlers.handle_arrow_key_command(
+                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "up"
+            )
+        elif command == "key-down":
+            await command_handlers.handle_arrow_key_command(
+                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "down"
+            )
+        elif command == "key-left":
+            await command_handlers.handle_arrow_key_command(
+                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "left"
+            )
+        elif command == "key-right":
+            await command_handlers.handle_arrow_key_command(
+                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "right"
+            )
         elif command == "resize":
             await command_handlers.handle_resize_session(
                 context, args, self.session_manager, self._get_adapter_for_session
