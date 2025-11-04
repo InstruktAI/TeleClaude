@@ -56,6 +56,74 @@ class SessionManager:
             # Column already exists
             pass
 
+        # Migration: Convert status TEXT to closed BOOLEAN
+        try:
+            # Add closed column
+            await self._db.execute("ALTER TABLE sessions ADD COLUMN closed BOOLEAN DEFAULT 0")
+            await self._db.commit()
+
+            # Migrate data: set closed=1 where status='closed'
+            await self._db.execute("UPDATE sessions SET closed = 1 WHERE status = 'closed'")
+            await self._db.commit()
+
+            # Drop old status column (SQLite doesn't support DROP COLUMN before 3.35.0, so we recreate the table)
+            # Check if status column still exists
+            cursor = await self._db.execute("PRAGMA table_info(sessions)")
+            columns = await cursor.fetchall()
+            has_status = any(col[1] == "status" for col in columns)
+
+            if has_status:
+                # Recreate table without status column
+                await self._db.execute(
+                    """
+                    CREATE TABLE sessions_new (
+                        session_id TEXT PRIMARY KEY,
+                        computer_name TEXT NOT NULL,
+                        title TEXT,
+                        tmux_session_name TEXT NOT NULL,
+                        adapter_type TEXT NOT NULL DEFAULT 'telegram',
+                        adapter_metadata TEXT,
+                        closed BOOLEAN DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        terminal_size TEXT DEFAULT '80x24',
+                        working_directory TEXT DEFAULT '~',
+                        command_count INTEGER DEFAULT 0,
+                        output_message_id TEXT,
+                        idle_notification_message_id TEXT,
+                        UNIQUE(computer_name, tmux_session_name)
+                    )
+                """
+                )
+
+                # Copy data
+                await self._db.execute(
+                    """
+                    INSERT INTO sessions_new
+                    SELECT session_id, computer_name, title, tmux_session_name, adapter_type,
+                           adapter_metadata, closed, created_at, last_activity, terminal_size,
+                           working_directory, command_count, output_message_id, idle_notification_message_id
+                    FROM sessions
+                """
+                )
+
+                # Drop old table and rename new one
+                await self._db.execute("DROP TABLE sessions")
+                await self._db.execute("ALTER TABLE sessions_new RENAME TO sessions")
+
+                # Recreate indexes
+                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed)")
+                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name)")
+                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_adapter ON sessions(adapter_type)")
+                await self._db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity)"
+                )
+
+                await self._db.commit()
+        except aiosqlite.OperationalError:
+            # Migration already done or column already exists
+            pass
+
     async def close(self) -> None:
         """Close database connection."""
         if self._db:
@@ -95,7 +163,7 @@ class SessionManager:
             adapter_type=adapter_type,
             title=title or f"[{computer_name}] New session",
             adapter_metadata=adapter_metadata,
-            status="active",
+            closed=False,
             created_at=now,
             last_activity=now,
             terminal_size=terminal_size,
@@ -108,7 +176,7 @@ class SessionManager:
             """
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
-                adapter_type, adapter_metadata, status, created_at,
+                adapter_type, adapter_metadata, closed, created_at,
                 last_activity, terminal_size, working_directory, command_count
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -119,7 +187,7 @@ class SessionManager:
                 data["tmux_session_name"],
                 data["adapter_type"],
                 data["adapter_metadata"],
-                data["status"],
+                data["closed"],
                 data["created_at"],
                 data["last_activity"],
                 data["terminal_size"],
@@ -149,27 +217,27 @@ class SessionManager:
         return Session.from_dict(dict(row))
 
     async def list_sessions(
-        self, computer_name: Optional[str] = None, status: Optional[str] = None, adapter_type: Optional[str] = None
+        self, computer_name: Optional[str] = None, closed: Optional[bool] = None, adapter_type: Optional[str] = None
     ) -> List[Session]:
         """List sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
-            status: Filter by status
+            closed: Filter by closed status (False = active, True = closed, None = all)
             adapter_type: Filter by adapter type
 
         Returns:
             List of Session objects
         """
         query = "SELECT * FROM sessions WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if computer_name:
             query += " AND computer_name = ?"
             params.append(computer_name)
-        if status:
-            query += " AND status = ?"
-            params.append(status)
+        if closed is not None:
+            query += " AND closed = ?"
+            params.append(1 if closed else 0)
         if adapter_type:
             query += " AND adapter_type = ?"
             params.append(adapter_type)
@@ -291,25 +359,25 @@ class SessionManager:
         await self._db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await self._db.commit()
 
-    async def count_sessions(self, computer_name: Optional[str] = None, status: Optional[str] = None) -> int:
+    async def count_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> int:
         """Count sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
-            status: Filter by status
+            closed: Filter by closed status (False = active, True = closed, None = all)
 
         Returns:
             Number of sessions
         """
         query = "SELECT COUNT(*) as count FROM sessions WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if computer_name:
             query += " AND computer_name = ?"
             params.append(computer_name)
-        if status:
-            query += " AND status = ?"
-            params.append(status)
+        if closed is not None:
+            query += " AND closed = ?"
+            params.append(1 if closed else 0)
 
         cursor = await self._db.execute(query, params)
         row = await cursor.fetchone()

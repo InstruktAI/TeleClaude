@@ -7,18 +7,18 @@ CREATE TABLE IF NOT EXISTS sessions (
     tmux_session_name TEXT NOT NULL,
     adapter_type TEXT NOT NULL DEFAULT 'telegram',
     adapter_metadata TEXT,  -- JSON string for platform-specific data
-    status TEXT DEFAULT 'active',  -- active, idle, disconnected, closed
+    closed BOOLEAN DEFAULT 0,  -- 0 = active, 1 = closed
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     terminal_size TEXT DEFAULT '80x24',
     working_directory TEXT DEFAULT '~',
     command_count INTEGER DEFAULT 0,
-    output_message_id TEXT,  -- Current output message ID for appending status
-    idle_notification_message_id TEXT,  -- Current idle notification message ID for cleanup
+    output_message_id TEXT,  -- Current output message ID for appending status (non-NULL = polling active)
+    idle_notification_message_id TEXT,  -- Idle notification message ID (for "no output for N seconds" messages)
     UNIQUE(computer_name, tmux_session_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed);
 CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name);
 CREATE INDEX IF NOT EXISTS idx_sessions_adapter ON sessions(adapter_type);
 CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity);

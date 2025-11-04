@@ -16,7 +16,7 @@ class Session:
     adapter_type: str
     title: Optional[str] = None
     adapter_metadata: Optional[Dict[str, Any]] = None
-    status: str = "active"
+    closed: bool = False
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     terminal_size: str = "80x24"
@@ -49,6 +49,13 @@ class Session:
         # Parse adapter_metadata JSON
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
             data["adapter_metadata"] = json.loads(data["adapter_metadata"])
+        # Convert closed from SQLite integer (0/1) to Python bool
+        if "closed" in data and isinstance(data["closed"], int):
+            data["closed"] = bool(data["closed"])
+        # Backward compatibility: convert old status field to closed boolean
+        if "status" in data:
+            data["closed"] = data["status"] == "closed"
+            del data["status"]
         return cls(**data)
 
 

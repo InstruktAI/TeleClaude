@@ -76,7 +76,7 @@ async def cleanup_inactive_sessions(session_manager: SessionManager, config: Dic
         sessions = await session_manager.list_sessions()
 
         for session in sessions:
-            if session.status != "active":
+            if session.closed:
                 continue
 
             # Check last_activity timestamp
@@ -95,7 +95,7 @@ async def cleanup_inactive_sessions(session_manager: SessionManager, config: Dic
                 await terminal_bridge.kill_session(session.tmux_session_name)
 
                 # Mark as closed
-                await session_manager.update_session(session.session_id, status="closed")
+                await session_manager.update_session(session.session_id, closed=True)
 
                 logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
 

@@ -22,7 +22,7 @@ class TestSession:
         assert session.computer_name == "TestPC"
         assert session.tmux_session_name == "test-tmux"
         assert session.adapter_type == "telegram"
-        assert session.status == "active"
+        assert session.closed is False
         assert session.command_count == 0
 
     def test_session_creation_with_all_fields(self):
@@ -37,7 +37,7 @@ class TestSession:
             adapter_type="telegram",
             title="Test Session",
             adapter_metadata=metadata,
-            status="idle",
+            closed=True,
             created_at=now,
             last_activity=now,
             terminal_size="120x40",
@@ -47,7 +47,7 @@ class TestSession:
 
         assert session.title == "Test Session"
         assert session.adapter_metadata == metadata
-        assert session.status == "idle"
+        assert session.closed is True
         assert session.created_at == now
         assert session.last_activity == now
         assert session.terminal_size == "120x40"
@@ -188,7 +188,7 @@ class TestSession:
             adapter_type="telegram",
             title="Roundtrip Test",
             adapter_metadata=metadata,
-            status="active",
+            closed=False,
             created_at=now,
             last_activity=now,
             terminal_size="100x30",
@@ -206,7 +206,7 @@ class TestSession:
         assert restored.tmux_session_name == original.tmux_session_name
         assert restored.adapter_type == original.adapter_type
         assert restored.title == original.title
-        assert restored.status == original.status
+        assert restored.closed == original.closed
         assert restored.terminal_size == original.terminal_size
         assert restored.working_directory == original.working_directory
         assert restored.command_count == original.command_count

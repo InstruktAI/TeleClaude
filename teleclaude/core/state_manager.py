@@ -10,10 +10,46 @@ from typing import Any, List, Optional
 logger = logging.getLogger(__name__)
 
 # Module-level state (singleton by nature of Python modules)
+# These are in-memory caches that must be hydrated from database on daemon startup
 _active_polling_sessions: set[str] = set()
 _exit_markers: dict[str, bool] = {}
 _idle_notifications: dict[str, str] = {}
 _pending_deletions: dict[str, list[str]] = {}  # session_id -> list of message IDs to delete
+
+
+# State hydration from database (call on daemon startup)
+async def load_state_from_database(session_manager: Any) -> None:
+    """Load polling state from database into in-memory cache.
+
+    Must be called on daemon startup to restore state after restart.
+    Queries all sessions with output_message_id set (indicates active polling).
+
+    Args:
+        session_manager: SessionManager instance to query database
+    """
+    # Load active polling sessions (sessions with output_message_id set)
+    # Only restore state for active sessions (ignore closed sessions)
+    sessions = await session_manager.list_sessions(closed=False)
+    for session in sessions:
+        session_id = session.session_id
+
+        # Restore polling state from output_message_id
+        output_msg_id = await session_manager.get_output_message_id(session_id)
+        if output_msg_id:
+            _active_polling_sessions.add(session_id)
+            logger.debug("Restored polling state for session %s (output_message_id=%s)", session_id[:8], output_msg_id)
+
+        # Restore idle notification state
+        idle_msg_id = await session_manager.get_idle_notification_message_id(session_id)
+        if idle_msg_id:
+            _idle_notifications[session_id] = idle_msg_id
+            logger.debug("Restored idle notification for session %s (message_id=%s)", session_id[:8], idle_msg_id)
+
+    logger.info(
+        "Loaded state from database: %d active polling sessions, %d idle notifications",
+        len(_active_polling_sessions),
+        len(_idle_notifications),
+    )
 
 
 # Polling state management

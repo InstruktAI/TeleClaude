@@ -32,7 +32,7 @@ def mock_session():
         tmux_session_name="test-tmux",
         working_directory="/home/user",
         terminal_size="80x24",
-        status="active",
+        closed=False,
         command_count=5,
     )
 

@@ -41,5 +41,5 @@ async def handle_topic_closed(
         logger.warning("Failed to kill tmux session %s", tmux_session_name)
 
     # Mark session as closed in database
-    await session_manager.update_session(session_id, status="closed")
+    await session_manager.update_session(session_id, closed=True)
     logger.info("Session %s marked as closed", session_id[:8])

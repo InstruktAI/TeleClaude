@@ -20,7 +20,7 @@ class TestHandleTopicClosed:
             tmux_session_name="test-tmux",
             adapter_type="telegram",
             title="Test",
-            status="active",
+            closed=False,
         )
 
         session_manager = Mock()
@@ -41,7 +41,7 @@ class TestHandleTopicClosed:
             mock_terminal.kill_session.assert_called_once_with("test-tmux")
 
             # Verify session marked as closed
-            session_manager.update_session.assert_called_once_with("test-123", status="closed")
+            session_manager.update_session.assert_called_once_with("test-123", closed=True)
 
     async def test_topic_closed_session_not_found(self):
         """Test topic closure when session doesn't exist."""
@@ -73,7 +73,7 @@ class TestHandleTopicClosed:
             tmux_session_name="test-tmux-2",
             adapter_type="telegram",
             title="Test",
-            status="active",
+            closed=False,
         )
 
         session_manager = Mock()
@@ -95,4 +95,4 @@ class TestHandleTopicClosed:
             mock_terminal.kill_session.assert_called_once_with("test-tmux-2")
 
             # Verify session STILL marked as closed (even if tmux kill failed)
-            session_manager.update_session.assert_called_once_with("test-456", status="closed")
+            session_manager.update_session.assert_called_once_with("test-456", closed=True)

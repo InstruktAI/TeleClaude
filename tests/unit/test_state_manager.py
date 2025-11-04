@@ -1,8 +1,11 @@
 """Unit tests for state_manager module."""
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 
 from teleclaude.core import state_manager
+from teleclaude.core.models import Session
 
 
 @pytest.fixture(autouse=True)
@@ -155,3 +158,123 @@ class TestIdleNotificationState:
         state_manager.set_idle_notification("test-session", "msg-old")
         state_manager.set_idle_notification("test-session", "msg-new")
         assert state_manager.get_idle_notification("test-session") == "msg-new"
+
+
+@pytest.mark.asyncio
+class TestLoadStateFromDatabase:
+    """Test load_state_from_database function."""
+
+    async def test_load_active_polling_sessions(self):
+        """Test loading polling state from active sessions with output_message_id."""
+        # Create mock sessions
+        active_with_output = Session(
+            session_id="session-1",
+            computer_name="TestPC",
+            tmux_session_name="tmux-1",
+            adapter_type="telegram",
+            closed=False,
+            title="Active Session",
+            terminal_size="80x24",
+            working_directory="/tmp",
+        )
+        active_no_output = Session(
+            session_id="session-2",
+            computer_name="TestPC",
+            tmux_session_name="tmux-2",
+            adapter_type="telegram",
+            closed=False,
+            title="Active No Output",
+            terminal_size="80x24",
+            working_directory="/tmp",
+        )
+
+        # Mock session manager
+        session_manager = Mock()
+        session_manager.list_sessions = AsyncMock(return_value=[active_with_output, active_no_output])
+        session_manager.get_output_message_id = AsyncMock(side_effect=lambda sid: "msg-123" if sid == "session-1" else None)
+        session_manager.get_idle_notification_message_id = AsyncMock(return_value=None)
+
+        # Load state
+        await state_manager.load_state_from_database(session_manager)
+
+        # Verify only session with output_message_id was marked as polling
+        assert state_manager.is_polling("session-1") is True
+        assert state_manager.is_polling("session-2") is False
+
+        # Verify list_sessions was called with closed=False filter
+        session_manager.list_sessions.assert_called_once_with(closed=False)
+
+    async def test_skip_closed_sessions(self):
+        """Test that closed sessions are not restored even if they have output_message_id."""
+        # This test verifies that list_sessions(closed=False) filters out closed sessions
+        # so they never reach the state restoration logic
+
+        # Mock session manager that only returns active sessions
+        session_manager = Mock()
+        session_manager.list_sessions = AsyncMock(return_value=[])  # No sessions returned (closed filtered out)
+        session_manager.get_output_message_id = AsyncMock(return_value=None)
+        session_manager.get_idle_notification_message_id = AsyncMock(return_value=None)
+
+        # Load state
+        await state_manager.load_state_from_database(session_manager)
+
+        # Verify list_sessions was called with closed=False
+        session_manager.list_sessions.assert_called_once_with(closed=False)
+
+        # Verify no polling sessions were restored
+        assert len(state_manager._active_polling_sessions) == 0
+
+    async def test_load_idle_notifications(self):
+        """Test loading idle notification state from database."""
+        # Create mock session
+        session = Session(
+            session_id="session-1",
+            computer_name="TestPC",
+            tmux_session_name="tmux-1",
+            adapter_type="telegram",
+            closed=False,
+            title="Session with Idle Notification",
+            terminal_size="80x24",
+            working_directory="/tmp",
+        )
+
+        # Mock session manager
+        session_manager = Mock()
+        session_manager.list_sessions = AsyncMock(return_value=[session])
+        session_manager.get_output_message_id = AsyncMock(return_value=None)
+        session_manager.get_idle_notification_message_id = AsyncMock(return_value="idle-msg-456")
+
+        # Load state
+        await state_manager.load_state_from_database(session_manager)
+
+        # Verify idle notification was restored
+        assert state_manager.has_idle_notification("session-1") is True
+        assert state_manager.get_idle_notification("session-1") == "idle-msg-456"
+
+    async def test_load_both_polling_and_idle(self):
+        """Test loading both polling state and idle notifications."""
+        # Create mock session
+        session = Session(
+            session_id="session-1",
+            computer_name="TestPC",
+            tmux_session_name="tmux-1",
+            adapter_type="telegram",
+            closed=False,
+            title="Session with Both",
+            terminal_size="80x24",
+            working_directory="/tmp",
+        )
+
+        # Mock session manager
+        session_manager = Mock()
+        session_manager.list_sessions = AsyncMock(return_value=[session])
+        session_manager.get_output_message_id = AsyncMock(return_value="output-msg-789")
+        session_manager.get_idle_notification_message_id = AsyncMock(return_value="idle-msg-101")
+
+        # Load state
+        await state_manager.load_state_from_database(session_manager)
+
+        # Verify both were restored
+        assert state_manager.is_polling("session-1") is True
+        assert state_manager.has_idle_notification("session-1") is True
+        assert state_manager.get_idle_notification("session-1") == "idle-msg-101"

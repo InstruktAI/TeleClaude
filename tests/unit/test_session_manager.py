@@ -42,7 +42,7 @@ class TestCreateSession:
         assert session.computer_name == "TestPC"
         assert session.tmux_session_name == "test-session"
         assert session.adapter_type == "telegram"
-        assert session.status == "active"
+        assert session.closed is False
         assert session.command_count == 0
         assert session.title == "[TestPC] New session"
 
@@ -126,9 +126,9 @@ class TestListSessions:
         s2 = await session_manager.create_session("PC1", "session-2", "telegram")
 
         # Update one to closed
-        await session_manager.update_session(s2.session_id, status="closed")
+        await session_manager.update_session(s2.session_id, closed=True)
 
-        sessions = await session_manager.list_sessions(status="active")
+        sessions = await session_manager.list_sessions(closed=False)
 
         assert len(sessions) == 1
         assert sessions[0].session_id == s1.session_id
@@ -183,13 +183,13 @@ class TestUpdateSession:
 
     @pytest.mark.asyncio
     async def test_update_status(self, session_manager):
-        """Test updating session status."""
+        """Test updating session closed status."""
         session = await session_manager.create_session("PC1", "session-1", "telegram")
 
-        await session_manager.update_session(session.session_id, status="closed")
+        await session_manager.update_session(session.session_id, closed=True)
 
         updated = await session_manager.get_session(session.session_id)
-        assert updated.status == "closed"
+        assert updated.closed is True
 
     @pytest.mark.asyncio
     async def test_update_multiple_fields(self, session_manager):
@@ -199,13 +199,13 @@ class TestUpdateSession:
         await session_manager.update_session(
             session.session_id,
             title="Updated Title",
-            status="idle",
+            closed=True,
             terminal_size="100x30"
         )
 
         updated = await session_manager.get_session(session.session_id)
         assert updated.title == "Updated Title"
-        assert updated.status == "idle"
+        assert updated.closed is True
         assert updated.terminal_size == "100x30"
 
     @pytest.mark.asyncio
@@ -333,12 +333,12 @@ class TestCountSessions:
 
     @pytest.mark.asyncio
     async def test_count_sessions_by_status(self, session_manager):
-        """Test counting sessions by status."""
+        """Test counting sessions by closed status."""
         s1 = await session_manager.create_session("PC1", "session-1", "telegram")
         s2 = await session_manager.create_session("PC1", "session-2", "telegram")
-        await session_manager.update_session(s2.session_id, status="closed")
+        await session_manager.update_session(s2.session_id, closed=True)
 
-        count = await session_manager.count_sessions(status="active")
+        count = await session_manager.count_sessions(closed=False)
 
         assert count == 1
 

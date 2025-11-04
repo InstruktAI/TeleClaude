@@ -26,6 +26,7 @@ from teleclaude.core import (
     output_message_manager,
     polling_coordinator,
     session_lifecycle,
+    state_manager,
     terminal_bridge,
     terminal_executor,
     voice_message_handler,
@@ -307,6 +308,9 @@ class TeleClaudeDaemon:
 
         # Migrate old session metadata
         await session_lifecycle.migrate_session_metadata(self.session_manager)
+
+        # Load state from database (restore polling state after daemon restart)
+        await state_manager.load_state_from_database(self.session_manager)
 
         # Start all adapters
         for adapter_name, adapter in self.adapters.items():

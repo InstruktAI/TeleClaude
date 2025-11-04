@@ -71,7 +71,7 @@ class TeleClaudeAPI:
                     "status": "healthy",
                     "uptime_seconds": int(time.time() - self.start_time),
                     "sessions": {
-                        "active": await self.session_manager.count_sessions(status="active"),
+                        "active": await self.session_manager.count_sessions(closed=False),
                         "total": await self.session_manager.count_sessions(),
                     },
                 }

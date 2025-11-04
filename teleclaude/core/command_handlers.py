@@ -95,7 +95,7 @@ async def handle_create_session(
     # Check for duplicate titles and append number if needed
     title = base_title
     existing_sessions = await session_manager.list_sessions()
-    existing_titles = {s.title for s in existing_sessions if s.status != "closed"}
+    existing_titles = {s.title for s in existing_sessions if not s.closed}
 
     if title in existing_titles:
         counter = 2
@@ -161,7 +161,7 @@ async def handle_list_sessions(
 
     adapter = get_adapter_by_type(adapter_type)
 
-    sessions = await session_manager.list_sessions(status="active")
+    sessions = await session_manager.list_sessions(closed=False)
 
     if not sessions:
         # Send to General topic

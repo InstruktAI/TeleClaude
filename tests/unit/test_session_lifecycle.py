@@ -210,7 +210,7 @@ class TestCleanupInactiveSessions:
             tmux_session_name="inactive-tmux",
             adapter_type="telegram",
             title="Inactive",
-            status="active",
+            closed=False,
             last_activity=old_time,
         )
 
@@ -230,7 +230,7 @@ class TestCleanupInactiveSessions:
             mock_terminal.kill_session.assert_called_once_with("inactive-tmux")
 
             # Verify session marked as closed
-            session_manager.update_session.assert_called_once_with("inactive-123", status="closed")
+            session_manager.update_session.assert_called_once_with("inactive-123", closed=True)
 
     async def test_skip_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
@@ -242,7 +242,7 @@ class TestCleanupInactiveSessions:
             tmux_session_name="active-tmux",
             adapter_type="telegram",
             title="Active",
-            status="active",
+            closed=False,
             last_activity=recent_time,
         )
 
@@ -263,7 +263,7 @@ class TestCleanupInactiveSessions:
             session_manager.update_session.assert_not_called()
 
     async def test_skip_non_active_sessions(self):
-        """Test that sessions with status != 'active' are skipped."""
+        """Test that closed sessions are skipped."""
         old_time = datetime.now() - timedelta(hours=100)
         closed_session = Session(
             session_id="closed-789",
@@ -271,7 +271,7 @@ class TestCleanupInactiveSessions:
             tmux_session_name="closed-tmux",
             adapter_type="telegram",
             title="Closed",
-            status="closed",  # Not active
+            closed=True,
             last_activity=old_time,
         )
 
@@ -299,7 +299,7 @@ class TestCleanupInactiveSessions:
             tmux_session_name="no-activity-tmux",
             adapter_type="telegram",
             title="No Activity",
-            status="active",
+            closed=False,
             last_activity=None,  # No activity timestamp
         )
 
@@ -328,7 +328,7 @@ class TestCleanupInactiveSessions:
             tmux_session_name="tmux-1",
             adapter_type="telegram",
             title="Session 1",
-            status="active",
+            closed=False,
             last_activity=old_time,
         )
         session2 = Session(
@@ -337,7 +337,7 @@ class TestCleanupInactiveSessions:
             tmux_session_name="tmux-2",
             adapter_type="telegram",
             title="Session 2",
-            status="active",
+            closed=False,
             last_activity=old_time,
         )
 
