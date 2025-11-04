@@ -4,7 +4,9 @@ Extracted from daemon.py to reduce file size and improve organization.
 Handles polling lifecycle orchestration and event routing to message manager.
 """
 
+import asyncio
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -19,6 +21,59 @@ from teleclaude.core.output_poller import (
 from teleclaude.core.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
+
+
+def _is_ai_to_ai_session(topic_name: str) -> bool:
+    """Check if topic matches AI-to-AI pattern: $X > $Y - {title}
+
+    Args:
+        topic_name: Topic/channel name from session
+
+    Returns:
+        True if AI-to-AI session, False otherwise
+    """
+    if not topic_name:
+        return False
+    # Match pattern: $CompName > $CompName - Title
+    return bool(re.match(r"^\$\w+ > \$\w+ - .+$", topic_name))
+
+
+async def _send_output_chunks_ai_mode(
+    session_id: str,
+    adapter: Any,
+    full_output: str,
+    session_manager: SessionManager,
+) -> None:
+    """Send output as sequential chunks for AI consumption.
+
+    Uses adapter's max_message_length (platform-specific).
+    No editing - each chunk is a new message.
+
+    Args:
+        session_id: Session ID
+        adapter: Adapter instance (with get_max_message_length method)
+        full_output: Complete output to send
+        session_manager: Session manager instance
+    """
+    # Get adapter's platform-specific max message length
+    chunk_size = adapter.get_max_message_length() - 100  # Reserve for markdown + markers
+
+    # Split output into chunks
+    chunks = [full_output[i : i + chunk_size] for i in range(0, len(full_output), chunk_size)]
+
+    # Send each chunk as new message
+    for idx, chunk in enumerate(chunks, 1):
+        # Format with sequence marker
+        message = f"```sh\n{chunk}\n```\n[Chunk {idx}/{len(chunks)}]"
+
+        # Send as NEW message (don't edit)
+        await adapter.send_message(session_id, message)
+
+        # Small delay to preserve order (Telegram API constraint)
+        await asyncio.sleep(0.1)
+
+    # Mark completion (MCP streaming loop will detect and stop)
+    await adapter.send_message(session_id, "[Output Complete]")
 
 
 async def poll_and_send_output(
@@ -56,6 +111,10 @@ async def poll_and_send_output(
     # Get adapter for this session
     adapter = await get_adapter_for_session(session_id)
 
+    # Get session to check topic type
+    session = await session_manager.get_session(session_id)
+    is_ai_session = _is_ai_to_ai_session(session.title if session else None)
+
     # Get output file and exit marker status
     output_file = get_output_file(session_id)
     # Check in-memory first (for current polling), fallback to DB (for resumed polling after restart)
@@ -67,16 +126,25 @@ async def poll_and_send_output(
         # Consume events from pure poller
         async for event in output_poller.poll(session_id, tmux_session_name, output_file, has_exit_marker):
             if isinstance(event, OutputChanged):
-                # Output changed - send update
-                await output_message_manager.send_output_update(
-                    event.session_id,
-                    adapter,
-                    event.output,
-                    event.started_at,
-                    event.last_changed_at,
-                    session_manager,
-                    max_message_length=3800,
-                )
+                if is_ai_session:
+                    # AI mode: Send sequential chunks (no editing, no loss)
+                    await _send_output_chunks_ai_mode(
+                        event.session_id,
+                        adapter,
+                        event.output,
+                        session_manager,
+                    )
+                else:
+                    # Human mode: Edit same message (current behavior)
+                    await output_message_manager.send_output_update(
+                        event.session_id,
+                        adapter,
+                        event.output,
+                        event.started_at,
+                        event.last_changed_at,
+                        session_manager,
+                        max_message_length=3800,
+                    )
 
                 # Delete idle notification if one exists (output resumed)
                 notification_id = await session_manager.get_idle_notification_message_id(event.session_id)

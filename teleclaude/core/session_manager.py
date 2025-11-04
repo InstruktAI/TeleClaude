@@ -56,6 +56,14 @@ class SessionManager:
             # Column already exists
             pass
 
+        # Migration: Add description column if it doesn't exist (for AI-to-AI sessions)
+        try:
+            await self._db.execute("ALTER TABLE sessions ADD COLUMN description TEXT")
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            # Column already exists
+            pass
+
         # Migration: Convert status TEXT to closed BOOLEAN
         try:
             # Add closed column

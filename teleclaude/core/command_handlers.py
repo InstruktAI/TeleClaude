@@ -88,9 +88,9 @@ async def handle_create_session(
 
     # Create topic first with custom title if provided
     if args and len(args) > 0:
-        base_title = f"# {computer_name} - {' '.join(args)}"
+        base_title = f"${computer_name} - {' '.join(args)}"
     else:
-        base_title = f"# {computer_name} - New session"
+        base_title = f"${computer_name} - New session"
 
     # Check for duplicate titles and append number if needed
     title = base_title

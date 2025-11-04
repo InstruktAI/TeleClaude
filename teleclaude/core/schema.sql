@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     command_count INTEGER DEFAULT 0,
     output_message_id TEXT,  -- Current output message ID for appending status (non-NULL = polling active)
     idle_notification_message_id TEXT,  -- Idle notification message ID (for "no output for N seconds" messages)
+    description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
     UNIQUE(computer_name, tmux_session_name)
 );
 

@@ -390,6 +390,20 @@ class TelegramAdapter(BaseAdapter):
             logger.error("Failed to delete topic %s: %s", channel_id, e)
             return False
 
+    # ==================== Platform-Specific Parameters ====================
+
+    def get_max_message_length(self) -> int:
+        """Telegram's max message length is 4096 chars."""
+        return 4096
+
+    def get_ai_session_poll_interval(self) -> float:
+        """Telegram AI sessions poll faster than human sessions.
+
+        Returns:
+            0.5 seconds for real-time AI communication.
+        """
+        return 0.5
+
     # ==================== Helper Methods ====================
 
     async def _get_session_from_topic(self, update: Update) -> Any:

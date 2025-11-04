@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import polling_coordinator
+from teleclaude.core.models import Session
 from teleclaude.core.output_poller import IdleDetected, OutputChanged, ProcessExited
 
 
@@ -42,7 +43,17 @@ class TestPollAndSendOutput:
 
     async def test_output_changed_event(self):
         """Test OutputChanged event handling."""
+        # Mock session with human-readable title (not AI-to-AI)
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            adapter_type="telegram",
+            title="Human Session"  # Not matching $X > $Y pattern
+        )
+
         session_manager = Mock()
+        session_manager.get_session = AsyncMock(return_value=mock_session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
         session_manager.get_idle_notification_message_id = AsyncMock(return_value=None)
         session_manager.set_idle_notification_message_id = AsyncMock()
@@ -102,7 +113,17 @@ class TestPollAndSendOutput:
 
     async def test_output_changed_with_idle_notification_cleanup(self):
         """Test OutputChanged deletes idle notification if present."""
+        # Mock session with human-readable title (not AI-to-AI)
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            adapter_type="telegram",
+            title="Human Session"
+        )
+
         session_manager = Mock()
+        session_manager.get_session = AsyncMock(return_value=mock_session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
         session_manager.get_idle_notification_message_id = AsyncMock(return_value="idle-msg-456")
         session_manager.set_idle_notification_message_id = AsyncMock()
@@ -152,7 +173,17 @@ class TestPollAndSendOutput:
 
     async def test_idle_detected_event(self):
         """Test IdleDetected event handling."""
+        # Mock session with human-readable title
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            adapter_type="telegram",
+            title="Human Session"
+        )
+
         session_manager = Mock()
+        session_manager.get_session = AsyncMock(return_value=mock_session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
         session_manager.set_idle_notification_message_id = AsyncMock()
 
@@ -202,7 +233,17 @@ class TestPollAndSendOutput:
 
     async def test_process_exited_with_exit_code(self):
         """Test ProcessExited event with exit code."""
+        # Mock session with human-readable title
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            adapter_type="telegram",
+            title="Human Session"
+        )
+
         session_manager = Mock()
+        session_manager.get_session = AsyncMock(return_value=mock_session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
         session_manager.set_output_message_id = AsyncMock()
         session_manager.set_idle_notification_message_id = AsyncMock()
@@ -270,7 +311,17 @@ class TestPollAndSendOutput:
 
     async def test_process_exited_without_exit_code(self, tmp_path):
         """Test ProcessExited event without exit code (session died)."""
+        # Mock session with human-readable title
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            adapter_type="telegram",
+            title="Human Session"
+        )
+
         session_manager = Mock()
+        session_manager.get_session = AsyncMock(return_value=mock_session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
         session_manager.set_output_message_id = AsyncMock()
         session_manager.set_idle_notification_message_id = AsyncMock()
@@ -336,7 +387,17 @@ class TestPollAndSendOutput:
 
     async def test_cleanup_in_finally_block(self):
         """Test cleanup always happens in finally block."""
+        # Mock session with human-readable title
+        mock_session = Session(
+            session_id="test-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            adapter_type="telegram",
+            title="Human Session"
+        )
+
         session_manager = Mock()
+        session_manager.get_session = AsyncMock(return_value=mock_session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
         session_manager.set_idle_notification_message_id = AsyncMock()
 

@@ -17,10 +17,8 @@ BRANCH_NAME: $1 (required)
 PORT_OFFSET: $2 (optional, defaults to auto-calculated based on existing worktrees, starts at 1)
 WORKTREE_BASE_DIR: trees/
 WORKTREE_DIR: trees/<BRANCH_NAME>
-SERVER_BASE_PORT: 4000
-CLIENT_BASE_PORT: 5173
-SERVER_PORT: 4000 + (PORT_OFFSET * 10)  # First worktree: 4010, Second: 4020, etc.
-CLIENT_PORT: 5173 + (PORT_OFFSET * 10)  # First worktree: 5183, Second: 5193, etc.
+SERVER_BASE_PORT: 6000
+SERVER_PORT: 6000 + (PORT_OFFSET * 10)  # First worktree: 6010, Second: 6020, etc.
 OPEN_BROWSER_WHEN_COMPLETE: false       # Set to true to auto-open browser after setup
 
 NOTE: Main repo uses ports 4000 and 5173 (no offset)
@@ -59,7 +57,7 @@ NOTE: Main repo uses ports 4000 and 5173 (no offset)
   - IMPORTANT: Offset starts at 1 to preserve main repo ports (4000, 5173)
   - First worktree gets offset 1 → ports 4010, 5183
   - Second worktree gets offset 2 → ports 4020, 5193
-- Calculate SERVER_PORT and CLIENT_PORT using offset * 10
+- Calculate SERVER_PORT and CLIENT_PORT using offset \* 10
 - Validate branch name format (no spaces, valid git branch name)
 
 ### 2. Pre-Creation Validation

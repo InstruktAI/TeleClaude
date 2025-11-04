@@ -184,6 +184,26 @@ class BaseAdapter(ABC):
         """
         pass
 
+    # ==================== Platform-Specific Parameters ====================
+
+    def get_max_message_length(self) -> int:
+        """Get platform's max message length for chunking.
+
+        Returns:
+            Maximum characters per message (platform-specific).
+            Used for AI-to-AI output chunking.
+        """
+        raise NotImplementedError
+
+    def get_ai_session_poll_interval(self) -> float:
+        """Get polling interval for AI-to-AI sessions (seconds).
+
+        Returns:
+            Optimal polling frequency for this platform.
+            Faster than human mode for real-time AI communication.
+        """
+        raise NotImplementedError
+
     # ==================== Callback Registration ====================
 
     def on_message(self, callback: Callable[..., Any]) -> None:

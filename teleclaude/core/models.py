@@ -24,6 +24,7 @@ class Session:
     command_count: int = 0
     output_message_id: Optional[str] = None
     idle_notification_message_id: Optional[str] = None
+    description: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert session to dictionary for JSON serialization."""
