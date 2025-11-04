@@ -51,6 +51,5 @@ uploads:
     append_timestamp_on_duplicate: true
 
 logging:
-    file: ${WORKING_DIR}/logs/teleclaude.log
     max_size_mb: 10
     level: INFO

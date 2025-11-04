@@ -3,13 +3,10 @@
 import asyncio
 import atexit
 import fcntl
-import json
 import logging
 import os
 import signal
 import sys
-import time
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO
 
@@ -19,15 +16,14 @@ from dotenv import load_dotenv
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.config import init_config
+from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
     command_handlers,
     event_handlers,
     message_handler,
-    output_message_manager,
     polling_coordinator,
     session_lifecycle,
     state_manager,
-    terminal_bridge,
     terminal_executor,
     voice_message_handler,
 )
@@ -495,7 +491,7 @@ async def main() -> None:
     config = expand_env_vars(config)
 
     # Setup logging using config.yml (source of truth)
-    log_file = os.path.expanduser(config.get("logging", {}).get("file", str(base_dir / "logs" / "teleclaude.log")))
+    log_file = "/var/log/teleclaude.log"
     log_level = config.get("logging", {}).get("level", "INFO")
     setup_logging(level=log_level, log_file=log_file)
 

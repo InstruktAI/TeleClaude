@@ -352,7 +352,7 @@ DEFAULT_SHELL=\${SHELL}
 
 # Logging
 LOG_LEVEL=INFO
-LOG_FILE=${INSTALL_DIR}/logs/teleclaude.log
+LOG_FILE=/var/log/teleclaude.log
 EOF
 
     print_success "Created .env file"
@@ -371,7 +371,6 @@ EOF
     else
         print_info "config.yml already exists"
     fi
-
 }
 
 # Install service
@@ -501,10 +500,10 @@ install_launchd_service() {
         print_info "  Status:  launchctl list | grep teleclaude"
         print_info "  Stop:    launchctl unload $plist_file"
         print_info "  Start:   launchctl load $plist_file"
-        print_info "  Logs:    tail -f $INSTALL_DIR/logs/teleclaude.log"
+        print_info "  Logs:    tail -f /var/log/teleclaude.log"
     else
         print_error "Service failed to load"
-        print_info "Check logs: tail -n 50 $INSTALL_DIR/logs/teleclaude.log"
+        print_info "Check logs: tail -n 50 /var/log/teleclaude.log"
         exit 1
     fi
 }
@@ -545,7 +544,7 @@ main() {
     print_info "The daemon is running as a system service and will:"
     echo "  • Start automatically on boot"
     echo "  • Restart automatically if it crashes"
-    echo "  • Log to: $INSTALL_DIR/logs/teleclaude.log"
+    echo "  • Log to: /var/log/teleclaude.log"
     echo ""
     print_warning "IMPORTANT: Do NOT manually start the daemon!"
     print_warning "The service manages the daemon automatically."
