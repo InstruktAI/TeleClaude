@@ -385,11 +385,16 @@ class TeleClaudeDaemon:
             )
         elif command == "escape":
             await command_handlers.handle_escape_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
+                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
             )
         elif command == "escape2x":
             await command_handlers.handle_escape_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, double=True
+                context,
+                args,
+                self.session_manager,
+                self._get_adapter_for_session,
+                self._poll_and_send_output,
+                double=True,
             )
         elif command == "ctrl":
             await command_handlers.handle_ctrl_command(

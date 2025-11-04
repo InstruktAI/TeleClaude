@@ -250,19 +250,21 @@ async def handle_cancel_command(
 
 async def handle_escape_command(
     context: Dict[str, Any],
+    args: List[str],
     session_manager: SessionManager,
     get_adapter_for_session: Callable[[str], Awaitable[BaseAdapter]],
     start_polling: Callable[[str, str], Awaitable[None]],
     double: bool = False,
 ) -> None:
-    """Send ESCAPE key to a session.
+    """Send ESCAPE key to a session, optionally followed by text+ENTER.
 
     Args:
         context: Command context with session_id
+        args: Optional text to send after ESCAPE (e.g., [":wq"] sends ESCAPE, then :wq+ENTER)
         session_manager: Session manager instance
         get_adapter_for_session: Function to get adapter for session
         start_polling: Function to start polling for a session
-        double: If True, send ESCAPE twice (for Vim, etc.)
+        double: If True, send ESCAPE twice before sending text (if any)
     """
     session_id = context.get("session_id")
     if not session_id:
@@ -279,7 +281,76 @@ async def handle_escape_command(
     adapter = await get_adapter_for_session(session_id)
     command_msg_id = context.get("message_id")
 
-    # Send ESCAPE to the tmux session
+    # If text provided: send ESCAPE (once or twice) + text+ENTER
+    if args:
+        text = " ".join(args)
+
+        # Send ESCAPE first
+        success = await terminal_bridge.send_escape(session.tmux_session_name)
+        if not success:
+            logger.error("Failed to send ESCAPE to session %s", session_id[:8])
+            return
+
+        # Send second ESCAPE if double flag set
+        if double:
+            await asyncio.sleep(0.1)
+            success = await terminal_bridge.send_escape(session.tmux_session_name)
+            if not success:
+                logger.error("Failed to send second ESCAPE to session %s", session_id[:8])
+                return
+
+        # Wait briefly for ESCAPE to register
+        await asyncio.sleep(0.1)
+
+        # Parse terminal size
+        cols, rows = 80, 24
+        if session.terminal_size and "x" in session.terminal_size:
+            try:
+                cols, rows = map(int, session.terminal_size.split("x"))
+            except ValueError:
+                pass
+
+        # Check if process is running for exit marker logic
+        is_process_running = state_manager.is_polling(session_id)
+
+        # Send text + ENTER
+        config = get_config()
+        success = await terminal_bridge.send_keys(
+            session.tmux_session_name,
+            text,
+            shell=config["computer"]["default_shell"],
+            working_dir=session.working_directory,
+            cols=cols,
+            rows=rows,
+            append_exit_marker=not is_process_running,
+        )
+
+        if not success:
+            logger.error("Failed to send text to session %s", session_id[:8])
+            return
+
+        # Track exit marker
+        state_manager.set_exit_marker(session_id, not is_process_running)
+
+        # Update activity
+        await session_manager.update_last_activity(session_id)
+        await session_manager.increment_command_count(session_id)
+
+        # Cleanup messages
+        await state_manager.cleanup_messages_after_success(
+            session_id,
+            str(command_msg_id) if command_msg_id else None,
+            adapter,
+        )
+
+        # Start polling if needed
+        if not is_process_running:
+            await start_polling(session_id, session.tmux_session_name)
+
+        logger.info("Sent %s ESCAPE + '%s' to session %s", "double" if double else "single", text, session_id[:8])
+        return
+
+    # No args: send ESCAPE only (support double)
     success = await _execute_and_poll(
         terminal_bridge.send_escape,
         session,
