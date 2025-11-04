@@ -490,34 +490,36 @@ class TelegramAdapter(BaseAdapter):
         )
 
     async def _handle_escape(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /escape command - sends ESC key to the session."""
+        """Handle /escape command - sends ESC key to the session, optionally followed by text+ENTER."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
 
         await self._emit_command(
             "escape",
-            [],
+            context.args or [],
             {
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 
     async def _handle_escape2x(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /escape2x command - sends ESC twice (for nested Vim, etc.)."""
+        """Handle /escape2x command - sends ESC twice (for nested Vim, etc.), optionally followed by text+ENTER."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
 
         await self._emit_command(
             "escape2x",
-            [],
+            context.args or [],
             {
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 

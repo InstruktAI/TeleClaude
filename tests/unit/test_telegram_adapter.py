@@ -164,31 +164,51 @@ class TestCommandHandlers:
 
     @pytest.mark.asyncio
     async def test_handle_escape(self, telegram_adapter, mock_update):
-        """Test /escape command handler."""
+        """Test /escape command handler passes arguments through."""
         mock_session = MagicMock()
         mock_session.session_id = "test-session"
 
+        mock_context = MagicMock()
+        mock_context.args = [":q"]
+
         with patch.object(telegram_adapter, '_get_session_from_topic', return_value=mock_session):
             with patch.object(telegram_adapter, '_emit_command', new_callable=AsyncMock) as mock_emit:
-                await telegram_adapter._handle_escape(mock_update, MagicMock())
+                await telegram_adapter._handle_escape(mock_update, mock_context)
 
-                mock_emit.assert_called_once()
-                call_args = mock_emit.call_args
-                assert call_args[0][0] == "escape"
+                mock_emit.assert_called_once_with(
+                    "escape",
+                    [":q"],
+                    {
+                        "adapter_type": "telegram",
+                        "session_id": "test-session",
+                        "user_id": mock_update.effective_user.id,
+                        "message_id": mock_update.effective_message.message_id,
+                    },
+                )
 
     @pytest.mark.asyncio
     async def test_handle_escape2x(self, telegram_adapter, mock_update):
-        """Test /escape2x command handler."""
+        """Test /escape2x command handler passes arguments through."""
         mock_session = MagicMock()
         mock_session.session_id = "test-session"
 
+        mock_context = MagicMock()
+        mock_context.args = [":wq"]
+
         with patch.object(telegram_adapter, '_get_session_from_topic', return_value=mock_session):
             with patch.object(telegram_adapter, '_emit_command', new_callable=AsyncMock) as mock_emit:
-                await telegram_adapter._handle_escape2x(mock_update, MagicMock())
+                await telegram_adapter._handle_escape2x(mock_update, mock_context)
 
-                mock_emit.assert_called_once()
-                call_args = mock_emit.call_args
-                assert call_args[0][0] == "escape2x"
+                mock_emit.assert_called_once_with(
+                    "escape2x",
+                    [":wq"],
+                    {
+                        "adapter_type": "telegram",
+                        "session_id": "test-session",
+                        "user_id": mock_update.effective_user.id,
+                        "message_id": mock_update.effective_message.message_id,
+                    },
+                )
 
 
     @pytest.mark.asyncio
