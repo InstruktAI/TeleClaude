@@ -653,7 +653,22 @@ async def handle_resize_session(
         # Update session in database
         await session_manager.update_session(session_id, terminal_size=size_str)
         logger.info("Resized session %s to %s", session_id[:8], size_str)
-        await adapter.send_message(session_id, f"Terminal resized to {size_str} ({cols}x{rows})")
+
+        # Send feedback message
+        feedback_msg_id = await adapter.send_message(session_id, f"Terminal resized to {size_str} ({cols}x{rows})")
+
+        # Track messages for cleanup if process is running
+        if state_manager.is_polling(session_id):
+            # Track command message (e.g., /resize medium)
+            command_msg_id = context.get("message_id")
+            if command_msg_id:
+                state_manager.add_pending_deletion(session_id, str(command_msg_id))
+                logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
+
+            # Track feedback message
+            if feedback_msg_id:
+                state_manager.add_pending_deletion(session_id, feedback_msg_id)
+                logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8])
     else:
         logger.error("Failed to resize session %s", session_id[:8])
         await adapter.send_message(session_id, "Failed to resize terminal")
@@ -703,7 +718,24 @@ async def handle_rename_session(
         success = await adapter.update_channel_title(str(channel_id), new_title)
         if success:
             logger.info("Renamed session %s to '%s'", session_id[:8], new_title)
-            await adapter.send_message(session_id, f"Session renamed to: {new_title}")
+
+            # Send feedback message
+            feedback_msg_id = await adapter.send_message(session_id, f"Session renamed to: {new_title}")
+
+            # Track messages for cleanup if process is running
+            if state_manager.is_polling(session_id):
+                # Track command message (e.g., /rename new-name)
+                command_msg_id = context.get("message_id")
+                if command_msg_id:
+                    state_manager.add_pending_deletion(session_id, str(command_msg_id))
+                    logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
+
+                # Track feedback message
+                if feedback_msg_id:
+                    state_manager.add_pending_deletion(session_id, feedback_msg_id)
+                    logger.debug(
+                        "Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8]
+                    )
         else:
             logger.error("Failed to update channel title for session %s", session_id[:8])
             await adapter.send_message(session_id, "Failed to update channel title")
