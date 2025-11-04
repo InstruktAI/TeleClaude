@@ -59,6 +59,32 @@ class TestOutputPoller:
         result = poller._strip_exit_markers(output)
         assert result == "some outputprompt > "
 
+    def test_strip_exit_markers_handles_line_wrapped_marker(self, poller):
+        """Test stripping marker that wraps across lines (THE BUG FIX)."""
+        output = "command output\n__EXIT__0\n__\n"
+        result = poller._strip_exit_markers(output)
+        # Removes leading newline + wrapped marker + trailing newline
+        assert result == "command output"
+
+    def test_strip_exit_markers_handles_line_wrapped_echo_command(self, poller):
+        """Test stripping echo command that wraps across lines."""
+        output = 'command output; echo "__EXIT__$?\n__"\nprompt > '
+        result = poller._strip_exit_markers(output)
+        assert result == "command output\nprompt > "
+
+    def test_strip_exit_markers_handles_multiple_wraps(self, poller):
+        """Test stripping when both marker and command are wrapped."""
+        output = 'some output; echo "__EXIT__\n$?\n__"\n__EXIT__\n0\n__\nprompt > '
+        result = poller._strip_exit_markers(output)
+        assert result == "some outputprompt > "
+
+    def test_strip_exit_markers_real_world_wrapped_case(self, poller):
+        """Test realistic case with wrapped marker (matches original behavior)."""
+        output = 'ls -la\nfile1.txt\nfile2.txt\n__EXIT__\n0\n__\n$ '
+        result = poller._strip_exit_markers(output)
+        # Removes leading newline + wrapped marker + trailing newline
+        assert result == 'ls -la\nfile1.txt\nfile2.txt$ '
+
 
 @pytest.mark.asyncio
 class TestOutputPollerPoll:

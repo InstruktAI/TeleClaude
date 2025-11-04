@@ -239,11 +239,15 @@ class OutputPoller:
             Output with markers removed
         """
         # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
-        output = re.sub(r"\n?__EXIT__\d+__\n?", "", output)
+        # Allow whitespace/newlines within marker due to tmux line wrapping
+        # Consumes surrounding newlines to keep output clean (matches original behavior)
+        # Handles: __EXIT__0__, __EXIT__0\n__, __EXIT__\n0__, etc.
+        output = re.sub(r"\n?__EXIT__\s*\d+\s*__\n?", "", output)
 
         # Strip the echo command from shell prompts (handles line wrapping)
-        # Matches: ; echo "__EXIT__$?__" OR ; echo "__EXIT__\n$?__" (wrapped)
-        output = re.sub(r'; echo "__EXIT__\s*\$\?__"', "", output)
+        # Allow whitespace/newlines within the quoted string and between command parts
+        # Handles: ; echo "__EXIT__$?__", ; echo "__EXIT__$?\n__", etc.
+        output = re.sub(r';\s*echo\s*"__EXIT__\s*\$\?\s*__\s*"', "", output)
 
         return output
 
