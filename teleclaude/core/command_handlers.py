@@ -654,13 +654,17 @@ async def handle_resize_session(
         await session_manager.update_session(session_id, terminal_size=size_str)
         logger.info("Resized session %s to %s", session_id[:8], size_str)
 
+        # If process is running, cleanup old messages first (from previous commands)
+        command_msg_id = context.get("message_id")
+        if state_manager.is_polling(session_id):
+            await state_manager.cleanup_messages_after_success(session_id, None, adapter)
+
         # Send feedback message
         feedback_msg_id = await adapter.send_message(session_id, f"Terminal resized to {size_str} ({cols}x{rows})")
 
-        # Track messages for cleanup if process is running
+        # Track new messages for cleanup on next user input
         if state_manager.is_polling(session_id):
             # Track command message (e.g., /resize medium)
-            command_msg_id = context.get("message_id")
             if command_msg_id:
                 state_manager.add_pending_deletion(session_id, str(command_msg_id))
                 logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
@@ -719,13 +723,17 @@ async def handle_rename_session(
         if success:
             logger.info("Renamed session %s to '%s'", session_id[:8], new_title)
 
+            # If process is running, cleanup old messages first (from previous commands)
+            command_msg_id = context.get("message_id")
+            if state_manager.is_polling(session_id):
+                await state_manager.cleanup_messages_after_success(session_id, None, adapter)
+
             # Send feedback message
             feedback_msg_id = await adapter.send_message(session_id, f"Session renamed to: {new_title}")
 
-            # Track messages for cleanup if process is running
+            # Track new messages for cleanup on next user input
             if state_manager.is_polling(session_id):
                 # Track command message (e.g., /rename new-name)
-                command_msg_id = context.get("message_id")
                 if command_msg_id:
                     state_manager.add_pending_deletion(session_id, str(command_msg_id))
                     logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
