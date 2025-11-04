@@ -40,13 +40,13 @@ async def _execute_and_poll(
         message_id: Message ID to cleanup on success
         adapter: Chat adapter for message cleanup
         start_polling: Function to start output polling
-        *terminal_args: Arguments for terminal_action
+        *terminal_args: Additional arguments for terminal_action (after tmux_session_name)
 
     Returns:
         True if terminal action succeeded, False otherwise
     """
-    # Execute terminal action
-    success = await terminal_action(*terminal_args)
+    # Execute terminal action with session's tmux_session_name + any additional args
+    success = await terminal_action(session.tmux_session_name, *terminal_args)
 
     if success:
         # Cleanup pending messages (only if process running)
@@ -213,18 +213,16 @@ async def handle_cancel_command(
         logger.warning("Session %s not found", session_id)
         return
 
-    # Get adapter and message ID for cleanup
+    # Get adapter for cleanup
     adapter = await get_adapter_for_session(session_id)
-    command_msg_id = context.get("message_id")
 
     # Send SIGINT (CTRL+C) to the tmux session
     success = await _execute_and_poll(
         terminal_bridge.send_signal,
         session,
-        str(command_msg_id) if command_msg_id else None,
+        context.get("message_id"),
         adapter,
         start_polling,
-        session.tmux_session_name,
         "SIGINT",
     )
 
@@ -238,7 +236,6 @@ async def handle_cancel_command(
             None,
             adapter,
             start_polling,
-            session.tmux_session_name,
             "SIGINT",
         )
 
@@ -277,9 +274,8 @@ async def handle_escape_command(
         logger.warning("Session %s not found", session_id)
         return
 
-    # Get adapter and message ID for cleanup
+    # Get adapter for cleanup
     adapter = await get_adapter_for_session(session_id)
-    command_msg_id = context.get("message_id")
 
     # If text provided: send ESCAPE (once or twice) + text+ENTER
     if args:
@@ -339,7 +335,7 @@ async def handle_escape_command(
         # Cleanup messages
         await state_manager.cleanup_messages_after_success(
             session_id,
-            str(command_msg_id) if command_msg_id else None,
+            context.get("message_id"),
             adapter,
         )
 
@@ -354,10 +350,9 @@ async def handle_escape_command(
     success = await _execute_and_poll(
         terminal_bridge.send_escape,
         session,
-        str(command_msg_id) if command_msg_id else None,
+        context.get("message_id"),
         adapter,
         start_polling,
-        session.tmux_session_name,
     )
 
     if double and success:
@@ -370,7 +365,6 @@ async def handle_escape_command(
             None,
             adapter,
             start_polling,
-            session.tmux_session_name,
         )
 
     if success:
@@ -405,17 +399,15 @@ async def handle_ctrl_command(
         adapter = await get_adapter_for_session(session_id)
         feedback_msg_id = await adapter.send_message(session_id, "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)")
 
-        # Track both command message AND feedback message for deletion if process is running
-        if state_manager.is_polling(session_id):
-            # Track command message (e.g., /ctrl)
-            command_msg_id = context.get("message_id")
-            if command_msg_id:
-                state_manager.add_pending_deletion(session_id, str(command_msg_id))
-                logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
+        # Track both command message AND feedback message for deletion
+        # Track command message (e.g., /ctrl)
+        message_id = context.get("message_id")
+        state_manager.add_pending_deletion(session_id, message_id)
+        logger.debug("Tracked command message %s for deletion (session %s)", message_id, session_id[:8])
 
-            # Track feedback message
-            state_manager.add_pending_deletion(session_id, feedback_msg_id)
-            logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8])
+        # Track feedback message
+        state_manager.add_pending_deletion(session_id, feedback_msg_id)
+        logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8])
 
         return
 
@@ -430,16 +422,14 @@ async def handle_ctrl_command(
 
     # Get adapter and message ID for cleanup
     adapter = await get_adapter_for_session(session_id)
-    command_msg_id = context.get("message_id")
 
     # Send CTRL+key to the tmux session
     success = await _execute_and_poll(
         terminal_bridge.send_ctrl_key,
         session,
-        str(command_msg_id) if command_msg_id else None,
+        context.get("message_id"),
         adapter,
         start_polling,
-        session.tmux_session_name,
         key,
     )
 
@@ -474,15 +464,13 @@ async def handle_tab_command(
         return
 
     adapter = await get_adapter_for_session(session_id)
-    command_msg_id = context.get("message_id")
 
     success = await _execute_and_poll(
         terminal_bridge.send_tab,
         session,
-        str(command_msg_id) if command_msg_id else None,
+        context.get("message_id"),
         adapter,
         start_polling,
-        session.tmux_session_name,
     )
 
     if success:
@@ -516,15 +504,13 @@ async def handle_shift_tab_command(
         return
 
     adapter = await get_adapter_for_session(session_id)
-    command_msg_id = context.get("message_id")
 
     success = await _execute_and_poll(
         terminal_bridge.send_shift_tab,
         session,
-        str(command_msg_id) if command_msg_id else None,
+        context.get("message_id"),
         adapter,
         start_polling,
-        session.tmux_session_name,
     )
 
     if success:
@@ -574,15 +560,13 @@ async def handle_arrow_key_command(
             count = 1
 
     adapter = await get_adapter_for_session(session_id)
-    command_msg_id = context.get("message_id")
 
     success = await _execute_and_poll(
         terminal_bridge.send_arrow_key,
         session,
-        str(command_msg_id) if command_msg_id else None,
+        context.get("message_id"),
         adapter,
         start_polling,
-        session.tmux_session_name,
         direction,
         count,
     )
@@ -654,25 +638,16 @@ async def handle_resize_session(
         await session_manager.update_session(session_id, terminal_size=size_str)
         logger.info("Resized session %s to %s", session_id[:8], size_str)
 
-        # If process is running, cleanup old messages first (from previous commands)
-        command_msg_id = context.get("message_id")
-        if state_manager.is_polling(session_id):
-            await state_manager.cleanup_messages_after_success(session_id, None, adapter)
+        # Cleanup old messages AND delete current command
+        await state_manager.cleanup_messages_after_success(session_id, context.get("message_id"), adapter)
 
         # Send feedback message
         feedback_msg_id = await adapter.send_message(session_id, f"Terminal resized to {size_str} ({cols}x{rows})")
 
-        # Track new messages for cleanup on next user input
-        if state_manager.is_polling(session_id):
-            # Track command message (e.g., /resize medium)
-            if command_msg_id:
-                state_manager.add_pending_deletion(session_id, str(command_msg_id))
-                logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
-
-            # Track feedback message
-            if feedback_msg_id:
-                state_manager.add_pending_deletion(session_id, feedback_msg_id)
-                logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8])
+        # Track feedback message for cleanup on next user input
+        if feedback_msg_id:
+            state_manager.add_pending_deletion(session_id, feedback_msg_id)
+            logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8])
     else:
         logger.error("Failed to resize session %s", session_id[:8])
         await adapter.send_message(session_id, "Failed to resize terminal")
@@ -723,27 +698,16 @@ async def handle_rename_session(
         if success:
             logger.info("Renamed session %s to '%s'", session_id[:8], new_title)
 
-            # If process is running, cleanup old messages first (from previous commands)
-            command_msg_id = context.get("message_id")
-            if state_manager.is_polling(session_id):
-                await state_manager.cleanup_messages_after_success(session_id, None, adapter)
+            # Cleanup old messages AND delete current command
+            await state_manager.cleanup_messages_after_success(session_id, context.get("message_id"), adapter)
 
             # Send feedback message
             feedback_msg_id = await adapter.send_message(session_id, f"Session renamed to: {new_title}")
 
-            # Track new messages for cleanup on next user input
-            if state_manager.is_polling(session_id):
-                # Track command message (e.g., /rename new-name)
-                if command_msg_id:
-                    state_manager.add_pending_deletion(session_id, str(command_msg_id))
-                    logger.debug("Tracked command message %s for deletion (session %s)", command_msg_id, session_id[:8])
-
-                # Track feedback message
-                if feedback_msg_id:
-                    state_manager.add_pending_deletion(session_id, feedback_msg_id)
-                    logger.debug(
-                        "Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8]
-                    )
+            # Track feedback message for cleanup on next user input
+            if feedback_msg_id:
+                state_manager.add_pending_deletion(session_id, feedback_msg_id)
+                logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session_id[:8])
         else:
             logger.error("Failed to update channel title for session %s", session_id[:8])
             await adapter.send_message(session_id, "Failed to update channel title")
@@ -756,12 +720,12 @@ async def handle_cd_session(
     args: List[str],
     session_manager: SessionManager,
     get_adapter_for_session: Callable[[str], Awaitable[BaseAdapter]],
-    execute_terminal_command: Callable[[str, str, bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
     """Change directory in session or list trusted directories.
 
     Args:
-        context: Command context with session_id
+        context: Command context with session_id and message_id
         args: Command arguments (directory path or empty to list)
         session_manager: Session manager instance
         get_adapter_for_session: Function to get adapter for session
@@ -805,7 +769,8 @@ async def handle_cd_session(
     cd_command = f"cd {shlex.quote(target_dir)}"
 
     # Execute command and start polling
-    await execute_terminal_command(session_id, cd_command, True)
+    message_id = str(context.get("message_id"))
+    await execute_terminal_command(session_id, cd_command, True, message_id)
 
 
 async def handle_exit_session(
@@ -866,12 +831,12 @@ async def handle_exit_session(
 async def handle_claude_session(
     context: Dict[str, Any],
     session_manager: SessionManager,
-    execute_terminal_command: Callable[[str, str, bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
     """Start Claude Code in session.
 
     Args:
-        context: Command context with session_id
+        context: Command context with session_id and message_id
         session_manager: Session manager instance
         execute_terminal_command: Function to execute terminal command
     """
@@ -887,18 +852,19 @@ async def handle_claude_session(
         return
 
     # Execute command and start polling
-    await execute_terminal_command(session_id, "claude --dangerously-skip-permissions", True)
+    message_id = str(context.get("message_id"))
+    await execute_terminal_command(session_id, "claude --dangerously-skip-permissions", True, message_id)
 
 
 async def handle_claude_resume_session(
     context: Dict[str, Any],
     session_manager: SessionManager,
-    execute_terminal_command: Callable[[str, str, bool], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
     """Resume last Claude Code session (claude --continue).
 
     Args:
-        context: Command context with session_id
+        context: Command context with session_id and message_id
         session_manager: Session manager instance
         execute_terminal_command: Function to execute terminal command
     """
@@ -914,4 +880,5 @@ async def handle_claude_resume_session(
         return
 
     # Execute command and start polling
-    await execute_terminal_command(session_id, "claude --dangerously-skip-permissions --continue", True)
+    message_id = str(context.get("message_id"))
+    await execute_terminal_command(session_id, "claude --dangerously-skip-permissions --continue", True, message_id)

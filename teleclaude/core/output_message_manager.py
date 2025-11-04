@@ -202,10 +202,13 @@ async def send_exit_message(
     if current_message_id:
         success = await adapter.edit_message(session_id, current_message_id, final_output, metadata)
         if not success:
-            # Edit failed - send new message
-            await adapter.send_message(session_id, final_output, metadata)
+            # Edit failed - clear stale message_id and send new message
+            logger.warning("Failed to edit message %s, clearing stale message_id and sending new", current_message_id)
+            await session_manager.set_output_message_id(session_id, None)
+            new_id = await adapter.send_message(session_id, final_output, metadata)
+            if new_id:
+                await session_manager.set_output_message_id(session_id, new_id)
     else:
-        await adapter.send_message(session_id, final_output, metadata)
-
-    # Remove from tracking
-    await session_manager.set_output_message_id(session_id, None)
+        new_id = await adapter.send_message(session_id, final_output, metadata)
+        if new_id:
+            await session_manager.set_output_message_id(session_id, new_id)

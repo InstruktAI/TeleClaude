@@ -21,6 +21,7 @@ async def execute_terminal_command(
     get_adapter_for_session: Callable[[str], Awaitable[Any]],
     start_polling: Callable[[str, str], Awaitable[None]],
     append_exit_marker: bool = True,
+    message_id: str = None,
 ) -> bool:
     """Execute command in terminal and start polling if needed.
 
@@ -28,8 +29,9 @@ async def execute_terminal_command(
     1. Getting session
     2. Calling terminal.send_keys
     3. Storing exit_marker_appended
-    4. Starting polling loop
-    5. Sending error messages on failure
+    4. Cleaning up command message
+    5. Starting polling loop
+    6. Sending error messages on failure
 
     Args:
         session_id: Session ID
@@ -39,6 +41,7 @@ async def execute_terminal_command(
         get_adapter_for_session: Function to get adapter for session
         start_polling: Function to start polling for session output
         append_exit_marker: Whether to append exit marker (default: True)
+        message_id: Message ID to cleanup (optional)
 
     Returns:
         True if successful, False otherwise
@@ -80,6 +83,10 @@ async def execute_terminal_command(
     # Update activity
     await session_manager.update_last_activity(session_id)
     await session_manager.increment_command_count(session_id)
+
+    # Cleanup command message
+    adapter = await get_adapter_for_session(session_id)
+    await state_manager.cleanup_messages_after_success(session_id, message_id, adapter)
 
     # Start polling if exit marker was appended
     if append_exit_marker:

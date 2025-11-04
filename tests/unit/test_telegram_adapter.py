@@ -631,10 +631,10 @@ class TestRateLimitHandling:
 
         result = await telegram_adapter.edit_message("session-123", "789", "updated text")
 
-        # Should still return True (continue polling)
-        assert result is True
-        # Should be called twice (initial + retry)
-        assert telegram_adapter.app.bot.edit_message_text.call_count == 2
+        # Should return False after all retries exhausted (decorator raises, caught at line 322)
+        assert result is False
+        # Should be called 3 times (initial + 2 retries with max_retries=3)
+        assert telegram_adapter.app.bot.edit_message_text.call_count == 3
 
     @pytest.mark.asyncio
     async def test_send_message_rate_limit_retries_and_succeeds(self, telegram_adapter, mock_session_manager):
@@ -681,10 +681,25 @@ class TestRateLimitHandling:
 
         result = await telegram_adapter.send_message("session-123", "test message")
 
-        # Should return None (message not sent)
+        # Should return None (message not sent, caught at line 278)
         assert result is None
-        # Should be called twice (initial + retry)
-        assert telegram_adapter.app.bot.send_message.call_count == 2
+        # Should be called 3 times (initial + 2 retries with max_retries=3)
+        assert telegram_adapter.app.bot.send_message.call_count == 3
+
+
+@pytest.mark.unit
+class TestPlatformParameters:
+    """Tests for platform-specific parameter methods."""
+
+    def test_get_max_message_length(self, telegram_adapter):
+        """Test Telegram max message length is 4096."""
+        assert telegram_adapter.get_max_message_length() == 4096
+
+    def test_get_ai_session_poll_interval(self, telegram_adapter):
+        """Test AI session poll interval is faster than human mode."""
+        interval = telegram_adapter.get_ai_session_poll_interval()
+        assert interval == 0.5
+        assert interval < 1.0  # Faster than typical human polling
 
 
 @pytest.mark.unit

@@ -267,6 +267,7 @@ class TeleClaudeDaemon:
         session_id: str,
         command: str,
         append_exit_marker: bool = True,
+        message_id: str = None,
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
@@ -276,6 +277,7 @@ class TeleClaudeDaemon:
             session_id: Session ID
             command: Command to execute
             append_exit_marker: Whether to append exit marker (default: True)
+            message_id: Message ID to cleanup (optional)
 
         Returns:
             True if successful, False otherwise
@@ -288,6 +290,7 @@ class TeleClaudeDaemon:
             get_adapter_for_session=self._get_adapter_for_session,
             start_polling=self._poll_and_send_output,
             append_exit_marker=append_exit_marker,
+            message_id=message_id,
         )
 
     async def start(self) -> None:

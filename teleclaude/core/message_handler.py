@@ -66,6 +66,12 @@ async def handle_message(
     # Check if a process is currently running (polling active)
     is_process_running = state_manager.is_polling(session_id)
 
+    # If starting a NEW command (not sending input to running process), clear tmux history
+    # This removes old exit markers that could cause false exit detection
+    if not is_process_running:
+        await terminal_bridge.clear_history(session.tmux_session_name)
+        logger.debug("Cleared tmux history for %s before new command", session_id[:8])
+
     # Send command to terminal (will create fresh session if needed)
     # Only append exit marker if starting a NEW command, not sending input to running process
     success = await terminal_bridge.send_keys(
@@ -93,10 +99,9 @@ async def handle_message(
     await session_manager.increment_command_count(session_id)
 
     # Cleanup pending messages after successful send
-    message_id = context.get("message_id")
     await state_manager.cleanup_messages_after_success(
         session_id,
-        str(message_id) if message_id else None,
+        context.get("message_id"),
         adapter,
     )
 

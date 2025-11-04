@@ -3,11 +3,12 @@
 import asyncio
 import logging
 import tempfile
+from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.error import BadRequest, RetryAfter
+from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -25,6 +26,74 @@ from .base_adapter import AdapterError, BaseAdapter
 STATUS_EMOJI = {"active": "🟢", "waiting": "🟡", "slow": "🟠", "stalled": "🔴", "idle": "⏸️", "dead": "❌"}
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def telegram_retry(max_retries: int = 3) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
+    """Decorator for retrying Telegram API calls with exponential backoff.
+
+    Handles:
+    - Rate limits (429/RetryAfter): Retry with suggested delay
+    - Network errors (connection issues, timeouts): Retry with exponential backoff (1s, 2s)
+    - Other errors: Fail immediately
+
+    Args:
+        max_retries: Maximum number of retry attempts (default: 3)
+    """
+
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+        @wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> T:
+            last_exception = None
+
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+
+                except RetryAfter as e:
+                    # Rate limit - use Telegram's suggested retry delay
+                    if attempt < max_retries - 1:
+                        retry_after = e.retry_after
+                        logger.warning(
+                            "Rate limited (429), retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries
+                        )
+                        await asyncio.sleep(retry_after)
+                        last_exception = e
+                    else:
+                        logger.error("Rate limit exceeded after %d attempts", max_retries)
+                        raise
+
+                except (NetworkError, TimedOut, ConnectionError, TimeoutError) as e:
+                    # Network/connection errors - exponential backoff
+                    if attempt < max_retries - 1:
+                        delay = 2**attempt  # 1s, 2s, 4s
+                        logger.warning(
+                            "Network error (%s), retrying in %ds (attempt %d/%d)",
+                            type(e).__name__,
+                            delay,
+                            attempt + 1,
+                            max_retries,
+                        )
+                        await asyncio.sleep(delay)
+                        last_exception = e
+                    else:
+                        logger.error("Network error after %d attempts: %s", max_retries, e)
+                        raise
+
+                except Exception as e:
+                    # Other errors (BadRequest, etc.) - fail immediately, don't retry
+                    logger.debug("Non-retryable error in %s: %s", func.__name__, e)
+                    raise
+
+            # Should never reach here, but just in case
+            if last_exception:
+                raise last_exception
+            raise RuntimeError(f"Retry logic failed unexpectedly in {func.__name__}")
+
+        return wrapper
+
+    return decorator
 
 
 class TelegramAdapter(BaseAdapter):
@@ -171,7 +240,7 @@ class TelegramAdapter(BaseAdapter):
             await self.app.shutdown()
 
     async def send_message(self, session_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Send message to session's topic."""
+        """Send message to session's topic with automatic retry on rate limits and network errors."""
         # Get session to find channel_id (topic_id)
         session = await self.session_manager.get_session(session_id)
         if not session or not session.adapter_metadata:
@@ -192,13 +261,7 @@ class TelegramAdapter(BaseAdapter):
 
         # Send message with error handling for deleted topics
         try:
-            message = await self.app.bot.send_message(
-                chat_id=self.supergroup_id,
-                message_thread_id=topic_id,
-                text=formatted_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
+            message = await self._send_message_with_retry(topic_id, formatted_text, reply_markup)
             return str(message.message_id)
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -210,45 +273,36 @@ class TelegramAdapter(BaseAdapter):
                 await self._emit_topic_closed(session_id, {"topic_id": topic_id, "reason": "deleted"})
                 return None
             raise
-        except RetryAfter as e:
-            # Rate limit - sleep and retry once
-            retry_seconds = e.retry_after
-            logger.warning("Rate limit hit, sleeping %s seconds and retrying send", retry_seconds)
-            await asyncio.sleep(retry_seconds)
-            try:
-                message = await self.app.bot.send_message(
-                    chat_id=self.supergroup_id,
-                    message_thread_id=topic_id,
-                    text=formatted_text,
-                    parse_mode="Markdown",
-                    reply_markup=reply_markup,
-                )
-                logger.info("Retry succeeded after rate limit")
-                return str(message.message_id)
-            except Exception as retry_error:
-                logger.warning("Retry failed after rate limit: %s", retry_error)
-                return None
+        except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
+            # Network/rate limit errors - already retried by decorator, still failed
+            logger.error("Failed to send message after retries: %s", e)
+            return None
+
+    @telegram_retry(max_retries=3)
+    async def _send_message_with_retry(self, topic_id: int, formatted_text: str, reply_markup: Any) -> Any:
+        """Internal method with retry logic for sending messages."""
+        return await self.app.bot.send_message(
+            chat_id=self.supergroup_id,
+            message_thread_id=topic_id,
+            text=formatted_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup,
+        )
 
     async def edit_message(
         self, session_id: str, message_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """Edit an existing message."""
+        """Edit an existing message with automatic retry on rate limits and network errors."""
         self._ensure_started()
 
+        # Format message with code block only if not already formatted
+        formatted_text = apply_code_block_formatting(text, metadata or {})
+
+        # Extract reply_markup if present
+        reply_markup = (metadata or {}).get("reply_markup")
+
         try:
-            # Format message with code block only if not already formatted
-            formatted_text = apply_code_block_formatting(text, metadata or {})
-
-            # Extract reply_markup if present
-            reply_markup = (metadata or {}).get("reply_markup")
-
-            await self.app.bot.edit_message_text(
-                chat_id=self.supergroup_id,
-                message_id=int(message_id),
-                text=formatted_text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
-            )
+            await self._edit_message_with_retry(message_id, formatted_text, reply_markup, session_id)
             return True
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -265,48 +319,48 @@ class TelegramAdapter(BaseAdapter):
                 return True
             logger.error("Failed to edit message: %s", e)
             return False
-        except RetryAfter as e:
-            # Rate limit - sleep and retry once
-            retry_seconds = e.retry_after
-            logger.warning("Rate limit hit, sleeping %s seconds and retrying edit", retry_seconds)
-            await asyncio.sleep(retry_seconds)
-            try:
-                await self.app.bot.edit_message_text(
-                    chat_id=self.supergroup_id,
-                    message_id=int(message_id),
-                    text=formatted_text,
-                    parse_mode="Markdown",
-                    reply_markup=reply_markup,
-                )
-                logger.info("Retry succeeded after rate limit")
-                return True
-            except BadRequest as retry_error:
-                error_msg = str(retry_error).lower()
-                if "can't parse entities" in error_msg or "can't find end of" in error_msg:
-                    logger.warning("Markdown parse error on retry (continuing polling): %s", retry_error)
-                    return True
-                logger.warning("Retry failed after rate limit: %s (continuing polling)", retry_error)
-                return True
-            except Exception as retry_error:
-                logger.warning("Retry failed after rate limit: %s (continuing polling)", retry_error)
-                return True
+        except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
+            # Network/rate limit errors - already retried by decorator, still failed
+            logger.error("Failed to edit message after retries: %s", e)
+            return False
         except Exception as e:
             logger.error("Failed to edit message: %s", e)
             return False
+
+    @telegram_retry(max_retries=3)
+    async def _edit_message_with_retry(
+        self, message_id: str, formatted_text: str, reply_markup: Any, session_id: str
+    ) -> None:
+        """Internal method with retry logic for editing messages."""
+        await self.app.bot.edit_message_text(
+            chat_id=self.supergroup_id,
+            message_id=int(message_id),
+            text=formatted_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup,
+        )
 
     async def delete_message(self, session_id: str, message_id: str) -> bool:
         """Delete a message in the session's topic."""
         self._ensure_started()
 
         try:
-            await self.app.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
+            await self._delete_message_with_retry(message_id)
             return True
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)
             return False
+        except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
+            logger.error("Failed to delete message %s after retries: %s", message_id, e)
+            return False
         except Exception as e:
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
+
+    @telegram_retry(max_retries=3)
+    async def _delete_message_with_retry(self, message_id: str) -> None:
+        """Delete message with retry logic."""
+        await self.app.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
 
     async def send_file(
         self, session_id: str, file_path: str, caption: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
@@ -496,6 +550,7 @@ class TelegramAdapter(BaseAdapter):
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 
@@ -512,6 +567,7 @@ class TelegramAdapter(BaseAdapter):
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 
@@ -744,6 +800,7 @@ Current size: {}
                     "adapter_type": "telegram",
                     "session_id": session.session_id,
                     "user_id": update.effective_user.id,
+                    "message_id": update.effective_message.message_id,
                 },
             )
             return
@@ -774,6 +831,7 @@ Current size: {}
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 
@@ -790,6 +848,7 @@ Current size: {}
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 

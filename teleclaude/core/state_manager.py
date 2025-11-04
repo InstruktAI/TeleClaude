@@ -226,7 +226,6 @@ async def cleanup_messages_after_success(
     - message_handler.py (after send_keys succeeds)
     - command_handlers.py (_execute_and_poll helper after any command succeeds)
 
-    Only triggers cleanup when a process is running (is_polling = True).
     Deletes all tracked messages (feedback + previous commands + current message).
     Clears pending deletions list so new messages can be tracked.
 
@@ -235,18 +234,14 @@ async def cleanup_messages_after_success(
         message_id: Message ID of current command/input (to be deleted)
         adapter: Chat adapter for deleting messages
     """
-    # Only cleanup if process is running
-    if not is_polling(session_id):
-        return
-
     # Get all pending deletions (feedback messages, previous commands, etc.)
     pending_deletions = get_pending_deletions(session_id)
 
     # Add current message to deletions
-    if message_id:
-        pending_deletions.append(message_id)
+    pending_deletions.append(message_id)
 
     # Delete ALL messages underneath the output (feedback + user messages)
+    # Sequential deletion to avoid rate limiting
     for msg_id in pending_deletions:
         try:
             await adapter.delete_message(session_id, msg_id)

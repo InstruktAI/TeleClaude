@@ -117,10 +117,9 @@ async def poll_and_send_output(
 
     # Get output file and exit marker status
     output_file = get_output_file(session_id)
-    # Check in-memory first (for current polling), fallback to DB (for resumed polling after restart)
-    has_exit_marker = state_manager.get_exit_marker(
-        session_id, bool(await session_manager.get_output_message_id(session_id))
-    )
+    # Check in-memory state for exit marker (set by send_keys / terminal_executor)
+    # Default to False if not found (don't use output_message_id as fallback anymore)
+    has_exit_marker = state_manager.get_exit_marker(session_id, False)
 
     try:
         # Consume events from pure poller
@@ -196,9 +195,6 @@ async def poll_and_send_output(
                             logger.debug("Deleted output file for exited session %s", event.session_id[:8])
                     except Exception as e:
                         logger.warning("Failed to delete output file: %s", e)
-
-                # Clear output_message_id so next input starts fresh
-                await session_manager.set_output_message_id(event.session_id, None)
 
     finally:
         # Cleanup
