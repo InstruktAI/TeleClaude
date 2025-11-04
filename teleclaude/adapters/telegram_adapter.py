@@ -701,6 +701,7 @@ Current size: {}
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 
@@ -724,6 +725,7 @@ Current size: {}
                 "adapter_type": "telegram",
                 "session_id": session.session_id,
                 "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
             },
         )
 
