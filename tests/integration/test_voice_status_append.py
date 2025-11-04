@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from teleclaude.core.output_message_manager import OutputMessageManager
+from teleclaude.core import output_message_manager
 from teleclaude.core.session_manager import SessionManager
 
 
@@ -16,21 +16,18 @@ class TestVoiceStatusAppend:
     """Test voice transcription status appending to active process output."""
 
     @pytest.fixture
-    async def message_manager(self, tmp_path):
-        """Create OutputMessageManager with real SessionManager."""
+    async def session_manager(self, tmp_path):
+        """Create SessionManager with temp database."""
         db_path = str(tmp_path / "test.db")
-        config = {
-            "database": {"path": db_path},
-            "computer": {"timezone": "Europe/Amsterdam"},
-        }
-        session_manager = SessionManager(db_path)
-        await session_manager.initialize()
-        return OutputMessageManager(config, session_manager)
+        session_mgr = SessionManager(db_path)
+        await session_mgr.initialize()
+        yield session_mgr
+        await session_mgr.close()
 
-    async def test_append_status_to_existing_output(self, message_manager, tmp_path):
+    async def test_append_status_to_existing_output(self, session_manager, tmp_path):
         """Test that status message appends to existing output during active polling."""
         # Create session first (required for message_id storage)
-        session = await message_manager.session_manager.create_session(
+        session = await session_manager.create_session(
             computer_name="TestComputer",
             tmux_session_name="test-voice-tmux",
             adapter_type="telegram",
@@ -48,12 +45,13 @@ class TestVoiceStatusAppend:
         adapter.edit_message = AsyncMock(return_value=True)
 
         # Set message ID (simulating active polling)
-        await message_manager.session_manager.set_output_message_id(session_id, "msg-123")
+        await session_manager.set_output_message_id(session_id, "msg-123")
 
         # Send status message with append_to_existing=True
-        result = await message_manager.send_status_message(
+        result = await output_message_manager.send_status_message(
             session_id=session_id,
             adapter=adapter,
+            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=True,
             output_file_path=str(output_file),
@@ -83,7 +81,7 @@ class TestVoiceStatusAppend:
         assert "Running process" in formatted_message
         assert "some output here" in formatted_message
 
-    async def test_send_new_message_when_no_active_polling(self, message_manager, tmp_path):
+    async def test_send_new_message_when_no_active_polling(self, session_manager, tmp_path):
         """Test that status sends new message when append_to_existing=False.
 
         Note: In the daemon, voice messages are REJECTED if no active process.
@@ -96,9 +94,10 @@ class TestVoiceStatusAppend:
         adapter.send_message = AsyncMock(return_value="msg-new")
 
         # Send status message with append_to_existing=False
-        result = await message_manager.send_status_message(
+        result = await output_message_manager.send_status_message(
             session_id=session_id,
             adapter=adapter,
+            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=False,
         )
@@ -109,7 +108,7 @@ class TestVoiceStatusAppend:
         # Verify adapter.send_message was called
         adapter.send_message.assert_called_once_with(session_id, "🎤 Transcribing...")
 
-    async def test_append_without_message_id_sends_new(self, message_manager, tmp_path):
+    async def test_append_without_message_id_sends_new(self, session_manager, tmp_path):
         """Test that append without message_id returns None (can't append)."""
         session_id = "test-session-789"
         output_file = tmp_path / f"{session_id[:8]}.txt"
@@ -120,9 +119,10 @@ class TestVoiceStatusAppend:
         adapter.send_message = AsyncMock(return_value="msg-new")
 
         # No message ID set but trying to append
-        result = await message_manager.send_status_message(
+        result = await output_message_manager.send_status_message(
             session_id=session_id,
             adapter=adapter,
+            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=True,
             output_file_path=str(output_file),
@@ -131,10 +131,10 @@ class TestVoiceStatusAppend:
         # Should return None (can't append without message_id)
         assert result is None
 
-    async def test_append_handles_stale_message_id(self, message_manager, tmp_path):
+    async def test_append_handles_stale_message_id(self, session_manager, tmp_path):
         """Test that append handles stale message_id (edit fails)."""
         # Create session first
-        session = await message_manager.session_manager.create_session(
+        session = await session_manager.create_session(
             computer_name="TestComputer",
             tmux_session_name="test-stale-tmux",
             adapter_type="telegram",
@@ -152,12 +152,13 @@ class TestVoiceStatusAppend:
         adapter.send_message = AsyncMock(return_value=None)  # Fallback send also returns None
 
         # Set message ID
-        await message_manager.session_manager.set_output_message_id(session_id, "msg-stale")
+        await session_manager.set_output_message_id(session_id, "msg-stale")
 
         # Try to append (should fail edit, then fallthrough to send new which also returns None)
-        result = await message_manager.send_status_message(
+        result = await output_message_manager.send_status_message(
             session_id=session_id,
             adapter=adapter,
+            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=True,
             output_file_path=str(output_file),
@@ -167,5 +168,5 @@ class TestVoiceStatusAppend:
         assert result is None
 
         # Verify message_id was cleared
-        cleared_id = await message_manager.session_manager.get_output_message_id(session_id)
+        cleared_id = await session_manager.get_output_message_id(session_id)
         assert cleared_id is None

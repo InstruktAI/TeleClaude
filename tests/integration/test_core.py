@@ -3,11 +3,13 @@
 
 import asyncio
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from teleclaude import config as config_module
+from teleclaude.core import terminal_bridge
 from teleclaude.core.session_manager import SessionManager
-from teleclaude.core.terminal_bridge import TerminalBridge
 
 
 @pytest.mark.asyncio
@@ -67,12 +69,21 @@ async def test_session_manager_crud():
 @pytest.mark.asyncio
 async def test_terminal_bridge_tmux_operations():
     """Test TerminalBridge tmux operations."""
-    terminal = TerminalBridge()
     session_name = "test-terminal-bridge"
+
+    # Initialize config (required for terminal_bridge functions)
+    # Reset config first, then initialize via TeleClaudeDaemon
+    base_dir = Path(__file__).parent
+    config_module._config = None
+    from teleclaude.daemon import TeleClaudeDaemon
+    daemon = TeleClaudeDaemon(
+        str(base_dir / "config.yml"),
+        str(base_dir / ".env")
+    )
 
     try:
         # Create tmux session
-        success = await terminal.create_tmux_session(
+        success = await terminal_bridge.create_tmux_session(
             name=session_name,
             shell="/bin/sh",
             working_dir="/tmp",
@@ -82,22 +93,22 @@ async def test_terminal_bridge_tmux_operations():
         assert success, "Should create tmux session"
 
         # Check if exists
-        exists = await terminal.session_exists(session_name)
+        exists = await terminal_bridge.session_exists(session_name)
         assert exists, "Session should exist"
 
         # Send command
-        await terminal.send_keys(session_name, "echo 'Hello TeleClaude'")
+        await terminal_bridge.send_keys(session_name, "echo 'Hello TeleClaude'")
         await asyncio.sleep(0.2)
 
         # Capture output
-        output = await terminal.capture_pane(session_name)
+        output = await terminal_bridge.capture_pane(session_name)
         assert output is not None
         assert "Hello TeleClaude" in output or "echo" in output
 
     finally:
         # Cleanup: kill session
-        await terminal.kill_session(session_name)
-        exists_after = await terminal.session_exists(session_name)
+        await terminal_bridge.kill_session(session_name)
+        exists_after = await terminal_bridge.session_exists(session_name)
         assert not exists_after, "Session should be killed"
 
 

@@ -1,10 +1,11 @@
 """Unit tests for simplified OutputPoller."""
 
-from unittest.mock import AsyncMock, Mock
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from teleclaude.core.output_poller import OutputPoller
+from teleclaude.core.output_poller import IdleDetected, OutputChanged, OutputPoller, ProcessExited
 
 
 @pytest.mark.unit
@@ -15,9 +16,8 @@ class TestOutputPoller:
     def poller(self):
         """Create OutputPoller instance."""
         config = {"polling": {"idle_notification_seconds": 60}, "computer": {"timezone": "Europe/Amsterdam"}}
-        terminal = Mock()
         session_manager = Mock()
-        return OutputPoller(config, terminal, session_manager)
+        return OutputPoller(config, session_manager)
 
     def test_extract_exit_code_with_marker(self, poller):
         """Test exit code extraction when marker present."""
@@ -41,92 +41,212 @@ class TestOutputPoller:
         exit_code = poller._extract_exit_code(output, has_exit_marker=True)
         assert exit_code is None
 
+    def test_strip_exit_markers_removes_marker_output(self, poller):
+        """Test stripping exit code marker from output."""
+        output = "command output\n__EXIT__0__\n"
+        result = poller._strip_exit_markers(output)
+        assert result == "command output"
 
-@pytest.mark.unit
+    def test_strip_exit_markers_removes_echo_command(self, poller):
+        """Test stripping echo command from shell prompts."""
+        output = 'command output; echo "__EXIT__$?__"\nprompt > '
+        result = poller._strip_exit_markers(output)
+        assert result == "command output\nprompt > "
+
+    def test_strip_exit_markers_handles_both(self, poller):
+        """Test stripping both marker and echo command."""
+        output = 'some output; echo "__EXIT__$?__"\n__EXIT__0__\nprompt > '
+        result = poller._strip_exit_markers(output)
+        assert result == "some outputprompt > "
+
+
 @pytest.mark.asyncio
-class TestMessageFormatting:
-    """Test message formatting in all send methods."""
+class TestOutputPollerPoll:
+    """Test OutputPoller.poll() async generator."""
 
     @pytest.fixture
     def poller(self):
-        """Create OutputPoller instance."""
-        config = {"polling": {"idle_notification_seconds": 60}, "computer": {"timezone": "Europe/Amsterdam"}}
-        terminal = Mock()
+        """Create OutputPoller instance with short idle threshold."""
+        config = {"polling": {"idle_notification_seconds": 5}, "computer": {"timezone": "Europe/Amsterdam"}}
         session_manager = Mock()
-        return OutputPoller(config, terminal, session_manager)
+        return OutputPoller(config, session_manager)
 
-    async def test_send_exit_message_formatting(self, poller):
-        """Test _send_exit_message formats output with backticks."""
-        adapter = Mock()
-        adapter.send_message = AsyncMock()
-        adapter.edit_message = AsyncMock()
+    async def test_session_death_detection(self, poller, tmp_path):
+        """Test poll detects session death."""
+        output_file = tmp_path / "output.txt"
 
-        output = "test output"
-        exit_text = "✅ Process exited"
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                # Session no longer exists
+                mock_terminal.session_exists = AsyncMock(return_value=False)
 
-        # Call the method
-        await poller._send_exit_message(adapter, "session-id", output, None, exit_text)
+                # Collect events
+                events = []
+                async for event in poller.poll("test-123", "test-tmux", output_file, has_exit_marker=False):
+                    events.append(event)
 
-        # Verify send_message was called
-        adapter.send_message.assert_called_once()
+                # Verify ProcessExited event with no exit code
+                assert len(events) == 1
+                assert isinstance(events[0], ProcessExited)
+                assert events[0].session_id == "test-123"
+                assert events[0].exit_code is None
 
-        # Get actual arguments
-        args, kwargs = adapter.send_message.call_args
-        session_id, message, metadata = args
+    async def test_exit_code_detection(self, poller, tmp_path):
+        """Test poll detects exit code and stops."""
+        output_file = tmp_path / "output.txt"
 
-        # Verify format: output in backticks, status line outside
-        assert "```" in message
-        assert "test output" in message
-        assert exit_text in message
-        # Status line should be after closing backticks
-        assert message.index(exit_text) > message.rindex("```")
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                # Session exists
+                mock_terminal.session_exists = AsyncMock(return_value=True)
+                # Output with exit marker
+                mock_terminal.capture_pane = AsyncMock(return_value="command output\n__EXIT__0__\n")
+                mock_terminal.clear_history = AsyncMock()
 
-        # Verify metadata
-        assert metadata["raw_format"] is True
+                # Collect events
+                events = []
+                async for event in poller.poll("test-456", "test-tmux", output_file, has_exit_marker=True):
+                    events.append(event)
 
-    async def test_send_exit_message_empty_output(self, poller):
-        """Test _send_exit_message with no output."""
-        adapter = Mock()
-        adapter.send_message = AsyncMock()
+                # Verify ProcessExited event with exit code
+                assert len(events) == 1
+                assert isinstance(events[0], ProcessExited)
+                assert events[0].session_id == "test-456"
+                assert events[0].exit_code == 0
+                assert events[0].final_output == "command output"
 
-        exit_text = "✅ Process exited"
+                # Verify history cleared
+                mock_terminal.clear_history.assert_called_once_with("test-tmux")
 
-        await poller._send_exit_message(adapter, "session-id", "", None, exit_text)
+                # Verify file written
+                assert output_file.exists()
+                assert output_file.read_text() == "command output"
 
-        # Verify called
-        adapter.send_message.assert_called_once()
+    async def test_output_changed_detection(self, poller, tmp_path):
+        """Test poll detects output changes."""
+        output_file = tmp_path / "output.txt"
 
-        # Get message
-        args, _ = adapter.send_message.call_args
-        message = args[1]
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                call_count = 0
 
-        # With empty output, should still have exit text
-        assert exit_text in message
+                async def session_exists_mock(name):
+                    nonlocal call_count
+                    call_count += 1
+                    # Exit after 3 iterations
+                    return call_count < 3
 
-    async def test_send_final_message_formatting(self, poller):
-        """Test _send_final_message formats output with backticks."""
-        adapter = Mock()
-        adapter.send_message = AsyncMock()
+                mock_terminal.session_exists = session_exists_mock
 
-        output = "command output"
-        started_at = 1234567890.0
+                # Output changes over time
+                outputs = ["output 1\n", "output 2\n", "output 3\n"]
+                output_index = 0
 
-        await poller._send_final_message(adapter, "session-id", output, None, 0, started_at, 3800)
+                async def capture_mock(name):
+                    nonlocal output_index
+                    result = outputs[min(output_index, len(outputs) - 1)]
+                    output_index += 1
+                    return result
 
-        # Verify called
-        adapter.send_message.assert_called_once()
+                mock_terminal.capture_pane = capture_mock
 
-        # Get arguments
-        args, _ = adapter.send_message.call_args
-        session_id, message, metadata = args
+                # Collect events
+                events = []
+                async for event in poller.poll("test-789", "test-tmux", output_file, has_exit_marker=False):
+                    events.append(event)
 
-        # Verify format: output in backticks, status outside
-        assert "```" in message
-        assert "command output" in message
-        assert "✅" in message  # Exit code 0
+                # Verify OutputChanged events for each change
+                assert len(events) >= 2  # At least 2 changes before session death
+                for event in events[:-1]:
+                    assert isinstance(event, OutputChanged)
+                # Last event is ProcessExited
+                assert isinstance(events[-1], ProcessExited)
 
-        # Status line should be after closing backticks
-        assert message.rindex("✅") > message.rindex("```")
+    async def test_idle_notification(self, poller, tmp_path):
+        """Test poll sends idle notification after threshold."""
+        output_file = tmp_path / "output.txt"
 
-        # Verify metadata
-        assert metadata["raw_format"] is True
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                iteration_count = 0
+
+                async def session_exists_mock(name):
+                    nonlocal iteration_count
+                    iteration_count += 1
+                    # Exit after idle threshold reached (5 seconds + 1 for initial + 1 for notification)
+                    return iteration_count < 8
+
+                mock_terminal.session_exists = session_exists_mock
+
+                # Output never changes (stays at "stuck output")
+                mock_terminal.capture_pane = AsyncMock(return_value="stuck output\n")
+
+                # Collect events
+                events = []
+                async for event in poller.poll("test-idle", "test-tmux", output_file, has_exit_marker=False):
+                    events.append(event)
+
+                # Find IdleDetected event
+                idle_events = [e for e in events if isinstance(e, IdleDetected)]
+                assert len(idle_events) >= 1
+                assert idle_events[0].session_id == "test-idle"
+                assert idle_events[0].idle_seconds == 5
+
+    async def test_periodic_updates_with_exponential_backoff(self, poller, tmp_path):
+        """Test poll sends periodic updates with exponential backoff."""
+        output_file = tmp_path / "output.txt"
+
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                iteration_count = 0
+
+                async def session_exists_mock(name):
+                    nonlocal iteration_count
+                    iteration_count += 1
+                    # Run for 15 iterations
+                    return iteration_count < 15
+
+                mock_terminal.session_exists = session_exists_mock
+
+                # Output doesn't change after first
+                first_call = True
+
+                async def capture_mock(name):
+                    nonlocal first_call
+                    if first_call:
+                        first_call = False
+                        return "initial output\n"
+                    return "initial output\n"  # Same output
+
+                mock_terminal.capture_pane = capture_mock
+
+                # Collect events
+                events = []
+                async for event in poller.poll("test-periodic", "test-tmux", output_file, has_exit_marker=False):
+                    events.append(event)
+
+                # Verify periodic OutputChanged events sent
+                output_changed_events = [e for e in events if isinstance(e, OutputChanged)]
+                # Should have initial + periodic updates (at intervals 5, 10, etc.)
+                assert len(output_changed_events) >= 2
+
+    async def test_file_write_error_handling(self, poller):
+        """Test poll handles file write errors gracefully."""
+        # Use non-existent directory to trigger write error
+        output_file = Path("/nonexistent/output.txt")
+
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                # Session dies immediately
+                mock_terminal.session_exists = AsyncMock(return_value=False)
+
+                # Should not raise exception, just log warning
+                events = []
+                async for event in poller.poll("test-err", "test-tmux", output_file, has_exit_marker=False):
+                    events.append(event)
+
+                # Verify ProcessExited event still yielded
+                assert len(events) == 1
+                assert isinstance(events[0], ProcessExited)
+
+

@@ -1,0 +1,141 @@
+"""Polling coordinator for terminal output streaming.
+
+Extracted from daemon.py to reduce file size and improve organization.
+Handles polling lifecycle orchestration and event routing to message manager.
+"""
+
+import logging
+import time
+from pathlib import Path
+from typing import Any, Awaitable, Callable
+
+from teleclaude.core import output_message_manager, state_manager
+from teleclaude.core.output_poller import (
+    IdleDetected,
+    OutputChanged,
+    OutputPoller,
+    ProcessExited,
+)
+from teleclaude.core.session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
+
+
+async def poll_and_send_output(
+    session_id: str,
+    tmux_session_name: str,
+    session_manager: SessionManager,
+    output_poller: OutputPoller,
+    get_adapter_for_session: Callable[[str], Awaitable[Any]],
+    get_output_file: Callable[[str], Path],
+) -> None:
+    """Poll terminal output and send to chat adapter.
+
+    Pure orchestration - consumes events from poller, delegates to message manager.
+    SINGLE RESPONSIBILITY: Owns the polling lifecycle for a session.
+
+    Args:
+        session_id: Session ID
+        tmux_session_name: tmux session name
+        session_manager: Session manager instance
+        output_poller: Output poller instance
+        get_adapter_for_session: Function to get adapter for session
+        get_output_file: Function to get output file path for session
+    """
+    # GUARD: Prevent duplicate polling (check and add atomically before any await)
+    if state_manager.is_polling(session_id):
+        logger.warning(
+            "Polling already active for session %s, ignoring duplicate request",
+            session_id[:8],
+        )
+        return
+
+    # Mark as active BEFORE any await (prevents race conditions)
+    state_manager.mark_polling(session_id)
+
+    # Get adapter for this session
+    adapter = await get_adapter_for_session(session_id)
+
+    # Get output file and exit marker status
+    output_file = get_output_file(session_id)
+    # Check in-memory first (for current polling), fallback to DB (for resumed polling after restart)
+    has_exit_marker = state_manager.get_exit_marker(
+        session_id, bool(await session_manager.get_output_message_id(session_id))
+    )
+
+    try:
+        # Consume events from pure poller
+        async for event in output_poller.poll(session_id, tmux_session_name, output_file, has_exit_marker):
+            if isinstance(event, OutputChanged):
+                # Output changed - send update
+                await output_message_manager.send_output_update(
+                    event.session_id,
+                    adapter,
+                    event.output,
+                    event.started_at,
+                    event.last_changed_at,
+                    session_manager,
+                    max_message_length=3800,
+                )
+
+                # Delete idle notification if one exists (output resumed)
+                notification_id = await session_manager.get_idle_notification_message_id(event.session_id)
+                if notification_id:
+                    await adapter.delete_message(event.session_id, notification_id)
+                    await session_manager.set_idle_notification_message_id(event.session_id, None)
+                    logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
+
+            elif isinstance(event, IdleDetected):
+                # Idle detected - send notification
+                notification = (
+                    f"⏸️ No output for {event.idle_seconds} seconds - " "process may be waiting or hung up, try cancel"
+                )
+                notification_id = await adapter.send_message(event.session_id, notification)
+                if notification_id:
+                    # Persist to DB (survives daemon restart)
+                    await session_manager.set_idle_notification_message_id(event.session_id, notification_id)
+                    logger.debug("Stored idle notification %s for session %s", notification_id, event.session_id[:8])
+
+            elif isinstance(event, ProcessExited):
+                # Process exited
+                if event.exit_code is not None:
+                    # Exit with code - send final message (edits existing message)
+                    await output_message_manager.send_output_update(
+                        event.session_id,
+                        adapter,
+                        event.final_output,
+                        event.started_at,  # Use actual start time from poller
+                        time.time(),
+                        session_manager,
+                        max_message_length=3800,
+                        is_final=True,
+                        exit_code=event.exit_code,
+                    )
+                    logger.info(
+                        "Polling stopped for %s (exit code: %d), output file kept for downloads",
+                        event.session_id[:8],
+                        event.exit_code,
+                    )
+                else:
+                    # Session died - send exit message
+                    await output_message_manager.send_exit_message(
+                        event.session_id, adapter, event.final_output, "✅ Process exited", session_manager
+                    )
+                    # Delete output file on session death
+                    try:
+                        if output_file.exists():
+                            output_file.unlink()
+                            logger.debug("Deleted output file for exited session %s", event.session_id[:8])
+                    except Exception as e:
+                        logger.warning("Failed to delete output file: %s", e)
+
+                # Clear output_message_id so next input starts fresh
+                await session_manager.set_output_message_id(event.session_id, None)
+
+    finally:
+        # Cleanup
+        state_manager.unmark_polling(session_id)
+        state_manager.remove_exit_marker(session_id)
+        state_manager.clear_pending_deletions(session_id)  # Clear any pending message deletions
+        await session_manager.set_idle_notification_message_id(session_id, None)
+        logger.debug("Polling ended for session %s", session_id[:8])

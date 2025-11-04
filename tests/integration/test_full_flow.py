@@ -5,6 +5,8 @@ import asyncio
 
 import pytest
 
+from teleclaude.core import terminal_bridge
+
 
 @pytest.mark.asyncio
 async def test_message_execution_and_output_polling(daemon_with_mocked_telegram):
@@ -32,7 +34,7 @@ async def test_message_execution_and_output_polling(daemon_with_mocked_telegram)
     await asyncio.sleep(0.3)
 
     # Verify terminal has output
-    output = await daemon.terminal.capture_pane(session.tmux_session_name)
+    output = await terminal_bridge.capture_pane(session.tmux_session_name)
     assert output is not None
     assert "Test Output" in output or "echo" in output
 
@@ -54,16 +56,16 @@ async def test_command_execution_via_terminal(daemon_with_mocked_telegram):
     session = sessions[0]
 
     # Send command directly to terminal
-    await daemon.terminal.send_keys(session.tmux_session_name, "echo 'Direct command'")
+    await terminal_bridge.send_keys(session.tmux_session_name, "echo 'Direct command'")
     await asyncio.sleep(0.2)
 
     # Verify output in terminal
-    output = await daemon.terminal.capture_pane(session.tmux_session_name)
+    output = await terminal_bridge.capture_pane(session.tmux_session_name)
     assert output is not None
     assert "Direct command" in output or "echo" in output
 
     # Verify tmux session is still alive
-    exists = await daemon.terminal.session_exists(session.tmux_session_name)
+    exists = await terminal_bridge.session_exists(session.tmux_session_name)
     assert exists, "tmux session should still exist"
 
 

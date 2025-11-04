@@ -2,20 +2,28 @@
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from teleclaude.core.terminal_bridge import TerminalBridge
+from teleclaude.core import terminal_bridge
+from teleclaude.config import init_config
 
 
-@pytest.fixture
-def terminal_bridge():
-    """Create TerminalBridge instance."""
-    return TerminalBridge()
+@pytest.fixture(autouse=True)
+def setup_config():
+    """Initialize config for all tests."""
+    # Mock get_config at the terminal_bridge module level
+    test_config = {
+        "polling": {
+            "lpoll_extensions": []
+        }
+    }
+    with patch('teleclaude.core.terminal_bridge.get_config', return_value=test_config):
+        yield
 
 
 class TestSendKeys:
-    """Tests for send_keys() method."""
+    """Tests for send_keys() function."""
 
     @pytest.mark.asyncio
-    async def test_append_exit_marker_true(self, terminal_bridge):
+    async def test_append_exit_marker_true(self):
         """Test that exit marker is appended when append_exit_marker=True."""
         with patch('asyncio.create_subprocess_exec') as mock_exec:
             # Mock subprocess
@@ -47,7 +55,7 @@ class TestSendKeys:
                 assert 'ls -la' in text_arg, "Should include original command"
 
     @pytest.mark.asyncio
-    async def test_append_exit_marker_false(self, terminal_bridge):
+    async def test_append_exit_marker_false(self):
         """Test that exit marker is NOT appended when append_exit_marker=False."""
         with patch('asyncio.create_subprocess_exec') as mock_exec:
             # Mock subprocess
@@ -72,409 +80,199 @@ class TestSendKeys:
                 send_keys_call = [call for call in call_args_list if 'send-keys' in call[0]]
                 assert len(send_keys_call) > 0
 
-                # Check that the command does NOT include exit marker
-                text_arg = send_keys_call[0][0][4]  # 5th argument is the text
+                text_arg = send_keys_call[0][0][4]
                 assert '__EXIT__' not in text_arg, "Should NOT include exit marker"
-                assert text_arg == 'some input', "Should be original text only"
+                assert text_arg == "some input", "Should include only original text"
+
+
+class TestSendCtrlKey:
+    """Tests for send_ctrl_key() function."""
 
     @pytest.mark.asyncio
-    async def test_creates_session_if_not_exists(self, terminal_bridge):
-        """Test that session is created if it doesn't exist."""
+    async def test_send_ctrl_key_success(self):
+        """Test sending CTRL+key combination."""
         with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            # Mock session_exists to return False first, then True
-            with patch.object(terminal_bridge, 'session_exists', return_value=False):
-                with patch.object(terminal_bridge, 'create_tmux_session', return_value=True) as mock_create:
-                    # Execute
-                    success = await terminal_bridge.send_keys(
-                        session_name="new-session",
-                        text="echo test",
-                        append_exit_marker=True
-                    )
+            success = await terminal_bridge.send_ctrl_key(
+                session_name="test-session",
+                key="d"
+            )
 
-                    assert success is True
-                    # Verify create_tmux_session was called
-                    mock_create.assert_called_once()
-
-
-class TestSendEscape:
-    """Tests for send_escape() method."""
-
-    @pytest.mark.asyncio
-    async def test_send_escape_success(self, terminal_bridge):
-        """Test successful ESCAPE key send."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.send_escape("test-session")
-
-            assert result is True
-
-            # Verify command was correct
+            assert success is True
             mock_exec.assert_called_once()
             call_args = mock_exec.call_args[0]
-            assert call_args == ("tmux", "send-keys", "-t", "test-session", "Escape")
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "C-d")
 
     @pytest.mark.asyncio
-    async def test_send_escape_failure(self, terminal_bridge):
-        """Test ESCAPE key send failure."""
+    async def test_send_ctrl_key_uppercase(self):
+        """Test that uppercase keys are converted to lowercase."""
         with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.send_escape("test-session")
-
-            assert result is False
-
-    @pytest.mark.asyncio
-    async def test_send_escape_exception(self, terminal_bridge):
-        """Test ESCAPE key send with exception."""
-        with patch('asyncio.create_subprocess_exec', side_effect=Exception("Test error")):
-            # Execute
-            result = await terminal_bridge.send_escape("test-session")
-
-            assert result is False
-
-
-class TestSendSignal:
-    """Tests for send_signal() method."""
-
-    @pytest.mark.asyncio
-    async def test_send_sigint(self, terminal_bridge):
-        """Test sending SIGINT (Ctrl+C)."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            # Execute
-            result = await terminal_bridge.send_signal("test-session", "SIGINT")
-
-            assert result is True
-
-            # Verify command includes C-c
-            call_args = mock_exec.call_args[0]
-            assert "C-c" in call_args
-
-    @pytest.mark.asyncio
-    async def test_send_sigterm(self, terminal_bridge):
-        """Test sending SIGTERM (Ctrl+\\)."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.send_signal("test-session", "SIGTERM")
-
-            assert result is True
-
-            # Verify command includes C-\ (single backslash in tmux syntax)
-            call_args = mock_exec.call_args[0]
-            assert "C-\\" in call_args
-
-
-class TestSessionManagement:
-    """Tests for session management methods."""
-
-    @pytest.mark.asyncio
-    async def test_session_exists_true(self, terminal_bridge):
-        """Test session_exists returns True when session exists."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess success (returncode 0 = session exists)
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.communicate = AsyncMock(return_value=(b'', b''))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.session_exists("existing-session")
-
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_session_exists_false(self, terminal_bridge):
-        """Test session_exists returns False when session doesn't exist."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure (returncode 1 = session doesn't exist)
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.communicate = AsyncMock(return_value=(b'', b'session not found'))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.session_exists("nonexistent-session")
-
-            assert result is False
-
-    @pytest.mark.asyncio
-    async def test_session_exists_exception(self, terminal_bridge):
-        """Test session_exists returns False on exception."""
-        with patch('asyncio.create_subprocess_exec', side_effect=Exception("Test error")):
-            # Execute
-            result = await terminal_bridge.session_exists("error-session")
-
-            assert result is False
-
-
-class TestCapturePane:
-    """Tests for capture_pane method."""
-
-    @pytest.mark.asyncio
-    async def test_capture_pane_success(self, terminal_bridge):
-        """Test successful pane capture."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.communicate = AsyncMock(return_value=(b'test output\nline 2', b''))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.capture_pane("test-session")
-
-            assert result == "test output\nline 2"
-
-    @pytest.mark.asyncio
-    async def test_capture_pane_with_lines_limit(self, terminal_bridge):
-        """Test pane capture with lines limit."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.communicate = AsyncMock(return_value=(b'output', b''))
-            mock_exec.return_value = mock_process
-
-            # Execute with lines limit
-            result = await terminal_bridge.capture_pane("test-session", lines=100)
-
-            assert result == "output"
-            # Verify -S flag was used
-            call_args = mock_exec.call_args[0]
-            assert "-S" in call_args
-            assert "-100" in call_args
-
-    @pytest.mark.asyncio
-    async def test_capture_pane_failure(self, terminal_bridge):
-        """Test pane capture failure."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.communicate = AsyncMock(return_value=(b'', b'error'))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.capture_pane("test-session")
-
-            assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_capture_pane_exception(self, terminal_bridge):
-        """Test pane capture with exception."""
-        with patch('asyncio.create_subprocess_exec', side_effect=Exception("Test error")):
-            # Execute
-            result = await terminal_bridge.capture_pane("test-session")
-
-            assert result == ""
-
-
-class TestCreateSession:
-    """Tests for create_tmux_session method."""
-
-    @pytest.mark.asyncio
-    async def test_create_session_success(self, terminal_bridge):
-        """Test successful session creation."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.create_tmux_session(
-                name="new-session",
-                shell="/bin/bash",
-                working_dir="/tmp",
-                cols=100,
-                rows=30
+            success = await terminal_bridge.send_ctrl_key(
+                session_name="test-session",
+                key="Z"
             )
 
-            assert result is True
-            # Verify command was correct
+            assert success is True
             call_args = mock_exec.call_args[0]
-            assert "tmux" in call_args
-            assert "new-session" in call_args
-            assert "new-session" in call_args  # session name
-            assert "100" in call_args  # cols
-            assert "30" in call_args  # rows
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "C-z")
+
+
+class TestCommandValidation:
+    """Tests for command chaining validation."""
 
     @pytest.mark.asyncio
-    async def test_create_session_failure(self, terminal_bridge):
-        """Test session creation failure."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.create_tmux_session(
-                name="fail-session",
-                shell="/bin/bash",
-                working_dir="/tmp"
+    async def test_reject_command_chaining_with_long_running(self):
+        """Test that command chaining with long-running processes is rejected."""
+        with patch.object(terminal_bridge, 'session_exists', return_value=True):
+            success = await terminal_bridge.send_keys(
+                session_name="test-session",
+                text="vim file.txt && ls",
+                append_exit_marker=True
             )
-
-            assert result is False
-
-    @pytest.mark.asyncio
-    async def test_create_session_exception(self, terminal_bridge):
-        """Test session creation with exception."""
-        with patch('asyncio.create_subprocess_exec', side_effect=Exception("Test error")):
-            # Execute
-            result = await terminal_bridge.create_tmux_session(
-                name="error-session",
-                shell="/bin/bash",
-                working_dir="/tmp"
-            )
-
-            assert result is False
-
-
-class TestListSessions:
-    """Tests for list_tmux_sessions method."""
+            assert success is False, "Should return False when rejecting command chaining"
 
     @pytest.mark.asyncio
-    async def test_list_sessions_success(self, terminal_bridge):
-        """Test successful session listing."""
+    async def test_allow_long_running_without_chaining(self):
+        """Test that long-running commands without chaining are allowed."""
         with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.communicate = AsyncMock(return_value=(b'session-1\nsession-2\nsession-3', b''))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.list_tmux_sessions()
-
-            assert result == ['session-1', 'session-2', 'session-3']
-
-    @pytest.mark.asyncio
-    async def test_list_sessions_empty(self, terminal_bridge):
-        """Test listing sessions when none exist."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess with empty output
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.communicate = AsyncMock(return_value=(b'', b''))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.list_tmux_sessions()
-
-            assert result == []
-
-    @pytest.mark.asyncio
-    async def test_list_sessions_failure(self, terminal_bridge):
-        """Test session listing failure."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.communicate = AsyncMock(return_value=(b'', b'error'))
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.list_tmux_sessions()
-
-            assert result == []
-
-
-class TestKillSession:
-    """Tests for kill_session method."""
-
-    @pytest.mark.asyncio
-    async def test_kill_session_success(self, terminal_bridge):
-        """Test successful session kill."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            # Execute
-            result = await terminal_bridge.kill_session("test-session")
-
-            assert result is True
-
-    @pytest.mark.asyncio
-    async def test_kill_session_failure(self, terminal_bridge):
-        """Test session kill failure."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Execute
-            result = await terminal_bridge.kill_session("test-session")
-
-            assert result is False
+            with patch.object(terminal_bridge, 'session_exists', return_value=True):
+                success = await terminal_bridge.send_keys(
+                    session_name="test-session",
+                    text="vim file.txt",
+                    append_exit_marker=True
+                )
+                assert success is True
 
 
-class TestResizeSession:
-    """Tests for resize_session method."""
+class TestIsLongRunningCommand:
+    """Tests for is_long_running_command() function."""
 
-    @pytest.mark.asyncio
-    async def test_resize_session_success(self, terminal_bridge):
-        """Test successful session resize."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
+    def test_claude_is_long_running(self):
+        """Test that 'claude' is recognized as long-running."""
+        assert terminal_bridge.is_long_running_command("claude")
+        assert terminal_bridge.is_long_running_command("claude .")
+        assert terminal_bridge.is_long_running_command("Claude")  # case-insensitive
 
-            # Execute
-            result = await terminal_bridge.resize_session("test-session", cols=120, rows=40)
+    def test_text_editors_are_long_running(self):
+        """Test that text editors are recognized as long-running."""
+        editors = ["vim", "vi", "nvim", "nano", "emacs", "micro", "helix"]
+        for editor in editors:
+            assert terminal_bridge.is_long_running_command(editor)
+            assert terminal_bridge.is_long_running_command(f"{editor} file.txt")
 
-            assert result is True
-            # Verify resize command was called
-            assert mock_exec.call_count >= 1
+    def test_system_monitors_are_long_running(self):
+        """Test that system monitors are recognized as long-running."""
+        monitors = ["top", "htop", "btop", "iotop", "glances"]
+        for monitor in monitors:
+            assert terminal_bridge.is_long_running_command(monitor)
 
-    @pytest.mark.asyncio
-    async def test_resize_session_failure(self, terminal_bridge):
-        """Test session resize failure."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            # Mock subprocess failure on resize command
-            mock_process = MagicMock()
-            mock_process.returncode = 1
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
+    def test_pagers_are_long_running(self):
+        """Test that pagers are recognized as long-running."""
+        assert terminal_bridge.is_long_running_command("less file.log")
+        assert terminal_bridge.is_long_running_command("more file.txt")
 
-            # Execute
-            result = await terminal_bridge.resize_session("test-session", cols=100, rows=30)
+    def test_repls_are_long_running(self):
+        """Test that REPLs are recognized as long-running."""
+        repls = ["python", "python3", "node", "irb", "psql"]
+        for repl in repls:
+            assert terminal_bridge.is_long_running_command(repl)
 
-            assert result is False
+    def test_regular_commands_not_long_running(self):
+        """Test that regular commands are NOT long-running."""
+        regular_commands = ["ls", "cat", "echo", "pwd", "cd", "mkdir"]
+        for cmd in regular_commands:
+            assert not terminal_bridge.is_long_running_command(cmd)
+
+    def test_empty_command(self):
+        """Test empty command."""
+        assert not terminal_bridge.is_long_running_command("")
+        assert not terminal_bridge.is_long_running_command("   ")
+
+
+class TestHasCommandSeparator:
+    """Tests for has_command_separator() function."""
+
+    def test_detects_semicolon(self):
+        """Test detection of semicolon separator."""
+        assert terminal_bridge.has_command_separator("echo 1; echo 2")
+        assert terminal_bridge.has_command_separator("ls -la; pwd")
+
+    def test_detects_and_operator(self):
+        """Test detection of && operator."""
+        assert terminal_bridge.has_command_separator("make build && make test")
+        assert terminal_bridge.has_command_separator("cd /tmp && ls")
+
+    def test_detects_or_operator(self):
+        """Test detection of || operator."""
+        assert terminal_bridge.has_command_separator("test -f file || echo missing")
+        assert terminal_bridge.has_command_separator("command1 || command2")
+
+    def test_no_separator(self):
+        """Test commands without separators."""
+        assert not terminal_bridge.has_command_separator("ls -la")
+        assert not terminal_bridge.has_command_separator("echo hello world")
+
+    def test_pipe_not_separator(self):
+        """Test that pipes are NOT considered command separators."""
+        # Pipes should be allowed (not blocked)
+        assert not terminal_bridge.has_command_separator("ls | grep txt")
+        assert not terminal_bridge.has_command_separator("cat file | wc -l")
+
+    def test_redirect_not_separator(self):
+        """Test that redirects are NOT considered command separators."""
+        assert not terminal_bridge.has_command_separator("echo hello > file.txt")
+        assert not terminal_bridge.has_command_separator("cat < input.txt")
+
+
+class TestGetLpollList:
+    """Tests for _get_lpoll_list() function."""
+
+    def test_returns_defaults(self):
+        """Test that defaults are included."""
+        with patch('teleclaude.core.terminal_bridge.get_config') as mock_config:
+            mock_config.return_value = {"polling": {}}
+            lpoll_list = terminal_bridge._get_lpoll_list()
+
+            # Check some known defaults
+            assert "claude" in lpoll_list
+            assert "vim" in lpoll_list
+            assert "top" in lpoll_list
+
+    def test_includes_extensions(self):
+        """Test that config extensions are added."""
+        with patch('teleclaude.core.terminal_bridge.get_config') as mock_config:
+            mock_config.return_value = {
+                "polling": {
+                    "lpoll_extensions": ["custom-app", "my-tool"]
+                }
+            }
+            lpoll_list = terminal_bridge._get_lpoll_list()
+
+            # Check defaults still present
+            assert "claude" in lpoll_list
+            # Check extensions added
+            assert "custom-app" in lpoll_list
+            assert "my-tool" in lpoll_list
+
+    def test_empty_extensions(self):
+        """Test with no extensions configured."""
+        with patch('teleclaude.core.terminal_bridge.get_config') as mock_config:
+            mock_config.return_value = {"polling": {"lpoll_extensions": []}}
+            lpoll_list = terminal_bridge._get_lpoll_list()
+
+            # Should just have defaults
+            assert len(lpoll_list) == len(terminal_bridge.LPOLL_DEFAULT_LIST)

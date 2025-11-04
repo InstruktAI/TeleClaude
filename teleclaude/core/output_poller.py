@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
 
+from teleclaude.core import terminal_bridge
 from teleclaude.core.session_manager import SessionManager
-from teleclaude.core.terminal_bridge import TerminalBridge
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +55,18 @@ class OutputPoller:
     def __init__(
         self,
         config: dict[str, Any],
-        terminal: TerminalBridge,
         session_manager: SessionManager,
     ):
         """Initialize poller.
 
         Args:
             config: Application config
-            terminal: Terminal bridge for tmux operations
             session_manager: Session manager (currently unused)
+
+        Note:
+            Terminal operations use the terminal_bridge module (no instantiation needed)
         """
         self.config = config
-        self.terminal = terminal
         self.session_manager = session_manager
 
     async def poll(
@@ -111,7 +111,7 @@ class OutputPoller:
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
                 # Exit condition 1: Session died
-                if not await self.terminal.session_exists(tmux_session_name):
+                if not await terminal_bridge.session_exists(tmux_session_name):
                     logger.info("Process exited for %s, stopping poll", session_id[:8])
                     yield ProcessExited(
                         session_id=session_id, exit_code=None, final_output=output_buffer, started_at=started_at
@@ -119,7 +119,7 @@ class OutputPoller:
                     break
 
                 # Capture current output
-                current_output = await self.terminal.capture_pane(tmux_session_name)
+                current_output = await terminal_bridge.capture_pane(tmux_session_name)
                 if not current_output.strip():
                     # No output yet, keep polling
                     await asyncio.sleep(poll_interval)
@@ -140,7 +140,7 @@ class OutputPoller:
                     )
                 if exit_code is not None:
                     # Clear tmux history immediately to remove marker (prevents false exits on next command)
-                    await self.terminal.clear_history(tmux_session_name)
+                    await terminal_bridge.clear_history(tmux_session_name)
                     logger.debug("Cleared tmux history for %s after detecting exit", session_id[:8])
 
                     # Strip markers from output (both marker and echo command)

@@ -190,19 +190,6 @@ class TestCommandHandlers:
                 call_args = mock_emit.call_args
                 assert call_args[0][0] == "escape2x"
 
-    @pytest.mark.asyncio
-    async def test_handle_exit(self, telegram_adapter, mock_update):
-        """Test /exit command handler."""
-        mock_session = MagicMock()
-        mock_session.session_id = "test-session"
-
-        with patch.object(telegram_adapter, '_get_session_from_topic', return_value=mock_session):
-            with patch.object(telegram_adapter, '_emit_command', new_callable=AsyncMock) as mock_emit:
-                await telegram_adapter._handle_exit(mock_update, MagicMock())
-
-                mock_emit.assert_called_once()
-                call_args = mock_emit.call_args
-                assert call_args[0][0] == "exit"
 
     @pytest.mark.asyncio
     async def test_handle_list_sessions(self, telegram_adapter, mock_update):

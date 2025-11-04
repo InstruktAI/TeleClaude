@@ -75,6 +75,7 @@ class TelegramAdapter(BaseAdapter):
             ("cancel2x", self._handle_cancel2x),
             ("escape", self._handle_escape),
             ("escape2x", self._handle_escape2x),
+            ("ctrl", self._handle_ctrl),
             ("resize", self._handle_resize),
             ("rename", self._handle_rename),
             ("cd", self._handle_cd),
@@ -129,6 +130,7 @@ class TelegramAdapter(BaseAdapter):
             BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
             BotCommand("escape", "Send ESC key (exit Vim insert mode, etc.)"),
             BotCommand("escape2x", "Send ESC twice (for Claude Code, etc.)"),
+            BotCommand("ctrl", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
             BotCommand("cd", "Change directory or list trusted directories"),
             BotCommand("resize", "Resize terminal window"),
             BotCommand("rename", "Rename current session"),
@@ -519,6 +521,23 @@ class TelegramAdapter(BaseAdapter):
             },
         )
 
+    async def _handle_ctrl(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /ctrl command - sends CTRL+key to the session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        await self._emit_command(
+            "ctrl",
+            context.args or [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,  # Track command message
+            },
+        )
+
     async def _handle_resize(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /resize command - resize terminal."""
         session = await self._get_session_from_topic(update)
@@ -745,6 +764,7 @@ Current size: {}
 /cancel2x - Send CTRL+C twice (for Claude Code, etc.)
 /escape - Send ESC key (exit Vim insert mode, etc.)
 /escape2x - Send ESC twice (for nested Vim, etc.)
+/ctrl <key> - Send CTRL+key (e.g., /ctrl d for CTRL+D, /ctrl z for CTRL+Z)
 /resize <size> - Resize terminal (shows presets if no size)
 /rename <name> - Rename current session
 /cd [path] - List trusted directories or change to specified path

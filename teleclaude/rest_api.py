@@ -12,9 +12,10 @@ from typing import TYPE_CHECKING, Any, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from teleclaude.core import terminal_bridge
+
 if TYPE_CHECKING:
     from teleclaude.core.session_manager import SessionManager
-    from teleclaude.core.terminal_bridge import TerminalBridge
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,6 @@ class TeleClaudeAPI:
     def __init__(
         self,
         session_manager: "SessionManager",
-        terminal_bridge: "TerminalBridge",
         bind_address: str = "127.0.0.1",
         port: int = 6666,
     ):
@@ -33,12 +33,13 @@ class TeleClaudeAPI:
 
         Args:
             session_manager: Session manager instance
-            terminal_bridge: Terminal bridge instance
             bind_address: Address to bind to (default: 127.0.0.1 for security)
             port: Port to listen on (default: 6666)
+
+        Note:
+            Terminal operations use the terminal_bridge module (no instantiation needed)
         """
         self.session_manager = session_manager
-        self.terminal_bridge = terminal_bridge
         self.bind_address = bind_address
         self.port = port
         self.start_time = time.time()
@@ -102,7 +103,7 @@ class TeleClaudeAPI:
 
             # Get output from tmux
             try:
-                output = await self.terminal_bridge.capture_pane(session.tmux_session_name)
+                output = await terminal_bridge.capture_pane(session.tmux_session_name)
             except Exception as e:
                 logger.error("Error capturing output for session %s: %s", session_id, e)
                 raise HTTPException(
