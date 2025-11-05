@@ -1,5 +1,6 @@
 computer:
-    name: Mac
+    name: Mac  # Unique computer identifier for multi-computer MCP communication
+    bot_username: teleclaude_mac_bot  # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
     default_shell: /bin/zsh
     default_working_dir: ${WORKING_DIR}
     timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)
@@ -53,3 +54,23 @@ uploads:
 logging:
     max_size_mb: 10
     level: INFO
+
+telegram:
+    # Whitelist of trusted bots (security for AI-to-AI communication)
+    trusted_bots:
+        - teleclaude_mac_bot
+        - teleclaude_workstation_bot
+        - teleclaude_server_bot
+        # Add other computer bot usernames here
+
+mcp:
+    enabled: true  # Enable MCP server for multi-computer communication
+
+    # Transport type: 'stdio' for Claude Code integration
+    transport: stdio
+
+    # Socket path if using socket transport (not used for stdio)
+    socket_path: /tmp/teleclaude-${COMPUTER_NAME}.sock
+
+    # Command to start Claude Code (for /claude_resume in AI-to-AI sessions)
+    claude_command: claude  # Or: cd ~/project && claude

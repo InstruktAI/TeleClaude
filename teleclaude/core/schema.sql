@@ -33,3 +33,10 @@ CREATE TABLE IF NOT EXISTS recordings (
 CREATE INDEX IF NOT EXISTS idx_recordings_session ON recordings(session_id);
 CREATE INDEX IF NOT EXISTS idx_recordings_timestamp ON recordings(timestamp);
 CREATE INDEX IF NOT EXISTS idx_recordings_type ON recordings(recording_type);
+
+-- Key-value store for system settings
+CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

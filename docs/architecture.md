@@ -19,6 +19,7 @@ TeleClaude is a Telegram-to-terminal bridge daemon. From a developer perspective
 - `models.py` - Data classes (Session, Recording) with dict serialization
 - `session_manager.py` - Session persistence and SQLite operations
 - `terminal_bridge.py` - tmux interaction (create, send keys, capture output, etc.)
+- `computer_registry.py` - Computer discovery via heartbeat mechanism
 - `schema.sql` - Database schema with sessions and recordings tables
 
 ### Adapter Layer (`teleclaude/adapters/`)
@@ -27,12 +28,19 @@ TeleClaude is a Telegram-to-terminal bridge daemon. From a developer perspective
 - `telegram_adapter.py` - Telegram Bot API implementation
 - Future: `whatsapp_adapter.py`, `slack_adapter.py`
 
+### MCP Layer (`teleclaude/mcp_server.py`)
+
+- `TeleClaudeMCPServer` - MCP server for AI-to-AI communication
+- Exposes four MCP tools for Claude Code integration
+- Streaming response handling via AsyncIterator
+- Session lifecycle management for remote sessions
+
 ### Main Daemon (`teleclaude/daemon.py`)
 
 - `TeleClaudeDaemon` - Main coordinator class
 - PID file locking to prevent multiple instances
 - Command routing and session lifecycle management
-- Output polling with hybrid editing mode
+- Output polling with dual-mode architecture (human vs AI)
 
 ## Key Design Patterns
 
@@ -219,6 +227,248 @@ The plist redirects daemon stdout/stderr to `/dev/null` to prevent launchd issue
 - All output served dynamically from tmux (no static files)
 - Used for large output truncation links in Telegram messages
 
+## MCP Server Architecture
+
+**Model Context Protocol (MCP) server enables AI-to-AI communication across computers**
+
+TeleClaude exposes an MCP server that allows Claude Code instances on different computers to communicate via Telegram as a distributed message bus.
+
+### Core Components
+
+#### Computer Registry (`teleclaude/core/computer_registry.py`)
+
+**Dynamic computer discovery via heartbeat mechanism:**
+
+- **Shared topic**: "Online Now" in Telegram supergroup
+- **Heartbeat loop**: Each daemon posts one status message, edits every 30s with timestamp
+- **Polling loop**: Each daemon polls topic every 30s to build in-memory computer list
+- **Offline detection**: Computers marked offline after 60s of no heartbeat
+- **Message format**: `{computer_name} - last seen at {timestamp}`
+
+**Benefits:**
+- No manual configuration - computers auto-discovered
+- Fast lookups from in-memory state
+- Resilient to daemon crashes (heartbeat stops → marked offline)
+- Observable in Telegram UI for debugging
+
+#### MCP Server (`teleclaude/mcp_server.py`)
+
+**Exposes four MCP tools to Claude Code:**
+
+1. **`teleclaude__list_computers`** - List online computers from registry
+2. **`teleclaude__start_session`** - Start AI-to-AI session with remote computer
+3. **`teleclaude__list_sessions`** - List active AI-to-AI sessions
+4. **`teleclaude__send`** - Send message to remote computer and stream response
+
+**Transport**: stdio (for Claude Code integration) or Unix socket (future)
+
+**Lifecycle**: Starts with daemon in background task, runs continuously
+
+### Dual-Mode Output Architecture
+
+TeleClaude uses different output modes for human vs AI sessions:
+
+#### Human Sessions (Existing Behavior)
+
+- **Detection**: Standard Telegram topics (no special metadata)
+- **Output mode**: Edit same message for clean UX (first 10s), then send new messages
+- **Truncation**: Last ~3400 chars shown, download button for full output
+- **Optimization**: Optimized for human readability
+
+#### AI-to-AI Sessions (New Behavior)
+
+- **Detection**: `is_ai_to_ai: True` flag in session metadata
+- **Output mode**: Sequential messages (no editing, no data loss)
+- **Format**: Each message = chunk with `[Chunk N/Total]` marker
+- **Completion**: `[Output Complete]` marker signals end of stream
+- **No truncation**: All output preserved for AI consumption
+
+**Example AI session output:**
+
+```
+Message 1:
+```sh
+[first 3400 chars of output]
+```
+[Chunk 1/3]
+
+Message 2:
+```sh
+[next 3400 chars of output]
+```
+[Chunk 2/3]
+
+Message 3:
+```sh
+[remaining output]
+```
+[Chunk 3/3]
+
+Message 4:
+[Output Complete]
+```
+
+**Why dual mode?**
+- Humans want clean, edited messages
+- AI needs every byte (data loss breaks automation)
+- Platform-specific chunk sizes (Telegram: 4096 chars)
+
+### Session Routing
+
+**Database-driven routing** (no topic name parsing):
+
+- Each session has `adapter_metadata` JSON field storing `channel_id` (Telegram topic ID)
+- AI sessions also have `is_ai_to_ai: True` flag in metadata
+- Daemon polls sessions from DB where `computer_name = self.computer_name`
+- Topic name `$macbook > $workstation - Check logs` is purely for human readability
+
+**Topic naming convention for AI sessions:**
+- Pattern: `$InitiatorComp > $TargetComp - {title}`
+- Examples: `$macbook > $workstation - Debug issue`
+- `$` prefix indicates AI-originated (vs human `/new_session`)
+
+### MCP Communication Flow
+
+**Starting a session (Comp1 → Comp2):**
+
+1. Claude Code on Comp1 calls `teleclaude__start_session(target="workstation", title="Check logs")`
+2. Comp1's MCP server creates Telegram topic: `$macbook > $workstation - Check logs`
+3. Comp1 sends `/claude_resume` command to topic
+4. Telegram routes message to Comp2's bot (both bots in same supergroup)
+5. Comp2 creates session, starts Claude Code in tmux
+6. Comp2 sends ready confirmation
+7. Comp1's MCP server returns session_id to Claude Code
+
+**Sending commands:**
+
+1. Claude Code on Comp1 calls `teleclaude__send(session_id, "tail -100 /var/log/nginx/error.log")`
+2. Comp1's MCP server sends message to Telegram topic
+3. Comp2 receives message, forwards to tmux session
+4. Comp2's polling coordinator detects AI session → uses chunked output mode
+5. Comp2 sends sequential messages: `[Chunk 1/N]`, `[Chunk 2/N]`, ..., `[Output Complete]`
+6. Comp1's MCP server yields chunks to Claude Code as AsyncIterator
+7. Claude Code receives streaming output in real-time
+
+### Streaming Implementation
+
+**MCP server streaming (`teleclaude__send`):**
+
+```python
+async def teleclaude__send(self, session_id: str, message: str) -> AsyncIterator[str]:
+    """Send to remote AI session and stream response chunks."""
+
+    # Send message to session
+    await self._send_message(session_id, message)
+
+    # Stream response chunks
+    while True:
+        messages = await self._get_new_messages(session_id)
+
+        for msg in messages:
+            # Check for completion
+            if "[Output Complete]" in msg.text:
+                return  # End stream
+
+            # Extract chunk content (strip markdown + markers)
+            content = self._extract_chunk_content(msg.text)
+            if content:
+                yield content
+
+        # Heartbeat during idle periods
+        if time.time() - last_yield > 60:
+            yield "[⏳ Waiting for response...]\n"
+
+        await asyncio.sleep(0.5)  # Poll every 500ms
+```
+
+**Output coordinator (Comp2 sending chunks):**
+
+```python
+async def _send_output_chunks_ai_mode(
+    session_id: str,
+    adapter: BaseAdapter,
+    full_output: str,
+    session_manager: SessionManager,
+) -> None:
+    """Send output as sequential chunks for AI consumption."""
+
+    # Get platform-specific chunk size
+    chunk_size = adapter.get_max_message_length() - 100
+
+    # Split and send chunks
+    chunks = [full_output[i:i+chunk_size]
+              for i in range(0, len(full_output), chunk_size)]
+
+    for idx, chunk in enumerate(chunks, 1):
+        message = f"```sh\n{chunk}\n```\n[Chunk {idx}/{len(chunks)}]"
+        await adapter.send_message(session_id, message)
+        await asyncio.sleep(0.1)  # Preserve order
+
+    # Send completion marker
+    await adapter.send_message(session_id, "[Output Complete]")
+```
+
+### Security
+
+**Bot whitelist** (`config.yml`):
+
+```yaml
+telegram:
+  trusted_bots:
+    - teleclaude_macbook_bot
+    - teleclaude_workstation_bot
+    - teleclaude_server_bot
+```
+
+- Only trusted bots can initiate AI-to-AI sessions
+- Validated before executing remote commands
+- Prevents unauthorized bots from joining supergroup and sending commands
+
+**Command safety:**
+- Commands forwarded to tmux exactly as received (no shell expansion by daemon)
+- Shell execution happens with user's permissions (not daemon)
+- Trust boundary is Claude Code → MCP (Claude Code validates commands)
+
+### Configuration
+
+**`config.yml` additions:**
+
+```yaml
+computer:
+  name: macbook  # Unique per computer
+  bot_username: teleclaude_macbook_bot
+
+mcp:
+  enabled: true
+  transport: stdio  # For Claude Code integration
+  claude_command: claude  # Command to start Claude Code
+```
+
+**`.env` per computer:**
+
+```bash
+# Unique bot token per computer
+TELEGRAM_BOT_TOKEN=123:ABC_your_unique_bot_token
+
+# Computer identifier
+COMPUTER_NAME=macbook
+
+# Shared supergroup for all bots
+TELEGRAM_SUPERGROUP_ID=-100123456789
+```
+
+### Performance Characteristics
+
+**Response latency:**
+- First chunk: < 2s from MCP call
+- Streaming: < 1s delay between chunk generation and delivery
+- Concurrent sessions: Supports 10+ simultaneous AI-to-AI sessions
+
+**Reliability:**
+- Heartbeat mechanism detects offline computers within 60s
+- Daemon restart doesn't break active sessions (state in DB + Telegram)
+- Graceful timeout handling (5 minute max idle)
+
 ## Architecture Principles
 
 1. **Separation of Concerns**: Core is platform-agnostic, adapters handle platform specifics
@@ -246,8 +496,10 @@ The plist redirects daemon stdout/stderr to `/dev/null` to prevent launchd issue
 - `teleclaude/daemon.py` - Main entry point, daemon lifecycle, command routing
 - `teleclaude/core/session_manager.py` - Session CRUD, SQLite operations
 - `teleclaude/core/terminal_bridge.py` - tmux wrapper (create, send, capture)
+- `teleclaude/core/computer_registry.py` - Computer discovery via heartbeat mechanism
 - `teleclaude/adapters/telegram_adapter.py` - Telegram Bot API implementation
 - `teleclaude/adapters/base_adapter.py` - Adapter interface definition
+- `teleclaude/mcp_server.py` - MCP server for AI-to-AI communication
 
 ### Configuration
 
@@ -271,6 +523,6 @@ The plist redirects daemon stdout/stderr to `/dev/null` to prevent launchd issue
 
 ### Nice to Have
 
-- MCP server: Expose TeleClaude as MCP resource for Claude Code integration
 - Session templates: Predefined terminal setups (dev, ops, etc.)
 - Command aliases: User-configurable shortcuts
+- Multi-hop communication: Support Comp1 → Comp2 → Comp3 chains

@@ -23,19 +23,19 @@ from teleclaude.core.session_manager import SessionManager
 logger = logging.getLogger(__name__)
 
 
-def _is_ai_to_ai_session(topic_name: str) -> bool:
-    """Check if topic matches AI-to-AI pattern: $X > $Y - {title}
+def _is_ai_to_ai_session(session: Any) -> bool:
+    """Check if session is AI-to-AI via metadata flag.
 
     Args:
-        topic_name: Topic/channel name from session
+        session: Session object with adapter_metadata
 
     Returns:
         True if AI-to-AI session, False otherwise
     """
-    if not topic_name:
+    if not session or not session.adapter_metadata:
         return False
-    # Match pattern: $CompName > $CompName - Title
-    return bool(re.match(r"^\$\w+ > \$\w+ - .+$", topic_name))
+    # Check metadata flag (set by teleclaude__start_session)
+    return session.adapter_metadata.get("is_ai_to_ai", False)
 
 
 async def _send_output_chunks_ai_mode(
@@ -111,9 +111,9 @@ async def poll_and_send_output(
     # Get adapter for this session
     adapter = await get_adapter_for_session(session_id)
 
-    # Get session to check topic type
+    # Get session to check type via metadata
     session = await session_manager.get_session(session_id)
-    is_ai_session = _is_ai_to_ai_session(session.title if session else None)
+    is_ai_session = _is_ai_to_ai_session(session)
 
     # Get output file and exit marker status
     output_file = get_output_file(session_id)
@@ -165,36 +165,51 @@ async def poll_and_send_output(
 
             elif isinstance(event, ProcessExited):
                 # Process exited
-                if event.exit_code is not None:
-                    # Exit with code - send final message (edits existing message)
-                    await output_message_manager.send_output_update(
+                if is_ai_session:
+                    # AI mode: Send final chunks + completion marker
+                    await _send_output_chunks_ai_mode(
                         event.session_id,
                         adapter,
                         event.final_output,
-                        event.started_at,  # Use actual start time from poller
-                        time.time(),
                         session_manager,
-                        max_message_length=3800,
-                        is_final=True,
-                        exit_code=event.exit_code,
                     )
                     logger.info(
-                        "Polling stopped for %s (exit code: %d), output file kept for downloads",
+                        "AI session polling stopped for %s (exit code: %s)",
                         event.session_id[:8],
                         event.exit_code,
                     )
                 else:
-                    # Session died - send exit message
-                    await output_message_manager.send_exit_message(
-                        event.session_id, adapter, event.final_output, "✅ Process exited", session_manager
-                    )
-                    # Delete output file on session death
-                    try:
-                        if output_file.exists():
-                            output_file.unlink()
-                            logger.debug("Deleted output file for exited session %s", event.session_id[:8])
-                    except Exception as e:
-                        logger.warning("Failed to delete output file: %s", e)
+                    # Human mode: Send final message
+                    if event.exit_code is not None:
+                        # Exit with code - send final message (edits existing message)
+                        await output_message_manager.send_output_update(
+                            event.session_id,
+                            adapter,
+                            event.final_output,
+                            event.started_at,  # Use actual start time from poller
+                            time.time(),
+                            session_manager,
+                            max_message_length=3800,
+                            is_final=True,
+                            exit_code=event.exit_code,
+                        )
+                        logger.info(
+                            "Polling stopped for %s (exit code: %d), output file kept for downloads",
+                            event.session_id[:8],
+                            event.exit_code,
+                        )
+                    else:
+                        # Session died - send exit message
+                        await output_message_manager.send_exit_message(
+                            event.session_id, adapter, event.final_output, "✅ Process exited", session_manager
+                        )
+                        # Delete output file on session death
+                        try:
+                            if output_file.exists():
+                                output_file.unlink()
+                                logger.debug("Deleted output file for exited session %s", event.session_id[:8])
+                        except Exception as e:
+                            logger.warning("Failed to delete output file: %s", e)
 
     finally:
         # Cleanup

@@ -2,8 +2,8 @@
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-22%20passed-brightgreen.svg)](tests/)
-[![Coverage](https://img.shields.io/badge/coverage-36.18%25-yellow.svg)](coverage/html/index.html)
+[![Tests](https://img.shields.io/badge/tests-331%20passed-brightgreen.svg)](tests/)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-brightgreen.svg)](coverage/html/index.html)
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Type Checking](https://img.shields.io/badge/type%20checking-mypy-blue.svg)](http://mypy-lang.org/)
 
@@ -18,8 +18,9 @@ TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your t
 - 🖥️ **Multiple persistent terminal sessions** - Each session runs in tmux and survives daemon restarts
 - 📱 **Remote control from anywhere** - Send commands from Telegram, receive live output
 - 🏢 **Multi-computer support** - Manage Mac, servers, and other machines from one Telegram group
+- 🤖 **AI-to-AI communication** - MCP server enables Claude Code on different computers to collaborate via Telegram
 - 📋 **Organized with Topics** - Each session gets its own Telegram topic for clean organization
-- 🔄 **Live output streaming** - See command output in real-time with smart editing
+- 🔄 **Live output streaming** - See command output in real-time with smart editing (dual-mode: human vs AI)
 - 🎤 **Voice input** - Speak commands, auto-transcribed with Whisper
 - 📁 **File uploads** (planned) - Upload files directly to your terminal session
 - 🎬 **Session recording** (planned) - 20-minute rolling window for text and video playback
@@ -174,7 +175,9 @@ done
 
 ### Managing Multiple Computers
 
-Install TeleClaude on multiple computers using the **same bot token** but different computer names. All sessions will appear in the same Telegram supergroup with clear prefixes:
+Install TeleClaude on multiple computers - each with a **unique bot token** and **computer name**. All bots join the same Telegram supergroup.
+
+**Human sessions** - All sessions appear with clear prefixes:
 
 - `[Mac] Claude debugging auth flow`
 - `[Server1] Log monitoring production`
@@ -182,44 +185,109 @@ Install TeleClaude on multiple computers using the **same bot token** but differ
 
 Use `/list-sessions` to see all sessions across all computers.
 
+**AI-to-AI sessions** - Enable Claude Code instances to collaborate (see next section).
+
+For detailed multi-computer setup with MCP server, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md).
+
+### AI-to-AI Communication (MCP Server)
+
+TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claude Code instances on different computers to communicate with each other using Telegram as a distributed message bus.
+
+**What it enables:**
+
+- Claude Code on your **macbook** can ask Claude Code on your **workstation** to check logs
+- Claude Code on your **server** can ask Claude Code on your **laptop** to run tests
+- Multiple computers can collaborate on complex tasks automatically
+
+**Quick Setup:**
+
+1. **Install TeleClaude on each computer** with unique bot tokens
+2. **Add all bots to the same Telegram supergroup**
+3. **Configure Claude Code** to use the TeleClaude MCP server:
+
+```json
+// ~/.config/claude/config.json
+{
+  "mcpServers": {
+    "teleclaude": {
+      "command": "/path/to/teleclaude/.venv/bin/python",
+      "args": ["-m", "teleclaude.mcp_server"],
+      "env": {
+        "TELECLAUDE_CONFIG": "/path/to/teleclaude/config.yml",
+        "TELECLAUDE_ENV": "/path/to/teleclaude/.env"
+      }
+    }
+  }
+}
+```
+
+**Available MCP Tools:**
+
+- `teleclaude__list_computers` - List all online computers in the network
+- `teleclaude__start_session` - Start AI-to-AI session with remote computer
+- `teleclaude__list_sessions` - List active AI-to-AI sessions
+- `teleclaude__send` - Send command to remote computer and stream response
+
+**Example Usage:**
+
+```bash
+# In Claude Code on macbook:
+> Use teleclaude to ask the workstation computer to check /var/log/nginx/error.log
+
+# Claude Code will:
+# 1. List available computers (finds "workstation")
+# 2. Start session with workstation
+# 3. Send command: tail -100 /var/log/nginx/error.log
+# 4. Stream response back in real-time
+```
+
+**For detailed setup instructions, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md)**
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│      Telegram Supergroup                │
-│  ┌──────────────────────────────────┐   │
-│  │  📋 General Topic                │   │
-│  │  /new-session, /list-sessions   │   │
-│  └──────────────────────────────────┘   │
-│                                          │
-│  ┌──────────────────────────────────┐   │
-│  │  [Mac] Session 1                 │   │
-│  │  ↔ tmux: mac-session-abc123      │   │
-│  └──────────────────────────────────┘   │
-│                                          │
-│  ┌──────────────────────────────────┐   │
-│  │  [Server1] Session 2             │   │
-│  │  ↔ tmux: server1-session-def456  │   │
-│  └──────────────────────────────────┘   │
-└─────────────────────────────────────────┘
-              ↕ Telegram Bot API
-┌─────────────────────────────────────────┐
-│    TeleClaude Daemon (per computer)     │
-│  ┌────────────────────────────────┐     │
-│  │  Python Async Daemon           │     │
-│  │  • Session Manager (SQLite)    │     │
-│  │  • Terminal Bridge (tmux)      │     │
-│  │  • Telegram Adapter            │     │
-│  └────────────────────────────────┘     │
-└─────────────────────────────────────────┘
-              ↕
-┌─────────────────────────────────────────┐
-│         tmux Sessions                   │
-│  mac-session-abc123                     │
-│  $ ls -la                               │
-│  total 48                               │
-│  drwxr-xr-x  12 user  staff  384 ...    │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│               Telegram Supergroup (Message Bus)              │
+│  ┌──────────────────┐  ┌───────────────────────────────┐    │
+│  │  📋 General      │  │  🤖 Online Now (Heartbeat)    │    │
+│  │  /new-session    │  │  macbook - last seen 5s ago   │    │
+│  └──────────────────┘  │  server1 - last seen 8s ago   │    │
+│                        └───────────────────────────────┘    │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  [Mac] Session 1 (Human)                             │   │
+│  │  ↔ tmux: mac-session-abc123                          │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  $macbook > $server1 - Check logs (AI-to-AI)        │   │
+│  │  ↔ tmux: macbook-ai-789 & server1-ai-012            │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                      ↕ Telegram Bot API
+┌──────────────────────────┐      ┌──────────────────────────┐
+│  TeleClaude (macbook)    │      │  TeleClaude (server1)    │
+│  ┌────────────────────┐  │      │  ┌────────────────────┐  │
+│  │ MCP Server (stdio) │←─┼──────┼→ │ MCP Server (stdio) │  │
+│  └────────────────────┘  │      │  └────────────────────┘  │
+│  ┌────────────────────┐  │      │  ┌────────────────────┐  │
+│  │ Daemon Core        │  │      │  │ Daemon Core        │  │
+│  │ • Session Manager  │  │      │  │ • Session Manager  │  │
+│  │ • Computer Registry│  │      │  │ • Computer Registry│  │
+│  │ • Terminal Bridge  │  │      │  │ • Terminal Bridge  │  │
+│  │ • Telegram Adapter │  │      │  │ • Telegram Adapter │  │
+│  └────────────────────┘  │      │  └────────────────────┘  │
+└──────────────────────────┘      └──────────────────────────┘
+          ↕                                   ↕
+┌──────────────────────────┐      ┌──────────────────────────┐
+│  tmux sessions           │      │  tmux sessions           │
+│  mac-session-abc123      │      │  server1-session-def456  │
+│  macbook-ai-789          │      │  server1-ai-012          │
+└──────────────────────────┘      └──────────────────────────┘
+          ↕                                   ↕
+┌──────────────────────────┐      ┌──────────────────────────┐
+│  Claude Code (macbook)   │      │  Claude Code (server1)   │
+│  Uses MCP tools to send  │      │  Executes commands and   │
+│  commands to server1     │      │  streams output back     │
+└──────────────────────────┘      └──────────────────────────┘
 ```
 
 ## Troubleshooting
@@ -290,12 +358,12 @@ make status       # Check daemon status
 make restart      # Restart daemon
 ```
 
-See [CLAUDE.md](CLAUDE.md) for comprehensive developer documentation including:
+See developer documentation:
 
-- Code architecture and design patterns
-- Critical implementation rules
-- Adding new features
-- Testing guidelines
+- **[CLAUDE.md](CLAUDE.md)** - Development workflow, coding rules, testing guidelines
+- **[docs/architecture.md](docs/architecture.md)** - Technical architecture including MCP server design
+- **[docs/multi-computer-setup.md](docs/multi-computer-setup.md)** - Multi-computer deployment guide
+- **[docs/troubleshooting.md](docs/troubleshooting.md)** - Common issues and solutions
 
 ## Security
 
@@ -307,24 +375,30 @@ See [CLAUDE.md](CLAUDE.md) for comprehensive developer documentation including:
 
 ## Roadmap
 
-**Current (MVP):**
+**Implemented:**
 
 - ✅ Multiple persistent terminal sessions via tmux
 - ✅ Telegram supergroup with topic-based organization
-- ✅ Multi-computer support with shared bot token
-- ✅ Live output streaming with hybrid editing
+- ✅ Multi-computer support with unique bot tokens per computer
+- ✅ Live output streaming with dual-mode architecture (human vs AI)
 - ✅ Session lifecycle management
 - ✅ Basic commands (/new-session, /cancel, /resize)
+- ✅ **MCP server for AI-to-AI communication**
+  - ✅ Computer discovery via heartbeat mechanism
+  - ✅ Real-time streaming between Claude Code instances
+  - ✅ Concurrent session support (15+ tested)
+  - ✅ Multi-hop communication (Comp1 → Comp2 → Comp3)
+- ✅ Voice input with Whisper transcription
 
 **Planned:**
 
-- 🔲 Voice input with Whisper transcription
 - 🔲 File upload handling
 - 🔲 Terminal recording (20-minute rolling window)
 - 🔲 AI-generated session titles
-- 🔲 REST API + MCP integration for Claude Code
+- 🔲 REST API endpoints for output access
 - 🔲 Session sharing for pair programming
 - 🔲 Output filtering and alerts
+- 🔲 Session templates and presets
 
 See [prds/teleclaude.md](prds/teleclaude.md) for complete design specification.
 

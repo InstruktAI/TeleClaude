@@ -153,6 +153,7 @@ class SessionManager:
         adapter_metadata: Optional[Dict[str, Any]] = None,
         terminal_size: str = "80x24",
         working_directory: str = "~",
+        description: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
@@ -164,6 +165,7 @@ class SessionManager:
             adapter_metadata: Optional adapter-specific metadata
             terminal_size: Terminal dimensions (e.g., '80x24')
             working_directory: Initial working directory
+            description: Optional description (for AI-to-AI sessions)
 
         Returns:
             Created Session object
@@ -184,6 +186,7 @@ class SessionManager:
             terminal_size=terminal_size,
             working_directory=working_directory,
             command_count=0,
+            description=description,
         )
 
         data = session.to_dict()
@@ -192,8 +195,8 @@ class SessionManager:
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 adapter_type, adapter_metadata, closed, created_at,
-                last_activity, terminal_size, working_directory, command_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_activity, terminal_size, working_directory, command_count, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -208,6 +211,7 @@ class SessionManager:
                 data["terminal_size"],
                 data["working_directory"],
                 data["command_count"],
+                data["description"],
             ),
         )
         await self._db.commit()
@@ -419,6 +423,26 @@ class SessionManager:
             AND json_extract(adapter_metadata, '$.{metadata_key}') = ?
             """,
             (adapter_type, metadata_value),
+        )
+        rows = await cursor.fetchall()
+        return [Session.from_dict(dict(row)) for row in rows]
+
+    async def get_sessions_by_title_pattern(self, pattern: str) -> List[Session]:
+        """Get sessions where title starts with the given pattern.
+
+        Args:
+            pattern: Title pattern to match (e.g., "$macbook > $")
+
+        Returns:
+            List of matching sessions
+        """
+        cursor = await self._db.execute(
+            """
+            SELECT * FROM sessions
+            WHERE title LIKE ?
+            ORDER BY created_at DESC
+            """,
+            (f"{pattern}%",),
         )
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]

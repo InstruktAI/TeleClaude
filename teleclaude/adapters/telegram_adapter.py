@@ -112,15 +112,43 @@ class TelegramAdapter(BaseAdapter):
         self.supergroup_id = config["supergroup_id"]
         self.user_whitelist = config["user_whitelist"]
         self.trusted_dirs = config.get("trusted_dirs", [])
+        self.trusted_bots = config.get("trusted_bots", [])  # List of trusted bot usernames for AI-to-AI
         self.session_manager = session_manager
         self.daemon = daemon
         self.app: Optional[Application] = None
         self._processed_voice_messages: set[int] = set()  # Track processed voice message IDs
+        self._topic_message_cache: Dict[int, list[Any]] = {}  # Cache for registry polling (get_topic_messages)
+        self._mcp_message_queues: Dict[int, asyncio.Queue] = {}  # Event-driven MCP delivery: topic_id -> queue
 
     def _ensure_started(self) -> None:
         """Ensure adapter is started."""
         if not self.app:
             raise AdapterError("Telegram adapter not started - call start() first")
+
+    def _is_message_from_trusted_bot(self, message) -> bool:
+        """Check if message is from a trusted bot (for AI-to-AI communication).
+
+        Args:
+            message: Telegram message object
+
+        Returns:
+            True if message is from a trusted bot, False otherwise
+        """
+        if not message or not message.from_user:
+            return False
+
+        # Check if sender is a bot
+        if not message.from_user.is_bot:
+            return False
+
+        # Check if bot username is in trusted list
+        bot_username = message.from_user.username
+        if bot_username in self.trusted_bots:
+            logger.debug("Message from trusted bot: %s", bot_username)
+            return True
+
+        logger.warning("Message from untrusted bot: %s", bot_username)
+        return False
 
     async def start(self) -> None:
         """Initialize and start Telegram bot."""
@@ -978,6 +1006,24 @@ Current size: {}
 
     async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle text messages in topics."""
+        if update.message and update.message.message_thread_id:
+            topic_id = update.message.message_thread_id
+
+            # Cache message for registry polling (get_topic_messages)
+            if topic_id not in self._topic_message_cache:
+                self._topic_message_cache[topic_id] = []
+            self._topic_message_cache[topic_id].append(update.message)
+            if len(self._topic_message_cache[topic_id]) > 100:
+                self._topic_message_cache[topic_id].pop(0)
+
+            # ALSO push to MCP queue if registered (event-driven delivery for AI-to-AI)
+            if topic_id in self._mcp_message_queues:
+                try:
+                    self._mcp_message_queues[topic_id].put_nowait(update.message)
+                    logger.debug("Pushed message to MCP queue for topic %s", topic_id)
+                except asyncio.QueueFull:
+                    logger.warning("MCP queue full for topic %s", topic_id)
+
         session = await self._get_session_from_topic(update)
         if not session:
             return
@@ -1172,3 +1218,98 @@ Current size: {}
             "Full traceback:\n%s",
             "".join(traceback.format_exception(type(context.error), context.error, context.error.__traceback__)),
         )
+
+    # === MCP Server Support Methods ===
+
+    async def create_topic(self, title: str) -> Any:
+        """Create a new forum topic and return the topic object."""
+        self._ensure_started()
+        topic = await self.app.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
+        logger.info("Created topic: %s (ID: %s)", title, topic.message_thread_id)
+        return topic
+
+    async def get_all_topics(self) -> list[Any]:
+        """Get all forum topics in the supergroup.
+
+        Note: Telegram Bot API doesn't have a direct method to list all forum topics.
+        This implementation uses a workaround by searching through recent updates.
+        For now, we return empty list and rely on database persistence instead.
+        """
+        self._ensure_started()
+
+        # Workaround: Check if we have cached topic info in database
+        # The registry will store its topic_id and reuse it across restarts
+        # For MVP, we'll implement database-backed persistence instead of API polling
+
+        return []
+
+    async def send_message_to_topic(
+        self,
+        topic_id: int,
+        text: str,
+        parse_mode: str = "Markdown"
+    ) -> Any:
+        """Send a message to a specific topic."""
+        self._ensure_started()
+        message = await self.app.bot.send_message(
+            chat_id=self.supergroup_id,
+            message_thread_id=topic_id,
+            text=text,
+            parse_mode=parse_mode
+        )
+        return message
+
+    async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue:
+        """Register MCP listener queue for instant message delivery.
+
+        When messages arrive for this topic_id, they'll be pushed to the queue.
+        This enables event-driven message delivery for MCP (zero latency).
+
+        Args:
+            topic_id: Telegram message_thread_id to listen to
+
+        Returns:
+            Queue that will receive Message objects as they arrive
+
+        Note:
+            Caller MUST call unregister_mcp_listener() when done to avoid leaks.
+            Use try/finally pattern to ensure cleanup.
+        """
+        self._ensure_started()
+
+        queue: asyncio.Queue = asyncio.Queue()
+        self._mcp_message_queues[topic_id] = queue
+        logger.info("Registered MCP listener for topic %s", topic_id)
+        return queue
+
+    async def unregister_mcp_listener(self, topic_id: int) -> None:
+        """Unregister MCP listener queue.
+
+        Args:
+            topic_id: Telegram message_thread_id to stop listening to
+        """
+        self._mcp_message_queues.pop(topic_id, None)
+        logger.info("Unregistered MCP listener for topic %s", topic_id)
+
+    async def get_topic_messages(self, topic_id: int, limit: int = 100) -> list[Any]:
+        """Get recent messages from a specific topic using in-memory cache.
+
+        Messages are cached in _handle_text_message as they arrive.
+        This is used by computer_registry to poll the "Online Now" topic.
+
+        For real-time MCP delivery, use register_mcp_listener() instead.
+
+        Args:
+            topic_id: Telegram message_thread_id
+            limit: Maximum number of messages to return (default: 100)
+
+        Returns:
+            List of Telegram Message objects from the cache (most recent first)
+        """
+        self._ensure_started()
+
+        # Return cached messages for this topic
+        cached = self._topic_message_cache.get(topic_id, [])
+        # Return last N messages (most recent first)
+        return list(reversed(cached[-limit:]))
+

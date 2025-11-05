@@ -4,7 +4,7 @@ import os
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, mock_open
+from unittest.mock import AsyncMock, MagicMock, Mock, patch, mock_open
 from teleclaude.daemon import TeleClaudeDaemon, DaemonLockError
 from teleclaude import config as config_module
 
@@ -17,6 +17,8 @@ def mock_daemon():
          patch('teleclaude.core.message_handler.terminal_bridge', mock_tb), \
          patch('teleclaude.core.voice_message_handler.terminal_bridge', mock_tb), \
          patch('teleclaude.daemon.TelegramAdapter') as mock_ta, \
+         patch('teleclaude.daemon.ComputerRegistry') as mock_cr, \
+         patch('teleclaude.daemon.TeleClaudeMCPServer') as mock_mcp, \
          patch('teleclaude.core.state_manager.is_polling', return_value=False) as mock_is_polling, \
          patch('teleclaude.core.state_manager.has_idle_notification', return_value=False), \
          patch.object(config_module, '_config', None):  # Reset config before each test
@@ -62,6 +64,7 @@ def mock_daemon():
         mock_tb.kill_session = AsyncMock(return_value=True)
         mock_tb.list_sessions = AsyncMock(return_value=[])
         mock_tb.resize_session = AsyncMock(return_value=True)
+        mock_tb.clear_history = AsyncMock(return_value=True)
 
         # Make terminal_bridge accessible as daemon.terminal for tests
         daemon.terminal = mock_tb
@@ -88,6 +91,15 @@ def mock_daemon():
 
         # Mock adapter registry
         daemon.adapters = {"telegram": daemon.telegram}
+
+        # Mock computer_registry and mcp_server (Phase 1 MCP support)
+        daemon.computer_registry = mock_cr.return_value
+        daemon.computer_registry.start = AsyncMock()
+        daemon.computer_registry.get_online_computers = Mock(return_value=[])
+        daemon.computer_registry.is_computer_online = Mock(return_value=False)
+
+        daemon.mcp_server = mock_mcp.return_value
+        daemon.mcp_server.start = AsyncMock()
 
         # Mock helper methods
         daemon._get_adapter_by_type = MagicMock(return_value=daemon.telegram)

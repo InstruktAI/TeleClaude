@@ -27,10 +27,12 @@ from teleclaude.core import (
     terminal_executor,
     voice_message_handler,
 )
+from teleclaude.core.computer_registry import ComputerRegistry
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.voice_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
+from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.rest_api import TeleClaudeAPI
 from teleclaude.utils import expand_env_vars
 
@@ -100,6 +102,30 @@ class TeleClaudeDaemon:
         # This allows existing code to use self.telegram during migration
         if "telegram" in self.adapters:
             self.telegram = self.adapters["telegram"]
+
+        # Initialize computer registry (if MCP enabled and telegram adapter exists)
+        self.computer_registry: Optional[ComputerRegistry] = None
+        self.mcp_server: Optional[TeleClaudeMCPServer] = None
+
+        if self.config.get("mcp", {}).get("enabled", False) and "telegram" in self.adapters:
+            computer_name = self.config["computer"]["name"]
+            bot_username = self.config["computer"].get("bot_username", f"teleclaude_{computer_name}_bot")
+
+            self.computer_registry = ComputerRegistry(
+                telegram_adapter=self.adapters["telegram"],
+                computer_name=computer_name,
+                bot_username=bot_username,
+                config=self.config,
+                session_manager=self.session_manager
+            )
+
+            self.mcp_server = TeleClaudeMCPServer(
+                config=self.config,
+                telegram_adapter=self.adapters["telegram"],
+                terminal_bridge=terminal_bridge,
+                session_manager=self.session_manager,
+                computer_registry=self.computer_registry
+            )
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
@@ -188,6 +214,7 @@ class TeleClaudeDaemon:
                 "supergroup_id": int(os.getenv("TELEGRAM_SUPERGROUP_ID")),
                 "user_whitelist": [int(uid.strip()) for uid in os.getenv("TELEGRAM_USER_IDS", "").split(",")],
                 "trusted_dirs": self.config.get("computer", {}).get("trustedDirs", []),
+                "trusted_bots": self.config.get("telegram", {}).get("trusted_bots", []),
             }
 
             self.adapters["telegram"] = TelegramAdapter(telegram_config, self.session_manager, self)
@@ -316,6 +343,16 @@ class TeleClaudeDaemon:
             await adapter.start()
             logger.info("%s adapter started", adapter_name.capitalize())
 
+        # Start computer registry (if enabled)
+        if self.computer_registry:
+            await self.computer_registry.start()
+            logger.info("Computer registry started")
+
+        # Start MCP server in background task (if enabled)
+        if self.mcp_server:
+            self.mcp_task = asyncio.create_task(self.mcp_server.start())
+            logger.info("MCP server starting in background")
+
         # Start FastAPI REST API in background task
         import uvicorn
 
@@ -339,6 +376,15 @@ class TeleClaudeDaemon:
     async def stop(self) -> None:
         """Stop the daemon."""
         logger.info("Stopping TeleClaude daemon...")
+
+        # Stop MCP server task
+        if hasattr(self, "mcp_task"):
+            self.mcp_task.cancel()
+            try:
+                await self.mcp_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("MCP server stopped")
 
         # Stop periodic cleanup task
         if hasattr(self, "cleanup_task"):

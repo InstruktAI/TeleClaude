@@ -36,10 +36,12 @@ class TestExecuteTerminalCommand:
         # Mock terminal_bridge
         with patch("teleclaude.core.terminal_executor.terminal_bridge") as mock_terminal:
             mock_terminal.send_keys = AsyncMock(return_value=True)
+            mock_terminal.clear_history = AsyncMock(return_value=True)
 
             # Mock state_manager
             with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
                 mock_state.set_exit_marker = Mock()
+                mock_state.cleanup_messages_after_success = AsyncMock()
 
                 # Execute
                 result = await terminal_executor.execute_terminal_command(
@@ -98,9 +100,11 @@ class TestExecuteTerminalCommand:
 
         with patch("teleclaude.core.terminal_executor.terminal_bridge") as mock_terminal:
             mock_terminal.send_keys = AsyncMock(return_value=True)
+            mock_terminal.clear_history = AsyncMock(return_value=True)
 
             with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
                 mock_state.set_exit_marker = Mock()
+                mock_state.cleanup_messages_after_success = AsyncMock()
 
                 # Execute without exit marker
                 result = await terminal_executor.execute_terminal_command(
@@ -238,9 +242,11 @@ class TestExecuteTerminalCommand:
 
         with patch("teleclaude.core.terminal_executor.terminal_bridge") as mock_terminal:
             mock_terminal.send_keys = AsyncMock(return_value=True)
+            mock_terminal.clear_history = AsyncMock(return_value=True)
 
             with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
                 mock_state.set_exit_marker = Mock()
+                mock_state.cleanup_messages_after_success = AsyncMock()
 
                 # Execute
                 result = await terminal_executor.execute_terminal_command(
@@ -288,9 +294,11 @@ class TestExecuteTerminalCommand:
 
         with patch("teleclaude.core.terminal_executor.terminal_bridge") as mock_terminal:
             mock_terminal.send_keys = AsyncMock(return_value=True)
+            mock_terminal.clear_history = AsyncMock(return_value=True)
 
             with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
                 mock_state.set_exit_marker = Mock()
+                mock_state.cleanup_messages_after_success = AsyncMock()
 
                 # Execute
                 result = await terminal_executor.execute_terminal_command(

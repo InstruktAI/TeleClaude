@@ -21,7 +21,7 @@ class TestHandleMessage:
         get_adapter_for_session = AsyncMock()
         start_polling = AsyncMock()
 
-        context = {"message_id": 123}
+        context = {"message_id": "123"}
 
         # Execute
         await message_handler.handle_message(
@@ -61,7 +61,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {"message_id": 123}
+        context = {"message_id": "123"}
 
         with patch("teleclaude.core.message_handler.state_manager") as mock_state:
             # Idle notification exists
@@ -73,6 +73,7 @@ class TestHandleMessage:
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute
                 await message_handler.handle_message(
@@ -121,6 +122,7 @@ class TestHandleMessage:
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute with leading //
                 await message_handler.handle_message(
@@ -169,6 +171,7 @@ class TestHandleMessage:
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute
                 await message_handler.handle_message(
@@ -219,6 +222,7 @@ class TestHandleMessage:
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 # send_keys fails
                 mock_terminal.send_keys = AsyncMock(return_value=False)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute
                 await message_handler.handle_message(
@@ -264,7 +268,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {"message_id": 555}
+        context = {"message_id": "555"}
 
         with patch("teleclaude.core.message_handler.state_manager") as mock_state:
             mock_state.has_idle_notification = Mock(return_value=False)
@@ -278,6 +282,7 @@ class TestHandleMessage:
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute
                 await message_handler.handle_message(
@@ -339,6 +344,7 @@ class TestHandleMessage:
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute
                 await message_handler.handle_message(
@@ -387,6 +393,7 @@ class TestHandleMessage:
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
+                mock_terminal.clear_history = AsyncMock(return_value=True)
 
                 # Execute
                 await message_handler.handle_message(

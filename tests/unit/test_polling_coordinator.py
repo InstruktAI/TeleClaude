@@ -303,9 +303,6 @@ class TestPollAndSendOutput:
                         exit_code=0,
                     )
 
-                    # Verify output message ID cleared
-                    session_manager.set_output_message_id.assert_called_once_with("test-123", None)
-
                     # Verify send_exit_message NOT called (exit code path)
                     mock_output_mgr.send_exit_message.assert_not_called()
 
@@ -379,9 +376,6 @@ class TestPollAndSendOutput:
                 # Verify output file deleted
                 assert not output_file.exists()
 
-                # Verify output message ID cleared
-                session_manager.set_output_message_id.assert_called_once_with("test-123", None)
-
                 # Verify send_output_update NOT called (session died path)
                 mock_output_mgr.send_output_update.assert_not_called()
 
@@ -440,45 +434,78 @@ class TestPollAndSendOutput:
 
 
 class TestAISessionDetection:
-    """Test AI-to-AI session pattern detection."""
+    """Test AI-to-AI session detection via metadata."""
 
-    def test_is_ai_to_ai_session_matches_valid_patterns(self):
-        """Test pattern: $X > $Y - Title"""
+    def test_is_ai_to_ai_session_with_metadata_flag(self):
+        """Test detection via is_ai_to_ai metadata flag."""
         from teleclaude.core.polling_coordinator import _is_ai_to_ai_session
 
-        # Valid patterns
-        assert _is_ai_to_ai_session("$mac1 > $mac2 - Deploy Script")
-        assert _is_ai_to_ai_session("$server > $laptop - Sync Files")
-        assert _is_ai_to_ai_session("$a > $b - Test")
-        assert _is_ai_to_ai_session("$workstation > $macbook - Check logs")
+        # AI-to-AI session (has metadata flag)
+        ai_session = Session(
+            session_id="test-ai",
+            computer_name="comp1",
+            tmux_session_name="comp1-ai-123",
+            adapter_type="telegram",
+            title="$comp1 > $comp2 - Test",
+            adapter_metadata={"channel_id": "123", "is_ai_to_ai": True}
+        )
+        assert _is_ai_to_ai_session(ai_session)
 
-    def test_is_ai_to_ai_session_rejects_invalid_patterns(self):
-        """Test invalid patterns are rejected."""
+    def test_is_ai_to_ai_session_rejects_human_sessions(self):
+        """Test human sessions without metadata flag are rejected."""
         from teleclaude.core.polling_coordinator import _is_ai_to_ai_session
 
-        # Invalid patterns
-        assert not _is_ai_to_ai_session("Human Session")
-        assert not _is_ai_to_ai_session("$Mozbook - Terminal")
-        assert not _is_ai_to_ai_session("$mac1 > mac2 - Title")  # Missing $
-        assert not _is_ai_to_ai_session("$mac1 - Title")  # Missing >
-        assert not _is_ai_to_ai_session("mac1 > mac2 - Title")  # Missing $ prefix
+        # Human session (no metadata flag)
+        human_session = Session(
+            session_id="test-human",
+            computer_name="comp1",
+            tmux_session_name="comp1-123",
+            adapter_type="telegram",
+            title="Human Session",
+            adapter_metadata={"channel_id": "456"}
+        )
+        assert not _is_ai_to_ai_session(human_session)
 
     def test_is_ai_to_ai_session_handles_none_and_empty(self):
-        """Test None and empty string handling."""
+        """Test None and empty metadata handling."""
         from teleclaude.core.polling_coordinator import _is_ai_to_ai_session
 
+        # None session
         assert not _is_ai_to_ai_session(None)
-        assert not _is_ai_to_ai_session("")
+
+        # Session with None metadata
+        session_no_metadata = Session(
+            session_id="test",
+            computer_name="comp1",
+            tmux_session_name="comp1-123",
+            adapter_type="telegram",
+            adapter_metadata=None
+        )
+        assert not _is_ai_to_ai_session(session_no_metadata)
 
     def test_is_ai_to_ai_session_edge_cases(self):
-        """Test edge cases in pattern matching."""
+        """Test edge cases in metadata detection."""
         from teleclaude.core.polling_coordinator import _is_ai_to_ai_session
 
-        # Edge cases
-        assert not _is_ai_to_ai_session("$a > $b - ")  # Empty title invalid (no chars after dash)
-        assert not _is_ai_to_ai_session("$a > $b")  # Missing title entirely
-        assert _is_ai_to_ai_session("$mac_air > $mac_pro - Test")  # Underscores OK
-        assert _is_ai_to_ai_session("$a > $b - x")  # Single char title valid
+        # Metadata exists but flag is False
+        session_false_flag = Session(
+            session_id="test",
+            computer_name="comp1",
+            tmux_session_name="comp1-123",
+            adapter_type="telegram",
+            adapter_metadata={"channel_id": "123", "is_ai_to_ai": False}
+        )
+        assert not _is_ai_to_ai_session(session_false_flag)
+
+        # Empty metadata dict
+        session_empty_metadata = Session(
+            session_id="test",
+            computer_name="comp1",
+            tmux_session_name="comp1-123",
+            adapter_type="telegram",
+            adapter_metadata={}
+        )
+        assert not _is_ai_to_ai_session(session_empty_metadata)
 
 
 @pytest.mark.asyncio
@@ -575,13 +602,14 @@ class TestDualModePolling:
 
     async def test_ai_session_uses_chunked_output(self):
         """Test AI-to-AI session uses chunking mode."""
-        # Mock AI session (matches pattern)
+        # Mock AI session (has is_ai_to_ai metadata flag)
         mock_session = Session(
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
             adapter_type="telegram",
-            title="$mac1 > $mac2 - Deploy Script",  # AI pattern
+            title="$mac1 > $mac2 - Deploy Script",
+            adapter_metadata={"channel_id": "123", "is_ai_to_ai": True}
         )
 
         session_manager = Mock()

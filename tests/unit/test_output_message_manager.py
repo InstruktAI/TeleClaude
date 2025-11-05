@@ -353,8 +353,8 @@ class TestSendExitMessage:
         # Verify edit called
         adapter.edit_message.assert_called_once()
 
-        # Verify message_id cleared
-        session_manager.set_output_message_id.assert_called_once_with("test-session", None)
+        # Verify message_id not changed (edit successful)
+        session_manager.set_output_message_id.assert_not_called()
 
     async def test_edit_fails_sends_new_message(self):
         """Test sending new message when edit fails."""
@@ -381,8 +381,10 @@ class TestSendExitMessage:
         # Verify new message sent
         adapter.send_message.assert_called_once()
 
-        # Verify message_id cleared
-        session_manager.set_output_message_id.assert_called_once_with("test-session", None)
+        # Verify message_id cleared then set to new value
+        assert session_manager.set_output_message_id.call_count == 2
+        session_manager.set_output_message_id.assert_any_call("test-session", None)
+        session_manager.set_output_message_id.assert_any_call("test-session", "msg-new")
 
     async def test_no_existing_message_sends_new(self):
         """Test sending new message when no existing message."""
@@ -405,5 +407,5 @@ class TestSendExitMessage:
         # Verify new message sent (edit not called)
         adapter.send_message.assert_called_once()
 
-        # Verify message_id cleared
-        session_manager.set_output_message_id.assert_called_once_with("test-session", None)
+        # Verify message_id set to new value
+        session_manager.set_output_message_id.assert_called_once_with("test-session", "msg-new")

@@ -122,6 +122,7 @@ class TestBasicFeedbackCleanup:
         # Mock terminal_bridge.send_keys
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
+            mock_tb.clear_history = AsyncMock(return_value=True)
 
             # User sends valid input ":wq"
             context = {"message_id": "102"}  # User's input message ID
@@ -165,6 +166,7 @@ class TestBasicFeedbackCleanup:
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
+            mock_tb.clear_history = AsyncMock(return_value=True)
 
             context = {"message_id": "104"}  # Current input message
             await message_handler.handle_message(
@@ -210,6 +212,7 @@ class TestUserMessageTracking:
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
+            mock_tb.clear_history = AsyncMock(return_value=True)
 
             # First message: "ls"
             context1 = {"message_id": "200"}
@@ -282,6 +285,7 @@ class TestEdgeCases:
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
+            mock_tb.clear_history = AsyncMock(return_value=True)
 
             context = {"message_id": "302"}
             # Should not raise exception despite failed deletion
@@ -322,6 +326,7 @@ class TestEdgeCases:
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
+            mock_tb.clear_history = AsyncMock(return_value=True)
 
             context = {"message_id": "402"}
             await message_handler.handle_message(
@@ -334,8 +339,9 @@ class TestEdgeCases:
                 start_polling=AsyncMock(),
             )
 
-        # Verify: NO messages deleted (new command, not input to running process)
-        assert mock_adapter.delete_message.call_count == 0
+        # Verify: All pending messages deleted (cleanup happens after successful send_keys)
+        # Pending: 400, 401, and current message 402 = 3 deletions
+        assert mock_adapter.delete_message.call_count == 3
 
     async def test_cleanup_on_polling_stop(
         self, mock_session, mock_session_manager, mock_adapter
