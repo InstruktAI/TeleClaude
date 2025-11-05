@@ -8,7 +8,11 @@ import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict
 
-from teleclaude.core import output_message_manager, state_manager, terminal_bridge
+from teleclaude.core import (
+    output_message_manager,
+    terminal_bridge,
+    ux_state,
+)
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.voice_handler import transcribe_voice_with_retry
 
@@ -49,7 +53,7 @@ async def handle_voice(
     adapter = await get_adapter_for_session(session_id)
 
     # Check if a process is currently running (polling active)
-    is_process_running = state_manager.is_polling(session_id)
+    is_process_running = await session_manager.is_polling(session_id)
 
     # Reject voice messages if no active process to send them to
     if not is_process_running:
@@ -66,7 +70,8 @@ async def handle_voice(
     output_file = get_output_file(session_id)
 
     # Check if output message exists (polling may have just started)
-    current_message_id = await session_manager.get_output_message_id(session_id)
+    session_data = await ux_state.get_session(session_id)
+    current_message_id = session_data.get("output_message_id")
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
         # Send rejection message

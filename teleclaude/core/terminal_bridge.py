@@ -202,8 +202,10 @@ async def send_keys(
             command_text = text
             logger.debug("Sending input WITHOUT exit marker to %s (running process)", session_name)
         else:
+            # Append exit marker for reliable completion detection
+            # Delta-based polling prevents false detection from old markers
             command_text = f'{text}; echo "__EXIT__$?__"'
-            logger.debug("Sending command WITH ; exit marker to %s", session_name)
+            logger.debug("Sending command WITH exit marker to %s", session_name)
 
         # Send command with marker (no pipes - don't leak file descriptors)
         cmd_text = ["tmux", "send-keys", "-t", session_name, command_text]
@@ -404,7 +406,7 @@ async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
 
     Args:
         session_name: Session name
-        lines: Number of lines to capture (None = entire scrollback buffer)
+        lines: Number of lines to capture from scrollback (None = entire scrollback buffer)
 
     Returns:
         Captured output as string

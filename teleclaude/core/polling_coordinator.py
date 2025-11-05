@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from teleclaude.core import output_message_manager, state_manager
+from teleclaude.core import output_message_manager, ux_state
 from teleclaude.core.output_poller import (
     IdleDetected,
     OutputChanged,
@@ -98,7 +98,7 @@ async def poll_and_send_output(
         get_output_file: Function to get output file path for session
     """
     # GUARD: Prevent duplicate polling (check and add atomically before any await)
-    if state_manager.is_polling(session_id):
+    if await session_manager.is_polling(session_id):
         logger.warning(
             "Polling already active for session %s, ignoring duplicate request",
             session_id[:8],
@@ -106,20 +106,23 @@ async def poll_and_send_output(
         return
 
     # Mark as active BEFORE any await (prevents race conditions)
-    state_manager.mark_polling(session_id)
+    await session_manager.mark_polling(session_id)
 
     # Get adapter for this session
     adapter = await get_adapter_for_session(session_id)
 
     # Get session to check type via metadata
     session = await session_manager.get_session(session_id)
+
+    # Update ux_state to persist polling status in DB
+    await ux_state.update_session(session_id, {"polling_active": True})
     is_ai_session = _is_ai_to_ai_session(session)
 
     # Get output file and exit marker status
     output_file = get_output_file(session_id)
-    # Check in-memory state for exit marker (set by send_keys / terminal_executor)
-    # Default to False if not found (don't use output_message_id as fallback anymore)
-    has_exit_marker = state_manager.get_exit_marker(session_id, False)
+    # Exit marker is ALWAYS appended when starting new polling
+    # (we only start polling for NEW commands, not input to running process)
+    has_exit_marker = True
 
     try:
         # Consume events from pure poller
@@ -146,10 +149,11 @@ async def poll_and_send_output(
                     )
 
                 # Delete idle notification if one exists (output resumed)
-                notification_id = await session_manager.get_idle_notification_message_id(event.session_id)
+                session_data = await ux_state.get_session(event.session_id)
+                notification_id = session_data.get("idle_notification_message_id")
                 if notification_id:
                     await adapter.delete_message(event.session_id, notification_id)
-                    await session_manager.set_idle_notification_message_id(event.session_id, None)
+                    await ux_state.update_session(event.session_id, {"idle_notification_message_id": None})
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, IdleDetected):
@@ -160,7 +164,7 @@ async def poll_and_send_output(
                 notification_id = await adapter.send_message(event.session_id, notification)
                 if notification_id:
                     # Persist to DB (survives daemon restart)
-                    await session_manager.set_idle_notification_message_id(event.session_id, notification_id)
+                    await ux_state.update_session(event.session_id, {"idle_notification_message_id": notification_id})
                     logger.debug("Stored idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, ProcessExited):
@@ -212,9 +216,13 @@ async def poll_and_send_output(
                             logger.warning("Failed to delete output file: %s", e)
 
     finally:
-        # Cleanup
-        state_manager.unmark_polling(session_id)
-        state_manager.remove_exit_marker(session_id)
-        state_manager.clear_pending_deletions(session_id)  # Clear any pending message deletions
-        await session_manager.set_idle_notification_message_id(session_id, None)
+        # Cleanup state
+        await session_manager.unmark_polling(session_id)
+        await session_manager.clear_pending_deletions(session_id)
+        # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
+        # Only cleared when session closes (/exit command)
+
+        # Clear idle notification
+        await ux_state.update_session(session_id, {"idle_notification_message_id": None})
+
         logger.debug("Polling ended for session %s", session_id[:8])

@@ -7,7 +7,7 @@ Handles text message processing, idle notification cleanup, and polling coordina
 import logging
 from typing import Any, Awaitable, Callable, Dict
 
-from teleclaude.core import state_manager, terminal_bridge
+from teleclaude.core import terminal_bridge
 from teleclaude.core.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -42,9 +42,9 @@ async def handle_message(
         return
 
     # Delete idle notification if one exists (user is interacting now)
-    if state_manager.has_idle_notification(session_id):
+    if await session_manager.has_idle_notification(session_id):
         adapter = await get_adapter_for_session(session_id)
-        notification_msg_id = state_manager.remove_idle_notification(session_id)
+        notification_msg_id = await session_manager.remove_idle_notification(session_id)
         await adapter.delete_message(session_id, notification_msg_id)
         logger.debug(
             "Deleted idle notification %s for session %s (user sent command)", notification_msg_id, session_id[:8]
@@ -64,13 +64,11 @@ async def handle_message(
             pass
 
     # Check if a process is currently running (polling active)
-    is_process_running = state_manager.is_polling(session_id)
+    # Use ux_state from DB as source of truth (survives daemon restarts)
+    from teleclaude.core import ux_state
 
-    # If starting a NEW command (not sending input to running process), clear tmux history
-    # This removes old exit markers that could cause false exit detection
-    if not is_process_running:
-        await terminal_bridge.clear_history(session.tmux_session_name)
-        logger.debug("Cleared tmux history for %s before new command", session_id[:8])
+    session_data = await ux_state.get_session(session_id)
+    is_process_running = session_data.get("polling_active", False)
 
     # Send command to terminal (will create fresh session if needed)
     # Only append exit marker if starting a NEW command, not sending input to running process
@@ -91,15 +89,11 @@ async def handle_message(
         await adapter.send_message(session_id, "Failed to send command to terminal")
         return
 
-    # Track whether exit marker was appended
-    state_manager.set_exit_marker(session_id, not is_process_running)
-
     # Update activity
     await session_manager.update_last_activity(session_id)
-    await session_manager.increment_command_count(session_id)
 
     # Cleanup pending messages after successful send
-    await state_manager.cleanup_messages_after_success(
+    await session_manager.cleanup_messages_after_success(
         session_id,
         context.get("message_id"),
         adapter,

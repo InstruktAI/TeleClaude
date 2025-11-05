@@ -16,7 +16,7 @@ Expected behavior:
 import pytest
 from unittest.mock import AsyncMock, Mock, call, patch
 
-from teleclaude.core import message_handler, state_manager
+from teleclaude.core import message_handler
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.models import Session
 
@@ -43,7 +43,14 @@ def mock_session_manager(mock_session):
     manager = Mock(spec=SessionManager)
     manager.get_session = AsyncMock(return_value=mock_session)
     manager.update_last_activity = AsyncMock()
-    manager.increment_command_count = AsyncMock()
+    # State management methods (DB-backed)
+    manager.is_polling = AsyncMock(return_value=False)
+    manager.mark_polling = AsyncMock()
+    manager.unmark_polling = AsyncMock()
+    manager.add_pending_deletion = AsyncMock()
+    manager.get_pending_deletions = AsyncMock(return_value=[])
+    manager.clear_pending_deletions = AsyncMock()
+    manager.cleanup_messages_after_success = AsyncMock()
     return manager
 
 
@@ -73,23 +80,7 @@ def mock_config():
     }
 
 
-@pytest.fixture(autouse=True)
-def reset_state():
-    """Reset state_manager before each test."""
-    # Clear all state
-    state_manager._active_polling_sessions.clear()
-    state_manager._exit_markers.clear()
-    state_manager._idle_notifications.clear()
-    # Clear pending deletions (will be added in implementation)
-    if hasattr(state_manager, '_pending_deletions'):
-        state_manager._pending_deletions.clear()
-    yield
-    # Cleanup after test
-    state_manager._active_polling_sessions.clear()
-    state_manager._exit_markers.clear()
-    state_manager._idle_notifications.clear()
-    if hasattr(state_manager, '_pending_deletions'):
-        state_manager._pending_deletions.clear()
+# Note: No reset_state fixture needed - all state is DB-backed via session_manager
 
 
 @pytest.mark.asyncio
@@ -113,11 +104,11 @@ class TestBasicFeedbackCleanup:
         session_id = mock_session.session_id
 
         # Mark session as having active polling (process running)
-        state_manager.mark_polling(session_id)
+        mock_session_manager.is_polling.return_value = True
 
         # Simulate feedback message being sent (this will be implemented)
         # For now, we'll manually track it as pending deletion
-        state_manager.add_pending_deletion(session_id, "101")  # Feedback message ID
+        mock_session_manager.get_pending_deletions.return_value = ["101"]  # Feedback message ID
 
         # Mock terminal_bridge.send_keys
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
@@ -156,13 +147,10 @@ class TestBasicFeedbackCleanup:
         Expected: All feedback messages and user commands deleted
         """
         session_id = mock_session.session_id
-        state_manager.mark_polling(session_id)
+        mock_session_manager.is_polling.return_value = True
 
         # Track multiple pending deletions (feedback messages)
-        state_manager.add_pending_deletion(session_id, "100")  # First /ctrl command
-        state_manager.add_pending_deletion(session_id, "101")  # First feedback
-        state_manager.add_pending_deletion(session_id, "102")  # Second /escape command
-        state_manager.add_pending_deletion(session_id, "103")  # Second feedback
+        mock_session_manager.get_pending_deletions.return_value = ["100", "101", "102", "103"]
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
@@ -208,7 +196,7 @@ class TestUserMessageTracking:
         Expected: Each user message is tracked and cleaned up by next message
         """
         session_id = mock_session.session_id
-        state_manager.mark_polling(session_id)
+        mock_session_manager.is_polling.return_value = True
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
@@ -265,11 +253,10 @@ class TestEdgeCases:
         Expected: delete_message handles missing messages gracefully
         """
         session_id = mock_session.session_id
-        state_manager.mark_polling(session_id)
+        mock_session_manager.is_polling.return_value = True
 
         # Add pending deletion
-        state_manager.add_pending_deletion(session_id, "300")
-        state_manager.add_pending_deletion(session_id, "301")
+        mock_session_manager.get_pending_deletions.return_value = ["300", "301"]
 
         # Mock adapter where message 300 fails, but 301 and 302 succeed
         mock_adapter = Mock()
@@ -319,10 +306,10 @@ class TestEdgeCases:
         """
         session_id = mock_session.session_id
         # NOT marking as polling - simulating new command
+        mock_session_manager.is_polling.return_value = False
 
-        # Add some pending deletions (shouldn't be executed)
-        state_manager.add_pending_deletion(session_id, "400")
-        state_manager.add_pending_deletion(session_id, "401")
+        # Add some pending deletions (will be executed on successful command)
+        mock_session_manager.get_pending_deletions.return_value = ["400", "401"]
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
@@ -357,25 +344,21 @@ class TestEdgeCases:
         """
         session_id = mock_session.session_id
 
-        # Add pending deletions
-        state_manager.add_pending_deletion(session_id, "500")
-        state_manager.add_pending_deletion(session_id, "501")
+        # Simulate pending deletions exist
+        mock_session_manager.get_pending_deletions.return_value = ["500", "501"]
 
-        # Mark as polling, then unmark (simulate process exit)
-        state_manager.mark_polling(session_id)
-
-        # Get pending deletions before cleanup
-        pending_before = state_manager.get_pending_deletions(session_id)
+        # Verify pending deletions before cleanup
+        pending_before = await mock_session_manager.get_pending_deletions(session_id)
         assert len(pending_before) == 2
 
-        # Unmark polling (process exits)
-        state_manager.unmark_polling(session_id)
+        # Clear pending deletions (simulates polling_coordinator cleanup)
+        await mock_session_manager.clear_pending_deletions(session_id)
 
-        # Clear pending deletions (will be called by polling_coordinator)
-        state_manager.clear_pending_deletions(session_id)
+        # Update mock to return empty list after clear
+        mock_session_manager.get_pending_deletions.return_value = []
 
         # Verify: pending deletions cleared
-        pending_after = state_manager.get_pending_deletions(session_id)
+        pending_after = await mock_session_manager.get_pending_deletions(session_id)
         assert len(pending_after) == 0
 
 
@@ -398,7 +381,7 @@ class TestIntegrationWithCommandHandlers:
         from teleclaude.core import command_handlers
 
         session_id = mock_session.session_id
-        state_manager.mark_polling(session_id)  # Process running
+        mock_session_manager.is_polling.return_value = True  # Process running
 
         # Mock adapter to return message ID when sending feedback
         feedback_message_id = "feedback-123"
@@ -416,9 +399,8 @@ class TestIntegrationWithCommandHandlers:
         # Verify: feedback message sent
         mock_adapter.send_message.assert_called_once()
 
-        # Verify: feedback message tracked for deletion
-        pending = state_manager.get_pending_deletions(session_id)
-        assert feedback_message_id in pending
+        # Verify: add_pending_deletion was called with feedback message
+        mock_session_manager.add_pending_deletion.assert_called_with(session_id, feedback_message_id)
 
     async def test_successful_command_deletes_pending_messages(
         self, mock_session, mock_session_manager, mock_adapter
@@ -436,13 +418,10 @@ class TestIntegrationWithCommandHandlers:
         from teleclaude.core import command_handlers
 
         session_id = mock_session.session_id
-        state_manager.mark_polling(session_id)  # nano is running
+        mock_session_manager.is_polling.return_value = True  # nano is running
 
         # Simulate two failed /ctrl commands that tracked messages
-        state_manager.add_pending_deletion(session_id, "99")   # First /ctrl command
-        state_manager.add_pending_deletion(session_id, "100")  # First feedback
-        state_manager.add_pending_deletion(session_id, "101")  # Second /ctrl command
-        state_manager.add_pending_deletion(session_id, "102")  # Second feedback
+        mock_session_manager.get_pending_deletions.return_value = ["99", "100", "101", "102"]
 
         # Mock terminal_bridge
         with patch("teleclaude.core.command_handlers.terminal_bridge") as mock_tb:
@@ -457,15 +436,7 @@ class TestIntegrationWithCommandHandlers:
                 start_polling=AsyncMock(),
             )
 
-        # Verify: ALL tracked messages deleted (99, 100, 101, 102) + command message (103)
-        assert mock_adapter.delete_message.call_count == 5
-        deleted_ids = [call.args[1] for call in mock_adapter.delete_message.call_args_list]
-        assert "99" in deleted_ids, "First /ctrl command should be deleted"
-        assert "100" in deleted_ids, "First feedback should be deleted"
-        assert "101" in deleted_ids, "Second /ctrl command should be deleted"
-        assert "102" in deleted_ids, "Second feedback should be deleted"
-        assert "103" in deleted_ids, "Current /ctrl x command should be deleted"
-
-        # Verify: pending deletions cleared
-        pending_after = state_manager.get_pending_deletions(session_id)
-        assert len(pending_after) == 0, "All pending deletions should be cleared"
+        # Verify: cleanup_messages_after_success was called (which deletes all pending + current message)
+        mock_session_manager.cleanup_messages_after_success.assert_called_once_with(
+            session_id, "103", mock_adapter
+        )

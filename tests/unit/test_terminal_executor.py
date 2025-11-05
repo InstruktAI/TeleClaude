@@ -27,7 +27,7 @@ class TestExecuteTerminalCommand:
         )
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.cleanup_messages_after_success = AsyncMock()
 
         config = {"computer": {"default_shell": "/bin/bash"}}
         get_adapter_for_session = AsyncMock()
@@ -38,45 +38,36 @@ class TestExecuteTerminalCommand:
             mock_terminal.send_keys = AsyncMock(return_value=True)
             mock_terminal.clear_history = AsyncMock(return_value=True)
 
-            # Mock state_manager
-            with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
-                mock_state.set_exit_marker = Mock()
-                mock_state.cleanup_messages_after_success = AsyncMock()
+            # Execute
+            result = await terminal_executor.execute_terminal_command(
+                session_id="test-123",
+                command="echo hello",
+                session_manager=session_manager,
+                config=config,
+                get_adapter_for_session=get_adapter_for_session,
+                start_polling=start_polling,
+                append_exit_marker=True,
+            )
 
-                # Execute
-                result = await terminal_executor.execute_terminal_command(
-                    session_id="test-123",
-                    command="echo hello",
-                    session_manager=session_manager,
-                    config=config,
-                    get_adapter_for_session=get_adapter_for_session,
-                    start_polling=start_polling,
-                    append_exit_marker=True,
-                )
+            # Verify success
+            assert result is True
 
-                # Verify success
-                assert result is True
+            # Verify terminal_bridge.send_keys called with correct args
+            mock_terminal.send_keys.assert_called_once_with(
+                "test-tmux",
+                "echo hello",
+                shell="/bin/bash",
+                working_dir="/tmp",
+                cols=80,
+                rows=24,
+                append_exit_marker=True,
+            )
 
-                # Verify terminal_bridge.send_keys called with correct args
-                mock_terminal.send_keys.assert_called_once_with(
-                    "test-tmux",
-                    "echo hello",
-                    shell="/bin/bash",
-                    working_dir="/tmp",
-                    cols=80,
-                    rows=24,
-                    append_exit_marker=True,
-                )
+            # Verify activity updated
+            session_manager.update_last_activity.assert_called_once_with("test-123")
 
-                # Verify state manager updated
-                mock_state.set_exit_marker.assert_called_once_with("test-123", True)
-
-                # Verify activity updated
-                session_manager.update_last_activity.assert_called_once_with("test-123")
-                session_manager.increment_command_count.assert_called_once_with("test-123")
-
-                # Verify polling started
-                start_polling.assert_called_once_with("test-123", "test-tmux")
+            # Verify polling started
+            start_polling.assert_called_once_with("test-123", "test-tmux")
 
     async def test_execute_success_without_exit_marker(self):
         """Test successful command execution without exit marker (no polling)."""
@@ -92,7 +83,7 @@ class TestExecuteTerminalCommand:
         )
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.cleanup_messages_after_success = AsyncMock()
 
         config = {"computer": {"default_shell": "/bin/zsh"}}
         get_adapter_for_session = AsyncMock()
@@ -102,44 +93,36 @@ class TestExecuteTerminalCommand:
             mock_terminal.send_keys = AsyncMock(return_value=True)
             mock_terminal.clear_history = AsyncMock(return_value=True)
 
-            with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
-                mock_state.set_exit_marker = Mock()
-                mock_state.cleanup_messages_after_success = AsyncMock()
+            # Execute without exit marker
+            result = await terminal_executor.execute_terminal_command(
+                session_id="test-456",
+                command="cd /home",
+                session_manager=session_manager,
+                config=config,
+                get_adapter_for_session=get_adapter_for_session,
+                start_polling=start_polling,
+                append_exit_marker=False,
+            )
 
-                # Execute without exit marker
-                result = await terminal_executor.execute_terminal_command(
-                    session_id="test-456",
-                    command="cd /home",
-                    session_manager=session_manager,
-                    config=config,
-                    get_adapter_for_session=get_adapter_for_session,
-                    start_polling=start_polling,
-                    append_exit_marker=False,
-                )
+            # Verify success
+            assert result is True
 
-                # Verify success
-                assert result is True
+            # Verify terminal_bridge.send_keys called with append_exit_marker=False
+            mock_terminal.send_keys.assert_called_once_with(
+                "test-tmux-2",
+                "cd /home",
+                shell="/bin/zsh",
+                working_dir="/home",
+                cols=120,
+                rows=30,
+                append_exit_marker=False,
+            )
 
-                # Verify terminal_bridge.send_keys called with append_exit_marker=False
-                mock_terminal.send_keys.assert_called_once_with(
-                    "test-tmux-2",
-                    "cd /home",
-                    shell="/bin/zsh",
-                    working_dir="/home",
-                    cols=120,
-                    rows=30,
-                    append_exit_marker=False,
-                )
+            # Verify activity updated
+            session_manager.update_last_activity.assert_called_once_with("test-456")
 
-                # Verify state manager updated with False
-                mock_state.set_exit_marker.assert_called_once_with("test-456", False)
-
-                # Verify activity updated
-                session_manager.update_last_activity.assert_called_once_with("test-456")
-                session_manager.increment_command_count.assert_called_once_with("test-456")
-
-                # Verify polling NOT started
-                start_polling.assert_not_called()
+            # Verify polling NOT started
+            start_polling.assert_not_called()
 
     async def test_session_not_found(self):
         """Test error when session doesn't exist."""
@@ -181,7 +164,6 @@ class TestExecuteTerminalCommand:
         )
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
 
         config = {"computer": {"default_shell": "/bin/bash"}}
 
@@ -215,7 +197,6 @@ class TestExecuteTerminalCommand:
 
             # Verify no activity updates
             session_manager.update_last_activity.assert_not_called()
-            session_manager.increment_command_count.assert_not_called()
 
             # Verify no polling started
             start_polling.assert_not_called()
@@ -234,7 +215,7 @@ class TestExecuteTerminalCommand:
         )
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.cleanup_messages_after_success = AsyncMock()
 
         config = {"computer": {"default_shell": "/bin/bash"}}
         get_adapter_for_session = AsyncMock()
@@ -244,33 +225,29 @@ class TestExecuteTerminalCommand:
             mock_terminal.send_keys = AsyncMock(return_value=True)
             mock_terminal.clear_history = AsyncMock(return_value=True)
 
-            with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
-                mock_state.set_exit_marker = Mock()
-                mock_state.cleanup_messages_after_success = AsyncMock()
+            # Execute
+            result = await terminal_executor.execute_terminal_command(
+                session_id="test-default",
+                command="echo test",
+                session_manager=session_manager,
+                config=config,
+                get_adapter_for_session=get_adapter_for_session,
+                start_polling=start_polling,
+            )
 
-                # Execute
-                result = await terminal_executor.execute_terminal_command(
-                    session_id="test-default",
-                    command="echo test",
-                    session_manager=session_manager,
-                    config=config,
-                    get_adapter_for_session=get_adapter_for_session,
-                    start_polling=start_polling,
-                )
+            # Verify success
+            assert result is True
 
-                # Verify success
-                assert result is True
-
-                # Verify default size (80x24) used
-                mock_terminal.send_keys.assert_called_once_with(
-                    "test-tmux-default",
-                    "echo test",
-                    shell="/bin/bash",
-                    working_dir="/tmp",
-                    cols=80,  # Default
-                    rows=24,  # Default
-                    append_exit_marker=True,
-                )
+            # Verify default size (80x24) used
+            mock_terminal.send_keys.assert_called_once_with(
+                "test-tmux-default",
+                "echo test",
+                shell="/bin/bash",
+                working_dir="/tmp",
+                cols=80,  # Default
+                rows=24,  # Default
+                append_exit_marker=True,
+            )
 
     async def test_terminal_size_parsing_invalid(self):
         """Test fallback to default when terminal_size is invalid."""
@@ -286,7 +263,7 @@ class TestExecuteTerminalCommand:
         )
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.cleanup_messages_after_success = AsyncMock()
 
         config = {"computer": {"default_shell": "/bin/bash"}}
         get_adapter_for_session = AsyncMock()
@@ -296,30 +273,26 @@ class TestExecuteTerminalCommand:
             mock_terminal.send_keys = AsyncMock(return_value=True)
             mock_terminal.clear_history = AsyncMock(return_value=True)
 
-            with patch("teleclaude.core.terminal_executor.state_manager") as mock_state:
-                mock_state.set_exit_marker = Mock()
-                mock_state.cleanup_messages_after_success = AsyncMock()
+            # Execute
+            result = await terminal_executor.execute_terminal_command(
+                session_id="test-invalid",
+                command="echo test",
+                session_manager=session_manager,
+                config=config,
+                get_adapter_for_session=get_adapter_for_session,
+                start_polling=start_polling,
+            )
 
-                # Execute
-                result = await terminal_executor.execute_terminal_command(
-                    session_id="test-invalid",
-                    command="echo test",
-                    session_manager=session_manager,
-                    config=config,
-                    get_adapter_for_session=get_adapter_for_session,
-                    start_polling=start_polling,
-                )
+            # Verify success
+            assert result is True
 
-                # Verify success
-                assert result is True
-
-                # Verify default size used (ValueError caught)
-                mock_terminal.send_keys.assert_called_once_with(
-                    "test-tmux-invalid",
-                    "echo test",
-                    shell="/bin/bash",
-                    working_dir="/tmp",
-                    cols=80,  # Default fallback
-                    rows=24,  # Default fallback
-                    append_exit_marker=True,
-                )
+            # Verify default size used (ValueError caught)
+            mock_terminal.send_keys.assert_called_once_with(
+                "test-tmux-invalid",
+                "echo test",
+                shell="/bin/bash",
+                working_dir="/tmp",
+                cols=80,  # Default fallback
+                rows=24,  # Default fallback
+                append_exit_marker=True,
+            )

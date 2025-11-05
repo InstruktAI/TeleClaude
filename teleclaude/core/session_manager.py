@@ -307,75 +307,183 @@ class SessionManager:
         )
         await self._db.commit()
 
-    async def increment_command_count(self, session_id: str) -> int:
-        """Increment command count and return new value.
+    # State management functions (DB-backed via ux_state)
+
+    async def is_polling(self, session_id: str) -> bool:
+        """Check if session has active polling.
 
         Args:
-            session_id: Session ID
+            session_id: Session identifier
 
         Returns:
-            New command count
+            True if polling is active for this session
         """
-        await self._db.execute(
-            "UPDATE sessions SET command_count = command_count + 1 WHERE session_id = ?", (session_id,)
-        )
-        await self._db.commit()
+        from teleclaude.core import ux_state
 
-        cursor = await self._db.execute("SELECT command_count FROM sessions WHERE session_id = ?", (session_id,))
-        row = await cursor.fetchone()
-        return row["command_count"] if row else 0
+        session_data = await ux_state.get_session(session_id)
+        return session_data.get("polling_active", False)
 
-    async def set_output_message_id(self, session_id: str, message_id: Optional[str]) -> None:
-        """Set output message ID for session.
+    async def mark_polling(self, session_id: str) -> None:
+        """Mark session as having active polling.
 
         Args:
-            session_id: Session ID
-            message_id: Message ID to persist (None to clear)
+            session_id: Session identifier
         """
-        await self._db.execute(
-            "UPDATE sessions SET output_message_id = ? WHERE session_id = ?", (message_id, session_id)
-        )
-        await self._db.commit()
+        from teleclaude.core import ux_state
 
-    async def get_output_message_id(self, session_id: str) -> Optional[str]:
-        """Get output message ID for session.
+        await ux_state.update_session(session_id, {"polling_active": True})
+
+    async def unmark_polling(self, session_id: str) -> None:
+        """Mark session as no longer polling.
 
         Args:
-            session_id: Session ID
+            session_id: Session identifier
+        """
+        from teleclaude.core import ux_state
+
+        await ux_state.update_session(session_id, {"polling_active": False})
+
+    async def has_idle_notification(self, session_id: str) -> bool:
+        """Check if session has idle notification.
+
+        Args:
+            session_id: Session identifier
 
         Returns:
-            Message ID or None
+            True if idle notification exists for this session
         """
-        cursor = await self._db.execute("SELECT output_message_id FROM sessions WHERE session_id = ?", (session_id,))
-        row = await cursor.fetchone()
-        return row["output_message_id"] if row else None
+        from teleclaude.core import ux_state
 
-    async def set_idle_notification_message_id(self, session_id: str, message_id: Optional[str]) -> None:
-        """Set idle notification message ID for session.
+        session_data = await ux_state.get_session(session_id)
+        return session_data.get("idle_notification_message_id") is not None
 
-        Args:
-            session_id: Session ID
-            message_id: Message ID to persist (None to clear)
-        """
-        await self._db.execute(
-            "UPDATE sessions SET idle_notification_message_id = ? WHERE session_id = ?", (message_id, session_id)
-        )
-        await self._db.commit()
-
-    async def get_idle_notification_message_id(self, session_id: str) -> Optional[str]:
+    async def get_idle_notification(self, session_id: str) -> Optional[str]:
         """Get idle notification message ID for session.
 
         Args:
-            session_id: Session ID
+            session_id: Session identifier
 
         Returns:
-            Message ID or None
+            Message ID of idle notification, or None if not set
         """
-        cursor = await self._db.execute(
-            "SELECT idle_notification_message_id FROM sessions WHERE session_id = ?", (session_id,)
-        )
-        row = await cursor.fetchone()
-        return row["idle_notification_message_id"] if row else None
+        from teleclaude.core import ux_state
+
+        session_data = await ux_state.get_session(session_id)
+        return session_data.get("idle_notification_message_id")
+
+    async def set_idle_notification(self, session_id: str, message_id: str) -> None:
+        """Set idle notification message ID for session.
+
+        Args:
+            session_id: Session identifier
+            message_id: Message ID of the idle notification
+        """
+        from teleclaude.core import ux_state
+
+        await ux_state.update_session(session_id, {"idle_notification_message_id": message_id})
+
+    async def remove_idle_notification(self, session_id: str) -> Optional[str]:
+        """Remove and return idle notification message ID for session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Message ID that was removed, or None if not set
+        """
+        msg_id = await self.get_idle_notification(session_id)
+
+        from teleclaude.core import ux_state
+
+        await ux_state.update_session(session_id, {"idle_notification_message_id": None})
+
+        return msg_id
+
+    async def get_pending_deletions(self, session_id: str) -> List[str]:
+        """Get list of pending deletion message IDs for session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of message IDs to delete (empty list if none)
+        """
+        from teleclaude.core import ux_state
+
+        session_data = await ux_state.get_session(session_id)
+        return session_data.get("pending_deletions", [])
+
+    async def add_pending_deletion(self, session_id: str, message_id: str) -> None:
+        """Add message ID to pending deletions for session.
+
+        When a process is running and messages are sent (user commands, feedback messages),
+        these message IDs are tracked for deletion when the next accepted input is sent.
+
+        Args:
+            session_id: Session identifier
+            message_id: Message ID to delete later
+        """
+        current = await self.get_pending_deletions(session_id)
+        current.append(message_id)
+
+        from teleclaude.core import ux_state
+
+        await ux_state.update_session(session_id, {"pending_deletions": current})
+
+    async def clear_pending_deletions(self, session_id: str) -> None:
+        """Clear all pending deletions for session.
+
+        Should be called after deleting all pending messages, or when polling stops.
+
+        Args:
+            session_id: Session identifier
+        """
+        from teleclaude.core import ux_state
+
+        await ux_state.update_session(session_id, {"pending_deletions": []})
+
+    async def cleanup_messages_after_success(
+        self,
+        session_id: str,
+        message_id: Optional[str],
+        adapter: Any,
+    ) -> None:
+        """Clean up pending messages after successful terminal action.
+
+        This helper is called by:
+        - message_handler.py (after send_keys succeeds)
+        - command_handlers.py (_execute_and_poll helper after any command succeeds)
+
+        Deletes all tracked messages (feedback + previous commands + current message).
+        Clears pending deletions list so new messages can be tracked.
+
+        Args:
+            session_id: Session identifier
+            message_id: Message ID of current command/input (to be deleted)
+            adapter: Chat adapter for deleting messages
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Get all pending deletions (feedback messages, previous commands, etc.)
+        pending_deletions = await self.get_pending_deletions(session_id)
+
+        # Add current message to deletions
+        pending_deletions.append(message_id)
+
+        # Delete ALL messages underneath the output (feedback + user messages)
+        # Sequential deletion to avoid rate limiting
+        for msg_id in pending_deletions:
+            try:
+                await adapter.delete_message(session_id, msg_id)
+                logger.debug("Deleted message %s for session %s (cleanup)", msg_id, session_id[:8])
+            except Exception as e:
+                # Resilient to already-deleted messages (user manually deleted, etc.)
+                logger.warning("Failed to delete message %s for session %s: %s", msg_id, session_id[:8], e)
+
+        # Clear pending deletions after cleanup
+        await self.clear_pending_deletions(session_id)
 
     async def delete_session(self, session_id: str) -> None:
         """Delete session.

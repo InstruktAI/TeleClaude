@@ -61,10 +61,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {"message_id": "123"}
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            # Idle notification exists
+        context = {"message_id": "123"}            # Idle notification exists
             mock_state.has_idle_notification = Mock(return_value=True)
             mock_state.remove_idle_notification = Mock(return_value="idle-msg-456")
             mock_state.is_polling = Mock(return_value=False)
@@ -112,10 +109,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            mock_state.has_idle_notification = Mock(return_value=False)
+        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()
             mock_state.cleanup_messages_after_success = AsyncMock()
@@ -161,10 +155,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            mock_state.has_idle_notification = Mock(return_value=False)
+        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()
             mock_state.cleanup_messages_after_success = AsyncMock()
@@ -213,10 +204,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            mock_state.has_idle_notification = Mock(return_value=False)
+        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=False)
 
             with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
@@ -268,10 +256,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {"message_id": "555"}
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            mock_state.has_idle_notification = Mock(return_value=False)
+        context = {"message_id": "555"}            mock_state.has_idle_notification = Mock(return_value=False)
             # Process is running (polling active)
             mock_state.is_polling = Mock(return_value=True)
             mock_state.set_exit_marker = Mock()
@@ -331,10 +316,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}  # No message_id
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            mock_state.has_idle_notification = Mock(return_value=False)
+        context = {}  # No message_id            mock_state.has_idle_notification = Mock(return_value=False)
             mock_state.is_polling = Mock(return_value=True)
             mock_state.set_exit_marker = Mock()
             mock_state.cleanup_messages_after_success = AsyncMock()
@@ -382,10 +364,7 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}
-
-        with patch("teleclaude.core.message_handler.state_manager") as mock_state:
-            mock_state.has_idle_notification = Mock(return_value=False)
+        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
             # No process running
             mock_state.is_polling = Mock(return_value=False)
             mock_state.set_exit_marker = Mock()

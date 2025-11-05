@@ -7,7 +7,7 @@ Handles command execution workflow with polling coordination.
 import logging
 from typing import Any, Awaitable, Callable, Dict
 
-from teleclaude.core import state_manager, terminal_bridge
+from teleclaude.core import terminal_bridge
 from teleclaude.core.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -77,16 +77,12 @@ async def execute_terminal_command(
         logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
         return False
 
-    # Store exit marker status for polling
-    state_manager.set_exit_marker(session_id, append_exit_marker)
-
     # Update activity
     await session_manager.update_last_activity(session_id)
-    await session_manager.increment_command_count(session_id)
 
     # Cleanup command message
     adapter = await get_adapter_for_session(session_id)
-    await state_manager.cleanup_messages_after_success(session_id, message_id, adapter)
+    await session_manager.cleanup_messages_after_success(session_id, message_id, adapter)
 
     # Start polling if exit marker was appended
     if append_exit_marker:

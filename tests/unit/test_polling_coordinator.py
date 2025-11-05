@@ -20,10 +20,7 @@ class TestPollAndSendOutput:
         session_manager = Mock()
         output_poller = Mock()
         get_adapter_for_session = AsyncMock()
-        get_output_file = Mock()
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            # Already polling
+        get_output_file = Mock()            # Already polling
             mock_state.is_polling = Mock(return_value=True)
             mock_state.mark_polling = Mock()
 
@@ -74,10 +71,7 @@ class TestPollAndSendOutput:
             )
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()
@@ -145,10 +139,7 @@ class TestPollAndSendOutput:
             )
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()
@@ -199,10 +190,7 @@ class TestPollAndSendOutput:
             yield IdleDetected(session_id="test-123", idle_seconds=60)
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()
@@ -264,10 +252,7 @@ class TestPollAndSendOutput:
             )
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=True)
             mock_state.unmark_polling = Mock()
@@ -341,10 +326,7 @@ class TestPollAndSendOutput:
             )
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()
@@ -407,10 +389,7 @@ class TestPollAndSendOutput:
             yield  # Never reached
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()
@@ -633,10 +612,7 @@ class TestDualModePolling:
             )
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()
@@ -688,10 +664,7 @@ class TestDualModePolling:
             )
 
         output_poller = Mock()
-        output_poller.poll = mock_poll
-
-        with patch("teleclaude.core.polling_coordinator.state_manager") as mock_state:
-            mock_state.is_polling = Mock(return_value=False)
+        output_poller.poll = mock_poll            mock_state.is_polling = Mock(return_value=False)
             mock_state.mark_polling = Mock()
             mock_state.get_exit_marker = Mock(return_value=False)
             mock_state.unmark_polling = Mock()

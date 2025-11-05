@@ -19,8 +19,6 @@ def mock_daemon():
          patch('teleclaude.daemon.TelegramAdapter') as mock_ta, \
          patch('teleclaude.daemon.ComputerRegistry') as mock_cr, \
          patch('teleclaude.daemon.TeleClaudeMCPServer') as mock_mcp, \
-         patch('teleclaude.core.state_manager.is_polling', return_value=False) as mock_is_polling, \
-         patch('teleclaude.core.state_manager.has_idle_notification', return_value=False), \
          patch.object(config_module, '_config', None):  # Reset config before each test
 
         # Create daemon instance
@@ -44,17 +42,14 @@ def mock_daemon():
         daemon.session_manager = mock_sm.return_value
         # Set up async methods on session_manager
         daemon.session_manager.get_session = AsyncMock(return_value=None)
-        daemon.session_manager.get_output_message_id = AsyncMock(return_value=None)
-        daemon.session_manager.set_idle_notification_message_id = AsyncMock()
-        daemon.session_manager.update_output_message_id = AsyncMock()
         daemon.session_manager.update_last_activity = AsyncMock()
-        daemon.session_manager.increment_command_count = AsyncMock()
+        daemon.session_manager.is_polling = AsyncMock(return_value=False)
+        daemon.session_manager.has_idle_notification = AsyncMock(return_value=False)
+        daemon.session_manager.cleanup_messages_after_success = AsyncMock()
         daemon.session_manager.list_sessions = AsyncMock(return_value=[])
         daemon.session_manager.create_session = AsyncMock()
         daemon.session_manager.update_session = AsyncMock()
         daemon.session_manager.delete_session = AsyncMock()
-        daemon.session_manager.set_output_message_id = AsyncMock()
-        daemon.session_manager.get_idle_notification_message_id = AsyncMock(return_value=None)
 
         # Mock terminal_bridge (patched at core level for all modules)
         mock_tb.send_keys = AsyncMock(return_value=True)
@@ -206,8 +201,8 @@ class TestHandleMessage:
         mock_session.terminal_size = "80x24"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
 
-        # Mock state_manager (IS polling - running process)
-        mock_daemon.mock_is_polling.return_value = True
+        # Mock polling active (running process)
+        mock_daemon.session_manager.is_polling.return_value = True
 
         # Execute with message_id in context
         await mock_daemon.handle_message(session_id, text, {
@@ -237,8 +232,8 @@ class TestHandleMessage:
         mock_session.terminal_size = "80x24"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
 
-        # Mock state_manager (IS polling - running process)
-        mock_daemon.mock_is_polling.return_value = True
+        # Mock polling active (running process)
+        mock_daemon.session_manager.is_polling.return_value = True
 
         # Execute
         await mock_daemon.handle_message(session_id, text, {

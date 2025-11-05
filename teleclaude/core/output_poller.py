@@ -100,9 +100,10 @@ class OutputPoller:
         ticks_since_last_update = 0
         update_interval = 5  # Start with 5 seconds
         next_update_at = update_interval  # When to send next periodic update
+        first_poll = True  # Skip exit detection on first poll (establish baseline)
 
         try:
-            # Initial delay
+            # Initial delay before first poll (1s to catch fast commands)
             await asyncio.sleep(1.0)
             started_at = time.time()
             last_output_changed_at = started_at
@@ -126,28 +127,21 @@ class OutputPoller:
                     continue
 
                 # Exit condition 2: Exit code detected
-                exit_code = self._extract_exit_code(current_output, has_exit_marker)
-                # Debug logging
-                if has_exit_marker and exit_code is None:
-                    lines = current_output.splitlines()
-                    non_empty = [line for line in lines if line.strip()]
-                    last_n = non_empty[-20:] if len(non_empty) >= 20 else non_empty
-                    logger.debug(
-                        "Exit check for %s: has_marker=%s, checking_last_%d_lines, last_2=%s",
-                        session_id[:8],
-                        has_exit_marker,
-                        len(last_n),
-                        (
-                            [repr(line) for line in non_empty[-2:]]
-                            if len(non_empty) >= 2
-                            else [repr(line) for line in non_empty]
-                        ),
-                    )
-                if exit_code is not None:
-                    # Clear tmux history immediately to remove marker (prevents false exits on next command)
-                    await terminal_bridge.clear_history(tmux_session_name)
-                    logger.debug("Cleared tmux history for %s after detecting exit", session_id[:8])
+                # On first poll: establish baseline from current output
+                # On subsequent polls: only check when output changes from baseline
+                exit_code = None
 
+                if first_poll and current_output.strip():
+                    # First poll with output - establish baseline
+                    output_buffer = current_output
+                    first_poll = False
+                    logger.debug("Baseline established for %s (size=%d)", session_id[:8], len(output_buffer))
+                    # Continue polling (don't check for exit in baseline to avoid old markers)
+
+                elif not first_poll and current_output != output_buffer:
+                    # Output changed since baseline - check for exit
+                    exit_code = self._extract_exit_code(current_output, has_exit_marker)
+                if exit_code is not None:
                     # Strip markers from output (both marker and echo command)
                     current_output = self._strip_exit_markers(current_output)
                     logger.info("Exit code %d detected for %s", exit_code, session_id[:8])
@@ -163,8 +157,8 @@ class OutputPoller:
                     )
                     break
 
-                # Check if output changed
-                if current_output != output_buffer:
+                # Check if output changed (and exit wasn't already detected)
+                if current_output != output_buffer and exit_code is None:
                     # Output changed - reset idle counter and exponential backoff
                     output_buffer = current_output
                     idle_ticks = 0
@@ -245,9 +239,9 @@ class OutputPoller:
         """
         # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
         # Allow whitespace/newlines within marker due to tmux line wrapping
-        # Consumes surrounding newlines to keep output clean (matches original behavior)
+        # Remove marker + ONE trailing newline (preserves line structure)
         # Handles: __EXIT__0__, __EXIT__0\n__, __EXIT__\n0__, etc.
-        output = re.sub(r"\n?__EXIT__\s*\d+\s*__\n?", "", output)
+        output = re.sub(r"__EXIT__\s*\d+\s*__\n?", "", output)
 
         # Strip the echo command from shell prompts (handles line wrapping)
         # Allow whitespace/newlines within the quoted string and between command parts
@@ -269,9 +263,9 @@ class OutputPoller:
         if not has_exit_marker:
             return None
 
-        # Search last 20 NON-EMPTY lines for exit marker
-        # Tmux pads output with empty lines to fill terminal height
-        # Increased from 2 to 20 to handle interactive programs with status bars (Claude Code, htop, etc.)
+        # Search last 5 NON-EMPTY lines for exit marker
+        # Only check recent lines to avoid detecting old markers from previous commands
+        # Fresh exit markers appear near the end after command completes
         # Case 1 - Normal exit:
         #   ...
         #   __EXIT__0__
@@ -281,25 +275,24 @@ class OutputPoller:
         #   __EXIT__130__
         #   ➜  teleclaude git:(main) ✗
         #   (many empty lines)
-        # Case 3 - Interactive program with status bar:
-        #   ...
-        #   __EXIT__0__
-        #   (status bar lines updated constantly)
         lines = output.splitlines()
         if not lines:
             return None
 
-        # Get last 20 non-empty lines (handles status bars and complex output)
+        # Get last 5 non-empty lines (recent output only)
         non_empty_lines = [line for line in lines if line.strip()]
         if not non_empty_lines:
             return None
 
-        # Check last 20 non-empty lines for exit marker
-        # Marker could be anywhere in these lines depending on program output
-        last_n = non_empty_lines[-20:] if len(non_empty_lines) >= 20 else non_empty_lines
+        # Check last 5 non-empty lines for exit marker
+        last_n = non_empty_lines[-5:] if len(non_empty_lines) >= 5 else non_empty_lines
 
         for line in last_n:
-            match = re.search(r"__EXIT__(\d+)__", line)
+            # Strict pattern: marker must be on its own line (with optional whitespace)
+            # This prevents matching the marker in typed command text or shell syntax
+            # Valid: "   __EXIT__0__   " or "__EXIT__130__"
+            # Invalid: "echo "__EXIT__$?__"" or "; echo "__EXIT__$?__""
+            match = re.search(r"^\s*__EXIT__(\d+)__\s*$", line)
             if match:
                 return int(match.group(1))
 

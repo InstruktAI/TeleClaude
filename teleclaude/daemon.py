@@ -23,8 +23,8 @@ from teleclaude.core import (
     message_handler,
     polling_coordinator,
     session_lifecycle,
-    state_manager,
     terminal_executor,
+    ux_state,
     voice_message_handler,
 )
 from teleclaude.core.computer_registry import ComputerRegistry
@@ -328,6 +328,11 @@ class TeleClaudeDaemon:
         await self.session_manager.initialize()
         logger.info("Database initialized")
 
+        # Initialize ux_state module with database connection
+        db_path = os.path.expanduser(self.config["database"]["path"])
+        await ux_state.init(db_path)
+        logger.info("UX state module initialized")
+
         # Initialize voice handler
         init_voice_handler()
         logger.info("Voice handler initialized")
@@ -335,8 +340,7 @@ class TeleClaudeDaemon:
         # Migrate old session metadata
         await session_lifecycle.migrate_session_metadata(self.session_manager)
 
-        # Load state from database (restore polling state after daemon restart)
-        await state_manager.load_state_from_database(self.session_manager)
+        # State is now DB-backed via session_manager - no need to load from database
 
         # Start all adapters
         for adapter_name, adapter in self.adapters.items():

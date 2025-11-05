@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     output_message_id TEXT,  -- DEPRECATED: Use ux_state instead
     idle_notification_message_id TEXT,  -- DEPRECATED: Use ux_state instead
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
-    ux_state TEXT,  -- JSON blob for all session-level UX state (output_message_id, idle_notification_message_id, etc.)
+    ux_state TEXT,  -- JSON blob: {output_message_id, idle_notification_message_id, polling_active, ...}
     UNIQUE(computer_name, tmux_session_name)
 );
 

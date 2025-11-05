@@ -10,7 +10,22 @@ import logging
 from enum import Enum
 from typing import Any, Optional
 
+import aiosqlite
+
 logger = logging.getLogger(__name__)
+
+# Module-level DB connection (set by daemon on startup)
+_db: Optional[aiosqlite.Connection] = None
+
+
+async def init(db_path: str):
+    """Initialize ux_state module with database connection.
+
+    Must be called once by daemon on startup.
+    """
+    global _db
+    _db = await aiosqlite.connect(db_path)
+    _db.row_factory = aiosqlite.Row
 
 
 class UXStateContext(Enum):
@@ -139,3 +154,32 @@ async def update_ux_state(db, context: UXStateContext, updates: dict, session_id
 
     except Exception as e:
         logger.error("Failed to update UX state (context=%s): %s", context.value, e)
+
+
+# Convenience wrappers for cleaner API (use module-level DB connection)
+async def get_system() -> dict:
+    """Get system-level UX state."""
+    if not _db:
+        raise RuntimeError("ux_state not initialized - call init() first")
+    return await get_ux_state(_db, UXStateContext.SYSTEM)
+
+
+async def get_session(session_id: str) -> dict:
+    """Get session-level UX state."""
+    if not _db:
+        raise RuntimeError("ux_state not initialized - call init() first")
+    return await get_ux_state(_db, UXStateContext.SESSION, session_id)
+
+
+async def update_system(updates: dict):
+    """Update system-level UX state."""
+    if not _db:
+        raise RuntimeError("ux_state not initialized - call init() first")
+    await update_ux_state(_db, UXStateContext.SYSTEM, updates)
+
+
+async def update_session(session_id: str, updates: dict):
+    """Update session-level UX state."""
+    if not _db:
+        raise RuntimeError("ux_state not initialized - call init() first")
+    await update_ux_state(_db, UXStateContext.SESSION, updates, session_id)

@@ -71,7 +71,7 @@ All platform-specific code is isolated in adapters. Each adapter implements:
 
 ### Session Output Files
 
-- ONE file per active session: `logs/session_output/{session_id[:8]}.txt`
+- ONE file per active session: `session_output/{session_id[:8]}.txt`
 - Persistent (survives daemon restarts) to support downloads after crashes
 - Updated every second during polling
 - **Deleted when**:
@@ -139,7 +139,7 @@ Terminal output here (in code block with sh syntax highlighting)
 ### Output Buffer Management
 
 - **In-memory**: `daemon.session_output_buffers[session_id]` stores full output
-- **Persistent file**: `logs/session_output/{session_id[:8]}.txt` survives daemon restarts
+- **Persistent file**: `session_output/{session_id[:8]}.txt` survives daemon restarts
 - **File lifecycle**:
   - Created when polling starts
   - Updated every poll (1s interval)
@@ -246,6 +246,7 @@ TeleClaude exposes an MCP server that allows Claude Code instances on different 
 - **Message format**: `{computer_name} - last seen at {timestamp}`
 
 **Benefits:**
+
 - No manual configuration - computers auto-discovered
 - Fast lookups from in-memory state
 - Resilient to daemon crashes (heartbeat stops → marked offline)
@@ -285,28 +286,34 @@ TeleClaude uses different output modes for human vs AI sessions:
 
 **Example AI session output:**
 
-```
+````
 Message 1:
 ```sh
 [first 3400 chars of output]
-```
+````
+
 [Chunk 1/3]
 
 Message 2:
+
 ```sh
 [next 3400 chars of output]
 ```
+
 [Chunk 2/3]
 
 Message 3:
+
 ```sh
 [remaining output]
 ```
+
 [Chunk 3/3]
 
 Message 4:
 [Output Complete]
-```
+
+````
 
 **Why dual mode?**
 - Humans want clean, edited messages
@@ -379,11 +386,11 @@ async def teleclaude__send(self, session_id: str, message: str) -> AsyncIterator
             yield "[⏳ Waiting for response...]\n"
 
         await asyncio.sleep(0.5)  # Poll every 500ms
-```
+````
 
 **Output coordinator (Comp2 sending chunks):**
 
-```python
+````python
 async def _send_output_chunks_ai_mode(
     session_id: str,
     adapter: BaseAdapter,
@@ -406,7 +413,7 @@ async def _send_output_chunks_ai_mode(
 
     # Send completion marker
     await adapter.send_message(session_id, "[Output Complete]")
-```
+````
 
 ### Security
 
@@ -425,6 +432,7 @@ telegram:
 - Prevents unauthorized bots from joining supergroup and sending commands
 
 **Command safety:**
+
 - Commands forwarded to tmux exactly as received (no shell expansion by daemon)
 - Shell execution happens with user's permissions (not daemon)
 - Trust boundary is Claude Code → MCP (Claude Code validates commands)
@@ -435,13 +443,13 @@ telegram:
 
 ```yaml
 computer:
-  name: macbook  # Unique per computer
+  name: macbook # Unique per computer
   bot_username: teleclaude_macbook_bot
 
 mcp:
   enabled: true
-  transport: stdio  # For Claude Code integration
-  claude_command: claude  # Command to start Claude Code
+  transport: stdio # For Claude Code integration
+  claude_command: claude # Command to start Claude Code
 ```
 
 **`.env` per computer:**
@@ -460,11 +468,13 @@ TELEGRAM_SUPERGROUP_ID=-100123456789
 ### Performance Characteristics
 
 **Response latency:**
+
 - First chunk: < 2s from MCP call
 - Streaming: < 1s delay between chunk generation and delivery
 - Concurrent sessions: Supports 10+ simultaneous AI-to-AI sessions
 
 **Reliability:**
+
 - Heartbeat mechanism detects offline computers within 60s
 - Daemon restart doesn't break active sessions (state in DB + Telegram)
 - Graceful timeout handling (5 minute max idle)
