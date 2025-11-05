@@ -1035,6 +1035,7 @@ Current size: {}
                     "adapter_type": "telegram",
                     "session_id": session.session_id,
                     "user_id": query.from_user.id,
+                    "message_id": query.message.message_id,
                 },
             )
 

@@ -213,7 +213,7 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claud
 3. **Configure Claude Code** to use the TeleClaude MCP server:
 
 ```json
-// ~/.config/claude/config.json
+// ~/.claude.json
 {
   "mcpServers": {
     "teleclaude": {
