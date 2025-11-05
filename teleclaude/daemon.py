@@ -24,7 +24,6 @@ from teleclaude.core import (
     polling_coordinator,
     session_lifecycle,
     terminal_executor,
-    ux_state,
     voice_message_handler,
 )
 from teleclaude.core.computer_registry import ComputerRegistry
@@ -209,9 +208,13 @@ class TeleClaudeDaemon:
         """
         # Load Telegram adapter if configured
         if "telegram" in self.config.get("adapters", {}) or os.getenv("TELEGRAM_BOT_TOKEN"):
+            supergroup_id_str = os.getenv("TELEGRAM_SUPERGROUP_ID")
+            if not supergroup_id_str:
+                raise ValueError("TELEGRAM_SUPERGROUP_ID environment variable not set")
+
             telegram_config = {
                 "bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-                "supergroup_id": int(os.getenv("TELEGRAM_SUPERGROUP_ID")),
+                "supergroup_id": int(supergroup_id_str),
                 "user_whitelist": [int(uid.strip()) for uid in os.getenv("TELEGRAM_USER_IDS", "").split(",")],
                 "trusted_dirs": self.config.get("computer", {}).get("trustedDirs", []),
                 "trusted_bots": self.config.get("telegram", {}).get("trusted_bots", []),
@@ -294,7 +297,7 @@ class TeleClaudeDaemon:
         session_id: str,
         command: str,
         append_exit_marker: bool = True,
-        message_id: str = None,
+        message_id: Optional[str] = None,
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
@@ -563,7 +566,7 @@ async def main() -> None:
     config = expand_env_vars(config)
 
     # Setup logging using config.yml (source of truth)
-    log_file = "/var/log/teleclaude.log"
+    log_file = config.get("logging", {}).get("file", "/var/log/teleclaude.log")
     log_level = config.get("logging", {}).get("level", "INFO")
     setup_logging(level=log_level, log_file=log_file)
 

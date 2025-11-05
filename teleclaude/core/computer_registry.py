@@ -29,7 +29,7 @@ class ComputerRegistry:
     """
 
     def __init__(
-        self, telegram_adapter: Any, computer_name: str, bot_username: str, config: dict, session_manager: Any
+        self, telegram_adapter: Any, computer_name: str, bot_username: str, config: dict[str, Any], session_manager: Any
     ):
         self.telegram_adapter = telegram_adapter
         self.computer_name = computer_name
@@ -47,7 +47,7 @@ class ComputerRegistry:
         self.poll_interval = 30  # Poll registry every 30s
         self.offline_threshold = 60  # Mark offline after 60s of no heartbeat
 
-    async def start(self):
+    async def start(self) -> None:
         """Start registry: post status + start background loops."""
         logger.info("Starting computer registry for %s", self.computer_name)
 
@@ -130,7 +130,7 @@ class ComputerRegistry:
 
         return topic_id
 
-    async def _heartbeat_loop(self):
+    async def _heartbeat_loop(self) -> None:
         """Edit our status message every N seconds (heartbeat)."""
         while True:
             await asyncio.sleep(self.heartbeat_interval)
@@ -140,7 +140,7 @@ class ComputerRegistry:
             except Exception as e:
                 logger.error("Heartbeat update failed: %s", e)
 
-    async def _poll_registry_loop(self):
+    async def _poll_registry_loop(self) -> None:
         """Poll registry topic and refresh in-memory computer list every N seconds."""
         while True:
             await asyncio.sleep(self.poll_interval)
@@ -154,7 +154,7 @@ class ComputerRegistry:
             except Exception as e:
                 logger.error("Registry poll failed: %s", e)
 
-    async def _update_my_status(self):
+    async def _update_my_status(self) -> None:
         """Post or edit our status message in registry topic."""
         text = self._format_status_message()
 
@@ -252,7 +252,7 @@ class ComputerRegistry:
         """Format status message for registry (simple single line)."""
         return f"{self.computer_name} - last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-    async def _refresh_computer_list(self):
+    async def _refresh_computer_list(self) -> None:
         """Poll 'Online Now' topic and parse all computer statuses."""
         messages = await self.telegram_adapter.get_topic_messages(
             topic_id=self.registry_topic_id, limit=100  # Support up to 100 computers
@@ -293,7 +293,7 @@ class ComputerRegistry:
 
     # === Public API for MCP tools and daemon ===
 
-    def get_online_computers(self) -> list[dict]:
+    def get_online_computers(self) -> list[dict[str, Any]]:
         """Get list of currently online computers (for teleclaude__list_computers).
 
         Returns:
@@ -302,7 +302,7 @@ class ComputerRegistry:
         computers = [c for c in self.computers.values() if c["status"] == "online"]
         return sorted(computers, key=lambda c: c["name"])
 
-    def get_all_computers(self) -> list[dict]:
+    def get_all_computers(self) -> list[dict[str, Any]]:
         """Get all computers (online + offline), sorted by name."""
         return sorted(self.computers.values(), key=lambda c: c["name"])
 
@@ -310,6 +310,6 @@ class ComputerRegistry:
         """Check if specific computer is currently online."""
         return computer_name in self.computers and self.computers[computer_name]["status"] == "online"
 
-    def get_computer_info(self, computer_name: str) -> Optional[dict]:
+    def get_computer_info(self, computer_name: str) -> Optional[dict[str, Any]]:
         """Get info for specific computer (or None if not found)."""
         return self.computers.get(computer_name)

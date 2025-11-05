@@ -5,35 +5,24 @@ computer:
     default_working_dir: ${WORKING_DIR}
     timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)
     trustedDirs:
+        - ${WORKING_DIR}
         - ${HOME}/Documents
         - ${HOME}/Projects
-        - ${WORKING_DIR}
 
 database:
     path: ${WORKING_DIR}/teleclaude.db
 
 terminal:
-    default_size: 80x12
+    default_size: 120x40
     sizes:
-        small: 60x12 # mobile
-        medium: 100x16 # tablet
-        large: 120x20 # desktop
-    strip_prompts: true
-    strip_ansi: true
+        small: 80x20 # mobile
+        medium: 120x40 # tablet
+        large: 180x60 # desktop
 
 recording:
     enabled: true
-    rolling_window_minutes: 20
     rotation_interval_seconds: 60
     storage_path: ${WORKING_DIR}/recordings
-
-output:
-    max_lines_before_truncate: 1000
-    max_size_before_truncate: 102400 # 100KB
-    truncate_keep_last_lines: 100
-    spam_detection_lines_per_sec: 1000
-    stream_interval_seconds: 1.5
-    hybrid_mode_threshold_seconds: 5
 
 polling:
     idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)
@@ -44,7 +33,6 @@ polling:
 sessions:
     max_total: 100
     warn_at: 50
-    title_generation_after_commands: 5
 
 uploads:
     directory: ${WORKING_DIR}/uploads
@@ -70,7 +58,7 @@ mcp:
     transport: stdio
 
     # Socket path if using socket transport (not used for stdio)
-    socket_path: /tmp/teleclaude-${COMPUTER_NAME}.sock
+    socket_path: /tmp/teleclaude.sock
 
     # Command to start Claude Code (for /claude_resume in AI-to-AI sessions)
     claude_command: claude  # Or: cd ~/project && claude

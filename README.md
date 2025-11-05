@@ -118,7 +118,7 @@ The service automatically:
 
 - Starts on system boot
 - Restarts if it crashes
-- Logs to `logs/teleclaude.log`
+- Logs to `/var/log/teleclaude.log`
 
 **Development mode** (run in foreground):
 
@@ -316,7 +316,7 @@ make start
 
 1. Check bot is admin in supergroup (required for topic management)
 2. Verify your Telegram user ID is in `TELEGRAM_USER_IDS` whitelist
-3. Check daemon logs: `tail -f logs/teleclaude.log`
+3. Check daemon logs: `tail -f /var/log/teleclaude.log`
 4. Verify bot token is correct in `.env`
 
 ### tmux sessions not being created

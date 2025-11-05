@@ -51,6 +51,7 @@ You need **one bot per computer**. Each bot must have a unique token.
    - Computer 4: `teleclaude_laptop_bot`
 
 **Important naming convention:**
+
 - Username should be `teleclaude_{computer_name}_bot`
 - This makes it clear which bot belongs to which computer
 
@@ -87,11 +88,13 @@ All bots must join the **same supergroup** to communicate.
 You need the supergroup ID for configuration. Use one of these methods:
 
 **Method 1: Via @userinfobot**
+
 1. Forward any message from the supergroup to [@userinfobot](https://t.me/userinfobot)
 2. Bot will reply with group info including the ID
 3. Note the ID (looks like `-1001234567890`)
 
 **Method 2: Via Telegram API**
+
 1. Temporarily enable logging in your first daemon
 2. Start daemon and send a message in the supergroup
 3. Check logs for `chat_id` value
@@ -111,13 +114,11 @@ On each computer, create/update these files:
 ```bash
 # Macbook example:
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz_macbook_token
-COMPUTER_NAME=macbook
 TELEGRAM_SUPERGROUP_ID=-1001234567890  # SAME for all computers
 WORKING_DIR=/Users/username/teleclaude
 
 # Workstation example:
 TELEGRAM_BOT_TOKEN=987654321:ZYXwvuTSRqponMLKjihgFED_workstation_token
-COMPUTER_NAME=workstation
 TELEGRAM_SUPERGROUP_ID=-1001234567890  # SAME for all computers
 WORKING_DIR=/home/username/teleclaude
 ```
@@ -126,8 +127,8 @@ WORKING_DIR=/home/username/teleclaude
 
 ```yaml
 computer:
-  name: macbook  # UNIQUE per computer (must match COMPUTER_NAME in .env)
-  bot_username: teleclaude_macbook_bot  # UNIQUE per computer
+  name: macbook # UNIQUE per computer (must match COMPUTER_NAME in .env)
+  bot_username: teleclaude_macbook_bot # UNIQUE per computer
   default_shell: /bin/zsh
   default_working_dir: ${WORKING_DIR}
   trustedDirs:
@@ -135,7 +136,7 @@ computer:
     - ~/projects
 
 telegram:
-  supergroup_id: ${TELEGRAM_SUPERGROUP_ID}  # SAME for all computers
+  supergroup_id: ${TELEGRAM_SUPERGROUP_ID} # SAME for all computers
 
   # Whitelist of trusted bots (SAME for all computers)
   trusted_bots:
@@ -147,10 +148,11 @@ telegram:
 mcp:
   enabled: true
   transport: stdio
-  claude_command: claude  # Command to start Claude Code
+  claude_command: claude # Command to start Claude Code
 ```
 
 **Critical points:**
+
 - ✅ `computer.name` must be **unique** per computer
 - ✅ `TELEGRAM_BOT_TOKEN` must be **unique** per computer
 - ✅ `TELEGRAM_SUPERGROUP_ID` must be **same** for all computers
@@ -165,7 +167,7 @@ On each computer, start the TeleClaude daemon:
 ```bash
 # On each computer:
 cd ~/teleclaude  # Or wherever you installed TeleClaude
-make restart     # Restart daemon to load new config
+make start       # Start daemon to load new config
 make status      # Verify daemon is running
 ```
 
@@ -176,6 +178,7 @@ tail -f /var/log/teleclaude.log
 ```
 
 You should see:
+
 ```
 INFO - Starting computer registry for macbook
 INFO - Computer registry started: topic_id=12345, discovered 0 computers
@@ -263,6 +266,7 @@ To use TeleClaude's MCP tools from Claude Code, add the MCP server to your Claud
 ```
 
 **Adjust paths for your system:**
+
 - Replace `/Users/username/teleclaude` with your actual TeleClaude installation directory
 - On Linux, paths might be `/home/username/teleclaude`
 
@@ -320,9 +324,11 @@ claude
 ### Expected Telegram UI
 
 In your supergroup, you'll see:
+
 - Topic: `$macbook > $workstation - Check disk usage`
 - Messages in topic:
-  ```
+
+  ````
   /claude_resume
 
   🤖 Starting Claude Code on workstation...
@@ -330,10 +336,14 @@ In your supergroup, you'll see:
   ```sh
   Filesystem      Size  Used Avail Capacity
   /dev/sda1       500G  250G  250G    50%
-  ```
+  ````
+
   [Chunk 1/1]
 
   [Output Complete]
+
+  ```
+
   ```
 
 ---
@@ -347,20 +357,24 @@ In your supergroup, you'll see:
 **Solutions**:
 
 1. **Check daemon is running** on each computer:
+
    ```bash
    make status
    ```
 
 2. **Check "Online Now" topic** in Telegram:
+
    - Should see heartbeat messages from all computers
    - Messages should update every 30 seconds
 
 3. **Check logs** for heartbeat errors:
+
    ```bash
    tail -100 /var/log/teleclaude.log | grep -i heartbeat
    ```
 
 4. **Verify supergroup ID** is same in all `.env` files:
+
    ```bash
    grep SUPERGROUP .env
    ```
@@ -374,6 +388,7 @@ In your supergroup, you'll see:
 **Solutions**:
 
 1. **Check trusted_bots whitelist** in `config.yml`:
+
    ```yaml
    telegram:
      trusted_bots:
@@ -383,6 +398,7 @@ In your supergroup, you'll see:
    ```
 
 2. **Verify bot has admin permissions** in supergroup:
+
    - Open supergroup → Administrators
    - Check each bot has "Manage Topics" permission
 
@@ -399,18 +415,21 @@ In your supergroup, you'll see:
 **Solutions**:
 
 1. **Check target computer's daemon is running**:
+
    ```bash
    # On target computer:
    make status
    ```
 
 2. **Check target computer logs** for errors:
+
    ```bash
    # On target computer:
    tail -100 /var/log/teleclaude.log
    ```
 
 3. **Verify Claude Code is installed** on target computer:
+
    ```bash
    # On target computer:
    which claude
@@ -431,6 +450,7 @@ In your supergroup, you'll see:
 1. **Check topic exists** in supergroup (should be created automatically)
 
 2. **Verify polling is active** - check target computer logs:
+
    ```bash
    tail -100 /var/log/teleclaude.log | grep -i polling
    ```
@@ -483,12 +503,14 @@ mcp:
 You can run separate TeleClaude networks by using different supergroups:
 
 **Production network:**
+
 ```bash
 # .env
 TELEGRAM_SUPERGROUP_ID=-1001111111111
 ```
 
 **Testing network:**
+
 ```bash
 # .env
 TELEGRAM_SUPERGROUP_ID=-1002222222222
@@ -501,6 +523,7 @@ Bots in different supergroups won't see each other.
 Use `trusted_bots` to create isolated groups within same supergroup:
 
 **Team A computers** (only trust each other):
+
 ```yaml
 telegram:
   trusted_bots:
@@ -509,6 +532,7 @@ telegram:
 ```
 
 **Team B computers** (only trust each other):
+
 ```yaml
 telegram:
   trusted_bots:
@@ -525,18 +549,21 @@ This prevents cross-team command execution while sharing the same Telegram super
 ### Health Checks
 
 **Check computer registry status:**
+
 ```bash
 # View "Online Now" topic in Telegram supergroup
 # Should see recent heartbeats from all computers (< 60s ago)
 ```
 
 **Check daemon logs:**
+
 ```bash
 # On each computer:
 tail -100 /var/log/teleclaude.log | grep -E "(ERROR|WARNING)"
 ```
 
 **Test MCP connectivity:**
+
 ```bash
 # From Claude Code on any computer:
 > List all available TeleClaude computers
@@ -547,12 +574,14 @@ tail -100 /var/log/teleclaude.log | grep -E "(ERROR|WARNING)"
 Set up log rotation to prevent disk space issues:
 
 **macOS** (`/etc/newsyslog.d/teleclaude.conf`):
+
 ```
 # Rotate teleclaude logs daily, keep 7 days
 /var/log/teleclaude.log 644 7 * @T00 GZ
 ```
 
 **Linux** (`/etc/logrotate.d/teleclaude`):
+
 ```
 /var/log/teleclaude.log {
     daily
@@ -590,6 +619,7 @@ When upgrading TeleClaude on multiple computers:
 ```
 
 Claude Code will:
+
 1. Start sessions with both computers
 2. Execute log commands in parallel
 3. Aggregate results for analysis
@@ -628,16 +658,19 @@ Claude Code will:
 If you encounter issues not covered in this guide:
 
 1. **Check documentation**:
+
    - `README.md` - Installation and basic usage
    - `docs/architecture.md` - Technical architecture details
    - `docs/troubleshooting.md` - Common issues and fixes
 
 2. **Check logs**:
+
    ```bash
    tail -200 /var/log/teleclaude.log
    ```
 
 3. **Verify configuration**:
+
    ```bash
    cat config.yml | grep -A5 "computer:"
    cat config.yml | grep -A5 "mcp:"
@@ -645,6 +678,7 @@ If you encounter issues not covered in this guide:
    ```
 
 4. **Test with simple command first**:
+
    ```bash
    # In Claude Code:
    > Use teleclaude to run "echo test" on workstation

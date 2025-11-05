@@ -16,7 +16,12 @@ class TeleClaudeMCPServer:
     """MCP server for exposing TeleClaude functionality to Claude Code."""
 
     def __init__(
-        self, config: dict, telegram_adapter: Any, terminal_bridge: Any, session_manager: Any, computer_registry: Any
+        self,
+        config: dict[str, Any],
+        telegram_adapter: Any,
+        terminal_bridge: Any,
+        session_manager: Any,
+        computer_registry: Any,
     ):
         self.config = config
         self.telegram_adapter = telegram_adapter
@@ -30,7 +35,7 @@ class TeleClaudeMCPServer:
         # Setup MCP tool handlers
         self._setup_tools()
 
-    def _setup_tools(self):
+    def _setup_tools(self) -> None:
         """Register MCP tools with the server."""
 
         @self.server.list_tools()
@@ -98,17 +103,17 @@ class TeleClaudeMCPServer:
             ]
 
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+        async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             """Handle tool calls."""
             if name == "teleclaude__list_computers":
-                result = await self.teleclaude__list_computers()
-                return [TextContent(type="text", text=str(result))]
+                computers = await self.teleclaude__list_computers()
+                return [TextContent(type="text", text=str(computers))]
             elif name == "teleclaude__start_session":
-                result = await self.teleclaude__start_session(**arguments)
-                return [TextContent(type="text", text=str(result))]
+                session_info = await self.teleclaude__start_session(**arguments)
+                return [TextContent(type="text", text=str(session_info))]
             elif name == "teleclaude__list_sessions":
-                result = await self.teleclaude__list_sessions(**arguments)
-                return [TextContent(type="text", text=str(result))]
+                sessions = await self.teleclaude__list_sessions(**arguments)
+                return [TextContent(type="text", text=str(sessions))]
             elif name == "teleclaude__send":
                 # Streaming response - collect all chunks and return as single TextContent
                 chunks = []
@@ -119,7 +124,7 @@ class TeleClaudeMCPServer:
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
-    async def start(self):
+    async def start(self) -> None:
         """Start MCP server with stdio transport."""
         transport = self.config.get("mcp", {}).get("transport", "stdio")
 
@@ -134,7 +139,7 @@ class TeleClaudeMCPServer:
         else:
             raise NotImplementedError(f"Transport '{transport}' not yet implemented")
 
-    async def teleclaude__list_computers(self) -> list[dict]:
+    async def teleclaude__list_computers(self) -> list[dict[str, Any]]:
         """List available computers from in-memory registry.
 
         Returns:
@@ -142,7 +147,7 @@ class TeleClaudeMCPServer:
         """
         return self.computer_registry.get_online_computers()
 
-    async def teleclaude__start_session(self, target: str, title: str, description: str) -> dict:
+    async def teleclaude__start_session(self, target: str, title: str, description: str) -> dict[str, Any]:
         """Start new AI-to-AI session with remote computer.
 
         Args:
@@ -200,7 +205,7 @@ class TeleClaudeMCPServer:
             "message": f"Session ready with {target}",
         }
 
-    async def _wait_for_claude_ready(self, session_id: str, topic_id: int, timeout: float = 10.0):
+    async def _wait_for_claude_ready(self, session_id: str, topic_id: int, timeout: float = 10.0) -> None:
         """Wait for Claude Code to send ACK (any message) in the topic.
 
         Uses event-driven queue - no polling.
@@ -235,7 +240,7 @@ class TeleClaudeMCPServer:
             # Always unregister (cleanup)
             await self.telegram_adapter.unregister_mcp_listener(topic_id)
 
-    async def teleclaude__list_sessions(self, target: Optional[str] = None) -> list[dict]:
+    async def teleclaude__list_sessions(self, target: Optional[str] = None) -> list[dict[str, Any]]:
         """List AI-to-AI sessions initiated by this computer.
 
         Args:

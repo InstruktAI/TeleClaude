@@ -49,7 +49,7 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-disallow_untyped_defs = false
+disallow_untyped_defs = false  # Allow untyped defs in tests only
 
 [tool.pylint.'MESSAGES CONTROL']
 # CRITICAL: import-outside-toplevel is enforced via --fail-on flag in bin/lint.sh

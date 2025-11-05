@@ -458,9 +458,6 @@ mcp:
 # Unique bot token per computer
 TELEGRAM_BOT_TOKEN=123:ABC_your_unique_bot_token
 
-# Computer identifier
-COMPUTER_NAME=macbook
-
 # Shared supergroup for all bots
 TELEGRAM_SUPERGROUP_ID=-100123456789
 ```

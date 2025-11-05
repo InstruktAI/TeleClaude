@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Optional
 
 import aiosqlite
 
-from .models import Session
 from . import ux_state
+from .models import Session
 
 
 class SessionManager:
@@ -564,7 +564,7 @@ class SessionManager:
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
-    async def get_ux_state(self, session_id: str) -> dict:
+    async def get_ux_state(self, session_id: str) -> dict[str, Any]:
         """Get UX state for session.
 
         Args:
@@ -575,7 +575,7 @@ class SessionManager:
         """
         return await ux_state.get_ux_state(self._db, ux_state.UXStateContext.SESSION, session_id)
 
-    async def update_ux_state(self, session_id: str, updates: dict) -> None:
+    async def update_ux_state(self, session_id: str, updates: dict[str, Any]) -> None:
         """Update UX state for session (merges with existing).
 
         Args:

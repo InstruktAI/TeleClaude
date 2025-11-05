@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _db: Optional[aiosqlite.Connection] = None
 
 
-async def init(db_path: str):
+async def init(db_path: str) -> None:
     """Initialize ux_state module with database connection.
 
     Must be called once by daemon on startup.
@@ -35,7 +35,9 @@ class UXStateContext(Enum):
     SESSION = "session"
 
 
-async def get_ux_state(db, context: UXStateContext, session_id: Optional[str] = None) -> dict:
+async def get_ux_state(
+    db: aiosqlite.Connection, context: UXStateContext, session_id: Optional[str] = None
+) -> dict[str, Any]:
     """Get UX state from database.
 
     Args:
@@ -98,7 +100,9 @@ async def get_ux_state(db, context: UXStateContext, session_id: Optional[str] = 
         return {}
 
 
-async def update_ux_state(db, context: UXStateContext, updates: dict, session_id: Optional[str] = None):
+async def update_ux_state(
+    db: aiosqlite.Connection, context: UXStateContext, updates: dict[str, Any], session_id: Optional[str] = None
+) -> None:
     """Update UX state (merges with existing).
 
     Args:
@@ -112,7 +116,7 @@ async def update_ux_state(db, context: UXStateContext, updates: dict, session_id
         existing_state = await get_ux_state(db, context, session_id)
 
         # Deep merge updates into existing state
-        def deep_merge(base: dict, updates: dict) -> dict:
+        def deep_merge(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
             """Recursively merge updates into base."""
             result = base.copy()
             for key, value in updates.items():
@@ -157,28 +161,28 @@ async def update_ux_state(db, context: UXStateContext, updates: dict, session_id
 
 
 # Convenience wrappers for cleaner API (use module-level DB connection)
-async def get_system() -> dict:
+async def get_system() -> dict[str, Any]:
     """Get system-level UX state."""
     if not _db:
         raise RuntimeError("ux_state not initialized - call init() first")
     return await get_ux_state(_db, UXStateContext.SYSTEM)
 
 
-async def get_session(session_id: str) -> dict:
+async def get_session(session_id: str) -> dict[str, Any]:
     """Get session-level UX state."""
     if not _db:
         raise RuntimeError("ux_state not initialized - call init() first")
     return await get_ux_state(_db, UXStateContext.SESSION, session_id)
 
 
-async def update_system(updates: dict):
+async def update_system(updates: dict[str, Any]) -> None:
     """Update system-level UX state."""
     if not _db:
         raise RuntimeError("ux_state not initialized - call init() first")
     await update_ux_state(_db, UXStateContext.SYSTEM, updates)
 
 
-async def update_session(session_id: str, updates: dict):
+async def update_session(session_id: str, updates: dict[str, Any]) -> None:
     """Update session-level UX state."""
     if not _db:
         raise RuntimeError("ux_state not initialized - call init() first")

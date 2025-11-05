@@ -118,14 +118,14 @@ class TelegramAdapter(BaseAdapter):
         self.app: Optional[Application] = None
         self._processed_voice_messages: set[int] = set()  # Track processed voice message IDs
         self._topic_message_cache: Dict[int, list[Any]] = {}  # Cache for registry polling (get_topic_messages)
-        self._mcp_message_queues: Dict[int, asyncio.Queue] = {}  # Event-driven MCP delivery: topic_id -> queue
+        self._mcp_message_queues: Dict[int, asyncio.Queue[Any]] = {}  # Event-driven MCP delivery: topic_id -> queue
 
     def _ensure_started(self) -> None:
         """Ensure adapter is started."""
         if not self.app:
             raise AdapterError("Telegram adapter not started - call start() first")
 
-    def _is_message_from_trusted_bot(self, message) -> bool:
+    def _is_message_from_trusted_bot(self, message: Any) -> bool:
         """Check if message is from a trusted bot (for AI-to-AI communication).
 
         Args:
@@ -500,19 +500,31 @@ class TelegramAdapter(BaseAdapter):
 
     # ==================== Helper Methods ====================
 
+    def _validate_update_for_command(self, update: Update) -> bool:
+        """Check if update has required fields for command handling.
+
+        Returns:
+            True if update.effective_user and update.effective_message exist, False otherwise
+        """
+        return update.effective_user is not None and update.effective_message is not None
+
     async def _get_session_from_topic(self, update: Update) -> Any:
         """Get session from current topic.
 
         Returns:
             Session object or None if not found/not authorized
         """
+        # Check preconditions
+        if not self._validate_update_for_command(update):
+            return None
+
         # Check authorization
         if update.effective_user.id not in self.user_whitelist:
             return None
 
         # Get message (handles both regular and edited messages)
         message = update.effective_message
-        if not message or not message.message_thread_id:
+        if not message.message_thread_id:
             return None
 
         # Find session by channel_id (try both new and old format)
@@ -528,6 +540,9 @@ class TelegramAdapter(BaseAdapter):
 
     async def _handle_new_session(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /new_session command."""
+        if not self._validate_update_for_command(update) or not update.effective_chat:
+            return
+
         logger.debug("Received /new_session from user %s", update.effective_user.id)
 
         # Check if authorized
@@ -551,6 +566,9 @@ class TelegramAdapter(BaseAdapter):
 
     async def _handle_list_sessions(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /list_sessions command."""
+        if not self._validate_update_for_command(update) or not update.effective_chat:
+            return
+
         if update.effective_user.id not in self.user_whitelist:
             return
 
@@ -571,6 +589,10 @@ class TelegramAdapter(BaseAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "cancel",
             [],
@@ -587,6 +609,10 @@ class TelegramAdapter(BaseAdapter):
         session = await self._get_session_from_topic(update)
         if not session:
             return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
 
         await self._emit_command(
             "cancel2x",
@@ -605,6 +631,10 @@ class TelegramAdapter(BaseAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "escape",
             context.args or [],
@@ -621,6 +651,10 @@ class TelegramAdapter(BaseAdapter):
         session = await self._get_session_from_topic(update)
         if not session:
             return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
 
         await self._emit_command(
             "escape2x",
@@ -639,6 +673,10 @@ class TelegramAdapter(BaseAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "ctrl",
             context.args or [],
@@ -655,6 +693,10 @@ class TelegramAdapter(BaseAdapter):
         session = await self._get_session_from_topic(update)
         if not session:
             return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
 
         await self._emit_command(
             "tab",
@@ -673,6 +715,10 @@ class TelegramAdapter(BaseAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "shift-tab",
             [],
@@ -689,6 +735,10 @@ class TelegramAdapter(BaseAdapter):
         session = await self._get_session_from_topic(update)
         if not session:
             return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
 
         await self._emit_command(
             "key-up",
@@ -707,6 +757,10 @@ class TelegramAdapter(BaseAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "key-down",
             context.args or [],
@@ -724,6 +778,10 @@ class TelegramAdapter(BaseAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "key-left",
             context.args or [],
@@ -740,6 +798,10 @@ class TelegramAdapter(BaseAdapter):
         session = await self._get_session_from_topic(update)
         if not session:
             return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
 
         await self._emit_command(
             "key-right",
@@ -852,6 +914,10 @@ Current size: {}
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "claude",
             [],
@@ -869,6 +935,10 @@ Current size: {}
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         await self._emit_command(
             "claude_resume",
             [],
@@ -883,6 +953,8 @@ Current size: {}
     async def _handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle button clicks from inline keyboards."""
         query = update.callback_query
+        if not query:
+            return
         await query.answer()
 
         # Parse callback data
@@ -895,7 +967,7 @@ Current size: {}
         if action == "download_full":
             # Download full output
             session_id = args[0] if args else None
-            if not session_id:
+            if not session_id or not query.message:
                 return
 
             # Read output from file
@@ -936,7 +1008,7 @@ Current size: {}
 
         elif action == "cd":
             # Find session from the message's thread
-            if not query.message or not query.message.message_thread_id:
+            if not query.message or not query.message.message_thread_id or not query.from_user:
                 return
 
             # Try both new and old format
@@ -1025,12 +1097,16 @@ Current size: {}
                     logger.warning("MCP queue full for topic %s", topic_id)
 
         session = await self._get_session_from_topic(update)
-        if not session:
+        if not session or not update.effective_message or not update.effective_user:
+            return
+
+        text = update.effective_message.text
+        if not text:
             return
 
         await self._emit_message(
             session.session_id,
-            update.effective_message.text,
+            text,
             {
                 "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
@@ -1040,10 +1116,13 @@ Current size: {}
 
     async def _handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages in topics."""
+        if not update.message or not update.effective_user:
+            return
+
         logger.info("=== VOICE MESSAGE HANDLER CALLED ===")
         logger.info("Message ID: %s", update.message.message_id)
         logger.info("User: %s", update.effective_user.id)
-        logger.info("Thread ID: %s", update.message.message_thread_id if update.message else None)
+        logger.info("Thread ID: %s", update.message.message_thread_id)
 
         # Check if we've already processed this message
         message_id = update.message.message_id
@@ -1061,14 +1140,13 @@ Current size: {}
 
         session = await self._get_session_from_topic(update)
         if not session:
-            logger.warning(
-                "No session found for voice message in thread %s",
-                update.message.message_thread_id if update.message else None,
-            )
+            logger.warning("No session found for voice message in thread %s", update.message.message_thread_id)
             return
 
         # Download voice file to temp location
         voice = update.message.voice
+        if not voice:
+            return
         voice_file = await voice.get_file()
 
         # Create temp file with .ogg extension (Telegram uses ogg/opus format)
@@ -1252,7 +1330,7 @@ Current size: {}
         message = await self.app.bot.send_message(**kwargs)
         return message
 
-    async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue:
+    async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue[Any]:
         """Register MCP listener queue for instant message delivery.
 
         When messages arrive for this topic_id, they'll be pushed to the queue.
@@ -1270,7 +1348,7 @@ Current size: {}
         """
         self._ensure_started()
 
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue[Any] = asyncio.Queue()
         self._mcp_message_queues[topic_id] = queue
         logger.info("Registered MCP listener for topic %s", topic_id)
         return queue
