@@ -64,6 +64,14 @@ class SessionManager:
             # Column already exists
             pass
 
+        # Migration: Add ux_state column if it doesn't exist (generic UX state JSON blob)
+        try:
+            await self._db.execute("ALTER TABLE sessions ADD COLUMN ux_state TEXT")
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            # Column already exists
+            pass
+
         # Migration: Convert status TEXT to closed BOOLEAN
         try:
             # Add closed column

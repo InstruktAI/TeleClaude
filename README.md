@@ -23,7 +23,6 @@ TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your t
 - 🔄 **Live output streaming** - See command output in real-time with smart editing (dual-mode: human vs AI)
 - 🎤 **Voice input** - Speak commands, auto-transcribed with Whisper
 - 📁 **File uploads** (planned) - Upload files directly to your terminal session
-- 🎬 **Session recording** (planned) - 20-minute rolling window for text and video playback
 
 ## Quick Start
 
@@ -53,33 +52,37 @@ make init ARGS=-y
 ```
 
 The installation wizard will:
+
 - Detect your OS (macOS or Linux)
 - Check Python 3.11+ and tmux are installed
 - Create virtual environment and install dependencies
 - Set up `.env` and `config.yml` files
 - Install and start the system service (launchd/systemd)
 
-
 ### Configuration
 
 The `make init` wizard will prompt you for these values:
 
 1. **Create a Telegram Bot:**
+
    - Message [@BotFather](https://t.me/botfather) on Telegram
    - Send `/newbot` and follow instructions
    - Copy the bot token
 
 2. **Create a Telegram Supergroup:**
+
    - Create a new group in Telegram
    - Convert it to Supergroup (Group Settings > Group Type)
    - Enable Topics (Group Settings > Topics)
    - Add your bot to the group with admin rights
 
 3. **Get your Telegram User ID:**
+
    - Message [@userinfobot](https://t.me/userinfobot)
    - Copy your user ID
 
 4. **Get the Supergroup ID:**
+
    - Add your bot to the supergroup
    - Send a message in the group
    - Visit: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
@@ -94,6 +97,7 @@ The wizard will create `.env` and `config.yml` files with your settings.
 After `make init`, the daemon runs as a system service:
 
 **macOS:**
+
 ```bash
 make status    # Check if running
 make restart   # Restart daemon
@@ -102,6 +106,7 @@ make start     # Start service
 ```
 
 **Linux:**
+
 ```bash
 make status    # Check if running
 make restart   # Restart daemon
@@ -110,11 +115,13 @@ make start     # Start service
 ```
 
 The service automatically:
+
 - Starts on system boot
 - Restarts if it crashes
 - Logs to `logs/teleclaude.log`
 
 **Development mode** (run in foreground):
+
 ```bash
 make stop      # Stop service first
 make dev       # Run with Ctrl+C to stop
@@ -393,14 +400,11 @@ See developer documentation:
 **Planned:**
 
 - 🔲 File upload handling
-- 🔲 Terminal recording (20-minute rolling window)
 - 🔲 AI-generated session titles
 - 🔲 REST API endpoints for output access
 - 🔲 Session sharing for pair programming
 - 🔲 Output filtering and alerts
 - 🔲 Session templates and presets
-
-See [prds/teleclaude.md](prds/teleclaude.md) for complete design specification.
 
 ## License
 
@@ -420,7 +424,7 @@ Contributions welcome! Please:
 
 - **Issues**: [GitHub Issues](https://github.com/morriz/teleclaude/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/morriz/teleclaude/discussions)
-- **Email**: morriz@idiotz.nl
+- **Email**: maurice@instrukt.ai
 
 ## Acknowledgments
 

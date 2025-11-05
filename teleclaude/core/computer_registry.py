@@ -13,6 +13,8 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
+from teleclaude.core.ux_state import UXStateContext, get_ux_state, update_ux_state
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,8 +54,36 @@ class ComputerRegistry:
         # Find or create registry topic
         self.registry_topic_id = await self._get_or_create_registry_topic()
 
-        # Post initial status
-        await self._update_my_status()
+        # Post initial status (with fallback to create new topic if current one is stale)
+        try:
+            await self._update_my_status()
+        except Exception as e:
+            error_lower = str(e).lower()
+            logger.debug(
+                "Startup post error: %s (type: %s, checking for: 'thread not found')", error_lower, type(e).__name__
+            )
+            if "thread not found" in error_lower:
+                logger.warning("Registry topic %s not found, creating new topic", self.registry_topic_id)
+                try:
+                    # Force create new topic and reset state
+                    topic = await self.telegram_adapter.create_topic("Online Now")
+                    self.registry_topic_id = topic.message_thread_id
+                    self.my_message_id = None  # Reset to force new message in new topic
+                    logger.info("Created new registry topic during startup: %s", self.registry_topic_id)
+                    await update_ux_state(
+                        self.session_manager._db,
+                        UXStateContext.SYSTEM,
+                        {"registry": {"topic_id": self.registry_topic_id}},
+                    )
+                    # Retry posting status
+                    await self._update_my_status()
+                    logger.info("Successfully posted to new registry topic during startup")
+                except Exception as topic_error:
+                    logger.error("Failed to recreate registry topic during startup: %s", topic_error)
+                    # Continue anyway - heartbeat will retry
+            else:
+                logger.error("Failed to post initial registry status: %s", e)
+                # Continue anyway - heartbeat will retry
 
         # Immediately poll once to get current state
         await self._refresh_computer_list()
@@ -72,13 +102,22 @@ class ComputerRegistry:
         """Find or create the 'Online Now' topic.
 
         Uses database persistence to avoid creating duplicate topics on restart.
+        Also loads persisted message_id if available.
         """
         registry_name = "Online Now"
 
-        # Check if we have stored topic ID in database
-        stored_topic_id = await self._get_stored_registry_topic_id()
+        # Load UX state from database (system context)
+        ux_state = await get_ux_state(self.session_manager._db, UXStateContext.SYSTEM)
+        registry_state = ux_state.get("registry", {})
+        stored_topic_id = registry_state.get("topic_id")
+        stored_message_id = registry_state.get("message_id")
+
         if stored_topic_id:
             logger.info("Using stored registry topic ID: %s", stored_topic_id)
+            # Restore message_id if available (prevents duplicate messages on restart)
+            if stored_message_id:
+                self.my_message_id = stored_message_id
+                logger.info("Restored message ID from database: %s", stored_message_id)
             return stored_topic_id
 
         # Create new topic
@@ -86,8 +125,8 @@ class ComputerRegistry:
         topic = await self.telegram_adapter.create_topic(registry_name)
         topic_id = topic.message_thread_id
 
-        # Store topic ID in database for future restarts
-        await self._store_registry_topic_id(topic_id)
+        # Store topic ID in database for future restarts (system context)
+        await update_ux_state(self.session_manager._db, UXStateContext.SYSTEM, {"registry": {"topic_id": topic_id}})
 
         return topic_id
 
@@ -121,20 +160,93 @@ class ComputerRegistry:
 
         if self.my_message_id is None:
             # First time - post new message
-            msg = await self.telegram_adapter.send_message_to_topic(
-                topic_id=self.registry_topic_id, text=text, parse_mode="Markdown"
-            )
-            self.my_message_id = msg.message_id
-            logger.info("Posted initial status to registry: message_id=%s", self.my_message_id)
+            try:
+                msg = await self.telegram_adapter.send_message_to_topic(
+                    topic_id=self.registry_topic_id, text=text, parse_mode=None
+                )
+                self.my_message_id = msg.message_id
+                logger.info("Posted initial status to registry: message_id=%s", self.my_message_id)
+
+                # Persist message_id to prevent duplicate messages on restart (system context)
+                await update_ux_state(
+                    self.session_manager._db,
+                    UXStateContext.SYSTEM,
+                    {"registry": {"topic_id": self.registry_topic_id, "message_id": self.my_message_id}},
+                )
+            except Exception as e:
+                logger.error("Failed to post initial status: %s (type: %s)", e, type(e).__name__)
+                raise
         else:
             # Update existing message (heartbeat)
             # Use bot API directly since adapter's edit_message expects session_id
-            await self.telegram_adapter.app.bot.edit_message_text(
-                chat_id=self.telegram_adapter.supergroup_id,
-                message_id=self.my_message_id,
-                text=text,
-                parse_mode="Markdown",
-            )
+            # Don't pass parse_mode to use plain text (Telegram API default)
+            try:
+                await self.telegram_adapter.app.bot.edit_message_text(
+                    chat_id=self.telegram_adapter.supergroup_id,
+                    message_id=self.my_message_id,
+                    text=text,
+                )
+            except Exception as e:
+                error_lower = str(e).lower()
+                logger.debug("Heartbeat edit error: %s (checking for: 'thread not found')", error_lower)
+
+                # If topic/channel not found, recreate it
+                if "thread not found" in error_lower or "topic not found" in error_lower:
+                    logger.warning("Registry topic %s not found during heartbeat, recreating", self.registry_topic_id)
+                    try:
+                        topic = await self.telegram_adapter.create_topic("Online Now")
+                        self.registry_topic_id = topic.message_thread_id
+                        self.my_message_id = None  # Reset to force new message in new topic
+                        logger.info("Created new registry topic: %s", self.registry_topic_id)
+                        await update_ux_state(
+                            self.session_manager._db,
+                            UXStateContext.SYSTEM,
+                            {"registry": {"topic_id": self.registry_topic_id}},
+                        )
+                        # Recursively call to post new message
+                        await self._update_my_status()
+                        logger.info("Successfully posted to new registry topic")
+                    except Exception as topic_error:
+                        logger.error("Failed to recreate registry topic: %s", topic_error)
+                        # Don't raise - let heartbeat retry later
+                        return
+
+                # If message not found (deleted from Telegram), post new message
+                elif "message to edit not found" in error_lower or "message not found" in error_lower:
+                    logger.warning("Heartbeat message %s not found, posting new message", self.my_message_id)
+                    try:
+                        self.my_message_id = None  # Reset to force new message
+                        # Recursively call to post new message
+                        await self._update_my_status()
+                        logger.info("Successfully posted new heartbeat message")
+                    except Exception as post_error:
+                        post_error_lower = str(post_error).lower()
+                        # If topic also missing, recreate it
+                        if "thread not found" in post_error_lower or "topic not found" in post_error_lower:
+                            logger.warning("Registry topic also missing, recreating during message recovery")
+                            try:
+                                topic = await self.telegram_adapter.create_topic("Online Now")
+                                self.registry_topic_id = topic.message_thread_id
+                                logger.info("Created new registry topic: %s", self.registry_topic_id)
+                                await update_ux_state(
+                                    self.session_manager._db,
+                                    UXStateContext.SYSTEM,
+                                    {"registry": {"topic_id": self.registry_topic_id}},
+                                )
+                                # Try one more time to post
+                                await self._update_my_status()
+                                logger.info("Successfully posted to recreated topic")
+                            except Exception as recreate_error:
+                                logger.error("Failed to recreate topic and post: %s", recreate_error)
+                        else:
+                            logger.error("Failed to post new heartbeat message: %s", post_error)
+                        # Don't raise - let heartbeat retry later
+                        return
+
+                else:
+                    logger.error("Heartbeat update failed: %s", e)
+                    # Don't raise - let heartbeat retry later
+                    return
 
     def _format_status_message(self) -> str:
         """Format status message for registry (simple single line)."""
@@ -201,43 +313,3 @@ class ComputerRegistry:
     def get_computer_info(self, computer_name: str) -> Optional[dict]:
         """Get info for specific computer (or None if not found)."""
         return self.computers.get(computer_name)
-
-    async def _get_stored_registry_topic_id(self) -> Optional[int]:
-        """Get registry topic ID from database.
-
-        Returns:
-            Topic ID if stored, None otherwise.
-        """
-        try:
-            cursor = await self.session_manager._db.execute(
-                "SELECT value FROM system_settings WHERE key = 'registry_topic_id'"
-            )
-            row = await cursor.fetchone()
-            if row:
-                return int(row[0])
-            return None
-        except Exception as e:
-            logger.warning("Failed to retrieve stored registry topic ID: %s", e)
-            return None
-
-    async def _store_registry_topic_id(self, topic_id: int):
-        """Store registry topic ID in database for persistence across restarts.
-
-        Args:
-            topic_id: Telegram topic ID to store
-        """
-        try:
-            await self.session_manager._db.execute(
-                """
-                INSERT INTO system_settings (key, value, updated_at)
-                VALUES ('registry_topic_id', ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (str(topic_id),),
-            )
-            await self.session_manager._db.commit()
-            logger.info("Stored registry topic ID in database: %s", topic_id)
-        except Exception as e:
-            logger.error("Failed to store registry topic ID: %s", e)

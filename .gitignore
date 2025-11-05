@@ -52,3 +52,5 @@ tmp/
 
 # Backup files
 *.bak*
+
+.claude/data/

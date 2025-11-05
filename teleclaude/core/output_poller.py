@@ -131,12 +131,17 @@ class OutputPoller:
                 if has_exit_marker and exit_code is None:
                     lines = current_output.splitlines()
                     non_empty = [line for line in lines if line.strip()]
-                    last_2 = non_empty[-2:] if len(non_empty) >= 2 else non_empty
+                    last_n = non_empty[-20:] if len(non_empty) >= 20 else non_empty
                     logger.debug(
-                        "Exit check for %s: has_marker=%s, last_2_non_empty=%s",
+                        "Exit check for %s: has_marker=%s, checking_last_%d_lines, last_2=%s",
                         session_id[:8],
                         has_exit_marker,
-                        [repr(line) for line in last_2],
+                        len(last_n),
+                        (
+                            [repr(line) for line in non_empty[-2:]]
+                            if len(non_empty) >= 2
+                            else [repr(line) for line in non_empty]
+                        ),
                     )
                 if exit_code is not None:
                     # Clear tmux history immediately to remove marker (prevents false exits on next command)
@@ -264,8 +269,9 @@ class OutputPoller:
         if not has_exit_marker:
             return None
 
-        # Check last 2 NON-EMPTY lines for exit marker
+        # Search last 20 NON-EMPTY lines for exit marker
         # Tmux pads output with empty lines to fill terminal height
+        # Increased from 2 to 20 to handle interactive programs with status bars (Claude Code, htop, etc.)
         # Case 1 - Normal exit:
         #   ...
         #   __EXIT__0__
@@ -275,21 +281,24 @@ class OutputPoller:
         #   __EXIT__130__
         #   ➜  teleclaude git:(main) ✗
         #   (many empty lines)
+        # Case 3 - Interactive program with status bar:
+        #   ...
+        #   __EXIT__0__
+        #   (status bar lines updated constantly)
         lines = output.splitlines()
         if not lines:
             return None
 
-        # Get last 2 non-empty lines
+        # Get last 20 non-empty lines (handles status bars and complex output)
         non_empty_lines = [line for line in lines if line.strip()]
         if not non_empty_lines:
             return None
 
-        # Check last 2 non-empty lines (marker could be last line OR second-to-last with prompt after)
-        # Case 1: Command exits normally → marker is last non-empty line
-        # Case 2: After Ctrl+C → prompt appears after marker → marker is second-to-last
-        last_2 = non_empty_lines[-2:] if len(non_empty_lines) >= 2 else non_empty_lines
+        # Check last 20 non-empty lines for exit marker
+        # Marker could be anywhere in these lines depending on program output
+        last_n = non_empty_lines[-20:] if len(non_empty_lines) >= 20 else non_empty_lines
 
-        for line in last_2:
+        for line in last_n:
             match = re.search(r"__EXIT__(\d+)__", line)
             if match:
                 return int(match.group(1))

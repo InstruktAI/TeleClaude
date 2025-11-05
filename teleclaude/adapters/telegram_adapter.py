@@ -1243,12 +1243,13 @@ Current size: {}
 
         return []
 
-    async def send_message_to_topic(self, topic_id: int, text: str, parse_mode: str = "Markdown") -> Any:
+    async def send_message_to_topic(self, topic_id: int, text: str, parse_mode: Optional[str] = "Markdown") -> Any:
         """Send a message to a specific topic."""
         self._ensure_started()
-        message = await self.app.bot.send_message(
-            chat_id=self.supergroup_id, message_thread_id=topic_id, text=text, parse_mode=parse_mode
-        )
+        kwargs = {"chat_id": self.supergroup_id, "message_thread_id": topic_id, "text": text}
+        if parse_mode is not None:
+            kwargs["parse_mode"] = parse_mode
+        message = await self.app.bot.send_message(**kwargs)
         return message
 
     async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue:

@@ -22,9 +22,10 @@ class Session:
     terminal_size: str = "80x24"
     working_directory: str = "~"
     command_count: int = 0
-    output_message_id: Optional[str] = None
-    idle_notification_message_id: Optional[str] = None
+    output_message_id: Optional[str] = None  # DEPRECATED: Use ux_state instead
+    idle_notification_message_id: Optional[str] = None  # DEPRECATED: Use ux_state instead
     description: Optional[str] = None
+    ux_state: Optional[str] = None  # JSON blob for session-level UX state
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert session to dictionary for JSON serialization."""
