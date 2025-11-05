@@ -56,10 +56,8 @@ async def test_session_manager_crud():
         updated = await session_mgr.get_session(session.session_id)
         assert updated.title == "Updated Title"
 
-        # Update activity and count
+        # Update activity
         await session_mgr.update_last_activity(session.session_id)
-        count = await session_mgr.increment_command_count(session.session_id)
-        assert count == 1
 
         # Delete session
         await session_mgr.delete_session(session.session_id)

@@ -328,11 +328,6 @@ class TeleClaudeDaemon:
         await self.session_manager.initialize()
         logger.info("Database initialized")
 
-        # Initialize ux_state module with database connection
-        db_path = os.path.expanduser(self.config["database"]["path"])
-        await ux_state.init(db_path)
-        logger.info("UX state module initialized")
-
         # Initialize voice handler
         init_voice_handler()
         logger.info("Voice handler initialized")

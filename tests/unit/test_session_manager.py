@@ -258,33 +258,6 @@ class TestUpdateLastActivity:
         assert updated.last_activity != original_activity
 
 
-class TestIncrementCommandCount:
-    """Tests for increment_command_count method."""
-
-    @pytest.mark.asyncio
-    async def test_increment_command_count(self, session_manager):
-        """Test incrementing command count."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
-        assert session.command_count == 0
-
-        count = await session_manager.increment_command_count(session.session_id)
-        assert count == 1
-
-        count = await session_manager.increment_command_count(session.session_id)
-        assert count == 2
-
-        updated = await session_manager.get_session(session.session_id)
-        assert updated.command_count == 2
-
-    @pytest.mark.asyncio
-    async def test_increment_nonexistent_session(self, session_manager):
-        """Test incrementing count for nonexistent session."""
-        count = await session_manager.increment_command_count("nonexistent-id")
-
-        # Should return 0 when session doesn't exist
-        assert count == 0
-
-
 class TestDeleteSession:
     """Tests for delete_session method."""
 

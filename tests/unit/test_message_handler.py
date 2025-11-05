@@ -53,7 +53,10 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=True)
+        session_manager.remove_idle_notification = AsyncMock(return_value="idle-msg-456")
+        session_manager.cleanup_messages_after_success = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         adapter.delete_message = AsyncMock()
@@ -61,14 +64,9 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {"message_id": "123"}            # Idle notification exists
-            mock_state.has_idle_notification = Mock(return_value=True)
-            mock_state.remove_idle_notification = Mock(return_value="idle-msg-456")
-            mock_state.is_polling = Mock(return_value=False)
-            mock_state.set_exit_marker = Mock()
-            mock_state.cleanup_messages_after_success = AsyncMock()
+        context = {"message_id": "123"}
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
                 mock_terminal.clear_history = AsyncMock(return_value=True)
 
@@ -84,7 +82,7 @@ class TestHandleMessage:
                 )
 
                 # Verify idle notification deleted
-                mock_state.remove_idle_notification.assert_called_once_with("test-123")
+                session_manager.remove_idle_notification.assert_called_once_with("test-123")
                 adapter.delete_message.assert_called_with("test-123", "idle-msg-456")
 
     async def test_strip_leading_double_slash(self):
@@ -102,19 +100,18 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=False)
+        session_manager.cleanup_messages_after_success = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
-            mock_state.is_polling = Mock(return_value=False)
-            mock_state.set_exit_marker = Mock()
-            mock_state.cleanup_messages_after_success = AsyncMock()
+        context = {}
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
                 mock_terminal.clear_history = AsyncMock(return_value=True)
 
@@ -148,19 +145,18 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=False)
+        session_manager.cleanup_messages_after_success = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
-            mock_state.is_polling = Mock(return_value=False)
-            mock_state.set_exit_marker = Mock()
-            mock_state.cleanup_messages_after_success = AsyncMock()
+        context = {}
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
                 mock_terminal.clear_history = AsyncMock(return_value=True)
 
@@ -196,7 +192,8 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=False)
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         adapter.send_message = AsyncMock()
@@ -204,34 +201,32 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
-            mock_state.is_polling = Mock(return_value=False)
+        context = {}
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
-                # send_keys fails
-                mock_terminal.send_keys = AsyncMock(return_value=False)
-                mock_terminal.clear_history = AsyncMock(return_value=True)
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+            # send_keys fails
+            mock_terminal.send_keys = AsyncMock(return_value=False)
+            mock_terminal.clear_history = AsyncMock(return_value=True)
 
-                # Execute
-                await message_handler.handle_message(
-                    session_id="test-789",
-                    text="invalid command",
-                    context=context,
-                    session_manager=session_manager,
-                    config=config,
-                    get_adapter_for_session=get_adapter_for_session,
-                    start_polling=start_polling,
-                )
+            # Execute
+            await message_handler.handle_message(
+                session_id="test-789",
+                text="invalid command",
+                context=context,
+                session_manager=session_manager,
+                config=config,
+                get_adapter_for_session=get_adapter_for_session,
+                start_polling=start_polling,
+            )
 
-                # Verify error message sent
-                adapter.send_message.assert_called_once_with("test-789", "Failed to send command to terminal")
+            # Verify error message sent
+            adapter.send_message.assert_called_once_with("test-789", "Failed to send command to terminal")
 
-                # Verify no activity updates
-                session_manager.update_last_activity.assert_not_called()
-                session_manager.increment_command_count.assert_not_called()
+            # Verify no activity updates
+            session_manager.update_last_activity.assert_not_called()
 
-                # Verify no polling started
-                start_polling.assert_not_called()
+            # Verify no polling started
+            start_polling.assert_not_called()
 
     async def test_delete_user_message_when_polling_active(self):
         """Test user message is deleted when sending input to running process."""
@@ -248,7 +243,9 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=False)
+        session_manager.cleanup_messages_after_success = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": True})
 
         adapter = Mock()
         adapter.delete_message = AsyncMock()
@@ -256,42 +253,32 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {"message_id": "555"}            mock_state.has_idle_notification = Mock(return_value=False)
-            # Process is running (polling active)
-            mock_state.is_polling = Mock(return_value=True)
-            mock_state.set_exit_marker = Mock()
-            mock_state.cleanup_messages_after_success = AsyncMock()
-            # No pending deletions (new behavior)
-            mock_state.get_pending_deletions = Mock(return_value=[])
-            mock_state.clear_pending_deletions = Mock()
+        context = {"message_id": "555"}
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
-                mock_terminal.send_keys = AsyncMock(return_value=True)
-                mock_terminal.clear_history = AsyncMock(return_value=True)
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+            mock_terminal.send_keys = AsyncMock(return_value=True)
+            mock_terminal.clear_history = AsyncMock(return_value=True)
 
-                # Execute
-                await message_handler.handle_message(
-                    session_id="test-999",
-                    text="input to running process",
-                    context=context,
-                    session_manager=session_manager,
-                    config=config,
-                    get_adapter_for_session=get_adapter_for_session,
-                    start_polling=start_polling,
-                )
+            # Execute
+            await message_handler.handle_message(
+                session_id="test-999",
+                text="input to running process",
+                context=context,
+                session_manager=session_manager,
+                config=config,
+                get_adapter_for_session=get_adapter_for_session,
+                start_polling=start_polling,
+            )
 
-                # Verify cleanup called with user message ID
-                mock_state.cleanup_messages_after_success.assert_called_once_with("test-999", "555", adapter)
+            # Verify cleanup called with user message ID
+            session_manager.cleanup_messages_after_success.assert_called_once_with("test-999", "555", adapter)
 
-                # Verify exit marker set to False (not appended)
-                mock_state.set_exit_marker.assert_called_once_with("test-999", False)
+            # Verify send_keys called with append_exit_marker=False
+            call_kwargs = mock_terminal.send_keys.call_args[1]
+            assert call_kwargs["append_exit_marker"] is False
 
-                # Verify send_keys called with append_exit_marker=False
-                call_kwargs = mock_terminal.send_keys.call_args[1]
-                assert call_kwargs["append_exit_marker"] is False
-
-                # Verify NO new polling started (existing poll continues)
-                start_polling.assert_not_called()
+            # Verify NO new polling started (existing poll continues)
+            start_polling.assert_not_called()
 
     async def test_user_message_no_delete_if_no_message_id(self):
         """Test user message not deleted if context has no message_id."""
@@ -308,7 +295,9 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=False)
+        session_manager.cleanup_messages_after_success = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": True})
 
         adapter = Mock()
         adapter.delete_message = AsyncMock()
@@ -316,15 +305,9 @@ class TestHandleMessage:
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}  # No message_id            mock_state.has_idle_notification = Mock(return_value=False)
-            mock_state.is_polling = Mock(return_value=True)
-            mock_state.set_exit_marker = Mock()
-            mock_state.cleanup_messages_after_success = AsyncMock()
-            # No pending deletions
-            mock_state.get_pending_deletions = Mock(return_value=[])
-            mock_state.clear_pending_deletions = Mock()
+        context = {}  # No message_id
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
                 mock_terminal.clear_history = AsyncMock(return_value=True)
 
@@ -340,7 +323,7 @@ class TestHandleMessage:
                 )
 
                 # Verify cleanup called with None message_id
-                mock_state.cleanup_messages_after_success.assert_called_once_with("test-111", None, adapter)
+                session_manager.cleanup_messages_after_success.assert_called_once_with("test-111", None, adapter)
 
     async def test_new_command_starts_polling(self):
         """Test starting new poll when sending new command (not input to running process)."""
@@ -357,20 +340,18 @@ class TestHandleMessage:
         session_manager = Mock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.update_last_activity = AsyncMock()
-        session_manager.increment_command_count = AsyncMock()
+        session_manager.has_idle_notification = AsyncMock(return_value=False)
+        session_manager.cleanup_messages_after_success = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         start_polling = AsyncMock()
         config = {"computer": {"default_shell": "/bin/bash"}}
-        context = {}            mock_state.has_idle_notification = Mock(return_value=False)
-            # No process running
-            mock_state.is_polling = Mock(return_value=False)
-            mock_state.set_exit_marker = Mock()
-            mock_state.cleanup_messages_after_success = AsyncMock()
+        context = {}
 
-            with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.message_handler.terminal_bridge") as mock_terminal:
                 mock_terminal.send_keys = AsyncMock(return_value=True)
                 mock_terminal.clear_history = AsyncMock(return_value=True)
 
@@ -384,9 +365,6 @@ class TestHandleMessage:
                     get_adapter_for_session=get_adapter_for_session,
                     start_polling=start_polling,
                 )
-
-                # Verify exit marker set to True (appended)
-                mock_state.set_exit_marker.assert_called_once_with("test-222", True)
 
                 # Verify send_keys called with append_exit_marker=True
                 call_kwargs = mock_terminal.send_keys.call_args[1]

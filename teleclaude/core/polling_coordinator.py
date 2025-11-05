@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from teleclaude.core import output_message_manager, ux_state
+from teleclaude.core import output_message_manager
 from teleclaude.core.output_poller import (
     IdleDetected,
     OutputChanged,
@@ -115,7 +115,7 @@ async def poll_and_send_output(
     session = await session_manager.get_session(session_id)
 
     # Update ux_state to persist polling status in DB
-    await ux_state.update_session(session_id, {"polling_active": True})
+    await session_manager.update_ux_state(session_id, {"polling_active": True})
     is_ai_session = _is_ai_to_ai_session(session)
 
     # Get output file and exit marker status
@@ -149,11 +149,11 @@ async def poll_and_send_output(
                     )
 
                 # Delete idle notification if one exists (output resumed)
-                session_data = await ux_state.get_session(event.session_id)
+                session_data = await session_manager.get_ux_state(event.session_id)
                 notification_id = session_data.get("idle_notification_message_id")
                 if notification_id:
                     await adapter.delete_message(event.session_id, notification_id)
-                    await ux_state.update_session(event.session_id, {"idle_notification_message_id": None})
+                    await session_manager.update_ux_state(event.session_id, {"idle_notification_message_id": None})
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, IdleDetected):
@@ -164,7 +164,9 @@ async def poll_and_send_output(
                 notification_id = await adapter.send_message(event.session_id, notification)
                 if notification_id:
                     # Persist to DB (survives daemon restart)
-                    await ux_state.update_session(event.session_id, {"idle_notification_message_id": notification_id})
+                    await session_manager.update_ux_state(
+                        event.session_id, {"idle_notification_message_id": notification_id}
+                    )
                     logger.debug("Stored idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, ProcessExited):
@@ -223,6 +225,6 @@ async def poll_and_send_output(
         # Only cleared when session closes (/exit command)
 
         # Clear idle notification
-        await ux_state.update_session(session_id, {"idle_notification_message_id": None})
+        await session_manager.update_ux_state(session_id, {"idle_notification_message_id": None})
 
         logger.debug("Polling ended for session %s", session_id[:8])

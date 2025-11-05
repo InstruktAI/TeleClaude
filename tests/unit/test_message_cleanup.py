@@ -50,7 +50,30 @@ def mock_session_manager(mock_session):
     manager.add_pending_deletion = AsyncMock()
     manager.get_pending_deletions = AsyncMock(return_value=[])
     manager.clear_pending_deletions = AsyncMock()
-    manager.cleanup_messages_after_success = AsyncMock()
+
+    # cleanup_messages_after_success needs to actually call adapter.delete_message
+    async def cleanup_side_effect(session_id, message_id, adapter):
+        """Mimic real cleanup behavior: delete pending + current message."""
+        pending = await manager.get_pending_deletions(session_id)
+        for msg_id in pending:
+            try:
+                await adapter.delete_message(session_id, msg_id)
+            except Exception:
+                # Resilient to already-deleted messages (like real implementation)
+                pass
+        try:
+            await adapter.delete_message(session_id, message_id)
+        except Exception:
+            pass
+        await manager.clear_pending_deletions(session_id)
+
+    manager.cleanup_messages_after_success = AsyncMock(side_effect=cleanup_side_effect)
+
+    # UX state methods
+    manager.get_ux_state = AsyncMock(return_value={})
+    # Idle notification methods
+    manager.has_idle_notification = AsyncMock(return_value=False)
+    manager.remove_idle_notification = AsyncMock(return_value=None)
     return manager
 
 
@@ -104,7 +127,7 @@ class TestBasicFeedbackCleanup:
         session_id = mock_session.session_id
 
         # Mark session as having active polling (process running)
-        mock_session_manager.is_polling.return_value = True
+        mock_session_manager.is_polling = AsyncMock(return_value=True)
 
         # Simulate feedback message being sent (this will be implemented)
         # For now, we'll manually track it as pending deletion
@@ -147,7 +170,7 @@ class TestBasicFeedbackCleanup:
         Expected: All feedback messages and user commands deleted
         """
         session_id = mock_session.session_id
-        mock_session_manager.is_polling.return_value = True
+        mock_session_manager.is_polling = AsyncMock(return_value=True)
 
         # Track multiple pending deletions (feedback messages)
         mock_session_manager.get_pending_deletions.return_value = ["100", "101", "102", "103"]
@@ -196,7 +219,7 @@ class TestUserMessageTracking:
         Expected: Each user message is tracked and cleaned up by next message
         """
         session_id = mock_session.session_id
-        mock_session_manager.is_polling.return_value = True
+        mock_session_manager.is_polling = AsyncMock(return_value=True)
 
         with patch("teleclaude.core.message_handler.terminal_bridge") as mock_tb:
             mock_tb.send_keys = AsyncMock(return_value=True)
@@ -253,7 +276,7 @@ class TestEdgeCases:
         Expected: delete_message handles missing messages gracefully
         """
         session_id = mock_session.session_id
-        mock_session_manager.is_polling.return_value = True
+        mock_session_manager.is_polling = AsyncMock(return_value=True)
 
         # Add pending deletion
         mock_session_manager.get_pending_deletions.return_value = ["300", "301"]
@@ -306,7 +329,7 @@ class TestEdgeCases:
         """
         session_id = mock_session.session_id
         # NOT marking as polling - simulating new command
-        mock_session_manager.is_polling.return_value = False
+        mock_session_manager.is_polling = AsyncMock(return_value=False)
 
         # Add some pending deletions (will be executed on successful command)
         mock_session_manager.get_pending_deletions.return_value = ["400", "401"]
@@ -381,7 +404,7 @@ class TestIntegrationWithCommandHandlers:
         from teleclaude.core import command_handlers
 
         session_id = mock_session.session_id
-        mock_session_manager.is_polling.return_value = True  # Process running
+        mock_session_manager.is_polling = AsyncMock(return_value=True)  # Process running
 
         # Mock adapter to return message ID when sending feedback
         feedback_message_id = "feedback-123"
@@ -418,7 +441,7 @@ class TestIntegrationWithCommandHandlers:
         from teleclaude.core import command_handlers
 
         session_id = mock_session.session_id
-        mock_session_manager.is_polling.return_value = True  # nano is running
+        mock_session_manager.is_polling = AsyncMock(return_value=True)  # nano is running
 
         # Simulate two failed /ctrl commands that tracked messages
         mock_session_manager.get_pending_deletions.return_value = ["99", "100", "101", "102"]

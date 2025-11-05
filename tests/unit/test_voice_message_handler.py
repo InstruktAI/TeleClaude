@@ -19,6 +19,8 @@ class TestHandleVoice:
         audio_file.write_text("fake audio")
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=None)
 
         get_adapter_for_session = AsyncMock()
@@ -53,9 +55,12 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
@@ -96,9 +101,12 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
@@ -140,10 +148,13 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)  # No message yet
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
@@ -185,10 +196,13 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value=None)
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
@@ -230,10 +244,13 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value="msg-123")
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         get_output_file = Mock(return_value=Path("/tmp/output.txt"))
@@ -272,10 +289,13 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value="msg-123")
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         get_output_file = Mock(return_value=Path("/tmp/output.txt"))
@@ -320,16 +340,19 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-456"})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value="msg-456")
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         get_output_file = Mock(return_value=tmp_path / "output.txt")
         context = {"duration": 4}
 
-        session_manager.is_polling = AsyncMock(return_value=False)
+        session_manager.is_polling = AsyncMock(return_value=True)
 
         with patch("teleclaude.core.voice_message_handler.output_message_manager") as mock_output_mgr:
             mock_output_mgr.send_status_message = AsyncMock(side_effect=["msg-123", None])
@@ -370,18 +393,22 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value="msg-789")
         session_manager.update_last_activity = AsyncMock()
 
         adapter = Mock()
         adapter.send_message = AsyncMock()
+        adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         get_output_file = Mock(return_value=tmp_path / "output.txt")
         context = {"duration": 6}
 
-        session_manager.is_polling = AsyncMock(return_value=False)
+        session_manager.is_polling = AsyncMock(return_value=True)  # Process is running
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-789"})  # Has output message
 
         with patch("teleclaude.core.voice_message_handler.output_message_manager") as mock_output_mgr:
             mock_output_mgr.send_status_message = AsyncMock(return_value="msg-123")
@@ -425,17 +452,20 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-999"})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value="msg-999")
         session_manager.update_last_activity = AsyncMock()
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         get_output_file = Mock(return_value=tmp_path / "output.txt")
         context = {"duration": 3}
 
-        session_manager.is_polling = AsyncMock(return_value=False)
+        session_manager.is_polling = AsyncMock(return_value=True)
 
         with patch("teleclaude.core.voice_message_handler.output_message_manager") as mock_output_mgr:
             mock_output_mgr.send_status_message = AsyncMock(return_value="msg-status")
@@ -489,17 +519,20 @@ class TestHandleVoice:
         )
 
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-123"})
+        session_manager.update_ux_state = AsyncMock()
         session_manager.get_session = AsyncMock(return_value=session)
         session_manager.get_output_message_id = AsyncMock(return_value="msg-123")
         session_manager.update_last_activity = AsyncMock()
 
         adapter = Mock()
+        adapter.send_message = AsyncMock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         get_output_file = Mock(return_value=tmp_path / "output.txt")
         context = {"duration": 3}
 
-        session_manager.is_polling = AsyncMock(return_value=False)
+        session_manager.is_polling = AsyncMock(return_value=True)
 
         with patch("teleclaude.core.voice_message_handler.output_message_manager") as mock_output_mgr:
             mock_output_mgr.send_status_message = AsyncMock(return_value="msg-status")

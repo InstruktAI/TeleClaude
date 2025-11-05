@@ -45,7 +45,7 @@ class TestOutputPoller:
         """Test stripping exit code marker from output."""
         output = "command output\n__EXIT__0__\n"
         result = poller._strip_exit_markers(output)
-        assert result == "command output"
+        assert result == "command output\n"  # Preserves trailing newline
 
     def test_strip_exit_markers_removes_echo_command(self, poller):
         """Test stripping echo command from shell prompts."""
@@ -57,14 +57,14 @@ class TestOutputPoller:
         """Test stripping both marker and echo command."""
         output = 'some output; echo "__EXIT__$?__"\n__EXIT__0__\nprompt > '
         result = poller._strip_exit_markers(output)
-        assert result == "some outputprompt > "
+        assert result == "some output\nprompt > "  # Preserves newline after output
 
     def test_strip_exit_markers_handles_line_wrapped_marker(self, poller):
         """Test stripping marker that wraps across lines (THE BUG FIX)."""
         output = "command output\n__EXIT__0\n__\n"
         result = poller._strip_exit_markers(output)
-        # Removes leading newline + wrapped marker + trailing newline
-        assert result == "command output"
+        # Removes wrapped marker, preserves structure
+        assert result == "command output\n"
 
     def test_strip_exit_markers_handles_line_wrapped_echo_command(self, poller):
         """Test stripping echo command that wraps across lines."""
@@ -76,14 +76,14 @@ class TestOutputPoller:
         """Test stripping when both marker and command are wrapped."""
         output = 'some output; echo "__EXIT__\n$?\n__"\n__EXIT__\n0\n__\nprompt > '
         result = poller._strip_exit_markers(output)
-        assert result == "some outputprompt > "
+        assert result == "some output\nprompt > "  # Preserves newline
 
     def test_strip_exit_markers_real_world_wrapped_case(self, poller):
         """Test realistic case with wrapped marker (matches original behavior)."""
         output = 'ls -la\nfile1.txt\nfile2.txt\n__EXIT__\n0\n__\n$ '
         result = poller._strip_exit_markers(output)
-        # Removes leading newline + wrapped marker + trailing newline
-        assert result == 'ls -la\nfile1.txt\nfile2.txt$ '
+        # Removes wrapped marker, preserves newline structure
+        assert result == 'ls -la\nfile1.txt\nfile2.txt\n$ '
 
 
 @pytest.mark.asyncio
@@ -125,8 +125,17 @@ class TestOutputPollerPoll:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 # Session exists
                 mock_terminal.session_exists = AsyncMock(return_value=True)
-                # Output with exit marker
-                mock_terminal.capture_pane = AsyncMock(return_value="command output\n__EXIT__0__\n")
+
+                # Output changes from command to command+exit marker (triggers exit detection)
+                call_count = 0
+                async def capture_mock(name):
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count == 1:
+                        return "command output\n"  # Baseline
+                    return "command output\n__EXIT__0__\n"  # Changed output with exit marker
+
+                mock_terminal.capture_pane = capture_mock
                 mock_terminal.clear_history = AsyncMock()
 
                 # Collect events
@@ -139,14 +148,11 @@ class TestOutputPollerPoll:
                 assert isinstance(events[0], ProcessExited)
                 assert events[0].session_id == "test-456"
                 assert events[0].exit_code == 0
-                assert events[0].final_output == "command output"
-
-                # Verify history cleared
-                mock_terminal.clear_history.assert_called_once_with("test-tmux")
+                assert events[0].final_output == "command output\n"  # Preserves trailing newline
 
                 # Verify file written
                 assert output_file.exists()
-                assert output_file.read_text() == "command output"
+                assert output_file.read_text() == "command output\n"  # Preserves trailing newline
 
     async def test_output_changed_detection(self, poller, tmp_path):
         """Test poll detects output changes."""

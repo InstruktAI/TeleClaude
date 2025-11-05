@@ -50,7 +50,7 @@ async def send_status_message(
     """
     if append_to_existing:
         # Append to existing output message (process is actively polling)
-        session_data = await ux_state.get_session(session_id)
+        session_data = await session_manager.get_ux_state(session_id)
         current_message_id = session_data.get("output_message_id")
         logger.debug(
             "send_status_message: session=%s, append=True, message_id=%s, output_file=%s",
@@ -79,7 +79,7 @@ async def send_status_message(
         if not success:
             # Edit failed (stale message_id) - clear it and send new message
             logger.warning("Failed to edit message %s, clearing stale message_id and sending new", current_message_id)
-            await ux_state.update_session(session_id, {"output_message_id": None})
+            await session_manager.update_ux_state(session_id, {"output_message_id": None})
             # Fall through to send new message below
         else:
             logger.debug("Appended status '%s' to existing message for session %s", text, session_id[:8])
@@ -123,7 +123,7 @@ async def send_output_update(
         Message ID
     """
     config = get_config()
-    session_data = await ux_state.get_session(session_id)
+    session_data = await session_manager.get_ux_state(session_id)
     current_message_id = session_data.get("output_message_id")
 
     # Truncate if needed
@@ -173,11 +173,11 @@ async def send_output_update(
             return current_message_id
         # Edit failed - clear stale message_id and send new
         logger.warning("Failed to edit message %s, clearing stale message_id and sending new", current_message_id)
-        await ux_state.update_session(session_id, {"output_message_id": None})
+        await session_manager.update_ux_state(session_id, {"output_message_id": None})
 
     new_id = await adapter.send_message(session_id, display_output, metadata)
     if new_id:
-        await ux_state.update_session(session_id, {"output_message_id": new_id})
+        await session_manager.update_ux_state(session_id, {"output_message_id": new_id})
         logger.debug("Stored message_id=%s for session=%s", new_id, session_id[:8])
     return new_id
 
@@ -198,7 +198,7 @@ async def send_exit_message(
         exit_text: Exit message text
         session_manager: Session manager for persisting message IDs
     """
-    session_data = await ux_state.get_session(session_id)
+    session_data = await session_manager.get_ux_state(session_id)
     current_message_id = session_data.get("output_message_id")
     final_output = format_terminal_message(output if output else "", exit_text)
     metadata = {"raw_format": True}
@@ -208,11 +208,11 @@ async def send_exit_message(
         if not success:
             # Edit failed - clear stale message_id and send new message
             logger.warning("Failed to edit message %s, clearing stale message_id and sending new", current_message_id)
-            await ux_state.update_session(session_id, {"output_message_id": None})
+            await session_manager.update_ux_state(session_id, {"output_message_id": None})
             new_id = await adapter.send_message(session_id, final_output, metadata)
             if new_id:
-                await ux_state.update_session(session_id, {"output_message_id": new_id})
+                await session_manager.update_ux_state(session_id, {"output_message_id": new_id})
     else:
         new_id = await adapter.send_message(session_id, final_output, metadata)
         if new_id:
-            await ux_state.update_session(session_id, {"output_message_id": new_id})
+            await session_manager.update_ux_state(session_id, {"output_message_id": new_id})

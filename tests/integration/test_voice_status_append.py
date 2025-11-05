@@ -45,7 +45,7 @@ class TestVoiceStatusAppend:
         adapter.edit_message = AsyncMock(return_value=True)
 
         # Set message ID (simulating active polling)
-        await session_manager.set_output_message_id(session_id, "msg-123")
+        await session_manager.update_ux_state(session_id, {"output_message_id": "msg-123"})
 
         # Send status message with append_to_existing=True
         result = await output_message_manager.send_status_message(
@@ -152,7 +152,7 @@ class TestVoiceStatusAppend:
         adapter.send_message = AsyncMock(return_value=None)  # Fallback send also returns None
 
         # Set message ID
-        await session_manager.set_output_message_id(session_id, "msg-stale")
+        await session_manager.update_ux_state(session_id, {"output_message_id": "msg-stale"})
 
         # Try to append (should fail edit, then fallthrough to send new which also returns None)
         result = await output_message_manager.send_status_message(
@@ -168,5 +168,6 @@ class TestVoiceStatusAppend:
         assert result is None
 
         # Verify message_id was cleared
-        cleared_id = await session_manager.get_output_message_id(session_id)
+        ux_state = await session_manager.get_ux_state(session_id)
+        cleared_id = ux_state.get("output_message_id")
         assert cleared_id is None

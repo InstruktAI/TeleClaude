@@ -11,7 +11,6 @@ from typing import Any, Awaitable, Callable, Dict
 from teleclaude.core import (
     output_message_manager,
     terminal_bridge,
-    ux_state,
 )
 from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.voice_handler import transcribe_voice_with_retry
@@ -70,7 +69,7 @@ async def handle_voice(
     output_file = get_output_file(session_id)
 
     # Check if output message exists (polling may have just started)
-    session_data = await ux_state.get_session(session_id)
+    session_data = await session_manager.get_ux_state(session_id)
     current_message_id = session_data.get("output_message_id")
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])

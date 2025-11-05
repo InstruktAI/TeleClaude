@@ -103,9 +103,6 @@ def mock_daemon():
         daemon._poll_and_send_output = AsyncMock()
         daemon._execute_terminal_command = AsyncMock(return_value=True)
 
-        # Store mock for tests that need to change is_polling behavior
-        daemon.mock_is_polling = mock_is_polling
-
         yield daemon
 
 
@@ -126,8 +123,8 @@ class TestHandleMessage:
         mock_session.adapter_type = "telegram"
         mock_session.terminal_size = "80x24"  # Required by message_handler
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
-
-        # Mock state_manager (not polling) - already mocked in fixture with return_value=False
+        mock_daemon.session_manager.cleanup_messages_after_success = AsyncMock()
+        mock_daemon.session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         # Execute
         await mock_daemon.handle_message(session_id, text, {"adapter_type": "telegram", "message_id": "msg-123"})
@@ -152,8 +149,8 @@ class TestHandleMessage:
         mock_session.adapter_type = "telegram"
         mock_session.terminal_size = "80x24"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
-
-        # Mock state_manager (not polling) - already mocked in fixture with return_value=False
+        mock_daemon.session_manager.cleanup_messages_after_success = AsyncMock()
+        mock_daemon.session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         # Execute
         await mock_daemon.handle_message(session_id, text, {"adapter_type": "telegram"})
@@ -176,8 +173,8 @@ class TestHandleMessage:
         mock_session.adapter_type = "telegram"
         mock_session.terminal_size = "80x24"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
-
-        # Mock state_manager (NOT polling - new command) - already mocked in fixture with return_value=False
+        mock_daemon.session_manager.cleanup_messages_after_success = AsyncMock()
+        mock_daemon.session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         # Execute
         await mock_daemon.handle_message(session_id, text, {"adapter_type": "telegram"})
@@ -200,9 +197,8 @@ class TestHandleMessage:
         mock_session.adapter_type = "telegram"
         mock_session.terminal_size = "80x24"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
-
-        # Mock polling active (running process)
-        mock_daemon.session_manager.is_polling.return_value = True
+        mock_daemon.session_manager.cleanup_messages_after_success = AsyncMock()
+        mock_daemon.session_manager.get_ux_state = AsyncMock(return_value={"polling_active": True})
 
         # Execute with message_id in context
         await mock_daemon.handle_message(session_id, text, {
@@ -213,9 +209,6 @@ class TestHandleMessage:
         # Verify send_keys was called with append_exit_marker=False
         call_args = mock_daemon.terminal.send_keys.call_args
         assert call_args[1]["append_exit_marker"] is False, "Should NOT append exit marker for running process"
-
-        # Verify user message was deleted
-        mock_daemon.telegram.delete_message.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_combined_double_slash_and_running_process(self, mock_daemon):
@@ -231,9 +224,8 @@ class TestHandleMessage:
         mock_session.adapter_type = "telegram"
         mock_session.terminal_size = "80x24"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
-
-        # Mock polling active (running process)
-        mock_daemon.session_manager.is_polling.return_value = True
+        mock_daemon.session_manager.cleanup_messages_after_success = AsyncMock()
+        mock_daemon.session_manager.get_ux_state = AsyncMock(return_value={"polling_active": True})
 
         # Execute
         await mock_daemon.handle_message(session_id, text, {

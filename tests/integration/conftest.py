@@ -32,6 +32,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         monkeypatch.setattr(daemon.telegram, "stop", AsyncMock())
         monkeypatch.setattr(daemon.telegram, "send_message", AsyncMock(return_value="msg-123"))
         monkeypatch.setattr(daemon.telegram, "edit_message", AsyncMock(return_value=True))
+        monkeypatch.setattr(daemon.telegram, "delete_message", AsyncMock())
         monkeypatch.setattr(daemon.telegram, "create_channel", AsyncMock(return_value="12345"))
         monkeypatch.setattr(daemon.telegram, "update_channel_title", AsyncMock(return_value=True))
         monkeypatch.setattr(daemon.telegram, "send_general_message", AsyncMock(return_value="msg-456"))

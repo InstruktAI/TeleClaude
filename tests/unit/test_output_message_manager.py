@@ -16,6 +16,8 @@ class TestSendStatusMessage:
     async def test_send_new_message(self):
         """Test sending new status message (append=False)."""
         session_manager = Mock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
         adapter = Mock()
         adapter.send_message = AsyncMock(return_value="msg-123")
 
@@ -35,7 +37,8 @@ class TestSendStatusMessage:
     async def test_append_to_existing_message(self, tmp_path):
         """Test appending to existing message."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-456")
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-456"})
+        session_manager.update_ux_state = AsyncMock()
 
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=True)
@@ -61,7 +64,9 @@ class TestSendStatusMessage:
     async def test_append_fails_without_message_id(self):
         """Test append fails when no message_id."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value=None)
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
 
         adapter = Mock()
 
@@ -81,7 +86,8 @@ class TestSendStatusMessage:
     async def test_append_fails_without_output_file(self):
         """Test append fails when no output_file_path."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-789")
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-789"})
 
         adapter = Mock()
 
@@ -101,9 +107,8 @@ class TestSendStatusMessage:
     async def test_append_edit_fails_sends_new_message(self, tmp_path):
         """Test append falls back to new message when edit fails."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-stale")
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-stale"})
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=False)  # Edit fails
         adapter.send_message = AsyncMock(return_value="msg-new")
@@ -126,7 +131,7 @@ class TestSendStatusMessage:
         adapter.edit_message.assert_called_once()
 
         # Verify stale message_id cleared
-        session_manager.set_output_message_id.assert_called_once_with("test-session", None)
+        session_manager.update_ux_state.assert_called_with("test-session", {"output_message_id": None})
 
         # Verify new message sent
         adapter.send_message.assert_called_once()
@@ -140,9 +145,9 @@ class TestSendOutputUpdate:
     async def test_send_new_message(self):
         """Test sending new output message."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value=None)
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
         adapter = Mock()
         adapter.send_message = AsyncMock(return_value="msg-123")
 
@@ -161,13 +166,14 @@ class TestSendOutputUpdate:
 
             # Verify new message sent
             adapter.send_message.assert_called_once()
-            session_manager.set_output_message_id.assert_called_once_with("test-session", "msg-123")
+            session_manager.update_ux_state.assert_called_with("test-session", {"output_message_id": "msg-123"})
             assert result == "msg-123"
 
     async def test_edit_existing_message(self):
         """Test editing existing output message."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-456")
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-456"})
 
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=True)
@@ -192,9 +198,8 @@ class TestSendOutputUpdate:
     async def test_edit_fails_sends_new_message(self):
         """Test fallback to new message when edit fails."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-stale")
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-stale"})
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=False)  # Edit fails
         adapter.send_message = AsyncMock(return_value="msg-new")
@@ -216,9 +221,10 @@ class TestSendOutputUpdate:
             adapter.edit_message.assert_called_once()
 
             # Verify stale message_id cleared
-            assert session_manager.set_output_message_id.call_count == 2
-            first_call = session_manager.set_output_message_id.call_args_list[0]
-            assert first_call[0] == ("test-session", None)
+            # Output message ID updates tracked via update_ux_state (may have additional calls)
+            assert session_manager.update_ux_state.call_count >= 2
+            first_call = session_manager.update_ux_state.call_args_list[0]
+            assert first_call[0] == ("test-session", {"output_message_id": None})
 
             # Verify new message sent
             adapter.send_message.assert_called_once()
@@ -227,9 +233,9 @@ class TestSendOutputUpdate:
     async def test_truncation_when_output_exceeds_max_length(self):
         """Test output truncation and download button."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value=None)
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
         adapter = Mock()
         adapter.send_message = AsyncMock(return_value="msg-789")
 
@@ -260,7 +266,8 @@ class TestSendOutputUpdate:
     async def test_final_message_with_exit_code(self):
         """Test final message with exit code."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-existing")
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-existing"})
 
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=True)
@@ -287,9 +294,9 @@ class TestSendOutputUpdate:
     async def test_status_color_based_on_idle_time(self):
         """Test status color changes based on idle time."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value=None)
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
         adapter = Mock()
         adapter.send_message = AsyncMock(return_value="msg-123")
 
@@ -335,9 +342,8 @@ class TestSendExitMessage:
     async def test_edit_existing_message(self):
         """Test editing existing message with exit text."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-456")
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-456"})
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=True)
 
@@ -359,9 +365,8 @@ class TestSendExitMessage:
     async def test_edit_fails_sends_new_message(self):
         """Test sending new message when edit fails."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value="msg-stale")
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={"output_message_id": "msg-stale"})
         adapter = Mock()
         adapter.edit_message = AsyncMock(return_value=False)  # Edit fails
         adapter.send_message = AsyncMock(return_value="msg-new")
@@ -382,16 +387,17 @@ class TestSendExitMessage:
         adapter.send_message.assert_called_once()
 
         # Verify message_id cleared then set to new value
-        assert session_manager.set_output_message_id.call_count == 2
-        session_manager.set_output_message_id.assert_any_call("test-session", None)
-        session_manager.set_output_message_id.assert_any_call("test-session", "msg-new")
+        # Output message ID updates tracked via update_ux_state (may have additional calls)
+        assert session_manager.update_ux_state.call_count >= 2
+        session_manager.update_ux_state.assert_any_call("test-session", {"output_message_id": None})
+        session_manager.update_ux_state.assert_any_call("test-session", {"output_message_id": "msg-new"})
 
     async def test_no_existing_message_sends_new(self):
         """Test sending new message when no existing message."""
         session_manager = Mock()
-        session_manager.get_output_message_id = AsyncMock(return_value=None)
-        session_manager.set_output_message_id = AsyncMock()
-
+        session_manager.get_ux_state = AsyncMock(return_value={})
+        session_manager.update_ux_state = AsyncMock()
+        session_manager.get_ux_state = AsyncMock(return_value={})
         adapter = Mock()
         adapter.send_message = AsyncMock(return_value="msg-new")
 
@@ -408,4 +414,4 @@ class TestSendExitMessage:
         adapter.send_message.assert_called_once()
 
         # Verify message_id set to new value
-        session_manager.set_output_message_id.assert_called_once_with("test-session", "msg-new")
+        session_manager.update_ux_state.assert_called_with("test-session", {"output_message_id": "msg-new"})

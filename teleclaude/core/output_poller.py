@@ -138,9 +138,16 @@ class OutputPoller:
                     logger.debug("Baseline established for %s (size=%d)", session_id[:8], len(output_buffer))
                     # Continue polling (don't check for exit in baseline to avoid old markers)
 
-                elif not first_poll and current_output != output_buffer:
-                    # Output changed since baseline - check for exit
-                    exit_code = self._extract_exit_code(current_output, has_exit_marker)
+                elif not first_poll:
+                    # Check for exit on every poll after baseline (not just when output changes)
+                    # This handles fast commands where exit marker appears before first poll
+                    if current_output != output_buffer:
+                        # Output changed - always check for exit
+                        exit_code = self._extract_exit_code(current_output, has_exit_marker)
+                    elif has_exit_marker and output_buffer.strip():
+                        # Output unchanged but we expect exit marker - check baseline
+                        exit_code = self._extract_exit_code(output_buffer, has_exit_marker)
+
                 if exit_code is not None:
                     # Strip markers from output (both marker and echo command)
                     current_output = self._strip_exit_markers(current_output)

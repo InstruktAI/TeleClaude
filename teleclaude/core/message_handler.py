@@ -65,9 +65,7 @@ async def handle_message(
 
     # Check if a process is currently running (polling active)
     # Use ux_state from DB as source of truth (survives daemon restarts)
-    from teleclaude.core import ux_state
-
-    session_data = await ux_state.get_session(session_id)
+    session_data = await session_manager.get_ux_state(session_id)
     is_process_running = session_data.get("polling_active", False)
 
     # Send command to terminal (will create fresh session if needed)

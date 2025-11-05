@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import aiosqlite
 
 from .models import Session
+from . import ux_state
 
 
 class SessionManager:
@@ -320,7 +321,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        session_data = await ux_state.get_session(session_id)
+        session_data = await self.get_ux_state(session_id)
         return session_data.get("polling_active", False)
 
     async def mark_polling(self, session_id: str) -> None:
@@ -331,7 +332,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        await ux_state.update_session(session_id, {"polling_active": True})
+        await self.update_ux_state(session_id, {"polling_active": True})
 
     async def unmark_polling(self, session_id: str) -> None:
         """Mark session as no longer polling.
@@ -341,7 +342,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        await ux_state.update_session(session_id, {"polling_active": False})
+        await self.update_ux_state(session_id, {"polling_active": False})
 
     async def has_idle_notification(self, session_id: str) -> bool:
         """Check if session has idle notification.
@@ -354,7 +355,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        session_data = await ux_state.get_session(session_id)
+        session_data = await self.get_ux_state(session_id)
         return session_data.get("idle_notification_message_id") is not None
 
     async def get_idle_notification(self, session_id: str) -> Optional[str]:
@@ -368,7 +369,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        session_data = await ux_state.get_session(session_id)
+        session_data = await self.get_ux_state(session_id)
         return session_data.get("idle_notification_message_id")
 
     async def set_idle_notification(self, session_id: str, message_id: str) -> None:
@@ -380,7 +381,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        await ux_state.update_session(session_id, {"idle_notification_message_id": message_id})
+        await self.update_ux_state(session_id, {"idle_notification_message_id": message_id})
 
     async def remove_idle_notification(self, session_id: str) -> Optional[str]:
         """Remove and return idle notification message ID for session.
@@ -395,7 +396,7 @@ class SessionManager:
 
         from teleclaude.core import ux_state
 
-        await ux_state.update_session(session_id, {"idle_notification_message_id": None})
+        await self.update_ux_state(session_id, {"idle_notification_message_id": None})
 
         return msg_id
 
@@ -410,7 +411,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        session_data = await ux_state.get_session(session_id)
+        session_data = await self.get_ux_state(session_id)
         return session_data.get("pending_deletions", [])
 
     async def add_pending_deletion(self, session_id: str, message_id: str) -> None:
@@ -428,7 +429,7 @@ class SessionManager:
 
         from teleclaude.core import ux_state
 
-        await ux_state.update_session(session_id, {"pending_deletions": current})
+        await self.update_ux_state(session_id, {"pending_deletions": current})
 
     async def clear_pending_deletions(self, session_id: str) -> None:
         """Clear all pending deletions for session.
@@ -440,7 +441,7 @@ class SessionManager:
         """
         from teleclaude.core import ux_state
 
-        await ux_state.update_session(session_id, {"pending_deletions": []})
+        await self.update_ux_state(session_id, {"pending_deletions": []})
 
     async def cleanup_messages_after_success(
         self,
@@ -562,3 +563,23 @@ class SessionManager:
         )
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
+
+    async def get_ux_state(self, session_id: str) -> dict:
+        """Get UX state for session.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Dict with UX state (empty dict if not found)
+        """
+        return await ux_state.get_ux_state(self._db, ux_state.UXStateContext.SESSION, session_id)
+
+    async def update_ux_state(self, session_id: str, updates: dict) -> None:
+        """Update UX state for session (merges with existing).
+
+        Args:
+            session_id: Session ID
+            updates: Dict with properties to update
+        """
+        await ux_state.update_ux_state(self._db, ux_state.UXStateContext.SESSION, updates, session_id)
