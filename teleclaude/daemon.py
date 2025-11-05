@@ -116,7 +116,7 @@ class TeleClaudeDaemon:
                 computer_name=computer_name,
                 bot_username=bot_username,
                 config=self.config,
-                session_manager=self.session_manager
+                session_manager=self.session_manager,
             )
 
             self.mcp_server = TeleClaudeMCPServer(
@@ -124,7 +124,7 @@ class TeleClaudeDaemon:
                 telegram_adapter=self.adapters["telegram"],
                 terminal_bridge=terminal_bridge,
                 session_manager=self.session_manager,
-                computer_registry=self.computer_registry
+                computer_registry=self.computer_registry,
             )
 
         # Shutdown event for graceful termination

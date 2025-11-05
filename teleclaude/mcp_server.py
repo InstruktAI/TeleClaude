@@ -7,7 +7,7 @@ import time
 from typing import Any, AsyncIterator, Optional
 
 from mcp.server import Server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class TeleClaudeMCPServer:
                     inputSchema={
                         "type": "object",
                         "properties": {},
-                    }
+                    },
                 ),
                 Tool(
                     name="teleclaude__start_session",
@@ -53,19 +53,19 @@ class TeleClaudeMCPServer:
                         "properties": {
                             "target": {
                                 "type": "string",
-                                "description": "Target computer name (e.g., 'workstation', 'server')"
+                                "description": "Target computer name (e.g., 'workstation', 'server')",
                             },
                             "title": {
                                 "type": "string",
-                                "description": "Short title for the session (e.g., 'Check logs', 'Debug issue')"
+                                "description": "Short title for the session (e.g., 'Check logs', 'Debug issue')",
                             },
                             "description": {
                                 "type": "string",
-                                "description": "Detailed description of why this session was created"
-                            }
+                                "description": "Detailed description of why this session was created",
+                            },
                         },
-                        "required": ["target", "title", "description"]
-                    }
+                        "required": ["target", "title", "description"],
+                    },
                 ),
                 Tool(
                     name="teleclaude__list_sessions",
@@ -73,12 +73,9 @@ class TeleClaudeMCPServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "target": {
-                                "type": "string",
-                                "description": "Optional filter by target computer name"
-                            }
+                            "target": {"type": "string", "description": "Optional filter by target computer name"}
                         },
-                    }
+                    },
                 ),
                 Tool(
                     name="teleclaude__send",
@@ -88,16 +85,16 @@ class TeleClaudeMCPServer:
                         "properties": {
                             "session_id": {
                                 "type": "string",
-                                "description": "Session ID from teleclaude__start_session"
+                                "description": "Session ID from teleclaude__start_session",
                             },
                             "message": {
                                 "type": "string",
-                                "description": "Message or command to send to remote Claude Code"
-                            }
+                                "description": "Message or command to send to remote Claude Code",
+                            },
                         },
-                        "required": ["session_id", "message"]
-                    }
-                )
+                        "required": ["session_id", "message"],
+                    },
+                ),
             ]
 
         @self.server.call_tool()
@@ -131,12 +128,9 @@ class TeleClaudeMCPServer:
         if transport == "stdio":
             # Use stdio transport for Claude Code integration
             from mcp.server.stdio import stdio_server
+
             async with stdio_server() as (read_stream, write_stream):
-                await self.server.run(
-                    read_stream,
-                    write_stream,
-                    self.server.create_initialization_options()
-                )
+                await self.server.run(read_stream, write_stream, self.server.create_initialization_options())
         else:
             raise NotImplementedError(f"Transport '{transport}' not yet implemented")
 

@@ -1243,19 +1243,11 @@ Current size: {}
 
         return []
 
-    async def send_message_to_topic(
-        self,
-        topic_id: int,
-        text: str,
-        parse_mode: str = "Markdown"
-    ) -> Any:
+    async def send_message_to_topic(self, topic_id: int, text: str, parse_mode: str = "Markdown") -> Any:
         """Send a message to a specific topic."""
         self._ensure_started()
         message = await self.app.bot.send_message(
-            chat_id=self.supergroup_id,
-            message_thread_id=topic_id,
-            text=text,
-            parse_mode=parse_mode
+            chat_id=self.supergroup_id, message_thread_id=topic_id, text=text, parse_mode=parse_mode
         )
         return message
 
@@ -1312,4 +1304,3 @@ Current size: {}
         cached = self._topic_message_cache.get(topic_id, [])
         # Return last N messages (most recent first)
         return list(reversed(cached[-limit:]))
-
