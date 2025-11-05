@@ -24,9 +24,14 @@ async def load_state_from_database(session_manager: Any) -> None:
     Must be called on daemon startup to restore state after restart.
     Queries all sessions with output_message_id set (indicates active polling).
 
+    IMPORTANT: Verifies tmux session still exists before restoring polling state.
+    If tmux session died while daemon was down, marks session as closed.
+
     Args:
         session_manager: SessionManager instance to query database
     """
+    from teleclaude.core import terminal_bridge
+
     # Load active polling sessions (sessions with output_message_id set)
     # Only restore state for active sessions (ignore closed sessions)
     sessions = await session_manager.list_sessions(closed=False)
@@ -36,8 +41,25 @@ async def load_state_from_database(session_manager: Any) -> None:
         # Restore polling state from output_message_id
         output_msg_id = await session_manager.get_output_message_id(session_id)
         if output_msg_id:
-            _active_polling_sessions.add(session_id)
-            logger.debug("Restored polling state for session %s (output_message_id=%s)", session_id[:8], output_msg_id)
+            # CRITICAL: Verify tmux session still exists before restoring polling
+            tmux_exists = await terminal_bridge.session_exists(session.tmux_session_name)
+            if tmux_exists:
+                _active_polling_sessions.add(session_id)
+                logger.debug(
+                    "Restored polling state for session %s (output_message_id=%s)", session_id[:8], output_msg_id
+                )
+            else:
+                logger.warning(
+                    "Tmux session %s died while daemon was down, marking session %s as closed",
+                    session.tmux_session_name,
+                    session_id[:8],
+                )
+                # Mark session as closed (tmux died while daemon was down)
+                await session_manager.update_session(session_id, closed=True)
+                # Clear database polling state
+                await session_manager.set_output_message_id(session_id, None)
+                await session_manager.set_idle_notification_message_id(session_id, None)
+                continue
 
         # Restore idle notification state
         idle_msg_id = await session_manager.get_idle_notification_message_id(session_id)

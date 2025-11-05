@@ -250,16 +250,29 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
         elif signal == "SIGTERM":
             key = "C-\\"
         else:
+            logger.error("Unsupported signal: %s", signal)
             return False
 
         cmd = ["tmux", "send-keys", "-t", session_name, key]
-        result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await result.communicate()
 
-        return result.returncode == 0
+        if result.returncode != 0:
+            logger.error(
+                "Failed to send signal %s to tmux session %s (exit %d): %s",
+                signal,
+                session_name,
+                result.returncode,
+                stderr.decode().strip(),
+            )
+            return False
+
+        return True
 
     except Exception as e:
-        print(f"Error sending signal to tmux: {e}")
+        logger.error("Exception sending signal %s to tmux session %s: %s", signal, session_name, e)
         return False
 
 
@@ -556,7 +569,7 @@ async def session_exists(session_name: str) -> bool:
                 stderr.decode().strip(),
             )
         else:
-            logger.info("Session %s exists", session_name)
+            logger.debug("Session %s exists", session_name)
 
         return result.returncode == 0
 
