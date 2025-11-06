@@ -1078,8 +1078,13 @@ Current size: {}
         await update.effective_message.reply_text(help_text, parse_mode="Markdown")
 
     async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle text messages in topics."""
-        if update.message and update.message.message_thread_id:
+        """Handle text messages in topics and General topic.
+
+        Messages with message_thread_id are in specific topics.
+        Messages without message_thread_id are in General topic (cached with key None).
+        """
+        if update.message:
+            # Use None for General topic, actual ID for forum topics
             topic_id = update.message.message_thread_id
 
             # Cache message for registry polling (get_topic_messages)
@@ -1322,13 +1327,39 @@ Current size: {}
 
         return []
 
-    async def send_message_to_topic(self, topic_id: int, text: str, parse_mode: Optional[str] = "Markdown") -> Any:
-        """Send a message to a specific topic."""
+    async def send_message_to_topic(
+        self, topic_id: Optional[int], text: str, parse_mode: Optional[str] = "Markdown"
+    ) -> Any:
+        """Send a message to a specific topic or General topic.
+
+        Args:
+            topic_id: Topic ID (message_thread_id). Use None for General topic.
+            text: Message text
+            parse_mode: Parse mode (Markdown, HTML, or None for plain text)
+
+        Returns:
+            Message object
+        """
         self._ensure_started()
-        kwargs = {"chat_id": self.supergroup_id, "message_thread_id": topic_id, "text": text}
+        kwargs = {"chat_id": self.supergroup_id, "text": text}
+
+        # Only add message_thread_id for specific topics, not for General topic (None)
+        if topic_id is not None:
+            kwargs["message_thread_id"] = topic_id
+
         if parse_mode is not None:
             kwargs["parse_mode"] = parse_mode
+
         message = await self.app.bot.send_message(**kwargs)
+
+        # Cache the message we just sent (for registry polling)
+        # Messages we send ourselves won't appear in updates, so we cache them manually
+        if topic_id not in self._topic_message_cache:
+            self._topic_message_cache[topic_id] = []
+        self._topic_message_cache[topic_id].append(message)
+        if len(self._topic_message_cache[topic_id]) > 100:
+            self._topic_message_cache[topic_id].pop(0)
+
         return message
 
     async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue[Any]:
@@ -1363,16 +1394,16 @@ Current size: {}
         self._mcp_message_queues.pop(topic_id, None)
         logger.info("Unregistered MCP listener for topic %s", topic_id)
 
-    async def get_topic_messages(self, topic_id: int, limit: int = 100) -> list[Any]:
-        """Get recent messages from a specific topic using in-memory cache.
+    async def get_topic_messages(self, topic_id: Optional[int], limit: int = 100) -> list[Any]:
+        """Get recent messages from a specific topic or General topic using in-memory cache.
 
         Messages are cached in _handle_text_message as they arrive.
-        This is used by computer_registry to poll the "Online Now" topic.
+        This is used by computer_registry to poll the registry topic.
 
         For real-time MCP delivery, use register_mcp_listener() instead.
 
         Args:
-            topic_id: Telegram message_thread_id
+            topic_id: Telegram message_thread_id. Use None for General topic.
             limit: Maximum number of messages to return (default: 100)
 
         Returns:
@@ -1380,7 +1411,7 @@ Current size: {}
         """
         self._ensure_started()
 
-        # Return cached messages for this topic
+        # Return cached messages for this topic (None = General topic)
         cached = self._topic_message_cache.get(topic_id, [])
         # Return last N messages (most recent first)
         return list(reversed(cached[-limit:]))
