@@ -378,6 +378,10 @@ class TeleClaudeDaemon:
             await command_handlers.handle_cancel_command(
                 context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, double=True
             )
+        elif command == "kill":
+            await command_handlers.handle_kill_command(
+                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
+            )
         elif command == "escape":
             await command_handlers.handle_escape_command(
                 context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output

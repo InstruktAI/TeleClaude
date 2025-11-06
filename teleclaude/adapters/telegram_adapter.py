@@ -201,6 +201,7 @@ class TelegramAdapter(BaseAdapter):
             ("list_sessions", self._handle_list_sessions),
             ("cancel", self._handle_cancel),
             ("cancel2x", self._handle_cancel2x),
+            ("kill", self._handle_kill),
             ("escape", self._handle_escape),
             ("escape2x", self._handle_escape2x),
             ("ctrl", self._handle_ctrl),
@@ -284,6 +285,7 @@ class TelegramAdapter(BaseAdapter):
                 BotCommand("claude_resume ", "Resume last Claude Code session (GOD mode)"),
                 BotCommand("cancel ", "Send CTRL+C to interrupt current command"),
                 BotCommand("cancel2x ", "Send CTRL+C twice (for stubborn programs)"),
+                BotCommand("kill ", "Force kill current process (SIGKILL)"),
                 BotCommand("escape ", "Send ESC key (exit Vim insert mode, etc.)"),
                 BotCommand("escape2x ", "Send ESC twice (for Claude Code, etc.)"),
                 BotCommand("ctrl ", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
@@ -694,6 +696,32 @@ class TelegramAdapter(BaseAdapter):
 
         await self._emit_command(
             "cancel2x",
+            [],
+            {
+                "adapter_type": "telegram",
+                "session_id": session.session_id,
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_kill(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /kill command - force kill foreground process with SIGKILL."""
+        session = await self._get_session_from_topic(update)
+
+        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
+        if self.is_master and update.effective_message:
+            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
+
+        if not session:
+            return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
+        await self._emit_command(
+            "kill",
             [],
             {
                 "adapter_type": "telegram",
@@ -1291,7 +1319,9 @@ Current size: {}
         # Try to delete (fails silently if already deleted by session owner)
         try:
             await self.app.bot.delete_message(chat_id=message.chat_id, message_id=message.message_id)
-            logger.debug("Master bot cleaned up command message %s in topic %s", message.message_id, message.message_thread_id)
+            logger.debug(
+                "Master bot cleaned up command message %s in topic %s", message.message_id, message.message_thread_id
+            )
         except Exception as e:
             # Expected if session owner already deleted it (idempotent)
             logger.debug("Master bot cleanup: message %s already deleted or inaccessible: %s", message.message_id, e)

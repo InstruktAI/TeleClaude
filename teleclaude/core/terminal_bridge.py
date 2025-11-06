@@ -240,13 +240,77 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
 
     Args:
         session_name: Session name
-        signal: Signal name (SIGINT, SIGTERM, etc.)
+        signal: Signal name (SIGINT, SIGTERM, SIGKILL)
 
     Returns:
         True if successful, False otherwise
     """
     try:
-        # Send Ctrl+C for SIGINT, etc.
+        if signal == "SIGKILL":
+            # SIGKILL requires finding the process PID and killing it directly
+            # Get the shell PID in the tmux pane
+            cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_pid}"]
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to get pane PID for session %s: %s",
+                    session_name,
+                    stderr.decode().strip(),
+                )
+                return False
+
+            shell_pid = stdout.decode().strip()
+            if not shell_pid.isdigit():
+                logger.error("Invalid shell PID: %s", shell_pid)
+                return False
+
+            # Find child processes of the shell (the actual running command)
+            # Use pgrep to find all descendant processes
+            cmd = ["pgrep", "-P", shell_pid]
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0 or not stdout:
+                logger.warning(
+                    "No child processes found for shell PID %s in session %s",
+                    shell_pid,
+                    session_name,
+                )
+                return False
+
+            # Get the first child PID (foreground process)
+            child_pids = stdout.decode().strip().split("\n")
+            target_pid = child_pids[0].strip()
+
+            if not target_pid.isdigit():
+                logger.error("Invalid child PID: %s", target_pid)
+                return False
+
+            # Send SIGKILL to the foreground process
+            cmd = ["kill", "-9", target_pid]
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to send SIGKILL to PID %s: %s",
+                    target_pid,
+                    stderr.decode().strip(),
+                )
+                return False
+
+            logger.info("Sent SIGKILL to PID %s in session %s", target_pid, session_name)
+            return True
+
+        # Handle SIGINT and SIGTERM via tmux send-keys
         if signal == "SIGINT":
             key = "C-c"
         elif signal == "SIGTERM":

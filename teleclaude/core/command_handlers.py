@@ -246,6 +246,51 @@ async def handle_cancel_command(
         logger.error("Failed to send SIGINT to session %s", session_id[:8])
 
 
+async def handle_kill_command(
+    context: Dict[str, Any],
+    session_manager: SessionManager,
+    get_adapter_for_session: Callable[[str], Awaitable[BaseAdapter]],
+    start_polling: Callable[[str, str], Awaitable[None]],
+) -> None:
+    """Force kill foreground process with SIGKILL (guaranteed termination).
+
+    Args:
+        context: Command context with session_id
+        session_manager: Session manager instance
+        get_adapter_for_session: Function to get adapter for session
+        start_polling: Function to start polling for a session
+    """
+    session_id = context.get("session_id")
+    if not session_id:
+        logger.warning("No session_id in kill command context")
+        return
+
+    # Get session
+    session = await session_manager.get_session(session_id)
+    if not session:
+        logger.warning("Session %s not found", session_id)
+        return
+
+    # Get adapter for cleanup
+    adapter = await get_adapter_for_session(session_id)
+
+    # Send SIGKILL (forceful termination) to the tmux session
+    success = await _execute_and_poll(
+        terminal_bridge.send_signal,
+        session,
+        context.get("message_id"),
+        adapter,
+        start_polling,
+        session_manager,
+        "SIGKILL",
+    )
+
+    if success:
+        logger.info("Sent SIGKILL to session %s (force kill)", session_id[:8])
+    else:
+        logger.error("Failed to send SIGKILL to session %s", session_id[:8])
+
+
 async def handle_escape_command(
     context: Dict[str, Any],
     args: List[str],
