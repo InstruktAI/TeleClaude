@@ -8,7 +8,13 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    BotCommandScopeChat,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
 from telegram.ext import (
     Application,
@@ -291,11 +297,14 @@ class TelegramAdapter(BaseAdapter):
                 BotCommand("rename", "Rename current session"),
                 BotCommand("help", "Show help message"),
             ]
-            await self.app.bot.set_my_commands(commands)
-            logger.info("Registered %d bot commands with Telegram (master computer)", len(commands))
+            # Set commands for the specific supergroup (not global)
+            scope = BotCommandScopeChat(chat_id=self.supergroup_id)
+            await self.app.bot.set_my_commands(commands, scope=scope)
+            logger.info("Registered %d bot commands with Telegram for supergroup (master computer)", len(commands))
         else:
-            await self.app.bot.set_my_commands([])
-            logger.info("No bot commands registered (non-master computer)")
+            scope = BotCommandScopeChat(chat_id=self.supergroup_id)
+            await self.app.bot.set_my_commands([], scope=scope)
+            logger.info("No bot commands registered for supergroup (non-master computer)")
 
         # Try to get chat info to verify bot is in the group
         try:
@@ -1161,12 +1170,12 @@ Current size: {}
                 raise
         else:
             # Edit existing message (keep General topic clean)
-            # Note: reply_markup is preserved, no need to re-send
             try:
                 edited_message = await self.app.bot.edit_message_text(
                     chat_id=self.supergroup_id,
                     message_id=self.registry_message_id,
                     text=text,
+                    reply_markup=reply_markup,
                 )
                 # Self-cache the edited message (bots don't get updates for their own edits)
                 topic_id = None  # General topic
