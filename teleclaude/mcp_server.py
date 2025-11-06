@@ -129,20 +129,104 @@ class TeleClaudeMCPServer:
                 raise ValueError(f"Unknown tool: {name}")
 
     async def start(self) -> None:
-        """Start MCP server with stdio transport."""
+        """Start MCP server with configured transport."""
+        import os
+        from pathlib import Path
+
         config = get_config()
-        transport = config.get("mcp", {}).get("transport", "stdio")
+        transport = config.get("mcp", {}).get("transport", "socket")
 
         logger.info("Starting MCP server for %s (transport: %s)", self.computer_name, transport)
 
         if transport == "stdio":
-            # Use stdio transport for Claude Code integration
+            # Use stdio transport (for subprocess spawning)
             from mcp.server.stdio import stdio_server
 
             async with stdio_server() as (read_stream, write_stream):
                 await self.server.run(read_stream, write_stream, self.server.create_initialization_options())
+
+        elif transport == "socket":
+            # Use Unix socket transport (for connecting to running daemon)
+            socket_path = os.path.expandvars(config.get("mcp", {}).get("socket_path", "/tmp/teleclaude.sock"))
+            socket_path = Path(socket_path)
+
+            # Remove existing socket file if present
+            if socket_path.exists():
+                socket_path.unlink()
+
+            logger.info("MCP server listening on socket: %s", socket_path)
+
+            # Create Unix socket server using asyncio
+            server = await asyncio.start_unix_server(
+                lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)), path=str(socket_path)
+            )
+
+            # Make socket accessible
+            socket_path.chmod(0o666)
+
+            async with server:
+                await server.serve_forever()
+
         else:
             raise NotImplementedError(f"Transport '{transport}' not yet implemented")
+
+    async def _handle_socket_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """Handle a single MCP client connection over Unix socket."""
+        import anyio
+        import mcp.types as types
+        from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+        from mcp.shared.message import SessionMessage
+
+        logger.info("New MCP client connected")
+        try:
+            # Create memory streams like stdio_server does
+            read_stream_writer: MemoryObjectSendStream
+            read_stream: MemoryObjectReceiveStream
+            write_stream: MemoryObjectSendStream
+            write_stream_reader: MemoryObjectReceiveStream
+
+            read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
+            write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
+
+            async def socket_reader():
+                """Read from socket and parse JSON-RPC messages."""
+                try:
+                    async with read_stream_writer:
+                        while True:
+                            line = await reader.readline()
+                            if not line:
+                                break
+                            try:
+                                message = types.JSONRPCMessage.model_validate_json(line.decode("utf-8"))
+                                await read_stream_writer.send(SessionMessage(message))
+                            except Exception as exc:
+                                await read_stream_writer.send(exc)
+                except anyio.ClosedResourceError:
+                    pass
+
+            async def socket_writer():
+                """Write JSON-RPC messages to socket."""
+                try:
+                    async with write_stream_reader:
+                        async for session_message in write_stream_reader:
+                            json_str = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
+                            writer.write((json_str + "\n").encode("utf-8"))
+                            await writer.drain()
+                except anyio.ClosedResourceError:
+                    pass
+
+            # Run socket I/O and MCP server concurrently
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(socket_reader)
+                tg.start_soon(socket_writer)
+                await self.server.run(read_stream, write_stream, self.server.create_initialization_options())
+
+        except Exception:
+            logger.exception("Error handling MCP connection")
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            logger.info("MCP client disconnected")
 
     async def teleclaude__list_computers(self) -> list[dict[str, Any]]:
         """List available computers from all adapters.
