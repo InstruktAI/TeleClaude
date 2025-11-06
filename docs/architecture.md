@@ -229,6 +229,25 @@ The plist redirects daemon stdout/stderr to `/dev/null` to prevent launchd issue
 
 ## MCP Server Architecture
 
+**⚠️ CRITICAL LIMITATION: This feature is currently non-functional due to Telegram Bot API restrictions.**
+
+**Telegram bots cannot see messages from other bots** (source: [Telegram Bots FAQ](https://core.telegram.org/bots/faq)). This means:
+
+- ❌ Computer registry discovery doesn't work (bots can't see each other's heartbeats)
+- ❌ AI-to-AI messaging doesn't work (Bot A's messages never reach Bot B)
+- ❌ Cross-computer sessions don't work (messages won't route between bots)
+
+The restriction applies **regardless of privacy mode, admin rights, or any other configuration**. Telegram explicitly prevents bot-to-bot communication to avoid infinite loops.
+
+**Possible solutions** (see `todos/mcp_server.md` for details):
+
+- Use external message bus (e.g. Redis, RabbitMQ) instead
+- Remove MCP functionality entirely
+
+---
+
+### Original Design (Non-Functional)
+
 **Model Context Protocol (MCP) server enables AI-to-AI communication across computers**
 
 TeleClaude exposes an MCP server that allows Claude Code instances on different computers to communicate via Telegram as a distributed message bus.

@@ -80,7 +80,6 @@ def test_get_online_computers_filtering():
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        config={},
         session_manager=MockSessionManager()
     )
 
@@ -111,7 +110,6 @@ def test_get_all_computers():
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        config={},
         session_manager=MockSessionManager()
     )
 
@@ -137,7 +135,6 @@ def test_is_computer_online():
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        config={},
         session_manager=MockSessionManager()
     )
 
@@ -163,7 +160,6 @@ def test_get_computer_info():
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        config={},
         session_manager=MockSessionManager()
     )
 
@@ -189,6 +185,7 @@ async def test_ping_pong_edit_same_messages():
     mock_adapter = Mock()
     mock_adapter.send_message_to_topic = AsyncMock()
     mock_adapter.supergroup_id = "-100123456789"
+    mock_adapter._topic_message_cache = {}  # Initialize cache for message editing
 
     # Mock bot.edit_message_text (used for heartbeat updates)
     mock_adapter.app = Mock()
@@ -217,7 +214,6 @@ async def test_ping_pong_edit_same_messages():
         telegram_adapter=mock_adapter,
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        config={},
         session_manager=mock_session_manager
     )
 

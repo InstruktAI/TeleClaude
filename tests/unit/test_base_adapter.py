@@ -52,15 +52,18 @@ class ConcreteAdapter(BaseAdapter):
         """Set channel status."""
         return True
 
+    async def discover_peers(self):
+        """Discover peers."""
+        return []
+
 
 class TestBaseAdapter:
     """Tests for BaseAdapter class."""
 
     def test_adapter_creation(self):
         """Test creating adapter instance."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
 
-        assert adapter.config == {}
         assert adapter._message_callbacks == []
         assert adapter._file_callbacks == []
         assert adapter._voice_callbacks == []
@@ -69,7 +72,7 @@ class TestBaseAdapter:
 
     def test_on_message_registration(self):
         """Test registering message callback."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_message(callback)
@@ -78,7 +81,7 @@ class TestBaseAdapter:
 
     def test_on_file_registration(self):
         """Test registering file callback."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_file(callback)
@@ -87,7 +90,7 @@ class TestBaseAdapter:
 
     def test_on_voice_registration(self):
         """Test registering voice callback."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_voice(callback)
@@ -96,7 +99,7 @@ class TestBaseAdapter:
 
     def test_on_command_registration(self):
         """Test registering command callback."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_command(callback)
@@ -105,7 +108,7 @@ class TestBaseAdapter:
 
     def test_on_topic_closed_registration(self):
         """Test registering topic closed callback."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_topic_closed(callback)
@@ -115,7 +118,7 @@ class TestBaseAdapter:
     @pytest.mark.asyncio
     async def test_emit_message(self):
         """Test emitting message to callbacks."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback1 = AsyncMock()
         callback2 = AsyncMock()
 
@@ -130,7 +133,7 @@ class TestBaseAdapter:
     @pytest.mark.asyncio
     async def test_emit_file(self):
         """Test emitting file to callbacks."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_file(callback)
@@ -142,7 +145,7 @@ class TestBaseAdapter:
     @pytest.mark.asyncio
     async def test_emit_voice(self):
         """Test emitting voice to callbacks."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_voice(callback)
@@ -154,7 +157,7 @@ class TestBaseAdapter:
     @pytest.mark.asyncio
     async def test_emit_command(self):
         """Test emitting command to callbacks."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_command(callback)
@@ -166,7 +169,7 @@ class TestBaseAdapter:
     @pytest.mark.asyncio
     async def test_emit_topic_closed(self):
         """Test emitting topic closed to callbacks."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback = AsyncMock()
 
         adapter.on_topic_closed(callback)
@@ -178,7 +181,7 @@ class TestBaseAdapter:
     @pytest.mark.asyncio
     async def test_emit_multiple_callbacks(self):
         """Test emitting to multiple callbacks."""
-        adapter = ConcreteAdapter({})
+        adapter = ConcreteAdapter()
         callback1 = AsyncMock()
         callback2 = AsyncMock()
         callback3 = AsyncMock()

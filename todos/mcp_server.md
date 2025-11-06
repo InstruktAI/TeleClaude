@@ -1,6 +1,170 @@
 # MCP Server Implementation for Multi-Computer AI-to-AI Communication
 
-## Overview
+## ⚠️ CRITICAL LIMITATION: Feature Currently Non-Functional
+
+**Status:** Implementation complete but **cannot work** due to Telegram Bot API restrictions discovered during testing (2025-11-06).
+
+### The Problem
+
+**Telegram bots cannot see messages from other bots.** This is a fundamental, non-negotiable restriction in the Telegram Bot API.
+
+From [Telegram Bots FAQ](https://core.telegram.org/bots/faq):
+> "Bots talking to each other could potentially get stuck in unwelcome loops. To avoid this, we decided that **bots will not be able to see messages from other bots regardless of mode**."
+
+This restriction means:
+- ❌ Computer registry heartbeats are invisible to other bots (each bot only sees itself)
+- ❌ Messages sent from Bot A never reach Bot B (complete communication failure)
+- ❌ Commands from other bots are also invisible (commands use same transport as messages)
+- ❌ No workaround exists within Bot API (privacy mode, admin rights, etc. don't help)
+
+### What Works vs What Doesn't
+
+✅ **Works:**
+- Single-computer terminal sessions (original use case)
+- Human-to-bot communication
+- MCP server starts successfully
+- Database/routing infrastructure is correct
+
+❌ **Doesn't Work:**
+- Computer discovery (`teleclaude__list_computers` always returns only self)
+- Cross-computer messaging (`teleclaude__send` messages never arrive)
+- AI-to-AI sessions (initiator creates session, but target never sees commands)
+
+### Solution Options
+
+## ✅ RECOMMENDED SOLUTION: Redis Adapter
+
+**See [`redis_adapter.md`](./redis_adapter.md) for complete implementation specification.**
+
+The Redis adapter solves the bot-to-bot limitation by using Redis Streams as a reliable message transport for AI-to-AI communication, while keeping Telegram for human interaction.
+
+**Key features:**
+- Unified AdapterClient managing multiple adapters per session
+- RedisAdapter for AI command/response transport
+- TelegramAdapter for human observation and interaction
+- Clean, adapter-agnostic MCP server code
+- Minimal changes to existing codebase (~800 lines)
+
+**Benefits:**
+- ✅ Bypasses Telegram bot restriction completely
+- ✅ Humans can observe AI sessions in Telegram
+- ✅ Humans can interact with AI sessions via Telegram
+- ✅ Production-ready with Redis Cloud (free tier) or Docker
+- ✅ No user accounts or phone numbers required
+
+---
+
+### Alternative Solutions (For Reference)
+
+#### Option 1: Use TDLib Instead of Bot API (Major Rewrite)
+
+**TDLib** (Telegram Database Library) is the full Telegram client that acts like a user account, not a bot.
+
+**Pros:**
+- ✅ CAN see messages from bots (no bot-to-bot restriction)
+- ✅ Full Telegram functionality
+- ✅ Still uses Telegram as message bus
+
+**Cons:**
+- ❌ Major rewrite of `telegram_adapter.py`
+- ❌ Different authentication (phone number + 2FA, not bot token)
+- ❌ More complex setup for users
+- ❌ Rate limits different from Bot API
+- ❌ Requires phone number for each computer (or shared account)
+
+**Implementation:** Would need to replace `python-telegram-bot` with `telethon` or `pyrogram` (TDLib Python wrappers).
+
+#### Option 2: External HTTP Registry Service (Partial Solution)
+
+Deploy a lightweight HTTP service that acts as registry coordinator.
+
+**Pros:**
+- ✅ Fixes computer discovery problem
+- ✅ Minimal change to codebase
+- ✅ Can be tiny (50-100 lines of Python/Go)
+- ✅ Keep Bot API for everything else
+
+**Cons:**
+- ❌ Only solves registry, NOT messaging (AI-to-AI still broken)
+- ❌ Requires external infrastructure
+- ❌ Single point of failure
+- ❌ Defeats "pure Telegram" architecture goal
+- ❌ Doesn't help with cross-firewall scenarios
+
+**Implementation Example:**
+```python
+# registry_service.py (runs on accessible server)
+from fastapi import FastAPI
+from datetime import datetime
+
+app = FastAPI()
+computers = {}  # {name: {last_seen: datetime, bot_username: str}}
+
+@app.post("/heartbeat")
+def heartbeat(name: str, bot_username: str):
+    computers[name] = {"last_seen": datetime.now(), "bot_username": bot_username}
+    return {"ok": True}
+
+@app.get("/computers")
+def list_computers():
+    now = datetime.now()
+    online = [
+        {**info, "name": name, "online": (now - info["last_seen"]).seconds < 120}
+        for name, info in computers.items()
+    ]
+    return {"computers": online}
+```
+
+#### Option 3: User Account Relay Bot (Complex)
+
+Use a Telegram user account (via TDLib) as a relay between bots.
+
+**Architecture:**
+- Bot A sends message → User account sees it → User account forwards to Bot B → Bot B sees it
+
+**Pros:**
+- ✅ Works within Telegram
+- ✅ No external infrastructure
+
+**Cons:**
+- ❌ Very complex (three components: Bot A, Relay, Bot B)
+- ❌ Requires user account (phone number)
+- ❌ TDLib complexity for relay component
+- ❌ Message routing logic complex
+- ❌ Increased latency (two hops)
+
+#### Option 4: Remove MCP Functionality (Simplest)
+
+Accept that cross-computer AI-to-AI communication isn't viable with current architecture.
+
+**Pros:**
+- ✅ No wasted effort on broken feature
+- ✅ Clean up codebase
+- ✅ Focus on single-computer use case (which works well)
+
+**Cons:**
+- ❌ Lose multi-computer AI collaboration vision
+- ❌ Wasted implementation effort
+
+**What to remove:**
+- `teleclaude/mcp_server.py`
+- `teleclaude/core/computer_registry.py`
+- MCP initialization in `daemon.py`
+- All `teleclaude__*` MCP tools
+
+### Recommendation
+
+**For now: Shelve the feature** (Option 4) until we decide on path forward.
+
+The single-computer terminal bridge works perfectly and provides significant value. The MCP/multi-computer feature was aspirational but fundamentally incompatible with Telegram Bot API constraints.
+
+If multi-computer communication becomes critical:
+1. **Best technical solution:** Switch to TDLib (Option 1)
+2. **Quickest workaround:** External HTTP registry (Option 2) - but only fixes discovery, not messaging
+
+---
+
+## Overview (Original Design)
 
 Implement MCP (Model Context Protocol) server in TeleClaude daemon to enable Claude Code running on different computers to communicate with each other via Telegram as a distributed message bus.
 

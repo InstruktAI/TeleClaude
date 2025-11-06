@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import tempfile
 from functools import wraps
 from pathlib import Path
@@ -18,6 +19,7 @@ from telegram.ext import (
     filters,
 )
 
+from teleclaude.config import get_config
 from teleclaude.utils import apply_code_block_formatting
 
 from .base_adapter import AdapterError, BaseAdapter
@@ -99,26 +101,45 @@ def telegram_retry(max_retries: int = 3) -> Callable[[Callable[..., Awaitable[T]
 class TelegramAdapter(BaseAdapter):
     """Telegram bot adapter using python-telegram-bot."""
 
-    def __init__(self, config: Dict[str, Any], session_manager: Any, daemon: Any) -> None:
+    def __init__(self, session_manager: Any, daemon: Any) -> None:
         """Initialize Telegram adapter.
 
         Args:
-            config: Telegram configuration
             session_manager: SessionManager instance for database queries
             daemon: Daemon instance for accessing session buffers
         """
-        super().__init__(config)
-        self.bot_token = config["bot_token"]
-        self.supergroup_id = config["supergroup_id"]
-        self.user_whitelist = config["user_whitelist"]
-        self.trusted_dirs = config.get("trusted_dirs", [])
-        self.trusted_bots = config.get("trusted_bots", [])  # List of trusted bot usernames for AI-to-AI
+        super().__init__()
+
+        # Get global config
+        config = get_config()
+
+        # Extract values from environment and config
+        self.bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not self.bot_token:
+            raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
+
+        supergroup_id_str = os.getenv("TELEGRAM_SUPERGROUP_ID")
+        if not supergroup_id_str:
+            raise ValueError("TELEGRAM_SUPERGROUP_ID environment variable not set")
+        self.supergroup_id = int(supergroup_id_str)
+
+        user_ids_str = os.getenv("TELEGRAM_USER_IDS", "")
+        self.user_whitelist = [int(uid.strip()) for uid in user_ids_str.split(",") if uid.strip()]
+
+        self.trusted_dirs = config.get("computer", {}).get("trusted_dirs", [])
+        self.trusted_bots = config.get("telegram", {}).get("trusted_bots", [])
+        self.computer_name = config["computer"]["name"]
+
         self.session_manager = session_manager
         self.daemon = daemon
         self.app: Optional[Application] = None
         self._processed_voice_messages: set[int] = set()  # Track processed voice message IDs
         self._topic_message_cache: Dict[int, list[Any]] = {}  # Cache for registry polling (get_topic_messages)
         self._mcp_message_queues: Dict[int, asyncio.Queue[Any]] = {}  # Event-driven MCP delivery: topic_id -> queue
+
+        # Peer discovery state (heartbeat advertisement only)
+        self.registry_message_id: Optional[int] = None  # Message ID for [REGISTRY] heartbeat message
+        self.heartbeat_interval = 60  # Send heartbeat every 60s
 
     def _ensure_started(self) -> None:
         """Ensure adapter is started."""
@@ -184,8 +205,6 @@ class TelegramAdapter(BaseAdapter):
             ("cd", self._handle_cd),
             ("claude", self._handle_claude),
             ("claude_resume", self._handle_claude_resume),
-            ("registry_ping", self._handle_registry_ping),
-            ("pong", self._handle_pong),
             ("help", self._handle_help),
         ]
 
@@ -282,6 +301,10 @@ class TelegramAdapter(BaseAdapter):
         except Exception as e:
             logger.error("Cannot access supergroup %s: %s", self.supergroup_id, e)
             logger.error("Make sure the bot is added to the group as a member!")
+
+        # Start peer discovery heartbeat (advertisement only)
+        logger.info("Starting peer discovery heartbeat loop")
+        asyncio.create_task(self._heartbeat_loop())
 
     async def stop(self) -> None:
         """Stop Telegram bot."""
@@ -1029,6 +1052,26 @@ Current size: {}
                 logger.error("Failed to send output file: %s", e)
                 await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")
 
+        elif action == "start_session_here":
+            # Handle quick session start from heartbeat button
+            if not query.from_user or not args:
+                return
+
+            target_bot_username = args[0]
+
+            # Send /new_session@{bot} command to General topic
+            # The target bot will handle it normally with the user from query.from_user
+            command_text = f"/new_session@{target_bot_username}"
+
+            await self.app.bot.send_message(
+                chat_id=self.supergroup_id,
+                message_thread_id=None,  # General topic
+                text=command_text,
+            )
+
+            # Acknowledge the button click
+            await query.answer("Creating session...", show_alert=False)
+
         elif action == "cd":
             # Find session from the message's thread
             if not query.message or not query.message.message_thread_id or not query.from_user:
@@ -1065,28 +1108,95 @@ Current size: {}
             # Update the message to show what was selected
             await query.edit_message_text(f"Changing directory to: `{dir_path}`", parse_mode="Markdown")
 
-    async def _handle_registry_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /registry_ping command for computer discovery.
+    # ==================== Peer Discovery Methods ====================
 
-        When any bot sends /registry_ping, all bots see it and respond with /pong command.
-        This enables cross-bot discovery - commands ARE visible to all bots.
+    async def _heartbeat_loop(self) -> None:
+        """Send heartbeat every N seconds to General topic."""
+        # Send initial heartbeat
+        await self._send_heartbeat()
+
+        # Then send every heartbeat_interval seconds
+        while True:
+            await asyncio.sleep(self.heartbeat_interval)
+            try:
+                await self._send_heartbeat()
+                logger.debug("Heartbeat sent for %s", self.computer_name)
+            except Exception as e:
+                logger.error("Heartbeat failed: %s", e)
+
+    async def _send_heartbeat(self) -> None:
+        """Send or edit [REGISTRY] heartbeat message in General topic."""
+        from datetime import datetime
+
+        text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        # Get bot info for @mention
+        bot_info = await self.app.bot.get_me()
+        bot_username = bot_info.username
+
+        # Create button for quick session start (only needs to be set once, persists through edits)
+        keyboard = [[InlineKeyboardButton(text="🚀 Start Session", callback_data=f"start_session_here:{bot_username}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        if self.registry_message_id is None:
+            # First time - post new message to General topic (thread_id=None) with button
+            try:
+                msg = await self.app.bot.send_message(
+                    chat_id=self.supergroup_id,
+                    message_thread_id=None,  # General topic
+                    text=text,
+                    reply_markup=reply_markup,
+                )
+                self.registry_message_id = msg.message_id
+                logger.info("Posted registry heartbeat with button: message_id=%s", self.registry_message_id)
+            except Exception as e:
+                logger.error("Failed to post heartbeat: %s", e)
+                raise
+        else:
+            # Edit existing message (keep General topic clean)
+            # Note: reply_markup is preserved, no need to re-send
+            try:
+                edited_message = await self.app.bot.edit_message_text(
+                    chat_id=self.supergroup_id,
+                    message_id=self.registry_message_id,
+                    text=text,
+                )
+                # Self-cache the edited message (bots don't get updates for their own edits)
+                topic_id = None  # General topic
+                if topic_id not in self._topic_message_cache:
+                    self._topic_message_cache[topic_id] = []
+                # Replace old version
+                self._topic_message_cache[topic_id] = [
+                    m for m in self._topic_message_cache[topic_id] if m.message_id != self.registry_message_id
+                ]
+                self._topic_message_cache[topic_id].append(edited_message)
+                logger.debug("Updated registry heartbeat: message_id=%s", self.registry_message_id)
+            except Exception as e:
+                error_lower = str(e).lower()
+                # If message was deleted, post new one
+                if "message to edit not found" in error_lower or "message not found" in error_lower:
+                    logger.warning("Registry message deleted, posting new one")
+                    self.registry_message_id = None
+                    await self._send_heartbeat()
+                else:
+                    logger.error("Failed to edit heartbeat: %s", e)
+                    raise
+
+    async def discover_peers(self) -> list[Dict[str, Any]]:
+        """Discover peers via Telegram adapter.
+
+        NOTE: Due to Telegram Bot API restrictions, bots cannot see messages
+        from other bots. Therefore, TelegramAdapter only ADVERTISES this computer's
+        presence via heartbeat messages (visible to humans in Telegram UI), but
+        cannot discover other computers.
+
+        Actual peer discovery must be handled by other adapters (e.g., RedisAdapter)
+        that support bot-to-bot communication.
+
+        Returns:
+            Empty list (Telegram doesn't support bot-to-bot discovery)
         """
-        if not self.daemon.computer_registry:
-            logger.debug("Received /registry_ping but computer_registry not initialized")
-            return
-
-        # All bots respond to any ping (not just whitelisted users)
-        await self.daemon.computer_registry.handle_ping_command()
-
-    async def _handle_pong(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /pong command from other bots for computer discovery.
-
-        Called when any bot responds to /registry_ping with /pong.
-        No action needed - message is cached by _cache_command_message.
-        """
-        # No action - pong commands are cached by _cache_command_message
-        # and parsed by computer_registry._refresh_computer_list
-        pass
+        return []
 
     async def _cache_command_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Cache command messages for registry polling.

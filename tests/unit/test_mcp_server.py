@@ -7,6 +7,15 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.config import init_config
+
+
+@pytest.fixture(autouse=True)
+def setup_config():
+    """Initialize config for all tests."""
+    import teleclaude.config as config_module
+    config_module._config = None  # Reset
+    init_config({"computer": {"name": "test"}})
 
 
 class TestExtractChunkContent:
@@ -15,7 +24,6 @@ class TestExtractChunkContent:
     def test_extract_from_markdown_code_block(self):
         """Test extracting content from markdown code block."""
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=Mock(),
@@ -29,7 +37,6 @@ class TestExtractChunkContent:
     def test_extract_removes_chunk_markers(self):
         """Test chunk markers are removed."""
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=Mock(),
@@ -44,7 +51,6 @@ class TestExtractChunkContent:
     def test_extract_handles_plain_text(self):
         """Test extraction handles text without code blocks."""
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=Mock(),
@@ -58,7 +64,6 @@ class TestExtractChunkContent:
     def test_extract_handles_empty_message(self):
         """Test extraction handles empty message."""
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=Mock(),
@@ -71,7 +76,6 @@ class TestExtractChunkContent:
     def test_extract_handles_none(self):
         """Test extraction handles None."""
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=Mock(),
@@ -103,7 +107,6 @@ class TestStreamingBehavior:
         mock_telegram_adapter.unregister_mcp_listener = AsyncMock()
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=mock_telegram_adapter,
             terminal_bridge=mock_terminal_bridge,
             session_manager=mock_session_manager,
@@ -160,7 +163,6 @@ class TestStreamingBehavior:
         mock_telegram_adapter.unregister_mcp_listener = AsyncMock()
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=mock_telegram_adapter,
             terminal_bridge=mock_terminal_bridge,
             session_manager=mock_session_manager,
@@ -201,7 +203,6 @@ class TestStreamingBehavior:
         mock_telegram_adapter.unregister_mcp_listener = AsyncMock()
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=mock_telegram_adapter,
             terminal_bridge=mock_terminal_bridge,
             session_manager=mock_session_manager,
@@ -266,7 +267,6 @@ class TestStreamingBehavior:
         mock_telegram_adapter.unregister_mcp_listener = AsyncMock()
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=mock_telegram_adapter,
             terminal_bridge=mock_terminal_bridge,
             session_manager=mock_session_manager,
@@ -296,7 +296,6 @@ class TestStreamingErrorCases:
         mock_session_manager.get_session = AsyncMock(return_value=None)
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=mock_session_manager,
@@ -318,7 +317,6 @@ class TestStreamingErrorCases:
         mock_session_manager.get_session = AsyncMock(return_value=mock_session)
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=Mock(),
             session_manager=mock_session_manager,
@@ -344,7 +342,6 @@ class TestStreamingErrorCases:
         mock_terminal_bridge.send_keys = AsyncMock(side_effect=Exception("Terminal error"))
 
         server = TeleClaudeMCPServer(
-            config={"computer": {"name": "test"}},
             telegram_adapter=Mock(),
             terminal_bridge=mock_terminal_bridge,
             session_manager=mock_session_manager,

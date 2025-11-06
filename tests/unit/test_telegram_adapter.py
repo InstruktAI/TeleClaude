@@ -1,5 +1,6 @@
 """Unit tests for telegram_adapter.py."""
 
+import os
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from telegram import Update, User, Message, Chat
@@ -8,17 +9,29 @@ from telegram.error import RetryAfter
 
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.config import init_config
 
 
 @pytest.fixture
-def mock_config():
-    """Mock Telegram adapter configuration."""
+def mock_full_config():
+    """Mock full application configuration."""
     return {
-        "bot_token": "123456:ABC-DEF",
-        "supergroup_id": -100123456789,
-        "user_whitelist": [12345, 67890],
-        "trusted_dirs": ["/tmp", "/home/user"]
+        "computer": {
+            "name": "test_computer",
+            "trusted_dirs": ["/tmp", "/home/user"]
+        },
+        "telegram": {
+            "trusted_bots": ["teleclaude_bot1", "teleclaude_bot2"]
+        }
     }
+
+
+@pytest.fixture
+def mock_env(monkeypatch):
+    """Mock environment variables for Telegram."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:ABC-DEF")
+    monkeypatch.setenv("TELEGRAM_SUPERGROUP_ID", "-100123456789")
+    monkeypatch.setenv("TELEGRAM_USER_IDS", "12345,67890")
 
 
 @pytest.fixture
@@ -39,9 +52,14 @@ def mock_daemon():
 
 
 @pytest.fixture
-def telegram_adapter(mock_config, mock_session_manager, mock_daemon):
+def telegram_adapter(mock_full_config, mock_env, mock_session_manager, mock_daemon):
     """Create TelegramAdapter instance."""
-    return TelegramAdapter(mock_config, mock_session_manager, mock_daemon)
+    # Reset config state before each test
+    import teleclaude.config as config_module
+    config_module._config = None
+
+    init_config(mock_full_config)
+    return TelegramAdapter(mock_session_manager, mock_daemon)
 
 
 @pytest.fixture
@@ -65,14 +83,20 @@ def mock_update():
 class TestInitialization:
     """Tests for adapter initialization."""
 
-    def test_init_with_config(self, mock_config, mock_session_manager, mock_daemon):
-        """Test adapter initializes with config."""
-        adapter = TelegramAdapter(mock_config, mock_session_manager, mock_daemon)
+    def test_init_with_config(self, mock_full_config, mock_env, mock_session_manager, mock_daemon):
+        """Test adapter initializes with config and env vars."""
+        # Reset config state
+        import teleclaude.config as config_module
+        config_module._config = None
+
+        init_config(mock_full_config)
+        adapter = TelegramAdapter(mock_session_manager, mock_daemon)
 
         assert adapter.bot_token == "123456:ABC-DEF"
         assert adapter.supergroup_id == -100123456789
         assert adapter.user_whitelist == [12345, 67890]
         assert adapter.trusted_dirs == ["/tmp", "/home/user"]
+        assert adapter.computer_name == "test_computer"
 
     def test_ensure_started_raises_when_not_started(self, telegram_adapter):
         """Test _ensure_started raises when app is None."""

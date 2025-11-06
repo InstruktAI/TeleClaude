@@ -279,8 +279,10 @@ class TestErrorHandling:
         mock_session.adapter_type = "unknown-type"
         mock_daemon.session_manager.get_session = AsyncMock(return_value=mock_session)
 
-        # Mock adapters registry (doesn't contain unknown-type)
-        mock_daemon.adapters = {"telegram": mock_daemon.telegram}
+        # Mock client.adapters registry (doesn't contain unknown-type)
+        mock_client = Mock()
+        mock_client.adapters = {"telegram": mock_daemon.telegram}
+        mock_daemon.client = mock_client
 
         # Use real method instead of mock
         mock_daemon._get_adapter_for_session = TeleClaudeDaemon._get_adapter_for_session.__get__(mock_daemon)
@@ -294,8 +296,10 @@ class TestErrorHandling:
         """Test _get_adapter_by_type with unknown type."""
         from teleclaude.daemon import TeleClaudeDaemon
 
-        # Mock adapters registry
-        mock_daemon.adapters = {"telegram": mock_daemon.telegram}
+        # Mock client.adapters registry
+        mock_client = Mock()
+        mock_client.adapters = {"telegram": mock_daemon.telegram}
+        mock_daemon.client = mock_client
 
         # Use real method instead of mock
         mock_daemon._get_adapter_by_type = TeleClaudeDaemon._get_adapter_by_type.__get__(mock_daemon)
@@ -328,6 +332,7 @@ class TestDaemonInitialization:
         try:
             with patch('teleclaude.daemon.SessionManager'), \
                  patch('teleclaude.daemon.TeleClaudeAPI'), \
+                 patch('teleclaude.daemon.AdapterClient'), \
                  patch('teleclaude.daemon.TelegramAdapter'), \
                  patch('teleclaude.daemon.terminal_bridge'), \
                  patch('teleclaude.daemon.init_config'), \
@@ -374,6 +379,7 @@ class TestDaemonInitialization:
         try:
             with patch('teleclaude.daemon.SessionManager'), \
                  patch('teleclaude.daemon.TeleClaudeAPI'), \
+                 patch('teleclaude.daemon.AdapterClient'), \
                  patch('teleclaude.daemon.TelegramAdapter'), \
                  patch('teleclaude.daemon.terminal_bridge'), \
                  patch('teleclaude.daemon.init_config'), \

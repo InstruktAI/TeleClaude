@@ -9,6 +9,8 @@ from typing import Any, AsyncIterator, Optional
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from teleclaude.config import get_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,17 +19,19 @@ class TeleClaudeMCPServer:
 
     def __init__(
         self,
-        config: dict[str, Any],
         telegram_adapter: Any,
         terminal_bridge: Any,
         session_manager: Any,
         computer_registry: Any,
+        adapter_client: Any = None,  # NEW: Unified client for multi-adapter support
     ):
-        self.config = config
+        config = get_config()
+
         self.telegram_adapter = telegram_adapter
         self.terminal_bridge = terminal_bridge
         self.session_manager = session_manager
-        self.computer_registry = computer_registry
+        self.computer_registry = computer_registry  # Kept for backward compatibility
+        self.client = adapter_client  # NEW: Unified client (preferred for peer discovery)
 
         self.computer_name = config["computer"]["name"]
         self.server = Server("teleclaude")
@@ -126,7 +130,8 @@ class TeleClaudeMCPServer:
 
     async def start(self) -> None:
         """Start MCP server with stdio transport."""
-        transport = self.config.get("mcp", {}).get("transport", "stdio")
+        config = get_config()
+        transport = config.get("mcp", {}).get("transport", "stdio")
 
         logger.info("Starting MCP server for %s (transport: %s)", self.computer_name, transport)
 
@@ -140,12 +145,12 @@ class TeleClaudeMCPServer:
             raise NotImplementedError(f"Transport '{transport}' not yet implemented")
 
     async def teleclaude__list_computers(self) -> list[dict[str, Any]]:
-        """List available computers from in-memory registry.
+        """List available computers from all adapters.
 
         Returns:
             List of online computers with their info.
         """
-        return self.computer_registry.get_online_computers()
+        return await self.client.discover_peers()
 
     async def teleclaude__start_session(self, target: str, title: str, description: str) -> dict[str, Any]:
         """Start new AI-to-AI session with remote computer.
@@ -159,11 +164,14 @@ class TeleClaudeMCPServer:
             dict with session_id, topic_name, status, message
         """
         # Validate target is online
-        if not self.computer_registry.is_computer_online(target):
+        peers = await self.client.discover_peers()
+        target_online = any(p["name"] == target and p["status"] == "online" for p in peers)
+
+        if not target_online:
             return {
                 "status": "error",
                 "message": f"Computer '{target}' is offline",
-                "available": [c["name"] for c in self.computer_registry.get_online_computers()],
+                "available": [p["name"] for p in peers],
             }
 
         # Create topic name

@@ -18,6 +18,7 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
+from teleclaude.config import get_config
 from teleclaude.core.ux_state import UXStateContext, get_ux_state, update_ux_state
 
 logger = logging.getLogger(__name__)
@@ -36,13 +37,10 @@ class ComputerRegistry:
     - Builds in-memory list of online/offline computers
     """
 
-    def __init__(
-        self, telegram_adapter: Any, computer_name: str, bot_username: str, config: dict[str, Any], session_manager: Any
-    ):
+    def __init__(self, telegram_adapter: Any, computer_name: str, bot_username: str, session_manager: Any):
         self.telegram_adapter = telegram_adapter
         self.computer_name = computer_name
         self.bot_username = bot_username
-        self.config = config
         self.session_manager = session_manager
 
         # In-memory state

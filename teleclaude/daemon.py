@@ -26,6 +26,7 @@ from teleclaude.core import (
     terminal_executor,
     voice_message_handler,
 )
+from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.computer_registry import ComputerRegistry
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_manager import SessionManager
@@ -76,12 +77,6 @@ class TeleClaudeDaemon:
         # Note: terminal_bridge and output_message_manager are now functional modules (no instantiation)
         self.output_poller = OutputPoller(self.config, self.session_manager)
 
-        # Adapter registry - stores all active adapters
-        self.adapters: Dict[str, BaseAdapter] = {}
-
-        # Primary adapter (for commands in "General" topic) - first adapter wins
-        self.primary_adapter: Optional[BaseAdapter] = None
-
         # Output file directory (persistent files for download button)
         self.output_dir = Path("session_output")
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -94,36 +89,32 @@ class TeleClaudeDaemon:
             port=api_port,
         )
 
-        # Load adapters from config
-        self._load_adapters()
-
-        # For backward compatibility (temporary - will be removed after full migration)
-        # This allows existing code to use self.telegram during migration
-        if "telegram" in self.adapters:
-            self.telegram = self.adapters["telegram"]
+        # Initialize unified adapter client (creates and manages all adapters)
+        self.client = AdapterClient(self)
 
         # Initialize computer registry (if MCP enabled and telegram adapter exists)
+        # NOTE: computer_registry is kept for now for backward compatibility
+        # It will be removed once MCP server fully migrates to using client
         self.computer_registry: Optional[ComputerRegistry] = None
         self.mcp_server: Optional[TeleClaudeMCPServer] = None
 
-        if self.config.get("mcp", {}).get("enabled", False) and "telegram" in self.adapters:
+        if self.config.get("mcp", {}).get("enabled", False) and "telegram" in self.client.adapters:
             computer_name = self.config["computer"]["name"]
             bot_username = self.config["computer"].get("bot_username", f"teleclaude_{computer_name}_bot")
 
             self.computer_registry = ComputerRegistry(
-                telegram_adapter=self.adapters["telegram"],
+                telegram_adapter=self.client.adapters["telegram"],
                 computer_name=computer_name,
                 bot_username=bot_username,
-                config=self.config,
                 session_manager=self.session_manager,
             )
 
             self.mcp_server = TeleClaudeMCPServer(
-                config=self.config,
-                telegram_adapter=self.adapters["telegram"],
+                telegram_adapter=self.client.adapters["telegram"],
                 terminal_bridge=terminal_bridge,
                 session_manager=self.session_manager,
                 computer_registry=self.computer_registry,
+                adapter_client=self.client,  # Pass client for future migration
             )
 
         # Shutdown event for graceful termination
@@ -201,53 +192,6 @@ class TeleClaudeDaemon:
         except OSError as e:
             logger.error("Failed to release lock: %s", e)
 
-    def _load_adapters(self) -> None:
-        """Load and initialize adapters from config.
-
-        Adapters are loaded in order from config. First adapter becomes primary.
-        """
-        # Load Telegram adapter if configured
-        if "telegram" in self.config.get("adapters", {}) or os.getenv("TELEGRAM_BOT_TOKEN"):
-            supergroup_id_str = os.getenv("TELEGRAM_SUPERGROUP_ID")
-            if not supergroup_id_str:
-                raise ValueError("TELEGRAM_SUPERGROUP_ID environment variable not set")
-
-            telegram_config = {
-                "bot_token": os.getenv("TELEGRAM_BOT_TOKEN"),
-                "supergroup_id": int(supergroup_id_str),
-                "user_whitelist": [int(uid.strip()) for uid in os.getenv("TELEGRAM_USER_IDS", "").split(",")],
-                "trusted_dirs": self.config.get("computer", {}).get("trustedDirs", []),
-                "trusted_bots": self.config.get("telegram", {}).get("trusted_bots", []),
-            }
-
-            self.adapters["telegram"] = TelegramAdapter(telegram_config, self.session_manager, self)
-
-            # Register callbacks
-            self.adapters["telegram"].on_command(self.handle_command)
-            self.adapters["telegram"].on_message(self.handle_message)
-            self.adapters["telegram"].on_voice(self.handle_voice)
-            self.adapters["telegram"].on_topic_closed(self.handle_topic_closed)
-
-            # Set as primary if first adapter
-            if not self.primary_adapter:
-                self.primary_adapter = self.adapters["telegram"]
-
-            logger.info("Loaded Telegram adapter")
-
-        # TODO: Load Slack adapter if configured
-        # if "slack" in self.config.get("adapters", {}):
-        #     slack_config = {...}
-        #     self.adapters["slack"] = SlackAdapter(slack_config, self.session_manager)
-        #     ...
-
-        # TODO: Load REST adapter if configured
-        # Always available for programmatic access
-
-        if not self.adapters:
-            raise ValueError("No adapters configured - check config.yml and .env")
-
-        logger.info("Loaded %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
-
     async def _get_adapter_for_session(self, session_id: str) -> BaseAdapter:
         """Get the adapter responsible for a session.
 
@@ -264,11 +208,11 @@ class TeleClaudeDaemon:
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        adapter = self.adapters.get(session.adapter_type)
+        adapter = self.client.adapters.get(session.adapter_type)
         if not adapter:
             raise ValueError(
                 f"No adapter available for type '{session.adapter_type}'. "
-                f"Available adapters: {list(self.adapters.keys())}"
+                f"Available adapters: {list(self.client.adapters.keys())}"
             )
 
         return adapter
@@ -285,10 +229,10 @@ class TeleClaudeDaemon:
         Raises:
             ValueError: If adapter type not loaded
         """
-        adapter = self.adapters.get(adapter_type)
+        adapter = self.client.adapters.get(adapter_type)
         if not adapter:
             raise ValueError(
-                f"No adapter available for type '{adapter_type}'. " f"Available: {list(self.adapters.keys())}"
+                f"No adapter available for type '{adapter_type}'. " f"Available: {list(self.client.adapters.keys())}"
             )
         return adapter
 
@@ -341,7 +285,7 @@ class TeleClaudeDaemon:
         # State is now DB-backed via session_manager - no need to load from database
 
         # Start all adapters
-        for adapter_name, adapter in self.adapters.items():
+        for adapter_name, adapter in self.client.adapters.items():
             await adapter.start()
             logger.info("%s adapter started", adapter_name.capitalize())
 
@@ -398,7 +342,7 @@ class TeleClaudeDaemon:
             logger.info("Periodic cleanup task stopped")
 
         # Stop all adapters
-        for adapter_name, adapter in self.adapters.items():
+        for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
             await adapter.stop()
 

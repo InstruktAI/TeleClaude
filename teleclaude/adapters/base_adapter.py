@@ -27,13 +27,8 @@ class File:
 class BaseAdapter(ABC):
     """Abstract base class for all messaging platform adapters."""
 
-    def __init__(self, config: Dict[str, Any]):
-        """Initialize adapter with configuration.
-
-        Args:
-            config: Adapter-specific configuration
-        """
-        self.config = config
+    def __init__(self) -> None:
+        """Initialize adapter."""
         self._message_callbacks: List[Callable[..., Any]] = []
         self._file_callbacks: List[Callable[..., Any]] = []
         self._voice_callbacks: List[Callable[..., Any]] = []
@@ -181,6 +176,26 @@ class BaseAdapter(ABC):
 
         Returns:
             True if successful, False otherwise
+        """
+        pass
+
+    # ==================== Peer Discovery ====================
+
+    @abstractmethod
+    async def discover_peers(self) -> List[Dict[str, Any]]:
+        """Discover other computers/peers via this adapter's mechanism.
+
+        Each adapter implements its own discovery mechanism:
+        - TelegramAdapter: Polls General topic for [REGISTRY] messages (bots only see self)
+        - RedisAdapter: Reads Redis heartbeat keys (actually works for discovery)
+
+        Returns:
+            List of peer dicts with:
+            - name: Computer name
+            - status: "online" or "offline"
+            - last_seen: datetime object
+            - last_seen_ago: Human-readable string (e.g., "30s ago")
+            - adapter_type: Which adapter discovered this peer
         """
         pass
 
