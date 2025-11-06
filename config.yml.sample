@@ -63,3 +63,22 @@ mcp:
 
     # Command to start Claude Code (for /claude_resume in AI-to-AI sessions)
     claude_command: claude  # Or: cd ~/project && claude
+
+# Redis Configuration (for AI-to-AI communication)
+redis:
+    enabled: true  # Enable Redis adapter for cross-computer messaging
+
+    # Redis connection URL
+    url: redis://redis.srv.instrukt.ai:6379
+
+    # Optional password (set in .env as REDIS_PASSWORD)
+    password: ${REDIS_PASSWORD}
+
+    # Connection pool settings
+    max_connections: 10
+    socket_timeout: 5
+
+    # Stream settings
+    command_stream_maxlen: 1000   # Max commands to keep per computer
+    output_stream_maxlen: 10000   # Max output messages per session
+    output_stream_ttl: 3600       # Auto-expire output streams after 1 hour

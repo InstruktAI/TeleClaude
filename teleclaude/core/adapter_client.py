@@ -60,8 +60,19 @@ class AdapterClient:
             self.adapters["telegram"] = telegram_adapter
             logger.info("Loaded Telegram adapter")
 
-        # TODO: Load Redis adapter if configured
-        # TODO: Load other adapters
+        # Load Redis adapter if configured
+        redis_config = config.get("redis", {})
+        if redis_config.get("enabled", False):
+            from teleclaude.adapters.redis_adapter import RedisAdapter
+
+            redis_adapter = RedisAdapter(self.daemon.session_manager, self.daemon)
+
+            # Register callbacks from daemon
+            redis_adapter.on_command(self.daemon.handle_command)
+            redis_adapter.on_message(self.daemon.handle_message)
+
+            self.adapters["redis"] = redis_adapter
+            logger.info("Loaded Redis adapter")
 
         # Validate at least one adapter is loaded
         if not self.adapters:
