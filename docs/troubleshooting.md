@@ -61,6 +61,119 @@ If the daemon won't start or is crashing immediately, follow these steps:
 - **Import errors**: Run `make install` to ensure all dependencies are installed
 - **EBADF errors in tmux sessions**: This was caused by pipe file descriptors leaking from the daemon's tmux command calls. Every time the daemon called a tmux command with `stdout=PIPE, stderr=PIPE`, these pipes could leak into the tmux session environment, causing Node.js child_process.spawn() to fail with EBADF. Fixed by removing pipe capture from all tmux commands that don't need output (send-keys, send-signal, kill-session, etc.). Only commands that need output (capture-pane, list-sessions, etc.) use PIPE. tmux creates proper PTYs automatically for sessions
 
+## Redis Adapter Issues
+
+### Connection Refused
+
+**Error:** `Failed to connect to Redis: Error 61 connecting to <host>:<port>`
+
+**Possible causes:**
+1. Redis server is not running
+2. Wrong host or port in config
+3. Firewall blocking connection
+4. Redis bound to localhost only (not 0.0.0.0)
+
+**Solutions:**
+
+```bash
+# On the Redis server:
+
+# 1. Check if Redis is running
+sudo systemctl status redis-server
+ps aux | grep redis-server
+
+# 2. Check which port Redis is listening on
+sudo netstat -tlnp | grep redis
+# Should show: 0.0.0.0:<port> (not 127.0.0.1:<port>)
+
+# 3. Check Redis bind configuration
+sudo grep "^bind" /etc/redis/redis.conf
+# Should be: bind 0.0.0.0 (for external access)
+
+# 4. Check firewall
+sudo ufw allow <port>/tcp
+
+# 5. Restart Redis after config changes
+sudo systemctl restart redis-server
+```
+
+**On TeleClaude side:**
+
+```bash
+# Verify Redis config in config.yml
+grep -A 10 "^redis:" config.yml
+
+# Test connection manually
+redis-cli -h <host> -p <port> -a <password> ping
+```
+
+### Invalid Password Error
+
+**Error:** `invalid username-password pair or user is disabled`
+
+**Solutions:**
+
+1. **Check password in `.env` file:**
+   ```bash
+   grep REDIS_PASSWORD .env
+   ```
+
+2. **Test password locally on Redis server:**
+   ```bash
+   redis-cli -h 127.0.0.1 -p <port> -a '<password>' ping
+   ```
+
+3. **Verify Redis AUTH is configured:**
+   ```bash
+   sudo grep "^requirepass" /etc/redis/redis.conf
+   ```
+
+4. **For Redis 6+ with ACL users:**
+   ```bash
+   # Check if user is disabled
+   redis-cli -p <port> ACL LIST
+   ```
+
+### SSL/TLS Connection Issues
+
+**Error:** `Protocol Error: b'HTTP/1.1 400 Bad Request'`
+
+**Solution:** Use `rediss://` (with double 's') for SSL/TLS connections:
+
+```yaml
+# config.yml
+redis:
+  url: rediss://redis.example.com:6379  # Note: rediss:// not redis://
+```
+
+### Adapter Not Loading
+
+**Symptom:** Logs show "Loaded Telegram adapter" but no "Loaded Redis adapter"
+
+**Check:**
+
+```bash
+# 1. Verify redis is enabled in config.yml
+grep -A 2 "^redis:" config.yml | grep enabled
+
+# 2. Check for startup errors in logs
+tail -100 /var/log/teleclaude.log | grep -i redis
+
+# 3. Verify redis package is installed
+.venv/bin/pip list | grep redis
+```
+
+**Solution:**
+
+```bash
+# Install redis if missing
+.venv/bin/pip install redis
+
+# Set enabled: true in config.yml
+# Restart daemon
+make restart
+```
+
 ## Service Management Commands
 
 ### Linux (systemd)

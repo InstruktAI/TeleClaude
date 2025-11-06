@@ -18,7 +18,8 @@ TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your t
 - 🖥️ **Multiple persistent terminal sessions** - Each session runs in tmux and survives daemon restarts
 - 📱 **Remote control from anywhere** - Send commands from Telegram, receive live output
 - 🏢 **Multi-computer support** - Manage Mac, servers, and other machines from one Telegram group
-- 🤖 **AI-to-AI communication** - MCP server enables Claude Code on different computers to collaborate via Telegram
+- 🤖 **AI-to-AI communication** - MCP server enables Claude Code on different computers to collaborate
+- 🔌 **Multi-adapter architecture** - Supports Telegram and Redis adapters for cross-computer messaging
 - 📋 **Organized with Topics** - Each session gets its own Telegram topic for clean organization
 - 🔄 **Live output streaming** - See command output in real-time with smart editing (dual-mode: human vs AI)
 - 🎤 **Voice input** - Speak commands, auto-transcribed with Whisper

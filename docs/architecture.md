@@ -26,6 +26,7 @@ TeleClaude is a Telegram-to-terminal bridge daemon. From a developer perspective
 
 - `base_adapter.py` - Abstract base class defining adapter interface
 - `telegram_adapter.py` - Telegram Bot API implementation
+- `redis_adapter.py` - Redis Streams adapter for AI-to-AI communication
 - Future: `whatsapp_adapter.py`, `slack_adapter.py`
 
 ### MCP Layer (`teleclaude/mcp_server.py`)
@@ -495,6 +496,71 @@ TELEGRAM_SUPERGROUP_ID=-100123456789
 - Daemon restart doesn't break active sessions (state in DB + Telegram)
 - Graceful timeout handling (5 minute max idle)
 
+## Redis Adapter Architecture
+
+**Redis Streams adapter for cross-computer AI-to-AI communication**
+
+The Redis adapter bypasses Telegram's bot-to-bot messaging restriction by using Redis Streams as a reliable message transport layer between TeleClaude instances.
+
+### Core Components
+
+**Stream Architecture:**
+- `commands:{computer_name}` - Incoming command stream (one per computer)
+- `output:{session_id}` - Outgoing output stream (one per session)
+- `computer:{name}:heartbeat` - Redis keys with TTL for peer discovery
+
+**Background Tasks:**
+- Command polling: Reads from `commands:{computer_name}` stream every 1 second
+- Heartbeat loop: Writes heartbeat key every 30 seconds (60s TTL)
+
+### Message Flow
+
+```
+Initiator Computer (Comp1)          Target Computer (Comp2)
+─────────────────────────           ──────────────────────
+
+1. XADD commands:comp2
+   {session_id, command, ...}    →  2. XREAD commands:comp2 (polling)
+                                     3. Create session, execute command
+                                     4. XADD output:session_id {chunk}
+5. XREAD output:session_id       ←
+   (MCP server streams to Claude)
+```
+
+### Configuration
+
+**config.yml:**
+```yaml
+redis:
+  enabled: true
+  url: rediss://redis.srv.instrukt.ai:6478  # Use rediss:// for SSL/TLS
+  password: ${REDIS_PASSWORD}
+  max_connections: 10
+  socket_timeout: 5
+  command_stream_maxlen: 1000
+  output_stream_maxlen: 10000
+  output_stream_ttl: 3600
+```
+
+**.env:**
+```bash
+REDIS_PASSWORD=your_secure_password
+```
+
+### Key Features
+
+- **SSL/TLS Support**: Uses `rediss://` protocol for encrypted connections
+- **Automatic Reconnection**: Handles connection failures gracefully
+- **Stream Trimming**: Limits stream length to prevent unbounded growth
+- **Heartbeat Discovery**: Discovers peers via Redis keys (no Telegram dependency)
+- **Ordered Delivery**: Redis Streams guarantee message order
+
+### Limitations
+
+- **File Transfer**: Only sends file path references (no actual file data)
+- **No Message Editing**: Sends new messages instead of editing (Redis Streams are append-only)
+- **Network Dependency**: Requires accessible Redis server
+
 ## Architecture Principles
 
 1. **Separation of Concerns**: Core is platform-agnostic, adapters handle platform specifics
@@ -524,7 +590,9 @@ TELEGRAM_SUPERGROUP_ID=-100123456789
 - `teleclaude/core/terminal_bridge.py` - tmux wrapper (create, send, capture)
 - `teleclaude/core/computer_registry.py` - Computer discovery via heartbeat mechanism
 - `teleclaude/adapters/telegram_adapter.py` - Telegram Bot API implementation
+- `teleclaude/adapters/redis_adapter.py` - Redis Streams adapter for cross-computer messaging
 - `teleclaude/adapters/base_adapter.py` - Adapter interface definition
+- `teleclaude/core/adapter_client.py` - Unified adapter management
 - `teleclaude/mcp_server.py` - MCP server for AI-to-AI communication
 
 ### Configuration
