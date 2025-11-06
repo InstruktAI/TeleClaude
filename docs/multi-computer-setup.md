@@ -131,7 +131,7 @@ computer:
   bot_username: teleclaude_macbook_bot # UNIQUE per computer
   default_shell: /bin/zsh
   default_working_dir: ${WORKING_DIR}
-  trustedDirs:
+  trusted_dirs:
     - ${WORKING_DIR}
     - ~/projects
 

@@ -793,11 +793,14 @@ async def handle_cd_session(
     # Get adapter for sending messages
     adapter = await get_adapter_for_session(session_id)
 
+    # Strip whitespace from args and filter out empty strings
+    args = [arg.strip() for arg in args if arg.strip()]
+
     # If no args, list trusted directories
     if not args:
         config = get_config()
         # Always prepend TC WORKDIR to the list
-        trusted_dirs = ["TC WORKDIR"] + config.get("computer", {}).get("trustedDirs", [])
+        trusted_dirs = ["TC WORKDIR"] + config.get("computer", {}).get("trusted_dirs", [])
 
         lines = ["**Trusted Directories:**\n"]
         for idx, dir_path in enumerate(trusted_dirs, 1):

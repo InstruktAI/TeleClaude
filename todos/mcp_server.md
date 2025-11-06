@@ -1383,7 +1383,7 @@ computer:
   bot_username: teleclaude_macbook_bot
   default_shell: /bin/zsh
   default_working_dir: ${WORKING_DIR}
-  trustedDirs: [...]
+  trusted_dirs: [...]
 
 telegram:
   supergroup_id: ${TELEGRAM_SUPERGROUP_ID}

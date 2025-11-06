@@ -5,7 +5,7 @@ computer:
     default_shell: /bin/zsh
     default_working_dir: ${WORKING_DIR}
     timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)
-    trustedDirs:
+    trusted_dirs:
         - ${WORKING_DIR}
         - ${HOME}/Documents
         - ${HOME}/Projects

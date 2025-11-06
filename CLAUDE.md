@@ -249,7 +249,7 @@ This handles:
 
 ### Adding Config-Driven Features
 
-To add features that use configuration values (like `trustedDirs`):
+To add features that use configuration values (like `trusted_dirs`):
 
 1. **Add to `config.yml.sample`** with comments and examples
 2. **Pass from daemon to adapter** in `telegram_config`:
