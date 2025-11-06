@@ -277,34 +277,39 @@ class TelegramAdapter(BaseAdapter):
         # Register bot commands with Telegram (only for master computer)
         if self.is_master:
             commands = [
-                BotCommand("new_session", "Create a new terminal session"),
-                BotCommand("list_sessions", "List all active sessions"),
-                BotCommand("claude", "Start Claude Code in GOD mode"),
-                BotCommand("claude_resume", "Resume last Claude Code session (GOD mode)"),
-                BotCommand("cancel", "Send CTRL+C to interrupt current command"),
-                BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
-                BotCommand("escape", "Send ESC key (exit Vim insert mode, etc.)"),
-                BotCommand("escape2x", "Send ESC twice (for Claude Code, etc.)"),
-                BotCommand("ctrl", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
-                BotCommand("tab", "Send TAB key"),
-                BotCommand("shift_tab", "Send SHIFT+TAB key"),
-                BotCommand("key_up", "Send UP arrow key (optional repeat count)"),
-                BotCommand("key_down", "Send DOWN arrow key (optional repeat count)"),
-                BotCommand("key_left", "Send LEFT arrow key (optional repeat count)"),
-                BotCommand("key_right", "Send RIGHT arrow key (optional repeat count)"),
-                BotCommand("cd", "Change directory or list trusted directories"),
-                BotCommand("resize", "Resize terminal window"),
-                BotCommand("rename", "Rename current session"),
-                BotCommand("help", "Show help message"),
+                BotCommand("new_session ", "Create a new terminal session"),
+                BotCommand("list_sessions ", "List all active sessions"),
+                BotCommand("claude ", "Start Claude Code in GOD mode"),
+                BotCommand("claude_resume ", "Resume last Claude Code session (GOD mode)"),
+                BotCommand("cancel ", "Send CTRL+C to interrupt current command"),
+                BotCommand("cancel2x ", "Send CTRL+C twice (for stubborn programs)"),
+                BotCommand("escape ", "Send ESC key (exit Vim insert mode, etc.)"),
+                BotCommand("escape2x ", "Send ESC twice (for Claude Code, etc.)"),
+                BotCommand("ctrl ", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
+                BotCommand("tab ", "Send TAB key"),
+                BotCommand("shift_tab ", "Send SHIFT+TAB key"),
+                BotCommand("key_up ", "Send UP arrow key (optional repeat count)"),
+                BotCommand("key_down ", "Send DOWN arrow key (optional repeat count)"),
+                BotCommand("key_left ", "Send LEFT arrow key (optional repeat count)"),
+                BotCommand("key_right ", "Send RIGHT arrow key (optional repeat count)"),
+                BotCommand("cd ", "Change directory or list trusted directories"),
+                BotCommand("resize ", "Resize terminal window"),
+                BotCommand("rename ", "Rename current session"),
+                BotCommand("help ", "Show help message"),
             ]
+            # Clear global commands first (removes old @BotName cached commands)
+            await self.app.bot.set_my_commands([])
             # Set commands for the specific supergroup (not global)
             scope = BotCommandScopeChat(chat_id=self.supergroup_id)
             await self.app.bot.set_my_commands(commands, scope=scope)
             logger.info("Registered %d bot commands with Telegram for supergroup (master computer)", len(commands))
         else:
+            # Non-master: Clear all commands (both global and supergroup)
+            # This removes old cached commands that cause @BotName autocomplete
+            await self.app.bot.set_my_commands([])  # Clear global commands
             scope = BotCommandScopeChat(chat_id=self.supergroup_id)
-            await self.app.bot.set_my_commands([], scope=scope)
-            logger.info("No bot commands registered for supergroup (non-master computer)")
+            await self.app.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
+            logger.info("Cleared all bot commands (non-master computer)")
 
         # Try to get chat info to verify bot is in the group
         try:
@@ -1245,8 +1250,7 @@ Current size: {}
         if update.effective_user.id not in self.user_whitelist:
             return
 
-        help_text = """
-**TeleClaude Bot Commands:**
+        help_text = """TeleClaude Bot Commands:
 
 /new_session [title] - Create a new terminal session
 /list_sessions - List all active sessions
@@ -1261,7 +1265,7 @@ Current size: {}
 /claude - Start Claude Code (cc)
 /help - Show this help message
 
-**Usage:**
+Usage:
 1. Use /new_session to create a terminal session
 2. Send text messages in the session topic to execute commands
 3. Use /cancel to interrupt a running command
@@ -1273,7 +1277,7 @@ Current size: {}
 9. View output in real-time
         """
 
-        await update.effective_message.reply_text(help_text, parse_mode="Markdown")
+        await update.effective_message.reply_text(help_text)
 
     async def _handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle text messages in topics and General topic.

@@ -168,13 +168,12 @@ async def handle_list_sessions(
     if not sessions:
         # Send to General topic
         await adapter.send_general_message(
-            text="No active sessions.",
-            metadata={"message_thread_id": context.get("message_thread_id"), "parse_mode": "MarkdownV2"},
+            text="No active sessions.", metadata={"message_thread_id": context.get("message_thread_id")}
         )
         return
 
     # Build response
-    lines = ["**Active Sessions:**\n"]
+    lines = ["Active Sessions:\n"]
     for s in sessions:
         lines.append(
             f"• {s.title}\n" f"  ID: {s.session_id[:8]}...\n" f"  Created: {s.created_at.strftime('%Y-%m-%d %H:%M')}\n"
@@ -183,9 +182,7 @@ async def handle_list_sessions(
     response = "\n".join(lines)
 
     # Send to same topic where command was issued
-    await adapter.send_general_message(
-        text=response, metadata={"message_thread_id": context.get("message_thread_id"), "parse_mode": "MarkdownV2"}
-    )
+    await adapter.send_general_message(text=response, metadata={"message_thread_id": context.get("message_thread_id")})
 
 
 async def handle_cancel_command(
