@@ -9,21 +9,21 @@ from teleclaude.core.computer_registry import ComputerRegistry
 
 
 def test_parse_registry_message():
-    """Test parsing computer status message with [REGISTRY_PONG] prefix."""
-    message_text = "[REGISTRY_PONG] macbook - last seen at 2025-11-04 15:30:45"
+    """Test parsing /pong command."""
+    message_text = "/pong by macbook at 2025-11-04 15:30:45"
 
     # Test the regex pattern from ComputerRegistry._refresh_computer_list
-    match = re.match(r'^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$', message_text.strip())
+    match = re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', message_text.strip())
     assert match is not None
     assert match.group(1) == "macbook"
     assert match.group(2) == "2025-11-04 15:30:45"
 
 
 def test_parse_registry_message_with_whitespace():
-    """Test parsing registry message with extra whitespace."""
-    message_text = "  [REGISTRY_PONG] workstation - last seen at 2025-11-04 16:45:30  "
+    """Test parsing /pong command with extra whitespace."""
+    message_text = "  /pong by workstation at 2025-11-04 16:45:30  "
 
-    match = re.match(r'^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$', message_text.strip())
+    match = re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', message_text.strip())
     assert match is not None
     assert match.group(1) == "workstation"
     assert match.group(2) == "2025-11-04 16:45:30"
@@ -31,17 +31,20 @@ def test_parse_registry_message_with_whitespace():
 
 def test_parse_invalid_registry_message():
     """Test that invalid messages don't match."""
-    # Missing [REGISTRY_PONG] prefix
-    assert re.match(r'^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$', "macbook - last seen at 2025-11-04 15:30:45") is None
+    # Missing /pong prefix
+    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "macbook at 2025-11-04 15:30:45") is None
 
-    # Missing "last seen at"
-    assert re.match(r'^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$', "[REGISTRY_PONG] macbook - online") is None
+    # Missing "by"
+    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "/pong macbook at 2025-11-04 15:30:45") is None
+
+    # Missing "at"
+    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "/pong by macbook 2025-11-04 15:30:45") is None
 
     # Wrong format
-    assert re.match(r'^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$', "computer: macbook") is None
+    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "computer: macbook") is None
 
     # Empty
-    assert re.match(r'^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$', "") is None
+    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "") is None
 
 
 def test_offline_detection_logic():

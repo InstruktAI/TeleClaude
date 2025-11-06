@@ -174,11 +174,22 @@ class ComputerRegistry:
         else:
             # Edit existing message (keep General topic clean)
             try:
-                await self.telegram_adapter.app.bot.edit_message_text(
+                edited_message = await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_ping_message_id,
                     text=text,
                 )
+                # Cache the edited message (bots don't get updates for their own edits)
+                topic_id = self.registry_topic_id
+                if topic_id not in self.telegram_adapter._topic_message_cache:
+                    self.telegram_adapter._topic_message_cache[topic_id] = []
+                # Replace old version
+                self.telegram_adapter._topic_message_cache[topic_id] = [
+                    m
+                    for m in self.telegram_adapter._topic_message_cache[topic_id]
+                    if m.message_id != self.my_ping_message_id
+                ]
+                self.telegram_adapter._topic_message_cache[topic_id].append(edited_message)
             except Exception as e:
                 error_lower = str(e).lower()
                 # If message was deleted, post new one
@@ -191,12 +202,12 @@ class ComputerRegistry:
                     raise
 
     async def handle_ping_command(self) -> None:
-        """Handle /registry_ping command - respond with [REGISTRY_PONG].
+        """Handle /registry_ping command - respond with /pong command.
 
         Called by telegram_adapter when /registry_ping command is received.
-        All bots respond with their current status.
+        All bots respond with /pong command (commands are visible to all bots).
         """
-        text = f"[REGISTRY_PONG] {self.computer_name} - last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        text = f"/pong by {self.computer_name} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
         if self.my_pong_message_id is None:
             # First pong - post new message
@@ -223,11 +234,22 @@ class ComputerRegistry:
         else:
             # Edit existing pong message
             try:
-                await self.telegram_adapter.app.bot.edit_message_text(
+                edited_message = await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_pong_message_id,
                     text=text,
                 )
+                # Cache the edited message (bots don't get updates for their own edits)
+                topic_id = self.registry_topic_id
+                if topic_id not in self.telegram_adapter._topic_message_cache:
+                    self.telegram_adapter._topic_message_cache[topic_id] = []
+                # Replace old version
+                self.telegram_adapter._topic_message_cache[topic_id] = [
+                    m
+                    for m in self.telegram_adapter._topic_message_cache[topic_id]
+                    if m.message_id != self.my_pong_message_id
+                ]
+                self.telegram_adapter._topic_message_cache[topic_id].append(edited_message)
             except Exception as e:
                 error_lower = str(e).lower()
                 # If message was deleted, post new one
@@ -239,9 +261,9 @@ class ComputerRegistry:
                     logger.error("Failed to edit pong: %s", e)
 
     async def _refresh_computer_list(self) -> None:
-        """Poll General topic and parse [REGISTRY_PONG] messages.
+        """Poll General topic and parse /pong commands.
 
-        Filters for messages with [REGISTRY_PONG] prefix to ignore other messages.
+        Filters for /pong commands. Commands ARE visible to all bots (unlike regular messages).
         """
         messages = await self.telegram_adapter.get_topic_messages(
             topic_id=self.registry_topic_id, limit=100  # Support up to 100 computers
@@ -251,12 +273,12 @@ class ComputerRegistry:
 
         for msg in messages:
             try:
-                # Filter for pong messages (ignore ping commands and other messages)
-                if not msg.text or not msg.text.startswith("[REGISTRY_PONG]"):
+                # Filter for /pong commands (ignore /registry_ping and other messages)
+                if not msg.text or not msg.text.startswith("/pong"):
                     continue
 
-                # Parse: "[REGISTRY_PONG] computer_name - last seen at 2025-11-06 01:15:30"
-                match = re.match(r"^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$", msg.text.strip())
+                # Parse: "/pong by MozBook at 2025-11-06 01:45:30"
+                match = re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", msg.text.strip())
                 if not match:
                     continue
 

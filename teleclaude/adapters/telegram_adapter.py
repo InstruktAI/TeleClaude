@@ -185,6 +185,7 @@ class TelegramAdapter(BaseAdapter):
             ("claude", self._handle_claude),
             ("claude_resume", self._handle_claude_resume),
             ("registry_ping", self._handle_registry_ping),
+            ("pong", self._handle_pong),
             ("help", self._handle_help),
         ]
 
@@ -192,6 +193,19 @@ class TelegramAdapter(BaseAdapter):
             # Handle both new messages and edited messages
             self.app.add_handler(CommandHandler(command_name, handler))
             self.app.add_handler(CommandHandler(command_name, handler, filters=filters.UpdateType.EDITED_MESSAGE))
+
+        # Cache all commands (for registry discovery)
+        # Group 1 so it runs AFTER CommandHandlers (which are in group 0)
+        self.app.add_handler(
+            MessageHandler(filters.COMMAND & filters.ChatType.SUPERGROUP, self._cache_command_message), group=1
+        )
+        self.app.add_handler(
+            MessageHandler(
+                filters.COMMAND & filters.ChatType.SUPERGROUP & filters.UpdateType.EDITED_MESSAGE,
+                self._cache_command_message,
+            ),
+            group=1,
+        )
 
         # Handle text messages in topics (not commands)
         self.app.add_handler(
@@ -1054,8 +1068,8 @@ Current size: {}
     async def _handle_registry_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /registry_ping command for computer discovery.
 
-        When any bot sends /registry_ping, all bots see it and respond with [REGISTRY_PONG].
-        This enables cross-bot discovery despite bots not seeing each other's regular messages.
+        When any bot sends /registry_ping, all bots see it and respond with /pong command.
+        This enables cross-bot discovery - commands ARE visible to all bots.
         """
         if not self.daemon.computer_registry:
             logger.debug("Received /registry_ping but computer_registry not initialized")
@@ -1063,6 +1077,42 @@ Current size: {}
 
         # All bots respond to any ping (not just whitelisted users)
         await self.daemon.computer_registry.handle_ping_command()
+
+    async def _handle_pong(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /pong command from other bots for computer discovery.
+
+        Called when any bot responds to /registry_ping with /pong.
+        No action needed - message is cached by _cache_command_message.
+        """
+        # No action - pong commands are cached by _cache_command_message
+        # and parsed by computer_registry._refresh_computer_list
+        pass
+
+    async def _cache_command_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Cache command messages for registry polling.
+
+        Commands like /registry_ping and /pong need to be cached so
+        computer_registry can find them when polling.
+        """
+        message = update.message or update.edited_message
+        if message:
+            # Use None for General topic, actual ID for forum topics
+            topic_id = message.message_thread_id
+
+            # Cache message for registry polling (get_topic_messages)
+            if topic_id not in self._topic_message_cache:
+                self._topic_message_cache[topic_id] = []
+
+            # For edited messages, replace existing message with same ID
+            if update.edited_message:
+                # Remove old version of this message
+                self._topic_message_cache[topic_id] = [
+                    m for m in self._topic_message_cache[topic_id] if m.message_id != message.message_id
+                ]
+
+            self._topic_message_cache[topic_id].append(message)
+            if len(self._topic_message_cache[topic_id]) > 100:
+                self._topic_message_cache[topic_id].pop(0)
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command."""
