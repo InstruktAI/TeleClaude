@@ -128,7 +128,10 @@ class TelegramAdapter(BaseAdapter):
 
         self.trusted_dirs = config.get("computer", {}).get("trusted_dirs", [])
         self.trusted_bots = config.get("telegram", {}).get("trusted_bots", [])
-        self.computer_name = config["computer"]["name"]
+        self.computer_name = config.get("computer", {}).get("name")
+        if not self.computer_name:
+            raise ValueError("computer.name is required in config.yml")
+        self.is_master = config.get("computer", {}).get("is_master", False)
 
         self.session_manager = session_manager
         self.daemon = daemon
@@ -265,30 +268,34 @@ class TelegramAdapter(BaseAdapter):
         logger.info("Configured supergroup ID: %s", self.supergroup_id)
         logger.info("Whitelisted user IDs: %s", self.user_whitelist)
 
-        # Register bot commands with Telegram
-        commands = [
-            BotCommand("new_session", "Create a new terminal session"),
-            BotCommand("list_sessions", "List all active sessions"),
-            BotCommand("claude", "Start Claude Code in GOD mode"),
-            BotCommand("claude_resume", "Resume last Claude Code session (GOD mode)"),
-            BotCommand("cancel", "Send CTRL+C to interrupt current command"),
-            BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
-            BotCommand("escape", "Send ESC key (exit Vim insert mode, etc.)"),
-            BotCommand("escape2x", "Send ESC twice (for Claude Code, etc.)"),
-            BotCommand("ctrl", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
-            BotCommand("tab", "Send TAB key"),
-            BotCommand("shift_tab", "Send SHIFT+TAB key"),
-            BotCommand("key_up", "Send UP arrow key (optional repeat count)"),
-            BotCommand("key_down", "Send DOWN arrow key (optional repeat count)"),
-            BotCommand("key_left", "Send LEFT arrow key (optional repeat count)"),
-            BotCommand("key_right", "Send RIGHT arrow key (optional repeat count)"),
-            BotCommand("cd", "Change directory or list trusted directories"),
-            BotCommand("resize", "Resize terminal window"),
-            BotCommand("rename", "Rename current session"),
-            BotCommand("help", "Show help message"),
-        ]
-        await self.app.bot.set_my_commands(commands)
-        logger.info("Registered %d bot commands with Telegram", len(commands))
+        # Register bot commands with Telegram (only for master computer)
+        if self.is_master:
+            commands = [
+                BotCommand("new_session", "Create a new terminal session"),
+                BotCommand("list_sessions", "List all active sessions"),
+                BotCommand("claude", "Start Claude Code in GOD mode"),
+                BotCommand("claude_resume", "Resume last Claude Code session (GOD mode)"),
+                BotCommand("cancel", "Send CTRL+C to interrupt current command"),
+                BotCommand("cancel2x", "Send CTRL+C twice (for stubborn programs)"),
+                BotCommand("escape", "Send ESC key (exit Vim insert mode, etc.)"),
+                BotCommand("escape2x", "Send ESC twice (for Claude Code, etc.)"),
+                BotCommand("ctrl", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
+                BotCommand("tab", "Send TAB key"),
+                BotCommand("shift_tab", "Send SHIFT+TAB key"),
+                BotCommand("key_up", "Send UP arrow key (optional repeat count)"),
+                BotCommand("key_down", "Send DOWN arrow key (optional repeat count)"),
+                BotCommand("key_left", "Send LEFT arrow key (optional repeat count)"),
+                BotCommand("key_right", "Send RIGHT arrow key (optional repeat count)"),
+                BotCommand("cd", "Change directory or list trusted directories"),
+                BotCommand("resize", "Resize terminal window"),
+                BotCommand("rename", "Rename current session"),
+                BotCommand("help", "Show help message"),
+            ]
+            await self.app.bot.set_my_commands(commands)
+            logger.info("Registered %d bot commands with Telegram (master computer)", len(commands))
+        else:
+            await self.app.bot.set_my_commands([])
+            logger.info("No bot commands registered (non-master computer)")
 
         # Try to get chat info to verify bot is in the group
         try:

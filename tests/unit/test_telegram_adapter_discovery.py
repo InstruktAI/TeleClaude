@@ -138,34 +138,34 @@ async def test_heartbeat_edit_same_message():
 
         adapter = TelegramAdapter(mock_session_manager, mock_daemon)
 
-    # Mock send_message_to_topic and bot.edit_message_text
-    adapter.send_message_to_topic = AsyncMock()
-    adapter.app = Mock()
-    adapter.app.bot = Mock()
-    adapter.app.bot.edit_message_text = AsyncMock()
-
     # Mock message returned from first post
     mock_message = Mock()
     mock_message.message_id = 12345
-    adapter.send_message_to_topic.return_value = mock_message
 
     # Mock edited message returned from edit
     mock_edited_message = Mock()
     mock_edited_message.message_id = 12345
     mock_edited_message.text = "[REGISTRY] macbook last seen at 2025-11-04 15:31:00"
-    adapter.app.bot.edit_message_text.return_value = mock_edited_message
+
+    # Create mock bot with all required async methods
+    mock_bot = Mock()
+    mock_bot.get_me = AsyncMock(return_value=Mock(username="test_bot", id=123))
+    mock_bot.send_message = AsyncMock(return_value=mock_message)
+    mock_bot.edit_message_text = AsyncMock(return_value=mock_edited_message)
+    adapter.app = Mock()
+    adapter.app.bot = mock_bot
 
     # Initialize empty cache
     adapter._topic_message_cache = {}
 
     # First heartbeat: should POST
     await adapter._send_heartbeat()
-    assert adapter.send_message_to_topic.call_count == 1
+    assert adapter.app.bot.send_message.call_count == 1
     assert adapter.registry_message_id == 12345
 
     # Second heartbeat: should EDIT same message
     await adapter._send_heartbeat()
-    assert adapter.send_message_to_topic.call_count == 1  # Still 1 (no new post)
+    assert adapter.app.bot.send_message.call_count == 1  # Still 1 (no new post)
     assert adapter.app.bot.edit_message_text.call_count == 1  # Edited
     assert adapter.registry_message_id == 12345  # Same message ID
 

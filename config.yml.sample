@@ -1,6 +1,7 @@
 computer:
     name: Mac  # Unique computer identifier for multi-computer MCP communication
     bot_username: teleclaude_mac_bot  # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
+    is_master: false  # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
     default_shell: /bin/zsh
     default_working_dir: ${WORKING_DIR}
     timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)

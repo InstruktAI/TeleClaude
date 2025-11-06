@@ -727,6 +727,34 @@ class TestPlatformParameters:
 
 
 @pytest.mark.unit
+class TestMasterFlagCommandRegistration:
+    """Tests for master flag command registration behavior."""
+
+    @pytest.mark.asyncio
+    async def test_default_is_non_master(self, mock_env, mock_session_manager, mock_daemon):
+        """Test that missing is_master defaults to False (non-master)."""
+        # Reset config state
+        import teleclaude.config as config_module
+        config_module._config = None
+
+        # Config without is_master field
+        config = {
+            "computer": {
+                "name": "test_computer",
+                "trusted_dirs": ["/tmp"]
+            },
+            "telegram": {
+                "trusted_bots": []
+            }
+        }
+        init_config(config)
+        adapter = TelegramAdapter(mock_session_manager, mock_daemon)
+
+        # Verify is_master defaults to False
+        assert adapter.is_master is False
+
+
+@pytest.mark.unit
 class TestReplyMarkup:
     """Tests for inline keyboard reply_markup handling."""
 
