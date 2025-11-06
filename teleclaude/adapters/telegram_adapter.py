@@ -184,6 +184,7 @@ class TelegramAdapter(BaseAdapter):
             ("cd", self._handle_cd),
             ("claude", self._handle_claude),
             ("claude_resume", self._handle_claude_resume),
+            ("registry_ping", self._handle_registry_ping),
             ("help", self._handle_help),
         ]
 
@@ -195,6 +196,14 @@ class TelegramAdapter(BaseAdapter):
         # Handle text messages in topics (not commands)
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.SUPERGROUP, self._handle_text_message)
+        )
+
+        # Handle edited text messages (for registry heartbeat updates)
+        self.app.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND & filters.ChatType.SUPERGROUP & filters.UpdateType.EDITED_MESSAGE,
+                self._handle_text_message,
+            )
         )
 
         # Handle callback queries from inline keyboards
@@ -1042,6 +1051,19 @@ Current size: {}
             # Update the message to show what was selected
             await query.edit_message_text(f"Changing directory to: `{dir_path}`", parse_mode="Markdown")
 
+    async def _handle_registry_ping(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /registry_ping command for computer discovery.
+
+        When any bot sends /registry_ping, all bots see it and respond with [REGISTRY_PONG].
+        This enables cross-bot discovery despite bots not seeing each other's regular messages.
+        """
+        if not self.daemon.computer_registry:
+            logger.debug("Received /registry_ping but computer_registry not initialized")
+            return
+
+        # All bots respond to any ping (not just whitelisted users)
+        await self.daemon.computer_registry.handle_ping_command()
+
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command."""
         if update.effective_user.id not in self.user_whitelist:
@@ -1082,20 +1104,33 @@ Current size: {}
 
         Messages with message_thread_id are in specific topics.
         Messages without message_thread_id are in General topic (cached with key None).
+
+        Also handles edited messages (for registry heartbeat updates).
         """
-        if update.message:
+        # Handle both new messages and edited messages
+        message = update.message or update.edited_message
+        if message:
             # Use None for General topic, actual ID for forum topics
-            topic_id = update.message.message_thread_id
+            topic_id = message.message_thread_id
 
             # Cache message for registry polling (get_topic_messages)
             if topic_id not in self._topic_message_cache:
                 self._topic_message_cache[topic_id] = []
-            self._topic_message_cache[topic_id].append(update.message)
+
+            # For edited messages, replace existing message with same ID
+            if update.edited_message:
+                # Remove old version of this message
+                self._topic_message_cache[topic_id] = [
+                    m for m in self._topic_message_cache[topic_id] if m.message_id != message.message_id
+                ]
+
+            self._topic_message_cache[topic_id].append(message)
             if len(self._topic_message_cache[topic_id]) > 100:
                 self._topic_message_cache[topic_id].pop(0)
 
             # ALSO push to MCP queue if registered (event-driven delivery for AI-to-AI)
-            if topic_id in self._mcp_message_queues:
+            # Only push new messages, not edits (edits are not user input)
+            if update.message and topic_id in self._mcp_message_queues:
                 try:
                     self._mcp_message_queues[topic_id].put_nowait(update.message)
                     logger.debug("Pushed message to MCP queue for topic %s", topic_id)

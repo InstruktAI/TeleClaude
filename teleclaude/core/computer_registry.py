@@ -48,28 +48,34 @@ class ComputerRegistry:
         # In-memory state
         self.computers: dict[str, dict[str, Any]] = {}
         self.registry_topic_id: Optional[int] = None
-        self.my_message_id: Optional[int] = None
+        self.my_ping_message_id: Optional[int] = None  # Message ID for /registry_ping command
+        self.my_pong_message_id: Optional[int] = None  # Message ID for [REGISTRY_PONG] response
 
         # Configuration
-        self.heartbeat_interval = 30  # Update status every 30s
-        self.poll_interval = 30  # Poll registry every 30s
-        self.offline_threshold = 60  # Mark offline after 60s of no heartbeat
+        self.heartbeat_interval = 60  # Send /registry_ping every 60s
+        self.poll_interval = 60  # Poll registry every 60s
+        self.offline_threshold = 120  # Mark offline after 120s of no pong (2 missed heartbeats)
 
     async def start(self) -> None:
-        """Start registry: post status + start background loops."""
+        """Start registry: send initial ping + start background loops."""
         logger.info("Starting computer registry for %s", self.computer_name)
 
         # Use General topic (thread_id=None) for registry
         self.registry_topic_id = await self._get_or_create_registry_topic()
 
-        # Post initial status
+        # Send initial ping (triggers all bots to respond with pong)
         try:
-            await self._update_my_status()
+            await self._send_ping()
+            # Also respond to our own ping (bots don't trigger their own command handlers)
+            await self.handle_ping_command()
         except Exception as e:
-            logger.error("Failed to post initial registry status: %s", e)
+            logger.error("Failed to send initial registry ping: %s", e)
             # Continue anyway - heartbeat will retry
 
-        # Immediately poll once to get current state
+        # Wait a moment for pong responses from other bots to arrive
+        await asyncio.sleep(2)
+
+        # Poll once to collect pong responses
         await self._refresh_computer_list()
 
         # Start background loops
@@ -87,28 +93,41 @@ class ComputerRegistry:
         The General topic is accessible to all computers without manual configuration.
         Returns None to represent the General topic (messages sent without message_thread_id).
 
-        Note: We always create a NEW message on startup (don't restore message_id).
-        This ensures the message is cached and discoverable by polling.
+        Restores persisted message IDs from previous daemon session.
         """
         # Use None to represent General topic (no message_thread_id parameter)
         topic_id = None
 
-        # Always start fresh (don't restore message_id)
-        # This ensures _update_my_status() sends a new message which gets cached
-        self.my_message_id = None
+        # Restore message IDs from previous session (if any)
+        try:
+            ux_state = await get_ux_state(self.session_manager._db, UXStateContext.SYSTEM)
+            registry_state = ux_state.get("registry", {})
+            self.my_ping_message_id = registry_state.get("ping_message_id")
+            self.my_pong_message_id = registry_state.get("pong_message_id")
+            if self.my_ping_message_id or self.my_pong_message_id:
+                logger.info(
+                    "Restored registry message IDs: ping=%s, pong=%s",
+                    self.my_ping_message_id,
+                    self.my_pong_message_id,
+                )
+        except Exception as e:
+            logger.warning("Failed to restore registry message IDs: %s", e)
+            # Continue with None values (will create new messages)
 
         logger.info("Using General topic (thread_id=None) for computer registry")
         return topic_id
 
     async def _heartbeat_loop(self) -> None:
-        """Edit our status message every N seconds (heartbeat)."""
+        """Send /registry_ping every N seconds (heartbeat)."""
         while True:
             await asyncio.sleep(self.heartbeat_interval)
             try:
-                await self._update_my_status()
-                logger.debug("Heartbeat sent for %s", self.computer_name)
+                await self._send_ping()
+                # Also respond to our own ping
+                await self.handle_ping_command()
+                logger.debug("Heartbeat ping+pong sent for %s", self.computer_name)
             except Exception as e:
-                logger.error("Heartbeat update failed: %s", e)
+                logger.error("Heartbeat ping failed: %s", e)
 
     async def _poll_registry_loop(self) -> None:
         """Poll registry topic and refresh in-memory computer list every N seconds."""
@@ -124,69 +143,105 @@ class ComputerRegistry:
             except Exception as e:
                 logger.error("Registry poll failed: %s", e)
 
-    async def _update_my_status(self) -> None:
-        """Post or edit our status message in registry topic."""
-        text = self._format_status_message()
+    async def _send_ping(self) -> None:
+        """Send or edit /registry_ping command to General topic."""
+        # Include timestamp so Telegram accepts the edit
+        text = f"/registry_ping by {self.bot_username} at {datetime.now().strftime('%H:%M:%S')}"
 
-        if self.my_message_id is None:
+        if self.my_ping_message_id is None:
             # First time - post new message
             try:
                 msg = await self.telegram_adapter.send_message_to_topic(
                     topic_id=self.registry_topic_id, text=text, parse_mode=None
                 )
-                self.my_message_id = msg.message_id
-                logger.info("Posted initial status to registry: message_id=%s", self.my_message_id)
+                self.my_ping_message_id = msg.message_id
+                logger.debug("Posted ping to registry: message_id=%s", self.my_ping_message_id)
 
-                # Persist message_id to prevent duplicate messages on restart (system context)
+                # Persist message ID
                 await update_ux_state(
                     self.session_manager._db,
                     UXStateContext.SYSTEM,
-                    {"registry": {"topic_id": self.registry_topic_id, "message_id": self.my_message_id}},
+                    {
+                        "registry": {
+                            "ping_message_id": self.my_ping_message_id,
+                            "pong_message_id": self.my_pong_message_id,
+                        }
+                    },
                 )
             except Exception as e:
-                logger.error("Failed to post initial status: %s (type: %s)", e, type(e).__name__)
+                logger.error("Failed to post ping: %s", e)
                 raise
         else:
-            # Update existing message (heartbeat)
-            # Use bot API directly since adapter's edit_message expects session_id
-            # Don't pass parse_mode to use plain text (Telegram API default)
+            # Edit existing message (keep General topic clean)
             try:
                 await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
-                    message_id=self.my_message_id,
+                    message_id=self.my_ping_message_id,
                     text=text,
                 )
             except Exception as e:
                 error_lower = str(e).lower()
-
-                # If message was deleted from Telegram, post new message
+                # If message was deleted, post new one
                 if "message to edit not found" in error_lower or "message not found" in error_lower:
-                    logger.warning("Heartbeat message %s deleted, posting new message", self.my_message_id)
-                    try:
-                        self.my_message_id = None  # Reset to force new message
-                        # Recursively call to post new message
-                        await self._update_my_status()
-                        logger.info("Successfully posted new heartbeat message")
-                    except Exception as post_error:
-                        logger.error("Failed to post new heartbeat message: %s", post_error)
-                        # Don't raise - let heartbeat retry later
-                        return
+                    logger.warning("Ping message deleted, posting new one")
+                    self.my_ping_message_id = None
+                    await self._send_ping()
                 else:
-                    logger.error("Heartbeat update failed: %s", e)
-                    # Don't raise - let heartbeat retry later
-                    return
+                    logger.error("Failed to edit ping: %s", e)
+                    raise
 
-    def _format_status_message(self) -> str:
-        """Format status message for registry with [REGISTRY] prefix.
+    async def handle_ping_command(self) -> None:
+        """Handle /registry_ping command - respond with [REGISTRY_PONG].
 
-        Prefix distinguishes registry messages from other messages in General topic.
+        Called by telegram_adapter when /registry_ping command is received.
+        All bots respond with their current status.
         """
-        return f"[REGISTRY] {self.computer_name} - last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        text = f"[REGISTRY_PONG] {self.computer_name} - last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        if self.my_pong_message_id is None:
+            # First pong - post new message
+            try:
+                msg = await self.telegram_adapter.send_message_to_topic(
+                    topic_id=self.registry_topic_id, text=text, parse_mode=None
+                )
+                self.my_pong_message_id = msg.message_id
+                logger.debug("Posted pong to registry: message_id=%s", self.my_pong_message_id)
+
+                # Persist message ID
+                await update_ux_state(
+                    self.session_manager._db,
+                    UXStateContext.SYSTEM,
+                    {
+                        "registry": {
+                            "ping_message_id": self.my_ping_message_id,
+                            "pong_message_id": self.my_pong_message_id,
+                        }
+                    },
+                )
+            except Exception as e:
+                logger.error("Failed to post pong: %s", e)
+        else:
+            # Edit existing pong message
+            try:
+                await self.telegram_adapter.app.bot.edit_message_text(
+                    chat_id=self.telegram_adapter.supergroup_id,
+                    message_id=self.my_pong_message_id,
+                    text=text,
+                )
+            except Exception as e:
+                error_lower = str(e).lower()
+                # If message was deleted, post new one
+                if "message to edit not found" in error_lower or "message not found" in error_lower:
+                    logger.warning("Pong message deleted, posting new one")
+                    self.my_pong_message_id = None
+                    await self.handle_ping_command()
+                else:
+                    logger.error("Failed to edit pong: %s", e)
 
     async def _refresh_computer_list(self) -> None:
-        """Poll General topic and parse registry status messages.
+        """Poll General topic and parse [REGISTRY_PONG] messages.
 
-        Filters for messages with [REGISTRY] prefix to ignore other messages in General topic.
+        Filters for messages with [REGISTRY_PONG] prefix to ignore other messages.
         """
         messages = await self.telegram_adapter.get_topic_messages(
             topic_id=self.registry_topic_id, limit=100  # Support up to 100 computers
@@ -196,12 +251,12 @@ class ComputerRegistry:
 
         for msg in messages:
             try:
-                # Filter for registry messages (ignore other messages in General topic)
-                if not msg.text or not msg.text.startswith("[REGISTRY]"):
+                # Filter for pong messages (ignore ping commands and other messages)
+                if not msg.text or not msg.text.startswith("[REGISTRY_PONG]"):
                     continue
 
-                # Parse: "[REGISTRY] computer_name - last seen at 2025-11-04 15:30:45"
-                match = re.match(r"^\[REGISTRY\] (\w+) - last seen at ([\d\-: ]+)$", msg.text.strip())
+                # Parse: "[REGISTRY_PONG] computer_name - last seen at 2025-11-06 01:15:30"
+                match = re.match(r"^\[REGISTRY_PONG\] (\w+) - last seen at ([\d\-: ]+)$", msg.text.strip())
                 if not match:
                     continue
 
@@ -214,7 +269,7 @@ class ComputerRegistry:
                 is_online = seconds_ago < self.offline_threshold
 
                 # Extract bot_username from message sender
-                # msg.from_user.username should be "teleclaude_macbook_bot"
+                # msg.from_user.username should be bot username without @
                 bot_username = f"@{msg.from_user.username}" if msg.from_user else None
 
                 # Update in-memory registry
@@ -227,7 +282,7 @@ class ComputerRegistry:
                 }
 
             except Exception as e:
-                logger.warning("Failed to parse registry message: %s", e)
+                logger.warning("Failed to parse registry pong message: %s", e)
 
     # === Public API for MCP tools and daemon ===
 
