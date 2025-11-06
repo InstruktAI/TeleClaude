@@ -27,15 +27,17 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             str(base_dir / ".env")
         )
 
-        # Mock all Telegram adapter methods
-        monkeypatch.setattr(daemon.telegram, "start", AsyncMock())
-        monkeypatch.setattr(daemon.telegram, "stop", AsyncMock())
-        monkeypatch.setattr(daemon.telegram, "send_message", AsyncMock(return_value="msg-123"))
-        monkeypatch.setattr(daemon.telegram, "edit_message", AsyncMock(return_value=True))
-        monkeypatch.setattr(daemon.telegram, "delete_message", AsyncMock())
-        monkeypatch.setattr(daemon.telegram, "create_channel", AsyncMock(return_value="12345"))
-        monkeypatch.setattr(daemon.telegram, "update_channel_title", AsyncMock(return_value=True))
-        monkeypatch.setattr(daemon.telegram, "send_general_message", AsyncMock(return_value="msg-456"))
+        # Mock all Telegram adapter methods (access via client.adapters["telegram"])
+        telegram_adapter = daemon.client.adapters.get("telegram")
+        if telegram_adapter:
+            monkeypatch.setattr(telegram_adapter, "start", AsyncMock())
+            monkeypatch.setattr(telegram_adapter, "stop", AsyncMock())
+            monkeypatch.setattr(telegram_adapter, "send_message", AsyncMock(return_value="msg-123"))
+            monkeypatch.setattr(telegram_adapter, "edit_message", AsyncMock(return_value=True))
+            monkeypatch.setattr(telegram_adapter, "delete_message", AsyncMock())
+            monkeypatch.setattr(telegram_adapter, "create_channel", AsyncMock(return_value="12345"))
+            monkeypatch.setattr(telegram_adapter, "update_channel_title", AsyncMock(return_value=True))
+            monkeypatch.setattr(telegram_adapter, "send_general_message", AsyncMock(return_value="msg-456"))
 
         await daemon.session_manager.initialize()
 
@@ -47,7 +49,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             await daemon.session_manager.delete_session(session.session_id)
 
         # Don't actually call start() - it's mocked so calling it does nothing useful
-        # Tests can verify it was called if needed with: daemon.telegram.start.assert_called_once()
+        # Tests can verify it was called if needed with: daemon.client.adapters["telegram"].start.assert_called_once()
 
         yield daemon
 

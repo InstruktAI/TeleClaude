@@ -130,10 +130,10 @@ def computer_registries(telegram_adapters, session_managers):
     adapter1, adapter2 = telegram_adapters
     db1, db2 = session_managers
 
-    registry1 = ComputerRegistry(adapter1, "comp1", "teleclaude_comp1_bot", {}, db1)
+    registry1 = ComputerRegistry(adapter1, "comp1", "teleclaude_comp1_bot", db1)
     registry1.registry_topic_id = 999
 
-    registry2 = ComputerRegistry(adapter2, "comp2", "teleclaude_comp2_bot", {}, db2)
+    registry2 = ComputerRegistry(adapter2, "comp2", "teleclaude_comp2_bot", db2)
     registry2.registry_topic_id = 999
 
     # Both see each other as online
@@ -150,6 +150,8 @@ def computer_registries(telegram_adapters, session_managers):
 @pytest.fixture
 def mcp_servers(telegram_adapters, session_managers, computer_registries):
     """MCP servers for both daemons."""
+    from teleclaude import config as config_module
+
     adapter1, adapter2 = telegram_adapters
     db1, db2 = session_managers
     registry1, registry2 = computer_registries
@@ -157,10 +159,22 @@ def mcp_servers(telegram_adapters, session_managers, computer_registries):
     mock_bridge = Mock()
     mock_bridge.send_keys = AsyncMock()
 
-    config = lambda name: {"computer": {"name": name}, "mcp": {"transport": "stdio"}}
+    # Create mock adapter client
+    mock_client = Mock()
+    async def mock_discover_peers():
+        return [
+            {"name": "comp1", "status": "online"},
+            {"name": "comp2", "status": "online"}
+        ]
+    mock_client.discover_peers = AsyncMock(side_effect=mock_discover_peers)
 
-    server1 = TeleClaudeMCPServer(config("comp1"), adapter1, mock_bridge, db1, registry1)
-    server2 = TeleClaudeMCPServer(config("comp2"), adapter2, mock_bridge, db2, registry2)
+    # Create server1 with mocked config
+    with patch.object(config_module, '_config', {"computer": {"name": "comp1"}, "mcp": {"transport": "stdio"}}):
+        server1 = TeleClaudeMCPServer(adapter1, mock_bridge, db1, registry1, mock_client)
+
+    # Create server2 with mocked config
+    with patch.object(config_module, '_config', {"computer": {"name": "comp2"}, "mcp": {"transport": "stdio"}}):
+        server2 = TeleClaudeMCPServer(adapter2, mock_bridge, db2, registry2, mock_client)
 
     return server1, server2
 

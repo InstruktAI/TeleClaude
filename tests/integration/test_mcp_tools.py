@@ -72,7 +72,6 @@ async def computer_registry(mock_telegram_adapter, session_manager):
         telegram_adapter=mock_telegram_adapter,
         computer_name="testcomp",
         bot_username="teleclaude_testcomp_bot",
-        config={},
         session_manager=session_manager
     )
 
@@ -110,18 +109,30 @@ async def computer_registry(mock_telegram_adapter, session_manager):
 @pytest.fixture
 async def mcp_server(mock_telegram_adapter, mock_terminal_bridge, session_manager, computer_registry):
     """Create MCP server with all dependencies mocked."""
-    config = {
+    from teleclaude import config as config_module
+
+    mock_config = {
         "computer": {"name": "testcomp"},
         "mcp": {"transport": "stdio"}
     }
 
-    server = TeleClaudeMCPServer(
-        config=config,
-        telegram_adapter=mock_telegram_adapter,
-        terminal_bridge=mock_terminal_bridge,
-        session_manager=session_manager,
-        computer_registry=computer_registry
-    )
+    # Create mock adapter client
+    mock_client = Mock()
+    async def mock_discover_peers():
+        return [
+            {"name": "testcomp", "status": "online", "bot_username": "@teleclaude_testcomp_bot"},
+            {"name": "workstation", "status": "online", "bot_username": "@teleclaude_workstation_bot"}
+        ]
+    mock_client.discover_peers = AsyncMock(side_effect=mock_discover_peers)
+
+    with patch.object(config_module, '_config', mock_config):
+        server = TeleClaudeMCPServer(
+            telegram_adapter=mock_telegram_adapter,
+            terminal_bridge=mock_terminal_bridge,
+            session_manager=session_manager,
+            computer_registry=computer_registry,
+            adapter_client=mock_client
+        )
 
     return server
 

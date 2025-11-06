@@ -100,21 +100,36 @@ async def computer_registry():
 @pytest.fixture
 async def mcp_servers(shared_message_bus, session_manager, terminal_bridge, computer_registry):
     """Create three MCP servers with shared message bus."""
+    from teleclaude import config as config_module
+
     adapters = {
         "comp1": MockTelegramAdapter("comp1", shared_message_bus),
         "comp2": MockTelegramAdapter("comp2", shared_message_bus),
         "comp3": MockTelegramAdapter("comp3", shared_message_bus),
     }
 
+    # Create mock adapter client
+    mock_client = Mock()
+    async def mock_discover_peers():
+        return [
+            {"name": "comp1", "status": "online"},
+            {"name": "comp2", "status": "online"},
+            {"name": "comp3", "status": "online"}
+        ]
+    mock_client.discover_peers = AsyncMock(side_effect=mock_discover_peers)
+
     servers = []
     for comp_name, adapter in adapters.items():
-        server = TeleClaudeMCPServer(
-            config={"computer": {"name": comp_name}},
-            telegram_adapter=adapter,
-            terminal_bridge=terminal_bridge,
-            session_manager=session_manager,
-            computer_registry=computer_registry,
-        )
+        # Mock get_config() to return computer-specific config
+        mock_config = {"computer": {"name": comp_name}}
+        with patch.object(config_module, '_config', mock_config):
+            server = TeleClaudeMCPServer(
+                telegram_adapter=adapter,
+                terminal_bridge=terminal_bridge,
+                session_manager=session_manager,
+                computer_registry=computer_registry,
+                adapter_client=mock_client
+            )
         servers.append(server)
 
     return servers, shared_message_bus

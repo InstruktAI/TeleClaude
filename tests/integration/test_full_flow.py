@@ -24,8 +24,9 @@ async def test_message_execution_and_output_polling(daemon_with_mocked_telegram)
     session = sessions[0]
 
     # Reset mock to track only this test's calls
-    daemon.telegram.send_message.reset_mock()
-    daemon.telegram.edit_message.reset_mock()
+    telegram = daemon.client.adapters["telegram"]
+    telegram.send_message.reset_mock()
+    telegram.edit_message.reset_mock()
 
     # FIRST command - should send new message
     msg_context1 = {"user_id": 12345, "message_id": 999}
@@ -45,12 +46,13 @@ async def test_message_execution_and_output_polling(daemon_with_mocked_telegram)
     assert "First Output" in output or "echo" in output
 
     # Verify FIRST command behavior: send new message (no existing message to edit)
-    assert daemon.telegram.send_message.call_count == 1, "First command should send exactly one new message"
-    assert daemon.telegram.edit_message.call_count == 0, "First command should not edit (no existing message)"
+    telegram = daemon.client.adapters["telegram"]
+    assert telegram.send_message.call_count == 1, "First command should send exactly one new message"
+    assert telegram.edit_message.call_count == 0, "First command should not edit (no existing message)"
 
     # Reset mocks for second command
-    daemon.telegram.send_message.reset_mock()
-    daemon.telegram.edit_message.reset_mock()
+    telegram.send_message.reset_mock()
+    telegram.edit_message.reset_mock()
 
     # SECOND command - should edit existing message
     msg_context2 = {"user_id": 12345, "message_id": 1000}
@@ -70,8 +72,9 @@ async def test_message_execution_and_output_polling(daemon_with_mocked_telegram)
     assert "Second Output" in output or "echo" in output
 
     # Verify SECOND command behavior: edit existing message (reuse, don't spam)
-    assert daemon.telegram.send_message.call_count == 0, "Second command should not send new message"
-    assert daemon.telegram.edit_message.call_count == 1, "Second command should edit existing message exactly once"
+    telegram = daemon.client.adapters["telegram"]
+    assert telegram.send_message.call_count == 0, "Second command should not send new message"
+    assert telegram.edit_message.call_count == 1, "Second command should edit existing message exactly once"
 
 
 @pytest.mark.asyncio
@@ -120,11 +123,11 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     daemon = daemon_with_mocked_telegram
 
     # Setup Comp1 (this daemon - MCP client side)
+    telegram = daemon.client.adapters["telegram"]
     comp1_registry = ComputerRegistry(
-        daemon.telegram,
+        telegram,
         "comp1",
         "teleclaude_comp1_bot",
-        {},
         daemon.session_manager
     )
     comp1_registry.registry_topic_id = 999
@@ -133,13 +136,25 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
         "comp2": {"name": "comp2", "status": "online", "last_seen": datetime.now()}
     }
 
-    comp1_mcp = TeleClaudeMCPServer(
-        {"computer": {"name": "comp1"}, "mcp": {"transport": "stdio"}},
-        daemon.telegram,
-        terminal_bridge,
-        daemon.session_manager,
-        comp1_registry
-    )
+    # Create mock adapter client
+    from unittest.mock import AsyncMock, Mock
+    mock_client = Mock()
+    async def mock_discover_peers():
+        return [
+            {"name": "comp1", "status": "online"},
+            {"name": "comp2", "status": "online"}
+        ]
+    mock_client.discover_peers = AsyncMock(side_effect=mock_discover_peers)
+
+    from teleclaude import config as config_module
+    with patch.object(config_module, '_config', {"computer": {"name": "comp1"}, "mcp": {"transport": "stdio"}}):
+        comp1_mcp = TeleClaudeMCPServer(
+            telegram,
+            terminal_bridge,
+            daemon.session_manager,
+            comp1_registry,
+            mock_client
+        )
 
     # Setup Comp2 (second daemon - executes commands)
     comp2_db_path = tmp_path / "comp2.db"
@@ -151,7 +166,8 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     message_topic = {}  # topic_id -> list of messages
 
     # Mock Comp1's telegram adapter to store messages
-    original_send_to_topic = daemon.telegram.send_message_to_topic
+    telegram = daemon.client.adapters["telegram"]
+    original_send_to_topic = telegram.send_message_to_topic
     async def comp1_send_to_topic(topic_id, text, parse_mode=None):
         if topic_id not in message_topic:
             message_topic[topic_id] = []
@@ -159,7 +175,7 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
         message_topic[topic_id].append(msg)
         return msg
 
-    daemon.telegram.send_message_to_topic = comp1_send_to_topic
+    telegram.send_message_to_topic = comp1_send_to_topic
 
     # Create session on Comp2 (simulating /claude_resume response)
     comp2_session = await comp2_session_manager.create_session(
@@ -186,7 +202,8 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     command = "echo 'Multi-computer test output'"
 
     # Comp1 sends command to topic
-    await daemon.telegram.send_message_to_topic(5000, command)
+    telegram = daemon.client.adapters["telegram"]
+    await telegram.send_message_to_topic(5000, command)
 
     # Comp2 receives command and executes using PRODUCTION POLLING CODE
     # This is the real async flow - no timers!
