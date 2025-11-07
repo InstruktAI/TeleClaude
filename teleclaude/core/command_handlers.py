@@ -912,13 +912,15 @@ async def handle_claude_resume_session(
     session_manager: SessionManager,
     execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
-    """Resume last Claude Code session (claude --continue).
+    """Resume Claude Code session using explicit session ID from metadata.
 
     Args:
         context: Command context with session_id and message_id
         session_manager: Session manager instance
         execute_terminal_command: Function to execute terminal command
     """
+    import shlex
+
     session_id = context.get("session_id")
     if not session_id:
         logger.warning("No session_id in claude_resume command context")
@@ -930,6 +932,22 @@ async def handle_claude_resume_session(
         logger.warning("Session %s not found", session_id)
         return
 
+    # Check if session has stored Claude session ID and project_dir
+    metadata = session.adapter_metadata or {}
+    claude_session_id = metadata.get("claude_session_id")
+    project_dir = metadata.get("project_dir")
+
+    # Build command
+    if claude_session_id and project_dir:
+        # AI-managed session: cd to project + explicit session ID
+        cmd = f"cd {shlex.quote(project_dir)} && claude --dangerously-skip-permissions --session-id {claude_session_id}"
+    elif claude_session_id:
+        # Has session ID but no project dir
+        cmd = f"claude --dangerously-skip-permissions --session-id {claude_session_id}"
+    else:
+        # Human session: use --continue (current directory)
+        cmd = "claude --dangerously-skip-permissions --continue"
+
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session_id, "claude --dangerously-skip-permissions --continue", True, message_id)
+    await execute_terminal_command(session_id, cmd, True, message_id)

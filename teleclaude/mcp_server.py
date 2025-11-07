@@ -55,50 +55,78 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__start_session",
-                    description="Start a new AI-to-AI session with a remote computer's Claude Code",
+                    name="teleclaude__list_projects",
+                    description="List available project directories on a target computer (from trusted_dirs config)",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "target": {
+                            "computer": {
                                 "type": "string",
                                 "description": "Target computer name (e.g., 'workstation', 'server')",
-                            },
-                            "title": {
-                                "type": "string",
-                                "description": "Short title for the session (e.g., 'Check logs', 'Debug issue')",
-                            },
-                            "description": {
-                                "type": "string",
-                                "description": "Detailed description of why this session was created",
-                            },
+                            }
                         },
-                        "required": ["target", "title", "description"],
+                        "required": ["computer"],
                     },
                 ),
                 Tool(
                     name="teleclaude__list_sessions",
-                    description="List AI-to-AI sessions initiated by this computer",
+                    description=(
+                        "List active AI-managed Claude Code sessions across all computers with rich metadata "
+                        "(project_dir, status, claude_session_id). Use to discover existing sessions before starting new ones."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "target": {"type": "string", "description": "Optional filter by target computer name"}
+                            "computer": {
+                                "type": "string",
+                                "description": "Optional filter by target computer name",
+                            }
                         },
                     },
                 ),
                 Tool(
-                    name="teleclaude__send",
-                    description="Send message to an existing AI-to-AI session and get response",
+                    name="teleclaude__start_session",
+                    description=(
+                        "Start a new Claude Code session on a remote computer in a specific project. "
+                        "Returns session_id and streams initial response."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name (e.g., 'workstation', 'server')",
+                            },
+                            "project_dir": {
+                                "type": "string",
+                                "description": (
+                                    "Absolute path to project directory (e.g., '/home/user/apps/TeleClaude')"
+                                ),
+                            },
+                            "initial_message": {
+                                "type": "string",
+                                "description": "Initial message to Claude Code (default: 'Hello, I am ready to help')",
+                            },
+                        },
+                        "required": ["computer", "project_dir"],
+                    },
+                ),
+                Tool(
+                    name="teleclaude__send_message",
+                    description=(
+                        "Send message to an existing Claude Code session. "
+                        "Use teleclaude__list_sessions to find session_id or teleclaude__start_session to create new one."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "session_id": {
                                 "type": "string",
-                                "description": "Session ID from teleclaude__start_session",
+                                "description": "Session ID from teleclaude__start_session or teleclaude__list_sessions",
                             },
                             "message": {
                                 "type": "string",
-                                "description": "Message or command to send to remote Claude Code",
+                                "description": "Message or command to send to Claude Code",
                             },
                         },
                         "required": ["session_id", "message"],
@@ -112,19 +140,20 @@ class TeleClaudeMCPServer:
             if name == "teleclaude__list_computers":
                 computers = await self.teleclaude__list_computers()
                 return [TextContent(type="text", text=str(computers))]
-            elif name == "teleclaude__start_session":
-                session_info = await self.teleclaude__start_session(**arguments)
-                return [TextContent(type="text", text=str(session_info))]
+            elif name == "teleclaude__list_projects":
+                projects = await self.teleclaude__list_projects(**arguments)
+                return [TextContent(type="text", text=str(projects))]
             elif name == "teleclaude__list_sessions":
                 sessions = await self.teleclaude__list_sessions(**arguments)
                 return [TextContent(type="text", text=str(sessions))]
-            elif name == "teleclaude__send":
-                # Streaming response - collect all chunks and return as single TextContent
-                chunks = []
-                async for chunk in self.teleclaude__send(**arguments):
-                    chunks.append(chunk)
-                output = "".join(chunks)
-                return [TextContent(type="text", text=output)]
+            elif name == "teleclaude__start_session":
+                # Streaming response - collect session_id + output
+                result = await self.teleclaude__start_session(**arguments)
+                return [TextContent(type="text", text=str(result))]
+            elif name == "teleclaude__send_message":
+                # Streaming response - collect output
+                result = await self.teleclaude__send_message(**arguments)
+                return [TextContent(type="text", text=str(result))]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -174,7 +203,10 @@ class TeleClaudeMCPServer:
         """Handle a single MCP client connection over Unix socket."""
         import anyio
         import mcp.types as types
-        from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+        from anyio.streams.memory import (
+            MemoryObjectReceiveStream,
+            MemoryObjectSendStream,
+        )
         from mcp.shared.message import SessionMessage
 
         logger.info("New MCP client connected")
@@ -236,66 +268,126 @@ class TeleClaudeMCPServer:
         """
         return await self.client.discover_peers()
 
-    async def teleclaude__start_session(self, target: str, title: str, description: str) -> dict[str, Any]:
-        """Start new AI-to-AI session with remote computer.
+    async def teleclaude__list_projects(self, computer: str) -> list[str]:
+        """List available project directories on target computer.
 
         Args:
-            target: Computer name (e.g., "workstation", "server")
-            title: Short title for the session
-            description: Detailed description of why this session was created
+            computer: Target computer name
 
         Returns:
-            dict with session_id, topic_name, status, message
+            List of trusted project directories
         """
-        # Validate target is online
+        # Validate computer is online
         peers = await self.client.discover_peers()
-        target_online = any(p["name"] == target and p["status"] == "online" for p in peers)
+        target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
 
         if not target_online:
-            return {
-                "status": "error",
-                "message": f"Computer '{target}' is offline",
-                "available": [p["name"] for p in peers],
-            }
+            return []
 
-        # Create topic name
-        topic_name = f"${self.computer_name} > ${target} - {title}"
-
-        # Create Telegram topic
+        # Create temporary topic for /list_projects command
+        topic_name = f"_temp_list_projects_{computer}_{int(time.time())}"
         topic = await self.telegram_adapter.create_topic(topic_name)
         topic_id = topic.message_thread_id
 
-        # Create session in database with description
+        try:
+            # Register listener for response
+            queue = await self.telegram_adapter.register_mcp_listener(topic_id)
+
+            # Send /list_projects command
+            await self.telegram_adapter.send_message_to_topic(topic_id, "/list_projects", parse_mode=None)
+
+            # Wait for response (JSON list of directories)
+            try:
+                async with asyncio.timeout(10):
+                    while True:
+                        msg = await queue.get()
+                        if msg.text and msg.text.strip().startswith("["):
+                            # Parse JSON response
+                            import json
+
+                            projects = json.loads(msg.text.strip())
+                            return projects
+            except asyncio.TimeoutError:
+                logger.warning("Timeout waiting for /list_projects response from %s", computer)
+                return []
+
+        finally:
+            # Cleanup
+            await self.telegram_adapter.unregister_mcp_listener(topic_id)
+            # Note: Can't easily delete topic via Bot API, leave it (low impact)
+
+    async def teleclaude__start_session(
+        self, computer: str, project_dir: str, initial_message: str = "Hello, I am ready to help"
+    ) -> dict[str, Any]:
+        """Start new Claude Code session on remote computer.
+
+        Args:
+            computer: Target computer name
+            project_dir: Absolute path to project directory
+            initial_message: Initial message to send (default greeting)
+
+        Returns:
+            dict with session_id and output
+        """
+        import shlex
+        import uuid
+
+        # Validate computer is online
+        peers = await self.client.discover_peers()
+        target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
+
+        if not target_online:
+            return {"status": "error", "message": f"Computer '{computer}' is offline"}
+
+        # Generate Claude session UUID
+        claude_session_id = str(uuid.uuid4())
+
+        # Create Telegram topic
+        topic_name = f"AI:{computer}:{project_dir.split('/')[-1]}"
+        topic = await self.telegram_adapter.create_topic(topic_name)
+        topic_id = topic.message_thread_id
+
+        # Create session in database
         session = await self.session_manager.create_session(
             computer_name=self.computer_name,
             tmux_session_name=f"{self.computer_name}-ai-{topic_id}",
             adapter_type="telegram",
             title=topic_name,
-            adapter_metadata={"channel_id": str(topic_id), "is_ai_to_ai": True},
-            description=description,
+            adapter_metadata={
+                "channel_id": str(topic_id),
+                "is_ai_to_ai": True,
+                "is_auto_managed": True,
+                "project_dir": project_dir,
+                "claude_session_id": claude_session_id,
+            },
+            description=f"Auto-managed AI session for {project_dir}",
         )
 
-        # Send /claude_resume to wake remote Claude Code
-        await self.telegram_adapter.send_message_to_topic(topic_id, "/claude_resume", parse_mode=None)
+        session_id = session.session_id
 
-        # Wait for Claude Code ready (ACK detection)
+        # Start Claude Code on remote computer
+        claude_cmd = (
+            f"cd {shlex.quote(project_dir)} && "
+            f"claude --dangerously-skip-permissions --session-id {claude_session_id}"
+        )
+        await self.telegram_adapter.send_message_to_topic(topic_id, f"/command {claude_cmd}", parse_mode=None)
+
+        # Wait for Claude ready
         try:
-            await self._wait_for_claude_ready(session.session_id, topic_id, timeout=10)
+            await self._wait_for_claude_ready(session_id, topic_id, timeout=10)
         except TimeoutError:
-            logger.warning("Timeout waiting for Claude Code ACK on %s", target)
             return {
-                "session_id": session.session_id,
-                "topic_name": topic_name,
+                "session_id": session_id,
                 "status": "timeout",
-                "message": f"Session created but {target} did not respond (timeout after 10s)",
+                "output": f"[Warning: Claude Code on {computer} did not respond within 10s]",
             }
 
-        return {
-            "session_id": session.session_id,
-            "topic_name": topic_name,
-            "status": "ready",
-            "message": f"Session ready with {target}",
-        }
+        # Send initial message and collect output
+        chunks = []
+        async for chunk in self.teleclaude__send(session_id, initial_message):
+            chunks.append(chunk)
+
+        return {"session_id": session_id, "status": "success", "output": "".join(chunks)}
 
     async def _wait_for_claude_ready(self, session_id: str, topic_id: int, timeout: float = 10.0) -> None:
         """Wait for Claude Code to send ACK (any message) in the topic.
@@ -332,38 +424,56 @@ class TeleClaudeMCPServer:
             # Always unregister (cleanup)
             await self.telegram_adapter.unregister_mcp_listener(topic_id)
 
-    async def teleclaude__list_sessions(self, target: Optional[str] = None) -> list[dict[str, Any]]:
-        """List AI-to-AI sessions initiated by this computer.
+    async def teleclaude__list_sessions(self, computer: Optional[str] = None) -> list[dict[str, Any]]:
+        """List AI-managed Claude Code sessions with rich metadata.
 
         Args:
-            target: Optional filter by target computer name
+            computer: Optional filter by target computer name
 
         Returns:
-            List of session info dicts
+            List of session info dicts with metadata
         """
-        # Query sessions with AI-to-AI pattern from this computer
-        pattern = f"${self.computer_name} > $"
-        if target:
-            pattern = f"${self.computer_name} > ${target} - "
+        # Get all sessions with is_ai_to_ai flag
+        all_sessions = await self.session_manager.get_all_sessions()
 
-        sessions = await self.session_manager.get_sessions_by_title_pattern(pattern)
-
-        # Parse and return session info
+        # Filter for AI-managed sessions
         result = []
-        for session in sessions:
-            # Parse topic name: $Initiator > $Target - Title
-            match = re.match(r"^\$\w+ > \$(\w+) - (.+)$", session.title)
-            if match:
-                result.append(
-                    {
-                        "session_id": session.session_id,
-                        "target": match.group(1),
-                        "title": match.group(2),
-                        "description": session.description,
-                        "status": "closed" if session.closed else "active",
-                        "created_at": session.created_at.isoformat(),
-                    }
-                )
+        for session in all_sessions:
+            metadata = session.adapter_metadata or {}
+            is_ai = metadata.get("is_ai_to_ai", False)
+            is_auto_managed = metadata.get("is_auto_managed", False)
+
+            # Skip non-AI sessions
+            if not (is_ai or is_auto_managed):
+                continue
+
+            # Filter by computer if specified
+            if computer and session.computer_name != computer:
+                continue
+
+            # Extract project_dir from metadata
+            project_dir = metadata.get("project_dir")
+
+            # Parse target computer from title (if AI-to-AI format)
+            target = None
+            if session.title:
+                match = re.match(r"^\$\w+ > \$(\w+) - ", session.title)
+                if match:
+                    target = match.group(1)
+
+            result.append(
+                {
+                    "session_id": session.session_id,
+                    "computer": session.computer_name,
+                    "target": target,
+                    "project_dir": project_dir,
+                    "claude_session_id": metadata.get("claude_session_id"),
+                    "is_auto_managed": is_auto_managed,
+                    "status": "closed" if session.closed else "active",
+                    "created_at": session.created_at.isoformat(),
+                    "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+                }
+            )
 
         return result
 
@@ -453,6 +563,30 @@ class TeleClaudeMCPServer:
         finally:
             # Always unregister (cleanup)
             await self.telegram_adapter.unregister_mcp_listener(topic_id)
+
+    async def teleclaude__send_message(self, session_id: str, message: str) -> dict[str, Any]:
+        """Send message to existing Claude Code session.
+
+        Args:
+            session_id: Session ID from teleclaude__start_session or teleclaude__list_sessions
+            message: Message or command to send
+
+        Returns:
+            dict with output
+        """
+        # Verify session exists
+        session = await self.session_manager.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+        if session.closed:
+            return {"status": "error", "message": "Session is closed"}
+
+        # Send message and collect output
+        chunks = []
+        async for chunk in self.teleclaude__send(session_id, message):
+            chunks.append(chunk)
+
+        return {"status": "success", "output": "".join(chunks)}
 
     def _extract_chunk_content(self, message_text: str) -> str:
         """Extract actual output from chunk message.

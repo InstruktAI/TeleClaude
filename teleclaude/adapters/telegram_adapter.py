@@ -199,6 +199,7 @@ class TelegramAdapter(BaseAdapter):
         commands = [
             ("new_session", self._handle_new_session),
             ("list_sessions", self._handle_list_sessions),
+            ("list_projects", self._handle_list_projects),
             ("cancel", self._handle_cancel),
             ("cancel2x", self._handle_cancel2x),
             ("kill", self._handle_kill),
@@ -281,6 +282,7 @@ class TelegramAdapter(BaseAdapter):
             commands = [
                 BotCommand("new_session ", "Create a new terminal session"),
                 BotCommand("list_sessions ", "List all active sessions"),
+                BotCommand("list_projects ", "List trusted project directories (JSON)"),
                 BotCommand("claude ", "Start Claude Code in GOD mode"),
                 BotCommand("claude_resume ", "Resume last Claude Code session (GOD mode)"),
                 BotCommand("cancel ", "Send CTRL+C to interrupt current command"),
@@ -652,6 +654,20 @@ class TelegramAdapter(BaseAdapter):
                 "message_thread_id": update.effective_message.message_thread_id if update.effective_message else None,
             },
         )
+
+    async def _handle_list_projects(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /list_projects command - returns trusted_dirs as JSON."""
+        if not update.effective_message or not update.effective_chat:
+            return
+
+        import json
+
+        # Get trusted_dirs from config
+        config = get_config()
+        trusted_dirs = config.get("computer", {}).get("trusted_dirs", [])
+
+        # Send as JSON array
+        await update.effective_message.reply_text(json.dumps(trusted_dirs), parse_mode=None)
 
     async def _handle_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command - sends CTRL+C to the session."""
