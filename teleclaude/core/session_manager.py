@@ -141,10 +141,36 @@ class SessionManager:
             # Migration already done or column already exists
             pass
 
+        # Migration: Convert adapter_type to adapter_types (singular to plural)
+        try:
+            # Check if adapter_type column exists
+            cursor = await self._db.execute("PRAGMA table_info(sessions)")
+            columns = await cursor.fetchall()
+            has_adapter_type = any(col[1] == "adapter_type" for col in columns)
+
+            if has_adapter_type:
+                # Add adapter_types column
+                await self._db.execute(
+                    "ALTER TABLE sessions ADD COLUMN adapter_types TEXT NOT NULL DEFAULT '[\"telegram\"]'"
+                )
+                await self._db.commit()
+
+                # Migrate data: convert adapter_type string to adapter_types JSON array
+                await self._db.execute(
+                    "UPDATE sessions SET adapter_types = json_array(adapter_type) WHERE adapter_type IS NOT NULL"
+                )
+                await self._db.commit()
+
+                # Drop old adapter_type column (requires table recreation in SQLite < 3.35.0)
+                # For simplicity, we keep both columns during transition
+                # Production can clean up adapter_type later after verifying migration
+        except aiosqlite.OperationalError:
+            # Migration already done or column already exists
+            pass
+
         # Ensure indexes exist (for both fresh installs and migrated databases)
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed)")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name)")
-        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_adapter ON sessions(adapter_type)")
         await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity)")
         await self._db.commit()
 
@@ -157,36 +183,38 @@ class SessionManager:
         self,
         computer_name: str,
         tmux_session_name: str,
-        adapter_type: str,
+        adapter_types: list[str],
         title: Optional[str] = None,
         adapter_metadata: Optional[Dict[str, Any]] = None,
         terminal_size: str = "80x24",
         working_directory: str = "~",
         description: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
         Args:
             computer_name: Name of the computer
             tmux_session_name: Name of tmux session
-            adapter_type: Type of adapter (telegram, rest, etc.)
+            adapter_types: List of adapter types (e.g., ["telegram"], ["redis", "telegram"])
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
             terminal_size: Terminal dimensions (e.g., '80x24')
             working_directory: Initial working directory
             description: Optional description (for AI-to-AI sessions)
+            session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
 
         Returns:
             Created Session object
         """
-        session_id = str(uuid.uuid4())
+        session_id = session_id or str(uuid.uuid4())
         now = datetime.now()
 
         session = Session(
             session_id=session_id,
             computer_name=computer_name,
             tmux_session_name=tmux_session_name,
-            adapter_type=adapter_type,
+            adapter_types=adapter_types,
             title=title or f"[{computer_name}] New session",
             adapter_metadata=adapter_metadata,
             closed=False,
@@ -203,7 +231,7 @@ class SessionManager:
             """
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
-                adapter_type, adapter_metadata, closed, created_at,
+                adapter_types, adapter_metadata, closed, created_at,
                 last_activity, terminal_size, working_directory, command_count, description
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -212,7 +240,7 @@ class SessionManager:
                 data["computer_name"],
                 data["title"],
                 data["tmux_session_name"],
-                data["adapter_type"],
+                data["adapter_types"],
                 data["adapter_metadata"],
                 data["closed"],
                 data["created_at"],
@@ -244,15 +272,12 @@ class SessionManager:
 
         return Session.from_dict(dict(row))
 
-    async def list_sessions(
-        self, computer_name: Optional[str] = None, closed: Optional[bool] = None, adapter_type: Optional[str] = None
-    ) -> List[Session]:
+    async def list_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> List[Session]:
         """List sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
             closed: Filter by closed status (False = active, True = closed, None = all)
-            adapter_type: Filter by adapter type
 
         Returns:
             List of Session objects
@@ -266,9 +291,6 @@ class SessionManager:
         if closed is not None:
             query += " AND closed = ?"
             params.append(1 if closed else 0)
-        if adapter_type:
-            query += " AND adapter_type = ?"
-            params.append(adapter_type)
 
         query += " ORDER BY last_activity DESC"
 

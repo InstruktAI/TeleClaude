@@ -90,11 +90,49 @@ class AdapterClient:
         self.adapters[adapter_type] = adapter
         logger.info("Registered adapter: %s", adapter_type)
 
-    async def send_message(self, session_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Send message to session via appropriate adapter(s).
+    async def start(self) -> None:
+        """Start all registered adapters."""
+        import asyncio
 
-        Messages are sent to the session's primary adapter, then broadcast
-        to all secondary adapters with feedback_only=True to prevent loops.
+        tasks = []
+        for adapter_type, adapter in self.adapters.items():
+            logger.info("Starting %s adapter...", adapter_type)
+            tasks.append(adapter.start())
+
+        # Start all adapters in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Log any failures
+        for adapter_type, result in zip(self.adapters.keys(), results):
+            if isinstance(result, Exception):
+                logger.error("Failed to start %s adapter: %s", adapter_type, result)
+            else:
+                logger.info("%s adapter started", adapter_type)
+
+    async def stop(self) -> None:
+        """Stop all registered adapters."""
+        import asyncio
+
+        tasks = []
+        for adapter_type, adapter in self.adapters.items():
+            logger.info("Stopping %s adapter...", adapter_type)
+            tasks.append(adapter.stop())
+
+        # Stop all adapters in parallel
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Log any failures
+        for adapter_type, result in zip(self.adapters.keys(), results):
+            if isinstance(result, Exception):
+                logger.error("Failed to stop %s adapter: %s", adapter_type, result)
+            else:
+                logger.info("%s adapter stopped", adapter_type)
+
+    async def send_message(self, session_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """Send message to ALL adapters for this session.
+
+        Broadcasts in parallel to all adapters configured for the session.
+        Primary adapter (first in list) determines the returned message_id.
 
         Args:
             session_id: Session identifier
@@ -104,34 +142,42 @@ class AdapterClient:
         Returns:
             message_id from primary adapter
         """
-        # Get session to determine primary adapter
+        # Get session to determine which adapters to use
         session = await self.daemon.session_manager.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        primary_adapter_type = session.adapter_type
-        primary_adapter = self.adapters.get(primary_adapter_type)
-        if not primary_adapter:
-            raise ValueError(f"No adapter for type '{primary_adapter_type}'")
+        if not session.adapter_types:
+            raise ValueError(f"Session {session_id} has no adapters configured")
 
-        # Send to primary adapter (full message)
-        message_id = await primary_adapter.send_message(session_id, text, metadata)
+        # Broadcast to ALL adapters for this session in parallel
+        primary_message_id = None
+        tasks = []
 
-        # Broadcast to secondary adapters (feedback only - don't redistribute)
-        for adapter_type, adapter in self.adapters.items():
-            if adapter_type != primary_adapter_type:
-                try:
-                    feedback_metadata = {**(metadata or {}), "feedback_only": True}
-                    await adapter.send_message(session_id, text, feedback_metadata)
-                    logger.debug(
-                        "Sent feedback message to %s adapter for session %s",
-                        adapter_type,
-                        session_id[:8],
-                    )
-                except Exception as e:
-                    logger.warning("Failed to send feedback to %s: %s", adapter_type, e)
+        for adapter_type in session.adapter_types:
+            adapter = self.adapters.get(adapter_type)
+            if not adapter:
+                logger.warning("Adapter %s not available for session %s", adapter_type, session_id[:8])
+                continue
 
-        return message_id
+            tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
+
+        # Execute all sends in parallel
+        import asyncio
+
+        results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
+
+        # Log results and capture primary message_id
+        for (adapter_type, _), result in zip(tasks, results):
+            if isinstance(result, Exception):
+                logger.error("send_message failed for %s adapter: %s", adapter_type, result)
+            elif isinstance(result, str):
+                logger.debug("Sent message to %s adapter for session %s", adapter_type, session_id[:8])
+                # First (primary) adapter's message_id is returned
+                if primary_message_id is None:
+                    primary_message_id = result
+
+        return primary_message_id or ""
 
     async def discover_peers(self) -> List[Dict[str, Any]]:
         """Discover peers from all registered adapters.

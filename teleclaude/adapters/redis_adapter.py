@@ -512,18 +512,21 @@ class RedisAdapter(BaseAdapter):
         # Create tmux session name
         tmux_session_name = f"{self.computer_name}-ai-{session_id[:8]}"
 
-        # Create session
+        # Create session with BOTH adapters (redis for AI, telegram for human observation)
         await self.session_manager.create_session(
             session_id=session_id,
             computer_name=self.computer_name,
             tmux_session_name=tmux_session_name,
-            adapter_type="redis",
+            adapter_types=["redis", "telegram"],  # Both adapters!
             title=title,
             adapter_metadata={
                 "redis": {
                     "command_stream": f"commands:{self.computer_name}",
                     "output_stream": f"output:{session_id}",
-                }
+                },
+                "telegram": {
+                    "topic_name": title,
+                },
             },
             description=f"AI-to-AI session from {initiator}",
         )

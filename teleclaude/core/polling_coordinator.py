@@ -81,10 +81,10 @@ async def poll_and_send_output(
     tmux_session_name: str,
     session_manager: SessionManager,
     output_poller: OutputPoller,
-    get_adapter_for_session: Callable[[str], Awaitable[Any]],
+    adapter_client: Any,
     get_output_file: Callable[[str], Path],
 ) -> None:
-    """Poll terminal output and send to chat adapter.
+    """Poll terminal output and send to all adapters for session.
 
     Pure orchestration - consumes events from poller, delegates to message manager.
     SINGLE RESPONSIBILITY: Owns the polling lifecycle for a session.
@@ -94,7 +94,7 @@ async def poll_and_send_output(
         tmux_session_name: tmux session name
         session_manager: Session manager instance
         output_poller: Output poller instance
-        get_adapter_for_session: Function to get adapter for session
+        adapter_client: AdapterClient instance (broadcasts to all adapters)
         get_output_file: Function to get output file path for session
     """
     # GUARD: Prevent duplicate polling (check and add atomically before any await)
@@ -108,11 +108,15 @@ async def poll_and_send_output(
     # Mark as active BEFORE any await (prevents race conditions)
     await session_manager.mark_polling(session_id)
 
-    # Get adapter for this session
-    adapter = await get_adapter_for_session(session_id)
-
     # Get session to check type via metadata
     session = await session_manager.get_session(session_id)
+
+    # Get primary adapter for adapter-specific methods (delete_message, get_max_message_length)
+    # Note: send_message will use adapter_client for broadcasting to all adapters
+    primary_adapter_type = session.adapter_types[0] if session.adapter_types else "telegram"
+    adapter = adapter_client.adapters.get(primary_adapter_type)
+    if not adapter:
+        raise ValueError(f"Primary adapter '{primary_adapter_type}' not available")
 
     # Update ux_state to persist polling status in DB
     await session_manager.update_ux_state(session_id, {"polling_active": True})
@@ -157,11 +161,11 @@ async def poll_and_send_output(
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, IdleDetected):
-                # Idle detected - send notification
+                # Idle detected - send notification (broadcasts to all adapters)
                 notification = (
                     f"⏸️ No output for {event.idle_seconds} seconds - " "process may be waiting or hung up, try cancel"
                 )
-                notification_id = await adapter.send_message(event.session_id, notification)
+                notification_id = await adapter_client.send_message(event.session_id, notification)
                 if notification_id:
                     # Persist to DB (survives daemon restart)
                     await session_manager.update_ux_state(

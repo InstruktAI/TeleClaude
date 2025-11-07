@@ -13,7 +13,7 @@ class Session:
     session_id: str
     computer_name: str
     tmux_session_name: str
-    adapter_type: str
+    adapter_types: list[str]  # Multiple adapters (e.g., ["redis", "telegram"])
     title: Optional[str] = None
     adapter_metadata: Optional[Dict[str, Any]] = None
     closed: bool = False
@@ -35,6 +35,8 @@ class Session:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
             data["last_activity"] = self.last_activity.isoformat()
+        # Convert adapter_types to JSON string for DB storage
+        data["adapter_types"] = json.dumps(self.adapter_types)
         # Convert adapter_metadata to JSON string for DB storage
         if self.adapter_metadata:
             data["adapter_metadata"] = json.dumps(self.adapter_metadata)
@@ -48,6 +50,18 @@ class Session:
             data["created_at"] = datetime.fromisoformat(data["created_at"])
         if "last_activity" in data and isinstance(data["last_activity"], str):
             data["last_activity"] = datetime.fromisoformat(data["last_activity"])
+
+        # Parse adapter_types JSON (with backward compatibility for adapter_type)
+        if "adapter_types" in data and isinstance(data["adapter_types"], str):
+            data["adapter_types"] = json.loads(data["adapter_types"])
+        elif "adapter_type" in data:
+            # Backward compatibility: convert old adapter_type to adapter_types
+            data["adapter_types"] = [data["adapter_type"]]
+
+        # Always remove adapter_type from data dict to prevent TypeError
+        if "adapter_type" in data:
+            del data["adapter_type"]
+
         # Parse adapter_metadata JSON
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
             data["adapter_metadata"] = json.loads(data["adapter_metadata"])

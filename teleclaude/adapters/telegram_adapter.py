@@ -661,13 +661,31 @@ class TelegramAdapter(BaseAdapter):
             return
 
         import json
+        import os
+        from pathlib import Path
 
-        # Get trusted_dirs from config
+        # Get trusted_dirs and default_working_dir from config
         config = get_config()
         trusted_dirs = config.get("computer", {}).get("trusted_dirs", [])
+        default_working_dir = config.get("computer", {}).get("default_working_dir", "")
+
+        # Expand environment variables and filter existing paths
+        all_dirs = []
+
+        # Always include default_working_dir first if it exists
+        if default_working_dir:
+            expanded_default = os.path.expanduser(os.path.expandvars(default_working_dir))
+            if Path(expanded_default).exists():
+                all_dirs.append(expanded_default)
+
+        # Add trusted_dirs (skip duplicates and non-existent paths)
+        for dir_path in trusted_dirs:
+            expanded = os.path.expanduser(os.path.expandvars(dir_path))
+            if Path(expanded).exists() and expanded not in all_dirs:
+                all_dirs.append(expanded)
 
         # Send as JSON array
-        await update.effective_message.reply_text(json.dumps(trusted_dirs), parse_mode=None)
+        await update.effective_message.reply_text(json.dumps(all_dirs), parse_mode=None)
 
     async def _handle_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command - sends CTRL+C to the session."""

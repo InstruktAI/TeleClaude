@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     computer_name TEXT NOT NULL,
     title TEXT,
     tmux_session_name TEXT NOT NULL,
-    adapter_type TEXT NOT NULL DEFAULT 'telegram',
+    adapter_types TEXT NOT NULL DEFAULT '["telegram"]',  -- JSON array of adapter names
     adapter_metadata TEXT,  -- JSON string for platform-specific data
     closed BOOLEAN DEFAULT 0,  -- 0 = active, 1 = closed
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

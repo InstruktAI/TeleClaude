@@ -351,7 +351,7 @@ class TeleClaudeMCPServer:
         session = await self.session_manager.create_session(
             computer_name=self.computer_name,
             tmux_session_name=f"{self.computer_name}-ai-{topic_id}",
-            adapter_type="telegram",
+            adapter_types=["telegram"],  # List of adapters
             title=topic_name,
             adapter_metadata={
                 "channel_id": str(topic_id),

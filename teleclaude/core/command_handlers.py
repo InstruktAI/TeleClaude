@@ -113,7 +113,7 @@ async def handle_create_session(
     session = await session_manager.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,
-        adapter_type=adapter_type,
+        adapter_types=[adapter_type],  # Convert to list
         title=title,
         adapter_metadata={"channel_id": channel_id},
         terminal_size=terminal_size,

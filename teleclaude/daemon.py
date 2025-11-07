@@ -14,7 +14,6 @@ import yaml
 from dotenv import load_dotenv
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.config import init_config
 from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
@@ -208,10 +207,15 @@ class TeleClaudeDaemon:
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        adapter = self.client.adapters.get(session.adapter_type)
+        # Get primary adapter (first in the list)
+        if not session.adapter_types:
+            raise ValueError(f"Session {session_id} has no adapters configured")
+
+        primary_adapter_type = session.adapter_types[0]
+        adapter = self.client.adapters.get(primary_adapter_type)
         if not adapter:
             raise ValueError(
-                f"No adapter available for type '{session.adapter_type}'. "
+                f"No adapter available for type '{primary_adapter_type}'. "
                 f"Available adapters: {list(self.client.adapters.keys())}"
             )
 
@@ -284,10 +288,8 @@ class TeleClaudeDaemon:
 
         # State is now DB-backed via session_manager - no need to load from database
 
-        # Start all adapters
-        for adapter_name, adapter in self.client.adapters.items():
-            await adapter.start()
-            logger.info("%s adapter started", adapter_name.capitalize())
+        # Start all adapters via AdapterClient
+        await self.client.start()
 
         # Start computer registry (if enabled)
         if self.computer_registry:
@@ -491,7 +493,7 @@ class TeleClaudeDaemon:
             tmux_session_name=tmux_session_name,
             session_manager=self.session_manager,
             output_poller=self.output_poller,
-            get_adapter_for_session=self._get_adapter_for_session,
+            adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
             get_output_file=self._get_output_file,
         )
 
