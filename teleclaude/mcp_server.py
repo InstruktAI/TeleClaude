@@ -56,7 +56,12 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__list_projects",
-                    description="List available project directories on a target computer (from trusted_dirs config)",
+                    description=(
+                        "**CRITICAL: Call this FIRST before teleclaude__start_session** "
+                        "List available project directories on a target computer (from trusted_dirs config). "
+                        "Returns project paths that can be used in teleclaude__start_session. "
+                        "Always use this to discover and match the correct project before starting a session."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -88,6 +93,10 @@ class TeleClaudeMCPServer:
                     name="teleclaude__start_session",
                     description=(
                         "Start a new Claude Code session on a remote computer in a specific project. "
+                        "**REQUIRED WORKFLOW:** "
+                        "1) Call teleclaude__list_projects FIRST to discover available projects "
+                        "2) Match and select the correct project from the results "
+                        "3) Use the exact project path from list_projects in the project_dir parameter here. "
                         "Returns session_id and streams initial response."
                     ),
                     inputSchema={
@@ -100,7 +109,9 @@ class TeleClaudeMCPServer:
                             "project_dir": {
                                 "type": "string",
                                 "description": (
-                                    "Absolute path to project directory (e.g., '/home/user/apps/TeleClaude')"
+                                    "**MUST come from teleclaude__list_projects output** "
+                                    "Absolute path to project directory (e.g., '/home/user/apps/TeleClaude'). "
+                                    "Do NOT guess or construct paths - always use teleclaude__list_projects first."
                                 ),
                             },
                             "initial_message": {
