@@ -5,10 +5,14 @@ Handles command execution workflow with polling coordination.
 """
 
 import logging
-from typing import Any, Awaitable, Callable, Dict
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from teleclaude.config import config
 from teleclaude.core import terminal_bridge
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import db
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +20,7 @@ logger = logging.getLogger(__name__)
 async def execute_terminal_command(
     session_id: str,
     command: str,
-    session_manager: SessionManager,
-    config: Dict[str, Any],
-    get_adapter_for_session: Callable[[str], Awaitable[Any]],
+    client: "AdapterClient",  # AdapterClient instance
     start_polling: Callable[[str, str], Awaitable[None]],
     append_exit_marker: bool = True,
     message_id: str = None,
@@ -36,9 +38,7 @@ async def execute_terminal_command(
     Args:
         session_id: Session ID
         command: Command to execute
-        session_manager: Session manager instance
-        config: Application configuration
-        get_adapter_for_session: Function to get adapter for session
+        client: AdapterClient instance for unified adapter operations
         start_polling: Function to start polling for session output
         append_exit_marker: Whether to append exit marker (default: True)
         message_id: Message ID to cleanup (optional)
@@ -47,7 +47,7 @@ async def execute_terminal_command(
         True if successful, False otherwise
     """
     # Get session
-    session = await session_manager.get_session(session_id)
+    session = await db.get_session(session_id)
     if not session:
         logger.error("Session %s not found", session_id[:8])
         return False
@@ -64,7 +64,7 @@ async def execute_terminal_command(
     success = await terminal_bridge.send_keys(
         session.tmux_session_name,
         command,
-        shell=config["computer"]["default_shell"],
+        shell=config.computer.default_shell,
         working_dir=session.working_directory,
         cols=cols,
         rows=rows,
@@ -72,17 +72,15 @@ async def execute_terminal_command(
     )
 
     if not success:
-        adapter = await get_adapter_for_session(session_id)
-        await adapter.send_message(session_id, f"Failed to execute command: {command}")
+        await client.send_message(session_id, f"Failed to execute command: {command}")
         logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
         return False
 
     # Update activity
-    await session_manager.update_last_activity(session_id)
+    await db.update_last_activity(session_id)
 
     # Cleanup command message
-    adapter = await get_adapter_for_session(session_id)
-    await session_manager.cleanup_messages_after_success(session_id, message_id, adapter)
+    await db.cleanup_messages_after_success(session_id, message_id, client)
 
     # Start polling if exit marker was appended
     if append_exit_marker:

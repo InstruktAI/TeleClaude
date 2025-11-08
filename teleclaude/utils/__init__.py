@@ -1,12 +1,89 @@
 """Utility functions for TeleClaude."""
 
+import asyncio
+import logging
 import os
 import re
 from datetime import datetime
-from typing import Any, List
+from functools import wraps
+from typing import Awaitable, Callable, List, ParamSpec, TypeVar
+
+T = TypeVar("T")
+P = ParamSpec("P")
+logger = logging.getLogger(__name__)
 
 
-def expand_env_vars(config: Any) -> Any:
+def command_retry(max_retries: int = 3) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
+    """Decorator for retrying adapter commands with exponential backoff.
+
+    Handles:
+    - Rate limits: Retry with suggested delay if exception provides retry_after
+    - Network errors (connection issues, timeouts): Retry with exponential backoff (1s, 2s, 4s)
+    - Other errors: Fail immediately
+
+    Args:
+        max_retries: Maximum number of retry attempts (default: 3)
+
+    Returns:
+        Decorator function
+    """
+
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+        @wraps(func)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            last_exception = None
+
+            for attempt in range(max_retries):
+                try:
+                    return await func(*args, **kwargs)
+
+                except Exception as e:
+                    # Check for rate limit (RetryAfter or similar)
+                    if hasattr(e, "retry_after"):
+                        if attempt < max_retries - 1:
+                            retry_after = getattr(e, "retry_after")
+                            logger.warning(
+                                "Rate limited, retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries
+                            )
+                            await asyncio.sleep(retry_after)
+                            last_exception = e
+                        else:
+                            logger.error("Rate limit exceeded after %d attempts", max_retries)
+                            raise
+
+                    # Check for network errors
+                    elif type(e).__name__ in ("NetworkError", "TimedOut", "ConnectionError", "TimeoutError"):
+                        if attempt < max_retries - 1:
+                            delay = 2**attempt  # 1s, 2s, 4s
+                            logger.warning(
+                                "Network error (%s), retrying in %ds (attempt %d/%d)",
+                                type(e).__name__,
+                                delay,
+                                attempt + 1,
+                                max_retries,
+                            )
+                            await asyncio.sleep(delay)
+                            last_exception = e
+                        else:
+                            logger.error("Network error after %d attempts: %s", max_retries, e)
+                            raise
+
+                    # Other errors - fail immediately, don't retry
+                    else:
+                        logger.debug("Non-retryable error in %s: %s", func.__name__, e)
+                        raise
+
+            # Should never reach here, but just in case
+            if last_exception:
+                raise last_exception
+            raise RuntimeError(f"Retry logic failed unexpectedly in {func.__name__}")
+
+        return wrapper
+
+    return decorator
+
+
+def expand_env_vars(config: object) -> object:
     """Recursively expand environment variables in config.
 
     Replaces ${VAR} patterns with environment variable values.
@@ -108,7 +185,7 @@ def format_terminal_message(terminal_output: str, status_line: str) -> str:
     return "\n".join(message_parts)
 
 
-def apply_code_block_formatting(text: str, metadata: dict[str, Any]) -> str:
+def apply_code_block_formatting(text: str, metadata: dict[str, object]) -> str:
     """Apply code block formatting unless already formatted.
 
     Args:

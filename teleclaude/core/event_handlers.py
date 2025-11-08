@@ -5,30 +5,28 @@ Handles adapter events like topic/channel closure.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 from teleclaude.core import terminal_bridge
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import db
 
 logger = logging.getLogger(__name__)
 
 
 async def handle_topic_closed(
     session_id: str,
-    context: Dict[str, Any],
-    session_manager: SessionManager,
+    context: dict[str, object],
 ) -> None:
     """Handle topic/channel closure event.
 
     Args:
         session_id: Session ID
         context: Platform-specific context (includes topic_id, user_id, etc.)
-        session_manager: Session manager instance
     """
     logger.info("Topic closed for session %s, closing session and tmux", session_id[:8])
 
     # Get session
-    session = await session_manager.get_session(session_id)
+    session = await db.get_session(session_id)
     if not session:
         logger.warning("Session %s not found during topic closure", session_id)
         return
@@ -41,5 +39,5 @@ async def handle_topic_closed(
         logger.warning("Failed to kill tmux session %s", tmux_session_name)
 
     # Mark session as closed in database
-    await session_manager.update_session(session_id, closed=True)
+    await db.update_session(session_id, closed=True)
     logger.info("Session %s marked as closed", session_id[:8])

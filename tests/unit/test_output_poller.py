@@ -15,9 +15,7 @@ class TestOutputPoller:
     @pytest.fixture
     def poller(self):
         """Create OutputPoller instance."""
-        config = {"polling": {"idle_notification_seconds": 60}, "computer": {"timezone": "Europe/Amsterdam"}}
-        session_manager = Mock()
-        return OutputPoller(config, session_manager)
+        return OutputPoller()
 
     def test_extract_exit_code_with_marker(self, poller):
         """Test exit code extraction when marker present."""
@@ -92,10 +90,8 @@ class TestOutputPollerPoll:
 
     @pytest.fixture
     def poller(self):
-        """Create OutputPoller instance with short idle threshold."""
-        config = {"polling": {"idle_notification_seconds": 5}, "computer": {"timezone": "Europe/Amsterdam"}}
-        session_manager = Mock()
-        return OutputPoller(config, session_manager)
+        """Create OutputPoller instance."""
+        return OutputPoller()
 
     async def test_session_death_detection(self, poller, tmp_path):
         """Test poll detects session death."""
@@ -198,69 +194,75 @@ class TestOutputPollerPoll:
         """Test poll sends idle notification after threshold."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
-            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                iteration_count = 0
+        with patch("teleclaude.core.output_poller.config") as mock_config:
+            mock_config.polling.idle_notification_seconds = 5
 
-                async def session_exists_mock(name):
-                    nonlocal iteration_count
-                    iteration_count += 1
-                    # Exit after idle threshold reached (5 seconds + 1 for initial + 1 for notification)
-                    return iteration_count < 8
+            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                    iteration_count = 0
 
-                mock_terminal.session_exists = session_exists_mock
+                    async def session_exists_mock(name):
+                        nonlocal iteration_count
+                        iteration_count += 1
+                        # Exit after idle threshold reached (5 seconds + 1 for initial + 1 for notification)
+                        return iteration_count < 8
 
-                # Output never changes (stays at "stuck output")
-                mock_terminal.capture_pane = AsyncMock(return_value="stuck output\n")
+                    mock_terminal.session_exists = session_exists_mock
 
-                # Collect events
-                events = []
-                async for event in poller.poll("test-idle", "test-tmux", output_file, has_exit_marker=False):
-                    events.append(event)
+                    # Output never changes (stays at "stuck output")
+                    mock_terminal.capture_pane = AsyncMock(return_value="stuck output\n")
 
-                # Find IdleDetected event
-                idle_events = [e for e in events if isinstance(e, IdleDetected)]
-                assert len(idle_events) >= 1
-                assert idle_events[0].session_id == "test-idle"
-                assert idle_events[0].idle_seconds == 5
+                    # Collect events
+                    events = []
+                    async for event in poller.poll("test-idle", "test-tmux", output_file, has_exit_marker=False):
+                        events.append(event)
+
+                    # Find IdleDetected event
+                    idle_events = [e for e in events if isinstance(e, IdleDetected)]
+                    assert len(idle_events) >= 1
+                    assert idle_events[0].session_id == "test-idle"
+                    assert idle_events[0].idle_seconds == 5
 
     async def test_periodic_updates_with_exponential_backoff(self, poller, tmp_path):
         """Test poll sends periodic updates with exponential backoff."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
-            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                iteration_count = 0
+        with patch("teleclaude.core.output_poller.config") as mock_config:
+            mock_config.polling.idle_notification_seconds = 60
 
-                async def session_exists_mock(name):
-                    nonlocal iteration_count
-                    iteration_count += 1
-                    # Run for 15 iterations
-                    return iteration_count < 15
+            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                    iteration_count = 0
 
-                mock_terminal.session_exists = session_exists_mock
+                    async def session_exists_mock(name):
+                        nonlocal iteration_count
+                        iteration_count += 1
+                        # Run for 20 iterations (need: 1 initial + 5 for first periodic + 10 for second periodic = 16)
+                        return iteration_count < 20
 
-                # Output doesn't change after first
-                first_call = True
+                    mock_terminal.session_exists = session_exists_mock
 
-                async def capture_mock(name):
-                    nonlocal first_call
-                    if first_call:
-                        first_call = False
-                        return "initial output\n"
-                    return "initial output\n"  # Same output
+                    # Output doesn't change after first
+                    first_call = True
 
-                mock_terminal.capture_pane = capture_mock
+                    async def capture_mock(name):
+                        nonlocal first_call
+                        if first_call:
+                            first_call = False
+                            return "initial output\n"
+                        return "initial output\n"  # Same output
 
-                # Collect events
-                events = []
-                async for event in poller.poll("test-periodic", "test-tmux", output_file, has_exit_marker=False):
-                    events.append(event)
+                    mock_terminal.capture_pane = capture_mock
 
-                # Verify periodic OutputChanged events sent
-                output_changed_events = [e for e in events if isinstance(e, OutputChanged)]
-                # Should have initial + periodic updates (at intervals 5, 10, etc.)
-                assert len(output_changed_events) >= 2
+                    # Collect events
+                    events = []
+                    async for event in poller.poll("test-periodic", "test-tmux", output_file, has_exit_marker=False):
+                        events.append(event)
+
+                    # Verify periodic OutputChanged events sent
+                    output_changed_events = [e for e in events if isinstance(e, OutputChanged)]
+                    # Should have initial + periodic updates (at intervals 5, 10, etc.)
+                    assert len(output_changed_events) >= 2
 
     async def test_file_write_error_handling(self, poller):
         """Test poll handles file write errors gracefully."""

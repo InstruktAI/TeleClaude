@@ -16,7 +16,7 @@ TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
 
 
-def trace(self: logging.Logger, message: str, *args: Any, **kwargs: Any) -> None:
+def trace(self: logging.Logger, message: str, *args: Any, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # Pass-through to Logger._log
     """Log trace message."""
     if self.isEnabledFor(TRACE):
         self._log(TRACE, message, args, **kwargs)  # pylint: disable=protected-access
@@ -55,7 +55,7 @@ LEVEL_COLORS = {
 class PathFormatter(logging.Formatter):
     """Custom formatter that shows relative file paths, milliseconds, and colors."""
 
-    def __init__(self, *args: Any, use_colors: bool = True, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, use_colors: bool = True, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # Pass-through to Formatter.__init__
         """Initialize formatter.
 
         Args:

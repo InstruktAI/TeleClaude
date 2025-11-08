@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import session_lifecycle
+from teleclaude.core.db import db
 from teleclaude.core.models import Session
 
 
@@ -22,23 +23,23 @@ class TestMigrateSessionMetadata:
             session_id="old-123",
             computer_name="TestMac",
             tmux_session_name="old-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Old",
             adapter_metadata={"topic_id": 12345, "user_id": 67890},
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[old_session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[old_session])
+        db.update_session = AsyncMock()
 
         # Execute migration
         await session_lifecycle.migrate_session_metadata(session_manager)
 
         # Verify update called once
-        session_manager.update_session.assert_called_once()
+        db.update_session.assert_called_once()
 
         # Verify the call args (parse JSON to avoid dict ordering issues)
-        call_args = session_manager.update_session.call_args
+        call_args = db.update_session.call_args
         assert call_args[0][0] == "old-123"
         metadata_json = call_args[1]["adapter_metadata"]
         metadata = json.loads(metadata_json)
@@ -51,20 +52,20 @@ class TestMigrateSessionMetadata:
             session_id="new-456",
             computer_name="TestMac",
             tmux_session_name="new-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="New",
             adapter_metadata={"channel_id": "12345", "user_id": 67890},
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[new_session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[new_session])
+        db.update_session = AsyncMock()
 
         # Execute migration
         await session_lifecycle.migrate_session_metadata(session_manager)
 
         # Verify NO update called (already migrated)
-        session_manager.update_session.assert_not_called()
+        db.update_session.assert_not_called()
 
     async def test_skip_sessions_without_topic_id(self):
         """Test sessions without topic_id are skipped."""
@@ -73,20 +74,20 @@ class TestMigrateSessionMetadata:
             session_id="no-topic-789",
             computer_name="TestMac",
             tmux_session_name="no-topic-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="No Topic",
             adapter_metadata={"user_id": 67890},
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[session])
+        db.update_session = AsyncMock()
 
         # Execute migration
         await session_lifecycle.migrate_session_metadata(session_manager)
 
         # Verify NO update called (no topic_id to migrate)
-        session_manager.update_session.assert_not_called()
+        db.update_session.assert_not_called()
 
     async def test_skip_sessions_with_no_metadata(self):
         """Test sessions with None metadata are skipped."""
@@ -94,20 +95,20 @@ class TestMigrateSessionMetadata:
             session_id="no-meta-999",
             computer_name="TestMac",
             tmux_session_name="no-meta-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="No Metadata",
             adapter_metadata=None,
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[session])
+        db.update_session = AsyncMock()
 
         # Execute migration
         await session_lifecycle.migrate_session_metadata(session_manager)
 
         # Verify NO update called
-        session_manager.update_session.assert_not_called()
+        db.update_session.assert_not_called()
 
     async def test_migrate_multiple_sessions(self):
         """Test migration of multiple sessions at once."""
@@ -115,7 +116,7 @@ class TestMigrateSessionMetadata:
             session_id="old-1",
             computer_name="TestMac",
             tmux_session_name="old-tmux-1",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Old 1",
             adapter_metadata={"topic_id": 111},
         )
@@ -123,7 +124,7 @@ class TestMigrateSessionMetadata:
             session_id="old-2",
             computer_name="TestMac",
             tmux_session_name="old-tmux-2",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Old 2",
             adapter_metadata={"topic_id": 222},
         )
@@ -131,20 +132,20 @@ class TestMigrateSessionMetadata:
             session_id="new-3",
             computer_name="TestMac",
             tmux_session_name="new-tmux-3",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="New",
             adapter_metadata={"channel_id": "333"},
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[old1, old2, new_session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[old1, old2, new_session])
+        db.update_session = AsyncMock()
 
         # Execute migration
         await session_lifecycle.migrate_session_metadata(session_manager)
 
         # Verify 2 updates (only old1 and old2)
-        assert session_manager.update_session.call_count == 2
+        assert db.update_session.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -208,15 +209,15 @@ class TestCleanupInactiveSessions:
             session_id="inactive-123",
             computer_name="TestMac",
             tmux_session_name="inactive-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Inactive",
             closed=False,
             last_activity=old_time,
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[inactive_session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[inactive_session])
+        db.update_session = AsyncMock()
 
         config = {}
 
@@ -230,7 +231,7 @@ class TestCleanupInactiveSessions:
             mock_terminal.kill_session.assert_called_once_with("inactive-tmux")
 
             # Verify session marked as closed
-            session_manager.update_session.assert_called_once_with("inactive-123", closed=True)
+            db.update_session.assert_called_once_with("inactive-123", closed=True)
 
     async def test_skip_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
@@ -240,15 +241,15 @@ class TestCleanupInactiveSessions:
             session_id="active-456",
             computer_name="TestMac",
             tmux_session_name="active-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Active",
             closed=False,
             last_activity=recent_time,
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[active_session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[active_session])
+        db.update_session = AsyncMock()
 
         config = {}
 
@@ -260,7 +261,7 @@ class TestCleanupInactiveSessions:
 
             # Verify NO cleanup
             mock_terminal.kill_session.assert_not_called()
-            session_manager.update_session.assert_not_called()
+            db.update_session.assert_not_called()
 
     async def test_skip_non_active_sessions(self):
         """Test that closed sessions are skipped."""
@@ -269,15 +270,15 @@ class TestCleanupInactiveSessions:
             session_id="closed-789",
             computer_name="TestMac",
             tmux_session_name="closed-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Closed",
             closed=True,
             last_activity=old_time,
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[closed_session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[closed_session])
+        db.update_session = AsyncMock()
 
         config = {}
 
@@ -289,7 +290,7 @@ class TestCleanupInactiveSessions:
 
             # Verify NO cleanup (status not active)
             mock_terminal.kill_session.assert_not_called()
-            session_manager.update_session.assert_not_called()
+            db.update_session.assert_not_called()
 
     async def test_skip_sessions_without_last_activity(self):
         """Test sessions with no last_activity are skipped."""
@@ -297,15 +298,15 @@ class TestCleanupInactiveSessions:
             session_id="no-activity-999",
             computer_name="TestMac",
             tmux_session_name="no-activity-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="No Activity",
             closed=False,
             last_activity=None,  # No activity timestamp
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(return_value=[session])
-        session_manager.update_session = AsyncMock()
+        db.list_sessions = AsyncMock(return_value=[session])
+        db.update_session = AsyncMock()
 
         config = {}
 
@@ -317,7 +318,7 @@ class TestCleanupInactiveSessions:
 
             # Verify NO cleanup (no last_activity)
             mock_terminal.kill_session.assert_not_called()
-            session_manager.update_session.assert_not_called()
+            db.update_session.assert_not_called()
 
     async def test_cleanup_handles_exceptions(self):
         """Test cleanup continues even if exceptions occur."""
@@ -326,7 +327,7 @@ class TestCleanupInactiveSessions:
             session_id="session-1",
             computer_name="TestMac",
             tmux_session_name="tmux-1",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Session 1",
             closed=False,
             last_activity=old_time,
@@ -335,14 +336,14 @@ class TestCleanupInactiveSessions:
             session_id="session-2",
             computer_name="TestMac",
             tmux_session_name="tmux-2",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Session 2",
             closed=False,
             last_activity=old_time,
         )
 
         session_manager = Mock()
-        session_manager.list_sessions = AsyncMock(side_effect=Exception("DB error"))
+        db.list_sessions = AsyncMock(side_effect=Exception("DB error"))
 
         config = {}
 

@@ -1,9 +1,9 @@
 """Unit tests for models.py."""
 
 import json
-import pytest
 from datetime import datetime
-from teleclaude.core.models import Session, Recording
+
+from teleclaude.core.models import Recording, Session
 
 
 class TestSession:
@@ -12,18 +12,14 @@ class TestSession:
     def test_session_creation_minimal(self):
         """Test creating session with minimal fields."""
         session = Session(
-            session_id="test-123",
-            computer_name="TestPC",
-            tmux_session_name="test-tmux",
-            adapter_type="telegram"
+            session_id="test-123", computer_name="TestPC", tmux_session_name="test-tmux", origin_adapter="telegram"
         )
 
         assert session.session_id == "test-123"
         assert session.computer_name == "TestPC"
         assert session.tmux_session_name == "test-tmux"
-        assert session.adapter_type == "telegram"
+        assert session.origin_adapter== "telegram"
         assert session.closed is False
-        assert session.command_count == 0
 
     def test_session_creation_with_all_fields(self):
         """Test creating session with all fields."""
@@ -34,7 +30,7 @@ class TestSession:
             session_id="test-456",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test Session",
             adapter_metadata=metadata,
             closed=True,
@@ -42,7 +38,6 @@ class TestSession:
             last_activity=now,
             terminal_size="120x40",
             working_directory="/tmp",
-            command_count=5
         )
 
         assert session.title == "Test Session"
@@ -52,7 +47,6 @@ class TestSession:
         assert session.last_activity == now
         assert session.terminal_size == "120x40"
         assert session.working_directory == "/tmp"
-        assert session.command_count == 5
 
     def test_session_to_dict(self):
         """Test converting session to dictionary."""
@@ -63,10 +57,10 @@ class TestSession:
             session_id="test-789",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             adapter_metadata=metadata,
             created_at=now,
-            last_activity=now
+            last_activity=now,
         )
 
         data = session.to_dict()
@@ -85,9 +79,9 @@ class TestSession:
             session_id="test-none",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             created_at=None,
-            last_activity=None
+            last_activity=None,
         )
 
         data = session.to_dict()
@@ -102,8 +96,8 @@ class TestSession:
             session_id="test-no-meta",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
-            adapter_metadata=None
+            origin_adapter="telegram",
+            adapter_metadata=None,
         )
 
         data = session.to_dict()
@@ -128,7 +122,6 @@ class TestSession:
             "last_activity": now.isoformat(),
             "terminal_size": "80x24",
             "working_directory": "~",
-            "command_count": 0
         }
 
         session = Session.from_dict(data)
@@ -150,7 +143,7 @@ class TestSession:
             "tmux_session_name": "test-tmux",
             "adapter_type": "telegram",
             "created_at": now,  # Already datetime, not string
-            "last_activity": now
+            "last_activity": now,
         }
 
         session = Session.from_dict(data)
@@ -168,7 +161,7 @@ class TestSession:
             "computer_name": "TestPC",
             "tmux_session_name": "test-tmux",
             "adapter_type": "telegram",
-            "adapter_metadata": metadata  # Already dict, not JSON string
+            "adapter_metadata": metadata,  # Already dict, not JSON string
         }
 
         session = Session.from_dict(data)
@@ -185,7 +178,7 @@ class TestSession:
             session_id="test-roundtrip",
             computer_name="TestPC",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Roundtrip Test",
             adapter_metadata=metadata,
             closed=False,
@@ -193,7 +186,6 @@ class TestSession:
             last_activity=now,
             terminal_size="100x30",
             working_directory="/home/user",
-            command_count=10
         )
 
         # Convert to dict and back
@@ -204,12 +196,11 @@ class TestSession:
         assert restored.session_id == original.session_id
         assert restored.computer_name == original.computer_name
         assert restored.tmux_session_name == original.tmux_session_name
-        assert restored.adapter_type == original.adapter_type
+        assert restored.origin_adapter == original.origin_adapter
         assert restored.title == original.title
         assert restored.closed == original.closed
         assert restored.terminal_size == original.terminal_size
         assert restored.working_directory == original.working_directory
-        assert restored.command_count == original.command_count
 
 
 class TestRecording:
@@ -218,10 +209,7 @@ class TestRecording:
     def test_recording_creation(self):
         """Test creating recording."""
         recording = Recording(
-            recording_id=1,
-            session_id="session-123",
-            file_path="/tmp/recording.txt",
-            recording_type="text"
+            recording_id=1, session_id="session-123", file_path="/tmp/recording.txt", recording_type="text"
         )
 
         assert recording.recording_id == 1
@@ -238,7 +226,7 @@ class TestRecording:
             session_id="session-456",
             file_path="/tmp/recording.mp4",
             recording_type="video",
-            timestamp=now
+            timestamp=now,
         )
 
         assert recording.timestamp == now
@@ -248,11 +236,7 @@ class TestRecording:
         now = datetime.now()
 
         recording = Recording(
-            recording_id=3,
-            session_id="session-789",
-            file_path="/tmp/test.txt",
-            recording_type="text",
-            timestamp=now
+            recording_id=3, session_id="session-789", file_path="/tmp/test.txt", recording_type="text", timestamp=now
         )
 
         data = recording.to_dict()
@@ -266,11 +250,7 @@ class TestRecording:
     def test_recording_to_dict_without_timestamp(self):
         """Test to_dict with None timestamp."""
         recording = Recording(
-            recording_id=4,
-            session_id="session-none",
-            file_path="/tmp/none.txt",
-            recording_type="text",
-            timestamp=None
+            recording_id=4, session_id="session-none", file_path="/tmp/none.txt", recording_type="text", timestamp=None
         )
 
         data = recording.to_dict()
@@ -287,7 +267,7 @@ class TestRecording:
             "session_id": "session-dict",
             "file_path": "/tmp/dict.txt",
             "recording_type": "text",
-            "timestamp": now.isoformat()
+            "timestamp": now.isoformat(),
         }
 
         recording = Recording.from_dict(data)
@@ -305,7 +285,7 @@ class TestRecording:
             "session_id": "session-dt",
             "file_path": "/tmp/dt.txt",
             "recording_type": "text",
-            "timestamp": now  # Already datetime, not string
+            "timestamp": now,  # Already datetime, not string
         }
 
         recording = Recording.from_dict(data)
@@ -322,7 +302,7 @@ class TestRecording:
             session_id="session-roundtrip",
             file_path="/tmp/roundtrip.mp4",
             recording_type="video",
-            timestamp=now
+            timestamp=now,
         )
 
         # Convert to dict and back
@@ -333,4 +313,5 @@ class TestRecording:
         assert restored.recording_id == original.recording_id
         assert restored.session_id == original.session_id
         assert restored.file_path == original.file_path
+        assert restored.recording_type == original.recording_type
         assert restored.recording_type == original.recording_type

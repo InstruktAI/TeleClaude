@@ -7,15 +7,15 @@ Part of modular architecture - will become REST adapter.
 import logging
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
 
 from teleclaude.core import terminal_bridge
+from teleclaude.core.db import db
 
 if TYPE_CHECKING:
-    from teleclaude.core.session_manager import SessionManager
+    from teleclaude.core.db import Db
 
 logger = logging.getLogger(__name__)
 
@@ -25,21 +25,18 @@ class TeleClaudeAPI:
 
     def __init__(
         self,
-        session_manager: "SessionManager",
         bind_address: str = "127.0.0.1",
         port: int = 6666,
     ):
         """Initialize FastAPI application.
 
         Args:
-            session_manager: Session manager instance
             bind_address: Address to bind to (default: 127.0.0.1 for security)
             port: Port to listen on (default: 6666)
 
         Note:
             Terminal operations use the terminal_bridge module (no instantiation needed)
         """
-        self.session_manager = session_manager
         self.bind_address = bind_address
         self.port = port
         self.start_time = time.time()
@@ -60,7 +57,7 @@ class TeleClaudeAPI:
         """Register API routes."""
 
         @self.app.get("/health")
-        async def health() -> dict[str, Any]:
+        async def health() -> dict[str, object]:
             """Health check endpoint.
 
             Returns:
@@ -71,8 +68,8 @@ class TeleClaudeAPI:
                     "status": "healthy",
                     "uptime_seconds": int(time.time() - self.start_time),
                     "sessions": {
-                        "active": await self.session_manager.count_sessions(closed=False),
-                        "total": await self.session_manager.count_sessions(),
+                        "active": await db.count_sessions(closed=False),
+                        "total": await db.count_sessions(),
                     },
                 }
             )
@@ -82,7 +79,7 @@ class TeleClaudeAPI:
             session_id: str,
             lines: Optional[int] = Query(None, description="Number of lines to return (default: all)"),
             from_line: int = Query(0, description="Start from line N (default: 0)"),
-        ) -> dict[str, Any]:
+        ) -> dict[str, object]:
             """Get terminal output for a session.
 
             Args:
@@ -94,7 +91,7 @@ class TeleClaudeAPI:
                 Session output with line metadata
             """
             # Get session from database
-            session = await self.session_manager.get_session(session_id)
+            session = await db.get_session(session_id)
             if not session:
                 raise HTTPException(
                     status_code=404,
@@ -134,7 +131,7 @@ class TeleClaudeAPI:
                 }
             )
 
-    def _success_response(self, data: Any) -> dict[str, Any]:
+    def _success_response(self, data: object) -> dict[str, object]:
         """Create standard success response.
 
         Args:
@@ -149,7 +146,7 @@ class TeleClaudeAPI:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    def _error_response(self, code: str, message: str) -> dict[str, Any]:
+    def _error_response(self, code: str, message: str) -> dict[str, object]:
         """Create standard error response.
 
         Args:

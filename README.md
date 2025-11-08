@@ -407,6 +407,14 @@ See developer documentation:
 - 🔲 Output filtering and alerts
 - 🔲 Session templates and presets
 
+## Documentation
+
+- **[Architecture Reference](docs/architecture.md)** - System design and component layers
+- **[Protocol Architecture Guide](docs/protocol-architecture.md)** - Cross-computer orchestration patterns
+- **[Multi-Computer Setup](docs/multi-computer-setup.md)** - AI-to-AI communication setup
+- **[Troubleshooting Guide](docs/troubleshooting.md)** - Common issues and solutions
+- **[Refactoring Summary](docs/REFACTORING_SUMMARY.md)** - Recent architectural improvements
+
 ## License
 
 GPL-3.0-only

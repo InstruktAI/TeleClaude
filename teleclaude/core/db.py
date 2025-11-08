@@ -1,22 +1,28 @@
-"""Session manager for TeleClaude - handles session persistence and retrieval."""
+"""Database manager for TeleClaude - handles session persistence and retrieval."""
 
 import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 import aiosqlite
 
+from teleclaude.config import config
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
+
 from . import ux_state
 from .models import Session
+from .ux_state import SessionUXState
 
 
-class SessionManager:
-    """Manages terminal sessions in SQLite database."""
+class Db:
+    """Database interface for terminal sessions and state management."""
 
     def __init__(self, db_path: str) -> None:
-        """Initialize session manager.
+        """Initialize database.
 
         Args:
             db_path: Path to SQLite database file
@@ -25,7 +31,7 @@ class SessionManager:
         self._db: Optional[aiosqlite.Connection] = None
 
     async def initialize(self) -> None:
-        """Initialize database and create tables."""
+        """Initialize database and create tables (greenfield - no migrations)."""
         # Ensure parent directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -33,145 +39,12 @@ class SessionManager:
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
 
-        # Load and execute schema
+        # Load and execute clean schema (no migrations!)
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path, "r", encoding="utf-8") as f:
             schema_sql = f.read()
 
         await self._db.executescript(schema_sql)
-        await self._db.commit()
-
-        # Migration: Add output_message_id column if it doesn't exist
-        try:
-            await self._db.execute("ALTER TABLE sessions ADD COLUMN output_message_id TEXT")
-            await self._db.commit()
-        except aiosqlite.OperationalError:
-            # Column already exists
-            pass
-
-        # Migration: Add idle_notification_message_id column if it doesn't exist
-        try:
-            await self._db.execute("ALTER TABLE sessions ADD COLUMN idle_notification_message_id TEXT")
-            await self._db.commit()
-        except aiosqlite.OperationalError:
-            # Column already exists
-            pass
-
-        # Migration: Add description column if it doesn't exist (for AI-to-AI sessions)
-        try:
-            await self._db.execute("ALTER TABLE sessions ADD COLUMN description TEXT")
-            await self._db.commit()
-        except aiosqlite.OperationalError:
-            # Column already exists
-            pass
-
-        # Migration: Add ux_state column if it doesn't exist (generic UX state JSON blob)
-        try:
-            await self._db.execute("ALTER TABLE sessions ADD COLUMN ux_state TEXT")
-            await self._db.commit()
-        except aiosqlite.OperationalError:
-            # Column already exists
-            pass
-
-        # Migration: Convert status TEXT to closed BOOLEAN
-        try:
-            # Add closed column
-            await self._db.execute("ALTER TABLE sessions ADD COLUMN closed BOOLEAN DEFAULT 0")
-            await self._db.commit()
-
-            # Migrate data: set closed=1 where status='closed'
-            await self._db.execute("UPDATE sessions SET closed = 1 WHERE status = 'closed'")
-            await self._db.commit()
-
-            # Drop old status column (SQLite doesn't support DROP COLUMN before 3.35.0, so we recreate the table)
-            # Check if status column still exists
-            cursor = await self._db.execute("PRAGMA table_info(sessions)")
-            columns = await cursor.fetchall()
-            has_status = any(col[1] == "status" for col in columns)
-
-            if has_status:
-                # Recreate table without status column
-                await self._db.execute(
-                    """
-                    CREATE TABLE sessions_new (
-                        session_id TEXT PRIMARY KEY,
-                        computer_name TEXT NOT NULL,
-                        title TEXT,
-                        tmux_session_name TEXT NOT NULL,
-                        adapter_type TEXT NOT NULL DEFAULT 'telegram',
-                        adapter_metadata TEXT,
-                        closed BOOLEAN DEFAULT 0,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        terminal_size TEXT DEFAULT '80x24',
-                        working_directory TEXT DEFAULT '~',
-                        command_count INTEGER DEFAULT 0,
-                        output_message_id TEXT,
-                        idle_notification_message_id TEXT,
-                        UNIQUE(computer_name, tmux_session_name)
-                    )
-                """
-                )
-
-                # Copy data
-                await self._db.execute(
-                    """
-                    INSERT INTO sessions_new
-                    SELECT session_id, computer_name, title, tmux_session_name, adapter_type,
-                           adapter_metadata, closed, created_at, last_activity, terminal_size,
-                           working_directory, command_count, output_message_id, idle_notification_message_id
-                    FROM sessions
-                """
-                )
-
-                # Drop old table and rename new one
-                await self._db.execute("DROP TABLE sessions")
-                await self._db.execute("ALTER TABLE sessions_new RENAME TO sessions")
-
-                # Recreate indexes
-                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed)")
-                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name)")
-                await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_adapter ON sessions(adapter_type)")
-                await self._db.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity)"
-                )
-
-                await self._db.commit()
-        except aiosqlite.OperationalError:
-            # Migration already done or column already exists
-            pass
-
-        # Migration: Convert adapter_type to adapter_types (singular to plural)
-        try:
-            # Check if adapter_type column exists
-            cursor = await self._db.execute("PRAGMA table_info(sessions)")
-            columns = await cursor.fetchall()
-            has_adapter_type = any(col[1] == "adapter_type" for col in columns)
-
-            if has_adapter_type:
-                # Add adapter_types column
-                await self._db.execute(
-                    "ALTER TABLE sessions ADD COLUMN adapter_types TEXT NOT NULL DEFAULT '[\"telegram\"]'"
-                )
-                await self._db.commit()
-
-                # Migrate data: convert adapter_type string to adapter_types JSON array
-                await self._db.execute(
-                    "UPDATE sessions SET adapter_types = json_array(adapter_type) WHERE adapter_type IS NOT NULL"
-                )
-                await self._db.commit()
-
-                # Drop old adapter_type column (requires table recreation in SQLite < 3.35.0)
-                # For simplicity, we keep both columns during transition
-                # Production can clean up adapter_type later after verifying migration
-        except aiosqlite.OperationalError:
-            # Migration already done or column already exists
-            pass
-
-        # Ensure indexes exist (for both fresh installs and migrated databases)
-        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_closed ON sessions(closed)")
-        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name)")
-        await self._db.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity)")
         await self._db.commit()
 
     async def close(self) -> None:
@@ -183,9 +56,9 @@ class SessionManager:
         self,
         computer_name: str,
         tmux_session_name: str,
-        adapter_types: list[str],
+        origin_adapter: str,
         title: Optional[str] = None,
-        adapter_metadata: Optional[Dict[str, Any]] = None,
+        adapter_metadata: Optional[dict[str, object]] = None,
         terminal_size: str = "80x24",
         working_directory: str = "~",
         description: Optional[str] = None,
@@ -196,7 +69,7 @@ class SessionManager:
         Args:
             computer_name: Name of the computer
             tmux_session_name: Name of tmux session
-            adapter_types: List of adapter types (e.g., ["telegram"], ["redis", "telegram"])
+            origin_adapter: Origin adapter type (e.g., "telegram", "redis")
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
             terminal_size: Terminal dimensions (e.g., '80x24')
@@ -214,7 +87,7 @@ class SessionManager:
             session_id=session_id,
             computer_name=computer_name,
             tmux_session_name=tmux_session_name,
-            adapter_types=adapter_types,
+            origin_adapter=origin_adapter,
             title=title or f"[{computer_name}] New session",
             adapter_metadata=adapter_metadata,
             closed=False,
@@ -222,7 +95,6 @@ class SessionManager:
             last_activity=now,
             terminal_size=terminal_size,
             working_directory=working_directory,
-            command_count=0,
             description=description,
         )
 
@@ -231,23 +103,22 @@ class SessionManager:
             """
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
-                adapter_types, adapter_metadata, closed, created_at,
-                last_activity, terminal_size, working_directory, command_count, description
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                origin_adapter, adapter_metadata, closed, created_at,
+                last_activity, terminal_size, working_directory, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
                 data["computer_name"],
                 data["title"],
                 data["tmux_session_name"],
-                data["adapter_types"],
+                data["origin_adapter"],
                 data["adapter_metadata"],
                 data["closed"],
                 data["created_at"],
                 data["last_activity"],
                 data["terminal_size"],
                 data["working_directory"],
-                data["command_count"],
                 data["description"],
             ),
         )
@@ -272,7 +143,7 @@ class SessionManager:
 
         return Session.from_dict(dict(row))
 
-    async def list_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> List[Session]:
+    async def list_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> list[Session]:
         """List sessions with optional filters.
 
         Args:
@@ -283,7 +154,7 @@ class SessionManager:
             List of Session objects
         """
         query = "SELECT * FROM sessions WHERE 1=1"
-        params: List[Any] = []
+        params: list[object] = []
 
         if computer_name:
             query += " AND computer_name = ?"
@@ -299,7 +170,7 @@ class SessionManager:
 
         return [Session.from_dict(dict(row)) for row in rows]
 
-    async def update_session(self, session_id: str, **fields: Any) -> None:
+    async def update_session(self, session_id: str, **fields: object) -> None:
         """Update session fields.
 
         Args:
@@ -341,10 +212,8 @@ class SessionManager:
         Returns:
             True if polling is active for this session
         """
-        from teleclaude.core import ux_state
-
-        session_data = await self.get_ux_state(session_id)
-        return session_data.get("polling_active", False)
+        ux_state = await self.get_ux_state(session_id)
+        return ux_state.polling_active
 
     async def mark_polling(self, session_id: str) -> None:
         """Mark session as having active polling.
@@ -352,9 +221,8 @@ class SessionManager:
         Args:
             session_id: Session identifier
         """
-        from teleclaude.core import ux_state
 
-        await self.update_ux_state(session_id, {"polling_active": True})
+        await self.update_ux_state(session_id, polling_active=True)
 
     async def unmark_polling(self, session_id: str) -> None:
         """Mark session as no longer polling.
@@ -362,9 +230,8 @@ class SessionManager:
         Args:
             session_id: Session identifier
         """
-        from teleclaude.core import ux_state
 
-        await self.update_ux_state(session_id, {"polling_active": False})
+        await self.update_ux_state(session_id, polling_active=False)
 
     async def has_idle_notification(self, session_id: str) -> bool:
         """Check if session has idle notification.
@@ -375,10 +242,29 @@ class SessionManager:
         Returns:
             True if idle notification exists for this session
         """
-        from teleclaude.core import ux_state
+        ux_state = await self.get_ux_state(session_id)
+        return ux_state.idle_notification_message_id is not None
 
-        session_data = await self.get_ux_state(session_id)
-        return session_data.get("idle_notification_message_id") is not None
+    async def get_output_message_id(self, session_id: str) -> Optional[str]:
+        """Get output message ID for session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Message ID of output message, or None if not set
+        """
+        ux_state = await self.get_ux_state(session_id)
+        return ux_state.output_message_id
+
+    async def set_output_message_id(self, session_id: str, message_id: Optional[str]) -> None:
+        """Set output message ID for session.
+
+        Args:
+            session_id: Session identifier
+            message_id: Message ID of the output message (or None to clear)
+        """
+        await self.update_ux_state(session_id, output_message_id=message_id)
 
     async def get_idle_notification(self, session_id: str) -> Optional[str]:
         """Get idle notification message ID for session.
@@ -389,10 +275,8 @@ class SessionManager:
         Returns:
             Message ID of idle notification, or None if not set
         """
-        from teleclaude.core import ux_state
-
-        session_data = await self.get_ux_state(session_id)
-        return session_data.get("idle_notification_message_id")
+        ux_state = await self.get_ux_state(session_id)
+        return ux_state.idle_notification_message_id
 
     async def set_idle_notification(self, session_id: str, message_id: str) -> None:
         """Set idle notification message ID for session.
@@ -401,9 +285,8 @@ class SessionManager:
             session_id: Session identifier
             message_id: Message ID of the idle notification
         """
-        from teleclaude.core import ux_state
 
-        await self.update_ux_state(session_id, {"idle_notification_message_id": message_id})
+        await self.update_ux_state(session_id, idle_notification_message_id=message_id)
 
     async def remove_idle_notification(self, session_id: str) -> Optional[str]:
         """Remove and return idle notification message ID for session.
@@ -416,13 +299,11 @@ class SessionManager:
         """
         msg_id = await self.get_idle_notification(session_id)
 
-        from teleclaude.core import ux_state
-
-        await self.update_ux_state(session_id, {"idle_notification_message_id": None})
+        await self.update_ux_state(session_id, idle_notification_message_id=None)
 
         return msg_id
 
-    async def get_pending_deletions(self, session_id: str) -> List[str]:
+    async def get_pending_deletions(self, session_id: str) -> list[str]:
         """Get list of pending deletion message IDs for session.
 
         Args:
@@ -431,10 +312,8 @@ class SessionManager:
         Returns:
             List of message IDs to delete (empty list if none)
         """
-        from teleclaude.core import ux_state
-
-        session_data = await self.get_ux_state(session_id)
-        return session_data.get("pending_deletions", [])
+        ux_state = await self.get_ux_state(session_id)
+        return ux_state.pending_deletions
 
     async def add_pending_deletion(self, session_id: str, message_id: str) -> None:
         """Add message ID to pending deletions for session.
@@ -449,9 +328,7 @@ class SessionManager:
         current = await self.get_pending_deletions(session_id)
         current.append(message_id)
 
-        from teleclaude.core import ux_state
-
-        await self.update_ux_state(session_id, {"pending_deletions": current})
+        await self.update_ux_state(session_id, pending_deletions=current)
 
     async def clear_pending_deletions(self, session_id: str) -> None:
         """Clear all pending deletions for session.
@@ -461,15 +338,14 @@ class SessionManager:
         Args:
             session_id: Session identifier
         """
-        from teleclaude.core import ux_state
 
-        await self.update_ux_state(session_id, {"pending_deletions": []})
+        await self.update_ux_state(session_id, pending_deletions=[])
 
     async def cleanup_messages_after_success(
         self,
         session_id: str,
         message_id: Optional[str],
-        adapter: Any,
+        client: "AdapterClient",
     ) -> None:
         """Clean up pending messages after successful terminal action.
 
@@ -483,7 +359,7 @@ class SessionManager:
         Args:
             session_id: Session identifier
             message_id: Message ID of current command/input (to be deleted)
-            adapter: Chat adapter for deleting messages
+            client: AdapterClient for message operations
         """
         import logging
 
@@ -499,7 +375,7 @@ class SessionManager:
         # Sequential deletion to avoid rate limiting
         for msg_id in pending_deletions:
             try:
-                await adapter.delete_message(session_id, msg_id)
+                await client.delete_message(session_id, msg_id)
                 logger.debug("Deleted message %s for session %s (cleanup)", msg_id, session_id[:8])
             except Exception as e:
                 # Resilient to already-deleted messages (user manually deleted, etc.)
@@ -528,7 +404,7 @@ class SessionManager:
             Number of sessions
         """
         query = "SELECT COUNT(*) as count FROM sessions WHERE 1=1"
-        params: List[Any] = []
+        params: list[object] = []
 
         if computer_name:
             query += " AND computer_name = ?"
@@ -542,8 +418,8 @@ class SessionManager:
         return row["count"] if row else 0
 
     async def get_sessions_by_adapter_metadata(
-        self, adapter_type: str, metadata_key: str, metadata_value: Any
-    ) -> List[Session]:
+        self, adapter_type: str, metadata_key: str, metadata_value: object
+    ) -> list[Session]:
         """Get sessions by adapter metadata field.
 
         Args:
@@ -558,7 +434,7 @@ class SessionManager:
         cursor = await self._db.execute(
             f"""
             SELECT * FROM sessions
-            WHERE adapter_type = ?
+            WHERE origin_adapter = ?
             AND json_extract(adapter_metadata, '$.{metadata_key}') = ?
             """,
             (adapter_type, metadata_value),
@@ -566,7 +442,7 @@ class SessionManager:
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
-    async def get_sessions_by_title_pattern(self, pattern: str) -> List[Session]:
+    async def get_sessions_by_title_pattern(self, pattern: str) -> list[Session]:
         """Get sessions where title starts with the given pattern.
 
         Args:
@@ -586,22 +462,44 @@ class SessionManager:
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
-    async def get_ux_state(self, session_id: str) -> dict[str, Any]:
+    async def get_ux_state(self, session_id: str) -> SessionUXState:
         """Get UX state for session.
 
         Args:
             session_id: Session ID
 
         Returns:
-            Dict with UX state (empty dict if not found)
+            SessionUXState (with defaults if not found)
         """
-        return await ux_state.get_ux_state(self._db, ux_state.UXStateContext.SESSION, session_id)
+        return await ux_state.get_session_ux_state(self._db, session_id)
 
-    async def update_ux_state(self, session_id: str, updates: dict[str, Any]) -> None:
+    async def update_ux_state(
+        self,
+        session_id: str,
+        *,
+        output_message_id: Optional[str] | object = ux_state._UNSET,
+        polling_active: bool | object = ux_state._UNSET,
+        idle_notification_message_id: Optional[str] | object = ux_state._UNSET,
+        pending_deletions: list[str] | object = ux_state._UNSET,
+    ) -> None:
         """Update UX state for session (merges with existing).
 
         Args:
             session_id: Session ID
-            updates: Dict with properties to update
+            output_message_id: Output message ID (optional)
+            polling_active: Whether polling is active (optional)
+            idle_notification_message_id: Idle notification message ID (optional)
+            pending_deletions: List of message IDs pending deletion (optional)
         """
-        await ux_state.update_ux_state(self._db, ux_state.UXStateContext.SESSION, updates, session_id)
+        await ux_state.update_session_ux_state(
+            self._db,
+            session_id,
+            output_message_id=output_message_id,
+            polling_active=polling_active,
+            idle_notification_message_id=idle_notification_message_id,
+            pending_deletions=pending_deletions,
+        )
+
+
+# Module-level singleton instance (initialized on first import)
+db = Db(config.database.path)

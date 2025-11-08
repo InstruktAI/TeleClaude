@@ -73,14 +73,13 @@ def test_get_online_computers_filtering():
     class MockAdapter:
         pass
 
-    class MockSessionManager:
+    class MockDb:
         pass
 
     registry = ComputerRegistry(
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        session_manager=MockSessionManager()
     )
 
     # Manually populate computers (simulating _refresh_computer_list result)
@@ -103,14 +102,13 @@ def test_get_all_computers():
     class MockAdapter:
         pass
 
-    class MockSessionManager:
+    class MockDb:
         pass
 
     registry = ComputerRegistry(
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        session_manager=MockSessionManager()
     )
 
     registry.computers = {
@@ -128,14 +126,13 @@ def test_is_computer_online():
     class MockAdapter:
         pass
 
-    class MockSessionManager:
+    class MockDb:
         pass
 
     registry = ComputerRegistry(
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        session_manager=MockSessionManager()
     )
 
     registry.computers = {
@@ -153,14 +150,13 @@ def test_get_computer_info():
     class MockAdapter:
         pass
 
-    class MockSessionManager:
+    class MockDb:
         pass
 
     registry = ComputerRegistry(
         telegram_adapter=MockAdapter(),
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        session_manager=MockSessionManager()
     )
 
     registry.computers = {
@@ -182,15 +178,15 @@ async def test_ping_pong_edit_same_messages():
     from unittest.mock import AsyncMock, Mock
 
     # Mock adapter with full bot structure
-    mock_adapter = Mock()
-    mock_adapter.send_message_to_topic = AsyncMock()
-    mock_adapter.supergroup_id = "-100123456789"
-    mock_adapter._topic_message_cache = {}  # Initialize cache for message editing
+    mock_client = Mock()
+    mock_client.send_message_to_topic = AsyncMock()
+    mock_client.supergroup_id = "-100123456789"
+    mock_client._topic_message_cache = {}  # Initialize cache for message editing
 
     # Mock bot.edit_message_text (used for heartbeat updates)
-    mock_adapter.app = Mock()
-    mock_adapter.app.bot = Mock()
-    mock_adapter.app.bot.edit_message_text = AsyncMock()
+    mock_client.app = Mock()
+    mock_client.app.bot = Mock()
+    mock_client.app.bot.edit_message_text = AsyncMock()
 
     # Mock messages with different IDs for ping and pong
     mock_ping_message = Mock()
@@ -205,16 +201,12 @@ async def test_ping_pong_edit_same_messages():
         else:
             return mock_pong_message
 
-    mock_adapter.send_message_to_topic.side_effect = side_effect
-
-    # Mock session manager
-    mock_session_manager = Mock()
+    mock_client.send_message_to_topic.side_effect = side_effect
 
     registry = ComputerRegistry(
-        telegram_adapter=mock_adapter,
+        telegram_adapter=mock_client,
         computer_name="macbook",
         bot_username="teleclaude_macbook_bot",
-        session_manager=mock_session_manager
     )
 
     # Set registry_topic_id (normally set in start())
@@ -222,20 +214,20 @@ async def test_ping_pong_edit_same_messages():
 
     # Test ping: first call posts, second edits
     await registry._send_ping()
-    assert mock_adapter.send_message_to_topic.call_count == 1
+    assert mock_client.send_message_to_topic.call_count == 1
     assert registry.my_ping_message_id == "111"
 
     await registry._send_ping()
-    assert mock_adapter.send_message_to_topic.call_count == 1  # Still 1
-    assert mock_adapter.app.bot.edit_message_text.call_count == 1  # Edited
+    assert mock_client.send_message_to_topic.call_count == 1  # Still 1
+    assert mock_client.app.bot.edit_message_text.call_count == 1  # Edited
     assert registry.my_ping_message_id == "111"  # Same ID
 
     # Test pong: first call posts, second edits
     await registry.handle_ping_command()
-    assert mock_adapter.send_message_to_topic.call_count == 2  # New message
+    assert mock_client.send_message_to_topic.call_count == 2  # New message
     assert registry.my_pong_message_id == "222"
 
     await registry.handle_ping_command()
-    assert mock_adapter.send_message_to_topic.call_count == 2  # Still 2
-    assert mock_adapter.app.bot.edit_message_text.call_count == 2  # Edited again
+    assert mock_client.send_message_to_topic.call_count == 2  # Still 2
+    assert mock_client.app.bot.edit_message_text.call_count == 2  # Edited again
     assert registry.my_pong_message_id == "222"  # Same ID

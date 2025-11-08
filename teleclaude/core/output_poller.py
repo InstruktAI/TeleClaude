@@ -9,10 +9,10 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import AsyncIterator, Optional
 
+from teleclaude.config import config
 from teleclaude.core import terminal_bridge
-from teleclaude.core.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -50,24 +50,10 @@ class IdleDetected(OutputEvent):
 
 
 class OutputPoller:
-    """Pure poller - yields output events, no message sending."""
+    """Pure poller - yields output events, no message sending.
 
-    def __init__(
-        self,
-        config: dict[str, Any],
-        session_manager: SessionManager,
-    ):
-        """Initialize poller.
-
-        Args:
-            config: Application config
-            session_manager: Session manager (currently unused)
-
-        Note:
-            Terminal operations use the terminal_bridge module (no instantiation needed)
-        """
-        self.config = config
-        self.session_manager = session_manager
+    All dependencies (config, terminal_bridge) are imported at module level.
+    """
 
     async def poll(
         self,
@@ -88,7 +74,7 @@ class OutputPoller:
             OutputEvent subclasses (OutputChanged, ProcessExited, IdleDetected)
         """
         # Configuration
-        idle_threshold = self.config.get("polling", {}).get("idle_notification_seconds", 60)
+        idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
 
         # State tracking

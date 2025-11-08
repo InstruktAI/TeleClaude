@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core.computer_registry import ComputerRegistry
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import db, Db
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
 
@@ -67,7 +67,7 @@ async def shared_message_bus():
 @pytest.fixture
 async def session_manager():
     """Create test session manager."""
-    manager = SessionManager(db_path=":memory:")
+    manager = Db(db_path=":memory:")
     await manager.initialize()
     yield manager
     await manager.close()
@@ -196,8 +196,8 @@ async def test_concurrent_streaming_sessions(mcp_servers, shared_message_bus, se
         )
 
     # Get topic IDs from session metadata
-    session1 = await session_manager.get_session(session1_result["session_id"])
-    session2 = await session_manager.get_session(session2_result["session_id"])
+    session1 = await db.get_session(session1_result["session_id"])
+    session2 = await db.get_session(session2_result["session_id"])
     topic1 = int(session1.adapter_metadata["channel_id"])
     topic2 = int(session2.adapter_metadata["channel_id"])
 
@@ -264,11 +264,11 @@ async def test_session_cleanup_doesnt_affect_others(mcp_servers, shared_message_
         session2 = await server1.teleclaude__start_session(target="comp3", title="S2", description="Session 2")
 
     # Close session 1
-    await session_manager.update_session(session1["session_id"], closed=True)
+    await db.update_session(session1["session_id"], closed=True)
 
     # Verify session 2 still works (can stream)
     # Get topic ID from session metadata
-    session2_obj = await session_manager.get_session(session2["session_id"])
+    session2_obj = await db.get_session(session2["session_id"])
     topic2 = int(session2_obj.adapter_metadata["channel_id"])
 
     async def send_chunks():
@@ -354,7 +354,7 @@ async def test_three_computer_chain(mcp_servers, shared_message_bus, session_man
 
     # === Phase 3: Comp3 responds to Comp2 ===
     # Get topic ID for Comp2→Comp3 session
-    session_2_to_3_obj = await session_manager.get_session(session_2_to_3["session_id"])
+    session_2_to_3_obj = await db.get_session(session_2_to_3["session_id"])
     topic_2_to_3 = int(session_2_to_3_obj.adapter_metadata["channel_id"])
 
     # Simulate Comp3 sending response to Comp2
@@ -383,7 +383,7 @@ async def test_three_computer_chain(mcp_servers, shared_message_bus, session_man
 
     # === Phase 4: Comp2 responds to Comp1 ===
     # Get topic ID for Comp1→Comp2 session
-    session_1_to_2_obj = await session_manager.get_session(session_1_to_2["session_id"])
+    session_1_to_2_obj = await db.get_session(session_1_to_2["session_id"])
     topic_1_to_2 = int(session_1_to_2_obj.adapter_metadata["channel_id"])
 
     # Simulate Comp2 forwarding Comp3's response to Comp1
@@ -416,8 +416,8 @@ async def test_three_computer_chain(mcp_servers, shared_message_bus, session_man
 
     # Verify we have two distinct sessions in DB
     all_sessions = []
-    all_sessions.append(await session_manager.get_session(session_1_to_2["session_id"]))
-    all_sessions.append(await session_manager.get_session(session_2_to_3["session_id"]))
+    all_sessions.append(await db.get_session(session_1_to_2["session_id"]))
+    all_sessions.append(await db.get_session(session_2_to_3["session_id"]))
 
     # Verify session topics are different
     assert all_sessions[0].title != all_sessions[1].title
@@ -458,7 +458,7 @@ async def test_concurrent_streaming_performance(mcp_servers, shared_message_bus,
     chunk_tasks = []
 
     for i, session in enumerate(sessions):
-        session_obj = await session_manager.get_session(session["session_id"])
+        session_obj = await db.get_session(session["session_id"])
         topic_id = int(session_obj.adapter_metadata["channel_id"])
 
         # Task to send chunks to this session

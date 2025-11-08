@@ -1,622 +1,839 @@
-# Architecture Reference
+# TeleClaude Architecture Reference
+
+**Last Updated:** 2025-01-08
+
+> **📘 New to Protocol-based architecture?** See [Protocol Architecture Guide](./protocol-architecture.md) for a deep dive into cross-computer orchestration patterns.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Core Architecture Patterns](#core-architecture-patterns)
+3. [Component Layers](#component-layers)
+4. [Message Flow Architecture](#message-flow-architecture)
+5. [Adapter Pattern & Broadcasting](#adapter-pattern--broadcasting)
+6. [Output Polling & Streaming](#output-polling--streaming)
+7. [Session Management](#session-management)
+8. [File Management](#file-management)
+9. [Configuration & Deployment](#configuration--deployment)
+10. [Key Files Reference](#key-files-reference)
+
+---
 
 ## Project Overview
 
-TeleClaude is a Telegram-to-terminal bridge daemon. From a developer perspective:
+TeleClaude is a multi-platform terminal bridge daemon enabling remote terminal access via Telegram, Redis, and future adapters.
 
 **Core Technical Stack:**
 
 - Python 3.11+ async daemon (asyncio-based)
 - python-telegram-bot library for Telegram Bot API
+- Redis Streams for AI-to-AI communication
 - tmux for persistent terminal sessions
-- aiosqlite for async session/recording persistence
-- Adapter pattern for platform abstraction (enables future WhatsApp, Slack support)
+- aiosqlite for async session persistence
+- FastAPI for REST API endpoints
+- Multi-adapter pattern for platform abstraction
+
+**Key Capabilities:**
+
+- Remote terminal access via Telegram topics
+- AI-to-AI cross-computer communication via Redis
+- Session persistence across daemon restarts
+- Real-time output streaming
+- Multi-adapter broadcasting (origin + observers)
+
+---
+
+## Core Architecture Patterns
+
+### 1. Observer Pattern (Event-Driven)
+
+**AdapterClient has NO daemon reference.** Daemon subscribes to events via observer pattern.
+
+```mermaid
+graph TB
+    subgraph "Event Flow"
+        TG[TelegramAdapter] -->|emit event| AC[AdapterClient]
+        RD[RedisAdapter] -->|emit event| AC
+        AC -->|notify subscribers| D[Daemon]
+        D -->|response via| AC
+        AC -->|broadcast to| TG
+        AC -->|broadcast to| RD
+    end
+
+    style AC fill:#e1f5ff
+    style D fill:#ffe1e1
+```
+
+**Implementation:**
+
+```python
+# Daemon subscribes to events (NO AdapterClient → Daemon reference)
+self.client = AdapterClient()  # ✅ NO daemon parameter
+self.client.on(TeleClaudeEvents.MESSAGE, self._handle_message)
+self.client.on(TeleClaudeEvents.NEW_SESSION, self._handle_new_session)
+
+# Adapters emit events
+await self.client.emit_event(
+    event=TeleClaudeEvents.MESSAGE,
+    payload={"session_id": sid, "text": text},
+    metadata={"adapter_type": "telegram"}
+)
+```
+
+### 2. Module-Level Singleton (SessionManager)
+
+**SessionManager accessed via module import**, not passed as parameters.
+
+```python
+# teleclaude/core/db.py
+_db: SessionManager = None
+
+def init_db(db_path: str):
+    global _db
+    _db = SessionManager(db_path)
+
+# Anywhere in codebase
+from teleclaude.core.db import db
+session = await db.get_session(session_id)
+```
+
+**Why:** Reduces parameter pollution, makes db available everywhere without threading it through 20+ function calls.
+
+### 3. Origin/Observer Broadcasting
+
+**Sessions have ONE origin adapter** (interactive). All other adapters are observers (read-only broadcasts).
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant TG as TelegramAdapter<br/>(origin)
+    participant Client as AdapterClient
+    participant Redis as RedisAdapter<br/>(observer, has_ui=False)
+    participant Daemon
+
+    Note over User,Daemon: User sends message
+    User->>TG: "ls -la"
+    TG->>Client: emit_event(MESSAGE)
+    Client->>Daemon: handle_message()
+
+    Note over Daemon: Execute in terminal
+    Daemon->>Client: send_message(output)
+
+    Note over Client: Send to origin (CRITICAL)
+    Client->>TG: send_message()
+    TG-->>User: Shows output
+
+    Note over Client: Broadcast to observers with has_ui=True
+    Client->>Redis: ❌ SKIPPED (has_ui=False)
+```
+
+**Key Points:**
+
+- Origin adapter: Interactive (send/receive, can edit messages)
+- Observer adapters: Read-only broadcasts (best-effort, failures logged)
+- `has_ui` flag: Only observers with `has_ui=True` receive broadcasts
+- RedisAdapter has `has_ui=False` (pure transport, no UI)
+
+### 4. AdapterClient as Central Hub
+
+**ALL adapter operations flow through AdapterClient.** No direct adapter access.
+
+```mermaid
+graph TB
+    subgraph "Daemon Layer"
+        D[Daemon]
+        MCP[MCP Server]
+        CH[CommandHandlers]
+        MH[MessageHandler]
+    end
+
+    subgraph "Coordination Layer"
+        AC[AdapterClient<br/>ONLY interface to adapters]
+    end
+
+    subgraph "Adapter Layer"
+        TG[TelegramAdapter]
+        RD[RedisAdapter]
+        BA[BaseAdapter]
+        REP[RemoteExecutionProtocol]
+    end
+
+    D --> AC
+    MCP --> AC
+    CH --> AC
+    MH --> AC
+
+    AC --> TG
+    AC --> RD
+    TG -.implements.-> BA
+    RD -.implements.-> BA
+    RD -.implements.-> REP
+
+    D -.❌ NO direct access.-> TG
+    D -.❌ NO direct access.-> RD
+    MCP -.❌ NO direct access.-> RD
+
+    style AC fill:#90EE90
+    style D fill:#FFB6C1
+    style MCP fill:#FFE4B5
+```
+
+### 5. Protocol-Based Capabilities (NEW)
+
+**Not all adapters support cross-computer orchestration.** Use Python's Protocol pattern to declare transport capabilities.
+
+```python
+# RemoteExecutionProtocol - only implemented by transport adapters
+class RemoteExecutionProtocol(Protocol):
+    """Cross-computer command orchestration."""
+
+    async def send_command_to_computer(
+        computer_name: str, session_id: str, command: str, metadata: dict
+    ) -> str: ...
+
+    async def poll_output_stream(
+        session_id: str, timeout: float
+    ) -> AsyncIterator[str]: ...
+
+    async def discover_computers() -> List[str]: ...
+```
+
+**Who implements this:**
+- ✅ RedisAdapter (bi-directional transport)
+- ✅ PostgresAdapter (future, bi-directional transport)
+- ❌ TelegramAdapter (UI platform, not a transport)
+- ❌ SlackAdapter (UI platform, not a transport)
+
+**AdapterClient routes cross-computer operations** to adapters implementing RemoteExecutionProtocol:
+
+```python
+# AdapterClient provides unified interface
+await client.send_remote_command(computer, session_id, command)
+async for chunk in client.poll_remote_output(session_id):
+    yield chunk
+computers = await client.discover_remote_computers()
+```
+
+---
 
 ## Component Layers
 
 ### Core Layer (`teleclaude/core/`)
 
-- `models.py` - Data classes (Session, Recording) with dict serialization
-- `session_manager.py` - Session persistence and SQLite operations
-- `terminal_bridge.py` - tmux interaction (create, send keys, capture output, etc.)
-- `computer_registry.py` - Computer discovery via heartbeat mechanism
+**Business logic and domain models**
+
+- `models.py` - Data classes (Session, Recording) with origin_adapter field
+- `db.py` - Session persistence, module-level singleton
+- `terminal_bridge.py` - tmux interaction (create, send keys, capture output)
+- `adapter_client.py` - **Central hub for ALL adapter operations**
+- `protocols.py` - Protocol definitions (RemoteExecutionProtocol)
+- `command_handlers.py` - Command routing logic (uses AdapterClient)
+- `message_handler.py` - User message handling (uses AdapterClient)
+- `terminal_executor.py` - Terminal command execution (uses AdapterClient)
 - `schema.sql` - Database schema with sessions and recordings tables
+- `events.py` - Event type definitions (MESSAGE, NEW_SESSION, etc.)
 
 ### Adapter Layer (`teleclaude/adapters/`)
 
-- `base_adapter.py` - Abstract base class defining adapter interface
-- `telegram_adapter.py` - Telegram Bot API implementation
-- `redis_adapter.py` - Redis Streams adapter for AI-to-AI communication
-- Future: `whatsapp_adapter.py`, `slack_adapter.py`
+**Platform-specific transport implementations**
+
+- `base_adapter.py` - Abstract interface with `has_ui` flag
+- `protocols.py` - Capability protocols (RemoteExecutionProtocol)
+- `telegram_adapter.py` - Telegram Bot API (has_ui=True, UI platform)
+- `redis_adapter.py` - Redis Streams (has_ui=False, transport + RemoteExecutionProtocol)
+
+**Adapter Responsibilities:**
+
+- Platform-specific message send/receive
+- Channel/topic creation
+- Platform event loops (polling or webhooks)
+- Emit events to AdapterClient when messages arrive
+
+**Adapters do NOT:**
+
+- Access daemon directly
+- Access db directly
+- Contain business logic (MCP, registry, etc.)
+- Know about other adapters
 
 ### MCP Layer (`teleclaude/mcp_server.py`)
 
-- `TeleClaudeMCPServer` - MCP server for AI-to-AI communication
-- Exposes four MCP tools for Claude Code integration
-- Streaming response handling via AsyncIterator
-- Session lifecycle management for remote sessions
+**AI-to-AI communication via transport adapters**
+
+- Exposes MCP tools for Claude Code integration
+- Uses AdapterClient for cross-computer messaging (no direct adapter references)
+- AdapterClient routes to transport adapters implementing RemoteExecutionProtocol
+- Adapter-agnostic: works with Redis, Postgres, or any future transport adapter
 
 ### Main Daemon (`teleclaude/daemon.py`)
 
-- `TeleClaudeDaemon` - Main coordinator class
-- PID file locking to prevent multiple instances
-- Command routing and session lifecycle management
-- Output polling with dual-mode architecture (human vs AI)
+**Coordination and lifecycle management**
 
-## Key Design Patterns
+- PID file locking
+- Initializes AdapterClient (which loads adapters from config)
+- Subscribes to AdapterClient events
+- Manages terminal output polling
+- Coordinates session lifecycle
 
-### Adapter Pattern
+---
 
-All platform-specific code is isolated in adapters. Each adapter implements:
+## Message Flow Architecture
 
-- Lifecycle: `start()`, `stop()`
-- Outgoing: `send_message()`, `edit_message()`, `send_file()`
-- Channels: `create_channel()`, `update_channel_title()`, `set_channel_status()`
-- Callbacks: `on_message()`, `on_file()`, `on_voice()`, `on_command()`
+### Incoming Message Flow
 
-### Session Management
+```mermaid
+sequenceDiagram
+    participant User
+    participant TG as TelegramAdapter
+    participant Client as AdapterClient
+    participant SM as db<br/>(module-level)
+    participant Daemon
+    participant Terminal as tmux
 
-- Sessions are platform-agnostic (core stores adapter_type + adapter_metadata JSON)
-- Each session maps to one tmux session
-- SQLite stores session state, survives daemon restarts
-- Sessions have status: active, idle, disconnected, closed
+    User->>TG: Types "ls -la" in topic
 
-### Output Streaming
+    Note over TG: Platform event loop receives
+    TG->>Client: emit_event(MESSAGE,<br/>session_id, text)
 
-- Hybrid mode: First 5 seconds edit same message, then send new messages
-- Poll tmux output every 0.5-2 seconds
-- Handle truncation for large outputs (>1000 lines or >100KB)
-- Strip ANSI codes and shell prompts (configurable)
+    Note over Client: Route to subscribers
+    Client->>Daemon: _handle_message(payload)
 
-## File Management Philosophy
+    Note over Daemon: Get session
+    Daemon->>SM: get_session(session_id)
+    SM-->>Daemon: Session
 
-### Session Output Files
+    Note over Daemon: Send to terminal
+    Daemon->>Terminal: send_keys("ls -la")
+    Terminal-->>Daemon: Output appears
 
-- ONE file per active session: `session_output/{session_id[:8]}.txt`
-- Persistent (survives daemon restarts) to support downloads after crashes
-- Updated every second during polling
-- **Deleted when**:
-  - Process exits (tmux session dies)
-  - Session closed with `/exit` command
-- **Never orphaned**: Cleanup in `finally` blocks guarantees deletion
+    Note over Daemon: Send output
+    Daemon->>Client: send_message(session_id, output)
 
-### Temporary Files
+    Note over Client: Broadcast
+    Client->>TG: send_message() [origin]
+    Client->>TG: ✅ Success
 
-- Created ONLY when download button clicked
-- Sent immediately to Telegram
-- Deleted in `finally` block (robust exception handling)
-- **Zero persistent temp files**
+    TG-->>User: Shows output
+```
 
-### No File Leaks
+### Outgoing Message Flow (Broadcasting)
 
-- `daemon._get_output_file()` - DRY helper for consistent file paths
-- `daemon.output_dir` - created once in `__init__`
-- All cleanup uses `try/except` to handle failures gracefully
+```mermaid
+sequenceDiagram
+    participant Daemon
+    participant Client as AdapterClient
+    participant SM as db
+    participant TG as TelegramAdapter<br/>(origin)
+    participant Redis as RedisAdapter<br/>(observer)
 
-## Output Polling Specification
+    Daemon->>Client: send_message(session_id, "output")
 
-**Critical Polling Behavior** (daemon.py `_poll_and_send_output`):
+    Note over Client: Get session to find origin
+    Client->>SM: get_session(session_id)
+    SM-->>Client: {origin_adapter: "telegram"}
+
+    Note over Client: Send to ORIGIN (critical)
+    Client->>TG: send_message()
+    TG-->>Client: message_id
+
+    Note over Client: Broadcast to observers with has_ui=True
+
+    loop For each adapter != origin
+        alt adapter.has_ui == True
+            Client->>Redis: ❌ SKIP (has_ui=False)
+        else adapter.has_ui == False
+            Note over Client: Skip pure transport adapters
+        end
+    end
+
+    Client-->>Daemon: message_id
+```
+
+**Error Handling:**
+
+- Origin failure → raise exception (CRITICAL)
+- Observer failure → log warning, continue (best-effort)
+
+---
+
+## Adapter Pattern & Broadcasting
+
+### BaseAdapter Interface
+
+```python
+class BaseAdapter(ABC):
+    """Base adapter interface."""
+
+    # Platform identification
+    has_ui: bool = True  # Override: RedisAdapter sets False
+
+    # === Lifecycle ===
+    @abstractmethod
+    async def start(self) -> None:
+        """Start adapter (connect, start event loop)."""
+
+    @abstractmethod
+    async def stop(self) -> None:
+        """Stop adapter (disconnect, cleanup)."""
+
+    # === Messaging ===
+    @abstractmethod
+    async def send_message(
+        self,
+        session_id: str,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Send message to channel. Returns message_id."""
+
+    @abstractmethod
+    async def edit_message(
+        self,
+        session_id: str,
+        message_id: str,
+        text: str,
+    ) -> bool:
+        """Edit existing message (if platform supports)."""
+
+    @abstractmethod
+    async def delete_message(
+        self,
+        session_id: str,
+        message_id: str,
+    ) -> bool:
+        """Delete message."""
+
+    # === Channel Management ===
+    @abstractmethod
+    async def create_channel(
+        self,
+        session_id: str,
+        title: str,
+        metadata: Dict[str, Any],
+    ) -> str:
+        """Create channel/topic. Returns channel_id."""
+
+    @abstractmethod
+    async def update_channel_title(
+        self,
+        session_id: str,
+        title: str,
+    ) -> bool:
+        """Update channel title."""
+
+    @abstractmethod
+    async def delete_channel(
+        self,
+        session_id: str,
+    ) -> bool:
+        """Delete channel/topic."""
+```
+
+### Adapter Polling Architecture
+
+**Each adapter manages its own event loop.** Daemon does NOT poll adapters.
+
+```
+Platform Events                  Daemon Polling
+══════════════                   ══════════════
+
+┌─────────────────┐
+│ TelegramAdapter │──┐  Push: immediate callbacks
+│  (own loop)     │  │
+└─────────────────┘  │
+                     ├──> on_message()  ──> client.emit_event()
+┌─────────────────┐  │   on_command()  ──> client.emit_event()
+│  RedisAdapter   │──┘
+│  (own loop)     │    Pull: XREAD every 1s
+└─────────────────┘
+
+                         ┌─────────────────┐
+                         │     Daemon      │
+                         │  OutputPoller   │──> Polls tmux every 1s
+                         │  (own loop)     │──> client.send_message()
+                         └─────────────────┘
+```
+
+**Key Points:**
+
+- ✅ Adapters start independent event loops (`start()` method)
+- ✅ Push platforms (Telegram): library manages polling
+- ✅ Pull platforms (Redis): adapter creates background task
+- ✅ Daemon polls terminal output (separate concern)
+- ❌ Daemon does NOT poll adapters for messages
+
+### Master Bot Pattern (Multi-Computer)
+
+**In multi-computer setups**, only ONE computer's bot registers Telegram commands to avoid duplicates.
+
+**Configuration:**
+
+```yaml
+# Master computer (config.yml)
+telegram:
+  is_master: true  # Registers commands
+
+# Non-master computers (config.yml)
+telegram:
+  is_master: false  # Clears command lists
+```
+
+**Implementation Details:**
+
+```python
+# telegram_adapter.py start() method
+if self.is_master:
+    # Register commands with TRAILING SPACES
+    commands = [
+        BotCommand("new_session ", "Create a new terminal session"),  # Note space!
+        BotCommand("list_sessions ", "List all active sessions"),
+    ]
+    await self.app.bot.set_my_commands(commands, scope=scope)
+else:
+    # Clear commands to prevent duplicates
+    await self.app.bot.set_my_commands([])
+```
+
+**Why trailing spaces?**
+
+- Without space: Telegram appends `@botname` → `/new_session@masterbot`
+- With space: Commands distributed to ALL bots → `/new_session ` (universal)
+- Prevents duplicate entries from multiple bots in same group
+- Users can type commands without specifying bot
+
+**Important:** All bots handle commands regardless of `is_master`. This only affects UI command registration.
+
+---
+
+## Output Polling & Streaming
+
+### Polling Behavior
+
+**Critical polling algorithm** (daemon.py `_poll_and_send_output`):
 
 1. **Initial delay**: Wait 2 seconds before first poll
 2. **Poll interval**: Poll tmux output every 1 second
 3. **Hybrid editing mode** (UX optimization):
-   - **First 10 seconds**: Edit same Telegram message in-place (clean, live updates)
-   - **After 10 seconds**: Send NEW messages with continued output (preserves history)
-   - This creates predictable UX: fast commands (< 10s) = single edited message, slow commands = multiple messages
-4. **Exit code detection (PRIMARY - ONLY STOP CONDITION)**: Detect when command exits with exit code - stop immediately
-   - Append `; echo "__EXIT__$?__"` to every command sent via `send_keys`
+   - **First 10 seconds**: Edit same message in-place (clean, live updates)
+   - **After 10 seconds**: Send NEW messages (preserves history)
+4. **Exit code detection** (PRIMARY stop condition):
+   - Append `; echo "__EXIT__$?__"` to every command
    - Parse exit code marker from output
-   - Strip marker before showing output to user
-   - **This is the ONLY condition that stops polling**
-5. **Timeout notification (INFORMATIONAL ONLY)**: If no output change after configured idle timeout (default: 60 seconds, configurable via `polling.idle_notification_seconds`), notify user but KEEP POLLING
-   - Send notification as NEW message: "⏸️ No output for {N} seconds - process may be waiting or finished"
-   - Do NOT append to existing output - send as separate message
-   - If output resumes, automatically delete the notification message (ephemeral notification)
-   - **CRITICAL**: This does NOT stop polling - only notifies user
-   - Polling continues until exit code is received
+   - Strip marker before showing to user
+   - **ONLY condition that stops polling**
+5. **Idle notification** (informational only):
+   - After 60s of no output change
+   - Send ephemeral notification (auto-deleted when output resumes)
+   - **Does NOT stop polling** - continues until exit code
 6. **Session death detection**: Stop if tmux session no longer exists
 7. **Max duration**: Stop after 600 polls (10 minutes)
 
-**DO NOT** use shell prompt detection or string pattern matching. Use explicit exit code markers for reliable command completion detection.
+### Output Message Format
 
-## Output Formatting and Truncation
-
-### Message Format
-
-daemon.py formats, adapter renders:
-
-```sh
-Terminal output here (in code block with sh syntax highlighting)
 ```
-
-⏱️ Running 2m 34s | 📊 145KB | (truncated) | [📎 Download full output button]
+┌──────────────────────────────────────────┐
+│ ```sh                                    │
+│ Terminal output here                     │
+│ (truncated to last ~3400 chars if large) │
+│ ```                                      │
+│                                          │
+│ ⏱️ Running 2m 34s | 📊 145KB | (truncated) │
+│ [📎 Download full output]                 │
+└──────────────────────────────────────────┘
+```
 
 **Components:**
 
-1. **Code block**: Terminal output (truncated if needed, showing last ~3400 chars)
-2. **Status line** (outside code block, plain text): Running time, output size, truncation indicator, download button
-3. **Download button** (Telegram inline keyboard): Appears when output > 3800 chars
+1. Code block with `sh` syntax highlighting
+2. Status line: running time, size, truncation indicator
+3. Download button (inline keyboard) when output > 3800 chars
 
 ### Output Buffer Management
 
-- **In-memory**: `daemon.session_output_buffers[session_id]` stores full output
-- **Persistent file**: `session_output/{session_id[:8]}.txt` survives daemon restarts
-- **File lifecycle**:
-  - Created when polling starts
-  - Updated every poll (1s interval)
-  - **Survives daemon restarts** (enables downloads after restart)
-  - Deleted when:
-    - Process exits (tmux session dies)
-    - Session closed with `/exit`
+```mermaid
+graph LR
+    A[tmux output] -->|poll every 1s| B[In-memory buffer]
+    B -->|write every 1s| C[session_output/abc123.txt]
+    B -->|truncate| D[Telegram message]
+    C -->|on download click| E[Temp file]
+    E -->|send to user| F[Delete temp file]
 
-### Telegram Truncation & Download
+    style C fill:#90EE90
+    style B fill:#FFE4B5
+```
 
-When output exceeds ~3800 chars:
+**Lifecycle:**
 
-1. Truncate to last ~3400 chars in message
-2. Show inline keyboard button: `📎 Download full output`
-3. On button click:
-   - Read from persistent file (or memory fallback)
-   - Create temp file in `/tmp`
-   - Send as Telegram document attachment
-   - Delete temp file in `finally` block (guaranteed cleanup)
-   - **Delete-and-replace**: If clicked again → delete old file message, send new file
-   - Only one file message present at a time (clean UI)
-
-### User Message Deletion During Active Polling
-
-When a process is running (polling active):
-
-- User messages sent to session are treated as **input** to the running process
-- Messages **automatically deleted** from Telegram after being sent to tmux
-- Rationale: Maintains clean UI where last message always shows terminal output
-- Tracked via `daemon.active_polling_sessions` set
-
-## Database Operations
-
-- Always use parameterized queries (never string formatting)
-- Commit explicitly after writes
-- Use `Row` factory for dict-like access
-- Foreign keys enabled with ON DELETE CASCADE
-
-## tmux Integration
-
-- Session names: `{computer}-{suffix}` format
-- Always check return codes from tmux commands
-- Use `-d` flag for detached sessions
-- Terminal size set via `-x` and `-y` flags
-- Login shell: `{shell} -l` for full environment
-
-## Daemon Management Architecture
-
-### Three-Tier Management System
-
-1. **launchd/systemd** (production): Auto-starts daemon on boot, restarts on crash
-2. **daemon-control.sh** (manual): Comprehensive lifecycle management script
-3. **Direct Python** (development): `make dev` for foreground testing
-
-**Key Points:**
-
-- launchd should directly invoke Python, NOT a control script (needs to track the actual process for restart)
-- Use `make start/stop/restart/status` for daemon management
-- Control is handled via launchd (macOS) or systemd (Linux)
-
-**Why this architecture:**
-
-- launchd needs PID visibility for automatic restart (KeepAlive)
-- Control script uses nohup which would hide the process from launchd
-- Both can coexist: launchd for production, control script for development
-
-### Plist Template System (macOS)
-
-The launchd plist file is generated from a template (`config/ai.instrukt.teleclaude.daemon.plist.template`) during installation. The template uses placeholders:
-
-- `{{PYTHON_PATH}}`: Path to venv Python interpreter
-- `{{WORKING_DIR}}`: Project root directory
-- `{{PATH}}`: Detected system PATH including Homebrew paths
-
-The plist redirects daemon stdout/stderr to `/dev/null` to prevent launchd issues. tmux sessions get their own PTYs (pseudo-terminals) automatically. CRITICAL: Avoid using `stdout=PIPE, stderr=PIPE` in subprocess calls unless you actually need the output - these pipes can leak to child processes and cause EBADF errors.
-
-## REST API Server
-
-**FastAPI-based REST API runs inside daemon process**
-
-- Default port: 6666 (configurable via `$PORT` environment variable)
-- Endpoints:
-  - `GET /health` - Health check with uptime and session counts
-  - `GET /api/v1/sessions/{session_id}/output` - Dynamic terminal output retrieval
-- All output served dynamically from tmux (no static files)
-- Used for large output truncation links in Telegram messages
-
-## MCP Server Architecture
-
-**⚠️ CRITICAL LIMITATION: This feature is currently non-functional due to Telegram Bot API restrictions.**
-
-**Telegram bots cannot see messages from other bots** (source: [Telegram Bots FAQ](https://core.telegram.org/bots/faq)). This means:
-
-- ❌ Computer registry discovery doesn't work (bots can't see each other's heartbeats)
-- ❌ AI-to-AI messaging doesn't work (Bot A's messages never reach Bot B)
-- ❌ Cross-computer sessions don't work (messages won't route between bots)
-
-The restriction applies **regardless of privacy mode, admin rights, or any other configuration**. Telegram explicitly prevents bot-to-bot communication to avoid infinite loops.
-
-**Possible solutions** (see `todos/mcp_server.md` for details):
-
-- Use external message bus (e.g. Redis, RabbitMQ) instead
-- Remove MCP functionality entirely
+- **Created**: When polling starts
+- **Updated**: Every poll (1s interval)
+- **Persists**: Survives daemon restarts
+- **Deleted**: When process exits OR session closed with `/exit`
 
 ---
 
-### Original Design (Non-Functional)
+## Session Management
 
-**Model Context Protocol (MCP) server enables AI-to-AI communication across computers**
+### Session Model
 
-TeleClaude exposes an MCP server that allows Claude Code instances on different computers to communicate via Telegram as a distributed message bus.
+```python
+@dataclass
+class Session:
+    session_id: str
+    computer_name: str
+    tmux_session_name: str
+    origin_adapter: str  # ✅ Single string (not array)
+    adapter_metadata: dict  # Platform-specific data
+    title: str
+    description: Optional[str]
+    status: str  # active, idle, disconnected, closed
+    created_at: datetime
+    last_activity: datetime
+```
 
-### Core Components
+**Key Points:**
 
-#### Computer Registry (`teleclaude/core/computer_registry.py`)
+- `origin_adapter: str` - Single origin adapter (telegram, redis, etc.)
+- `adapter_metadata: dict` - Stores channel_id, topic_id, etc.
+- Sessions survive daemon restarts (SQLite + tmux)
+- Module-level singleton: `from teleclaude.core.db import db`
 
-**Dynamic computer discovery via heartbeat mechanism:**
+### Session Creation Flow
 
-- **Shared topic**: "Online Now" in Telegram supergroup
-- **Heartbeat loop**: Each daemon posts one status message, edits every 30s with timestamp
-- **Polling loop**: Each daemon polls topic every 30s to build in-memory computer list
-- **Offline detection**: Computers marked offline after 60s of no heartbeat
-- **Message format**: `{computer_name} - last seen at {timestamp}`
+```mermaid
+sequenceDiagram
+    participant User
+    participant TG as TelegramAdapter
+    participant Client as AdapterClient
+    participant SM as db
+    participant Redis as RedisAdapter
+    participant tmux
+
+    User->>TG: /new_session "My Session"
+    TG->>Client: emit_event(NEW_SESSION)
+    Client->>Daemon: handle_new_session()
+
+    Note over Daemon: Generate session_id upfront
+    Daemon->>SM: create_session(<br/>origin_adapter="telegram",<br/>adapter_metadata={})
+    SM-->>Daemon: Session created
+
+    Note over Daemon: Create channels in ALL adapters
+    Daemon->>Client: create_channel(session_id, title)
+
+    Note over Client: Create in origin
+    Client->>TG: create_channel() [origin=true]
+    TG-->>Client: channel_id="123"
+
+    Note over Client: Create in observers
+    Client->>Redis: create_channel() [origin=false]
+    Redis-->>Client: OK
+
+    Note over Client: Update session with channel_id
+    Client->>SM: update_session(<br/>adapter_metadata={"channel_id": "123"})
+
+    Note over Daemon: Create tmux session
+    Daemon->>tmux: create_session(name)
+
+    Client-->>TG: Success
+    TG-->>User: "Session created!"
+```
+
+---
+
+## File Management
+
+### Session Output Files
+
+**Philosophy:** One persistent file per session, cleaned up on session end.
+
+```
+session_output/
+├── abc12345.txt  (active session)
+├── def67890.txt  (active session)
+└── (cleaned up when sessions end)
+```
+
+**Lifecycle:**
+
+1. **Created**: When output polling starts
+2. **Updated**: Every poll (1s interval)
+3. **Read**: When user clicks download button
+4. **Deleted**: When process exits OR `/exit` command
 
 **Benefits:**
 
-- No manual configuration - computers auto-discovered
-- Fast lookups from in-memory state
-- Resilient to daemon crashes (heartbeat stops → marked offline)
-- Observable in Telegram UI for debugging
+- Survives daemon restarts (enables downloads after crash)
+- No orphaned files (cleanup in `finally` blocks)
+- DRY helper: `daemon._get_output_file(session_id)`
 
-#### MCP Server (`teleclaude/mcp_server.py`)
+### Temporary Files
 
-**Exposes four MCP tools to Claude Code:**
-
-1. **`teleclaude__list_computers`** - List online computers from registry
-2. **`teleclaude__start_session`** - Start AI-to-AI session with remote computer
-3. **`teleclaude__list_sessions`** - List active AI-to-AI sessions
-4. **`teleclaude__send`** - Send message to remote computer and stream response
-
-**Transport**: stdio (for Claude Code integration) or Unix socket (future)
-
-**Lifecycle**: Starts with daemon in background task, runs continuously
-
-### Dual-Mode Output Architecture
-
-TeleClaude uses different output modes for human vs AI sessions:
-
-#### Human Sessions (Existing Behavior)
-
-- **Detection**: Standard Telegram topics (no special metadata)
-- **Output mode**: Edit same message for clean UX (first 10s), then send new messages
-- **Truncation**: Last ~3400 chars shown, download button for full output
-- **Optimization**: Optimized for human readability
-
-#### AI-to-AI Sessions (New Behavior)
-
-- **Detection**: `is_ai_to_ai: True` flag in session metadata
-- **Output mode**: Sequential messages (no editing, no data loss)
-- **Format**: Each message = chunk with `[Chunk N/Total]` marker
-- **Completion**: `[Output Complete]` marker signals end of stream
-- **No truncation**: All output preserved for AI consumption
-
-**Example AI session output:**
-
-````
-Message 1:
-```sh
-[first 3400 chars of output]
-````
-
-[Chunk 1/3]
-
-Message 2:
-
-```sh
-[next 3400 chars of output]
-```
-
-[Chunk 2/3]
-
-Message 3:
-
-```sh
-[remaining output]
-```
-
-[Chunk 3/3]
-
-Message 4:
-[Output Complete]
-
-````
-
-**Why dual mode?**
-- Humans want clean, edited messages
-- AI needs every byte (data loss breaks automation)
-- Platform-specific chunk sizes (Telegram: 4096 chars)
-
-### Session Routing
-
-**Database-driven routing** (no topic name parsing):
-
-- Each session has `adapter_metadata` JSON field storing `channel_id` (Telegram topic ID)
-- AI sessions also have `is_ai_to_ai: True` flag in metadata
-- Daemon polls sessions from DB where `computer_name = self.computer_name`
-- Topic name `$macbook > $workstation - Check logs` is purely for human readability
-
-**Topic naming convention for AI sessions:**
-- Pattern: `$InitiatorComp > $TargetComp - {title}`
-- Examples: `$macbook > $workstation - Debug issue`
-- `$` prefix indicates AI-originated (vs human `/new_session`)
-
-### MCP Communication Flow
-
-**Starting a session (Comp1 → Comp2):**
-
-1. Claude Code on Comp1 calls `teleclaude__start_session(target="workstation", title="Check logs")`
-2. Comp1's MCP server creates Telegram topic: `$macbook > $workstation - Check logs`
-3. Comp1 sends `/claude_resume` command to topic
-4. Telegram routes message to Comp2's bot (both bots in same supergroup)
-5. Comp2 creates session, starts Claude Code in tmux
-6. Comp2 sends ready confirmation
-7. Comp1's MCP server returns session_id to Claude Code
-
-**Sending commands:**
-
-1. Claude Code on Comp1 calls `teleclaude__send(session_id, "tail -100 /var/log/nginx/error.log")`
-2. Comp1's MCP server sends message to Telegram topic
-3. Comp2 receives message, forwards to tmux session
-4. Comp2's polling coordinator detects AI session → uses chunked output mode
-5. Comp2 sends sequential messages: `[Chunk 1/N]`, `[Chunk 2/N]`, ..., `[Output Complete]`
-6. Comp1's MCP server yields chunks to Claude Code as AsyncIterator
-7. Claude Code receives streaming output in real-time
-
-### Streaming Implementation
-
-**MCP server streaming (`teleclaude__send`):**
+**Only created for downloads** - immediately cleaned up:
 
 ```python
-async def teleclaude__send(self, session_id: str, message: str) -> AsyncIterator[str]:
-    """Send to remote AI session and stream response chunks."""
+async def send_file_download():
+    temp_file = None
+    try:
+        # Create temp file
+        temp_file = Path(f"/tmp/output_{session_id}.txt")
+        temp_file.write_text(full_output)
 
-    # Send message to session
-    await self._send_message(session_id, message)
-
-    # Stream response chunks
-    while True:
-        messages = await self._get_new_messages(session_id)
-
-        for msg in messages:
-            # Check for completion
-            if "[Output Complete]" in msg.text:
-                return  # End stream
-
-            # Extract chunk content (strip markdown + markers)
-            content = self._extract_chunk_content(msg.text)
-            if content:
-                yield content
-
-        # Heartbeat during idle periods
-        if time.time() - last_yield > 60:
-            yield "[⏳ Waiting for response...]\n"
-
-        await asyncio.sleep(0.5)  # Poll every 500ms
-````
-
-**Output coordinator (Comp2 sending chunks):**
-
-````python
-async def _send_output_chunks_ai_mode(
-    session_id: str,
-    adapter: BaseAdapter,
-    full_output: str,
-    session_manager: SessionManager,
-) -> None:
-    """Send output as sequential chunks for AI consumption."""
-
-    # Get platform-specific chunk size
-    chunk_size = adapter.get_max_message_length() - 100
-
-    # Split and send chunks
-    chunks = [full_output[i:i+chunk_size]
-              for i in range(0, len(full_output), chunk_size)]
-
-    for idx, chunk in enumerate(chunks, 1):
-        message = f"```sh\n{chunk}\n```\n[Chunk {idx}/{len(chunks)}]"
-        await adapter.send_message(session_id, message)
-        await asyncio.sleep(0.1)  # Preserve order
-
-    # Send completion marker
-    await adapter.send_message(session_id, "[Output Complete]")
-````
-
-### Security
-
-**Bot whitelist** (`config.yml`):
-
-```yaml
-telegram:
-  trusted_bots:
-    - teleclaude_macbook_bot
-    - teleclaude_workstation_bot
-    - teleclaude_server_bot
+        # Send to user
+        await adapter.send_document(session_id, temp_file)
+    finally:
+        # ALWAYS cleanup
+        if temp_file:
+            temp_file.unlink(missing_ok=True)
 ```
 
-- Only trusted bots can initiate AI-to-AI sessions
-- Validated before executing remote commands
-- Prevents unauthorized bots from joining supergroup and sending commands
+**Zero persistent temp files** - all cleaned in `finally` blocks.
 
-**Command safety:**
+---
 
-- Commands forwarded to tmux exactly as received (no shell expansion by daemon)
-- Shell execution happens with user's permissions (not daemon)
-- Trust boundary is Claude Code → MCP (Claude Code validates commands)
+## Configuration & Deployment
 
-### Configuration
-
-**`config.yml` additions:**
+### Configuration Structure
 
 ```yaml
+# config.yml
 computer:
-  name: macbook # Unique per computer
-  bot_username: teleclaude_macbook_bot
+  name: macbook  # Unique identifier
+
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}  # From .env
+
+redis:
+  enabled: true
+  url: rediss://redis.example.com:6379
+  password: ${REDIS_PASSWORD}
 
 mcp:
   enabled: true
-  transport: stdio # For Claude Code integration
-  claude_command: claude # Command to start Claude Code
+  transport: stdio
+
+terminal:
+  shell: /bin/zsh
+  width: 120
+  height: 40
+
+polling:
+  idle_notification_seconds: 60
 ```
 
-**`.env` per computer:**
+### Daemon Management
+
+**Three-tier system:**
+
+1. **launchd/systemd** (production): Auto-restart on crash
+2. **make commands** (development): `make restart`, `make status`
+3. **Direct Python** (debugging): `make dev` (foreground)
+
+**Commands:**
 
 ```bash
-# Unique bot token per computer
-TELEGRAM_BOT_TOKEN=123:ABC_your_unique_bot_token
-
-# Shared supergroup for all bots
-TELEGRAM_SUPERGROUP_ID=-100123456789
+make start      # Enable service
+make stop       # Disable service
+make restart    # Kill PID → auto-restart (~1 sec)
+make status     # Check health
+make dev        # Run in foreground (Ctrl+C to stop)
 ```
 
-### Performance Characteristics
+**Service lifecycle:**
 
-**Response latency:**
-
-- First chunk: < 2s from MCP call
-- Streaming: < 1s delay between chunk generation and delivery
-- Concurrent sessions: Supports 10+ simultaneous AI-to-AI sessions
-
-**Reliability:**
-
-- Heartbeat mechanism detects offline computers within 60s
-- Daemon restart doesn't break active sessions (state in DB + Telegram)
-- Graceful timeout handling (5 minute max idle)
-
-## Redis Adapter Architecture
-
-**Redis Streams adapter for cross-computer AI-to-AI communication**
-
-The Redis adapter bypasses Telegram's bot-to-bot messaging restriction by using Redis Streams as a reliable message transport layer between TeleClaude instances.
-
-### Core Components
-
-**Stream Architecture:**
-- `commands:{computer_name}` - Incoming command stream (one per computer)
-- `output:{session_id}` - Outgoing output stream (one per session)
-- `computer:{name}:heartbeat` - Redis keys with TTL for peer discovery
-
-**Background Tasks:**
-- Command polling: Reads from `commands:{computer_name}` stream every 1 second
-- Heartbeat loop: Writes heartbeat key every 30 seconds (60s TTL)
-
-### Message Flow
-
-```
-Initiator Computer (Comp1)          Target Computer (Comp2)
-─────────────────────────           ──────────────────────
-
-1. XADD commands:comp2
-   {session_id, command, ...}    →  2. XREAD commands:comp2 (polling)
-                                     3. Create session, execute command
-                                     4. XADD output:session_id {chunk}
-5. XREAD output:session_id       ←
-   (MCP server streams to Claude)
+```mermaid
+graph LR
+    A[make install] -->|Create venv,<br/>install deps| B[make init]
+    B -->|Generate config,<br/>create service| C[Service Running]
+    C -->|make restart| D[Kill PID]
+    D -->|Auto-restart<br/>~1 second| C
+    C -->|make stop| E[Service Stopped]
+    E -->|make start| C
 ```
 
-### Configuration
+### Plist Template System (macOS)
 
-**config.yml:**
-```yaml
-redis:
-  enabled: true
-  url: rediss://redis.srv.instrukt.ai:6478  # Use rediss:// for SSL/TLS
-  password: ${REDIS_PASSWORD}
-  max_connections: 10
-  socket_timeout: 5
-  command_stream_maxlen: 1000
-  output_stream_maxlen: 10000
-  output_stream_ttl: 3600
-```
+Generated from `config/ai.instrukt.teleclaude.daemon.plist.template`:
 
-**.env:**
-```bash
-REDIS_PASSWORD=your_secure_password
-```
+- `{{PYTHON_PATH}}`: Path to venv Python
+- `{{WORKING_DIR}}`: Project root
+- `{{PATH}}`: System PATH with Homebrew
 
-### Key Features
+**CRITICAL:** Redirects stdout/stderr to `/dev/null` to prevent launchd issues. Avoid `stdout=PIPE` in subprocess calls (can leak to child processes).
 
-- **SSL/TLS Support**: Uses `rediss://` protocol for encrypted connections
-- **Automatic Reconnection**: Handles connection failures gracefully
-- **Stream Trimming**: Limits stream length to prevent unbounded growth
-- **Heartbeat Discovery**: Discovers peers via Redis keys (no Telegram dependency)
-- **Ordered Delivery**: Redis Streams guarantee message order
-
-### Limitations
-
-- **File Transfer**: Only sends file path references (no actual file data)
-- **No Message Editing**: Sends new messages instead of editing (Redis Streams are append-only)
-- **Network Dependency**: Requires accessible Redis server
-
-## Architecture Principles
-
-1. **Separation of Concerns**: Core is platform-agnostic, adapters handle platform specifics
-2. **Async First**: All I/O is async, blocking operations use thread pools
-3. **Fail Fast**: No defensive programming, let errors propagate with context
-4. **Explicit Over Implicit**: Config is explicit, no magic defaults
-5. **Persistence**: Sessions survive daemon restarts via SQLite + tmux
-6. **Stateless Adapters**: All state lives in SessionManager, adapters are thin wrappers
-7. **Type Safety**: Full type hints, strict mypy checking
-8. **No Hot Reload**: Config loaded once at start, restart daemon to apply changes
-9. **Configuration as Source of Truth**: `config.yml` is the single source of truth - code MUST read from config, not environment variables or hardcoded values
-10. **Module Organization**: Utilities in `utils.py`, config helpers in dedicated modules, business logic in domain-specific files
+---
 
 ## Key Files Reference
 
 ### Documentation
 
-- `README.md` - User-facing documentation (installation, configuration, usage)
-- `prds/teleclaude.md` - Complete design document and specification
-- `docs/troubleshooting.md` - Debugging and troubleshooting guide
-- `docs/architecture.md` - This file - technical architecture reference
+- `README.md` - User-facing (installation, usage)
+- `docs/architecture.md` - This file (architecture reference)
+- `docs/troubleshooting.md` - Debugging guide
+- `docs/multi-computer-setup.md` - Multi-computer deployment
 
-### Code
+### Core Code
 
-- `teleclaude/daemon.py` - Main entry point, daemon lifecycle, command routing
-- `teleclaude/core/session_manager.py` - Session CRUD, SQLite operations
-- `teleclaude/core/terminal_bridge.py` - tmux wrapper (create, send, capture)
-- `teleclaude/core/computer_registry.py` - Computer discovery via heartbeat mechanism
-- `teleclaude/adapters/telegram_adapter.py` - Telegram Bot API implementation
-- `teleclaude/adapters/redis_adapter.py` - Redis Streams adapter for cross-computer messaging
-- `teleclaude/adapters/base_adapter.py` - Adapter interface definition
-- `teleclaude/core/adapter_client.py` - Unified adapter management
-- `teleclaude/mcp_server.py` - MCP server for AI-to-AI communication
+- `teleclaude/daemon.py` - Main entry point, event subscribers
+- `teleclaude/core/adapter_client.py` - **Central hub** for ALL adapter ops
+- `teleclaude/core/db.py` - Module-level singleton
+- `teleclaude/core/terminal_bridge.py` - tmux wrapper
+- `teleclaude/core/command_handlers.py` - Command routing
+- `teleclaude/core/message_handler.py` - User message handling
+- `teleclaude/core/events.py` - Event type definitions
+
+### Adapters
+
+- `teleclaude/adapters/base_adapter.py` - Abstract interface
+- `teleclaude/adapters/telegram_adapter.py` - Telegram implementation
+- `teleclaude/adapters/redis_adapter.py` - Redis implementation
 
 ### Configuration
 
-- `config.yml.sample` - Configuration template with all options
+- `config.yml.sample` - Configuration template
 - `.env.sample` - Environment variables template
+
+---
+
+## Architecture Principles
+
+1. **AdapterClient = Central Hub** - ALL adapter operations flow through it (no direct adapter references)
+2. **Protocol-Based Capabilities** - Use Protocol pattern for transport capabilities (RemoteExecutionProtocol)
+3. **Observer Pattern** - Daemon subscribes to events, no AdapterClient → Daemon reference
+4. **Module-Level Singleton** - db accessed via import
+5. **Origin/Observer Broadcasting** - One interactive adapter, others read-only
+6. **Event-Driven** - Adapters emit events, daemon reacts
+7. **Separation of Concerns** - Message broadcasting vs cross-computer orchestration
+8. **Fail Fast** - No defensive programming, let errors propagate
+9. **Explicit Over Implicit** - Config is explicit, no magic defaults
+10. **Type Safety** - Full type hints, strict mypy checking
+11. **Async First** - All I/O is async
+12. **Persistence** - Sessions survive daemon restarts
+
+---
 
 ## Future Enhancements
 
 ### High Priority
 
-- REST API ingress configuration: `ingress.domain` for public HTTPS links to full output
-- AI-generated session titles: Use Claude API after N commands
-- Live config reload: Watch `config.yml` and reload without daemon restart
+- REST API ingress for public HTTPS links
+- AI-generated session titles
+- Live config reload
 
 ### Medium Priority
 
-- Terminal recording: Text + video with configurable rolling window
-- Multi-device terminal sizing: Detect device type from Telegram client
-- WhatsApp adapter: Extend adapter pattern to support WhatsApp Business API
-- Slack adapter: Extend adapter pattern for Slack slash commands
+- Terminal recording (text + video)
+- Multi-device terminal sizing
+- WhatsApp adapter
+- Slack adapter
 
 ### Nice to Have
 
-- Session templates: Predefined terminal setups (dev, ops, etc.)
-- Command aliases: User-configurable shortcuts
-- Multi-hop communication: Support Comp1 → Comp2 → Comp3 chains
+- Session templates
+- Command aliases
+- Multi-hop AI communication
+
+---
+
+**End of Architecture Reference**

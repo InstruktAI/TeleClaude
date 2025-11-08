@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import event_handlers
+from teleclaude.core.db import db
 from teleclaude.core.models import Session
 
 
@@ -18,14 +19,13 @@ class TestHandleTopicClosed:
             session_id="test-123",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             closed=False,
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_session = AsyncMock()
+        db.get_session = AsyncMock(return_value=session)
+        db.update_session = AsyncMock()
 
         context = {"topic_id": 12345, "user_id": 67890}
 
@@ -41,13 +41,12 @@ class TestHandleTopicClosed:
             mock_terminal.kill_session.assert_called_once_with("test-tmux")
 
             # Verify session marked as closed
-            session_manager.update_session.assert_called_once_with("test-123", closed=True)
+            db.update_session.assert_called_once_with("test-123", closed=True)
 
     async def test_topic_closed_session_not_found(self):
         """Test topic closure when session doesn't exist."""
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=None)
-        session_manager.update_session = AsyncMock()
+        db.get_session = AsyncMock(return_value=None)
+        db.update_session = AsyncMock()
 
         context = {"topic_id": 12345}
 
@@ -63,7 +62,7 @@ class TestHandleTopicClosed:
             mock_terminal.kill_session.assert_not_called()
 
             # Verify NO update attempted
-            session_manager.update_session.assert_not_called()
+            db.update_session.assert_not_called()
 
     async def test_topic_closed_tmux_kill_failure(self):
         """Test topic closure when tmux kill fails (still marks as closed)."""
@@ -71,14 +70,13 @@ class TestHandleTopicClosed:
             session_id="test-456",
             computer_name="TestMac",
             tmux_session_name="test-tmux-2",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             closed=False,
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_session = AsyncMock()
+        db.get_session = AsyncMock(return_value=session)
+        db.update_session = AsyncMock()
 
         context = {"topic_id": 67890}
 
@@ -95,4 +93,4 @@ class TestHandleTopicClosed:
             mock_terminal.kill_session.assert_called_once_with("test-tmux-2")
 
             # Verify session STILL marked as closed (even if tmux kill failed)
-            session_manager.update_session.assert_called_once_with("test-456", closed=True)
+            db.update_session.assert_called_once_with("test-456", closed=True)

@@ -37,8 +37,8 @@ async def test_adapter_client_discover_peers_single_adapter():
     client = AdapterClient()
 
     # Create mock adapter
-    mock_adapter = Mock()
-    mock_adapter.discover_peers = AsyncMock(return_value=[
+    mock_client = Mock()
+    mock_client.discover_peers = AsyncMock(return_value=[
         {
             "name": "macbook",
             "status": "online",
@@ -56,7 +56,7 @@ async def test_adapter_client_discover_peers_single_adapter():
     ])
 
     # Register adapter
-    client.register_adapter("telegram", mock_adapter)
+    client.register_adapter("telegram", mock_client)
 
     # Test discovery
     peers = await client.discover_peers()
@@ -209,10 +209,10 @@ async def test_adapter_client_empty_peers():
     client = AdapterClient()
 
     # Create mock adapter with no peers
-    mock_adapter = Mock()
-    mock_adapter.discover_peers = AsyncMock(return_value=[])
+    mock_client = Mock()
+    mock_client.discover_peers = AsyncMock(return_value=[])
 
-    client.register_adapter("telegram", mock_adapter)
+    client.register_adapter("telegram", mock_client)
 
     # Test empty result
     peers = await client.discover_peers()

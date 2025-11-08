@@ -37,6 +37,7 @@ profile = "black"
 [tool.mypy]
 check_untyped_defs = true
 disable_error_code = ["import-untyped"]
+disallow_any_explicit = true  # Ban Any - must use type: ignore to allow
 disallow_any_generics = true
 disallow_untyped_defs = true
 exclude = ["^venv/", "^.venv/"]
@@ -45,6 +46,7 @@ follow_imports = "skip"
 python_version = "3.11"
 strict_optional = false
 warn_redundant_casts = true
+warn_return_any = true  # Warn when functions return Any
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]

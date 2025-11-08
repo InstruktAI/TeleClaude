@@ -6,8 +6,45 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from teleclaude.core import output_message_manager
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.core.db import db, Db
+
+
+class TestUiAdapter(UiAdapter):
+    """Test implementation of UiAdapter for testing."""
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+    async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+        # Mock implementation
+        return self._mock_send_message(session_id, text, metadata)
+
+    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+        # Mock implementation
+        return self._mock_edit_message(session_id, message_id, text)
+
+    async def delete_message(self, session_id: str, message_id: str) -> bool:
+        # Mock implementation
+        return True
+
+    async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+        return "test-channel"
+
+    async def update_channel_title(self, session_id: str, title: str) -> bool:
+        return True
+
+    async def delete_channel(self, session_id: str) -> bool:
+        return True
+
+    async def send_general_message(self, text: str, metadata=None) -> str:
+        return "msg-general"
+
+    async def discover_peers(self):
+        return []
 
 
 @pytest.mark.integration
@@ -17,9 +54,9 @@ class TestVoiceStatusAppend:
 
     @pytest.fixture
     async def session_manager(self, tmp_path):
-        """Create SessionManager with temp database."""
+        """Create Db with temp database."""
         db_path = str(tmp_path / "test.db")
-        session_mgr = SessionManager(db_path)
+        session_mgr = Db(db_path)
         await session_mgr.initialize()
         yield session_mgr
         await session_mgr.close()
@@ -27,10 +64,10 @@ class TestVoiceStatusAppend:
     async def test_append_status_to_existing_output(self, session_manager, tmp_path):
         """Test that status message appends to existing output during active polling."""
         # Create session first (required for message_id storage)
-        session = await session_manager.create_session(
+        session = await db.create_session(
             computer_name="TestComputer",
             tmux_session_name="test-voice-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             adapter_metadata={"chat_id": "123", "topic_id": "456"},
         )
         session_id = session.session_id
@@ -40,18 +77,17 @@ class TestVoiceStatusAppend:
         existing_output = "Running process...\nsome output here"
         output_file.write_text(existing_output)
 
-        # Mock adapter
-        adapter = Mock()
-        adapter.edit_message = AsyncMock(return_value=True)
+        # Create test adapter with mocked methods
+        adapter = TestUiAdapter(None)
+        adapter._mock_edit_message = AsyncMock(return_value=True)
+        adapter._mock_send_message = AsyncMock(return_value="msg-123")
 
         # Set message ID (simulating active polling)
-        await session_manager.update_ux_state(session_id, {"output_message_id": "msg-123"})
+        await db.update_ux_state(session_id, output_message_id="msg-123")
 
         # Send status message with append_to_existing=True
-        result = await output_message_manager.send_status_message(
+        result = await adapter.send_status_message(
             session_id=session_id,
-            adapter=adapter,
-            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=True,
             output_file_path=str(output_file),
@@ -61,8 +97,8 @@ class TestVoiceStatusAppend:
         assert result == "msg-123"
 
         # Verify adapter.edit_message was called
-        adapter.edit_message.assert_called_once()
-        args, kwargs = adapter.edit_message.call_args
+        adapter._mock_edit_message.assert_called_once()
+        args, kwargs = adapter._mock_edit_message.call_args
 
         # Check arguments
         assert args[0] == session_id  # session_id
@@ -85,19 +121,17 @@ class TestVoiceStatusAppend:
         """Test that status sends new message when append_to_existing=False.
 
         Note: In the daemon, voice messages are REJECTED if no active process.
-        This test verifies OutputMessageManager can send standalone status messages.
+        This test verifies UiAdapter can send standalone status messages.
         """
         session_id = "test-session-456"
 
-        # Mock adapter
-        adapter = Mock()
-        adapter.send_message = AsyncMock(return_value="msg-new")
+        # Create test adapter
+        adapter = TestUiAdapter(None)
+        adapter._mock_send_message = AsyncMock(return_value="msg-new")
 
         # Send status message with append_to_existing=False
-        result = await output_message_manager.send_status_message(
+        result = await adapter.send_status_message(
             session_id=session_id,
-            adapter=adapter,
-            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=False,
         )
@@ -106,7 +140,7 @@ class TestVoiceStatusAppend:
         assert result == "msg-new"
 
         # Verify adapter.send_message was called
-        adapter.send_message.assert_called_once_with(session_id, "🎤 Transcribing...")
+        adapter._mock_send_message.assert_called_once_with(session_id, "🎤 Transcribing...", None)
 
     async def test_append_without_message_id_sends_new(self, session_manager, tmp_path):
         """Test that append without message_id returns None (can't append)."""
@@ -114,15 +148,13 @@ class TestVoiceStatusAppend:
         output_file = tmp_path / f"{session_id[:8]}.txt"
         output_file.write_text("some output")
 
-        # Mock adapter
-        adapter = Mock()
-        adapter.send_message = AsyncMock(return_value="msg-new")
+        # Create test adapter
+        adapter = TestUiAdapter(None)
+        adapter._mock_send_message = AsyncMock(return_value="msg-new")
 
         # No message ID set but trying to append
-        result = await output_message_manager.send_status_message(
+        result = await adapter.send_status_message(
             session_id=session_id,
-            adapter=adapter,
-            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=True,
             output_file_path=str(output_file),
@@ -134,10 +166,10 @@ class TestVoiceStatusAppend:
     async def test_append_handles_stale_message_id(self, session_manager, tmp_path):
         """Test that append handles stale message_id (edit fails)."""
         # Create session first
-        session = await session_manager.create_session(
+        session = await db.create_session(
             computer_name="TestComputer",
             tmux_session_name="test-stale-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             adapter_metadata={"chat_id": "123", "topic_id": "456"},
         )
         session_id = session.session_id
@@ -146,19 +178,17 @@ class TestVoiceStatusAppend:
         output_file = tmp_path / f"{session_id[:8]}.txt"
         output_file.write_text("some output")
 
-        # Mock adapter with edit failure
-        adapter = Mock()
-        adapter.edit_message = AsyncMock(return_value=False)  # Edit fails
-        adapter.send_message = AsyncMock(return_value=None)  # Fallback send also returns None
+        # Create test adapter with edit failure
+        adapter = TestUiAdapter(None)
+        adapter._mock_edit_message = AsyncMock(return_value=False)  # Edit fails
+        adapter._mock_send_message = AsyncMock(return_value=None)  # Fallback send also returns None
 
         # Set message ID
-        await session_manager.update_ux_state(session_id, {"output_message_id": "msg-stale"})
+        await db.update_ux_state(session_id, output_message_id="msg-stale")
 
         # Try to append (should fail edit, then fallthrough to send new which also returns None)
-        result = await output_message_manager.send_status_message(
+        result = await adapter.send_status_message(
             session_id=session_id,
-            adapter=adapter,
-            session_manager=session_manager,
             text="🎤 Transcribing...",
             append_to_existing=True,
             output_file_path=str(output_file),
@@ -168,6 +198,5 @@ class TestVoiceStatusAppend:
         assert result is None
 
         # Verify message_id was cleared
-        ux_state = await session_manager.get_ux_state(session_id)
-        cleared_id = ux_state.get("output_message_id")
-        assert cleared_id is None
+        ux_state = await db.get_ux_state(session_id)
+        assert ux_state.output_message_id is None

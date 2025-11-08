@@ -1,0 +1,520 @@
+"""Integration test for multi-adapter broadcasting.
+
+Tests UC-M1: Telegram User with Redis Observer
+"""
+
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
+from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.db import db, Db
+
+
+class MockTelegramAdapter(BaseAdapter):
+    """Mock Telegram adapter (has_ui=True, origin)."""
+
+    has_ui = True
+
+    def __init__(self):
+        super().__init__()
+        self.send_message_calls = []
+        self.edit_message_calls = []
+        self.delete_message_calls = []
+
+    async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+        self.send_message_calls.append((session_id, text, metadata))
+        return "msg-123"
+
+    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+        self.edit_message_calls.append((session_id, message_id, text))
+        return True
+
+    async def delete_message(self, session_id: str, message_id: str) -> bool:
+        self.delete_message_calls.append((session_id, message_id))
+        return True
+
+    async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+        return "channel-123"
+
+    async def update_channel_title(self, session_id: str, title: str) -> bool:
+        return True
+
+    async def set_channel_status(self, session_id: str, status: str) -> bool:
+        return True
+
+    async def delete_channel(self, session_id: str) -> bool:
+        return True
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+    async def discover_peers(self):
+        return []
+
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        """Not used in these tests."""
+        if False:
+            yield
+        return
+
+
+class MockRedisAdapter(BaseAdapter):
+    """Mock Redis adapter (has_ui=False, observer)."""
+
+    has_ui = False  # Pure transport, no UI
+
+    def __init__(self):
+        super().__init__()
+        self.send_message_calls = []
+
+    async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+        self.send_message_calls.append((session_id, text, metadata))
+        return "redis-msg-123"
+
+    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+        return True
+
+    async def delete_message(self, session_id: str, message_id: str) -> bool:
+        return True
+
+    async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+        return "redis-channel-123"
+
+    async def update_channel_title(self, session_id: str, title: str) -> bool:
+        return True
+
+    async def set_channel_status(self, session_id: str, status: str) -> bool:
+        return True
+
+    async def delete_channel(self, session_id: str) -> bool:
+        return True
+
+    async def start(self):
+        pass
+
+    async def stop(self):
+        pass
+
+    async def discover_peers(self):
+        return []
+
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        """Not used in these tests."""
+        if False:
+            yield
+        return
+
+
+@pytest.mark.integration
+async def test_origin_adapter_receives_output():
+    """Test output sent to origin adapter (CRITICAL).
+
+    Use Case: UC-M1
+    Flow:
+    1. Create session with origin_adapter="telegram"
+    2. Register TelegramAdapter as origin
+    3. Send message via adapter_client
+    4. Verify send_message() called on TelegramAdapter
+    5. Verify message_id returned
+    """
+    # Setup test database
+    db_path = "/tmp/test_origin_adapter.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with patch("teleclaude.core.adapter_client.db", test_db):
+                # Create session
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-origin",
+                    origin_adapter="telegram",
+                    title="Origin Test",
+                )
+
+                # Create adapter_client with TelegramAdapter as origin
+                telegram_adapter = MockTelegramAdapter()
+                adapter_client = AdapterClient()
+                adapter_client.adapters = {"telegram": telegram_adapter}
+
+                # Send message (should route to origin)
+                result = await adapter_client.send_message(
+                    session.session_id, "Test output"
+                )
+
+                # Verify send_message called on TelegramAdapter
+                assert len(telegram_adapter.send_message_calls) == 1
+                assert telegram_adapter.send_message_calls[0] == (session.session_id, "Test output", None)
+
+                # Verify message_id returned
+                assert result == "msg-123"
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_redis_observer_skipped_no_ui():
+    """Test RedisAdapter (has_ui=False) skipped for broadcasts.
+
+    Use Case: UC-M1
+    Flow:
+    1. Create session with telegram origin
+    2. Register both TelegramAdapter (origin) and RedisAdapter (observer)
+    3. Send message via adapter_client
+    4. Verify output sent to telegram (origin)
+    5. Verify Redis send_message() NOT called (has_ui=False)
+    """
+    # Setup test database
+    db_path = "/tmp/test_redis_observer.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with patch("teleclaude.core.adapter_client.db", test_db):
+                # Create session with telegram origin
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-redis-observer",
+                    origin_adapter="telegram",
+                    title="Redis Observer Test",
+                )
+
+                # Create adapters
+                telegram_adapter = MockTelegramAdapter()
+                redis_adapter = MockRedisAdapter()
+
+                # Create adapter_client with both adapters
+                adapter_client = AdapterClient()
+                adapter_client.adapters = {
+                    "telegram": telegram_adapter,
+                    "redis": redis_adapter,
+                }
+
+                # Send message (origin: telegram, observer: redis)
+                await adapter_client.send_message(session.session_id, "Test output")
+
+                # Verify telegram (origin) received message
+                assert len(telegram_adapter.send_message_calls) == 1
+
+                # Verify redis (observer with has_ui=False) NOT called
+                assert len(redis_adapter.send_message_calls) == 0
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_ui_observer_receives_broadcasts():
+    """Test UI observer (has_ui=True) receives broadcasts (future Slack/WhatsApp).
+
+    Use Case: UC-M2 (future)
+    Flow:
+    1. Create session with telegram origin
+    2. Register Telegram (origin) and MockSlack (observer with has_ui=True)
+    3. Send message via adapter_client
+    4. Verify telegram (origin) receives message
+    5. Verify slack (observer with has_ui=True) also receives message
+    """
+
+    class MockSlackAdapter(BaseAdapter):
+        """Mock Slack adapter (has_ui=True, observer)."""
+
+        has_ui = True
+
+        def __init__(self):
+            super().__init__()
+            self.send_message_calls = []
+
+        async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+            self.send_message_calls.append((session_id, text, metadata))
+            return "slack-msg-123"
+
+        async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+            return True
+
+        async def delete_message(self, session_id: str, message_id: str) -> bool:
+            return True
+
+        async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+            return "slack-channel-123"
+
+        async def update_channel_title(self, session_id: str, title: str) -> bool:
+            return True
+
+        async def set_channel_status(self, session_id: str, status: str) -> bool:
+            return True
+
+        async def delete_channel(self, session_id: str) -> bool:
+            return True
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+        async def discover_peers(self):
+            return []
+
+        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+            """Not used in these tests."""
+            if False:
+                yield
+            return
+
+    # Setup test database
+    db_path = "/tmp/test_ui_observer.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with patch("teleclaude.core.adapter_client.db", test_db):
+                # Create session
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-ui-observer",
+                    origin_adapter="telegram",
+                    title="UI Observer Test",
+                )
+
+                # Create adapters
+                telegram_adapter = MockTelegramAdapter()
+                slack_adapter = MockSlackAdapter()
+
+                # Create adapter_client
+                adapter_client = AdapterClient()
+                adapter_client.adapters = {
+                    "telegram": telegram_adapter,
+                    "slack": slack_adapter,
+                }
+
+                # Send message
+                await adapter_client.send_message(session.session_id, "Test output")
+
+                # Verify telegram (origin) called
+                assert len(telegram_adapter.send_message_calls) == 1
+
+                # Verify slack (observer with has_ui=True) also called (best-effort)
+                assert len(slack_adapter.send_message_calls) == 1
+                assert slack_adapter.send_message_calls[0] == (session.session_id, "Test output", None)
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_observer_failure_does_not_affect_origin():
+    """Test observer failure logged but origin message succeeds.
+
+    Use Case: UC-M1 (error handling)
+    Flow:
+    1. Create session with telegram origin and slack observer
+    2. Make slack send_message() raise exception
+    3. Send message via adapter_client
+    4. Verify telegram (origin) succeeds
+    5. Verify slack exception logged but not raised
+    """
+
+    class MockSlackAdapterFailing(BaseAdapter):
+        """Mock Slack adapter that always fails."""
+
+        has_ui = True
+
+        def __init__(self):
+            super().__init__()
+            self.send_message_calls = []
+
+        async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+            self.send_message_calls.append((session_id, text, metadata))
+            raise Exception("Slack API error")
+
+        async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+            return True
+
+        async def delete_message(self, session_id: str, message_id: str) -> bool:
+            return True
+
+        async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+            return "slack-channel-123"
+
+        async def update_channel_title(self, session_id: str, title: str) -> bool:
+            return True
+
+        async def set_channel_status(self, session_id: str, status: str) -> bool:
+            return True
+
+        async def delete_channel(self, session_id: str) -> bool:
+            return True
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+        async def discover_peers(self):
+            return []
+
+        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+            """Not used in these tests."""
+            if False:
+                yield
+            return
+
+    # Setup test database
+    db_path = "/tmp/test_observer_failure.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with patch("teleclaude.core.adapter_client.db", test_db):
+                # Create session
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-observer-failure",
+                    origin_adapter="telegram",
+                    title="Observer Failure Test",
+                )
+
+                # Create adapters
+                telegram_adapter = MockTelegramAdapter()
+                slack_adapter = MockSlackAdapterFailing()
+
+                # Create adapter_client
+                adapter_client = AdapterClient()
+                adapter_client.adapters = {
+                    "telegram": telegram_adapter,
+                    "slack": slack_adapter,
+                }
+
+                # Send message (should succeed despite slack failure)
+                result = await adapter_client.send_message(
+                    session.session_id, "Test output"
+                )
+
+                # Verify telegram (origin) succeeded
+                assert len(telegram_adapter.send_message_calls) == 1
+                assert result == "msg-123"
+
+                # Verify slack was attempted (logged the call before failing)
+                assert len(slack_adapter.send_message_calls) == 1
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_origin_failure_raises_exception():
+    """Test origin adapter failure raises exception (CRITICAL).
+
+    Use Case: UC-M1 (error handling)
+    Flow:
+    1. Create session with telegram origin
+    2. Make telegram send_message() raise exception
+    3. Attempt to send message via adapter_client
+    4. Verify exception raised (origin failures are critical)
+    """
+
+    class MockTelegramAdapterFailing(BaseAdapter):
+        """Mock Telegram adapter that fails."""
+
+        has_ui = True
+
+        def __init__(self):
+            super().__init__()
+
+        async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+            raise Exception("Telegram API error")
+
+        async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+            return True
+
+        async def delete_message(self, session_id: str, message_id: str) -> bool:
+            return True
+
+        async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+            return "channel-123"
+
+        async def update_channel_title(self, session_id: str, title: str) -> bool:
+            return True
+
+        async def set_channel_status(self, session_id: str, status: str) -> bool:
+            return True
+
+        async def delete_channel(self, session_id: str) -> bool:
+            return True
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+        async def discover_peers(self):
+            return []
+
+        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+            """Not used in these tests."""
+            if False:
+                yield
+            return
+
+    # Setup test database
+    db_path = "/tmp/test_origin_failure.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with patch("teleclaude.core.adapter_client.db", test_db):
+                # Create session
+                session = await test_db.create_session(
+                    computer_name="TestPC",
+                    tmux_session_name="test-origin-failure",
+                    origin_adapter="telegram",
+                    title="Origin Failure Test",
+                )
+
+                # Create failing adapter
+                telegram_adapter = MockTelegramAdapterFailing()
+
+                # Create adapter_client
+                adapter_client = AdapterClient()
+                adapter_client.adapters = {"telegram": telegram_adapter}
+
+                # Attempt to send message (should raise)
+                with pytest.raises(Exception, match="Telegram API error"):
+                    await adapter_client.send_message(session.session_id, "Test output")
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

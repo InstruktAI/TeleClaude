@@ -3,19 +3,16 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from teleclaude.core import terminal_bridge
-from teleclaude.config import init_config
 
 
 @pytest.fixture(autouse=True)
 def setup_config():
     """Initialize config for all tests."""
-    # Mock get_config at the terminal_bridge module level
-    test_config = {
-        "polling": {
-            "lpoll_extensions": []
-        }
-    }
-    with patch('teleclaude.core.terminal_bridge.get_config', return_value=test_config):
+    # Mock the config object at the terminal_bridge module level
+    from teleclaude import config as config_module
+    test_config = MagicMock()
+    test_config.polling.lpoll_extensions = []
+    with patch.object(config_module, 'config', test_config):
         yield
 
 
@@ -429,8 +426,8 @@ class TestGetLpollList:
 
     def test_returns_defaults(self):
         """Test that defaults are included."""
-        with patch('teleclaude.core.terminal_bridge.get_config') as mock_config:
-            mock_config.return_value = {"polling": {}}
+        with patch('teleclaude.core.terminal_bridge.config') as mock_config:
+            mock_config.polling.lpoll_extensions = []
             lpoll_list = terminal_bridge._get_lpoll_list()
 
             # Check some known defaults
@@ -440,12 +437,8 @@ class TestGetLpollList:
 
     def test_includes_extensions(self):
         """Test that config extensions are added."""
-        with patch('teleclaude.core.terminal_bridge.get_config') as mock_config:
-            mock_config.return_value = {
-                "polling": {
-                    "lpoll_extensions": ["custom-app", "my-tool"]
-                }
-            }
+        with patch('teleclaude.core.terminal_bridge.config') as mock_config:
+            mock_config.polling.lpoll_extensions = ["custom-app", "my-tool"]
             lpoll_list = terminal_bridge._get_lpoll_list()
 
             # Check defaults still present
@@ -456,8 +449,8 @@ class TestGetLpollList:
 
     def test_empty_extensions(self):
         """Test with no extensions configured."""
-        with patch('teleclaude.core.terminal_bridge.get_config') as mock_config:
-            mock_config.return_value = {"polling": {"lpoll_extensions": []}}
+        with patch('teleclaude.core.terminal_bridge.config') as mock_config:
+            mock_config.polling.lpoll_extensions = []
             lpoll_list = terminal_bridge._get_lpoll_list()
 
             # Should just have defaults

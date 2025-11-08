@@ -14,25 +14,25 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
     daemon = daemon_with_mocked_telegram
 
     # Create a session
-    session = await daemon.session_manager.create_session(
+    session = await daemon.db.create_session(
         computer_name="test",
         tmux_session_name="test-exit-detection",
-        adapter_type="telegram",
+        origin_adapter="telegram",
         title="Test Exit Detection",
         terminal_size="80x24",
         working_directory="/tmp",
     )
 
     # Simulate process running - set output_message_id
-    await daemon.session_manager.update_ux_state(session.session_id, {"output_message_id": "msg-123"})
+    await daemon.db.update_ux_state(session.session_id, output_message_id="msg-123")
 
     # Create output file (kept for downloads)
     output_file = tmp_path / f"{session.session_id[:8]}.txt"
     output_file.write_text("test output")
 
     # Process is running
-    ux_state = await daemon.session_manager.get_ux_state(session.session_id)
-    output_message_id = ux_state.get("output_message_id")
+    ux_state = await daemon.db.get_ux_state(session.session_id)
+    output_message_id = ux_state.output_message_id
     assert output_message_id == "msg-123"
     assert output_file.exists()
 
@@ -42,14 +42,14 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
     assert is_process_running is True
 
     # Simulate process exit - clear output_message_id (daemon.py:1253)
-    await daemon.session_manager.update_ux_state(session.session_id, {"output_message_id": None})
+    await daemon.db.update_ux_state(session.session_id, output_message_id=None)
 
     # Output file still exists (kept for download button)
     assert output_file.exists()
 
     # But process is no longer running
-    ux_state = await daemon.session_manager.get_ux_state(session.session_id)
-    output_message_id = ux_state.get("output_message_id")
+    ux_state = await daemon.db.get_ux_state(session.session_id)
+    output_message_id = ux_state.output_message_id
     assert output_message_id is None
 
     has_output_message = bool(output_message_id)
@@ -68,33 +68,33 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
     daemon = daemon_with_mocked_telegram
 
     # Create session with active polling
-    session = await daemon.session_manager.create_session(
+    session = await daemon.db.create_session(
         computer_name="test",
         tmux_session_name="test-restart-detection",
-        adapter_type="telegram",
+        origin_adapter="telegram",
         title="Test Restart",
         terminal_size="80x24",
         working_directory="/tmp",
     )
 
     # Set output_message_id (polling active)
-    await daemon.session_manager.update_ux_state(session.session_id, {"output_message_id": "msg-456"})
+    await daemon.db.update_ux_state(session.session_id, output_message_id="msg-456")
 
     # Verify it was stored
-    ux_state = await daemon.session_manager.get_ux_state(session.session_id)
-    stored_id = ux_state.get("output_message_id")
+    ux_state = await daemon.db.get_ux_state(session.session_id)
+    stored_id = ux_state.output_message_id
     assert stored_id == "msg-456"
 
     # Simulate daemon restart - create new manager with same database
-    from teleclaude.core.session_manager import SessionManager
+    from teleclaude.core.db import db, Db
 
-    db_path = daemon.session_manager.db_path
-    new_manager = SessionManager(db_path)
+    db_path = daemon.db.db_path
+    new_manager = Db(db_path)
     await new_manager.initialize()
 
     # output_message_id should persist (from database)
     ux_state = await new_manager.get_ux_state(session.session_id)
-    output_message_id = ux_state.get("output_message_id")
+    output_message_id = ux_state.output_message_id
     assert output_message_id == "msg-456"
 
     # Process detection still works

@@ -97,7 +97,7 @@ async def transcribe_voice(
             transcript = await resolved_client.audio.transcriptions.create(**params)
             logger.info("✓ Whisper API call successful")
 
-        transcribed_text = transcript.text.strip()
+        transcribed_text: str = str(transcript.text).strip()
         logger.info(
             "✓ Transcription successful: '%s' (length: %s chars)", transcribed_text[:100], len(transcribed_text)
         )

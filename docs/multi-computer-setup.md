@@ -137,6 +137,7 @@ computer:
 
 telegram:
   supergroup_id: ${TELEGRAM_SUPERGROUP_ID} # SAME for all computers
+  is_master: true  # Only ONE computer should be master (usually your primary workstation)
 
   # Whitelist of trusted bots (SAME for all computers)
   trusted_bots:
@@ -157,6 +158,47 @@ mcp:
 - ✅ `TELEGRAM_BOT_TOKEN` must be **unique** per computer
 - ✅ `TELEGRAM_SUPERGROUP_ID` must be **same** for all computers
 - ✅ `trusted_bots` list must include **all bots** on all computers (security whitelist)
+- ✅ `telegram.is_master` should be `true` on **ONE computer only** (see Master Bot Pattern below)
+
+---
+
+### Master Bot Pattern
+
+**Why only one master?**
+
+When multiple bots are in the same Telegram supergroup, only **one bot** should register Telegram commands. This prevents duplicate command entries in Telegram's autocomplete UI.
+
+**Configuration:**
+
+```yaml
+# Master computer (e.g., macbook) - registers commands
+telegram:
+  is_master: true
+
+# Non-master computers (e.g., workstation, server) - clear their command lists
+telegram:
+  is_master: false  # Or omit this field (defaults to false)
+```
+
+**How it works:**
+
+1. **Master bot** registers all commands with **trailing spaces**:
+   - Example: `BotCommand("new_session ", "Create a new terminal session")`
+   - The trailing space prevents Telegram from appending `@botname` in autocomplete
+   - Commands become universal: `/new_session` works for any bot
+
+2. **Non-master bots** clear their command lists:
+   - Prevents duplicate command entries
+   - All bots still respond to commands
+   - Users don't see 3-4 copies of each command in autocomplete
+
+**When to use is_master:**
+
+- ✅ Set `is_master: true` on your **primary workstation** (the computer you interact with most)
+- ✅ Set `is_master: false` (or omit) on all other computers
+- ✅ Only change if you want a different computer to manage command registration
+
+**Important:** All bots still handle commands regardless of `is_master` setting. This only affects command registration in Telegram's UI
 
 ---
 

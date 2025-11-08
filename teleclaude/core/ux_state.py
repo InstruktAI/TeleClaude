@@ -7,6 +7,7 @@ Provides unified interface for storing/retrieving UX state in either:
 
 import json
 import logging
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 # Module-level DB connection (set by daemon on startup)
 _db: Optional[aiosqlite.Connection] = None
+
+# Sentinel value to distinguish "not provided" from None
+_UNSET = object()
 
 
 async def init(db_path: str) -> None:
@@ -35,155 +39,217 @@ class UXStateContext(Enum):
     SESSION = "session"
 
 
-async def get_ux_state(
-    db: aiosqlite.Connection, context: UXStateContext, session_id: Optional[str] = None
-) -> dict[str, Any]:
-    """Get UX state from database.
+@dataclass
+class SessionUXState:
+    """Typed UX state for sessions."""
+
+    output_message_id: Optional[str] = None
+    polling_active: bool = False
+    idle_notification_message_id: Optional[str] = None
+    pending_deletions: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SessionUXState":  # type: ignore
+        """Create SessionUXState from dict."""
+        return cls(
+            output_message_id=str(data["output_message_id"]) if data.get("output_message_id") else None,
+            polling_active=bool(data.get("polling_active", False)),
+            idle_notification_message_id=(
+                str(data["idle_notification_message_id"]) if data.get("idle_notification_message_id") else None
+            ),
+            pending_deletions=(
+                list(data.get("pending_deletions", [])) if isinstance(data.get("pending_deletions"), list) else []
+            ),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """Convert to dict for JSON storage."""
+        return {
+            "output_message_id": self.output_message_id,
+            "polling_active": self.polling_active,
+            "idle_notification_message_id": self.idle_notification_message_id,
+            "pending_deletions": self.pending_deletions,
+        }
+
+
+@dataclass
+class RegistryState:
+    """Registry state within system UX state."""
+
+    topic_id: Optional[int] = None
+    ping_message_id: Optional[int] = None
+    pong_message_id: Optional[int] = None
+
+
+@dataclass
+class SystemUXState:
+    """Typed UX state for system."""
+
+    registry: RegistryState = field(default_factory=RegistryState)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "SystemUXState":
+        """Create SystemUXState from dict."""
+        registry_data = data.get("registry", {})
+        if isinstance(registry_data, dict):
+            registry = RegistryState(
+                topic_id=int(registry_data["topic_id"]) if registry_data.get("topic_id") else None,
+                ping_message_id=int(registry_data["ping_message_id"]) if registry_data.get("ping_message_id") else None,
+                pong_message_id=int(registry_data["pong_message_id"]) if registry_data.get("pong_message_id") else None,
+            )
+        else:
+            registry = RegistryState()
+        return cls(registry=registry)
+
+    def to_dict(self) -> dict[str, object]:
+        """Convert to dict for JSON storage."""
+        return {
+            "registry": {
+                "topic_id": self.registry.topic_id,
+                "ping_message_id": self.registry.ping_message_id,
+                "pong_message_id": self.registry.pong_message_id,
+            }
+        }
+
+
+async def get_session_ux_state(db: aiosqlite.Connection, session_id: str) -> SessionUXState:
+    """Get typed UX state for session.
 
     Args:
         db: Database connection
-        context: Whether to get system or session state
-        session_id: Required if context is SESSION
+        session_id: Session identifier
 
     Returns:
-        Dict with UX state (empty dict if not found)
+        SessionUXState (with defaults if not found)
     """
     try:
-        if context == UXStateContext.SYSTEM:
-            # Load from system_settings table
-            cursor = await db.execute("SELECT value FROM system_settings WHERE key = 'ux_state'")
-            row = await cursor.fetchone()
-            if row:
-                ux_state = json.loads(row[0])
-                logger.debug("Loaded system UX state: %s", ux_state)
-                return ux_state
+        # Load from sessions table
+        cursor = await db.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
+        row = await cursor.fetchone()
+        if row and row[0]:
+            data = json.loads(row[0])
+            logger.debug("Loaded session UX state for %s: %s", session_id[:8], data)
+            return SessionUXState.from_dict(data)
 
-            # Fall back to legacy registry_topic_id for backwards compatibility
-            cursor = await db.execute("SELECT value FROM system_settings WHERE key = 'registry_topic_id'")
-            row = await cursor.fetchone()
-            if row:
-                topic_id = int(row[0])
-                logger.info("Migrating legacy registry_topic_id %s to ux_state", topic_id)
-                return {"registry": {"topic_id": topic_id}}
-
-            return {}
-
-        elif context == UXStateContext.SESSION:
-            if not session_id:
-                raise ValueError("session_id required for SESSION context")
-
-            # Load from sessions table
-            cursor = await db.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
-            row = await cursor.fetchone()
-            if row and row[0]:
-                ux_state = json.loads(row[0])
-                logger.debug("Loaded session UX state for %s: %s", session_id[:8], ux_state)
-                return ux_state
-
-            # Fall back to legacy columns for backwards compatibility
-            cursor = await db.execute(
-                "SELECT output_message_id, idle_notification_message_id FROM sessions WHERE session_id = ?",
-                (session_id,),
-            )
-            row = await cursor.fetchone()
-            if row and (row[0] or row[1]):
-                logger.debug("Migrating legacy message IDs for session %s", session_id[:8])
-                return {
-                    "output_message_id": row[0],
-                    "idle_notification_message_id": row[1],
-                }
-
-            return {}
+        return SessionUXState()
 
     except Exception as e:
-        logger.warning("Failed to retrieve UX state (context=%s): %s", context.value, e)
-        return {}
+        logger.warning("Failed to retrieve session UX state: %s", e)
+        return SessionUXState()
 
 
-async def update_ux_state(
-    db: aiosqlite.Connection, context: UXStateContext, updates: dict[str, Any], session_id: Optional[str] = None
-) -> None:
-    """Update UX state (merges with existing).
+async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
+    """Get typed UX state for system.
 
     Args:
         db: Database connection
-        context: Whether to update system or session state
-        updates: Dict with properties to update (deep merged with existing)
-        session_id: Required if context is SESSION
+
+    Returns:
+        SystemUXState (with defaults if not found)
+    """
+    try:
+        # Load from system_settings table
+        cursor = await db.execute("SELECT value FROM system_settings WHERE key = 'ux_state'")
+        row = await cursor.fetchone()
+        if row:
+            data = json.loads(row[0])
+            logger.debug("Loaded system UX state: %s", data)
+            return SystemUXState.from_dict(data)
+
+        return SystemUXState()
+
+    except Exception as e:
+        logger.warning("Failed to retrieve system UX state: %s", e)
+        return SystemUXState()
+
+
+async def update_session_ux_state(
+    db: aiosqlite.Connection,
+    session_id: str,
+    *,
+    output_message_id: Optional[str] | object = _UNSET,
+    polling_active: bool | object = _UNSET,
+    idle_notification_message_id: Optional[str] | object = _UNSET,
+    pending_deletions: list[str] | object = _UNSET,
+) -> None:
+    """Update session UX state (merges with existing).
+
+    Args:
+        db: Database connection
+        session_id: Session identifier
+        output_message_id: Output message ID (optional)
+        polling_active: Whether polling is active (optional)
+        idle_notification_message_id: Idle notification message ID (optional)
+        pending_deletions: List of message IDs pending deletion (optional)
     """
     try:
         # Load existing state
-        existing_state = await get_ux_state(db, context, session_id)
+        existing = await get_session_ux_state(db, session_id)
 
-        # Deep merge updates into existing state
-        def deep_merge(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
-            """Recursively merge updates into base."""
-            result = base.copy()
-            for key, value in updates.items():
-                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                    result[key] = deep_merge(result[key], value)
-                else:
-                    result[key] = value
-            return result
+        # Apply updates (only update fields that were provided)
+        if output_message_id is not _UNSET:
+            existing.output_message_id = output_message_id  # type: ignore
+        if polling_active is not _UNSET:
+            existing.polling_active = polling_active  # type: ignore
+        if idle_notification_message_id is not _UNSET:
+            existing.idle_notification_message_id = idle_notification_message_id  # type: ignore
+        if pending_deletions is not _UNSET:
+            existing.pending_deletions = pending_deletions  # type: ignore
 
-        merged_state = deep_merge(existing_state, updates)
-        ux_state_json = json.dumps(merged_state)
-
-        if context == UXStateContext.SYSTEM:
-            # Store in system_settings table
-            await db.execute(
-                """
-                INSERT INTO system_settings (key, value, updated_at)
-                VALUES ('ux_state', ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (ux_state_json,),
-            )
-            await db.commit()
-            logger.debug("Updated system UX state with: %s", updates)
-
-        elif context == UXStateContext.SESSION:
-            if not session_id:
-                raise ValueError("session_id required for SESSION context")
-
-            # Store in sessions table
-            await db.execute(
-                "UPDATE sessions SET ux_state = ? WHERE session_id = ?",
-                (ux_state_json, session_id),
-            )
-            await db.commit()
-            logger.debug("Updated session %s UX state with: %s", session_id[:8], updates)
+        # Store
+        ux_state_json = json.dumps(existing.to_dict())
+        await db.execute(
+            "UPDATE sessions SET ux_state = ? WHERE session_id = ?",
+            (ux_state_json, session_id),
+        )
+        await db.commit()
+        logger.debug("Updated session %s UX state", session_id[:8])
 
     except Exception as e:
-        logger.error("Failed to update UX state (context=%s): %s", context.value, e)
+        logger.error("Failed to update session UX state: %s", e)
 
 
-# Convenience wrappers for cleaner API (use module-level DB connection)
-async def get_system() -> dict[str, Any]:
-    """Get system-level UX state."""
-    if not _db:
-        raise RuntimeError("ux_state not initialized - call init() first")
-    return await get_ux_state(_db, UXStateContext.SYSTEM)
+async def update_system_ux_state(
+    db: aiosqlite.Connection,
+    *,
+    registry_topic_id: Optional[int] | object = _UNSET,
+    registry_ping_message_id: Optional[int] | object = _UNSET,
+    registry_pong_message_id: Optional[int] | object = _UNSET,
+) -> None:
+    """Update system UX state (merges with existing).
 
+    Args:
+        db: Database connection
+        registry_topic_id: Registry topic ID (optional)
+        registry_ping_message_id: Registry ping message ID (optional)
+        registry_pong_message_id: Registry pong message ID (optional)
+    """
+    try:
+        # Load existing state
+        existing = await get_system_ux_state(db)
 
-async def get_session(session_id: str) -> dict[str, Any]:
-    """Get session-level UX state."""
-    if not _db:
-        raise RuntimeError("ux_state not initialized - call init() first")
-    return await get_ux_state(_db, UXStateContext.SESSION, session_id)
+        # Apply updates (only update fields that were provided)
+        if registry_topic_id is not _UNSET:
+            existing.registry.topic_id = registry_topic_id  # type: ignore
+        if registry_ping_message_id is not _UNSET:
+            existing.registry.ping_message_id = registry_ping_message_id  # type: ignore
+        if registry_pong_message_id is not _UNSET:
+            existing.registry.pong_message_id = registry_pong_message_id  # type: ignore
 
+        # Store
+        ux_state_json = json.dumps(existing.to_dict())
+        await db.execute(
+            """
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES ('ux_state', ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (ux_state_json,),
+        )
+        await db.commit()
+        logger.debug("Updated system UX state")
 
-async def update_system(updates: dict[str, Any]) -> None:
-    """Update system-level UX state."""
-    if not _db:
-        raise RuntimeError("ux_state not initialized - call init() first")
-    await update_ux_state(_db, UXStateContext.SYSTEM, updates)
-
-
-async def update_session(session_id: str, updates: dict[str, Any]) -> None:
-    """Update session-level UX state."""
-    if not _db:
-        raise RuntimeError("ux_state not initialized - call init() first")
-    await update_ux_state(_db, UXStateContext.SESSION, updates, session_id)
+    except Exception as e:
+        logger.error("Failed to update system UX state: %s", e)

@@ -47,6 +47,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **Module-Level Functions vs Class Methods** - If it's not using `self`, it doesn't belong in the class
 5. **Single Responsibility Principle** - Each module, class, and function does ONE thing
 
+**🚨 ANTI-PATTERN CHECKLIST - STOP if you're about to write:**
+
+- `thing.thing = ...` → Creating confusing double references (session_manager.session_manager, db.db)
+- `self.something_manager = ...` → Should be module-level import instead
+- Passing singletons as parameters → Use `from module import singleton` instead
+- Three+ lines to access a singleton → Should be one import line
+- `def __init__(self, x, y, z, a, b, c):` → Too many dependencies, use module-level imports
+
+**First-principles question:** "Would a junior dev understand this in 5 seconds?" If no, simplify.
+
 ### Rule #4: IMPORT POLICY
 
 **ALL imports MUST be at the top of files** - `import-outside-toplevel` is enforced by pylint with `--fail-on` flag. NO exceptions.
@@ -148,6 +158,71 @@ make clean                   # Clean generated files and caches
 
 ## Command Implementation Patterns
 
+### Clean UX Rule for Telegram Adapter
+
+**CRITICAL**: Telegram adapter (`has_ui=True`) follows strict message management rules for clean UX:
+
+**Output Messages (from terminal commands):**
+- **ALWAYS EDITED**, never create new messages
+- One persistent message per session output
+- Message ID stored in `ux_state` (session table)
+- Survives daemon restarts
+
+**Feedback Messages (status/info):**
+- **ALWAYS TEMPORARY**, deleted when new input arrives
+- Examples: "Transcribing...", "Changed directory to...", "Session created"
+- Message IDs stored in `ux_state.pending_deletions`
+- Auto-deleted by message handler before processing next input
+
+**System Messages (heartbeats, registry):**
+- **ALWAYS EDITED**, never create new messages after initial post
+- Message ID stored in `system_settings` table (system UX state)
+- Examples: `[REGISTRY] {computer} last seen at...`
+- Survives daemon restarts via `SystemUXState.registry_message_id`
+
+**Implementation:**
+- All message IDs persisted in `ux_state` column (JSON)
+- `update_session_ux_state()` / `update_system_ux_state()` functions
+- Load state on startup, edit existing messages instead of creating new ones
+
+### Master Bot Pattern (Multi-Computer Setup)
+
+**CRITICAL DESIGN PATTERN for multi-computer deployments:**
+
+When running TeleClaude on multiple computers with different bots in the same Telegram supergroup, **ONLY the master computer registers Telegram commands**. This prevents duplicate command entries in Telegram's UI.
+
+**Configuration:**
+
+```yaml
+# config.yml on master computer
+telegram:
+  is_master: true  # This bot registers commands
+
+# config.yml on non-master computers
+telegram:
+  is_master: false  # These bots clear their command lists
+```
+
+**Trailing Space Pattern:**
+
+BotCommand definitions **intentionally include trailing spaces**:
+
+```python
+commands = [
+    BotCommand("new_session ", "Create a new terminal session"),  # Note the trailing space
+    BotCommand("list_sessions ", "List all active sessions"),
+]
+```
+
+**Why trailing spaces?**
+
+- Without trailing space: Telegram appends `@botname` in autocomplete → `"/new_session@masterbot"`
+- With trailing space: Commands are distributed to ALL bots → `"/new_session "` works for any bot
+- Prevents duplicate command entries when multiple bots are in the same group
+- Users can type commands without specifying which bot to use
+
+**DO NOT remove trailing spaces from BotCommand definitions** - this is intentional, not a bug!
+
 ### Adding a New Bot Command
 
 When adding a new command to the Telegram bot, you MUST follow ALL these steps:
@@ -163,12 +238,13 @@ When adding a new command to the Telegram bot, you MUST follow ALL these steps:
    ```python
    commands = [
        # ... existing commands
-       BotCommand("command_name", "Description shown in Telegram UI"),
+       BotCommand("command_name ", "Description shown in Telegram UI"),  # Note trailing space!
    ]
    await self.app.bot.set_my_commands(commands)
    ```
 
    ⚠️ **CRITICAL**: Without this step, the command won't appear in Telegram's autocomplete!
+   ⚠️ **IMPORTANT**: Include trailing space after command name (see Master Bot Pattern above)
 
 3. **Implement handler method** in `telegram_adapter.py`:
 

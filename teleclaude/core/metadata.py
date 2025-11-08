@@ -1,0 +1,34 @@
+"""Standardized metadata for adapter events.
+
+Provides Pydantic models for type-safe event metadata across adapters.
+"""
+
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class AdapterMetadata(BaseModel):
+    """Standardized metadata for adapter events.
+
+    This model ensures consistent metadata structure across all adapters
+    while allowing platform-specific extensions.
+    """
+
+    # Required fields
+    adapter_type: str = Field(..., description="Adapter type (telegram, redis, etc.)")
+
+    # Optional common fields
+    user_id: Optional[str] = Field(None, description="Platform user ID (if human)")
+    message_id: Optional[str] = Field(None, description="Platform message ID")
+    is_ai_to_ai: bool = Field(False, description="Flag for AI-to-AI sessions")
+    origin_adapter: Optional[str] = Field(None, description="Origin adapter for observers")
+
+    # Platform-specific data (nested dicts)
+    telegram: Optional[dict[str, object]] = Field(None, description="Telegram-specific data")
+    redis: Optional[dict[str, object]] = Field(None, description="Redis-specific data")
+
+    class Config:
+        """Pydantic configuration."""
+
+        extra = "allow"  # Allow additional platform-specific fields

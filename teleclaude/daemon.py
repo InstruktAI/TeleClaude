@@ -8,13 +8,13 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TextIO
+from typing import Any, Optional, TextIO
 
-import yaml
+import uvicorn
 from dotenv import load_dotenv
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.config import init_config
+from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
     command_handlers,
@@ -23,17 +23,15 @@ from teleclaude.core import (
     polling_coordinator,
     session_lifecycle,
     terminal_executor,
-    voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.computer_registry import ComputerRegistry
+from teleclaude.core.db import db
+from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_manager import SessionManager
 from teleclaude.core.voice_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.rest_api import TeleClaudeAPI
-from teleclaude.utils import expand_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -45,79 +43,119 @@ class DaemonLockError(Exception):
 class TeleClaudeDaemon:
     """Main TeleClaude daemon that coordinates all components."""
 
-    def __init__(self, config_path: str, env_path: str):
+    def __init__(self, env_path: str):
         """Initialize daemon.
 
         Args:
-            config_path: Path to config.yml
             env_path: Path to .env file
         """
         # Load environment variables
         load_dotenv(env_path)
-
-        # Load config
-        with open(config_path, "r", encoding="utf-8") as f:
-            self.config = yaml.safe_load(f)
-
-        # Expand environment variables in config
-        self.config = expand_env_vars(self.config)
-
-        # Initialize global config for all modules
-        init_config(self.config)
 
         # PID file for locking - use project root
         project_root = Path(__file__).parent.parent
         self.pid_file = project_root / "teleclaude.pid"
         self.pid_file_handle: Optional[TextIO] = None  # Will hold the locked file handle
 
-        # Initialize core components
-        db_path = os.path.expanduser(self.config["database"]["path"])
-        self.session_manager = SessionManager(db_path)
-        # Note: terminal_bridge and output_message_manager are now functional modules (no instantiation)
-        self.output_poller = OutputPoller(self.config, self.session_manager)
+        # Note: terminal_bridge and db are functional modules (no instantiation)
+        # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
+        self.output_poller = OutputPoller()
 
         # Output file directory (persistent files for download button)
         self.output_dir = Path("session_output")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize REST API
-        api_port = int(os.getenv("PORT", self.config.get("rest_api", {}).get("port", 6666)))
+        api_port = int(os.getenv("PORT", str(config.rest_api.port)))
         self.rest_api = TeleClaudeAPI(
-            session_manager=self.session_manager,
             bind_address="127.0.0.1",
             port=api_port,
         )
 
-        # Initialize unified adapter client (creates and manages all adapters)
-        self.client = AdapterClient(self)
+        # Initialize unified adapter client (observer pattern - NO daemon reference)
+        self.client = AdapterClient()
 
-        # Initialize computer registry (if MCP enabled and telegram adapter exists)
-        # NOTE: computer_registry is kept for now for backward compatibility
-        # It will be removed once MCP server fully migrates to using client
-        self.computer_registry: Optional[ComputerRegistry] = None
+        # Subscribe to events (observer pattern)
+        self.client.on(TeleClaudeEvents.MESSAGE, self._handle_message_event)
+        self.client.on(TeleClaudeEvents.NEW_SESSION, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.LIST_SESSIONS, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.LIST_PROJECTS, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.CD, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.KILL, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.CANCEL, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.CANCEL_2X, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.ESCAPE, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.ESCAPE_2X, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.CTRL, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.TAB, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.SHIFT_TAB, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.KEY_UP, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.KEY_DOWN, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.KEY_LEFT, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.KEY_RIGHT, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.RENAME, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.CLAUDE, self._handle_command_event)
+        self.client.on(TeleClaudeEvents.CLAUDE_RESUME, self._handle_command_event)
+
+        # Load adapters from config (creates TelegramAdapter, RedisAdapter, etc.)
+        self.client._load_adapters()
+
+        # Initialize MCP server (if enabled)
         self.mcp_server: Optional[TeleClaudeMCPServer] = None
-
-        if self.config.get("mcp", {}).get("enabled", False) and "telegram" in self.client.adapters:
-            computer_name = self.config["computer"]["name"]
-            bot_username = self.config["computer"].get("bot_username", f"teleclaude_{computer_name}_bot")
-
-            self.computer_registry = ComputerRegistry(
-                telegram_adapter=self.client.adapters["telegram"],
-                computer_name=computer_name,
-                bot_username=bot_username,
-                session_manager=self.session_manager,
-            )
-
+        if config.mcp.enabled:
             self.mcp_server = TeleClaudeMCPServer(
-                telegram_adapter=self.client.adapters["telegram"],
+                adapter_client=self.client,
                 terminal_bridge=terminal_bridge,
-                session_manager=self.session_manager,
-                computer_registry=self.computer_registry,
-                adapter_client=self.client,  # Pass client for future migration
             )
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
+
+    async def _handle_message_event(self, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
+        """Event handler for MESSAGE events (observer pattern callback).
+
+        Args:
+            payload: Event payload (session_id, text)
+            metadata: Event metadata (adapter_type, user_id, message_id, etc.)
+        """
+        session_id = payload.get("session_id")
+        text = payload.get("text", "")
+
+        # Build context from metadata
+        context = {
+            "adapter_type": metadata.get("adapter_type"),
+            "user_id": metadata.get("user_id"),
+            "message_id": metadata.get("message_id"),
+            "topic_id": metadata.get("topic_id"),
+            "channel_id": metadata.get("channel_id"),
+        }
+
+        if session_id:
+            await self.handle_message(session_id, text, context)
+        else:
+            logger.warning("MESSAGE event missing session_id: %s", payload)
+
+    async def _handle_command_event(self, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
+        """Event handler for command events (observer pattern callback).
+
+        Args:
+            payload: Event payload (session_id, command, args)
+            metadata: Event metadata (adapter_type, user_id, message_id, etc.)
+        """
+        command = payload.get("command", "")
+        args = payload.get("args", [])
+
+        # Build context from metadata and payload
+        context = {
+            "adapter_type": metadata.get("adapter_type"),
+            "user_id": metadata.get("user_id"),
+            "message_id": metadata.get("message_id"),
+            "topic_id": metadata.get("topic_id"),
+            "channel_id": metadata.get("channel_id"),
+            "session_id": payload.get("session_id"),  # May be None for new-session
+        }
+
+        await self.handle_command(command, args, context)
 
     def _get_output_file(self, session_id: str) -> Path:
         """Get output file path for a session."""
@@ -191,36 +229,6 @@ class TeleClaudeDaemon:
         except OSError as e:
             logger.error("Failed to release lock: %s", e)
 
-    async def _get_adapter_for_session(self, session_id: str) -> BaseAdapter:
-        """Get the adapter responsible for a session.
-
-        Args:
-            session_id: Session ID
-
-        Returns:
-            BaseAdapter instance
-
-        Raises:
-            ValueError: If session not found or no adapter for session's type
-        """
-        session = await self.session_manager.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        # Get primary adapter (first in the list)
-        if not session.adapter_types:
-            raise ValueError(f"Session {session_id} has no adapters configured")
-
-        primary_adapter_type = session.adapter_types[0]
-        adapter = self.client.adapters.get(primary_adapter_type)
-        if not adapter:
-            raise ValueError(
-                f"No adapter available for type '{primary_adapter_type}'. "
-                f"Available adapters: {list(self.client.adapters.keys())}"
-            )
-
-        return adapter
-
     def _get_adapter_by_type(self, adapter_type: str) -> BaseAdapter:
         """Get adapter by type.
 
@@ -263,9 +271,7 @@ class TeleClaudeDaemon:
         return await terminal_executor.execute_terminal_command(
             session_id=session_id,
             command=command,
-            session_manager=self.session_manager,
-            config=self.config,
-            get_adapter_for_session=self._get_adapter_for_session,
+            client=self.client,
             start_polling=self._poll_and_send_output,
             append_exit_marker=append_exit_marker,
             message_id=message_id,
@@ -276,25 +282,15 @@ class TeleClaudeDaemon:
         logger.info("Starting TeleClaude daemon...")
 
         # Initialize database
-        await self.session_manager.initialize()
+        await db.initialize()
         logger.info("Database initialized")
 
         # Initialize voice handler
         init_voice_handler()
         logger.info("Voice handler initialized")
 
-        # Migrate old session metadata
-        await session_lifecycle.migrate_session_metadata(self.session_manager)
-
-        # State is now DB-backed via session_manager - no need to load from database
-
         # Start all adapters via AdapterClient
         await self.client.start()
-
-        # Start computer registry (if enabled)
-        if self.computer_registry:
-            await self.computer_registry.start()
-            logger.info("Computer registry started")
 
         # Start MCP server in background task (if enabled)
         if self.mcp_server:
@@ -302,21 +298,19 @@ class TeleClaudeDaemon:
             logger.info("MCP server starting in background")
 
         # Start FastAPI REST API in background task
-        import uvicorn
-
-        config = uvicorn.Config(
+        uvicorn_config = uvicorn.Config(
             self.rest_api.get_asgi_app(),
             host=self.rest_api.bind_address,
             port=self.rest_api.port,
             log_level="info",
             access_log=False,  # Reduce noise
         )
-        self.uvicorn_server = uvicorn.Server(config)
+        self.uvicorn_server = uvicorn.Server(uvicorn_config)
         self.api_task = asyncio.create_task(self.uvicorn_server.serve())
         logger.info("REST API started on http://%s:%s", self.rest_api.bind_address, self.rest_api.port)
 
         # Start periodic cleanup task (runs every hour)
-        self.cleanup_task = asyncio.create_task(session_lifecycle.periodic_cleanup(self.session_manager, self.config))
+        self.cleanup_task = asyncio.create_task(session_lifecycle.periodic_cleanup(db, config))
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
@@ -354,11 +348,11 @@ class TeleClaudeDaemon:
             await self.api_task
 
         # Close database
-        await self.session_manager.close()
+        await db.close()
 
         logger.info("Daemon stopped")
 
-    async def handle_command(self, command: str, args: List[str], context: Dict[str, Any]) -> None:
+    async def handle_command(self, command: str, args: list[str], context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
         """Handle bot commands.
 
         Args:
@@ -369,109 +363,71 @@ class TeleClaudeDaemon:
         logger.info("Command received: /%s %s", command, args)
 
         if command == "new-session":
-            await command_handlers.handle_create_session(context, args, self.session_manager, self._get_adapter_by_type)
+            await command_handlers.handle_create_session(context, args, self.client)
         elif command == "list-sessions":
-            await command_handlers.handle_list_sessions(context, self.session_manager, self._get_adapter_by_type)
+            await command_handlers.handle_list_sessions(context, self.client)
         elif command == "cancel":
-            await command_handlers.handle_cancel_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
-            )
+            await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
         elif command == "cancel2x":
-            await command_handlers.handle_cancel_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, double=True
-            )
+            await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output, double=True)
         elif command == "kill":
-            await command_handlers.handle_kill_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
-            )
+            await command_handlers.handle_kill_command(context, self.client, self._poll_and_send_output)
         elif command == "escape":
-            await command_handlers.handle_escape_command(
-                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
-            )
+            await command_handlers.handle_escape_command(context, args, self.client, self._poll_and_send_output)
         elif command == "escape2x":
             await command_handlers.handle_escape_command(
                 context,
                 args,
-                self.session_manager,
-                self._get_adapter_for_session,
+                self.client,
                 self._poll_and_send_output,
                 double=True,
             )
         elif command == "ctrl":
-            await command_handlers.handle_ctrl_command(
-                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
-            )
+            await command_handlers.handle_ctrl_command(context, args, self.client, self._poll_and_send_output)
         elif command == "tab":
-            await command_handlers.handle_tab_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
-            )
+            await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
         elif command == "shift-tab":
-            await command_handlers.handle_shift_tab_command(
-                context, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output
-            )
+            await command_handlers.handle_shift_tab_command(context, self.client, self._poll_and_send_output)
         elif command == "key-up":
             await command_handlers.handle_arrow_key_command(
-                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "up"
+                context, args, self.client, self._poll_and_send_output, "up"
             )
         elif command == "key-down":
             await command_handlers.handle_arrow_key_command(
-                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "down"
+                context, args, self.client, self._poll_and_send_output, "down"
             )
         elif command == "key-left":
             await command_handlers.handle_arrow_key_command(
-                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "left"
+                context, args, self.client, self._poll_and_send_output, "left"
             )
         elif command == "key-right":
             await command_handlers.handle_arrow_key_command(
-                context, args, self.session_manager, self._get_adapter_for_session, self._poll_and_send_output, "right"
+                context, args, self.client, self._poll_and_send_output, "right"
             )
         elif command == "resize":
-            await command_handlers.handle_resize_session(
-                context, args, self.session_manager, self._get_adapter_for_session
-            )
+            await command_handlers.handle_resize_session(context, args, self.client)
         elif command == "rename":
-            await command_handlers.handle_rename_session(
-                context, args, self.session_manager, self._get_adapter_for_session
-            )
+            await command_handlers.handle_rename_session(context, args, self.client)
         elif command == "cd":
-            await command_handlers.handle_cd_session(
-                context, args, self.session_manager, self._get_adapter_for_session, self._execute_terminal_command
-            )
+            await command_handlers.handle_cd_session(context, args, self.client, self._execute_terminal_command)
         elif command == "claude":
-            await command_handlers.handle_claude_session(context, self.session_manager, self._execute_terminal_command)
+            await command_handlers.handle_claude_session(context, self._execute_terminal_command)
         elif command == "claude_resume":
-            await command_handlers.handle_claude_resume_session(
-                context, self.session_manager, self._execute_terminal_command
-            )
+            await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
-            await command_handlers.handle_exit_session(
-                context, self.session_manager, self._get_adapter_for_session, self._get_output_file
-            )
+            await command_handlers.handle_exit_session(context, self.client, self._get_output_file)
 
-    async def handle_message(self, session_id: str, text: str, context: Dict[str, Any]) -> None:
+    async def handle_message(self, session_id: str, text: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
         """Wrapper around message_handler.handle_message."""
         await message_handler.handle_message(
             session_id=session_id,
             text=text,
             context=context,
-            session_manager=self.session_manager,
-            config=self.config,
-            get_adapter_for_session=self._get_adapter_for_session,
+            client=self.client,
             start_polling=self._poll_and_send_output,
         )
 
-    async def handle_voice(self, session_id: str, audio_path: str, context: Dict[str, Any]) -> None:
-        """Wrapper around voice_message_handler.handle_voice."""
-        await voice_message_handler.handle_voice(
-            session_id=session_id,
-            audio_path=audio_path,
-            context=context,
-            session_manager=self.session_manager,
-            get_adapter_for_session=self._get_adapter_for_session,
-            get_output_file=self._get_output_file,
-        )
-
-    async def handle_topic_closed(self, session_id: str, context: Dict[str, Any]) -> None:
+    async def handle_topic_closed(self, session_id: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
         """Handle topic/channel closure event.
 
         Wrapper around event_handlers.handle_topic_closed that provides dependencies.
@@ -483,7 +439,6 @@ class TeleClaudeDaemon:
         await event_handlers.handle_topic_closed(
             session_id=session_id,
             context=context,
-            session_manager=self.session_manager,
         )
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
@@ -491,7 +446,6 @@ class TeleClaudeDaemon:
         await polling_coordinator.poll_and_send_output(
             session_id=session_id,
             tmux_session_name=tmux_session_name,
-            session_manager=self.session_manager,
             output_poller=self.output_poller,
             adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
             get_output_file=self._get_output_file,
@@ -500,31 +454,20 @@ class TeleClaudeDaemon:
 
 async def main() -> None:
     """Main entry point."""
-    # Find config files
+    # Find .env file for daemon constructor
     base_dir = Path(__file__).parent.parent
-    config_path = base_dir / "config.yml"
     env_path = base_dir / ".env"
 
-    # Load environment variables first (for config variable expansion)
-    load_dotenv(env_path)
+    # Note: .env already loaded at module import time (before config expansion)
 
-    # Load config to get logging path (config.yml is the source of truth)
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-
-    # Expand environment variables in config
-    config = expand_env_vars(config)
-
-    # Setup logging using config.yml (source of truth)
-    log_file = config.get("logging", {}).get("file", "/var/log/teleclaude.log")
-    log_level = config.get("logging", {}).get("level", "INFO")
-    setup_logging(level=log_level, log_file=log_file)
+    # Setup logging (config already loaded at module level)
+    setup_logging(level=str(config.logging.level), log_file=str(config.logging.file))
 
     # Create daemon
-    daemon = TeleClaudeDaemon(str(config_path), str(env_path))
+    daemon = TeleClaudeDaemon(str(env_path))
 
     # Setup signal handlers for graceful shutdown
-    def signal_handler(signum: int, frame: Any) -> None:
+    def signal_handler(signum: int, frame: object) -> None:
         """Handle termination signals."""
         sig_name = signal.Signals(signum).name
         logger.info("Received %s signal...", sig_name)

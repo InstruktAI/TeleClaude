@@ -1,10 +1,10 @@
-"""Unit tests for session_manager.py."""
+"""Unit tests for db.py."""
 
 import pytest
 import tempfile
 import os
 from datetime import datetime
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import db, Db
 from teleclaude.core.models import Session
 
 
@@ -14,7 +14,7 @@ async def session_manager():
     db_fd, db_path = tempfile.mkstemp(suffix=".db")
     os.close(db_fd)
 
-    manager = SessionManager(db_path)
+    manager = Db(db_path)
     await manager.initialize()
 
     yield manager
@@ -35,13 +35,13 @@ class TestCreateSession:
         session = await session_manager.create_session(
             computer_name="TestPC",
             tmux_session_name="test-session",
-            adapter_type="telegram"
+            origin_adapter="telegram"
         )
 
         assert session.session_id is not None
         assert session.computer_name == "TestPC"
         assert session.tmux_session_name == "test-session"
-        assert session.adapter_type == "telegram"
+        assert session.origin_adapter == "telegram"
         assert session.closed is False
         assert session.command_count == 0
         assert session.title == "[TestPC] New session"
@@ -54,7 +54,7 @@ class TestCreateSession:
         session = await session_manager.create_session(
             computer_name="TestPC",
             tmux_session_name="full-session",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Custom Title",
             adapter_metadata=metadata,
             terminal_size="120x40",
@@ -76,7 +76,7 @@ class TestGetSession:
         created = await session_manager.create_session(
             computer_name="TestPC",
             tmux_session_name="test-session",
-            adapter_type="telegram"
+            origin_adapter="telegram"
         )
 
         retrieved = await session_manager.get_session(created.session_id)
@@ -140,10 +140,10 @@ class TestListSessions:
         await session_manager.create_session("PC1", "session-2", "rest")
         await session_manager.create_session("PC1", "session-3", "telegram")
 
-        sessions = await session_manager.list_sessions(adapter_type="telegram")
+        sessions = await session_manager.list_sessions(origin_adapter="telegram")
 
         assert len(sessions) == 2
-        assert all(s.adapter_type == "telegram" for s in sessions)
+        assert all(s.origin_adapter == "telegram" for s in sessions)
 
     @pytest.mark.asyncio
     async def test_list_sessions_multiple_filters(self, session_manager):
@@ -154,7 +154,7 @@ class TestListSessions:
 
         sessions = await session_manager.list_sessions(
             computer_name="PC1",
-            adapter_type="rest"
+            origin_adapter="rest"
         )
 
         assert len(sessions) == 1
@@ -376,4 +376,4 @@ class TestGetSessionsByAdapterMetadata:
         )
 
         assert len(sessions) == 1
-        assert sessions[0].adapter_type == "telegram"
+        assert sessions[0].origin_adapter == "telegram"

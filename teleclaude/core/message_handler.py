@@ -5,21 +5,21 @@ Handles text message processing, idle notification cleanup, and polling coordina
 """
 
 import logging
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable
 
+from teleclaude.config import config
 from teleclaude.core import terminal_bridge
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.db import db
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_message(
+async def handle_message(  # type: ignore[explicit-any]
     session_id: str,
     text: str,
-    context: Dict[str, Any],
-    session_manager: SessionManager,
-    config: Dict[str, Any],
-    get_adapter_for_session: Callable[[str], Awaitable[Any]],
+    context: dict[str, Any],
+    client: "AdapterClient",  # AdapterClient instance
     start_polling: Callable[[str, str], Awaitable[None]],
 ) -> None:
     """Handle incoming text messages (commands for terminal).
@@ -28,24 +28,21 @@ async def handle_message(
         session_id: Session ID
         text: Message text (command to execute)
         context: Platform-specific context
-        session_manager: Session manager instance
-        config: Application configuration
-        get_adapter_for_session: Function to get adapter for session
+        client: AdapterClient instance for unified adapter operations
         start_polling: Function to start polling for session output
     """
     logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
 
     # Get session
-    session = await session_manager.get_session(session_id)
+    session = await db.get_session(session_id)
     if not session:
         logger.warning("Session %s not found", session_id)
         return
 
     # Delete idle notification if one exists (user is interacting now)
-    if await session_manager.has_idle_notification(session_id):
-        adapter = await get_adapter_for_session(session_id)
-        notification_msg_id = await session_manager.remove_idle_notification(session_id)
-        await adapter.delete_message(session_id, notification_msg_id)
+    if await db.has_idle_notification(session_id):
+        notification_msg_id = await db.remove_idle_notification(session_id)
+        await client.delete_message(session_id, notification_msg_id)
         logger.debug(
             "Deleted idle notification %s for session %s (user sent command)", notification_msg_id, session_id[:8]
         )
@@ -65,36 +62,34 @@ async def handle_message(
 
     # Check if a process is currently running (polling active)
     # Use ux_state from DB as source of truth (survives daemon restarts)
-    session_data = await session_manager.get_ux_state(session_id)
-    is_process_running = session_data.get("polling_active", False)
+    ux_state = await db.get_ux_state(session_id)
+    is_process_running = ux_state.polling_active
 
     # Send command to terminal (will create fresh session if needed)
     # Only append exit marker if starting a NEW command, not sending input to running process
     success = await terminal_bridge.send_keys(
         session.tmux_session_name,
         text,
-        shell=config["computer"]["default_shell"],
+        shell=config.computer.default_shell,
         working_dir=session.working_directory,
         cols=cols,
         rows=rows,
         append_exit_marker=not is_process_running,
     )
 
-    adapter = await get_adapter_for_session(session_id)
-
     if not success:
         logger.error("Failed to send command to session %s", session_id[:8])
-        await adapter.send_message(session_id, "Failed to send command to terminal")
+        await client.send_message(session_id, "Failed to send command to terminal")
         return
 
     # Update activity
-    await session_manager.update_last_activity(session_id)
+    await db.update_last_activity(session_id)
 
     # Cleanup pending messages after successful send
-    await session_manager.cleanup_messages_after_success(
+    await db.cleanup_messages_after_success(
         session_id,
         context.get("message_id"),
-        adapter,
+        client,
     )
 
     # Start new poll if process not running, otherwise existing poll continues

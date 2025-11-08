@@ -2,18 +2,20 @@
 
 Extracted from daemon.py to reduce file size and improve organization.
 Handles voice message validation, transcription, and input forwarding to active processes.
+
+Refactored to be adapter-agnostic utility that accepts generic callbacks.
 """
 
 import logging
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
-from teleclaude.core import (
-    output_message_manager,
-    terminal_bridge,
-)
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core import terminal_bridge
+from teleclaude.core.db import db
 from teleclaude.core.voice_handler import transcribe_voice_with_retry
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,20 +23,19 @@ logger = logging.getLogger(__name__)
 async def handle_voice(
     session_id: str,
     audio_path: str,
-    context: Dict[str, Any],
-    session_manager: SessionManager,
-    get_adapter_for_session: Callable[[str], Awaitable[Any]],
+    context: dict[str, object],
+    send_feedback: Callable[[str, str, bool], Awaitable[Optional[str]]],
     get_output_file: Callable[[str], Path],
 ) -> None:
-    """Handle incoming voice messages.
+    """Handle voice message (adapter-agnostic utility).
 
     Args:
         session_id: Session ID
         audio_path: Path to downloaded audio file
-        context: Platform-specific context (includes duration, user_id, etc.)
+        context: Platform-specific context (adapter_type, user_id, duration, etc.)
         session_manager: Session manager instance
-        get_adapter_for_session: Function to get adapter for session
-        get_output_file: Function to get output file path for session
+        send_feedback: Async function to send user feedback (session_id, message, append_to_existing)
+        get_output_file: Function to get output file path
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
     logger.info("Session ID: %s", session_id[:8])
@@ -43,20 +44,21 @@ async def handle_voice(
     logger.info("Voice message for session %s, duration: %ss", session_id[:8], context.get("duration"))
 
     # Get session
-    session = await session_manager.get_session(session_id)
+    session = await db.get_session(session_id)
     if not session:
         logger.warning("Session %s not found", session_id)
         return
 
-    # Get adapter for sending messages
-    adapter = await get_adapter_for_session(session_id)
-
     # Check if a process is currently running (polling active)
-    is_process_running = await session_manager.is_polling(session_id)
+    is_process_running = await db.is_polling(session_id)
 
     # Reject voice messages if no active process to send them to
     if not is_process_running:
-        await adapter.send_message(session_id, "🎤 Voice input requires an active process (e.g., claude, vim)")
+        await send_feedback(
+            session_id,
+            "🎤 Voice input requires an active process (e.g., claude, vim)",
+            False,
+        )
         # Clean up temp file
         try:
             Path(audio_path).unlink()
@@ -69,13 +71,15 @@ async def handle_voice(
     output_file = get_output_file(session_id)
 
     # Check if output message exists (polling may have just started)
-    session_data = await session_manager.get_ux_state(session_id)
-    current_message_id = session_data.get("output_message_id")
+    ux_state = await db.get_ux_state(session_id)
+    current_message_id = ux_state.output_message_id
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
         # Send rejection message
-        await adapter.send_message(
-            session_id, "⚠️ Voice input unavailable - output message not ready yet (try again in 1-2 seconds)"
+        await send_feedback(
+            session_id,
+            "⚠️ Voice input unavailable - output message not ready yet (try again in 1-2 seconds)",
+            False,
         )
         # Clean up temp file
         try:
@@ -86,13 +90,10 @@ async def handle_voice(
         return
 
     # Send transcribing status (append to existing output)
-    msg_id = await output_message_manager.send_status_message(
+    msg_id = await send_feedback(
         session_id,
-        adapter,
         "🎤 Transcribing...",
-        session_manager,
-        append_to_existing=True,
-        output_file_path=str(output_file),
+        True,
     )
     if msg_id is None:
         logger.info("Topic deleted for session %s, skipping transcription", session_id[:8])
@@ -116,13 +117,10 @@ async def handle_voice(
 
     if not transcribed_text:
         # Append error to existing message
-        await output_message_manager.send_status_message(
+        await send_feedback(
             session_id,
-            adapter,
             "❌ Transcription failed. Please try again.",
-            session_manager,
-            append_to_existing=True,
-            output_file_path=str(output_file),
+            True,
         )
         return
 
@@ -136,11 +134,15 @@ async def handle_voice(
 
     if not success:
         logger.error("Failed to send transcribed input to session %s", session_id[:8])
-        await adapter.send_message(session_id, "❌ Failed to send input to terminal")
+        await send_feedback(
+            session_id,
+            "❌ Failed to send input to terminal",
+            False,
+        )
         return
 
     # Update activity
-    await session_manager.update_last_activity(session_id)
+    await db.update_last_activity(session_id)
 
     # Voice input sent to running process - existing poll will capture output
     logger.debug("Voice input sent to running process in session %s, existing poll will capture output", session_id[:8])

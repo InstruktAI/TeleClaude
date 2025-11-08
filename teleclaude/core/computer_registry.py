@@ -16,10 +16,18 @@ import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
-from teleclaude.config import get_config
-from teleclaude.core.ux_state import UXStateContext, get_ux_state, update_ux_state
+from telegram import Message
+
+from teleclaude.core.db import db
+from teleclaude.core.ux_state import (
+    get_system_ux_state,
+    update_system_ux_state,
+)
+
+if TYPE_CHECKING:
+    from teleclaude.adapters.telegram_adapter import TelegramAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +45,18 @@ class ComputerRegistry:
     - Builds in-memory list of online/offline computers
     """
 
-    def __init__(self, telegram_adapter: Any, computer_name: str, bot_username: str, session_manager: Any):
+    def __init__(
+        self,
+        telegram_adapter: "TelegramAdapter",
+        computer_name: str,
+        bot_username: str,
+    ):
         self.telegram_adapter = telegram_adapter
         self.computer_name = computer_name
         self.bot_username = bot_username
-        self.session_manager = session_manager
 
         # In-memory state
-        self.computers: dict[str, dict[str, Any]] = {}
+        self.computers: dict[str, dict[str, object]] = {}
         self.registry_topic_id: Optional[int] = None
         self.my_ping_message_id: Optional[int] = None  # Message ID for /registry_ping command
         self.my_pong_message_id: Optional[int] = None  # Message ID for [REGISTRY_PONG] response
@@ -98,10 +110,9 @@ class ComputerRegistry:
 
         # Restore message IDs from previous session (if any)
         try:
-            ux_state = await get_ux_state(self.session_manager._db, UXStateContext.SYSTEM)
-            registry_state = ux_state.get("registry", {})
-            self.my_ping_message_id = registry_state.get("ping_message_id")
-            self.my_pong_message_id = registry_state.get("pong_message_id")
+            ux_state = await get_system_ux_state(db._db)
+            self.my_ping_message_id = ux_state.registry.ping_message_id
+            self.my_pong_message_id = ux_state.registry.pong_message_id
             if self.my_ping_message_id or self.my_pong_message_id:
                 logger.info(
                     "Restored registry message IDs: ping=%s, pong=%s",
@@ -156,15 +167,10 @@ class ComputerRegistry:
                 logger.debug("Posted ping to registry: message_id=%s", self.my_ping_message_id)
 
                 # Persist message ID
-                await update_ux_state(
-                    self.session_manager._db,
-                    UXStateContext.SYSTEM,
-                    {
-                        "registry": {
-                            "ping_message_id": self.my_ping_message_id,
-                            "pong_message_id": self.my_pong_message_id,
-                        }
-                    },
+                await update_system_ux_state(
+                    db._db,
+                    registry_ping_message_id=self.my_ping_message_id,
+                    registry_pong_message_id=self.my_pong_message_id,
                 )
             except Exception as e:
                 logger.error("Failed to post ping: %s", e)
@@ -172,7 +178,7 @@ class ComputerRegistry:
         else:
             # Edit existing message (keep General topic clean)
             try:
-                edited_message = await self.telegram_adapter.app.bot.edit_message_text(
+                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_ping_message_id,
                     text=text,
@@ -217,22 +223,17 @@ class ComputerRegistry:
                 logger.debug("Posted pong to registry: message_id=%s", self.my_pong_message_id)
 
                 # Persist message ID
-                await update_ux_state(
-                    self.session_manager._db,
-                    UXStateContext.SYSTEM,
-                    {
-                        "registry": {
-                            "ping_message_id": self.my_ping_message_id,
-                            "pong_message_id": self.my_pong_message_id,
-                        }
-                    },
+                await update_system_ux_state(
+                    db._db,
+                    registry_ping_message_id=self.my_ping_message_id,
+                    registry_pong_message_id=self.my_pong_message_id,
                 )
             except Exception as e:
                 logger.error("Failed to post pong: %s", e)
         else:
             # Edit existing pong message
             try:
-                edited_message = await self.telegram_adapter.app.bot.edit_message_text(
+                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_pong_message_id,
                     text=text,
@@ -306,23 +307,23 @@ class ComputerRegistry:
 
     # === Public API for MCP tools and daemon ===
 
-    def get_online_computers(self) -> list[dict[str, Any]]:
+    def get_online_computers(self) -> list[dict[str, object]]:
         """Get list of currently online computers (for teleclaude__list_computers).
 
         Returns:
             List of dicts with computer info, sorted by name.
         """
         computers = [c for c in self.computers.values() if c["status"] == "online"]
-        return sorted(computers, key=lambda c: c["name"])
+        return sorted(computers, key=lambda c: str(c["name"]))
 
-    def get_all_computers(self) -> list[dict[str, Any]]:
+    def get_all_computers(self) -> list[dict[str, object]]:
         """Get all computers (online + offline), sorted by name."""
-        return sorted(self.computers.values(), key=lambda c: c["name"])
+        return sorted(self.computers.values(), key=lambda c: str(c["name"]))
 
     def is_computer_online(self, computer_name: str) -> bool:
         """Check if specific computer is currently online."""
         return computer_name in self.computers and self.computers[computer_name]["status"] == "online"
 
-    def get_computer_info(self, computer_name: str) -> Optional[dict[str, Any]]:
+    def get_computer_info(self, computer_name: str) -> Optional[dict[str, object]]:
         """Get info for specific computer (or None if not found)."""
         return self.computers.get(computer_name)

@@ -1,88 +1,156 @@
 """Base adapter interface for TeleClaude messaging platforms."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, AsyncIterator, Optional
 
-
-@dataclass
-class Message:
-    """Represents an outgoing message."""
-
-    session_id: str
-    text: str
-    metadata: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class File:
-    """Represents a file to send."""
-
-    session_id: str
-    file_path: str
-    caption: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 
 class BaseAdapter(ABC):
-    """Abstract base class for all messaging platform adapters."""
+    """Abstract base class for all messaging platform adapters.
+
+    Adapters are responsible for platform-specific communication.
+    All communication with daemon flows through AdapterClient (not direct).
+    """
+
+    # Platform identification - override in subclasses
+    has_ui: bool = True  # Whether adapter has human-visible UI (False for Redis)
+    client: "AdapterClient"  # Set by subclasses in __init__
 
     def __init__(self) -> None:
-        """Initialize adapter."""
-        self._message_callbacks: List[Callable[..., Any]] = []
-        self._file_callbacks: List[Callable[..., Any]] = []
-        self._voice_callbacks: List[Callable[..., Any]] = []
-        self._command_callbacks: List[Callable[..., Any]] = []
-        self._topic_closed_callbacks: List[Callable[..., Any]] = []
+        """Initialize adapter.
+
+        Subclasses should accept adapter_client as first parameter.
+        """
+        pass
 
     # ==================== Lifecycle Methods ====================
 
     @abstractmethod
     async def start(self) -> None:
-        """Initialize adapter and start listening for incoming messages."""
-        pass
+        """Initialize adapter and start listening for incoming messages.
+
+        Each adapter manages its own event loop (push or pull based).
+        """
 
     @abstractmethod
     async def stop(self) -> None:
         """Gracefully stop adapter and cleanup resources."""
-        pass
 
-    # ==================== Outgoing Messages ====================
+    # ==================== Channel Management ====================
 
     @abstractmethod
-    async def send_message(self, session_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Send a text message to the channel associated with session_id.
+    async def create_channel(
+        self,
+        session_id: str,
+        title: str,
+        metadata: dict[str, object],
+    ) -> str:
+        """Create channel/topic for session.
 
         Args:
-            session_id: Unique session identifier
+            session_id: Session ID
+            title: Channel title
+            metadata: {
+                "origin": bool,  # True if this adapter is origin
+                "origin_adapter": str,  # Which adapter is origin
+            }
+
+        Returns:
+            channel_id (platform-specific identifier)
+        """
+
+    @abstractmethod
+    async def update_channel_title(self, session_id: str, title: str) -> bool:
+        """Update channel/topic title.
+
+        Args:
+            session_id: Session identifier
+            title: New title
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+    @abstractmethod
+    async def set_channel_status(
+        self,
+        session_id: str,
+        status: str,
+    ) -> bool:
+        """Set channel status (e.g., active, idle, closed).
+
+        Args:
+            session_id: Session identifier
+            status: Status string
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+    @abstractmethod
+    async def delete_channel(self, session_id: str) -> bool:
+        """Delete channel/topic.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+    # ==================== Messaging ====================
+
+    @abstractmethod
+    async def send_message(
+        self,
+        session_id: str,
+        text: str,
+        metadata: Optional[dict[str, object]] = None,
+    ) -> str:
+        """Send message to channel.
+
+        Used for:
+        - Terminal output
+        - User feedback (status, errors)
+        - System notifications
+
+        Args:
+            session_id: Session identifier
             text: Message text
             metadata: Optional adapter-specific metadata
 
         Returns:
-            message_id: Platform-specific message ID
+            message_id
         """
-        pass
 
     @abstractmethod
     async def edit_message(
-        self, session_id: str, message_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
+        self,
+        session_id: str,
+        message_id: str,
+        text: str,
     ) -> bool:
-        """Edit an existing message.
+        """Edit existing message (if platform supports).
 
         Args:
             session_id: Session identifier
             message_id: Message ID from send_message()
             text: New message text
-            metadata: Optional adapter-specific metadata
 
         Returns:
             True if successful, False otherwise
         """
-        pass
 
     @abstractmethod
-    async def delete_message(self, session_id: str, message_id: str) -> bool:
-        """Delete a message.
+    async def delete_message(
+        self,
+        session_id: str,
+        message_id: str,
+    ) -> bool:
+        """Delete message (if platform supports).
 
         Args:
             session_id: Session identifier
@@ -91,27 +159,8 @@ class BaseAdapter(ABC):
         Returns:
             True if successful, False otherwise
         """
-        pass
 
-    @abstractmethod
-    async def send_file(
-        self, session_id: str, file_path: str, caption: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Upload and send a file.
-
-        Args:
-            session_id: Session identifier
-            file_path: Local path to file
-            caption: Optional caption
-            metadata: Optional adapter-specific metadata
-
-        Returns:
-            message_id: Message ID of the file message
-        """
-        pass
-
-    @abstractmethod
-    async def send_general_message(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send message to general/default channel.
 
         Used for commands issued in general context (not tied to specific session).
@@ -122,82 +171,54 @@ class BaseAdapter(ABC):
 
         Returns:
             message_id: Platform-specific message ID
+
+        Note: Not abstract - adapters can override if they support general messages.
         """
-        pass
-
-    # ==================== Channel Management ====================
-
-    @abstractmethod
-    async def create_channel(self, session_id: str, title: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Create a new channel/topic/thread for the session.
-
-        Args:
-            session_id: Session identifier
-            title: Channel title
-            metadata: Optional adapter-specific metadata
-
-        Returns:
-            channel_id: Platform-specific channel identifier
-        """
-        pass
-
-    @abstractmethod
-    async def update_channel_title(self, channel_id: str, title: str) -> bool:
-        """Update the title of an existing channel.
-
-        Args:
-            channel_id: Channel identifier
-            title: New title
-
-        Returns:
-            True if successful, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    async def set_channel_status(self, channel_id: str, status: str) -> bool:
-        """Update status indicator in channel title.
-
-        Args:
-            channel_id: Channel identifier
-            status: Status ('active', 'waiting', 'slow', 'stalled', 'idle', 'dead')
-
-        Returns:
-            True if successful, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    async def delete_channel(self, channel_id: str) -> bool:
-        """Delete a channel/topic/thread.
-
-        Args:
-            channel_id: Channel identifier
-
-        Returns:
-            True if successful, False otherwise
-        """
-        pass
+        raise NotImplementedError("This adapter does not support general messages")
 
     # ==================== Peer Discovery ====================
 
     @abstractmethod
-    async def discover_peers(self) -> List[Dict[str, Any]]:
-        """Discover other computers/peers via this adapter's mechanism.
+    async def discover_peers(self) -> list[dict[str, object]]:
+        """Discover online computers via this adapter's mechanism.
 
         Each adapter implements its own discovery mechanism:
-        - TelegramAdapter: Polls General topic for [REGISTRY] messages (bots only see self)
-        - RedisAdapter: Reads Redis heartbeat keys (actually works for discovery)
+        - TelegramAdapter: Polls General topic for [REGISTRY] messages
+        - RedisAdapter: Reads Redis heartbeat keys
 
         Returns:
-            List of peer dicts with:
+            List of dicts with:
             - name: Computer name
             - status: "online" or "offline"
-            - last_seen: datetime object
-            - last_seen_ago: Human-readable string (e.g., "30s ago")
-            - adapter_type: Which adapter discovered this peer
+            - last_seen: datetime
+            - adapter_type: Which adapter discovered this
         """
-        pass
+
+    # ==================== AI-to-AI Communication ====================
+
+    @abstractmethod
+    async def poll_output_stream(
+        self,
+        session_id: str,
+        timeout: float = 300.0,
+    ) -> AsyncIterator[str]:
+        """Poll for output chunks from remote session.
+
+        Used for bidirectional AI-to-AI communication.
+
+        Implementations:
+        - RedisAdapter: XREAD output:{session_id} stream
+        - TelegramAdapter: Not applicable (no AI-to-AI support)
+
+        Args:
+            session_id: Session identifier
+            timeout: Maximum time to wait for output (seconds)
+
+        Yields:
+            Output chunks as they arrive
+        """
+        raise NotImplementedError("poll_mcp_messages must be implemented by subclass")
+        yield  # Make mypy happy about async generator type
 
     # ==================== Platform-Specific Parameters ====================
 
@@ -219,74 +240,88 @@ class BaseAdapter(ABC):
         """
         raise NotImplementedError
 
-    # ==================== Callback Registration ====================
+    # ==================== Optional: Voice Support ====================
 
-    def on_message(self, callback: Callable[..., Any]) -> None:
-        """Register callback for incoming text messages.
+    async def _process_voice_input(
+        self,
+        session_id: str,
+        audio_file_path: str,
+        context: dict[str, object],
+    ) -> None:
+        """Shared voice processing logic (adapter-agnostic).
 
-        Callback signature:
-            async def callback(session_id: str, text: str, context: Dict) -> None
+        Only implemented by adapters with voice support (has_ui=True).
+
+        Default implementation uses voice_message_handler.py utility.
+        Override if platform needs custom voice handling.
+
+        Flow:
+        1. Validate session and check if process is running
+        2. Send "Transcribing..." feedback to user
+        3. Transcribe audio using voice_handler.py
+        4. Send transcribed text to terminal
+        5. Send feedback on success/failure
+
+        Args:
+            session_id: Session ID
+            audio_file_path: Path to audio file (any format supported by Whisper)
+            context: Platform-specific metadata (user_id, duration, etc.)
         """
-        self._message_callbacks.append(callback)
+        from teleclaude.core.voice_message_handler import handle_voice
 
-    def on_file(self, callback: Callable[..., Any]) -> None:
-        """Register callback for incoming file uploads.
+        # Delegate to utility module (keeps BaseAdapter thin)
+        await handle_voice(
+            session_id=session_id,
+            audio_path=audio_file_path,
+            context=context,
+            send_feedback=lambda sid, msg, append: self.send_message(sid, msg),
+            get_output_file=self._get_output_file,
+        )
 
-        Callback signature:
-            async def callback(session_id: str, file_path: str, context: Dict) -> None
+    # ==================== Optional: File Handling ====================
+
+    async def get_session_file(
+        self,
+        session_id: str,
+    ) -> Optional[str]:
+        """Provide platform-specific download UI for session output.
+
+        OPTIONAL - Only implement if adapter can offer download functionality.
+
+        Examples:
+        - TelegramAdapter: Upload file to Telegram, create download button, return message_id
+        - WhatsAppAdapter: Upload to WhatsApp as media message
+        - RedisAdapter: Not applicable (no UI)
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Platform-specific identifier/link if download UI created, None otherwise
+
+        NOTE: This is different from _get_output_file() which returns local file PATH.
         """
-        self._file_callbacks.append(callback)
+        return None  # Default: no download functionality
 
-    def on_voice(self, callback: Callable[..., Any]) -> None:
-        """Register callback for incoming voice messages.
+    def _get_output_file(self, session_id: str) -> Path:
+        """Get local file system PATH to session output file.
 
-        Callback signature:
-            async def callback(session_id: str, audio_path: str, context: Dict) -> None
+        Used internally by adapters that need to READ the output file
+        (e.g., for uploading, processing, voice status appending).
+
+        Default implementation uses standard session_output directory.
+        Override if adapter stores output files in custom location.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Path object pointing to local file (e.g., "session_output/abc123.txt")
+
+        NOTE: This is different from get_session_file() which creates download UI.
         """
-        self._voice_callbacks.append(callback)
-
-    def on_command(self, callback: Callable[..., Any]) -> None:
-        """Register callback for bot commands.
-
-        Callback signature:
-            async def callback(command: str, args: List[str], context: Dict) -> None
-        """
-        self._command_callbacks.append(callback)
-
-    def on_topic_closed(self, callback: Callable[..., Any]) -> None:
-        """Register callback for topic/channel closure.
-
-        Callback signature:
-            async def callback(session_id: str, context: Dict) -> None
-        """
-        self._topic_closed_callbacks.append(callback)
-
-    # ==================== Helper Methods ====================
-
-    async def _emit_message(self, session_id: str, text: str, context: Dict[str, Any]) -> None:
-        """Emit message event to all registered callbacks."""
-        for callback in self._message_callbacks:
-            await callback(session_id, text, context)
-
-    async def _emit_file(self, session_id: str, file_path: str, context: Dict[str, Any]) -> None:
-        """Emit file event to all registered callbacks."""
-        for callback in self._file_callbacks:
-            await callback(session_id, file_path, context)
-
-    async def _emit_voice(self, session_id: str, audio_path: str, context: Dict[str, Any]) -> None:
-        """Emit voice event to all registered callbacks."""
-        for callback in self._voice_callbacks:
-            await callback(session_id, audio_path, context)
-
-    async def _emit_command(self, command: str, args: List[str], context: Dict[str, Any]) -> None:
-        """Emit command event to all registered callbacks."""
-        for callback in self._command_callbacks:
-            await callback(command, args, context)
-
-    async def _emit_topic_closed(self, session_id: str, context: Dict[str, Any]) -> None:
-        """Emit topic closed event to all registered callbacks."""
-        for callback in self._topic_closed_callbacks:
-            await callback(session_id, context)
+        # Use standard session_output directory (same as daemon)
+        return Path("session_output") / f"{session_id[:8]}.txt"
 
 
 class AdapterError(Exception):

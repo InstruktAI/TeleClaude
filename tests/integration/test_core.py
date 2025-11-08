@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test core TeleClaude components: SessionManager and TerminalBridge."""
+"""Test core TeleClaude components: Db and TerminalBridge."""
 
 import asyncio
 from pathlib import Path
@@ -9,18 +9,18 @@ import pytest
 
 from teleclaude import config as config_module
 from teleclaude.core import terminal_bridge
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import db, Db
 
 
 @pytest.mark.asyncio
 async def test_session_manager_crud():
-    """Test SessionManager CRUD operations."""
+    """Test Db CRUD operations."""
     db_path = "/tmp/teleclaude_test_core.db"
 
     # Clean up old test database
     Path(db_path).unlink(missing_ok=True)
 
-    session_mgr = SessionManager(db_path)
+    session_mgr = Db(db_path)
 
     try:
         # Initialize
@@ -30,7 +30,7 @@ async def test_session_manager_crud():
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-session-crud",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test Session",
             terminal_size="80x24",
             working_directory="~"
@@ -78,10 +78,7 @@ async def test_terminal_bridge_tmux_operations():
     base_dir = Path(__file__).parent
     config_module._config = None
     from teleclaude.daemon import TeleClaudeDaemon
-    daemon = TeleClaudeDaemon(
-        str(base_dir / "config.yml"),
-        str(base_dir / ".env")
-    )
+    daemon = TeleClaudeDaemon(str(base_dir / ".env"))
 
     try:
         # Create tmux session
@@ -116,9 +113,15 @@ async def test_terminal_bridge_tmux_operations():
 
 @pytest.mark.asyncio
 async def test_session_manager_with_metadata():
-    """Test SessionManager adapter metadata queries."""
+    """Test Db adapter metadata queries."""
+    import os
     db_path = "/tmp/teleclaude_test_metadata.db"
-    session_mgr = SessionManager(db_path)
+
+    # Clean up old database if exists
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    session_mgr = Db(db_path)
 
     try:
         await session_mgr.initialize()
@@ -127,7 +130,7 @@ async def test_session_manager_with_metadata():
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-metadata",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             adapter_metadata={"topic_id": 123, "user_id": 456},
             title="Metadata Test"
         )
@@ -144,6 +147,9 @@ async def test_session_manager_with_metadata():
 
     finally:
         await session_mgr.close()
+        # Remove test database
+        if os.path.exists(db_path):
+            os.remove(db_path)
 
 
 if __name__ == "__main__":

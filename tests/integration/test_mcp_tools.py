@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core.computer_registry import ComputerRegistry
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import db, Db
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
 
@@ -59,7 +59,7 @@ async def mock_terminal_bridge():
 async def session_manager(tmp_path):
     """Create real session manager with temp database."""
     db_path = tmp_path / "test.db"
-    manager = SessionManager(str(db_path))
+    manager = Db(str(db_path))
     await manager.initialize()
     yield manager
     await manager.close()
@@ -185,7 +185,7 @@ async def test_teleclaude_start_session_success(mcp_server, mock_telegram_adapte
     assert "session_id" in result
 
     # Verify session created in database
-    session = await session_manager.get_session(result["session_id"])
+    session = await db.get_session(result["session_id"])
     assert session is not None
     assert session.computer_name == "testcomp"
     assert "$testcomp > $workstation" in session.title
@@ -245,7 +245,7 @@ async def test_teleclaude_start_session_timeout(mcp_server, mock_telegram_adapte
 async def test_teleclaude_list_sessions(mcp_server, session_manager):
     """Test teleclaude__list_sessions filters AI-to-AI sessions."""
     # Create test sessions
-    await session_manager.create_session(
+    await db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-1",
         adapter_type="telegram",
@@ -254,7 +254,7 @@ async def test_teleclaude_list_sessions(mcp_server, session_manager):
         description="Debug 502 errors"
     )
 
-    await session_manager.create_session(
+    await db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-2",
         adapter_type="telegram",
@@ -264,7 +264,7 @@ async def test_teleclaude_list_sessions(mcp_server, session_manager):
     )
 
     # Create non-AI session (should be filtered out)
-    await session_manager.create_session(
+    await db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-human-1",
         adapter_type="telegram",
@@ -294,7 +294,7 @@ async def test_teleclaude_list_sessions(mcp_server, session_manager):
 async def test_teleclaude_send_success(mcp_server, mock_telegram_adapter, mock_terminal_bridge, session_manager):
     """Test teleclaude__send sends message and collects output."""
     # Create session
-    session = await session_manager.create_session(
+    session = await db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-test",
         adapter_type="telegram",
@@ -366,7 +366,7 @@ async def test_teleclaude_send_session_not_found(mcp_server):
 async def test_teleclaude_send_closed_session(mcp_server, session_manager):
     """Test teleclaude__send rejects closed session."""
     # Create session
-    session = await session_manager.create_session(
+    session = await db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-closed",
         adapter_type="telegram",
@@ -376,7 +376,7 @@ async def test_teleclaude_send_closed_session(mcp_server, session_manager):
     )
 
     # Mark session as closed
-    await session_manager.update_session(session.session_id, closed=True)
+    await db.update_session(session.session_id, closed=True)
 
     # Try to send to closed session
     chunks = []
@@ -394,7 +394,7 @@ async def test_teleclaude_send_closed_session(mcp_server, session_manager):
 async def test_teleclaude_send_timeout(mcp_server, mock_telegram_adapter, mock_terminal_bridge, session_manager):
     """Test teleclaude__send handles timeout when no output received."""
     # Create session
-    session = await session_manager.create_session(
+    session = await db.create_session(
         computer_name="testcomp",
         tmux_session_name="testcomp-ai-timeout",
         adapter_type="telegram",

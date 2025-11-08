@@ -70,21 +70,11 @@ async def test_discover_peers_returns_empty():
     """Test that discover_peers() returns empty list (bots can't see other bots)."""
     from unittest.mock import AsyncMock, Mock, patch
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
-    from teleclaude.config import init_config
+    from teleclaude import config as config_module
 
-    # Mock dependencies
-    mock_session_manager = Mock()
-    mock_daemon = Mock()
-
-    mock_config = {
-        "computer": {
-            "name": "macbook",
-            "trusted_dirs": []
-        },
-        "telegram": {
-            "trusted_bots": []
-        }
-    }
+    # Mock AdapterClient
+    mock_client = Mock()
+    mock_client.emit_event = AsyncMock()
 
     # Set environment variables
     with patch.dict("os.environ", {
@@ -92,12 +82,7 @@ async def test_discover_peers_returns_empty():
         "TELEGRAM_SUPERGROUP_ID": "-100123456789",
         "TELEGRAM_USER_IDS": "12345"
     }):
-        # Reset and init config
-        import teleclaude.config as config_module
-        config_module._config = None
-        init_config(mock_config)
-
-        adapter = TelegramAdapter(mock_session_manager, mock_daemon)
+        adapter = TelegramAdapter(mock_client)
 
         # Test discover_peers returns empty (Telegram doesn't support bot-to-bot discovery)
         peers = await adapter.discover_peers()
@@ -109,21 +94,11 @@ async def test_heartbeat_edit_same_message():
     """Test that heartbeat messages EDIT the same message, not create new ones."""
     from unittest.mock import AsyncMock, Mock, patch
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
-    from teleclaude.config import init_config
+    from teleclaude import config as config_module
 
-    # Mock dependencies
-    mock_session_manager = Mock()
-    mock_daemon = Mock()
-
-    mock_config = {
-        "computer": {
-            "name": "macbook",
-            "trusted_dirs": []
-        },
-        "telegram": {
-            "trusted_bots": []
-        }
-    }
+    # Mock AdapterClient
+    mock_client = Mock()
+    mock_client.emit_event = AsyncMock()
 
     # Set environment variables
     with patch.dict("os.environ", {
@@ -131,12 +106,7 @@ async def test_heartbeat_edit_same_message():
         "TELEGRAM_SUPERGROUP_ID": "-100123456789",
         "TELEGRAM_USER_IDS": "12345"
     }):
-        # Reset and init config
-        import teleclaude.config as config_module
-        config_module._config = None
-        init_config(mock_config)
-
-        adapter = TelegramAdapter(mock_session_manager, mock_daemon)
+        adapter = TelegramAdapter(mock_client)
 
     # Mock message returned from first post
     mock_message = Mock()
@@ -173,23 +143,13 @@ async def test_heartbeat_edit_same_message():
 @pytest.mark.asyncio
 async def test_peer_data_format():
     """Test that discover_peers() returns empty list (Telegram doesn't support discovery)."""
-    from unittest.mock import Mock, patch
+    from unittest.mock import AsyncMock, Mock, patch
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
-    from teleclaude.config import init_config
+    from teleclaude import config as config_module
 
-    # Mock dependencies
-    mock_session_manager = Mock()
-    mock_daemon = Mock()
-
-    mock_config = {
-        "computer": {
-            "name": "macbook",
-            "trusted_dirs": []
-        },
-        "telegram": {
-            "trusted_bots": []
-        }
-    }
+    # Mock AdapterClient
+    mock_client = Mock()
+    mock_client.emit_event = AsyncMock()
 
     # Set environment variables
     with patch.dict("os.environ", {
@@ -197,12 +157,7 @@ async def test_peer_data_format():
         "TELEGRAM_SUPERGROUP_ID": "-100123456789",
         "TELEGRAM_USER_IDS": "12345"
     }):
-        # Reset and init config
-        import teleclaude.config as config_module
-        config_module._config = None
-        init_config(mock_config)
-
-        adapter = TelegramAdapter(mock_session_manager, mock_daemon)
+        adapter = TelegramAdapter(mock_client)
 
         # Test discover_peers returns empty list
         peers = await adapter.discover_peers()

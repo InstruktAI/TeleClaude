@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from teleclaude.core import message_handler
+from teleclaude.core.db import db
 from teleclaude.core.models import Session
 
 
@@ -14,8 +15,7 @@ class TestHandleMessage:
 
     async def test_session_not_found(self):
         """Test message handler when session doesn't exist."""
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=None)
+        db.get_session = AsyncMock(return_value=None)
 
         config = {"computer": {"default_shell": "/bin/bash"}}
         get_adapter_for_session = AsyncMock()
@@ -28,7 +28,7 @@ class TestHandleMessage:
             session_id="nonexistent",
             text="test command",
             context=context,
-            session_manager=session_manager,
+            
             config=config,
             get_adapter_for_session=get_adapter_for_session,
             start_polling=start_polling,
@@ -44,19 +44,18 @@ class TestHandleMessage:
             session_id="test-123",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80x24",
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=True)
-        session_manager.remove_idle_notification = AsyncMock(return_value="idle-msg-456")
-        session_manager.cleanup_messages_after_success = AsyncMock()
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=True)
+        db.remove_idle_notification = AsyncMock(return_value="idle-msg-456")
+        db.cleanup_messages_after_success = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         adapter.delete_message = AsyncMock()
@@ -75,14 +74,14 @@ class TestHandleMessage:
                     session_id="test-123",
                     text="echo test",
                     context=context,
-                    session_manager=session_manager,
+                    
                     config=config,
                     get_adapter_for_session=get_adapter_for_session,
                     start_polling=start_polling,
                 )
 
                 # Verify idle notification deleted
-                session_manager.remove_idle_notification.assert_called_once_with("test-123")
+                db.remove_idle_notification.assert_called_once_with("test-123")
                 adapter.delete_message.assert_called_with("test-123", "idle-msg-456")
 
     async def test_strip_leading_double_slash(self):
@@ -91,18 +90,17 @@ class TestHandleMessage:
             session_id="test-slash",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80x24",
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=False)
-        session_manager.cleanup_messages_after_success = AsyncMock()
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=False)
+        db.cleanup_messages_after_success = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
@@ -120,7 +118,7 @@ class TestHandleMessage:
                     session_id="test-slash",
                     text="//command",  # Leading double slash
                     context=context,
-                    session_manager=session_manager,
+                    
                     config=config,
                     get_adapter_for_session=get_adapter_for_session,
                     start_polling=start_polling,
@@ -136,18 +134,17 @@ class TestHandleMessage:
             session_id="test-456",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80xABC",  # Invalid format (letters instead of numbers)
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=False)
-        session_manager.cleanup_messages_after_success = AsyncMock()
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=False)
+        db.cleanup_messages_after_success = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
@@ -165,7 +162,7 @@ class TestHandleMessage:
                     session_id="test-456",
                     text="echo test",
                     context=context,
-                    session_manager=session_manager,
+                    
                     config=config,
                     get_adapter_for_session=get_adapter_for_session,
                     start_polling=start_polling,
@@ -183,17 +180,16 @@ class TestHandleMessage:
             session_id="test-789",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80x24",
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=False)
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=False)
+        db.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         adapter.send_message = AsyncMock()
@@ -213,7 +209,7 @@ class TestHandleMessage:
                 session_id="test-789",
                 text="invalid command",
                 context=context,
-                session_manager=session_manager,
+                
                 config=config,
                 get_adapter_for_session=get_adapter_for_session,
                 start_polling=start_polling,
@@ -223,7 +219,7 @@ class TestHandleMessage:
             adapter.send_message.assert_called_once_with("test-789", "Failed to send command to terminal")
 
             # Verify no activity updates
-            session_manager.update_last_activity.assert_not_called()
+            db.update_last_activity.assert_not_called()
 
             # Verify no polling started
             start_polling.assert_not_called()
@@ -234,18 +230,17 @@ class TestHandleMessage:
             session_id="test-999",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80x24",
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=False)
-        session_manager.cleanup_messages_after_success = AsyncMock()
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": True})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=False)
+        db.cleanup_messages_after_success = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value={"polling_active": True})
 
         adapter = Mock()
         adapter.delete_message = AsyncMock()
@@ -264,14 +259,14 @@ class TestHandleMessage:
                 session_id="test-999",
                 text="input to running process",
                 context=context,
-                session_manager=session_manager,
+                
                 config=config,
                 get_adapter_for_session=get_adapter_for_session,
                 start_polling=start_polling,
             )
 
             # Verify cleanup called with user message ID
-            session_manager.cleanup_messages_after_success.assert_called_once_with("test-999", "555", adapter)
+            db.cleanup_messages_after_success.assert_called_once_with("test-999", "555", adapter)
 
             # Verify send_keys called with append_exit_marker=False
             call_kwargs = mock_terminal.send_keys.call_args[1]
@@ -286,18 +281,17 @@ class TestHandleMessage:
             session_id="test-111",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80x24",
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=False)
-        session_manager.cleanup_messages_after_success = AsyncMock()
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": True})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=False)
+        db.cleanup_messages_after_success = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value={"polling_active": True})
 
         adapter = Mock()
         adapter.delete_message = AsyncMock()
@@ -316,14 +310,14 @@ class TestHandleMessage:
                     session_id="test-111",
                     text="input",
                     context=context,
-                    session_manager=session_manager,
+                    
                     config=config,
                     get_adapter_for_session=get_adapter_for_session,
                     start_polling=start_polling,
                 )
 
                 # Verify cleanup called with None message_id
-                session_manager.cleanup_messages_after_success.assert_called_once_with("test-111", None, adapter)
+                db.cleanup_messages_after_success.assert_called_once_with("test-111", None, adapter)
 
     async def test_new_command_starts_polling(self):
         """Test starting new poll when sending new command (not input to running process)."""
@@ -331,18 +325,17 @@ class TestHandleMessage:
             session_id="test-222",
             computer_name="TestMac",
             tmux_session_name="test-tmux",
-            adapter_type="telegram",
+            origin_adapter="telegram",
             title="Test",
             terminal_size="80x24",
             working_directory="/tmp",
         )
 
-        session_manager = Mock()
-        session_manager.get_session = AsyncMock(return_value=session)
-        session_manager.update_last_activity = AsyncMock()
-        session_manager.has_idle_notification = AsyncMock(return_value=False)
-        session_manager.cleanup_messages_after_success = AsyncMock()
-        session_manager.get_ux_state = AsyncMock(return_value={"polling_active": False})
+        db.get_session = AsyncMock(return_value=session)
+        db.update_last_activity = AsyncMock()
+        db.has_idle_notification = AsyncMock(return_value=False)
+        db.cleanup_messages_after_success = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value={"polling_active": False})
 
         adapter = Mock()
         get_adapter_for_session = AsyncMock(return_value=adapter)
@@ -360,7 +353,7 @@ class TestHandleMessage:
                     session_id="test-222",
                     text="echo hello",
                     context=context,
-                    session_manager=session_manager,
+                    
                     config=config,
                     get_adapter_for_session=get_adapter_for_session,
                     start_polling=start_polling,

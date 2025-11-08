@@ -8,15 +8,15 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Dict
 
 from teleclaude.core import terminal_bridge
-from teleclaude.core.session_manager import SessionManager
+from teleclaude.core.db import Db, db
 
 logger = logging.getLogger(__name__)
 
 
-async def migrate_session_metadata(session_manager: SessionManager) -> None:
+async def migrate_session_metadata(session_manager: Db) -> None:
     """Migrate old session metadata to new format.
 
     Old format: {"topic_id": 12345}
@@ -25,7 +25,7 @@ async def migrate_session_metadata(session_manager: SessionManager) -> None:
     Args:
         session_manager: Session manager instance
     """
-    sessions = await session_manager.list_sessions()
+    sessions = await db.list_sessions()
     migrated = 0
 
     for session in sessions:
@@ -39,7 +39,7 @@ async def migrate_session_metadata(session_manager: SessionManager) -> None:
             new_metadata["channel_id"] = str(new_metadata.pop("topic_id"))
 
             # Serialize to JSON for database storage
-            await session_manager.update_session(session.session_id, adapter_metadata=json.dumps(new_metadata))
+            await db.update_session(session.session_id, adapter_metadata=json.dumps(new_metadata))
             migrated += 1
             logger.debug("Migrated session %s metadata", session.session_id[:8])
 
@@ -47,33 +47,33 @@ async def migrate_session_metadata(session_manager: SessionManager) -> None:
         logger.info("Migrated %d session(s) to new metadata format", migrated)
 
 
-async def periodic_cleanup(session_manager: SessionManager, config: Dict[str, Any]) -> None:
+async def periodic_cleanup(session_manager: Db, cfg: "Config") -> None:  # type: ignore[name-defined]
     """Periodically clean up inactive sessions (72h lifecycle).
 
     Args:
         session_manager: Session manager instance
-        config: Application configuration
+        cfg: Application configuration
     """
     while True:
         try:
             await asyncio.sleep(3600)  # Run every hour
-            await cleanup_inactive_sessions(session_manager, config)
+            await cleanup_inactive_sessions(session_manager, cfg)
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.error("Error in periodic cleanup: %s", e)
 
 
-async def cleanup_inactive_sessions(session_manager: SessionManager, config: Dict[str, Any]) -> None:
+async def cleanup_inactive_sessions(session_manager: Db, cfg: "Config") -> None:  # type: ignore[name-defined]
     """Clean up sessions inactive for 72+ hours.
 
     Args:
         session_manager: Session manager instance
-        config: Application configuration
+        cfg: Application configuration
     """
     try:
         cutoff_time = datetime.now() - timedelta(hours=72)
-        sessions = await session_manager.list_sessions()
+        sessions = await db.list_sessions()
 
         for session in sessions:
             if session.closed:
@@ -95,7 +95,7 @@ async def cleanup_inactive_sessions(session_manager: SessionManager, config: Dic
                 await terminal_bridge.kill_session(session.tmux_session_name)
 
                 # Mark as closed
-                await session_manager.update_session(session.session_id, closed=True)
+                await db.update_session(session.session_id, closed=True)
 
                 logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
 

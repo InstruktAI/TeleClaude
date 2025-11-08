@@ -19,7 +19,7 @@ async def test_message_execution_and_output_polling(daemon_with_mocked_telegram)
     await daemon.handle_command("new-session", ["Flow", "Test"], context)
 
     # Get the created session
-    sessions = await daemon.session_manager.list_sessions()
+    sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
     session = sessions[0]
 
@@ -86,7 +86,7 @@ async def test_command_execution_via_terminal(daemon_with_mocked_telegram):
     context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
     await daemon.handle_command("new-session", ["Terminal", "Test"], context)
 
-    sessions = await daemon.session_manager.list_sessions()
+    sessions = await daemon.db.list_sessions()
     session = sessions[0]
 
     # Send command directly to terminal
@@ -127,8 +127,7 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     comp1_registry = ComputerRegistry(
         telegram,
         "comp1",
-        "teleclaude_comp1_bot",
-        daemon.session_manager
+        "teleclaude_comp1_bot"
     )
     comp1_registry.registry_topic_id = 999
     comp1_registry.computers = {
@@ -136,31 +135,17 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
         "comp2": {"name": "comp2", "status": "online", "last_seen": datetime.now()}
     }
 
-    # Create mock adapter client
-    from unittest.mock import AsyncMock, Mock
-    mock_client = Mock()
-    async def mock_discover_peers():
-        return [
-            {"name": "comp1", "status": "online"},
-            {"name": "comp2", "status": "online"}
-        ]
-    mock_client.discover_peers = AsyncMock(side_effect=mock_discover_peers)
-
-    from teleclaude import config as config_module
-    with patch.object(config_module, '_config', {"computer": {"name": "comp1"}, "mcp": {"transport": "stdio"}}):
-        comp1_mcp = TeleClaudeMCPServer(
-            telegram,
-            terminal_bridge,
-            daemon.session_manager,
-            comp1_registry,
-            mock_client
-        )
+    # Create MCP server (uses module-level db, not session_manager)
+    comp1_mcp = TeleClaudeMCPServer(
+        daemon.client,  # adapter_client
+        terminal_bridge
+    )
 
     # Setup Comp2 (second daemon - executes commands)
     comp2_db_path = tmp_path / "comp2.db"
-    from teleclaude.core.session_manager import SessionManager
-    comp2_session_manager = SessionManager(str(comp2_db_path))
-    await comp2_session_manager.initialize()
+    from teleclaude.core.db import db, Db
+    comp2_session_manager = Db(str(comp2_db_path))
+    await comp2_db.initialize()
 
     # Shared message bus for communication
     message_topic = {}  # topic_id -> list of messages
@@ -178,7 +163,7 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     telegram.send_message_to_topic = comp1_send_to_topic
 
     # Create session on Comp2 (simulating /claude_resume response)
-    comp2_session = await comp2_session_manager.create_session(
+    comp2_session = await comp2_db.create_session(
         computer_name="comp2",
         tmux_session_name="comp2-ai-test",
         adapter_type="telegram",
@@ -189,7 +174,7 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
 
     # STEP 1: Start session (simplified - skip /claude_resume handshake)
     # Directly create session on Comp1 side to match Comp2
-    comp1_session = await daemon.session_manager.create_session(
+    comp1_session = await daemon.db.create_session(
         computer_name="comp1",
         tmux_session_name="comp1-ai-outbound",
         adapter_type="telegram",
@@ -280,8 +265,8 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
 
     # Cleanup
     await terminal_bridge.kill_session(comp2_session.tmux_session_name)
-    await comp2_session_manager.delete_session(comp2_session.session_id)
-    await comp2_session_manager.close()
+    await comp2_db.delete_session(comp2_session.session_id)
+    await comp2_db.close()
 
 
 if __name__ == "__main__":

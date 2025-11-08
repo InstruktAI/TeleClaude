@@ -5,14 +5,13 @@ CREATE TABLE IF NOT EXISTS sessions (
     computer_name TEXT NOT NULL,
     title TEXT,
     tmux_session_name TEXT NOT NULL,
-    adapter_types TEXT NOT NULL DEFAULT '["telegram"]',  -- JSON array of adapter names
+    origin_adapter TEXT NOT NULL DEFAULT 'telegram',  -- Single origin adapter (e.g., "telegram", "redis")
     adapter_metadata TEXT,  -- JSON string for platform-specific data
     closed BOOLEAN DEFAULT 0,  -- 0 = active, 1 = closed
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     terminal_size TEXT DEFAULT '80x24',
     working_directory TEXT DEFAULT '~',
-    command_count INTEGER DEFAULT 0,
     output_message_id TEXT,  -- DEPRECATED: Use ux_state instead
     idle_notification_message_id TEXT,  -- DEPRECATED: Use ux_state instead
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)

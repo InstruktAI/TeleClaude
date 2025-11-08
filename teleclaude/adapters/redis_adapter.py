@@ -11,20 +11,27 @@ import logging
 import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.config import get_config
+from teleclaude.config import config
+from teleclaude.core.db import db
+from teleclaude.core.protocols import RemoteExecutionProtocol
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
 
 
-class RedisAdapter(BaseAdapter):
+class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     """Adapter for AI-to-AI communication via Redis Streams.
 
     Uses Redis Streams for reliable, ordered message delivery between computers.
+
+    Implements RemoteExecutionProtocol for cross-computer orchestration.
 
     Architecture:
     - Each computer polls its command stream: commands:{computer_name}
@@ -36,42 +43,38 @@ class RedisAdapter(BaseAdapter):
     - Comp2 → XADD output:session_id → Comp1 polls → streams to MCP
     """
 
-    def __init__(self, session_manager: Any, daemon: Any):
+    has_ui = False  # Redis has no visual UI (pure transport)
+
+    def __init__(self, adapter_client: "AdapterClient"):
         """Initialize Redis adapter.
 
         Args:
-            session_manager: SessionManager instance
-            daemon: Daemon instance for callbacks
+            adapter_client: AdapterClient instance for event emission
         """
         super().__init__()
-        self.session_manager = session_manager
-        self.daemon = daemon
+
+        # Store adapter client reference (ONLY interface to daemon)
+        self.client = adapter_client
+
+        # Get global config singleton
         self.redis: Optional[Redis] = None
-        self.computer_name = ""
-        self.bot_username = ""
         self._command_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._running = False
 
-        # Load config
-        config = get_config()
-        redis_config = config.get("redis", {})
+        # Extract Redis configuration from global config
+        self.redis_url = config.redis.url
+        self.redis_password = config.redis.password
+        self.computer_name = config.computer.name
 
-        if not redis_config.get("enabled", True):
-            raise ValueError("Redis adapter is disabled in config")
+        # Redis connection settings
+        self.max_connections = config.redis.max_connections
+        self.socket_timeout = config.redis.socket_timeout
 
-        self.redis_url = redis_config.get("url", "redis://localhost:6379")
-        self.redis_password = redis_config.get("password")
-        self.max_connections = redis_config.get("max_connections", 10)
-        self.socket_timeout = redis_config.get("socket_timeout", 5)
-        self.command_stream_maxlen = redis_config.get("command_stream_maxlen", 1000)
-        self.output_stream_maxlen = redis_config.get("output_stream_maxlen", 10000)
-        self.output_stream_ttl = redis_config.get("output_stream_ttl", 3600)
-
-        # Get computer info
-        computer_config = config.get("computer", {})
-        self.computer_name = computer_config.get("name", "unknown")
-        self.bot_username = computer_config.get("bot_username", "")
+        # Stream configuration
+        self.command_stream_maxlen = config.redis.command_stream_maxlen
+        self.output_stream_maxlen = config.redis.output_stream_maxlen
+        self.output_stream_ttl = config.redis.output_stream_ttl
 
         # Heartbeat config
         self.heartbeat_interval = 30  # Send heartbeat every 30s
@@ -138,7 +141,7 @@ class RedisAdapter(BaseAdapter):
 
         logger.info("RedisAdapter stopped")
 
-    async def send_message(self, session_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def send_message(self, session_id: str, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send message chunk to Redis output stream.
 
         Args:
@@ -152,16 +155,16 @@ class RedisAdapter(BaseAdapter):
         if not self.redis:
             raise RuntimeError("Redis not initialized")
 
-        session = await self.session_manager.get_session(session_id)
+        session = await db.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
         # Get output stream name from session metadata
-        redis_metadata = session.adapter_metadata or {}
+        redis_metadata: dict[str, object] = session.adapter_metadata or {}
         if isinstance(redis_metadata, str):
             redis_metadata = json.loads(redis_metadata)
 
-        redis_meta = redis_metadata.get("redis", {})
+        redis_meta: dict[str, object] = redis_metadata.get("redis", {})  # type: ignore[assignment]
         output_stream = redis_meta.get("output_stream")
 
         if not output_stream:
@@ -171,10 +174,10 @@ class RedisAdapter(BaseAdapter):
             redis_metadata["redis"] = redis_meta
 
             # Update session
-            await self.session_manager.update_session(session_id, adapter_metadata=redis_metadata)
+            await db.update_session(session_id, adapter_metadata=redis_metadata)
 
         # Send to Redis stream
-        message_id = await self.redis.xadd(
+        message_id_bytes: bytes = await self.redis.xadd(
             output_stream,
             {
                 b"chunk": text.encode("utf-8"),
@@ -184,11 +187,11 @@ class RedisAdapter(BaseAdapter):
             maxlen=self.output_stream_maxlen,
         )
 
-        logger.debug("Sent to Redis stream %s: %s", output_stream, message_id)
-        return message_id.decode("utf-8")
+        logger.debug("Sent to Redis stream %s: %s", output_stream, message_id_bytes)
+        return message_id_bytes.decode("utf-8")
 
     async def edit_message(
-        self, session_id: str, message_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
+        self, session_id: str, message_id: str, text: str, metadata: Optional[dict[str, object]] = None
     ) -> bool:
         """Redis streams don't support editing - send new message instead.
 
@@ -217,15 +220,16 @@ class RedisAdapter(BaseAdapter):
         if not self.redis:
             return False
 
-        session = await self.session_manager.get_session(session_id)
+        session = await db.get_session(session_id)
         if not session:
             return False
 
-        redis_metadata = session.adapter_metadata or {}
+        redis_metadata: dict[str, object] = session.adapter_metadata or {}
         if isinstance(redis_metadata, str):
             redis_metadata = json.loads(redis_metadata)
 
-        output_stream = redis_metadata.get("redis", {}).get("output_stream")
+        redis_meta_2: dict[str, object] = redis_metadata.get("redis", {})  # type: ignore[assignment]
+        output_stream = redis_meta_2.get("output_stream")
         if not output_stream:
             return False
 
@@ -236,30 +240,7 @@ class RedisAdapter(BaseAdapter):
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
 
-    async def send_file(
-        self,
-        session_id: str,
-        file_path: str,
-        caption: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Send file metadata to Redis (actual file not transferred).
-
-        Args:
-            session_id: Session ID
-            file_path: File path (sent as text reference)
-            caption: Optional caption
-            metadata: Optional metadata
-
-        Returns:
-            Message ID
-        """
-        message = f"[FILE: {file_path}]"
-        if caption:
-            message += f"\n{caption}"
-        return await self.send_message(session_id, message, metadata)
-
-    async def send_general_message(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send general message (not implemented for Redis).
 
         Redis adapter is session-specific, no general channel.
@@ -274,7 +255,7 @@ class RedisAdapter(BaseAdapter):
         logger.warning("send_general_message not supported by RedisAdapter")
         return ""
 
-    async def create_channel(self, session_id: str, title: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def create_channel(self, session_id: str, title: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Create Redis streams for session.
 
         Args:
@@ -306,7 +287,7 @@ class RedisAdapter(BaseAdapter):
         )
 
         # Store stream names in session metadata
-        session = await self.session_manager.get_session(session_id)
+        session = await db.get_session(session_id)
         if session:
             redis_metadata = session.adapter_metadata or {}
             if isinstance(redis_metadata, str):
@@ -317,15 +298,15 @@ class RedisAdapter(BaseAdapter):
                 "output_stream": output_stream,
             }
 
-            await self.session_manager.update_session(session_id, adapter_metadata=redis_metadata)
+            await db.update_session(session_id, adapter_metadata=redis_metadata)
 
         return output_stream
 
-    async def update_channel_title(self, channel_id: str, title: str) -> bool:
+    async def update_channel_title(self, session_id: str, title: str) -> bool:
         """Update channel title (no-op for Redis).
 
         Args:
-            channel_id: Channel ID
+            session_id: Session identifier
             title: New title
 
         Returns:
@@ -333,11 +314,11 @@ class RedisAdapter(BaseAdapter):
         """
         return True
 
-    async def set_channel_status(self, channel_id: str, status: str) -> bool:
+    async def set_channel_status(self, session_id: str, status: str) -> bool:
         """Set channel status (no-op for Redis).
 
         Args:
-            channel_id: Channel ID
+            session_id: Session identifier
             status: Status string
 
         Returns:
@@ -345,11 +326,11 @@ class RedisAdapter(BaseAdapter):
         """
         return True
 
-    async def delete_channel(self, channel_id: str) -> bool:
+    async def delete_channel(self, session_id: str) -> bool:
         """Delete Redis stream.
 
         Args:
-            channel_id: Stream name
+            session_id: Session identifier
 
         Returns:
             True if successful
@@ -358,13 +339,13 @@ class RedisAdapter(BaseAdapter):
             return False
 
         try:
-            await self.redis.delete(channel_id)
+            await self.redis.delete(session_id)
             return True
         except Exception as e:
-            logger.error("Failed to delete stream %s: %s", channel_id, e)
+            logger.error("Failed to delete stream %s: %s", session_id, e)
             return False
 
-    async def discover_peers(self) -> List[Dict[str, Any]]:
+    async def discover_peers(self) -> list[dict[str, object]]:
         """Discover peers via Redis heartbeat keys.
 
         Returns:
@@ -416,6 +397,15 @@ class RedisAdapter(BaseAdapter):
             logger.error("Failed to discover peers: %s", e)
             return []
 
+    async def discover_computers(self) -> list[str]:
+        """Discover available remote computers (RemoteExecutionProtocol implementation).
+
+        Returns:
+            List of computer names accessible via Redis
+        """
+        peers = await self.discover_peers()
+        return [str(peer["name"]) for peer in peers]
+
     def get_max_message_length(self) -> int:
         """Get max message length for Redis (unlimited, but use 4KB for safety).
 
@@ -466,7 +456,7 @@ class RedisAdapter(BaseAdapter):
                 logger.error("Command polling error: %s", e)
                 await asyncio.sleep(5)  # Back off on error
 
-    async def _handle_incoming_command(self, data: Dict[bytes, bytes]) -> None:
+    async def _handle_incoming_command(self, data: dict[bytes, bytes]) -> None:
         """Handle incoming command from Redis stream.
 
         Args:
@@ -483,22 +473,26 @@ class RedisAdapter(BaseAdapter):
             logger.info("Received command for session %s: %s", session_id[:8], command[:50])
 
             # Get or create session
-            session = await self.session_manager.get_session(session_id)
+            session = await db.get_session(session_id)
             if not session:
                 # Create new session for incoming AI request
                 await self._create_session_from_redis(session_id, data)
 
-            # Emit command event to daemon
-            context = {
-                "session_id": session_id,
-                "adapter_type": "redis",
-            }
-            await self._emit_command(command, [], context)
+            # Emit command event to daemon via client
+            # Cast command to EventType (already validated by EventType literal)
+            from teleclaude.core.events import EventType
+
+            event_type: EventType = command  # type: ignore[assignment]  # Command validated upstream
+            await self.client.handle_event(
+                event=event_type,
+                payload={"session_id": session_id, "args": []},
+                metadata={"adapter_type": "redis"},
+            )
 
         except Exception as e:
             logger.error("Failed to handle incoming command: %s", e)
 
-    async def _create_session_from_redis(self, session_id: str, data: Dict[bytes, bytes]) -> None:
+    async def _create_session_from_redis(self, session_id: str, data: dict[bytes, bytes]) -> None:
         """Create session from incoming Redis command data.
 
         Args:
@@ -512,12 +506,12 @@ class RedisAdapter(BaseAdapter):
         # Create tmux session name
         tmux_session_name = f"{self.computer_name}-ai-{session_id[:8]}"
 
-        # Create session with BOTH adapters (redis for AI, telegram for human observation)
-        await self.session_manager.create_session(
+        # Create session with redis as origin adapter
+        await db.create_session(
             session_id=session_id,
             computer_name=self.computer_name,
             tmux_session_name=tmux_session_name,
-            adapter_types=["redis", "telegram"],  # Both adapters!
+            origin_adapter="redis",
             title=title,
             adapter_metadata={
                 "redis": {
@@ -562,7 +556,6 @@ class RedisAdapter(BaseAdapter):
             json.dumps(
                 {
                     "computer_name": self.computer_name,
-                    "bot_username": self.bot_username,
                     "last_seen": datetime.now().isoformat(),
                 }
             ),
@@ -587,3 +580,154 @@ class RedisAdapter(BaseAdapter):
             return match.group(1)
 
         return None
+
+    # === MCP-specific methods for AI-to-AI communication ===
+
+    async def send_command_to_computer(
+        self, computer_name: str, session_id: str, command: str, metadata: Optional[dict[str, object]] = None
+    ) -> str:
+        """Send command to remote computer's command stream.
+
+        Used by MCP server to initiate commands on remote computers.
+
+        Args:
+            computer_name: Target computer name
+            session_id: Session ID
+            command: Command to execute
+            metadata: Optional metadata (title, initiator, etc.)
+
+        Returns:
+            Redis stream entry ID
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        command_stream = f"commands:{computer_name}"
+        metadata = metadata or {}
+
+        # Build command data
+        data = {
+            b"session_id": session_id.encode("utf-8"),
+            b"command": command.encode("utf-8"),
+            b"timestamp": str(time.time()).encode("utf-8"),
+            b"initiator": self.computer_name.encode("utf-8"),
+        }
+
+        # Add optional metadata
+        if "title" in metadata:
+            title_str = str(metadata["title"])
+            data[b"title"] = title_str.encode("utf-8")
+        if "project_dir" in metadata:
+            project_dir_str = str(metadata["project_dir"])
+            data[b"project_dir"] = project_dir_str.encode("utf-8")
+
+        # Send to Redis stream
+        message_id_bytes: bytes = await self.redis.xadd(command_stream, data, maxlen=self.command_stream_maxlen)
+
+        logger.info("Sent command to %s: session=%s, command=%s", computer_name, session_id[:8], command[:50])
+        return message_id_bytes.decode("utf-8")
+
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:
+        """Poll output stream and yield chunks as they arrive.
+
+        Used by MCP server to stream output from remote sessions.
+
+        Args:
+            session_id: Session ID
+            timeout: Max seconds to wait for output
+
+        Yields:
+            Output chunks as they arrive
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        output_stream = f"output:{session_id}"
+        last_id = b"0-0"
+        start_time = time.time()
+        last_yield_time = time.time()
+        idle_count = 0
+        max_idle_polls = 120  # 120 * 0.5s = 60s max idle
+        heartbeat_interval = 60  # Send heartbeat every 60s if no output
+
+        logger.info("Starting output stream poll for session %s", session_id[:8])
+
+        try:
+            while True:
+                # Check overall timeout
+                if time.time() - start_time > timeout:
+                    yield "\n[Timeout: Session exceeded time limit]"
+                    return
+
+                # Read from stream (blocking with 500ms timeout)
+                try:
+                    messages = await self.redis.xread({output_stream.encode("utf-8"): last_id}, block=500, count=10)
+
+                    if not messages:
+                        # No messages - increment idle counter
+                        idle_count += 1
+
+                        # Send heartbeat if no output for a while
+                        if time.time() - last_yield_time > heartbeat_interval:
+                            yield "[⏳ Waiting for response...]\n"
+                            last_yield_time = time.time()
+
+                        # Timeout if idle too long
+                        if idle_count >= max_idle_polls:
+                            yield "\n[Timeout: No response for 60 seconds]"
+                            return
+
+                        continue
+
+                    # Got messages - reset idle counter
+                    idle_count = 0
+
+                    # Process messages
+                    for stream_name, stream_messages in messages:
+                        for message_id, data in stream_messages:
+                            chunk = data.get(b"chunk", b"").decode("utf-8")
+
+                            if not chunk:
+                                continue
+
+                            # Check for completion marker
+                            if "[Output Complete]" in chunk:
+                                logger.info("Received completion marker for session %s", session_id[:8])
+                                return
+
+                            # Yield chunk content
+                            content = self._extract_chunk_content(chunk)
+                            if content:
+                                yield content
+                                last_yield_time = time.time()
+
+                            # Update last ID
+                            last_id = message_id
+
+                except Exception as e:
+                    logger.error("Error polling output stream: %s", e)
+                    await asyncio.sleep(1)
+
+        except asyncio.CancelledError:
+            logger.info("Output stream polling cancelled for session %s", session_id[:8])
+            raise
+
+    def _extract_chunk_content(self, chunk_text: str) -> str:
+        """Extract actual output from chunk message.
+
+        Strips markdown code fences and chunk markers.
+
+        Args:
+            chunk_text: Raw chunk text from Redis
+
+        Returns:
+            Extracted content without formatting
+        """
+        if not chunk_text:
+            return ""
+
+        # Remove markdown code fences
+        content = chunk_text.replace("```sh", "").replace("```", "")
+        # Remove chunk markers
+        content = re.sub(r"\[Chunk \d+/\d+\]", "", content)
+        return content.strip()

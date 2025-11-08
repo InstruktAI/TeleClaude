@@ -4,9 +4,12 @@ import asyncio
 import logging
 import os
 import tempfile
-from functools import wraps
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, AsyncIterator, Optional
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
+    from telegram import Message as TelegramMessage
 
 from telegram import (
     BotCommand,
@@ -26,101 +29,40 @@ from telegram.ext import (
     filters,
 )
 
-from teleclaude.config import get_config
-from teleclaude.utils import apply_code_block_formatting
+from teleclaude.config import config
+from teleclaude.core.db import db
+from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.models import Session
+from teleclaude.core.ux_state import get_system_ux_state, update_system_ux_state
+from teleclaude.utils import command_retry
 
-from .base_adapter import AdapterError, BaseAdapter
+from .base_adapter import AdapterError
+from .ui_adapter import UiAdapter
 
 # Status emoji mapping
 STATUS_EMOJI = {"active": "🟢", "waiting": "🟡", "slow": "🟠", "stalled": "🔴", "idle": "⏸️", "dead": "❌"}
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
 
-
-def telegram_retry(max_retries: int = 3) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., Awaitable[T]]]:
-    """Decorator for retrying Telegram API calls with exponential backoff.
-
-    Handles:
-    - Rate limits (429/RetryAfter): Retry with suggested delay
-    - Network errors (connection issues, timeouts): Retry with exponential backoff (1s, 2s)
-    - Other errors: Fail immediately
-
-    Args:
-        max_retries: Maximum number of retry attempts (default: 3)
-    """
-
-    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
-        @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> T:
-            last_exception = None
-
-            for attempt in range(max_retries):
-                try:
-                    return await func(*args, **kwargs)
-
-                except RetryAfter as e:
-                    # Rate limit - use Telegram's suggested retry delay
-                    if attempt < max_retries - 1:
-                        retry_after = e.retry_after
-                        logger.warning(
-                            "Rate limited (429), retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries
-                        )
-                        await asyncio.sleep(retry_after)
-                        last_exception = e
-                    else:
-                        logger.error("Rate limit exceeded after %d attempts", max_retries)
-                        raise
-
-                except (NetworkError, TimedOut, ConnectionError, TimeoutError) as e:
-                    # Network/connection errors - exponential backoff
-                    if attempt < max_retries - 1:
-                        delay = 2**attempt  # 1s, 2s, 4s
-                        logger.warning(
-                            "Network error (%s), retrying in %ds (attempt %d/%d)",
-                            type(e).__name__,
-                            delay,
-                            attempt + 1,
-                            max_retries,
-                        )
-                        await asyncio.sleep(delay)
-                        last_exception = e
-                    else:
-                        logger.error("Network error after %d attempts: %s", max_retries, e)
-                        raise
-
-                except Exception as e:
-                    # Other errors (BadRequest, etc.) - fail immediately, don't retry
-                    logger.debug("Non-retryable error in %s: %s", func.__name__, e)
-                    raise
-
-            # Should never reach here, but just in case
-            if last_exception:
-                raise last_exception
-            raise RuntimeError(f"Retry logic failed unexpectedly in {func.__name__}")
-
-        return wrapper
-
-    return decorator
-
-
-class TelegramAdapter(BaseAdapter):
+class TelegramAdapter(UiAdapter):
     """Telegram bot adapter using python-telegram-bot."""
 
-    def __init__(self, session_manager: Any, daemon: Any) -> None:
+    def __init__(self, client: "AdapterClient") -> None:
         """Initialize Telegram adapter.
 
         Args:
-            session_manager: SessionManager instance for database queries
-            daemon: Daemon instance for accessing session buffers
+            client: AdapterClient instance for event emission
         """
         super().__init__()
 
-        # Get global config
-        config = get_config()
+        # Store client for event emission
+        self.client = client
 
-        # Extract values from environment and config
+        # Get global config singleton
+        # config already imported
+
+        # Extract values from environment
         self.bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
         if not self.bot_token:
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set")
@@ -133,19 +75,17 @@ class TelegramAdapter(BaseAdapter):
         user_ids_str = os.getenv("TELEGRAM_USER_IDS", "")
         self.user_whitelist = [int(uid.strip()) for uid in user_ids_str.split(",") if uid.strip()]
 
-        self.trusted_dirs = config.get("computer", {}).get("trusted_dirs", [])
-        self.trusted_bots = config.get("telegram", {}).get("trusted_bots", [])
-        self.computer_name = config.get("computer", {}).get("name")
+        # Extract from config singleton
+        self.trusted_dirs = config.computer.trusted_dirs
+        self.trusted_bots = config.telegram.trusted_bots
+        self.computer_name = config.computer.name
         if not self.computer_name:
             raise ValueError("computer.name is required in config.yml")
-        self.is_master = config.get("computer", {}).get("is_master", False)
-
-        self.session_manager = session_manager
-        self.daemon = daemon
+        self.is_master = config.computer.is_master
         self.app: Optional[Application] = None
         self._processed_voice_messages: set[int] = set()  # Track processed voice message IDs
-        self._topic_message_cache: Dict[int, list[Any]] = {}  # Cache for registry polling (get_topic_messages)
-        self._mcp_message_queues: Dict[int, asyncio.Queue[Any]] = {}  # Event-driven MCP delivery: topic_id -> queue
+        self._topic_message_cache: dict[int | None, list[TelegramMessage]] = {}  # Cache for registry polling
+        self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
 
         # Peer discovery state (heartbeat advertisement only)
         self.registry_message_id: Optional[int] = None  # Message ID for [REGISTRY] heartbeat message
@@ -156,7 +96,7 @@ class TelegramAdapter(BaseAdapter):
         if not self.app:
             raise AdapterError("Telegram adapter not started - call start() first")
 
-    def _is_message_from_trusted_bot(self, message: Any) -> bool:
+    def _is_message_from_trusted_bot(self, message: "TelegramMessage") -> bool:
         """Check if message is from a trusted bot (for AI-to-AI communication).
 
         Args:
@@ -196,31 +136,7 @@ class TelegramAdapter(BaseAdapter):
         # Register command handlers
         # Note: By default CommandHandler only handles NEW messages, not edited ones
         # We need to add them separately to handle edited commands
-        commands = [
-            ("new_session", self._handle_new_session),
-            ("list_sessions", self._handle_list_sessions),
-            ("list_projects", self._handle_list_projects),
-            ("cancel", self._handle_cancel),
-            ("cancel2x", self._handle_cancel2x),
-            ("kill", self._handle_kill),
-            ("escape", self._handle_escape),
-            ("escape2x", self._handle_escape2x),
-            ("ctrl", self._handle_ctrl),
-            ("tab", self._handle_tab),
-            ("shift_tab", self._handle_shift_tab),
-            ("key_up", self._handle_key_up),
-            ("key_down", self._handle_key_down),
-            ("key_left", self._handle_key_left),
-            ("key_right", self._handle_key_right),
-            ("resize", self._handle_resize),
-            ("rename", self._handle_rename),
-            ("cd", self._handle_cd),
-            ("claude", self._handle_claude),
-            ("claude_resume", self._handle_claude_resume),
-            ("help", self._handle_help),
-        ]
-
-        for command_name, handler in commands:
+        for command_name, handler in self._get_command_handlers():
             # Handle both new messages and edited messages
             self.app.add_handler(CommandHandler(command_name, handler))
             self.app.add_handler(CommandHandler(command_name, handler, filters=filters.UpdateType.EDITED_MESSAGE))
@@ -328,6 +244,12 @@ class TelegramAdapter(BaseAdapter):
             logger.error("Cannot access supergroup %s: %s", self.supergroup_id, e)
             logger.error("Make sure the bot is added to the group as a member!")
 
+        # Restore registry_message_id from system UX state (for clean UX after restart)
+        system_state = await get_system_ux_state(db._db)
+        if system_state.registry.ping_message_id:
+            self.registry_message_id = system_state.registry.ping_message_id
+            logger.info("Restored registry_message_id from system UX state: %s", self.registry_message_id)
+
         # Start peer discovery heartbeat (advertisement only)
         logger.info("Starting peer discovery heartbeat loop")
         asyncio.create_task(self._heartbeat_loop())
@@ -339,29 +261,28 @@ class TelegramAdapter(BaseAdapter):
             await self.app.stop()
             await self.app.shutdown()
 
-    async def send_message(self, session_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def send_message(self, session_id: str, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send message to session's topic with automatic retry on rate limits and network errors."""
         # Get session to find channel_id (topic_id)
-        session = await self.session_manager.get_session(session_id)
+        session = await db.get_session(session_id)
         if not session or not session.adapter_metadata:
             raise AdapterError(f"Session {session_id} not found or has no topic")
 
         self._ensure_started()
 
         # Use channel_id (new) or topic_id (legacy) for backward compatibility
-        topic_id = session.adapter_metadata.get("channel_id") or session.adapter_metadata.get("topic_id")
-        if not topic_id:
+        topic_id_obj = session.adapter_metadata.get("channel_id") or session.adapter_metadata.get("topic_id")
+        if not topic_id_obj:
             raise AdapterError(f"Session {session_id} has no channel_id/topic_id")
-
-        # Format message with code block only if not already formatted
-        formatted_text = apply_code_block_formatting(text, metadata or {})
+        # Type narrowing: we know this is an int from the database
+        topic_id: int = int(str(topic_id_obj))
 
         # Extract reply_markup if present
         reply_markup = (metadata or {}).get("reply_markup")
 
         # Send message with error handling for deleted topics
         try:
-            message = await self._send_message_with_retry(topic_id, formatted_text, reply_markup)
+            message = await self._send_message_with_retry(topic_id, text, reply_markup)
             return str(message.message_id)
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -370,7 +291,11 @@ class TelegramAdapter(BaseAdapter):
             ):
                 logger.warning("Topic %s was deleted for session %s", topic_id, session_id[:8])
                 # Emit topic deleted event
-                await self._emit_topic_closed(session_id, {"topic_id": topic_id, "reason": "deleted"})
+                await self.client.handle_event(
+                    event=TeleClaudeEvents.TOPIC_CLOSED,
+                    payload={"session_id": session_id},
+                    metadata={"adapter_type": "telegram", "topic_id": topic_id, "reason": "deleted"},
+                )
                 return None
             raise
         except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
@@ -378,8 +303,8 @@ class TelegramAdapter(BaseAdapter):
             logger.error("Failed to send message after retries: %s", e)
             return None
 
-    @telegram_retry(max_retries=3)
-    async def _send_message_with_retry(self, topic_id: int, formatted_text: str, reply_markup: Any) -> Any:
+    @command_retry(max_retries=3)
+    async def _send_message_with_retry(self, topic_id: int, formatted_text: str, reply_markup: object) -> Message:
         """Internal method with retry logic for sending messages."""
         return await self.app.bot.send_message(
             chat_id=self.supergroup_id,
@@ -390,19 +315,16 @@ class TelegramAdapter(BaseAdapter):
         )
 
     async def edit_message(
-        self, session_id: str, message_id: str, text: str, metadata: Optional[Dict[str, Any]] = None
+        self, session_id: str, message_id: str, text: str, metadata: Optional[dict[str, object]] = None
     ) -> bool:
         """Edit an existing message with automatic retry on rate limits and network errors."""
         self._ensure_started()
-
-        # Format message with code block only if not already formatted
-        formatted_text = apply_code_block_formatting(text, metadata or {})
 
         # Extract reply_markup if present
         reply_markup = (metadata or {}).get("reply_markup")
 
         try:
-            await self._edit_message_with_retry(message_id, formatted_text, reply_markup, session_id)
+            await self._edit_message_with_retry(message_id, text, reply_markup, session_id)
             return True
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -411,7 +333,11 @@ class TelegramAdapter(BaseAdapter):
             ):
                 logger.warning("Topic was deleted for session %s during edit", session_id[:8])
                 # Emit topic deleted event
-                await self._emit_topic_closed(session_id, {"reason": "deleted"})
+                await self.client.handle_event(
+                    event=TeleClaudeEvents.TOPIC_CLOSED,
+                    payload={"session_id": session_id},
+                    metadata={"adapter_type": "telegram", "reason": "deleted"},
+                )
                 return False
             if "can't parse entities" in error_msg or "can't find end of" in error_msg:
                 # Parse error - transient issue with complex output, continue polling
@@ -427,9 +353,9 @@ class TelegramAdapter(BaseAdapter):
             logger.error("Failed to edit message: %s", e)
             return False
 
-    @telegram_retry(max_retries=3)
+    @command_retry(max_retries=3)
     async def _edit_message_with_retry(
-        self, message_id: str, formatted_text: str, reply_markup: Any, session_id: str
+        self, message_id: str, formatted_text: str, reply_markup: object, session_id: str
     ) -> None:
         """Internal method with retry logic for editing messages."""
         await self.app.bot.edit_message_text(
@@ -457,23 +383,29 @@ class TelegramAdapter(BaseAdapter):
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
 
-    @telegram_retry(max_retries=3)
+    @command_retry(max_retries=3)
     async def _delete_message_with_retry(self, message_id: str) -> None:
         """Delete message with retry logic."""
         await self.app.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
 
     async def send_file(
-        self, session_id: str, file_path: str, caption: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None
+        self,
+        session_id: str,
+        file_path: str,
+        caption: Optional[str] = None,
+        metadata: Optional[dict[str, object]] = None,
     ) -> str:
         """Send file to session's topic."""
         self._ensure_started()
 
-        session = await self.session_manager.get_session(session_id)
+        session = await db.get_session(session_id)
         if not session or not session.adapter_metadata:
             raise AdapterError(f"Session {session_id} not found")
 
         # Use channel_id (new) or topic_id (legacy)
-        topic_id = session.adapter_metadata.get("channel_id") or session.adapter_metadata.get("topic_id")
+        topic_id_obj = session.adapter_metadata.get("channel_id") or session.adapter_metadata.get("topic_id")
+        # Type narrowing: we know this is an int from the database
+        topic_id: int | None = int(str(topic_id_obj)) if topic_id_obj else None
 
         with open(file_path, "rb") as f:
             message = await self.app.bot.send_document(
@@ -482,7 +414,7 @@ class TelegramAdapter(BaseAdapter):
 
         return str(message.message_id)
 
-    async def send_general_message(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send message to Telegram supergroup general topic."""
         self._ensure_started()
 
@@ -495,7 +427,7 @@ class TelegramAdapter(BaseAdapter):
         )
         return str(result.message_id)
 
-    async def create_channel(self, session_id: str, title: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    async def create_channel(self, session_id: str, title: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Create a new topic in the supergroup."""
         self._ensure_started()
 
@@ -523,12 +455,10 @@ class TelegramAdapter(BaseAdapter):
     async def set_channel_status(self, channel_id: str, status: str) -> bool:
         """Update status emoji in topic title."""
         # Get current title from database (try both new and old format)
-        sessions = await self.session_manager.get_sessions_by_adapter_metadata("telegram", "channel_id", channel_id)
+        sessions = await db.get_sessions_by_adapter_metadata("telegram", "channel_id", channel_id)
         if not sessions:
             # Fallback to old topic_id format
-            sessions = await self.session_manager.get_sessions_by_adapter_metadata(
-                "telegram", "topic_id", int(channel_id)
-            )
+            sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", int(channel_id))
 
         if not sessions:
             return False
@@ -580,7 +510,21 @@ class TelegramAdapter(BaseAdapter):
         """
         return update.effective_user is not None and update.effective_message is not None
 
-    async def _get_session_from_topic(self, update: Update) -> Any:
+    def _event_to_command(self, event: str) -> str:
+        """Convert event name to daemon command format.
+
+        Event names use underscores (new_session, cancel2x)
+        Daemon expects hyphens (new-session, cancel2x)
+
+        Args:
+            event: Event name (e.g., "new_session", "cancel2x")
+
+        Returns:
+            Command name (e.g., "new-session", "cancel2x")
+        """
+        return event.replace("_", "-")
+
+    async def _get_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from current topic.
 
         Returns:
@@ -601,10 +545,10 @@ class TelegramAdapter(BaseAdapter):
 
         # Find session by channel_id (try both new and old format)
         thread_id = message.message_thread_id
-        sessions = await self.session_manager.get_sessions_by_adapter_metadata("telegram", "channel_id", str(thread_id))
+        sessions = await db.get_sessions_by_adapter_metadata("telegram", "channel_id", str(thread_id))
         if not sessions:
             # Fallback to old topic_id format
-            sessions = await self.session_manager.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
+            sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
 
         return sessions[0] if sessions else None
 
@@ -625,14 +569,17 @@ class TelegramAdapter(BaseAdapter):
         logger.debug("User authorized, emitting command with args: %s", context.args)
 
         # Emit command event to daemon
-        await self._emit_command(
-            "new-session",
-            list(context.args) if context.args else [],
-            {
+        await self.client.handle_event(
+            event=TeleClaudeEvents.NEW_SESSION,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.NEW_SESSION),
+                "args": list(context.args) if context.args else [],
+            },
+            metadata={
                 "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "chat_id": update.effective_chat.id,
-                "message_thread_id": update.effective_message.message_thread_id if update.effective_message else None,
+                "topic_id": update.effective_message.message_thread_id if update.effective_message else None,
             },
         )
 
@@ -644,14 +591,17 @@ class TelegramAdapter(BaseAdapter):
         if update.effective_user.id not in self.user_whitelist:
             return
 
-        await self._emit_command(
-            "list-sessions",
-            [],
-            {
+        await self.client.handle_event(
+            event=TeleClaudeEvents.LIST_SESSIONS,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.LIST_SESSIONS),
+                "args": [],
+            },
+            metadata={
                 "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "chat_id": update.effective_chat.id,
-                "message_thread_id": update.effective_message.message_thread_id if update.effective_message else None,
+                "topic_id": update.effective_message.message_thread_id if update.effective_message else None,
             },
         )
 
@@ -665,9 +615,8 @@ class TelegramAdapter(BaseAdapter):
         from pathlib import Path
 
         # Get trusted_dirs and default_working_dir from config
-        config = get_config()
-        trusted_dirs = config.get("computer", {}).get("trusted_dirs", [])
-        default_working_dir = config.get("computer", {}).get("default_working_dir", "")
+        trusted_dirs = config.computer.trusted_dirs
+        default_working_dir = config.computer.default_working_dir
 
         # Expand environment variables and filter existing paths
         all_dirs = []
@@ -702,12 +651,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "cancel",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.CANCEL,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.CANCEL),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -728,12 +680,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "cancel2x",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.CANCEL_2X,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.CANCEL_2X),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -754,12 +709,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "kill",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.KILL,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.KILL),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -780,12 +738,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "escape",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.ESCAPE,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.ESCAPE),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -801,12 +762,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "escape2x",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.ESCAPE_2X,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.ESCAPE_2X),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -827,14 +791,17 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "ctrl",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.CTRL,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.CTRL),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
-                "message_id": update.effective_message.message_id,  # Track command message
+                "message_id": update.effective_message.message_id,
             },
         )
 
@@ -848,12 +815,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "tab",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.TAB,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.TAB),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -869,12 +839,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "shift-tab",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.SHIFT_TAB,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.SHIFT_TAB),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -890,12 +863,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "key-up",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.KEY_UP,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.KEY_UP),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -911,12 +887,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "key-down",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.KEY_DOWN,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.KEY_DOWN),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -932,12 +911,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "key-left",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.KEY_LEFT,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.KEY_LEFT),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -953,12 +935,15 @@ class TelegramAdapter(BaseAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "key-right",
-            context.args or [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.KEY_RIGHT,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.KEY_RIGHT),
+                "args": context.args or [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -995,16 +980,7 @@ Current size: {}
             await update.effective_message.reply_text(presets_text, parse_mode="Markdown")
             return
 
-        await self._emit_command(
-            "resize",
-            [size_arg],
-            {
-                "adapter_type": "telegram",
-                "session_id": session.session_id,
-                "user_id": update.effective_user.id,
-                "message_id": update.effective_message.message_id,
-            },
-        )
+        # resize is adapter-specific - handled internally, no daemon event needed
 
     async def _handle_rename(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /rename command - rename session."""
@@ -1019,12 +995,15 @@ Current size: {}
             await update.effective_message.reply_text("Usage: /rename <new name>")
             return
 
-        await self._emit_command(
-            "rename",
-            list(context.args),
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.RENAME,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.RENAME),
+                "args": list(context.args),
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -1043,12 +1022,15 @@ Current size: {}
 
         # If args provided, change to that directory
         if context.args:
-            await self._emit_command(
-                "cd",
-                list(context.args),
-                {
-                    "adapter_type": "telegram",
+            await self.client.handle_event(
+                event=TeleClaudeEvents.CD,
+                payload={
+                    "command": self._event_to_command(TeleClaudeEvents.CD),
+                    "args": list(context.args),
                     "session_id": session.session_id,
+                },
+                metadata={
+                    "adapter_type": "telegram",
                     "user_id": update.effective_user.id,
                     "message_id": update.effective_message.message_id,
                 },
@@ -1078,12 +1060,15 @@ Current size: {}
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "claude",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.CLAUDE,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.CLAUDE),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -1099,12 +1084,15 @@ Current size: {}
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self._emit_command(
-            "claude_resume",
-            [],
-            {
-                "adapter_type": "telegram",
+        await self.client.handle_event(
+            event=TeleClaudeEvents.CLAUDE_RESUME,
+            payload={
+                "command": self._event_to_command(TeleClaudeEvents.CLAUDE_RESUME),
+                "args": [],
                 "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
             },
@@ -1168,19 +1156,27 @@ Current size: {}
 
         elif action == "start_session_here":
             # Handle quick session start from heartbeat button
-            if not query.from_user or not args:
+            if not query.from_user:
                 return
 
-            target_bot_username = args[0]
+            # Check if authorized
+            if query.from_user.id not in self.user_whitelist:
+                await query.answer("❌ Not authorized", show_alert=True)
+                return
 
-            # Send /new_session@{bot} command to General topic
-            # The target bot will handle it normally with the user from query.from_user
-            command_text = f"/new_session@{target_bot_username}"
-
-            await self.app.bot.send_message(
-                chat_id=self.supergroup_id,
-                message_thread_id=None,  # General topic
-                text=command_text,
+            # Emit NEW_SESSION event directly (no visible command message)
+            await self.client.handle_event(
+                event=TeleClaudeEvents.NEW_SESSION,
+                payload={
+                    "command": self._event_to_command(TeleClaudeEvents.NEW_SESSION),
+                    "args": [],
+                },
+                metadata={
+                    "adapter_type": "telegram",
+                    "user_id": query.from_user.id,
+                    "chat_id": self.supergroup_id,
+                    "topic_id": None,  # Will create in General topic
+                },
             )
 
             # Acknowledge the button click
@@ -1193,13 +1189,9 @@ Current size: {}
 
             # Try both new and old format
             thread_id = query.message.message_thread_id
-            sessions = await self.session_manager.get_sessions_by_adapter_metadata(
-                "telegram", "channel_id", str(thread_id)
-            )
+            sessions = await db.get_sessions_by_adapter_metadata("telegram", "channel_id", str(thread_id))
             if not sessions:
-                sessions = await self.session_manager.get_sessions_by_adapter_metadata(
-                    "telegram", "topic_id", thread_id
-                )
+                sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
 
             if not sessions:
                 return
@@ -1208,12 +1200,15 @@ Current size: {}
             dir_path = args[0] if args else ""
 
             # Emit cd command
-            await self._emit_command(
-                "cd",
-                [dir_path],
-                {
-                    "adapter_type": "telegram",
+            await self.client.handle_event(
+                event=TeleClaudeEvents.CD,
+                payload={
+                    "command": self._event_to_command(TeleClaudeEvents.CD),
+                    "args": [dir_path],
                     "session_id": session.session_id,
+                },
+                metadata={
+                    "adapter_type": "telegram",
                     "user_id": query.from_user.id,
                     "message_id": query.message.message_id,
                 },
@@ -1263,13 +1258,16 @@ Current size: {}
                 )
                 self.registry_message_id = msg.message_id
                 logger.info("Posted registry heartbeat with button: message_id=%s", self.registry_message_id)
+
+                # Persist to system UX state (for clean UX after restart)
+                await update_system_ux_state(db._db, registry_ping_message_id=self.registry_message_id)
             except Exception as e:
                 logger.error("Failed to post heartbeat: %s", e)
                 raise
         else:
             # Edit existing message (keep General topic clean)
             try:
-                edited_message = await self.app.bot.edit_message_text(
+                edited_message: Message = await self.app.bot.edit_message_text(
                     chat_id=self.supergroup_id,
                     message_id=self.registry_message_id,
                     text=text,
@@ -1296,7 +1294,7 @@ Current size: {}
                     logger.error("Failed to edit heartbeat: %s", e)
                     raise
 
-    async def discover_peers(self) -> list[Dict[str, Any]]:
+    async def discover_peers(self) -> list[dict[str, object]]:
         """Discover peers via Telegram adapter.
 
         NOTE: Due to Telegram Bot API restrictions, bots cannot see messages
@@ -1318,7 +1316,7 @@ Current size: {}
         Commands like /registry_ping and /pong need to be cached so
         computer_registry can find them when polling.
         """
-        message = update.message or update.edited_message
+        message: Message | None = update.message or update.edited_message
         if message:
             # Use None for General topic, actual ID for forum topics
             topic_id = message.message_thread_id
@@ -1403,7 +1401,7 @@ Usage:
         Also handles edited messages (for registry heartbeat updates).
         """
         # Handle both new messages and edited messages
-        message = update.message or update.edited_message
+        message: Message | None = update.message or update.edited_message
         if message:
             # Use None for General topic, actual ID for forum topics
             topic_id = message.message_thread_id
@@ -1440,10 +1438,10 @@ Usage:
         if not text:
             return
 
-        await self._emit_message(
-            session.session_id,
-            text,
-            {
+        await self.client.handle_event(
+            event=TeleClaudeEvents.MESSAGE,
+            payload={"session_id": session.session_id, "text": text},
+            metadata={
                 "adapter_type": "telegram",
                 "user_id": update.effective_user.id,
                 "message_id": update.effective_message.message_id,
@@ -1503,10 +1501,10 @@ Usage:
                 logger.warning("Failed to delete voice message %s: %s", update.message.message_id, e)
 
             # Emit voice event to daemon
-            await self._emit_voice(
-                session.session_id,
-                str(temp_file_path),
-                {
+            await self.client.handle_event(
+                event=TeleClaudeEvents.VOICE,
+                payload={"session_id": session.session_id, "file_path": str(temp_file_path)},
+                metadata={
                     "adapter_type": "telegram",
                     "user_id": update.effective_user.id,
                     "message_id": update.message.message_id,
@@ -1526,9 +1524,9 @@ Usage:
         topic_id = update.message.message_thread_id
 
         # Find session by topic ID (try both formats)
-        sessions = await self.session_manager.get_sessions_by_adapter_metadata("telegram", "channel_id", str(topic_id))
+        sessions = await db.get_sessions_by_adapter_metadata("telegram", "channel_id", str(topic_id))
         if not sessions:
-            sessions = await self.session_manager.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)
+            sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)
 
         if not sessions:
             logger.warning("No session found for closed topic %s", topic_id)
@@ -1538,9 +1536,10 @@ Usage:
         logger.info("Topic %s closed, cleaning up session %s", topic_id, session.session_id)
 
         # Emit topic closed event to daemon
-        await self._emit_topic_closed(
-            session.session_id,
-            {
+        await self.client.handle_event(
+            event=TeleClaudeEvents.TOPIC_CLOSED,
+            payload={"session_id": session.session_id},
+            metadata={
                 "adapter_type": "telegram",
                 "user_id": update.effective_user.id if update.effective_user else None,
                 "topic_id": topic_id,
@@ -1559,7 +1558,7 @@ Usage:
             update_id = update.update_id
             user = update.effective_user
             chat = update.effective_chat
-            message = update.message or update.edited_message
+            message: Message | None = update.message or update.edited_message
 
             log_parts = [f"📩 Telegram Update #{update_id}"]
 
@@ -1635,14 +1634,14 @@ Usage:
 
     # === MCP Server Support Methods ===
 
-    async def create_topic(self, title: str) -> Any:
+    async def create_topic(self, title: str) -> object:
         """Create a new forum topic and return the topic object."""
         self._ensure_started()
         topic = await self.app.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
         logger.info("Created topic: %s (ID: %s)", title, topic.message_thread_id)
         return topic
 
-    async def get_all_topics(self) -> list[Any]:
+    async def get_all_topics(self) -> list[object]:
         """Get all forum topics in the supergroup.
 
         Note: Telegram Bot API doesn't have a direct method to list all forum topics.
@@ -1659,7 +1658,7 @@ Usage:
 
     async def send_message_to_topic(
         self, topic_id: Optional[int], text: str, parse_mode: Optional[str] = "Markdown"
-    ) -> Any:
+    ) -> Message:
         """Send a message to a specific topic or General topic.
 
         Args:
@@ -1692,7 +1691,7 @@ Usage:
 
         return message
 
-    async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue[Any]:
+    async def register_mcp_listener(self, topic_id: int) -> asyncio.Queue[object]:
         """Register MCP listener queue for instant message delivery.
 
         When messages arrive for this topic_id, they'll be pushed to the queue.
@@ -1710,7 +1709,7 @@ Usage:
         """
         self._ensure_started()
 
-        queue: asyncio.Queue[Any] = asyncio.Queue()
+        queue: asyncio.Queue[object] = asyncio.Queue()
         self._mcp_message_queues[topic_id] = queue
         logger.info("Registered MCP listener for topic %s", topic_id)
         return queue
@@ -1724,7 +1723,7 @@ Usage:
         self._mcp_message_queues.pop(topic_id, None)
         logger.info("Unregistered MCP listener for topic %s", topic_id)
 
-    async def get_topic_messages(self, topic_id: Optional[int], limit: int = 100) -> list[Any]:
+    async def get_topic_messages(self, topic_id: Optional[int], limit: int = 100) -> list[Message]:
         """Get recent messages from a specific topic or General topic using in-memory cache.
 
         Messages are cached in _handle_text_message as they arrive.
@@ -1745,3 +1744,27 @@ Usage:
         cached = self._topic_message_cache.get(topic_id, [])
         # Return last N messages (most recent first)
         return list(reversed(cached[-limit:]))
+
+    # ==================== AI-to-AI Communication ====================
+
+    async def poll_output_stream(
+        self,
+        session_id: str,
+        timeout: float = 300.0,
+    ) -> AsyncIterator[str]:
+        """Poll for output chunks (not implemented for Telegram).
+
+        Telegram doesn't support bidirectional streaming like Redis.
+        This method is only implemented in RedisAdapter.
+
+        Args:
+            session_id: Session ID
+            timeout: Max seconds to wait
+
+        Raises:
+            NotImplementedError: Telegram doesn't support output streaming
+        """
+        raise NotImplementedError("Telegram adapter does not support poll_output_stream")
+        yield  # Make this an async generator
+
+    # UiAdapter methods inherited from base class (can override for Telegram-specific UX)

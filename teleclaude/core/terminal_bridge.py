@@ -1,13 +1,13 @@
 """Terminal bridge for TeleClaude - handles tmux session management.
 
-All functions are stateless and get config via get_config().
+All functions are stateless and use config imported from teleclaude.config.
 """
 
 import asyncio
 import logging
 from typing import List, Optional
 
-from teleclaude.config import get_config
+from teleclaude.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +69,8 @@ LPOLL_DEFAULT_LIST = [
 
 def _get_lpoll_list() -> List[str]:
     """Get long-running process list: defaults + config extensions."""
-    config = get_config()
     defaults = LPOLL_DEFAULT_LIST.copy()
-    extensions = config.get("polling", {}).get("lpoll_extensions", [])
-    return defaults + extensions
+    return defaults + config.polling.lpoll_extensions
 
 
 def is_long_running_command(command: str) -> bool:

@@ -6,24 +6,26 @@ Handles polling lifecycle orchestration and event routing to message manager.
 
 import asyncio
 import logging
-import re
 import time
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Callable
 
-from teleclaude.core import output_message_manager
+from teleclaude.core.db import db
+from teleclaude.core.models import Session
 from teleclaude.core.output_poller import (
     IdleDetected,
     OutputChanged,
     OutputPoller,
     ProcessExited,
 )
-from teleclaude.core.session_manager import SessionManager
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
 
 
-def _is_ai_to_ai_session(session: Any) -> bool:
+def _is_ai_to_ai_session(session: Session) -> bool:
     """Check if session is AI-to-AI via metadata flag.
 
     Args:
@@ -35,53 +37,44 @@ def _is_ai_to_ai_session(session: Any) -> bool:
     if not session or not session.adapter_metadata:
         return False
     # Check metadata flag (set by teleclaude__start_session)
-    return session.adapter_metadata.get("is_ai_to_ai", False)
+    return bool(session.adapter_metadata.get("is_ai_to_ai", False))
 
 
 async def _send_output_chunks_ai_mode(
     session_id: str,
-    adapter: Any,
+    adapter_client: "AdapterClient",
     full_output: str,
-    session_manager: SessionManager,
 ) -> None:
     """Send output as sequential chunks for AI consumption.
 
-    Uses adapter's max_message_length (platform-specific).
-    No editing - each chunk is a new message.
+    No formatting - sends raw output chunks. Adapter handles platform-specific formatting.
 
     Args:
         session_id: Session ID
-        adapter: Adapter instance (with get_max_message_length method)
+        adapter_client: AdapterClient instance for message sending
         full_output: Complete output to send
-        session_manager: Session manager instance
     """
-    # Get adapter's platform-specific max message length
-    chunk_size = adapter.get_max_message_length() - 100  # Reserve for markdown + markers
+    # Conservative chunk size (most platforms support at least 4000 chars)
+    chunk_size = 3900
 
     # Split output into chunks
     chunks = [full_output[i : i + chunk_size] for i in range(0, len(full_output), chunk_size)]
 
-    # Send each chunk as new message
-    for idx, chunk in enumerate(chunks, 1):
-        # Format with sequence marker
-        message = f"```sh\n{chunk}\n```\n[Chunk {idx}/{len(chunks)}]"
-
-        # Send as NEW message (don't edit)
-        await adapter.send_message(session_id, message)
-
-        # Small delay to preserve order (Telegram API constraint)
+    # Send each chunk as raw text - adapter handles formatting
+    for chunk in chunks:
+        await adapter_client.send_message(session_id, chunk)
+        # Small delay to preserve order (platform API constraint)
         await asyncio.sleep(0.1)
 
     # Mark completion (MCP streaming loop will detect and stop)
-    await adapter.send_message(session_id, "[Output Complete]")
+    await adapter_client.send_message(session_id, "[Output Complete]")
 
 
 async def poll_and_send_output(
     session_id: str,
     tmux_session_name: str,
-    session_manager: SessionManager,
     output_poller: OutputPoller,
-    adapter_client: Any,
+    adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
 ) -> None:
     """Poll terminal output and send to all adapters for session.
@@ -92,13 +85,12 @@ async def poll_and_send_output(
     Args:
         session_id: Session ID
         tmux_session_name: tmux session name
-        session_manager: Session manager instance
         output_poller: Output poller instance
         adapter_client: AdapterClient instance (broadcasts to all adapters)
         get_output_file: Function to get output file path for session
     """
     # GUARD: Prevent duplicate polling (check and add atomically before any await)
-    if await session_manager.is_polling(session_id):
+    if await db.is_polling(session_id):
         logger.warning(
             "Polling already active for session %s, ignoring duplicate request",
             session_id[:8],
@@ -106,20 +98,13 @@ async def poll_and_send_output(
         return
 
     # Mark as active BEFORE any await (prevents race conditions)
-    await session_manager.mark_polling(session_id)
+    await db.mark_polling(session_id)
 
     # Get session to check type via metadata
-    session = await session_manager.get_session(session_id)
-
-    # Get primary adapter for adapter-specific methods (delete_message, get_max_message_length)
-    # Note: send_message will use adapter_client for broadcasting to all adapters
-    primary_adapter_type = session.adapter_types[0] if session.adapter_types else "telegram"
-    adapter = adapter_client.adapters.get(primary_adapter_type)
-    if not adapter:
-        raise ValueError(f"Primary adapter '{primary_adapter_type}' not available")
+    session = await db.get_session(session_id)
 
     # Update ux_state to persist polling status in DB
-    await session_manager.update_ux_state(session_id, {"polling_active": True})
+    await db.update_ux_state(session_id, polling_active=True)
     is_ai_session = _is_ai_to_ai_session(session)
 
     # Get output file and exit marker status
@@ -136,28 +121,24 @@ async def poll_and_send_output(
                     # AI mode: Send sequential chunks (no editing, no loss)
                     await _send_output_chunks_ai_mode(
                         event.session_id,
-                        adapter,
+                        adapter_client,
                         event.output,
-                        session_manager,
                     )
                 else:
-                    # Human mode: Edit same message (current behavior)
-                    await output_message_manager.send_output_update(
+                    # Human mode: Edit same message via AdapterClient
+                    await adapter_client.send_output_update(
                         event.session_id,
-                        adapter,
                         event.output,
                         event.started_at,
                         event.last_changed_at,
-                        session_manager,
-                        max_message_length=3800,
                     )
 
                 # Delete idle notification if one exists (output resumed)
-                session_data = await session_manager.get_ux_state(event.session_id)
-                notification_id = session_data.get("idle_notification_message_id")
+                ux_state = await db.get_ux_state(event.session_id)
+                notification_id = ux_state.idle_notification_message_id
                 if notification_id:
-                    await adapter.delete_message(event.session_id, notification_id)
-                    await session_manager.update_ux_state(event.session_id, {"idle_notification_message_id": None})
+                    await adapter_client.delete_message(event.session_id, notification_id)
+                    await db.update_ux_state(event.session_id, idle_notification_message_id=None)
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, IdleDetected):
@@ -168,9 +149,7 @@ async def poll_and_send_output(
                 notification_id = await adapter_client.send_message(event.session_id, notification)
                 if notification_id:
                     # Persist to DB (survives daemon restart)
-                    await session_manager.update_ux_state(
-                        event.session_id, {"idle_notification_message_id": notification_id}
-                    )
+                    await db.update_ux_state(event.session_id, idle_notification_message_id=notification_id)
                     logger.debug("Stored idle notification %s for session %s", notification_id, event.session_id[:8])
 
             elif isinstance(event, ProcessExited):
@@ -179,9 +158,8 @@ async def poll_and_send_output(
                     # AI mode: Send final chunks + completion marker
                     await _send_output_chunks_ai_mode(
                         event.session_id,
-                        adapter,
+                        adapter_client,
                         event.final_output,
-                        session_manager,
                     )
                     logger.info(
                         "AI session polling stopped for %s (exit code: %s)",
@@ -191,15 +169,12 @@ async def poll_and_send_output(
                 else:
                     # Human mode: Send final message
                     if event.exit_code is not None:
-                        # Exit with code - send final message (edits existing message)
-                        await output_message_manager.send_output_update(
+                        # Exit with code - send final message via AdapterClient
+                        await adapter_client.send_output_update(
                             event.session_id,
-                            adapter,
                             event.final_output,
                             event.started_at,  # Use actual start time from poller
                             time.time(),
-                            session_manager,
-                            max_message_length=3800,
                             is_final=True,
                             exit_code=event.exit_code,
                         )
@@ -209,9 +184,11 @@ async def poll_and_send_output(
                             event.exit_code,
                         )
                     else:
-                        # Session died - send exit message
-                        await output_message_manager.send_exit_message(
-                            event.session_id, adapter, event.final_output, "✅ Process exited", session_manager
+                        # Session died - send exit message via AdapterClient
+                        await adapter_client.send_exit_message(
+                            event.session_id,
+                            event.final_output,
+                            "✅ Process exited",
                         )
                         # Delete output file on session death
                         try:
@@ -223,12 +200,12 @@ async def poll_and_send_output(
 
     finally:
         # Cleanup state
-        await session_manager.unmark_polling(session_id)
-        await session_manager.clear_pending_deletions(session_id)
+        await db.unmark_polling(session_id)
+        await db.clear_pending_deletions(session_id)
         # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
         # Only cleared when session closes (/exit command)
 
         # Clear idle notification
-        await session_manager.update_ux_state(session_id, {"idle_notification_message_id": None})
+        await db.update_ux_state(session_id, idle_notification_message_id=None)
 
         logger.debug("Polling ended for session %s", session_id[:8])
