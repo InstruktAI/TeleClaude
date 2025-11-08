@@ -165,21 +165,21 @@ class TeleClaudeMCPServer:
                 computers = await self.teleclaude__list_computers()
                 return [TextContent(type="text", text=str(computers))]
             elif name == "teleclaude__list_projects":
-                target_computer = str(arguments.get("target_computer", "")) if arguments else ""
-                projects = await self.teleclaude__list_projects(target_computer)
+                computer = str(arguments.get("computer", "")) if arguments else ""
+                projects = await self.teleclaude__list_projects(computer)
                 return [TextContent(type="text", text=str(projects))]
             elif name == "teleclaude__list_sessions":
-                target_computer_obj = arguments.get("target_computer") if arguments else None
-                target_computer = str(target_computer_obj) if target_computer_obj else None
-                sessions = await self.teleclaude__list_sessions(target_computer)
+                computer_obj = arguments.get("computer") if arguments else None
+                computer = str(computer_obj) if computer_obj else None
+                sessions = await self.teleclaude__list_sessions(computer)
                 return [TextContent(type="text", text=str(sessions))]
             elif name == "teleclaude__start_session":
                 # Extract arguments explicitly
-                target = str(arguments.get("target_computer", "")) if arguments else ""
-                title = str(arguments.get("title", "")) if arguments else ""
+                computer = str(arguments.get("computer", "")) if arguments else ""
                 project_dir_obj = arguments.get("project_dir") if arguments else None
                 project_dir = str(project_dir_obj) if project_dir_obj else None
-                result = await self.teleclaude__start_session(target, title, project_dir)
+                initial_message = str(arguments.get("initial_message", "Hello, I am ready to help")) if arguments else "Hello, I am ready to help"
+                result = await self.teleclaude__start_session(computer, project_dir, initial_message)
                 return [TextContent(type="text", text=str(result))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly

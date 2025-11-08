@@ -1250,6 +1250,11 @@ Current size: {}
         if self.registry_message_id is None:
             # First time - post new message to General topic (thread_id=None) with button
             try:
+                logger.debug(
+                    "Attempting to send heartbeat - chat_id=%s, message_thread_id=None, text=%s",
+                    self.supergroup_id,
+                    text[:50],
+                )
                 msg = await self.app.bot.send_message(
                     chat_id=self.supergroup_id,
                     message_thread_id=None,  # General topic
@@ -1261,6 +1266,10 @@ Current size: {}
 
                 # Persist to system UX state (for clean UX after restart)
                 await update_system_ux_state(db._db, registry_ping_message_id=self.registry_message_id)
+            except BadRequest as e:
+                logger.error("Failed to post heartbeat - Full error details: %s", e)
+                logger.error("Error type: %s, Error message: %s", type(e).__name__, str(e))
+                raise
             except Exception as e:
                 logger.error("Failed to post heartbeat: %s", e)
                 raise
