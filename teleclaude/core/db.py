@@ -341,49 +341,6 @@ class Db:
 
         await self.update_ux_state(session_id, pending_deletions=[])
 
-    async def cleanup_messages_after_success(
-        self,
-        session_id: str,
-        message_id: Optional[str],
-        client: "AdapterClient",
-    ) -> None:
-        """Clean up pending messages after successful terminal action.
-
-        This helper is called by:
-        - message_handler.py (after send_keys succeeds)
-        - command_handlers.py (_execute_and_poll helper after any command succeeds)
-
-        Deletes all tracked messages (feedback + previous commands + current message).
-        Clears pending deletions list so new messages can be tracked.
-
-        Args:
-            session_id: Session identifier
-            message_id: Message ID of current command/input (to be deleted)
-            client: AdapterClient for message operations
-        """
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        # Get all pending deletions (feedback messages, previous commands, etc.)
-        pending_deletions = await self.get_pending_deletions(session_id)
-
-        # Add current message to deletions
-        pending_deletions.append(message_id)
-
-        # Delete ALL messages underneath the output (feedback + user messages)
-        # Sequential deletion to avoid rate limiting
-        for msg_id in pending_deletions:
-            try:
-                await client.delete_message(session_id, msg_id)
-                logger.debug("Deleted message %s for session %s (cleanup)", msg_id, session_id[:8])
-            except Exception as e:
-                # Resilient to already-deleted messages (user manually deleted, etc.)
-                logger.warning("Failed to delete message %s for session %s: %s", msg_id, session_id[:8], e)
-
-        # Clear pending deletions after cleanup
-        await self.clear_pending_deletions(session_id)
-
     async def delete_session(self, session_id: str) -> None:
         """Delete session.
 

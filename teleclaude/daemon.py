@@ -340,8 +340,9 @@ class TeleClaudeDaemon:
         # Update activity
         await db.update_last_activity(session_id)
 
-        # Cleanup command message
-        await db.cleanup_messages_after_success(session_id, message_id, self.client)
+        # NOTE: Message cleanup now handled by TelegramAdapter pre/post handlers
+        # - POST handler tracks message_id for deletion
+        # - PRE handler deletes on NEXT user input (better UX - failed commands stay visible)
 
         # Start polling if exit marker was appended
         if append_exit_marker:
