@@ -650,6 +650,43 @@ async def session_exists(session_name: str) -> bool:
         return False
 
 
+async def get_current_command(session_name: str) -> Optional[str]:
+    """Get the current foreground command running in a tmux pane.
+
+    Uses tmux's #{pane_current_command} variable to detect interactive apps.
+
+    Args:
+        session_name: Session name
+
+    Returns:
+        Command name (e.g., "zsh", "claude", "vim") or None if detection failed
+    """
+    try:
+        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_current_command}"]
+
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await result.communicate()
+
+        if result.returncode != 0:
+            logger.warning(
+                "Failed to get current command for %s: returncode=%d, stderr=%s",
+                session_name,
+                result.returncode,
+                stderr.decode().strip(),
+            )
+            return None
+
+        command = stdout.decode().strip()
+        logger.debug("Current command in %s: %s", session_name, command)
+        return command
+
+    except Exception as e:
+        logger.error("Exception in get_current_command for %s: %s", session_name, e)
+        return None
+
+
 async def rename_session(old_name: str, new_name: str) -> bool:
     """Rename a tmux session.
 

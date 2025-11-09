@@ -207,23 +207,23 @@ class TeleClaudeMCPServer:
             """Handle tool calls."""
             if name == "teleclaude__list_computers":
                 computers = await self.teleclaude__list_computers()
-                return [TextContent(type="text", text=str(computers))]
+                return [TextContent(type="text", text=json.dumps(computers, default=str))]
             elif name == "teleclaude__list_projects":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 projects = await self.teleclaude__list_projects(computer)
-                return [TextContent(type="text", text=str(projects))]
+                return [TextContent(type="text", text=json.dumps(projects, default=str))]
             elif name == "teleclaude__list_sessions":
                 computer_obj = arguments.get("computer") if arguments else None
                 computer = str(computer_obj) if computer_obj else None
                 sessions = await self.teleclaude__list_sessions(computer)
-                return [TextContent(type="text", text=str(sessions))]
+                return [TextContent(type="text", text=json.dumps(sessions, default=str))]
             elif name == "teleclaude__start_session":
                 # Extract arguments explicitly
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 project_dir_obj = arguments.get("project_dir") if arguments else None
                 project_dir = str(project_dir_obj) if project_dir_obj else None
                 result = await self.teleclaude__start_session(computer, project_dir)
-                return [TextContent(type="text", text=str(result))]
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -241,11 +241,11 @@ class TeleClaudeMCPServer:
             elif name == "teleclaude__get_session_status":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 result = await self.teleclaude__get_session_status(session_id)
-                return [TextContent(type="text", text=str(result))]
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__deploy_to_all_computers":
                 # No arguments - always deploys to ALL computers
                 deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
-                return [TextContent(type="text", text=str(deploy_result))]
+                return [TextContent(type="text", text=json.dumps(deploy_result, default=str))]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 

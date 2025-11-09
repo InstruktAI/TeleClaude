@@ -244,6 +244,7 @@ class TeleClaudeDaemon:
 
     async def _handle_deploy(self, args: dict[str, object]) -> None:
         """Execute deployment: git pull + restart daemon via service manager."""
+        import json
         import subprocess
 
         # Get Redis adapter for status updates
@@ -261,7 +262,7 @@ class TeleClaudeDaemon:
             # 1. Write deploying status
             await redis_adapter.redis.set(
                 status_key,
-                '{"status": "deploying", "timestamp": ' + str(time.time()) + "}",
+                json.dumps({"status": "deploying", "timestamp": time.time()}),
             )
             logger.info("Deploy: marked status as deploying")
 
@@ -281,7 +282,7 @@ class TeleClaudeDaemon:
                 logger.error("Deploy: git pull failed: %s", error_msg)
                 await redis_adapter.redis.set(
                     status_key,
-                    '{"status": "error", "error": "git pull failed: ' + error_msg.replace('"', '\\"') + '"}',
+                    json.dumps({"status": "error", "error": f"git pull failed: {error_msg}"}),
                 )
                 return
 
@@ -290,7 +291,7 @@ class TeleClaudeDaemon:
             # 3. Write restarting status
             await redis_adapter.redis.set(
                 status_key,
-                '{"status": "restarting", "timestamp": ' + str(time.time()) + "}",
+                json.dumps({"status": "restarting", "timestamp": time.time()}),
             )
 
             # 4. Trigger restart via service manager
@@ -311,7 +312,7 @@ class TeleClaudeDaemon:
             if redis_adapter and redis_adapter.redis:
                 await redis_adapter.redis.set(
                     status_key,
-                    '{"status": "error", "error": "' + str(e).replace('"', '\\"') + '"}',
+                    json.dumps({"status": "error", "error": str(e)}),
                 )
 
     async def _handle_health_check(self) -> None:
@@ -683,8 +684,24 @@ class TeleClaudeDaemon:
         ux_state = await db.get_ux_state(session_id)
         is_process_running = ux_state.polling_active
 
+        # Check if interactive TUI is running (claude, vim, etc.)
+        current_command = await terminal_bridge.get_current_command(session.tmux_session_name)
+        is_interactive_app = current_command in terminal_bridge.LPOLL_DEFAULT_LIST if current_command else False
+
+        # Only append exit marker if:
+        # 1. No polling active (not running a shell command with exit marker)
+        # 2. AND no interactive app running (at shell prompt)
+        # This prevents infinite polling hangs when sending input to Claude Code, vim, etc.
+        append_exit_marker = not is_process_running and not is_interactive_app
+
+        if is_interactive_app:
+            logger.debug(
+                "Interactive app '%s' detected in session %s, not appending exit marker",
+                current_command,
+                session_id[:8],
+            )
+
         # Send command to terminal (will create fresh session if needed)
-        # Only append exit marker if starting a NEW command, not sending input to running process
         success = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
@@ -692,7 +709,7 @@ class TeleClaudeDaemon:
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
-            append_exit_marker=not is_process_running,
+            append_exit_marker=append_exit_marker,
         )
 
         if not success:
@@ -703,12 +720,17 @@ class TeleClaudeDaemon:
         # Update activity
         await db.update_last_activity(session_id)
 
-        # Start new poll if process not running, otherwise existing poll continues
-        if not is_process_running:
+        # Start polling ONLY if exit marker was appended
+        # This ensures we only poll when we actually expect an exit marker
+        if append_exit_marker:
             await self._poll_and_send_output(session_id, session.tmux_session_name)
-        else:
+        elif is_process_running:
             logger.debug(
                 "Input sent to running process in session %s, existing poll will capture output", session_id[:8]
+            )
+        else:
+            logger.debug(
+                "Input sent to interactive app in session %s, no polling started (no exit marker)", session_id[:8]
             )
 
     async def handle_topic_closed(self, session_id: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
