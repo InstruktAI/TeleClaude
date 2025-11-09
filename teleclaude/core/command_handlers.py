@@ -191,6 +191,53 @@ async def handle_list_sessions(  # type: ignore[explicit-any]
     )
 
 
+async def handle_list_projects(  # type: ignore[explicit-any]
+    context: dict[str, Any],
+    client: "AdapterClient",
+) -> None:
+    """List trusted project directories as JSON.
+
+    For AI-to-AI sessions via Redis, returns JSON array of available project paths.
+
+    Args:
+        context: Command context with session_id
+        client: AdapterClient for sending messages
+    """
+    import json
+
+    # Get session_id from context (required for AI-to-AI sessions)
+    session_id = context.get("session_id")
+    if not session_id:
+        logger.error("No session_id in context for list_projects")
+        return
+
+    # Get trusted_dirs and default_working_dir from config
+    trusted_dirs = config.computer.trusted_dirs
+    default_working_dir = config.computer.default_working_dir
+
+    # Expand environment variables and filter existing paths
+    all_dirs = []
+
+    # Always include default_working_dir first if it exists
+    if default_working_dir:
+        expanded_default = os.path.expanduser(os.path.expandvars(default_working_dir))
+        if Path(expanded_default).exists():
+            all_dirs.append(expanded_default)
+
+    # Add trusted_dirs (skip duplicates and non-existent paths)
+    for dir_path in trusted_dirs:
+        expanded = os.path.expanduser(os.path.expandvars(dir_path))
+        if Path(expanded).exists() and expanded not in all_dirs:
+            all_dirs.append(expanded)
+
+    # Send as JSON array to the session's output stream
+    await client.send_message(
+        session_id=session_id,
+        text=json.dumps(all_dirs),
+        metadata={},
+    )
+
+
 async def handle_cancel_command(  # type: ignore[explicit-any]
     context: dict[str, Any],
     client: "AdapterClient",

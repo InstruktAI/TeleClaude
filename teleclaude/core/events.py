@@ -25,7 +25,7 @@ EventType = Literal[
     "key_right",
     "rename",
     "claude",
-    "claude-resume",
+    "claude_resume",
     "message",
     "voice",
     "topic_closed",
@@ -68,7 +68,7 @@ class TeleClaudeEvents:
 
     # AI commands
     CLAUDE: Literal["claude"] = "claude"
-    CLAUDE_RESUME: Literal["claude-resume"] = "claude-resume"
+    CLAUDE_RESUME: Literal["claude_resume"] = "claude_resume"
 
     # User input
     MESSAGE: Literal["message"] = "message"  # Messages to long-running processes

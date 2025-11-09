@@ -483,6 +483,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             from teleclaude.core.events import EventType
 
             event_type: EventType = command  # type: ignore[assignment]  # Command validated upstream
+
             await self.client.handle_event(
                 event=event_type,
                 payload={"session_id": session_id, "args": []},

@@ -510,20 +510,6 @@ class TelegramAdapter(UiAdapter):
         """
         return update.effective_user is not None and update.effective_message is not None
 
-    def _event_to_command(self, event: str) -> str:
-        """Convert event name to daemon command format.
-
-        Event names use underscores (new_session, cancel2x)
-        Daemon expects hyphens (new-session, cancel2x)
-
-        Args:
-            event: Event name (e.g., "new_session", "cancel2x")
-
-        Returns:
-            Command name (e.g., "new-session", "cancel2x")
-        """
-        return event.replace("_", "-")
-
     async def _get_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from current topic.
 
@@ -572,7 +558,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.NEW_SESSION,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.NEW_SESSION),
                 "args": list(context.args) if context.args else [],
             },
             metadata={
@@ -594,7 +579,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.LIST_SESSIONS,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.LIST_SESSIONS),
                 "args": [],
             },
             metadata={
@@ -654,7 +638,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.CANCEL,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.CANCEL),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -683,7 +666,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.CANCEL_2X,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.CANCEL_2X),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -712,7 +694,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.KILL,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.KILL),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -741,7 +722,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.ESCAPE,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.ESCAPE),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -765,7 +745,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.ESCAPE_2X,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.ESCAPE_2X),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -794,7 +773,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.CTRL,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.CTRL),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -818,7 +796,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.TAB,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.TAB),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -842,7 +819,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.SHIFT_TAB,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.SHIFT_TAB),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -866,7 +842,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.KEY_UP,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.KEY_UP),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -890,7 +865,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.KEY_DOWN,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.KEY_DOWN),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -914,7 +888,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.KEY_LEFT,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.KEY_LEFT),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -938,7 +911,6 @@ class TelegramAdapter(UiAdapter):
         await self.client.handle_event(
             event=TeleClaudeEvents.KEY_RIGHT,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.KEY_RIGHT),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
@@ -998,7 +970,6 @@ Current size: {}
         await self.client.handle_event(
             event=TeleClaudeEvents.RENAME,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.RENAME),
                 "args": list(context.args),
                 "session_id": session.session_id,
             },
@@ -1025,7 +996,6 @@ Current size: {}
             await self.client.handle_event(
                 event=TeleClaudeEvents.CD,
                 payload={
-                    "command": self._event_to_command(TeleClaudeEvents.CD),
                     "args": list(context.args),
                     "session_id": session.session_id,
                 },
@@ -1063,7 +1033,6 @@ Current size: {}
         await self.client.handle_event(
             event=TeleClaudeEvents.CLAUDE,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.CLAUDE),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -1087,7 +1056,6 @@ Current size: {}
         await self.client.handle_event(
             event=TeleClaudeEvents.CLAUDE_RESUME,
             payload={
-                "command": self._event_to_command(TeleClaudeEvents.CLAUDE_RESUME),
                 "args": [],
                 "session_id": session.session_id,
             },
@@ -1168,7 +1136,6 @@ Current size: {}
             await self.client.handle_event(
                 event=TeleClaudeEvents.NEW_SESSION,
                 payload={
-                    "command": self._event_to_command(TeleClaudeEvents.NEW_SESSION),
                     "args": [],
                 },
                 metadata={
@@ -1203,7 +1170,6 @@ Current size: {}
             await self.client.handle_event(
                 event=TeleClaudeEvents.CD,
                 payload={
-                    "command": self._event_to_command(TeleClaudeEvents.CD),
                     "args": [dir_path],
                     "session_id": session.session_id,
                 },

@@ -111,10 +111,11 @@ class TeleClaudeDaemon:
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
 
-    async def _handle_message_event(self, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
+    async def _handle_message_event(self, event: str, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
         """Event handler for MESSAGE events (observer pattern callback).
 
         Args:
+            event: Event type (always "message" for this handler)
             payload: Event payload (session_id, text)
             metadata: Event metadata (adapter_type, user_id, message_id, etc.)
         """
@@ -135,14 +136,14 @@ class TeleClaudeDaemon:
         else:
             logger.warning("MESSAGE event missing session_id: %s", payload)
 
-    async def _handle_command_event(self, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
+    async def _handle_command_event(self, event: str, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
         """Event handler for command events (observer pattern callback).
 
         Args:
-            payload: Event payload (session_id, command, args)
+            event: Event type (the command name itself, e.g., "new_session", "list_projects")
+            payload: Event payload (session_id, args)
             metadata: Event metadata (adapter_type, user_id, message_id, etc.)
         """
-        command = payload.get("command", "")
         args = payload.get("args", [])
 
         # Build context from metadata and payload
@@ -155,7 +156,7 @@ class TeleClaudeDaemon:
             "session_id": payload.get("session_id"),  # May be None for new-session
         }
 
-        await self.handle_command(command, args, context)
+        await self.handle_command(event, args, context)
 
     def _get_output_file(self, session_id: str) -> Path:
         """Get output file path for a session."""
@@ -356,25 +357,27 @@ class TeleClaudeDaemon:
         """Handle bot commands.
 
         Args:
-            command: Command name (without /)
+            command: Event name from TeleClaudeEvents (e.g., "new_session", "list_projects")
             args: Command arguments
             context: Platform-specific context
         """
-        logger.info("Command received: /%s %s", command, args)
+        logger.info("Command received: %s %s", command, args)
 
-        if command == "new-session":
+        if command == TeleClaudeEvents.NEW_SESSION:
             await command_handlers.handle_create_session(context, args, self.client)
-        elif command == "list-sessions":
+        elif command == TeleClaudeEvents.LIST_SESSIONS:
             await command_handlers.handle_list_sessions(context, self.client)
-        elif command == "cancel":
+        elif command == TeleClaudeEvents.LIST_PROJECTS:
+            await command_handlers.handle_list_projects(context, self.client)
+        elif command == TeleClaudeEvents.CANCEL:
             await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
-        elif command == "cancel2x":
+        elif command == TeleClaudeEvents.CANCEL_2X:
             await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output, double=True)
-        elif command == "kill":
+        elif command == TeleClaudeEvents.KILL:
             await command_handlers.handle_kill_command(context, self.client, self._poll_and_send_output)
-        elif command == "escape":
+        elif command == TeleClaudeEvents.ESCAPE:
             await command_handlers.handle_escape_command(context, args, self.client, self._poll_and_send_output)
-        elif command == "escape2x":
+        elif command == TeleClaudeEvents.ESCAPE_2X:
             await command_handlers.handle_escape_command(
                 context,
                 args,
@@ -382,37 +385,37 @@ class TeleClaudeDaemon:
                 self._poll_and_send_output,
                 double=True,
             )
-        elif command == "ctrl":
+        elif command == TeleClaudeEvents.CTRL:
             await command_handlers.handle_ctrl_command(context, args, self.client, self._poll_and_send_output)
-        elif command == "tab":
+        elif command == TeleClaudeEvents.TAB:
             await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
-        elif command == "shift-tab":
+        elif command == TeleClaudeEvents.SHIFT_TAB:
             await command_handlers.handle_shift_tab_command(context, self.client, self._poll_and_send_output)
-        elif command == "key-up":
+        elif command == TeleClaudeEvents.KEY_UP:
             await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "up"
             )
-        elif command == "key-down":
+        elif command == TeleClaudeEvents.KEY_DOWN:
             await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "down"
             )
-        elif command == "key-left":
+        elif command == TeleClaudeEvents.KEY_LEFT:
             await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "left"
             )
-        elif command == "key-right":
+        elif command == TeleClaudeEvents.KEY_RIGHT:
             await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "right"
             )
         elif command == "resize":
             await command_handlers.handle_resize_session(context, args, self.client)
-        elif command == "rename":
+        elif command == TeleClaudeEvents.RENAME:
             await command_handlers.handle_rename_session(context, args, self.client)
-        elif command == "cd":
+        elif command == TeleClaudeEvents.CD:
             await command_handlers.handle_cd_session(context, args, self.client, self._execute_terminal_command)
-        elif command == "claude":
+        elif command == TeleClaudeEvents.CLAUDE:
             await command_handlers.handle_claude_session(context, self._execute_terminal_command)
-        elif command == "claude_resume":
+        elif command == TeleClaudeEvents.CLAUDE_RESUME:
             await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
             await command_handlers.handle_exit_session(context, self.client, self._get_output_file)

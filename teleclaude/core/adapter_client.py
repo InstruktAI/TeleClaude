@@ -432,12 +432,12 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    def on(self, event: EventType, handler: Callable[[dict[str, object], dict[str, object]], object]) -> None:
+    def on(self, event: EventType, handler: Callable[[EventType, dict[str, object], dict[str, object]], object]) -> None:
         """Subscribe to event (daemon registers handlers here).
 
         Args:
             event: Event type to subscribe to
-            handler: Async handler function(payload, metadata) -> object
+            handler: Async handler function(event, payload, metadata) -> object
         """
         self._handlers[event] = handler
         logger.debug("Registered handler for event: %s", event)
@@ -487,7 +487,7 @@ class AdapterClient:
         # 2. Emit to subscriber
         handler = self._handlers.get(event)
         if handler:
-            handler_result = handler(payload, metadata)
+            handler_result = handler(event, payload, metadata)
             # Handler returns a coroutine that needs to be awaited
             result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
             return result
