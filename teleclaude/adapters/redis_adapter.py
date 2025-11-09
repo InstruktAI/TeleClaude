@@ -520,6 +520,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             origin_adapter="redis",
             title=title,
             adapter_metadata={
+                "is_ai_to_ai": True,  # CRITICAL: Mark as AI session for chunked output
                 "redis": {
                     "command_stream": f"commands:{self.computer_name}",
                     "output_stream": f"output:{session_id}",
