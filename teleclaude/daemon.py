@@ -119,8 +119,10 @@ class TeleClaudeDaemon:
             payload: Event payload (session_id, text)
             metadata: Event metadata (adapter_type, user_id, message_id, etc.)
         """
+        logger.debug("_handle_message_event called! event=%s, payload=%s", event, payload)
         session_id = payload.get("session_id")
         text = payload.get("text", "")
+        logger.debug("Extracted session_id=%s, text=%s", session_id, text)
 
         # Build context from metadata
         context = {
@@ -132,7 +134,15 @@ class TeleClaudeDaemon:
         }
 
         if session_id:
+            logger.debug(
+                "About to call handle_message for session %s with text: %s",
+                session_id[:8] if isinstance(session_id, str) else session_id,
+                text,
+            )
             await self.handle_message(session_id, text, context)
+            logger.debug(
+                "handle_message completed for session %s", session_id[:8] if isinstance(session_id, str) else session_id
+            )
         else:
             logger.warning("MESSAGE event missing session_id: %s", payload)
 

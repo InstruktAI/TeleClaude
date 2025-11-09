@@ -491,11 +491,14 @@ class AdapterClient:
                 payload["session_id"] = sessions[0].session_id
 
         # 2. Emit to subscriber
+        logger.debug("handle_event called for event: %s, registered handlers: %s", event, list(self._handlers.keys()))
         handler = self._handlers.get(event)
         if handler:
+            logger.debug("Found handler for event: %s, calling it now", event)
             handler_result = handler(event, payload, metadata)
             # Handler returns a coroutine that needs to be awaited
             result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
+            logger.debug("Handler completed for event: %s", event)
             return result
 
         logger.warning("No handler registered for event: %s", event)

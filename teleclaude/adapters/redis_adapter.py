@@ -498,14 +498,18 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             if event_type == TeleClaudeEvents.MESSAGE:
                 # Join args back into single text string for MESSAGE events
                 payload = {"session_id": session_id, "text": " ".join(args) if args else ""}
+                logger.debug("Emitting MESSAGE event with text: %s", " ".join(args) if args else "(empty)")
             else:
                 payload = {"session_id": session_id, "args": args}
+                logger.debug("Emitting %s event with args: %s", event_type, args)
 
+            logger.debug("About to call handle_event for event_type: %s", event_type)
             await self.client.handle_event(
                 event=event_type,
                 payload=payload,
                 metadata={"adapter_type": "redis"},
             )
+            logger.debug("handle_event completed for event_type: %s", event_type)
 
         except Exception as e:
             logger.error("Failed to handle incoming command: %s", e)
