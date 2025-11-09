@@ -56,8 +56,7 @@ async def _execute_and_poll(  # type: ignore[explicit-any]
     success = await terminal_action(session.tmux_session_name, *terminal_args)
 
     if success:
-        # Cleanup pending messages (only if process running)
-        await db.cleanup_messages_after_success(session.session_id, message_id, client)
+        # NOTE: Message cleanup now handled by AdapterClient.handle_event()
         # Start polling for output
         await start_polling(session.session_id, session.tmux_session_name)
 
@@ -412,14 +411,7 @@ async def handle_escape_command(  # type: ignore[explicit-any]
         # Update activity
         await db.update_last_activity(str(session_id))
 
-        # Cleanup messages
-        message_id_obj = context.get("message_id")
-        message_id = str(message_id_obj) if message_id_obj else None
-        await db.cleanup_messages_after_success(
-            str(session_id),
-            message_id,
-            client,
-        )
+        # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
         # Start polling if needed
         if not is_process_running:
@@ -706,10 +698,7 @@ async def handle_resize_session(  # type: ignore[explicit-any]
         await db.update_session(str(session_id), terminal_size=size_str)
         logger.info("Resized session %s to %s", str(session_id)[:8], size_str)
 
-        # Cleanup old messages AND delete current command
-        message_id_obj = context.get("message_id")
-        message_id = str(message_id_obj) if message_id_obj else None
-        await db.cleanup_messages_after_success(str(session_id), message_id, client)
+        # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
         # Send feedback message
         feedback_msg_id = await client.send_message(str(session_id), f"Terminal resized to {size_str} ({cols}x{rows})")
@@ -763,9 +752,7 @@ async def handle_rename_session(  # type: ignore[explicit-any]
         logger.info("Renamed session %s to '%s'", str(session_id)[:8], new_title)
 
         # Cleanup old messages AND delete current command
-        message_id_obj = context.get("message_id")
-        message_id = str(message_id_obj) if message_id_obj else None
-        await db.cleanup_messages_after_success(str(session_id), message_id, client)
+        # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
         # Send feedback message
         feedback_msg_id = await client.send_message(str(session_id), f"Session renamed to: {new_title}")

@@ -20,6 +20,32 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 
 logger = logging.getLogger(__name__)
 
+# Events that represent user input (need cleanup of previous messages)
+USER_INPUT_EVENTS = {
+    "new_session",
+    "list_sessions",
+    "list_projects",
+    "cd",
+    "kill",
+    "cancel",
+    "cancel2x",
+    "escape",
+    "escape2x",
+    "ctrl",
+    "tab",
+    "shift_tab",
+    "key_up",
+    "key_down",
+    "key_left",
+    "key_right",
+    "rename",
+    "claude",
+    "claude_resume",
+    "message",
+    "voice",
+    # NOT user input: topic_closed
+}
+
 
 class AdapterClient:
     """Unified interface for multi-adapter operations.
@@ -41,7 +67,7 @@ class AdapterClient:
         No daemon reference - uses observer pattern instead.
         Daemon subscribes to events via client.on(event, handler).
         """
-        self._handlers: dict[EventType, Callable[[EventType, dict[str, object], dict[str, object]], object]] = {}
+        self._handlers: dict[EventType, Callable[[EventType, dict[str, object]], object]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
 
     def _load_adapters(self) -> None:
@@ -436,14 +462,13 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    def on(
-        self, event: EventType, handler: Callable[[EventType, dict[str, object], dict[str, object]], object]
-    ) -> None:
+    def on(self, event: EventType, handler: Callable[[EventType, dict[str, object]], object]) -> None:
         """Subscribe to event (daemon registers handlers here).
 
         Args:
             event: Event type to subscribe to
-            handler: Async handler function(event, payload, metadata) -> object
+            handler: Async handler function(event, context) -> object
+                    NOTE: Signature changed to (event, context) - context contains all payload + metadata
         """
         self._handlers[event] = handler
         logger.debug("Registered handler for event: %s", event)
@@ -454,11 +479,21 @@ class AdapterClient:
         payload: dict[str, object],
         metadata: dict[str, object],
     ) -> object:
-        """Called by adapters - does session lookup and emits to subscribers.
+        """Called by adapters - orchestrates UI cleanup and handler dispatch.
 
         Coordination layer responsibilities:
         1. Convert platform IDs (topic_id, etc.) to session_id
-        2. Emit to registered handler (daemon)
+        2. Build unified context dict (payload + metadata merged)
+        3. Get session for origin adapter access
+        4. [USER INPUT ONLY] Call origin adapter's pre-handler (UI cleanup)
+        5. Dispatch to registered handler (daemon business logic)
+        6. [USER INPUT ONLY] Call origin adapter's post-handler (UI state tracking)
+        7. Broadcast user actions to observer adapters
+
+        UI cleanup delegation (separation of concerns):
+        - AdapterClient: Pure coordinator (no UI operations)
+        - UI adapters: Own their UI cleanup logic (message deletion, etc.)
+        - Transport adapters (has_ui=False): No pre/post handlers
 
         Args:
             event: Type-checked event name (from EventType literal)
@@ -469,18 +504,15 @@ class AdapterClient:
             Result from handler
         """
 
-        # Cast metadata to dict for type-safe access
-        metadata_typed = metadata  # Already dict[str, object]
-        topic_id_obj = metadata_typed.get("topic_id")
-        channel_id_obj = metadata_typed.get("channel_id")
-        adapter_type_obj = metadata_typed.get("adapter_type")
+        # 1. Session lookup by platform metadata
+        topic_id_obj = metadata.get("topic_id")
+        channel_id_obj = metadata.get("channel_id")
+        adapter_type_obj = metadata.get("adapter_type")
 
-        # Convert to strings for session lookup
         topic_id = str(topic_id_obj) if topic_id_obj else None
         channel_id = str(channel_id_obj) if channel_id_obj else None
         adapter_type = str(adapter_type_obj) if adapter_type_obj else None
 
-        # Try to find session by platform metadata
         if topic_id and adapter_type:
             sessions = await db.get_sessions_by_adapter_metadata(adapter_type, "topic_id", topic_id)
             if sessions:
@@ -490,39 +522,69 @@ class AdapterClient:
             if sessions:
                 payload["session_id"] = sessions[0].session_id
 
-        # 2. Emit to subscriber (daemon)
+        # 2. Build unified context (all data in one place)
+        context: dict[str, object] = {
+            **payload,  # All payload data
+            **metadata,  # All metadata (overwrites if key collision)
+        }
+        session_id = context.get("session_id")
+        message_id = context.get("message_id")
+
+        # 3. Get session for origin adapter access (needed for pre/post handlers and broadcasting)
+        session = None
+        if session_id:
+            session = await db.get_session(str(session_id))
+
+        # 4. PRE: Call origin adapter's pre-handler for UI cleanup
+        if event in USER_INPUT_EVENTS and session:
+            origin_adapter = self.adapters.get(session.origin_adapter)
+            if origin_adapter and getattr(origin_adapter, "has_ui", False):
+                pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
+                if pre_handler and callable(pre_handler):
+                    try:
+                        await pre_handler(session.session_id)
+                        logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
+                    except Exception as e:
+                        logger.warning("Pre-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+
+        # 5. EXECUTE: Dispatch to registered handler
         logger.debug("handle_event called for event: %s, registered handlers: %s", event, list(self._handlers.keys()))
         handler = self._handlers.get(event)
         if handler:
             logger.debug("Found handler for event: %s, calling it now", event)
-            handler_result = handler(event, payload, metadata)
-            # Handler returns a coroutine that needs to be awaited
+            handler_result = handler(event, context)  # New signature: (event, context)
             result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
             logger.debug("Handler completed for event: %s", event)
 
-            # 3. Broadcast ALL user actions to observer adapters (not just MESSAGE)
-            session_id_obj = payload.get("session_id")
-            if session_id_obj:
-                session_id = str(session_id_obj)
+            # 6. POST: Call origin adapter's post-handler for UI state tracking
+            if event in USER_INPUT_EVENTS and session and message_id:
+                origin_adapter = self.adapters.get(session.origin_adapter)
+                if origin_adapter and getattr(origin_adapter, "has_ui", False):
+                    post_handler = getattr(origin_adapter, "_post_handle_user_input", None)
+                    if post_handler and callable(post_handler):
+                        try:
+                            await post_handler(session.session_id, str(message_id))
+                            logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
+                        except Exception as e:
+                            logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
 
-                # Get session to find origin adapter
-                session = await db.get_session(session_id)
-                if session:
-                    # Format event as human-readable action
-                    action_text = self._format_event_for_observers(event, payload)
+            # 7. Broadcast ALL user actions to observer adapters (not just MESSAGE)
+            if session:
+                # Format event as human-readable action
+                action_text = self._format_event_for_observers(event, payload)
 
-                    if action_text:
-                        # Broadcast to all observer adapters (has_ui=True, not origin)
-                        for adapter_type, adapter in self.adapters.items():
-                            if adapter_type != session.origin_adapter and adapter.has_ui:
-                                try:
-                                    # Send copy of user action (best-effort, failures logged)
-                                    await adapter.send_message(
-                                        session_id=session_id, text=action_text, metadata={"is_observer_echo": True}
-                                    )
-                                    logger.debug("Broadcasted %s to observer adapter: %s", event, adapter_type)
-                                except Exception as e:
-                                    logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
+                if action_text:
+                    # Broadcast to all observer adapters (has_ui=True, not origin)
+                    for adapter_type, adapter in self.adapters.items():
+                        if adapter_type != session.origin_adapter and adapter.has_ui:
+                            try:
+                                # Send copy of user action (best-effort, failures logged)
+                                await adapter.send_message(
+                                    session_id=session.session_id, text=action_text, metadata={"is_observer_echo": True}
+                                )
+                                logger.debug("Broadcasted %s to observer adapter: %s", event, adapter_type)
+                            except Exception as e:
+                                logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
             return result
 

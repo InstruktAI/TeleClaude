@@ -462,6 +462,44 @@ class Db:
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
+    async def get_active_sessions(self) -> list[Session]:
+        """Get all sessions with active polling.
+
+        Returns sessions where ux_state.polling_active=True and closed=False.
+        Used during daemon startup to restore polling for interrupted sessions.
+
+        Returns:
+            List of sessions with active polling
+        """
+        cursor = await self._db.execute(
+            """
+            SELECT * FROM sessions
+            WHERE closed = 0
+            ORDER BY last_activity DESC
+            """
+        )
+        rows = await cursor.fetchall()
+        all_sessions = [Session.from_dict(dict(row)) for row in rows]
+
+        # Filter by polling_active in ux_state
+        active_sessions = []
+        for session in all_sessions:
+            ux_state_data = await self.get_ux_state(session.session_id)
+            if ux_state_data.polling_active:
+                active_sessions.append(session)
+
+        return active_sessions
+
+    async def set_polling_inactive(self, session_id: str) -> None:
+        """Mark polling as inactive for a session.
+
+        Used when tmux session no longer exists during restoration.
+
+        Args:
+            session_id: Session ID
+        """
+        await self.update_ux_state(session_id, polling_active=False)
+
     async def get_ux_state(self, session_id: str) -> SessionUXState:
         """Get UX state for session.
 

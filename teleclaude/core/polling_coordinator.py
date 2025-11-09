@@ -25,6 +25,63 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def restore_active_pollers(
+    adapter_client: "AdapterClient",
+    output_poller: OutputPoller,
+    get_output_file: Callable[[str], Path],
+) -> None:
+    """Restore polling for sessions that were active before daemon restart.
+
+    Called during daemon startup to resume polling for sessions with polling_active=True.
+    Prevents the "frozen session" bug where database says polling is active but no poller is running.
+
+    Args:
+        adapter_client: AdapterClient instance for message sending
+        output_poller: Output poller instance
+        get_output_file: Function to get output file path for session
+    """
+    from teleclaude.core import terminal_bridge
+
+    # Query sessions with polling_active=True
+    sessions = await db.get_active_sessions()
+    if not sessions:
+        logger.info("No active polling sessions to restore")
+        return
+
+    logger.info("Restoring polling for %d sessions...", len(sessions))
+
+    for session in sessions:
+        session_id = session.session_id
+        tmux_session_name = session.tmux_session_name
+
+        # Check if tmux session still exists
+        if not await terminal_bridge.session_exists(tmux_session_name):
+            logger.warning(
+                "Tmux session %s for session %s no longer exists, marking polling as inactive",
+                tmux_session_name,
+                session_id[:8],
+            )
+            await db.set_polling_inactive(session_id)
+            continue
+
+        # Reset polling flag before restarting (allows guard to pass)
+        logger.info("Restoring polling for session %s (%s)", session_id[:8], tmux_session_name)
+        await db.set_polling_inactive(session_id)
+
+        # Use create_task to avoid blocking startup
+        asyncio.create_task(
+            poll_and_send_output(
+                session_id=session_id,
+                tmux_session_name=tmux_session_name,
+                output_poller=output_poller,
+                adapter_client=adapter_client,
+                get_output_file=get_output_file,
+            )
+        )
+
+    logger.info("Session restoration complete")
+
+
 def _is_ai_to_ai_session(session: Session) -> bool:
     """Check if session is AI-to-AI via metadata flag.
 

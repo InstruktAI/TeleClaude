@@ -388,6 +388,50 @@ class TelegramAdapter(UiAdapter):
         """Delete message with retry logic."""
         await self.app.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
 
+    async def _pre_handle_user_input(self, session_id: str) -> None:
+        """UI adapter pre-handler: Delete messages from previous interaction.
+
+        Called by AdapterClient BEFORE processing new user input.
+        Cleans up UI state from previous interaction (pending messages, idle notifications).
+
+        Args:
+            session_id: Session identifier
+        """
+        # Delete pending messages from previous interaction
+        pending = await db.get_pending_deletions(session_id)
+        if pending:
+            for msg_id in pending:
+                try:
+                    await self.delete_message(session_id, msg_id)
+                    logger.debug("Deleted pending message %s for session %s", msg_id, session_id[:8])
+                except Exception as e:
+                    # Resilient to already-deleted messages
+                    logger.warning("Failed to delete message %s: %s", msg_id, e)
+            await db.clear_pending_deletions(session_id)
+
+        # Delete idle notification if present
+        if await db.has_idle_notification(session_id):
+            try:
+                idle_msg = await db.remove_idle_notification(session_id)
+                if idle_msg:
+                    await self.delete_message(session_id, idle_msg)
+                    logger.debug("Deleted idle notification %s for session %s", idle_msg, session_id[:8])
+            except Exception as e:
+                logger.warning("Failed to delete idle notification: %s", e)
+
+    async def _post_handle_user_input(self, session_id: str, message_id: str) -> None:
+        """UI adapter post-handler: Track current message for next cleanup.
+
+        Called by AdapterClient AFTER processing user input.
+        Tracks current message ID so it can be deleted on next interaction.
+
+        Args:
+            session_id: Session identifier
+            message_id: Current message ID to track for deletion
+        """
+        await db.add_pending_deletion(session_id, message_id)
+        logger.debug("Tracked message %s for deletion on next input", message_id)
+
     async def send_file(
         self,
         session_id: str,

@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any, Optional, TextIO
+from typing import Any, Optional, TextIO, cast
 
 import uvicorn
 from dotenv import load_dotenv
@@ -23,10 +23,11 @@ from teleclaude.core import (
     polling_coordinator,
     session_lifecycle,
     terminal_executor,
+    voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
-from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.events import EventType, TeleClaudeEvents
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.voice_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
@@ -75,27 +76,52 @@ class TeleClaudeDaemon:
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
 
-        # Subscribe to events (observer pattern)
-        self.client.on(TeleClaudeEvents.MESSAGE, self._handle_message_event)
-        self.client.on(TeleClaudeEvents.NEW_SESSION, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.LIST_SESSIONS, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.LIST_PROJECTS, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.CD, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.KILL, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.CANCEL, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.CANCEL_2X, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.ESCAPE, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.ESCAPE_2X, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.CTRL, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.TAB, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.SHIFT_TAB, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.KEY_UP, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.KEY_DOWN, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.KEY_LEFT, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.KEY_RIGHT, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.RENAME, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.CLAUDE, self._handle_command_event)
-        self.client.on(TeleClaudeEvents.CLAUDE_RESUME, self._handle_command_event)
+        # Define command events (all route to handle_command via generic handler)
+        COMMAND_EVENTS = {
+            TeleClaudeEvents.NEW_SESSION,
+            TeleClaudeEvents.LIST_SESSIONS,
+            TeleClaudeEvents.LIST_PROJECTS,
+            TeleClaudeEvents.CD,
+            TeleClaudeEvents.KILL,
+            TeleClaudeEvents.CANCEL,
+            TeleClaudeEvents.CANCEL_2X,
+            TeleClaudeEvents.ESCAPE,
+            TeleClaudeEvents.ESCAPE_2X,
+            TeleClaudeEvents.CTRL,
+            TeleClaudeEvents.TAB,
+            TeleClaudeEvents.SHIFT_TAB,
+            TeleClaudeEvents.KEY_UP,
+            TeleClaudeEvents.KEY_DOWN,
+            TeleClaudeEvents.KEY_LEFT,
+            TeleClaudeEvents.KEY_RIGHT,
+            TeleClaudeEvents.RENAME,
+            TeleClaudeEvents.CLAUDE,
+            TeleClaudeEvents.CLAUDE_RESUME,
+        }
+
+        # Auto-discover and register event handlers
+        for attr_name in dir(TeleClaudeEvents):
+            if attr_name.startswith("_"):
+                continue
+
+            event_value = getattr(TeleClaudeEvents, attr_name)
+            if not isinstance(event_value, str):
+                continue
+
+            # Commands use generic handler
+            if event_value in COMMAND_EVENTS:
+                self.client.on(cast(EventType, event_value), self._handle_command_event)
+                logger.debug("Auto-registered command: %s → _handle_command_event", event_value)
+            else:
+                # Non-commands (message, voice, topic_closed) use specific handlers
+                handler_name = f"_handle_{event_value}"
+                handler = getattr(self, handler_name, None)
+
+                if handler and callable(handler):
+                    self.client.on(cast(EventType, event_value), handler)
+                    logger.debug("Auto-registered handler: %s → %s", event_value, handler_name)
+                else:
+                    logger.debug("No handler for event: %s (skipped)", event_value)
 
         # Load adapters from config (creates TelegramAdapter, RedisAdapter, etc.)
         self.client._load_adapters()
@@ -111,62 +137,69 @@ class TeleClaudeDaemon:
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
 
-    async def _handle_message_event(self, event: str, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
-        """Event handler for MESSAGE events (observer pattern callback).
+    async def _handle_command_event(self, event: str, context: dict[str, object]) -> None:
+        """Generic handler for all command events.
+
+        All commands route to handle_command() with args from context.
 
         Args:
-            event: Event type (always "message" for this handler)
-            payload: Event payload (session_id, text)
-            metadata: Event metadata (adapter_type, user_id, message_id, etc.)
+            event: Command event type (new_session, cd, kill, etc.)
+            context: Unified context (all payload + metadata fields)
         """
-        logger.debug("_handle_message_event called! event=%s, payload=%s", event, payload)
-        session_id = payload.get("session_id")
-        text = payload.get("text", "")
-        logger.debug("Extracted session_id=%s, text=%s", session_id, text)
-
-        # Build context from metadata
-        context = {
-            "adapter_type": metadata.get("adapter_type"),
-            "user_id": metadata.get("user_id"),
-            "message_id": metadata.get("message_id"),
-            "topic_id": metadata.get("topic_id"),
-            "channel_id": metadata.get("channel_id"),
-        }
-
-        if session_id:
-            logger.debug(
-                "About to call handle_message for session %s with text: %s",
-                session_id[:8] if isinstance(session_id, str) else session_id,
-                text,
-            )
-            await self.handle_message(session_id, text, context)
-            logger.debug(
-                "handle_message completed for session %s", session_id[:8] if isinstance(session_id, str) else session_id
-            )
-        else:
-            logger.warning("MESSAGE event missing session_id: %s", payload)
-
-    async def _handle_command_event(self, event: str, payload: dict[str, Any], metadata: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Event payload data
-        """Event handler for command events (observer pattern callback).
-
-        Args:
-            event: Event type (the command name itself, e.g., "new_session", "list_projects")
-            payload: Event payload (session_id, args)
-            metadata: Event metadata (adapter_type, user_id, message_id, etc.)
-        """
-        args = payload.get("args", [])
-
-        # Build context from metadata and payload
-        context = {
-            "adapter_type": metadata.get("adapter_type"),
-            "user_id": metadata.get("user_id"),
-            "message_id": metadata.get("message_id"),
-            "topic_id": metadata.get("topic_id"),
-            "channel_id": metadata.get("channel_id"),
-            "session_id": payload.get("session_id"),  # May be None for new-session
-        }
-
+        args_obj = context.get("args", [])
+        # Type assertion: args from adapters are always list[str]
+        args = list(args_obj) if isinstance(args_obj, list) else []
         await self.handle_command(event, args, context)
+
+    async def _handle_message(self, event: str, context: dict[str, object]) -> None:
+        """Handler for MESSAGE events - pure business logic (cleanup already done).
+
+        Args:
+            event: Event type (always "message")
+            context: Unified context (all payload + metadata fields)
+        """
+        session_id = context.get("session_id")
+        text = context.get("text")
+
+        if not session_id or not text:
+            logger.warning("MESSAGE event missing required fields: session_id=%s, text=%s", session_id, text)
+            return
+
+        await self.handle_message(str(session_id), str(text), context)
+
+    async def _handle_voice(self, event: str, context: dict[str, object]) -> None:
+        """Handler for VOICE events - pure business logic (cleanup already done).
+
+        Args:
+            event: Event type (always "voice")
+            context: Unified context (all payload + metadata fields)
+        """
+        session_id = context.get("session_id")
+        audio_file_path = context.get("file_path")
+
+        if not session_id or not audio_file_path:
+            logger.warning(
+                "VOICE event missing required fields: session_id=%s, file_path=%s", session_id, audio_file_path
+            )
+            return
+
+        # Define send_feedback to properly track temporary messages for deletion
+        async def send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+            """Send feedback message and mark for deletion on next input."""
+            message_id = await self.client.send_message(sid, msg)
+            if message_id:
+                # Mark feedback message for deletion when next input arrives
+                await db.add_pending_deletion(sid, message_id)
+            return message_id
+
+        # Handle voice message using utility function
+        await voice_message_handler.handle_voice(
+            session_id=str(session_id),
+            audio_path=str(audio_file_path),
+            context=context,
+            send_feedback=send_feedback,
+            get_output_file=self._get_output_file,
+        )
 
     def _get_output_file(self, session_id: str) -> Path:
         """Get output file path for a session."""
@@ -323,6 +356,13 @@ class TeleClaudeDaemon:
         # Start periodic cleanup task (runs every hour)
         self.cleanup_task = asyncio.create_task(session_lifecycle.periodic_cleanup(db, config))
         logger.info("Periodic cleanup task started (72h session lifecycle)")
+
+        # Restore polling for sessions that were active before restart
+        await polling_coordinator.restore_active_pollers(
+            adapter_client=self.client,
+            output_poller=self.output_poller,
+            get_output_file=self._get_output_file,
+        )
 
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
 

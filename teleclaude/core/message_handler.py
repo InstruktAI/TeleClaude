@@ -39,13 +39,7 @@ async def handle_message(  # type: ignore[explicit-any]
         logger.warning("Session %s not found", session_id)
         return
 
-    # Delete idle notification if one exists (user is interacting now)
-    if await db.has_idle_notification(session_id):
-        notification_msg_id = await db.remove_idle_notification(session_id)
-        await client.delete_message(session_id, notification_msg_id)
-        logger.debug(
-            "Deleted idle notification %s for session %s (user sent command)", notification_msg_id, session_id[:8]
-        )
+    # NOTE: Idle notification cleanup now handled by AdapterClient._cleanup_previous_interaction()
 
     # Strip leading // and replace with / (Telegram workaround - only at start of input)
     if text.startswith("//"):
@@ -85,12 +79,9 @@ async def handle_message(  # type: ignore[explicit-any]
     # Update activity
     await db.update_last_activity(session_id)
 
-    # Cleanup pending messages after successful send
-    await db.cleanup_messages_after_success(
-        session_id,
-        context.get("message_id"),
-        client,
-    )
+    # NOTE: Message tracking/cleanup now handled by AdapterClient.handle_event()
+    # - Previous messages cleaned up BEFORE handler (in _cleanup_previous_interaction)
+    # - Current message tracked AFTER handler (in handle_event POST step)
 
     # Start new poll if process not running, otherwise existing poll continues
     if not is_process_running:
