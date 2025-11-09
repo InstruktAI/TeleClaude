@@ -3,7 +3,7 @@
 Provides type-safe event definitions for adapter-daemon communication.
 """
 
-from typing import Literal
+from typing import Literal, Optional
 
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
@@ -76,3 +76,37 @@ class TeleClaudeEvents:
     # Media and events
     VOICE: Literal["voice"] = "voice"  # Voice message received
     TOPIC_CLOSED: Literal["topic_closed"] = "topic_closed"  # Telegram topic closed/deleted
+
+
+def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
+    """Parse command string into event name and arguments.
+
+    Used by adapters that receive raw command strings (e.g., Redis, REST API).
+    Telegram adapter doesn't need this - python-telegram-bot parses for us.
+
+    Args:
+        command_str: Raw command string (e.g., "/cd /path" or "cd /path")
+
+    Returns:
+        Tuple of (event_name, args_list)
+        Returns (None, []) if command is empty
+
+    Examples:
+        >>> parse_command_string("/cd /home/user")
+        ("cd", ["/home/user"])
+        >>> parse_command_string("/claude -m 'Hello'")
+        ("claude", ["-m", "'Hello'"])
+        >>> parse_command_string("new_session My Project")
+        ("new_session", ["My", "Project"])
+    """
+    parts = command_str.strip().split(maxsplit=1)
+    if not parts:
+        return None, []
+
+    # Extract command name (remove leading slash if present)
+    cmd_name = parts[0].lstrip("/")
+
+    # Extract arguments (keep as single string for now - handlers can parse further)
+    args = [parts[1]] if len(parts) > 1 else []
+
+    return cmd_name, args

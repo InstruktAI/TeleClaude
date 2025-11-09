@@ -41,7 +41,7 @@ class AdapterClient:
         No daemon reference - uses observer pattern instead.
         Daemon subscribes to events via client.on(event, handler).
         """
-        self._handlers: dict[EventType, Callable[[dict[str, object], dict[str, object]], object]] = {}
+        self._handlers: dict[EventType, Callable[[EventType, dict[str, object], dict[str, object]], object]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
 
     def _load_adapters(self) -> None:
@@ -432,7 +432,9 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    def on(self, event: EventType, handler: Callable[[EventType, dict[str, object], dict[str, object]], object]) -> None:
+    def on(
+        self, event: EventType, handler: Callable[[EventType, dict[str, object], dict[str, object]], object]
+    ) -> None:
         """Subscribe to event (daemon registers handlers here).
 
         Args:

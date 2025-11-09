@@ -4,8 +4,7 @@ import asyncio
 import json
 import logging
 import os
-import re
-import time
+import shlex
 import types
 import uuid
 from pathlib import Path
@@ -23,7 +22,6 @@ from teleclaude.core.db import db
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.db import Db
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +176,7 @@ class TeleClaudeMCPServer:
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 project_dir_obj = arguments.get("project_dir") if arguments else None
                 project_dir = str(project_dir_obj) if project_dir_obj else None
-                initial_message = str(arguments.get("initial_message", "Hello, I am ready to help")) if arguments else "Hello, I am ready to help"
+                initial_message = str(arguments.get("initial_message")) if arguments.get("initial_message") else None
                 result = await self.teleclaude__start_session(computer, project_dir, initial_message)
                 return [TextContent(type="text", text=str(result))]
             elif name == "teleclaude__send_message":
@@ -333,7 +331,11 @@ class TeleClaudeMCPServer:
         return result
 
     async def teleclaude__start_session(
-        self, computer: str, project_dir: str, initial_message: str = "Hello, I am ready to help"
+        self,
+        computer: str,
+        project_dir: str,
+        initial_message: str = "Hello, I am ready to help. What is your next step?",
+        continue_last_session: bool = False,
     ) -> dict[str, object]:
         """Start new Claude Code session on remote computer.
 
@@ -341,12 +343,11 @@ class TeleClaudeMCPServer:
             computer: Target computer name
             project_dir: Absolute path to project directory
             initial_message: Initial message to send (default greeting)
+            continue_last_session: Whether to continue the last opened session. Be careful as this might hijack the session of another user. ONLY provide this flag on explicit request!
 
         Returns:
             dict with session_id and output
         """
-        import shlex
-        import uuid
 
         # Validate computer is online
         peers = await self.client.discover_peers()
@@ -376,8 +377,17 @@ class TeleClaudeMCPServer:
 
         session_id = session.session_id
 
-        # Start Claude Code on remote computer via AdapterClient
-        claude_cmd = f"cd {shlex.quote(project_dir)} && claude"
+        # cd to dir on remote computer via AdapterClient
+        cd_cmd = f"/cd {shlex.quote(project_dir)}"
+        await self.client.send_remote_command(
+            computer_name=computer,
+            session_id=session_id,
+            command=cd_cmd,
+            metadata={"title": title, "project_dir": project_dir},
+        )
+
+        # Start Claude Code
+        claude_cmd = f"/claude -m {shlex.quote(initial_message)}" + " --continue" if continue_last_session else ""
         await self.client.send_remote_command(
             computer_name=computer,
             session_id=session_id,

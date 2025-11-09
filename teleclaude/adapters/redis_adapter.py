@@ -464,13 +464,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         try:
             session_id = data.get(b"session_id", b"").decode("utf-8")
-            command = data.get(b"command", b"").decode("utf-8")
+            command_str = data.get(b"command", b"").decode("utf-8")
 
-            if not session_id or not command:
+            if not session_id or not command_str:
                 logger.warning("Invalid command data: %s", data)
                 return
 
-            logger.info("Received command for session %s: %s", session_id[:8], command[:50])
+            logger.info("Received command for session %s: %s", session_id[:8], command_str[:50])
 
             # Get or create session
             session = await db.get_session(session_id)
@@ -478,15 +478,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 # Create new session for incoming AI request
                 await self._create_session_from_redis(session_id, data)
 
-            # Emit command event to daemon via client
-            # Cast command to EventType (already validated by EventType literal)
-            from teleclaude.core.events import EventType
+            # Parse command using centralized parser
+            from teleclaude.core.events import EventType, parse_command_string
 
-            event_type: EventType = command  # type: ignore[assignment]  # Command validated upstream
+            cmd_name, args = parse_command_string(command_str)
+            if not cmd_name:
+                logger.warning("Empty command received for session %s", session_id[:8])
+                return
+
+            # Emit command event to daemon via client
+            event_type: EventType = cmd_name  # type: ignore[assignment]
 
             await self.client.handle_event(
                 event=event_type,
-                payload={"session_id": session_id, "args": []},
+                payload={"session_id": session_id, "args": args},
                 metadata={"adapter_type": "redis"},
             )
 
