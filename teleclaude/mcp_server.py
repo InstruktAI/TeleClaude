@@ -23,6 +23,7 @@ from mcp.types import JSONRPCMessage, TextContent, Tool
 from teleclaude.config import config
 from teleclaude.core.command_handlers import get_short_project_name
 from teleclaude.core.db import db
+from teleclaude.core.session_utils import ensure_unique_title
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -433,7 +434,8 @@ class TeleClaudeMCPServer:
 
         # Create session in database to track this AI-to-AI session
         short_project = get_short_project_name(project_dir)
-        title = f"${self.computer_name} > ${computer}[{short_project}] - AI Session"
+        base_title = f"${self.computer_name} > ${computer}[{short_project}] - AI Session"
+        title = await ensure_unique_title(base_title)
         session = await db.create_session(
             computer_name=self.computer_name,
             tmux_session_name=f"{self.computer_name}-ai-{claude_session_id[:8]}",

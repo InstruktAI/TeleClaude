@@ -17,6 +17,7 @@ from teleclaude.config import config
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
+from teleclaude.core.session_utils import ensure_unique_title
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -151,16 +152,8 @@ async def handle_create_session(  # type: ignore[explicit-any]
     else:
         base_title = f"${computer_name}[{short_project}] - New session"
 
-    # Check for duplicate titles and append number if needed
-    title = base_title
-    existing_sessions = await db.list_sessions()
-    existing_titles = {s.title for s in existing_sessions if not s.closed}
-
-    if title in existing_titles:
-        counter = 2
-        while f"{base_title} ({counter})" in existing_titles:
-            counter += 1
-        title = f"{base_title} ({counter})"
+    # Ensure title is unique (appends counter if needed)
+    title = await ensure_unique_title(base_title)
 
     # Create session in database first (need session_id for create_channel)
     session_id_new = str(uuid.uuid4())
