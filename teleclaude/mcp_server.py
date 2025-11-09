@@ -397,7 +397,7 @@ class TeleClaudeMCPServer:
 
         # Create session in database to track this AI-to-AI session
         short_project = get_short_project_name(project_dir)
-        title = f"${self.computer_name} > ${computer}/{short_project} - AI Session"
+        title = f"${self.computer_name} > ${computer} - {short_project}"
         session = await db.create_session(
             computer_name=self.computer_name,
             tmux_session_name=f"{self.computer_name}-ai-{claude_session_id[:8]}",
