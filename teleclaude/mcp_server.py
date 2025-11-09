@@ -387,7 +387,7 @@ class TeleClaudeMCPServer:
         )
 
         # Start Claude Code
-        claude_cmd = f"/claude -m {shlex.quote(initial_message)}" + " --continue" if continue_last_session else ""
+        claude_cmd = f"/claude -m {shlex.quote(initial_message)}" + (" --continue" if continue_last_session else "")
         await self.client.send_remote_command(
             computer_name=computer,
             session_id=session_id,
