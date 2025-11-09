@@ -485,14 +485,30 @@ TeleClaude runs on multiple computers (development machine + remote RasPis). Whe
 2. **Test locally**: `make restart && make status`
 3. **Commit changes**: Use git commit (pre-commit hooks run automatically)
 4. **Push to GitHub**: `git push`
-5. **Update remote machines**: Use proper SSH login shells to access keys
+5. **Deploy to ALL computers**: **ALWAYS use MCP tool first**
 
-### Updating Remote Machines
+### Deploying to Remote Machines
 
-**CRITICAL**: Use SSH agent forwarding (`-A` flag) to access GitHub keys:
+**🚨 CRITICAL: ALWAYS use MCP tool for deployment!**
+
+```python
+# Primary method - MCP tool handles everything automatically
+await teleclaude__deploy_to_all_computers()
+# Returns: {"RasPi": {"status": "deployed", "pid": 12345}, ...}
+```
+
+**The MCP tool automatically:**
+- Sends deploy command via Redis to all remote computers
+- Each computer: `git pull` → restart daemon
+- Returns deployment status for each machine
+- Handles timeouts and errors
+
+**Manual deployment (ONLY if MCP server is down):**
+
+Use SSH agent forwarding (`-A` flag) as fallback:
 
 ```bash
-# RasPi (morriz@raspberrypi.local)
+# RasPi (morriz@raspberrypi.local) - ONLY if MCP tool unavailable
 ssh -A morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && git checkout . && git pull && make restart"
 
 # RasPi4 (morriz@raspi4.local)
@@ -529,17 +545,17 @@ Expected output:
 
 ### Common Mistakes to Avoid
 
+❌ **DON'T**: Manually SSH to each machine (use MCP tool!)
 ❌ **DON'T**: Use `make kill` (leaves orphaned MCP processes like socat)
-❌ **DON'T**: Forget `-A` flag for SSH (causes git permission errors)
+❌ **DON'T**: Forget `-A` flag for manual SSH (causes git permission errors)
 ❌ **DON'T**: Change git remote from SSH to HTTPS (breaks key-based auth)
-❌ **DON'T**: Skip `git checkout .` before pull (leaves dirty working tree)
-❌ **DON'T**: Skip verification after restart
+❌ **DON'T**: Skip verification after deployment
 
+✅ **DO**: Use `teleclaude__deploy_to_all_computers()` MCP tool
+✅ **DO**: Only use manual SSH if MCP server is down
 ✅ **DO**: Use `make restart` (clean daemon restart)
-✅ **DO**: Use `-A` flag for SSH agent forwarding
-✅ **DO**: Clean checkout before pull (`git checkout .`)
 ✅ **DO**: Verify daemon health after updates
-✅ **DO**: Push before updating remote machines
+✅ **DO**: Push to GitHub before deploying
 
 ## Technical Architecture
 
