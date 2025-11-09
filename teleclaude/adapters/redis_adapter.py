@@ -479,7 +479,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 await self._create_session_from_redis(session_id, data)
 
             # Parse command using centralized parser
-            from teleclaude.core.events import EventType, parse_command_string
+            from teleclaude.core.events import (
+                EventType,
+                TeleClaudeEvents,
+                parse_command_string,
+            )
 
             cmd_name, args = parse_command_string(command_str)
             if not cmd_name:
@@ -489,9 +493,17 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             # Emit command event to daemon via client
             event_type: EventType = cmd_name  # type: ignore[assignment]
 
+            # MESSAGE events use "text" in payload, commands use "args"
+            payload: dict[str, object]
+            if event_type == TeleClaudeEvents.MESSAGE:
+                # Join args back into single text string for MESSAGE events
+                payload = {"session_id": session_id, "text": " ".join(args) if args else ""}
+            else:
+                payload = {"session_id": session_id, "args": args}
+
             await self.client.handle_event(
                 event=event_type,
-                payload={"session_id": session_id, "args": args},
+                payload=payload,
                 metadata={"adapter_type": "redis"},
             )
 

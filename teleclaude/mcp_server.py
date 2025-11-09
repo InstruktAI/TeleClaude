@@ -477,9 +477,13 @@ class TeleClaudeMCPServer:
 
         target_computer = str(target_computer_obj)
 
+        # Wrap non-command messages with /message prefix for proper event routing
+        # Commands start with /, plain text needs to be wrapped
+        command = message if message.startswith("/") else f"/message {message}"
+
         # Send command to remote computer via AdapterClient
         try:
-            await self.client.send_remote_command(computer_name=target_computer, session_id=session_id, command=message)
+            await self.client.send_remote_command(computer_name=target_computer, session_id=session_id, command=command)
         except Exception as e:
             logger.error("Failed to send command to %s: %s", target_computer, e)
             yield f"[Error: Failed to send command: {str(e)}]"
