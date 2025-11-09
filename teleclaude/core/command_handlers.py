@@ -28,6 +28,21 @@ logger = logging.getLogger(__name__)
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 
 
+def get_short_project_name(project_path: str) -> str:
+    """Extract short project name from path (last 2 parts).
+
+    Args:
+        project_path: Full path like /home/morriz/apps/TeleClaude
+
+    Returns:
+        Short name like apps/TeleClaude
+    """
+    parts = project_path.rstrip("/").split("/")
+    if len(parts) >= 2:
+        return "/".join(parts[-2:])
+    return parts[-1] if parts else "unknown"
+
+
 # Decorator to inject session from context (removes boilerplate)
 def with_session(func: Callable) -> Callable:  # type: ignore[type-arg]
     """Decorator that extracts and injects session from context.
@@ -127,11 +142,14 @@ async def handle_create_session(  # type: ignore[explicit-any]
     session_suffix = str(uuid.uuid4())[:8]
     tmux_name = f"{computer_name.lower()}-session-{session_suffix}"
 
+    # Get short project name for title
+    short_project = get_short_project_name(working_dir)
+
     # Create topic first with custom title if provided
     if args and len(args) > 0:
-        base_title = f"${computer_name} - {' '.join(args)}"
+        base_title = f"${computer_name}/{short_project} - {' '.join(args)}"
     else:
-        base_title = f"${computer_name} - New session"
+        base_title = f"${computer_name}/{short_project} - New session"
 
     # Check for duplicate titles and append number if needed
     title = base_title

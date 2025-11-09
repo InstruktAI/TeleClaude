@@ -640,13 +640,16 @@ class AdapterClient:
     ) -> str:
         """Create channels in ALL adapters for new session.
 
+        Stores each adapter's channel_id in session metadata to enable broadcasting.
+        Observer adapters need their channel_ids to send messages.
+
         Args:
             session_id: Session ID
             title: Channel title
             origin_adapter: Name of origin adapter (interactive)
 
         Returns:
-            channel_id from origin adapter (for storing in adapter_metadata)
+            channel_id from origin adapter (for backward compatibility)
 
         Raises:
             ValueError: If origin adapter not found or channel creation failed
@@ -669,21 +672,45 @@ class AdapterClient:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        # Collect ALL channel_ids (origin + observers)
         origin_channel_id = None
+        all_channel_ids: dict[str, str] = {}
+
         for (adapter_type, is_origin), result in zip(adapter_types, results):
             if isinstance(result, Exception):
                 logger.error("Failed to create channel in %s: %s", adapter_type, result)
                 if is_origin:
                     raise ValueError(f"Failed to create channel in origin adapter {adapter_type}: {result}") from result
             else:
-                logger.debug("Created channel in %s for session %s", adapter_type, session_id[:8])
+                channel_id = str(result)
+                all_channel_ids[adapter_type] = channel_id
+                logger.debug("Created channel in %s for session %s: %s", adapter_type, session_id[:8], channel_id)
                 if is_origin:
-                    origin_channel_id = result
+                    origin_channel_id = channel_id
 
         if not origin_channel_id:
             raise ValueError(f"Origin adapter {origin_adapter} not found or did not return channel_id")
 
-        return str(origin_channel_id)
+        # Store ALL adapter channel_ids in session metadata (enables observer broadcasting)
+        session = await db.get_session(session_id)
+        if session:
+            metadata = session.adapter_metadata or {}
+            metadata["channel_id"] = origin_channel_id  # Backward compatibility
+
+            # Store each adapter's channel_id under namespaced key
+            for adapter_type, channel_id in all_channel_ids.items():
+                if adapter_type not in metadata:
+                    metadata[adapter_type] = {}
+                adapter_meta = metadata[adapter_type]
+                if not isinstance(adapter_meta, dict):
+                    adapter_meta = {}
+                    metadata[adapter_type] = adapter_meta
+                adapter_meta["channel_id"] = channel_id
+
+            await db.update_session(session_id, adapter_metadata=metadata)
+            logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id[:8])
+
+        return origin_channel_id
 
     async def send_general_message(
         self,

@@ -165,11 +165,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             redis_metadata = json.loads(redis_metadata)
 
         redis_meta: dict[str, object] = redis_metadata.get("redis", {})  # type: ignore[assignment]
-        output_stream = redis_meta.get("output_stream")
+        # Try redis-specific channel_id first, then fall back to output_stream
+        output_stream = redis_meta.get("channel_id") or redis_meta.get("output_stream")
 
         if not output_stream:
             # Create stream name if not exists
             output_stream = f"output:{session_id}"
+            redis_meta["channel_id"] = output_stream
             redis_meta["output_stream"] = output_stream
             redis_metadata["redis"] = redis_meta
 
@@ -557,18 +559,19 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             title=title,
             adapter_metadata={
                 "is_ai_to_ai": True,  # CRITICAL: Mark as AI session for chunked output
-                "redis": {
-                    "command_stream": f"commands:{self.computer_name}",
-                    "output_stream": f"output:{session_id}",
-                },
-                "telegram": {
-                    "topic_name": title,
-                },
             },
             description=f"AI-to-AI session from {initiator}",
         )
 
-        logger.info("Created session %s from Redis command", session_id[:8])
+        # Create channels in ALL adapters (Telegram, Redis, etc.)
+        # AdapterClient.create_channel() stores all adapter channel_ids in metadata
+        await self.client.create_channel(
+            session_id=session_id,
+            title=title,
+            origin_adapter="redis",
+        )
+
+        logger.info("Created session %s from Redis command with channels in all adapters", session_id[:8])
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""

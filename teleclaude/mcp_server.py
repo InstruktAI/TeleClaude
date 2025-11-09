@@ -21,6 +21,7 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
 
 from teleclaude.config import config
+from teleclaude.core.command_handlers import get_short_project_name
 from teleclaude.core.db import db
 
 if TYPE_CHECKING:
@@ -395,7 +396,8 @@ class TeleClaudeMCPServer:
         claude_session_id = str(uuid.uuid4())
 
         # Create session in database to track this AI-to-AI session
-        title = f"AI:{computer}:{project_dir.split('/')[-1]}"
+        short_project = get_short_project_name(project_dir)
+        title = f"${self.computer_name} > ${computer}/{short_project} - AI Session"
         session = await db.create_session(
             computer_name=self.computer_name,
             tmux_session_name=f"{self.computer_name}-ai-{claude_session_id[:8]}",
@@ -411,6 +413,14 @@ class TeleClaudeMCPServer:
         )
 
         session_id = session.session_id
+
+        # Create channels in ALL adapters (Telegram, Redis, etc.)
+        # This enables observer broadcasting to Telegram
+        await self.client.create_channel(
+            session_id=session_id,
+            title=title,
+            origin_adapter="redis",
+        )
 
         # cd to dir on remote computer via AdapterClient
         cd_cmd = f"/cd {shlex.quote(project_dir)}"
@@ -442,8 +452,8 @@ class TeleClaudeMCPServer:
         Returns:
             List of session info dicts with metadata
         """
-        # Get AI-managed sessions by searching for "AI:" title pattern
-        sessions = await db.get_sessions_by_title_pattern("AI:")
+        # Get AI-managed sessions by searching for "$" title pattern (AI-to-AI format: "$Source > $Target - project")
+        sessions = await db.get_sessions_by_title_pattern("$")
 
         # Filter by computer if specified
         result = []
