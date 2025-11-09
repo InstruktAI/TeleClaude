@@ -283,10 +283,14 @@ class AdapterClient:
 
         # Check if adapter is a UI adapter (type-safe check)
         if not isinstance(origin_adapter, UiAdapter):
-            raise AttributeError(
-                f"send_output_update requires UiAdapter, but {session.origin_adapter} "
-                f"is {type(origin_adapter).__name__}"
+            # Non-UI adapters (like Redis) don't support send_output_update
+            # Return None silently (they handle output via send_message chunks)
+            logger.debug(
+                "Skipping send_output_update for session %s (origin adapter %s has no UI)",
+                session_id[:8],
+                session.origin_adapter,
             )
+            return None
 
         # Type checker now knows this is UiAdapter
         result = await origin_adapter.send_output_update(
