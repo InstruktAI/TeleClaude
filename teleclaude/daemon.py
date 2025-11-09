@@ -195,10 +195,10 @@ class TeleClaudeDaemon:
             audio_path=str(audio_file_path),
             context=context,
             send_feedback=send_feedback,
-            get_output_file=self._get_output_file,
+            get_output_file=self._get_output_file_path,
         )
 
-    def _get_output_file(self, session_id: str) -> Path:
+    def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session."""
         return self.output_dir / f"{session_id[:8]}.txt"
 
@@ -391,7 +391,7 @@ class TeleClaudeDaemon:
         await polling_coordinator.restore_active_pollers(
             adapter_client=self.client,
             output_poller=self.output_poller,
-            get_output_file=self._get_output_file,
+            get_output_file=self._get_output_file_path,
         )
 
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
@@ -498,7 +498,7 @@ class TeleClaudeDaemon:
         elif command == TeleClaudeEvents.CLAUDE_RESUME:
             await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
-            await command_handlers.handle_exit_session(context, self.client, self._get_output_file)
+            await command_handlers.handle_exit_session(context, self.client, self._get_output_file_path)
 
     async def handle_message(self, session_id: str, text: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
         """Handle incoming text messages (commands for terminal)."""
@@ -584,7 +584,7 @@ class TeleClaudeDaemon:
                 tmux_session_name=tmux_session_name,
                 output_poller=self.output_poller,
                 adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
-                get_output_file=self._get_output_file,
+                get_output_file=self._get_output_file_path,
             )
         )
 

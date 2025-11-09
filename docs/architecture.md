@@ -201,6 +201,7 @@ class RemoteExecutionProtocol(Protocol):
 ```
 
 **Who implements this:**
+
 - ✅ RedisAdapter (bi-directional transport)
 - ✅ PostgresAdapter (future, bi-directional transport)
 - ❌ TelegramAdapter (UI platform, not a transport)
@@ -532,7 +533,7 @@ else:
 
 ### Output Message Format
 
-```
+````
 ┌──────────────────────────────────────────┐
 │ ```sh                                    │
 │ Terminal output here                     │
@@ -542,7 +543,7 @@ else:
 │ ⏱️ Running 2m 34s | 📊 145KB | (truncated) │
 │ [📎 Download full output]                 │
 └──────────────────────────────────────────┘
-```
+````
 
 **Components:**
 
@@ -665,7 +666,7 @@ session_output/
 
 - Survives daemon restarts (enables downloads after crash)
 - No orphaned files (cleanup in `finally` blocks)
-- DRY helper: `daemon._get_output_file(session_id)`
+- DRY helper: `daemon._get_output_file_path(session_id)`
 
 ### Temporary Files
 
@@ -698,11 +699,11 @@ async def send_file_download():
 ```yaml
 # config.yml
 computer:
-  name: macbook  # Unique identifier
+  name: macbook # Unique identifier
 
 telegram:
   enabled: true
-  bot_token: ${TELEGRAM_BOT_TOKEN}  # From .env
+  bot_token: ${TELEGRAM_BOT_TOKEN} # From .env
 
 redis:
   enabled: true

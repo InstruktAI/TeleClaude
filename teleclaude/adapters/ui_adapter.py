@@ -240,3 +240,83 @@ class UiAdapter(BaseAdapter):
 
         # Clear pending deletions
         await db.update_ux_state(session_id, pending_deletions=[])
+
+    # ==================== Voice Support ====================
+
+    async def _process_voice_input(
+        self,
+        session_id: str,
+        audio_file_path: str,
+        context: dict[str, object],
+    ) -> None:
+        """Shared voice processing logic for UI adapters.
+
+        Default implementation uses voice_message_handler.py utility.
+        Override if platform needs custom voice handling.
+
+        Flow:
+        1. Validate session and check if process is running
+        2. Send "Transcribing..." feedback to user
+        3. Transcribe audio using voice_message_handler.py
+        4. Send transcribed text to terminal
+        5. Send feedback on success/failure
+
+        Args:
+            session_id: Session ID
+            audio_file_path: Path to audio file (any format supported by Whisper)
+            context: Platform-specific metadata (user_id, duration, etc.)
+        """
+        from teleclaude.core.voice_message_handler import handle_voice
+
+        # Delegate to utility module
+        await handle_voice(
+            session_id=session_id,
+            audio_path=audio_file_path,
+            context=context,
+            send_feedback=lambda sid, msg, append: self.send_message(sid, msg),
+            get_output_file=self._get_output_file_path,
+        )
+
+    # ==================== File Handling ====================
+
+    async def get_session_file(
+        self,
+        session_id: str,
+    ) -> Optional[str]:
+        """Provide platform-specific download UI for session output.
+
+        OPTIONAL - Override if platform supports download functionality.
+
+        Examples:
+        - TelegramAdapter: Upload file to Telegram, create download button, return message_id
+        - WhatsAppAdapter: Upload to WhatsApp as media message
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Platform-specific identifier/link if download UI created, None otherwise
+
+        NOTE: This is different from _get_output_file_path() which returns local file PATH.
+        """
+        return None  # Default: no download functionality
+
+    def _get_output_file_path(self, session_id: str) -> Path:
+        """Get local file system PATH to session output file.
+
+        Used internally by UI adapters that need to READ the output file
+        (e.g., for uploading, processing, voice status appending).
+
+        Default implementation uses standard session_output directory.
+        Override if adapter stores output files in custom location.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Path object pointing to local file (e.g., "session_output/abc123.txt")
+
+        NOTE: This is different from get_session_file() which creates download UI.
+        """
+        # Use standard session_output directory (same as daemon)
+        return Path("session_output") / f"{session_id[:8]}.txt"

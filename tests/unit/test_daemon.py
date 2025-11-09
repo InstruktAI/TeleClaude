@@ -1,14 +1,13 @@
 """Unit tests for daemon.py core logic."""
 
-import os
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
 from teleclaude import config as config_module
-from teleclaude.daemon import DaemonLockError, TeleClaudeDaemon
+from teleclaude.daemon import TeleClaudeDaemon
+
 
 @pytest.fixture
 def mock_daemon():
@@ -97,8 +96,9 @@ def mock_daemon():
         # Mock helper methods
         daemon._get_adapter_by_type = MagicMock(return_value=daemon.telegram)
         daemon._get_adapter_for_session = AsyncMock(return_value=daemon.telegram)
-        daemon._get_output_file = lambda session_id: Path(f"/tmp/test_output/{session_id[:8]}.txt")
+        daemon._get_output_file_path = lambda session_id: Path(f"/tmp/test_output/{session_id[:8]}.txt")
         daemon._poll_and_send_output = AsyncMock()
         daemon._execute_terminal_command = AsyncMock(return_value=True)
 
+        yield daemon
         yield daemon
