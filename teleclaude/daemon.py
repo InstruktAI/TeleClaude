@@ -18,18 +18,15 @@ from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
     command_handlers,
-    event_handlers,
-    message_handler,
     polling_coordinator,
     session_lifecycle,
-    terminal_executor,
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.voice_handler import init_voice_handler
+from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 from teleclaude.rest_api import TeleClaudeAPI
@@ -301,8 +298,6 @@ class TeleClaudeDaemon:
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
-        Wrapper around terminal_executor.execute_terminal_command that provides dependencies.
-
         Args:
             session_id: Session ID
             command: Command to execute
@@ -312,14 +307,48 @@ class TeleClaudeDaemon:
         Returns:
             True if successful, False otherwise
         """
-        return await terminal_executor.execute_terminal_command(
-            session_id=session_id,
-            command=command,
-            client=self.client,
-            start_polling=self._poll_and_send_output,
+        # Get session
+        session = await db.get_session(session_id)
+        if not session:
+            logger.error("Session %s not found", session_id[:8])
+            return False
+
+        # Get terminal size
+        cols, rows = 80, 24
+        if session.terminal_size and "x" in session.terminal_size:
+            try:
+                cols, rows = map(int, session.terminal_size.split("x"))
+            except ValueError:
+                pass
+
+        # Send command
+        success = await terminal_bridge.send_keys(
+            session.tmux_session_name,
+            command,
+            shell=config.computer.default_shell,
+            working_dir=session.working_directory,
+            cols=cols,
+            rows=rows,
             append_exit_marker=append_exit_marker,
-            message_id=message_id,
         )
+
+        if not success:
+            await self.client.send_message(session_id, f"Failed to execute command: {command}")
+            logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
+            return False
+
+        # Update activity
+        await db.update_last_activity(session_id)
+
+        # Cleanup command message
+        await db.cleanup_messages_after_success(session_id, message_id, self.client)
+
+        # Start polling if exit marker was appended
+        if append_exit_marker:
+            await self._poll_and_send_output(session_id, session.tmux_session_name)
+
+        logger.info("Executed command in session %s: %s", session_id[:8], command)
+        return True
 
     async def start(self) -> None:
         """Start the daemon."""
@@ -471,28 +500,80 @@ class TeleClaudeDaemon:
             await command_handlers.handle_exit_session(context, self.client, self._get_output_file)
 
     async def handle_message(self, session_id: str, text: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
-        """Wrapper around message_handler.handle_message."""
-        await message_handler.handle_message(
-            session_id=session_id,
-            text=text,
-            context=context,
-            client=self.client,
-            start_polling=self._poll_and_send_output,
+        """Handle incoming text messages (commands for terminal)."""
+        logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
+
+        # Get session
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found", session_id)
+            return
+
+        # Strip leading // and replace with / (Telegram workaround - only at start of input)
+        if text.startswith("//"):
+            text = "/" + text[2:]
+            logger.debug("Stripped leading // from user input, result: %s", text[:50])
+
+        # Parse terminal size (e.g., "80x24" -> cols=80, rows=24)
+        cols, rows = 80, 24
+        if session.terminal_size and "x" in session.terminal_size:
+            try:
+                cols, rows = map(int, session.terminal_size.split("x"))
+            except ValueError:
+                pass
+
+        # Check if a process is currently running (polling active)
+        ux_state = await db.get_ux_state(session_id)
+        is_process_running = ux_state.polling_active
+
+        # Send command to terminal (will create fresh session if needed)
+        # Only append exit marker if starting a NEW command, not sending input to running process
+        success = await terminal_bridge.send_keys(
+            session.tmux_session_name,
+            text,
+            shell=config.computer.default_shell,
+            working_dir=session.working_directory,
+            cols=cols,
+            rows=rows,
+            append_exit_marker=not is_process_running,
         )
+
+        if not success:
+            logger.error("Failed to send command to session %s", session_id[:8])
+            await self.client.send_message(session_id, "Failed to send command to terminal")
+            return
+
+        # Update activity
+        await db.update_last_activity(session_id)
+
+        # Start new poll if process not running, otherwise existing poll continues
+        if not is_process_running:
+            await self._poll_and_send_output(session_id, session.tmux_session_name)
+        else:
+            logger.debug(
+                "Input sent to running process in session %s, existing poll will capture output", session_id[:8]
+            )
 
     async def handle_topic_closed(self, session_id: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
-        """Handle topic/channel closure event.
+        """Handle topic/channel closure event."""
+        logger.info("Topic closed for session %s, closing session and tmux", session_id[:8])
 
-        Wrapper around event_handlers.handle_topic_closed that provides dependencies.
+        # Get session
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found during topic closure", session_id)
+            return
 
-        Args:
-            session_id: Session ID
-            context: Platform-specific context (includes topic_id, user_id, etc.)
-        """
-        await event_handlers.handle_topic_closed(
-            session_id=session_id,
-            context=context,
-        )
+        # Kill the tmux session
+        tmux_session_name = session.tmux_session_name
+        logger.info("Killing tmux session: %s", tmux_session_name)
+        success = await terminal_bridge.kill_session(tmux_session_name)
+        if not success:
+            logger.warning("Failed to kill tmux session %s", tmux_session_name)
+
+        # Mark session as closed in database
+        await db.update_session(session_id, closed=True)
+        logger.info("Session %s marked as closed", session_id[:8])
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.poll_and_send_output (creates background task)."""

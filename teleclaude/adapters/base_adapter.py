@@ -258,7 +258,7 @@ class BaseAdapter(ABC):
         Flow:
         1. Validate session and check if process is running
         2. Send "Transcribing..." feedback to user
-        3. Transcribe audio using voice_handler.py
+        3. Transcribe audio using voice_message_handler.py
         4. Send transcribed text to terminal
         5. Send feedback on success/failure
 
