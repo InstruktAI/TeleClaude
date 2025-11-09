@@ -449,6 +449,73 @@ make install && make init ARGS=-y
 
 **Never** run `./install.sh` directly - always use `make init`.
 
+## Multi-Computer Development Workflow
+
+TeleClaude runs on multiple computers (development machine + remote RasPis). When making changes, you must update all instances.
+
+### Standard Deployment Flow
+
+1. **Make changes on development machine** (MozBook)
+2. **Test locally**: `make restart && make status`
+3. **Commit changes**: Use git commit (pre-commit hooks run automatically)
+4. **Push to GitHub**: `git push`
+5. **Update remote machines**: Use proper SSH login shells to access keys
+
+### Updating Remote Machines
+
+**CRITICAL**: Use login shell (`bash -l -c`) to load SSH keys and git credentials:
+
+```bash
+# RasPi (morriz@raspberrypi.local)
+ssh morriz@raspberrypi.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && git pull && make restart'"
+
+# RasPi4 (morriz@raspi4.local)
+ssh morriz@raspi4.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && git pull && make restart'"
+```
+
+**Why login shell (`-l`) is required:**
+- Loads `.bash_profile` and `.bashrc`
+- Activates ssh-agent with GitHub keys
+- Enables git pull over SSH (git@github.com)
+- Without it, git operations fail with "Permission denied (publickey)"
+
+**Alternative using pseudo-terminal:**
+```bash
+ssh -t morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && git pull && make restart"
+```
+
+### Verification
+
+After updating each machine, verify daemon is healthy:
+
+```bash
+# Check RasPi
+ssh morriz@raspberrypi.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && make status'"
+
+# Check RasPi4
+ssh morriz@raspi4.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && make status'"
+```
+
+Expected output:
+```
+[INFO] Service: LOADED
+[INFO] systemctl status: active
+[INFO] Daemon process: RUNNING (PID: XXXXX, uptime: XX:XX)
+[INFO] Daemon health: HEALTHY (health endpoint responding)
+```
+
+### Common Mistakes to Avoid
+
+❌ **DON'T**: Use `make kill` (leaves orphaned MCP processes like socat)
+❌ **DON'T**: Forget login shell (causes git permission errors)
+❌ **DON'T**: Change git remote from SSH to HTTPS (breaks key-based auth)
+❌ **DON'T**: Skip verification after restart
+
+✅ **DO**: Use `make restart` (clean daemon restart)
+✅ **DO**: Use login shell for all remote git operations
+✅ **DO**: Verify daemon health after updates
+✅ **DO**: Push before updating remote machines
+
 ## Technical Architecture
 
 @docs/architecture.md
