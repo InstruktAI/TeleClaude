@@ -41,7 +41,8 @@ async def main() -> int:
 
         # Initialize AdapterClient (needed for delete_channel)
         client = AdapterClient()
-        await client.initialize()
+        client._load_adapters()  # Load adapters from config
+        await client.start()  # Start all adapters
 
         # Run cleanup
         cleaned_count = await cleanup_all_stale_sessions(client)
@@ -52,7 +53,7 @@ async def main() -> int:
         )
 
         # Cleanup
-        await client.cleanup()
+        await client.stop()  # Stop all adapters
         await db.close()
 
         return 0
