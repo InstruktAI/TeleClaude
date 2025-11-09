@@ -463,26 +463,23 @@ TeleClaude runs on multiple computers (development machine + remote RasPis). Whe
 
 ### Updating Remote Machines
 
-**CRITICAL**: Use login shell (`bash -l -c`) to load SSH keys and git credentials:
+**CRITICAL**: Use SSH agent forwarding (`-A` flag) to access GitHub keys:
 
 ```bash
 # RasPi (morriz@raspberrypi.local)
-ssh morriz@raspberrypi.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && git pull && make restart'"
+ssh -A morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && git checkout . && git pull && make restart"
 
 # RasPi4 (morriz@raspi4.local)
-ssh morriz@raspi4.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && git pull && make restart'"
+ssh -A morriz@raspi4.local "cd /home/morriz/apps/TeleClaude && git checkout . && git pull && make restart"
 ```
 
-**Why login shell (`-l`) is required:**
-- Loads `.bash_profile` and `.bashrc`
-- Activates ssh-agent with GitHub keys
+**Why SSH agent forwarding (`-A`) is required:**
+- Forwards your local SSH agent to the remote machine
+- Remote git can use your local GitHub keys
 - Enables git pull over SSH (git@github.com)
 - Without it, git operations fail with "Permission denied (publickey)"
 
-**Alternative using pseudo-terminal:**
-```bash
-ssh -t morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && git pull && make restart"
-```
+**Important**: Always use `git checkout .` before pull to discard any local changes from previous failed operations.
 
 ### Verification
 
@@ -490,10 +487,10 @@ After updating each machine, verify daemon is healthy:
 
 ```bash
 # Check RasPi
-ssh morriz@raspberrypi.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && make status'"
+ssh morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && make status"
 
 # Check RasPi4
-ssh morriz@raspi4.local "bash -l -c 'cd /home/morriz/apps/TeleClaude && make status'"
+ssh morriz@raspi4.local "cd /home/morriz/apps/TeleClaude && make status"
 ```
 
 Expected output:
@@ -507,12 +504,14 @@ Expected output:
 ### Common Mistakes to Avoid
 
 ❌ **DON'T**: Use `make kill` (leaves orphaned MCP processes like socat)
-❌ **DON'T**: Forget login shell (causes git permission errors)
+❌ **DON'T**: Forget `-A` flag for SSH (causes git permission errors)
 ❌ **DON'T**: Change git remote from SSH to HTTPS (breaks key-based auth)
+❌ **DON'T**: Skip `git checkout .` before pull (leaves dirty working tree)
 ❌ **DON'T**: Skip verification after restart
 
 ✅ **DO**: Use `make restart` (clean daemon restart)
-✅ **DO**: Use login shell for all remote git operations
+✅ **DO**: Use `-A` flag for SSH agent forwarding
+✅ **DO**: Clean checkout before pull (`git checkout .`)
 ✅ **DO**: Verify daemon health after updates
 ✅ **DO**: Push before updating remote machines
 
