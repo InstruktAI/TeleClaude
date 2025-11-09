@@ -5,6 +5,7 @@ All handlers are stateless functions with explicit dependencies.
 """
 
 import asyncio
+import functools
 import logging
 import os
 import shlex
@@ -25,6 +26,43 @@ logger = logging.getLogger(__name__)
 
 # Type alias for start_polling function
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
+
+
+# Decorator to inject session from context (removes boilerplate)
+def with_session(func: Callable) -> Callable:  # type: ignore[type-arg]
+    """Decorator that extracts and injects session from context.
+
+    Removes boilerplate from command handlers:
+    - Extracts session_id from context (crashes if missing - contract violation)
+    - Fetches session from db (crashes if None - contract violation)
+    - Injects session as first parameter to handler
+
+    Handler signature changes from:
+        async def handler(context, ...) -> None
+    To:
+        async def handler(session, context, ...) -> None
+
+    Example:
+        @with_session
+        async def handle_cancel(session: Session, context: dict, ...) -> None:
+            # session is already validated and injected
+            await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+    """
+
+    @functools.wraps(func)
+    async def wrapper(context: dict[str, object], *args: object, **kwargs: object) -> None:
+        # Extract session_id (let it crash if missing - our code emitted this event)
+        session_id = context["session_id"]
+
+        # Get session (let it crash if None - session should exist)
+        session = await db.get_session(str(session_id))
+        if session is None:
+            raise RuntimeError(f"Session {session_id} not found - this should not happen")
+
+        # Call handler with session injected as first parameter
+        await func(session, context, *args, **kwargs)
+
+    return wrapper
 
 
 # Shared helper for ALL command handlers - cleanup logic in ONE place
@@ -237,7 +275,9 @@ async def handle_list_projects(  # type: ignore[explicit-any]
     )
 
 
+@with_session
 async def handle_cancel_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     client: "AdapterClient",
     start_polling: StartPollingFunc,
@@ -246,22 +286,12 @@ async def handle_cancel_command(  # type: ignore[explicit-any]
     """Send CTRL+C (SIGINT) to a session.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
         double: If True, send CTRL+C twice (for stubborn programs)
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in cancel command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
     # Send SIGINT (CTRL+C) to the tmux session
     message_id_obj = context.get("message_id")
     message_id = str(message_id_obj) if message_id_obj else None
@@ -288,12 +318,14 @@ async def handle_cancel_command(  # type: ignore[explicit-any]
         )
 
     if success:
-        logger.info("Sent %s SIGINT to session %s", "double" if double else "single", session_id[:8])
+        logger.info("Sent %s SIGINT to session %s", "double" if double else "single", session.session_id[:8])
     else:
-        logger.error("Failed to send SIGINT to session %s", session_id[:8])
+        logger.error("Failed to send SIGINT to session %s", session.session_id[:8])
 
 
+@with_session
 async def handle_kill_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     client: "AdapterClient",
     start_polling: StartPollingFunc,
@@ -301,21 +333,11 @@ async def handle_kill_command(  # type: ignore[explicit-any]
     """Force kill foreground process with SIGKILL (guaranteed termination).
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in kill command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
     # Send SIGKILL (forceful termination) to the tmux session
     message_id_obj = context.get("message_id")
     message_id = str(message_id_obj) if message_id_obj else None
@@ -329,12 +351,14 @@ async def handle_kill_command(  # type: ignore[explicit-any]
     )
 
     if success:
-        logger.info("Sent SIGKILL to session %s (force kill)", session_id[:8])
+        logger.info("Sent SIGKILL to session %s (force kill)", session.session_id[:8])
     else:
-        logger.error("Failed to send SIGKILL to session %s", session_id[:8])
+        logger.error("Failed to send SIGKILL to session %s", session.session_id[:8])
 
 
+@with_session
 async def handle_escape_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
@@ -344,22 +368,13 @@ async def handle_escape_command(  # type: ignore[explicit-any]
     """Send ESCAPE key to a session, optionally followed by text+ENTER.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         args: Optional text to send after ESCAPE (e.g., [":wq"] sends ESCAPE, then :wq+ENTER)
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
         double: If True, send ESCAPE twice before sending text (if any)
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in escape command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
 
     # If text provided: send ESCAPE (once or twice) + text+ENTER
     if args:
@@ -368,7 +383,7 @@ async def handle_escape_command(  # type: ignore[explicit-any]
         # Send ESCAPE first
         success = await terminal_bridge.send_escape(session.tmux_session_name)
         if not success:
-            logger.error("Failed to send ESCAPE to session %s", session_id[:8])
+            logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
             return
 
         # Send second ESCAPE if double flag set
@@ -376,7 +391,7 @@ async def handle_escape_command(  # type: ignore[explicit-any]
             await asyncio.sleep(0.1)
             success = await terminal_bridge.send_escape(session.tmux_session_name)
             if not success:
-                logger.error("Failed to send second ESCAPE to session %s", session_id[:8])
+                logger.error("Failed to send second ESCAPE to session %s", session.session_id[:8])
                 return
 
         # Wait briefly for ESCAPE to register
@@ -391,7 +406,7 @@ async def handle_escape_command(  # type: ignore[explicit-any]
                 pass
 
         # Check if process is running for exit marker logic
-        is_process_running = await db.is_polling(str(session_id))
+        is_process_running = await db.is_polling(session.session_id)
 
         # Send text + ENTER
         success = await terminal_bridge.send_keys(
@@ -405,19 +420,21 @@ async def handle_escape_command(  # type: ignore[explicit-any]
         )
 
         if not success:
-            logger.error("Failed to send text to session %s", session_id[:8])
+            logger.error("Failed to send text to session %s", session.session_id[:8])
             return
 
         # Update activity
-        await db.update_last_activity(str(session_id))
+        await db.update_last_activity(session.session_id)
 
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
         # Start polling if needed
         if not is_process_running:
-            await start_polling(str(session_id), session.tmux_session_name)
+            await start_polling(session.session_id, session.tmux_session_name)
 
-        logger.info("Sent %s ESCAPE + '%s' to session %s", "double" if double else "single", text, session_id[:8])
+        logger.info(
+            "Sent %s ESCAPE + '%s' to session %s", "double" if double else "single", text, session.session_id[:8]
+        )
         return
 
     # No args: send ESCAPE only (support double)
@@ -444,12 +461,14 @@ async def handle_escape_command(  # type: ignore[explicit-any]
         )
 
     if success:
-        logger.info("Sent %s ESCAPE to session %s", "double" if double else "single", session_id[:8])
+        logger.info("Sent %s ESCAPE to session %s", "double" if double else "single", session.session_id[:8])
     else:
-        logger.error("Failed to send ESCAPE to session %s", session_id[:8])
+        logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
 
 
+@with_session
 async def handle_ctrl_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
@@ -458,36 +477,26 @@ async def handle_ctrl_command(  # type: ignore[explicit-any]
     """Send CTRL+key combination to a session.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         args: Command arguments (key to send with CTRL)
         client: AdapterClient for message operations
         start_polling: Function to start polling for a session
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in ctrl command context")
-        return
-
     if not args:
         logger.warning("No key argument provided to ctrl command")
-        feedback_msg_id = await client.send_message(str(session_id), "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)")
+        feedback_msg_id = await client.send_message(session.session_id, "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)")
 
         # Track both command message AND feedback message for deletion
         # Track command message (e.g., /ctrl)
         message_id = context.get("message_id")
-        await db.add_pending_deletion(str(session_id), str(message_id))
-        logger.debug("Tracked command message %s for deletion (session %s)", message_id, str(session_id)[:8])
+        await db.add_pending_deletion(session.session_id, str(message_id))
+        logger.debug("Tracked command message %s for deletion (session %s)", message_id, session.session_id[:8])
 
         # Track feedback message
-        await db.add_pending_deletion(str(session_id), feedback_msg_id)
-        logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, str(session_id)[:8])
+        await db.add_pending_deletion(session.session_id, feedback_msg_id)
+        logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session.session_id[:8])
 
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
         return
 
     # Get the key to send (first argument)
@@ -506,12 +515,14 @@ async def handle_ctrl_command(  # type: ignore[explicit-any]
     )
 
     if success:
-        logger.info("Sent CTRL+%s to session %s", key.upper(), session_id[:8])
+        logger.info("Sent CTRL+%s to session %s", key.upper(), session.session_id[:8])
     else:
-        logger.error("Failed to send CTRL+%s to session %s", key.upper(), session_id[:8])
+        logger.error("Failed to send CTRL+%s to session %s", key.upper(), session.session_id[:8])
 
 
+@with_session
 async def handle_tab_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     client: "AdapterClient",
     start_polling: StartPollingFunc,
@@ -519,20 +530,11 @@ async def handle_tab_command(  # type: ignore[explicit-any]
     """Send TAB key to a session.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in tab command context")
-        return
-
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
     message_id_obj = context.get("message_id")
     message_id = str(message_id_obj) if message_id_obj else None
     success = await _execute_and_poll(
@@ -544,12 +546,14 @@ async def handle_tab_command(  # type: ignore[explicit-any]
     )
 
     if success:
-        logger.info("Sent TAB to session %s", session_id[:8])
+        logger.info("Sent TAB to session %s", session.session_id[:8])
     else:
-        logger.error("Failed to send TAB to session %s", session_id[:8])
+        logger.error("Failed to send TAB to session %s", session.session_id[:8])
 
 
+@with_session
 async def handle_shift_tab_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     client: "AdapterClient",
     start_polling: StartPollingFunc,
@@ -557,20 +561,11 @@ async def handle_shift_tab_command(  # type: ignore[explicit-any]
     """Send SHIFT+TAB key to a session.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in shift_tab command context")
-        return
-
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
     message_id_obj = context.get("message_id")
     message_id = str(message_id_obj) if message_id_obj else None
     success = await _execute_and_poll(
@@ -582,12 +577,14 @@ async def handle_shift_tab_command(  # type: ignore[explicit-any]
     )
 
     if success:
-        logger.info("Sent SHIFT+TAB to session %s", session_id[:8])
+        logger.info("Sent SHIFT+TAB to session %s", session.session_id[:8])
     else:
-        logger.error("Failed to send SHIFT+TAB to session %s", session_id[:8])
+        logger.error("Failed to send SHIFT+TAB to session %s", session.session_id[:8])
 
 
+@with_session
 async def handle_arrow_key_command(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
@@ -597,21 +594,13 @@ async def handle_arrow_key_command(  # type: ignore[explicit-any]
     """Send arrow key to a session with optional repeat count.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         args: Command arguments (optional repeat count)
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
         direction: Arrow direction ('up', 'down', 'left', 'right')
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in arrow key command context")
-        return
-
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
 
     # Parse repeat count from args (default: 1)
     count = 1
@@ -638,12 +627,14 @@ async def handle_arrow_key_command(  # type: ignore[explicit-any]
     )
 
     if success:
-        logger.info("Sent %s arrow key (x%d) to session %s", direction.upper(), count, session_id[:8])
+        logger.info("Sent %s arrow key (x%d) to session %s", direction.upper(), count, session.session_id[:8])
     else:
-        logger.error("Failed to send %s arrow key to session %s", direction.upper(), session_id[:8])
+        logger.error("Failed to send %s arrow key to session %s", direction.upper(), session.session_id[:8])
 
 
+@with_session
 async def handle_resize_session(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
@@ -651,23 +642,13 @@ async def handle_resize_session(  # type: ignore[explicit-any]
     """Resize terminal session.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         args: Command arguments (size preset or WxH format)
         client: AdapterClient for message operations
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in resize command context")
-        return
-
     if not args:
         logger.warning("No size argument provided to resize command")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
         return
 
     # Size presets
@@ -687,7 +668,7 @@ async def handle_resize_session(  # type: ignore[explicit-any]
         cols, rows = map(int, size_str.split("x"))
     except ValueError:
         logger.error("Invalid size format: %s", size_str)
-        await client.send_message(str(session_id), f"Invalid size format: {size_str}")
+        await client.send_message(session.session_id, f"Invalid size format: {size_str}")
         return
 
     # Resize the tmux session
@@ -695,24 +676,30 @@ async def handle_resize_session(  # type: ignore[explicit-any]
 
     if success:
         # Update session in database
-        await db.update_session(str(session_id), terminal_size=size_str)
-        logger.info("Resized session %s to %s", str(session_id)[:8], size_str)
+        await db.update_session(session.session_id, terminal_size=size_str)
+        logger.info("Resized session %s to %s", session.session_id[:8], size_str)
 
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
         # Send feedback message
-        feedback_msg_id = await client.send_message(str(session_id), f"Terminal resized to {size_str} ({cols}x{rows})")
+        feedback_msg_id = await client.send_message(
+            session.session_id, f"Terminal resized to {size_str} ({cols}x{rows})"
+        )
 
         # Track feedback message for cleanup on next user input
         if feedback_msg_id:
-            await db.add_pending_deletion(str(session_id), feedback_msg_id)
-            logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, str(session_id)[:8])
+            await db.add_pending_deletion(session.session_id, feedback_msg_id)
+            logger.debug(
+                "Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session.session_id[:8]
+            )
     else:
-        logger.error("Failed to resize session %s", str(session_id)[:8])
-        await client.send_message(str(session_id), "Failed to resize terminal")
+        logger.error("Failed to resize session %s", session.session_id[:8])
+        await client.send_message(session.session_id, "Failed to resize terminal")
 
 
+@with_session
 async def handle_rename_session(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
@@ -720,23 +707,13 @@ async def handle_rename_session(  # type: ignore[explicit-any]
     """Rename session.
 
     Args:
-        context: Command context with session_id
+        session: Session object (injected by @with_session)
+        context: Command context
         args: Command arguments (new name)
         client: AdapterClient for message operations
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in rename command context")
-        return
-
     if not args:
         logger.warning("No name argument provided to rename command")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
         return
 
     # Build new title with computer name prefix
@@ -744,29 +721,33 @@ async def handle_rename_session(  # type: ignore[explicit-any]
     new_title = f"[{computer_name}] {' '.join(args)}"
 
     # Update in database
-    await db.update_session(str(session_id), title=new_title)
+    await db.update_session(session.session_id, title=new_title)
 
     # Update channel title via AdapterClient (looks up session internally)
-    success = await client.update_channel_title(str(session_id), new_title)
+    success = await client.update_channel_title(session.session_id, new_title)
     if success:
-        logger.info("Renamed session %s to '%s'", str(session_id)[:8], new_title)
+        logger.info("Renamed session %s to '%s'", session.session_id[:8], new_title)
 
         # Cleanup old messages AND delete current command
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
         # Send feedback message
-        feedback_msg_id = await client.send_message(str(session_id), f"Session renamed to: {new_title}")
+        feedback_msg_id = await client.send_message(session.session_id, f"Session renamed to: {new_title}")
 
         # Track feedback message for cleanup on next user input
         if feedback_msg_id:
-            await db.add_pending_deletion(str(session_id), feedback_msg_id)
-            logger.debug("Tracked feedback message %s for deletion (session %s)", feedback_msg_id, str(session_id)[:8])
+            await db.add_pending_deletion(session.session_id, feedback_msg_id)
+            logger.debug(
+                "Tracked feedback message %s for deletion (session %s)", feedback_msg_id, session.session_id[:8]
+            )
     else:
-        logger.error("Failed to update channel title for session %s", str(session_id)[:8])
-        await client.send_message(str(session_id), "Failed to update channel title")
+        logger.error("Failed to update channel title for session %s", session.session_id[:8])
+        await client.send_message(session.session_id, "Failed to update channel title")
 
 
+@with_session
 async def handle_cd_session(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
@@ -780,16 +761,6 @@ async def handle_cd_session(  # type: ignore[explicit-any]
         client: AdapterClient for message operations
         execute_terminal_command: Function to execute terminal command
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in cd command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
 
     # Strip whitespace from args and filter out empty strings
     args = [arg.strip() for arg in args if arg.strip()]
@@ -804,7 +775,7 @@ async def handle_cd_session(  # type: ignore[explicit-any]
             lines.append(f"{idx}. {dir_path}")
 
         response = "\n".join(lines)
-        await client.send_message(str(session_id), response)
+        await client.send_message(session.session_id, response)
         return
 
     # Change to specified directory
@@ -817,10 +788,12 @@ async def handle_cd_session(  # type: ignore[explicit-any]
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(str(session_id), cd_command, True, message_id)
+    await execute_terminal_command(session.session_id, cd_command, True, message_id)
 
 
+@with_session
 async def handle_exit_session(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     client: "AdapterClient",
     get_output_file: Callable[[str], Path],
@@ -832,16 +805,6 @@ async def handle_exit_session(  # type: ignore[explicit-any]
         client: AdapterClient for channel operations
         get_output_file: Function to get output file path
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in exit command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
 
     # Kill tmux session
     success = await terminal_bridge.kill_session(session.tmux_session_name)
@@ -851,71 +814,55 @@ async def handle_exit_session(  # type: ignore[explicit-any]
         logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
 
     # Delete from database
-    await db.delete_session(str(session_id))
-    logger.info("Deleted session %s from database", str(session_id)[:8])
+    await db.delete_session(session.session_id)
+    logger.info("Deleted session %s from database", session.session_id[:8])
 
     # Delete persistent output file
     try:
-        output_file = get_output_file(str(session_id))
+        output_file = get_output_file(session.session_id)
         if output_file.exists():
             output_file.unlink()
-            logger.debug("Deleted output file for closed session %s", str(session_id)[:8])
+            logger.debug("Deleted output file for closed session %s", session.session_id[:8])
     except Exception as e:
         logger.warning("Failed to delete output file: %s", e)
 
     # Delete channel/topic via AdapterClient (looks up session internally)
-    success = await client.delete_channel(str(session_id))
+    success = await client.delete_channel(session.session_id)
     if success:
-        logger.info("Deleted channel for session %s", session_id[:8])
+        logger.info("Deleted channel for session %s", session.session_id[:8])
 
 
+@with_session
 async def handle_claude_session(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
     """Start Claude Code in session.
 
     Args:
-        context: Command context with session_id and message_id
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
         execute_terminal_command: Function to execute terminal command
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in claude command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(str(session_id), "claude --dangerously-skip-permissions", True, message_id)
+    await execute_terminal_command(session.session_id, "claude --dangerously-skip-permissions", True, message_id)
 
 
+@with_session
 async def handle_claude_resume_session(  # type: ignore[explicit-any]
+    session: Session,
     context: dict[str, Any],
     execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
     """Resume Claude Code session using explicit session ID from metadata.
 
     Args:
-        context: Command context with session_id and message_id
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
         execute_terminal_command: Function to execute terminal command
     """
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.warning("No session_id in claude_resume command context")
-        return
-
-    # Get session
-    session = await db.get_session(str(session_id))
-    if not session:
-        logger.warning("Session %s not found", session_id)
-        return
-
     # Check if session has stored Claude session ID and project_dir
     metadata = session.adapter_metadata or {}
     claude_session_id = metadata.get("claude_session_id")
@@ -934,4 +881,4 @@ async def handle_claude_resume_session(  # type: ignore[explicit-any]
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(str(session_id), cmd, True, message_id)
+    await execute_terminal_command(session.session_id, cmd, True, message_id)

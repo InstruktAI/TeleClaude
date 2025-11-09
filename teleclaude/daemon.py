@@ -433,16 +433,21 @@ class TeleClaudeDaemon:
 
         logger.info("Daemon stopped")
 
-    async def handle_command(self, command: str, args: list[str], context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
+    async def handle_command(self, command: str, args: list[str], context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context  # pylint: disable=too-many-branches
         """Handle bot commands.
 
         Args:
             command: Event name from TeleClaudeEvents (e.g., "new_session", "list_projects")
             args: Command arguments
             context: Platform-specific context
+
+        Note: Handlers decorated with @with_session have their signatures modified by the decorator.
+        Pylint doesn't understand this, so we disable no-value-for-parameter warnings below.
         """
         logger.info("Command received: %s %s", command, args)
 
+        # pylint: disable=no-value-for-parameter
+        # Note: @with_session decorated handlers have modified signatures that pylint doesn't understand
         if command == TeleClaudeEvents.NEW_SESSION:
             await command_handlers.handle_create_session(context, args, self.client)
         elif command == TeleClaudeEvents.LIST_SESSIONS:
