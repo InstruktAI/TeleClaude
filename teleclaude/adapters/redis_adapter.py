@@ -612,7 +612,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     def _parse_target_from_title(self, title: str) -> Optional[str]:
         """Parse target computer name from title.
 
-        Expected format: "$initiator > $target - description"
+        Expected format: "$initiator > $target[project] - description"
 
         Args:
             title: Channel title
@@ -620,8 +620,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             Target computer name or None
         """
-        # Match: "$anything > $target - anything"
-        match = re.match(r"^\$\w+ > \$(\w+) - ", title)
+        # Match: "$anything > $target[project] - anything"
+        match = re.match(r"^\$\w+ > \$(\w+)(?:\[.*?\])? - ", title)
         if match:
             return match.group(1)
 
