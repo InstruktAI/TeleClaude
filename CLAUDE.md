@@ -16,6 +16,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - If unsure about stability, test in a separate environment first
 - The daemon provides critical infrastructure - treat restarts as production deployments
 
+### Rule #0.5: AUTOMATED DEPLOYMENT WORKFLOW
+
+**AFTER COMMITTING CHANGES, ALWAYS DEPLOY TO ALL MACHINES USING THE MCP TOOL.**
+
+When you've made changes that should be deployed:
+
+1. **Commit changes locally** (using `/commit` command with proper message format)
+2. **Push to GitHub**: `git push`
+3. **Deploy to all machines**: Use `teleclaude__deploy_to_all_computers` MCP tool
+   - This will automatically:
+     - Send deploy command to all remote computers (RasPi, RasPi4, etc.)
+     - Each computer will: `git pull` → restart daemon via service manager
+     - Wait for deployment completion (max 60 seconds per computer)
+     - Return status for each machine (deployed, error, timeout)
+
+**Example workflow:**
+```
+User: "Deploy these changes to all machines"
+
+Claude:
+1. Uses teleclaude__deploy_to_all_computers()
+2. Reports: "Deployed to RasPi (PID 123456), RasPi4 (PID 789012)"
+```
+
+**DO NOT** manually SSH to each machine anymore - the MCP tool handles this automatically via Redis.
+
 ### Rule #1: SINGLE DATABASE ONLY
 
 **THERE IS ONLY ONE DATABASE FILE: `teleclaude.db` IN PROJECT ROOT.**

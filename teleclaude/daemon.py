@@ -7,6 +7,7 @@ import logging
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
 
@@ -214,6 +215,110 @@ class TeleClaudeDaemon:
 
         await self.handle_topic_closed(str(session_id), context)
 
+    async def _handle_system_command(self, event: str, context: dict[str, object]) -> None:
+        """Handler for SYSTEM_COMMAND events.
+
+        System commands are daemon-level operations (deploy, restart, etc.)
+
+        Args:
+            event: Event type (always "system_command")
+            context: Unified context (all payload + metadata fields)
+        """
+        command = context.get("command")
+        args = context.get("args", {})
+        from_computer = context.get("from_computer", "unknown")
+
+        if not command:
+            logger.warning("SYSTEM_COMMAND event missing command")
+            return
+
+        logger.info("Handling system command '%s' from %s", command, from_computer)
+
+        if command == "deploy":
+            args_dict: dict[str, object] = args if isinstance(args, dict) else {}
+            await self._handle_deploy(args_dict)
+        elif command == "health_check":
+            await self._handle_health_check()
+        else:
+            logger.warning("Unknown system command: %s", command)
+
+    async def _handle_deploy(self, args: dict[str, object]) -> None:
+        """Execute deployment: git pull + restart daemon via service manager."""
+        import subprocess
+
+        # Get Redis adapter for status updates
+        from teleclaude.adapters.redis_adapter import RedisAdapter
+
+        redis_adapter_base = self.client.adapters.get("redis")
+        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
+            logger.error("Redis adapter not available, cannot update deploy status")
+            return
+
+        redis_adapter: RedisAdapter = redis_adapter_base
+        status_key = f"system_status:{config.computer.name}:deploy"
+
+        try:
+            # 1. Write deploying status
+            await redis_adapter.redis.set(
+                status_key,
+                '{"status": "deploying", "timestamp": ' + str(time.time()) + "}",
+            )
+            logger.info("Deploy: marked status as deploying")
+
+            # 2. Git pull
+            logger.info("Deploy: executing git pull...")
+            result = await asyncio.create_subprocess_exec(
+                "git",
+                "pull",
+                cwd=Path(__file__).parent.parent,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                error_msg = stderr.decode("utf-8")
+                logger.error("Deploy: git pull failed: %s", error_msg)
+                await redis_adapter.redis.set(
+                    status_key,
+                    '{"status": "error", "error": "git pull failed: ' + error_msg.replace('"', '\\"') + '"}',
+                )
+                return
+
+            logger.info("Deploy: git pull successful")
+
+            # 3. Write restarting status
+            await redis_adapter.redis.set(
+                status_key,
+                '{"status": "restarting", "timestamp": ' + str(time.time()) + "}",
+            )
+
+            # 4. Trigger restart via service manager
+            logger.info("Deploy: triggering service manager restart...")
+
+            if sys.platform == "darwin":
+                # macOS: launchd will auto-restart (KeepAlive=true)
+                logger.info("Deploy: exiting to trigger launchd restart")
+                os._exit(0)
+            else:
+                # Linux: trigger systemd restart
+                logger.info("Deploy: triggering systemd restart")
+                subprocess.Popen(["systemctl", "restart", "teleclaude"])
+                os._exit(0)
+
+        except Exception as e:
+            logger.error("Deploy failed: %s", e, exc_info=True)
+            if redis_adapter and redis_adapter.redis:
+                await redis_adapter.redis.set(
+                    status_key,
+                    '{"status": "error", "error": "' + str(e).replace('"', '\\"') + '"}',
+                )
+
+    async def _handle_health_check(self) -> None:
+        """Handle health check system command."""
+        logger.info("Health check requested")
+        # Health is already exposed via REST API endpoint
+
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session."""
         return self.output_dir / f"{session_id[:8]}.txt"
@@ -381,6 +486,30 @@ class TeleClaudeDaemon:
 
         # Start all adapters via AdapterClient
         await self.client.start()
+
+        # Check if we just restarted from deployment
+        from teleclaude.adapters.redis_adapter import RedisAdapter
+
+        redis_adapter_base = self.client.adapters.get("redis")
+        if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
+            redis_adapter: RedisAdapter = redis_adapter_base
+            if redis_adapter.redis:
+                status_key = f"system_status:{config.computer.name}:deploy"
+                status_data = await redis_adapter.redis.get(status_key)
+                if status_data:
+                    import json
+
+                    try:
+                        status = json.loads(status_data.decode("utf-8"))
+                        if status.get("status") == "restarting":
+                            # We successfully restarted from deployment
+                            await redis_adapter.redis.set(
+                                status_key,
+                                json.dumps({"status": "deployed", "timestamp": time.time(), "pid": os.getpid()}),
+                            )
+                            logger.info("Deployment complete, daemon restarted successfully (PID: %s)", os.getpid())
+                    except (json.JSONDecodeError, Exception) as e:
+                        logger.warning("Failed to parse deploy status: %s", e)
 
         # Start MCP server in background task (if enabled)
         if self.mcp_server:

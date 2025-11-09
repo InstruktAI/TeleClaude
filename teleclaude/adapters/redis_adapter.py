@@ -531,6 +531,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             data: Command data dict from Redis stream
         """
         try:
+            # Check if this is a system command
+            msg_type = data.get(b"type", b"").decode("utf-8")
+            if msg_type == "system":
+                await self._handle_system_command(data)
+                return
+
+            # Regular user command (session-specific)
             session_id = data.get(b"session_id", b"").decode("utf-8")
             command_str = data.get(b"command", b"").decode("utf-8")
 
@@ -581,6 +588,45 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         except Exception as e:
             logger.error("Failed to handle incoming command: %s", e)
+
+    async def _handle_system_command(self, data: dict[bytes, bytes]) -> None:
+        """Handle incoming system command from Redis stream.
+
+        System commands are daemon-level commands, not session-specific.
+
+        Args:
+            data: System command data dict from Redis stream
+        """
+        import json
+
+        command = data.get(b"command", b"").decode("utf-8")
+        from_computer = data.get(b"from_computer", b"").decode("utf-8")
+        args_json = data.get(b"args", b"{}").decode("utf-8")
+
+        if not command:
+            logger.warning("Invalid system command data: %s", data)
+            return
+
+        # Parse args
+        try:
+            args = json.loads(args_json)
+        except json.JSONDecodeError:
+            args = {}
+
+        logger.info("Received system command '%s' from %s", command, from_computer)
+
+        # Emit SYSTEM_COMMAND event to daemon
+        from teleclaude.core.events import TeleClaudeEvents
+
+        await self.client.handle_event(
+            event=TeleClaudeEvents.SYSTEM_COMMAND,
+            payload={
+                "command": command,
+                "args": args,
+                "from_computer": from_computer,
+            },
+            metadata={"adapter_type": "redis"},
+        )
 
     async def _create_session_from_redis(self, session_id: str, data: dict[bytes, bytes]) -> None:
         """Create session from incoming Redis command data.
@@ -725,6 +771,72 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.debug("XADD returned message_id=%s", message_id_bytes.decode("utf-8"))
         logger.info("Sent command to %s: session=%s, command=%s", computer_name, session_id[:8], command[:50])
         return message_id_bytes.decode("utf-8")
+
+    async def send_system_command(
+        self, computer_name: str, command: str, args: Optional[dict[str, object]] = None
+    ) -> str:
+        """Send system command to remote computer (not session-specific).
+
+        System commands are handled by the daemon itself, not routed to tmux.
+        Examples: deploy, restart, health_check
+
+        Args:
+            computer_name: Target computer name
+            command: System command (e.g., "deploy")
+            args: Optional command arguments
+
+        Returns:
+            Redis stream entry ID
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        command_stream = f"commands:{computer_name}"
+
+        # Build system command data
+        data = {
+            b"type": b"system",
+            b"command": command.encode("utf-8"),
+            b"timestamp": str(time.time()).encode("utf-8"),
+            b"from_computer": self.computer_name.encode("utf-8"),
+        }
+
+        # Add args as JSON if provided
+        if args:
+            import json
+
+            data[b"args"] = json.dumps(args).encode("utf-8")
+
+        # Send to Redis stream
+        logger.debug("Sending system command to %s: %s", computer_name, command)
+        message_id_bytes: bytes = await self.redis.xadd(command_stream, data, maxlen=self.command_stream_maxlen)
+
+        logger.info("Sent system command to %s: %s", computer_name, command)
+        return message_id_bytes.decode("utf-8")
+
+    async def get_system_command_status(self, computer_name: str, command: str) -> dict[str, object]:
+        """Get status of system command execution.
+
+        Args:
+            computer_name: Target computer name
+            command: System command name
+
+        Returns:
+            Status dict with keys: status, timestamp, error (if failed)
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        status_key = f"system_status:{computer_name}:{command}"
+        data = await self.redis.get(status_key)
+
+        if not data:
+            return {"status": "unknown"}
+
+        import json
+
+        result: dict[str, object] = json.loads(data.decode("utf-8"))
+        return result
 
     async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:
         """Poll output stream and yield chunks as they arrive.

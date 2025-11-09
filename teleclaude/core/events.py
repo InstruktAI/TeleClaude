@@ -29,6 +29,7 @@ EventType = Literal[
     "message",
     "voice",
     "topic_closed",
+    "system_command",
 ]
 
 
@@ -76,6 +77,9 @@ class TeleClaudeEvents:
     # Media and events
     VOICE: Literal["voice"] = "voice"  # Voice message received
     TOPIC_CLOSED: Literal["topic_closed"] = "topic_closed"  # Telegram topic closed/deleted
+
+    # System commands
+    SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
 
 
 def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
