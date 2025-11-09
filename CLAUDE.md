@@ -36,8 +36,9 @@ When you've made changes that should be deployed:
 User: "Deploy these changes to all machines"
 
 Claude:
-1. Uses teleclaude__deploy_to_all_computers()
-2. Reports: "Deployed to RasPi (PID 123456), RasPi4 (PID 789012)"
+1. Uses teleclaude__deploy_to_all_computers() [NO ARGUMENTS]
+2. Tool automatically discovers ALL computers and deploys
+3. Reports: "Deployed to RasPi (PID 123456), RasPi4 (PID 789012)"
 ```
 
 **DO NOT** manually SSH to each machine anymore - the MCP tool handles this automatically via Redis.
@@ -492,13 +493,15 @@ TeleClaude runs on multiple computers (development machine + remote RasPis). Whe
 **🚨 CRITICAL: ALWAYS use MCP tool for deployment!**
 
 ```python
-# Primary method - MCP tool handles everything automatically
-await teleclaude__deploy_to_all_computers()
+# Primary method - NO ARGUMENTS, deploys to ALL computers automatically
+teleclaude__deploy_to_all_computers()
+# Automatically discovers all computers and deploys
 # Returns: {"RasPi": {"status": "deployed", "pid": 12345}, ...}
 ```
 
 **The MCP tool automatically:**
-- Sends deploy command via Redis to all remote computers
+- Discovers ALL remote computers via Redis
+- Sends deploy command to each computer (excluding self)
 - Each computer: `git pull` → restart daemon
 - Returns deployment status for each machine
 - Handles timeouts and errors

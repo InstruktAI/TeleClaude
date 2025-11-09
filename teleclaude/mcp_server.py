@@ -189,26 +189,15 @@ class TeleClaudeMCPServer:
                 Tool(
                     name="teleclaude__deploy_to_all_computers",
                     description=(
-                        "Deploy latest code to all remote computers (git pull + restart). "
-                        "Use this after committing changes to automatically update all machines. "
+                        "Deploy latest code to ALL remote computers (git pull + restart). "
+                        "Automatically discovers and deploys to all computers except self. "
+                        "Use this after committing changes to update all machines. "
                         "**Workflow**: commit changes → push to GitHub → call this tool. "
                         "Returns deployment status for each computer (success, deploying, error)."
                     ),
                     inputSchema={
                         "type": "object",
-                        "properties": {
-                            "computers": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": (
-                                    "Computer names to deploy to (default: all discovered computers except self)"
-                                ),
-                            },
-                            "verify_health": {
-                                "type": "boolean",
-                                "description": "Verify daemon health after deployment (default: true)",
-                            },
-                        },
+                        "properties": {},
                     },
                 ),
             ]
@@ -254,15 +243,8 @@ class TeleClaudeMCPServer:
                 result = await self.teleclaude__get_session_status(session_id)
                 return [TextContent(type="text", text=str(result))]
             elif name == "teleclaude__deploy_to_all_computers":
-                deploy_computers_obj = arguments.get("computers") if arguments else None
-                deploy_computers: list[str] | None = (
-                    [str(c) for c in deploy_computers_obj] if isinstance(deploy_computers_obj, list) else None
-                )
-                deploy_verify_health_obj = arguments.get("verify_health", True) if arguments else True
-                deploy_verify_health = bool(deploy_verify_health_obj) if deploy_verify_health_obj is not None else True
-                deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers(
-                    deploy_computers, deploy_verify_health
-                )
+                # No arguments - always deploys to ALL computers
+                deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
                 return [TextContent(type="text", text=str(deploy_result))]
             else:
                 raise ValueError(f"Unknown tool: {name}")
@@ -661,14 +643,11 @@ class TeleClaudeMCPServer:
             "project_dir": metadata.get("project_dir"),
         }
 
-    async def teleclaude__deploy_to_all_computers(
-        self, computers: list[str] | None = None, verify_health: bool = True
-    ) -> dict[str, dict[str, object]]:
-        """Deploy latest code to all remote computers via Redis.
+    async def teleclaude__deploy_to_all_computers(self) -> dict[str, dict[str, object]]:
+        """Deploy latest code to ALL remote computers via Redis.
 
-        Args:
-            computers: Computer names to deploy to (default: all discovered except self)
-            verify_health: Verify daemon health after deployment
+        Automatically discovers all computers and deploys to them (excluding self).
+        No arguments - always deploys to ALL computers.
 
         Returns:
             Status for each computer: {computer: {status, timestamp, pid, error}}
@@ -682,18 +661,17 @@ class TeleClaudeMCPServer:
 
         redis_adapter: RedisAdapter = redis_adapter_base
 
-        # Discover computers if not specified
-        if not computers:
-            all_peers = await redis_adapter.discover_peers()
-            # Extract computer names from peer info and exclude self
-            computers = [str(peer["name"]) for peer in all_peers if peer.get("name") != self.computer_name]
+        # Discover ALL computers (excluding self)
+        all_peers = await redis_adapter.discover_peers()
+        computers = [str(peer["name"]) for peer in all_peers if peer.get("name") != self.computer_name]
 
         if not computers:
             return {"_message": {"status": "success", "message": "No remote computers to deploy to"}}
 
-        logger.info("Deploying to computers: %s", computers)
+        logger.info("Deploying to ALL computers: %s", computers)
 
-        # Send deploy command to all
+        # Send deploy command to all computers
+        verify_health = True  # Always verify health
         for computer in computers:
             await redis_adapter.send_system_command(
                 computer_name=computer, command="deploy", args={"verify_health": verify_health}
