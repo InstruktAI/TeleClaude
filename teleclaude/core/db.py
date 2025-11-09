@@ -50,42 +50,17 @@ class Db:
         await self._db.executescript(schema_sql)
         await self._db.commit()
 
-        # Reset all polling_active flags (orphaned after daemon restart)
-        # Background asyncio tasks don't survive restart, but DB state does
-        await self._reset_orphaned_polling_state()
+        # NOTE: We do NOT reset polling_active flags here!
+        # The daemon's restore_active_pollers() function handles this correctly by:
+        # 1. Checking if tmux session still exists
+        # 2. If yes: restart polling
+        # 3. If no: mark as inactive
+        # Resetting here would prevent automatic polling restoration.
 
     async def close(self) -> None:
         """Close database connection."""
         if self._db:
             await self._db.close()
-
-    async def _reset_orphaned_polling_state(self) -> None:
-        """Reset polling_active flags for all sessions after daemon restart.
-
-        When daemon restarts, all asyncio background tasks (including polling)
-        are terminated. However, ux_state.polling_active flags remain True in DB.
-        This causes new commands to think polling is already active, preventing
-        new polling tasks from starting.
-
-        Solution: Reset all polling_active flags to False on startup.
-        """
-        async with self._db.execute("SELECT session_id, ux_state FROM sessions WHERE closed = 0") as cursor:
-            rows = await cursor.fetchall()
-
-        reset_count = 0
-        for row in rows:
-            session_id = row["session_id"]
-            ux_state_json = row["ux_state"]
-
-            if ux_state_json:
-                ux_data = json.loads(ux_state_json)
-                if ux_data.get("polling_active"):
-                    # Reset polling flag (keep other UX state intact)
-                    await self.update_ux_state(session_id, polling_active=False)
-                    reset_count += 1
-
-        if reset_count > 0:
-            logger.info("Reset %d orphaned polling_active flags from previous daemon run", reset_count)
 
     async def create_session(
         self,
