@@ -4,9 +4,12 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shlex
+import time
 import types
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -124,10 +127,6 @@ class TeleClaudeMCPServer:
                                     "Do NOT guess or construct paths - always use teleclaude__list_projects first."
                                 ),
                             },
-                            "initial_message": {
-                                "type": "string",
-                                "description": "Initial message to Claude Code (default: 'Hello, I am ready to help')",
-                            },
                         },
                         "required": ["computer", "project_dir"],
                     },
@@ -135,9 +134,12 @@ class TeleClaudeMCPServer:
                 Tool(
                     name="teleclaude__send_message",
                     description=(
-                        "Send message to an existing Claude Code session. "
-                        "Use teleclaude__list_sessions to find session_id "
-                        "or teleclaude__start_session to create new one."
+                        "Send message to an existing Claude Code session and stream initial output. "
+                        "**Interest Window Pattern**: Streams output for 15 seconds (configurable), then detaches. "
+                        "This allows you to peek at initial execution to verify the task started correctly. "
+                        "**IMPORTANT**: After this tool returns, you MUST call teleclaude__get_session_status "
+                        "repeatedly to monitor progress until task completes or you determine it's safe to let run. "
+                        "Use teleclaude__list_sessions to find session_id or teleclaude__start_session to create new one."
                     ),
                     inputSchema={
                         "type": "object",
@@ -150,8 +152,36 @@ class TeleClaudeMCPServer:
                                 "type": "string",
                                 "description": "Message or command to send to Claude Code",
                             },
+                            "interest_window_seconds": {
+                                "type": "number",
+                                "description": "Seconds to monitor output before detaching (default: 15)",
+                            },
                         },
                         "required": ["session_id", "message"],
+                    },
+                ),
+                Tool(
+                    name="teleclaude__get_session_status",
+                    description=(
+                        "Check session status and get accumulated output since last checkpoint. "
+                        "**Purpose**: Monitor delegated tasks running on remote computers. "
+                        "**When to use**: Call repeatedly after teleclaude__send_message until: "
+                        "(1) You see output indicating task completed successfully, "
+                        "(2) You see errors and need to intervene, or "
+                        "(3) You determine task is progressing well (polling_active=true) and safe to let run. "
+                        "**State field**: Shows 'polling_active' when command is running, 'idle' when waiting for input. "
+                        "**Checkpoint System**: Only returns NEW output since last check (no replay). "
+                        "This models human delegation: peek → assess → intervene OR let run → check back later."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session ID to check status for",
+                            },
+                        },
+                        "required": ["session_id"],
                     },
                 ),
             ]
@@ -176,19 +206,26 @@ class TeleClaudeMCPServer:
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 project_dir_obj = arguments.get("project_dir") if arguments else None
                 project_dir = str(project_dir_obj) if project_dir_obj else None
-                initial_message = str(arguments.get("initial_message")) if arguments.get("initial_message") else None
-                result = await self.teleclaude__start_session(computer, project_dir, initial_message)
+                result = await self.teleclaude__start_session(computer, project_dir)
                 return [TextContent(type="text", text=str(result))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 message = str(arguments.get("message", "")) if arguments else ""
+                interest_window_obj = arguments.get("interest_window_seconds", 15) if arguments else 15
+                interest_window = (
+                    float(interest_window_obj) if isinstance(interest_window_obj, (int, float, str)) else 15.0
+                )
                 # Collect all chunks from async generator
                 chunks: list[str] = []
-                async for chunk in self.teleclaude__send_message(session_id, message):
+                async for chunk in self.teleclaude__send_message(session_id, message, interest_window):
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__get_session_status":
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                result = await self.teleclaude__get_session_status(session_id)
+                return [TextContent(type="text", text=str(result))]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -334,7 +371,6 @@ class TeleClaudeMCPServer:
         self,
         computer: str,
         project_dir: str,
-        initial_message: str = "Hello, I am ready to help. What is your next step?",
         continue_last_session: bool = False,
     ) -> dict[str, object]:
         """Start new Claude Code session on remote computer.
@@ -342,7 +378,6 @@ class TeleClaudeMCPServer:
         Args:
             computer: Target computer name
             project_dir: Absolute path to project directory
-            initial_message: Initial message to send (default greeting)
             continue_last_session: Whether to continue the last opened session. Be careful as this might hijack the session of another user. ONLY provide this flag on explicit request!
 
         Returns:
@@ -387,7 +422,7 @@ class TeleClaudeMCPServer:
         )
 
         # Start Claude Code
-        claude_cmd = f"/claude -m {shlex.quote(initial_message)}" + (" --continue" if continue_last_session else "")
+        claude_cmd = "/claude" + (" --continue" if continue_last_session else "")
         await self.client.send_remote_command(
             computer_name=computer,
             session_id=session_id,
@@ -395,23 +430,8 @@ class TeleClaudeMCPServer:
             metadata={"title": title, "project_dir": project_dir},
         )
 
-        # Send initial message and collect output
-        chunks = []
-        try:
-            async with asyncio.timeout(30):  # 30s for initial startup
-                async for chunk in self.client.poll_remote_output(session_id, timeout=30.0):
-                    chunks.append(chunk)
-                    # Stop after receiving initial response
-                    if len(chunks) > 5:
-                        break
-        except asyncio.TimeoutError:
-            return {
-                "session_id": session_id,
-                "status": "timeout",
-                "output": f"[Warning: Claude Code on {computer} did not respond within 30s]",
-            }
-
-        return {"session_id": session_id, "status": "success", "output": "".join(chunks)}
+        # Return immediately - polling happens automatically on remote side
+        return {"session_id": session_id, "status": "success"}
 
     async def teleclaude__list_sessions(self, computer: Optional[str] = None) -> list[dict[str, object]]:
         """List AI-managed Claude Code sessions with rich metadata.
@@ -447,15 +467,18 @@ class TeleClaudeMCPServer:
 
         return result
 
-    async def teleclaude__send_message(self, session_id: str, message: str) -> AsyncIterator[str]:
-        """Send message to existing AI-to-AI session and stream response.
+    async def teleclaude__send_message(
+        self, session_id: str, message: str, interest_window_seconds: float = 15
+    ) -> AsyncIterator[str]:
+        """Send message to existing AI-to-AI session and stream response during interest window.
 
         Args:
             session_id: Session ID from teleclaude__start_session
             message: Message/command to send to remote Claude Code
+            interest_window_seconds: Seconds to monitor output before detaching (default: 15)
 
         Yields:
-            str: Response chunks from remote Claude Code as they arrive
+            str: Response chunks from remote Claude Code during interest window
         """
         # Get session from database
         session = await db.get_session(session_id)
@@ -489,12 +512,103 @@ class TeleClaudeMCPServer:
             yield f"[Error: Failed to send command: {str(e)}]"
             return
 
-        # Stream output from AdapterClient
+        # Stream output from AdapterClient during interest window
+        start_time = time.time()
+        last_stream_id = metadata.get("last_checkpoint_stream_id", "0-0")
+
         try:
-            async for chunk in self.client.poll_remote_output(session_id, timeout=300.0):
-                yield chunk
+            # Stream output with interest window timeout
+            async for chunk in self.client.poll_remote_output(session_id, timeout=interest_window_seconds):
+                # Strip exit markers from output (internal infrastructure, not user-visible)
+                clean_chunk = re.sub(r"__EXIT__\d+__", "", chunk)
+                if clean_chunk:  # Only yield if there's content after stripping
+                    yield clean_chunk
+
+                # Check if interest window expired
+                elapsed = time.time() - start_time
+                if elapsed >= interest_window_seconds:
+                    yield "\n\n[Interest window closed - task continues remotely. Use teleclaude__get_session_status to check progress]"
+                    # TODO: Track last_stream_id from chunks to save checkpoint
+                    break
+
         except asyncio.TimeoutError:
-            yield "\n[Timeout: Session exceeded 5 minute limit]"
+            yield "\n[Interest window timed out - no output received]"
         except Exception as e:
             logger.error("Error streaming output for session %s: %s", session_id[:8], e)
             yield f"\n[Error: {str(e)}]"
+
+        # Save checkpoint (for now, just update timestamp - stream ID tracking needs adapter support)
+        metadata["last_checkpoint_time"] = datetime.utcnow().isoformat()
+        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.utcnow())
+
+    async def teleclaude__get_session_status(self, session_id: str) -> dict[str, object]:
+        """Get session status and accumulated output since last checkpoint.
+
+        Args:
+            session_id: Session ID to check status for
+
+        Returns:
+            dict with status, new_output, polling_active, runtime_seconds
+        """
+        # Get session from database
+        session = await db.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found"}
+
+        # Check if session was explicitly closed
+        if session.closed:
+            return {"status": "closed", "message": "Session has been closed"}
+
+        # Get target computer from session metadata
+        metadata = session.adapter_metadata or {}
+        target_computer_obj = metadata.get("target_computer")
+        if not target_computer_obj:
+            return {"status": "error", "message": "Session metadata missing target_computer"}
+
+        target_computer = str(target_computer_obj)
+
+        # Poll for new output with short timeout (2s - just check what's available)
+        new_output_chunks: list[str] = []
+        try:
+            async for chunk in self.client.poll_remote_output(session_id, timeout=2.0):
+                new_output_chunks.append(chunk)
+        except asyncio.TimeoutError:
+            # No new output - that's fine
+            pass
+        except Exception as e:
+            logger.error("Error polling output for session %s: %s", session_id[:8], e)
+            return {"status": "error", "message": f"Failed to poll output: {str(e)}"}
+
+        new_output = "".join(new_output_chunks)
+
+        # Strip ALL exit markers from output (these are internal infrastructure)
+        # Pattern: __EXIT__<number>__ (e.g., __EXIT__0__)
+        new_output = re.sub(r"__EXIT__\d+__", "", new_output)
+
+        # Determine session state
+        # - For AI-to-AI sessions, Claude Code runs continuously
+        # - Session is "running" until explicitly closed
+        # - Check if there's recent activity via polling_active flag
+        ux_state = await db.get_ux_state(session_id)
+        polling_active = ux_state.polling_active if ux_state else False
+
+        status = "running"  # Session is alive unless marked closed
+        state_description = "polling_active" if polling_active else "idle"
+
+        # Calculate runtime
+        runtime_seconds = (datetime.utcnow() - session.created_at).total_seconds()
+
+        # Update checkpoint timestamp
+        metadata["last_checkpoint_time"] = datetime.utcnow().isoformat()
+        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.utcnow())
+
+        return {
+            "status": status,
+            "state": state_description,
+            "new_output": new_output,
+            "has_new_output": len(new_output.strip()) > 0,
+            "polling_active": polling_active,
+            "runtime_seconds": runtime_seconds,
+            "target_computer": target_computer,
+            "project_dir": metadata.get("project_dir"),
+        }

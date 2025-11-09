@@ -26,7 +26,7 @@ help:
 	@echo "  make start        Start daemon via launchd"
 	@echo "  make stop         Stop daemon (disables service)"
 	@echo "  make restart      Restart daemon"
-	@echo "  make kill         Kill daemon (service auto-restarts)"
+	@echo "  make kill         Kills daemon (won't stop mcp server, so very messy)"
 	@echo "  make status       Check daemon status"
 	@echo ""
 	@echo "Development:"

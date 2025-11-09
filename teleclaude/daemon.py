@@ -455,13 +455,15 @@ class TeleClaudeDaemon:
         )
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
-        """Wrapper around polling_coordinator.poll_and_send_output."""
-        await polling_coordinator.poll_and_send_output(
-            session_id=session_id,
-            tmux_session_name=tmux_session_name,
-            output_poller=self.output_poller,
-            adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
-            get_output_file=self._get_output_file,
+        """Wrapper around polling_coordinator.poll_and_send_output (creates background task)."""
+        asyncio.create_task(
+            polling_coordinator.poll_and_send_output(
+                session_id=session_id,
+                tmux_session_name=tmux_session_name,
+                output_poller=self.output_poller,
+                adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
+                get_output_file=self._get_output_file,
+            )
         )
 
 

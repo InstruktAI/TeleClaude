@@ -266,7 +266,7 @@ restart_daemon() {
         fi
     fi
 
-    log_error "Restart failed. Try: make kill"
+    log_error "Restart failed. Try: make kill to hard kill the daemon. You will have to stop the mcp socat process separately."
     return 1
 }
 

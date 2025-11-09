@@ -429,8 +429,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         command_stream = f"commands:{self.computer_name}"
         # Start from 60 seconds ago to catch messages during startup window
-        import time
-
         startup_timestamp = int((time.time() - 60) * 1000)  # 60 seconds ago in milliseconds
         last_id = f"{startup_timestamp}-0".encode("utf-8")
 
@@ -439,20 +437,47 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         while self._running:
             try:
                 # Read commands from stream (blocking)
+                logger.debug(
+                    "About to XREAD from %s with last_id=%s, block=1000ms",
+                    command_stream,
+                    last_id,
+                )
+
                 messages = await self.redis.xread(
                     {command_stream.encode("utf-8"): last_id},
                     block=1000,  # Block for 1 second
                     count=5,
                 )
 
+                logger.debug(
+                    "XREAD returned %d stream(s) with messages",
+                    len(messages) if messages else 0,
+                )
+
                 if not messages:
+                    logger.debug("No messages received, continuing poll loop")
                     continue
 
                 # Process commands
                 for stream_name, stream_messages in messages:
+                    logger.debug(
+                        "Stream %s has %d message(s)",
+                        stream_name.decode("utf-8") if isinstance(stream_name, bytes) else stream_name,
+                        len(stream_messages),
+                    )
+
                     for message_id, data in stream_messages:
+                        logger.debug(
+                            "Processing message %s with data keys: %s",
+                            message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,
+                            [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],
+                        )
                         await self._handle_incoming_command(data)
                         last_id = message_id
+                        logger.debug(
+                            "Updated last_id to %s",
+                            last_id.decode("utf-8") if isinstance(last_id, bytes) else last_id,
+                        )
 
             except asyncio.CancelledError:
                 break
@@ -649,8 +674,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             data[b"project_dir"] = project_dir_str.encode("utf-8")
 
         # Send to Redis stream
+        logger.debug(
+            "About to XADD to stream=%s, data keys=%s",
+            command_stream,
+            [k.decode("utf-8") for k in data.keys()],
+        )
+
         message_id_bytes: bytes = await self.redis.xadd(command_stream, data, maxlen=self.command_stream_maxlen)
 
+        logger.debug("XADD returned message_id=%s", message_id_bytes.decode("utf-8"))
         logger.info("Sent command to %s: session=%s, command=%s", computer_name, session_id[:8], command[:50])
         return message_id_bytes.decode("utf-8")
 
@@ -670,7 +702,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             raise RuntimeError("Redis not initialized")
 
         output_stream = f"output:{session_id}"
-        last_id = b"0-0"
+        last_id = b"$"  # Start from current position (only read new chunks)
         start_time = time.time()
         last_yield_time = time.time()
         idle_count = 0

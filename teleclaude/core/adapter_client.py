@@ -14,7 +14,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import EventType
+from teleclaude.core.events import EventType, TeleClaudeEvents
 from teleclaude.core.models import Session
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
@@ -490,7 +490,7 @@ class AdapterClient:
             if sessions:
                 payload["session_id"] = sessions[0].session_id
 
-        # 2. Emit to subscriber
+        # 2. Emit to subscriber (daemon)
         logger.debug("handle_event called for event: %s, registered handlers: %s", event, list(self._handlers.keys()))
         handler = self._handlers.get(event)
         if handler:
@@ -499,9 +499,76 @@ class AdapterClient:
             # Handler returns a coroutine that needs to be awaited
             result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
             logger.debug("Handler completed for event: %s", event)
+
+            # 3. Broadcast ALL user actions to observer adapters (not just MESSAGE)
+            session_id_obj = payload.get("session_id")
+            if session_id_obj:
+                session_id = str(session_id_obj)
+
+                # Get session to find origin adapter
+                session = await db.get_session(session_id)
+                if session:
+                    # Format event as human-readable action
+                    action_text = self._format_event_for_observers(event, payload)
+
+                    if action_text:
+                        # Broadcast to all observer adapters (has_ui=True, not origin)
+                        for adapter_type, adapter in self.adapters.items():
+                            if adapter_type != session.origin_adapter and adapter.has_ui:
+                                try:
+                                    # Send copy of user action (best-effort, failures logged)
+                                    await adapter.send_message(
+                                        session_id=session_id, text=action_text, metadata={"is_observer_echo": True}
+                                    )
+                                    logger.debug("Broadcasted %s to observer adapter: %s", event, adapter_type)
+                                except Exception as e:
+                                    logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
+
             return result
 
         logger.warning("No handler registered for event: %s", event)
+        return None
+
+    def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:
+        """Format event as human-readable text for observer adapters.
+
+        Args:
+            event: Event type
+            payload: Event payload
+
+        Returns:
+            Formatted text or None if event should not be broadcast
+        """
+        if event == TeleClaudeEvents.MESSAGE:
+            text_obj = payload.get("text")
+            return f"→ {str(text_obj)}" if text_obj else None
+
+        elif event == TeleClaudeEvents.CANCEL:
+            return "→ [Ctrl+C]"
+
+        elif event == TeleClaudeEvents.CANCEL_2X:
+            return "→ [Ctrl+C] [Ctrl+C]"
+
+        elif event == TeleClaudeEvents.KILL:
+            return "→ [SIGKILL]"
+
+        elif event == TeleClaudeEvents.CTRL:
+            args_obj = payload.get("args", [])
+            args = args_obj if isinstance(args_obj, list) else []
+            key = str(args[0]) if args else "?"
+            return f"→ [Ctrl+{key}]"
+
+        elif event == TeleClaudeEvents.ESCAPE:
+            return "→ [ESC]"
+
+        elif event == TeleClaudeEvents.ESCAPE_2X:
+            return "→ [ESC] [ESC]"
+
+        elif event == TeleClaudeEvents.NEW_SESSION:
+            title = payload.get("title", "Untitled")
+            return f"→ [Created session: {title}]"
+
+        # Don't broadcast internal coordination events
         return None
 
     async def create_channel(

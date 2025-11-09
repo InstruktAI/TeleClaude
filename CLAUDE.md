@@ -456,4 +456,4 @@ make install && make init ARGS=-y
 ## Troubleshooting
 
 @docs/troubleshooting.md
-- ALWAYS USE `make kill` to RESTART the daemon! DONT USE `make restart` or `make stop && make start`!!
+- ALWAYS USE `make restart` to RESTART the daemon!
