@@ -1,6 +1,6 @@
 """Protocol definitions for adapter capabilities."""
 
-from typing import AsyncIterator, Dict, List, Optional, Protocol, runtime_checkable
+from typing import AsyncIterator, Dict, Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -52,16 +52,5 @@ class RemoteExecutionProtocol(Protocol):
 
         Raises:
             TimeoutError: If no output received within timeout
-        """
-        ...
-
-    async def discover_computers(self) -> List[str]:
-        """Discover available remote computers via this transport.
-
-        Returns:
-            List of computer names accessible via this adapter
-
-        Raises:
-            RuntimeError: If discovery fails
         """
         ...

@@ -69,7 +69,6 @@ def mock_adapter_client(mock_redis_adapter):
     client.discover_peers = mock_redis_adapter.discover_peers
     client.send_remote_command = mock_redis_adapter.send_command_to_computer
     client.poll_remote_output = mock_redis_adapter.poll_output_stream
-    client.discover_remote_computers = AsyncMock(return_value=["computer1", "computer2"])
     return client
 
 

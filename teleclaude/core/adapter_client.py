@@ -7,7 +7,7 @@ a clean, unified interface for the daemon and MCP server.
 import asyncio
 import logging
 import os
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, List, Optional
+from typing import AsyncIterator, Callable, Optional
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
@@ -15,7 +15,6 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents
-from teleclaude.core.models import Session
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 logger = logging.getLogger(__name__)
@@ -761,39 +760,6 @@ class AdapterClient:
         """
         transport = self._get_transport_adapter()
         return transport.poll_output_stream(session_id, timeout)
-
-    async def discover_remote_computers(self) -> List[str]:
-        """Discover remote computers via all transport adapters.
-
-        Aggregates computer lists from all adapters implementing RemoteExecutionProtocol
-        and deduplicates by computer name.
-
-        Returns:
-            List of computer names accessible via transport adapters
-
-        Raises:
-            RuntimeError: If no transport adapter available
-        """
-        computers: List[str] = []
-        transport_count = 0
-
-        for adapter in self.adapters.values():
-            if isinstance(adapter, RemoteExecutionProtocol):
-                transport_count += 1
-                try:
-                    discovered = await adapter.discover_computers()
-                    computers.extend(discovered)
-                    logger.debug("Discovered %d computers from transport adapter", len(discovered))
-                except Exception as e:
-                    logger.error("Failed to discover computers from transport adapter: %s", e)
-
-        if transport_count == 0:
-            raise RuntimeError("No transport adapter available for remote execution")
-
-        # Deduplicate by name
-        unique_computers = list(set(computers))
-        logger.debug("Total discovered computers (deduplicated): %d", len(unique_computers))
-        return unique_computers
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Get first adapter that supports remote execution.

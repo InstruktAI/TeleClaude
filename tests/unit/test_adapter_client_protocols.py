@@ -19,7 +19,6 @@ def mock_transport_adapter():
         yield "chunk2"
 
     adapter.poll_output_stream = mock_stream
-    adapter.discover_computers = AsyncMock(return_value=["comp1", "comp2"])
 
     return adapter
 
@@ -103,68 +102,6 @@ async def test_poll_remote_output_no_transport_fails(adapter_client_without_tran
             pass
 
 
-@pytest.mark.asyncio
-async def test_discover_remote_computers_success(adapter_client_with_transport, mock_transport_adapter):
-    """Test discovering computers via transport adapters."""
-    # Execute
-    computers = await adapter_client_with_transport.discover_remote_computers()
-
-    # Verify - order doesn't matter (set conversion)
-    assert set(computers) == {"comp1", "comp2"}
-    mock_transport_adapter.discover_computers.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_discover_remote_computers_aggregates_multiple_transports():
-    """Test discovering computers aggregates from multiple transport adapters."""
-    # Create two transport adapters
-    transport1 = Mock(spec=RemoteExecutionProtocol)
-    transport1.discover_computers = AsyncMock(return_value=["comp1", "comp2"])
-
-    transport2 = Mock(spec=RemoteExecutionProtocol)
-    transport2.discover_computers = AsyncMock(return_value=["comp2", "comp3"])  # comp2 duplicate
-
-    client = AdapterClient()
-    client.register_adapter("redis", transport1)
-    client.register_adapter("postgres", transport2)
-
-    # Execute
-    computers = await client.discover_remote_computers()
-
-    # Verify - should deduplicate
-    assert set(computers) == {"comp1", "comp2", "comp3"}
-    transport1.discover_computers.assert_called_once()
-    transport2.discover_computers.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_discover_remote_computers_no_transport_fails(adapter_client_without_transport):
-    """Test discovering computers fails when no transport adapter available."""
-    with pytest.raises(RuntimeError, match="No transport adapter available"):
-        await adapter_client_without_transport.discover_remote_computers()
-
-
-@pytest.mark.asyncio
-async def test_discover_remote_computers_handles_transport_failure():
-    """Test discovering computers handles individual transport failures gracefully."""
-    # Create two transport adapters
-    transport1 = Mock(spec=RemoteExecutionProtocol)
-    transport1.discover_computers = AsyncMock(side_effect=Exception("Connection failed"))
-
-    transport2 = Mock(spec=RemoteExecutionProtocol)
-    transport2.discover_computers = AsyncMock(return_value=["comp3"])
-
-    client = AdapterClient()
-    client.register_adapter("redis", transport1)
-    client.register_adapter("postgres", transport2)
-
-    # Execute - should not raise, logs error
-    computers = await client.discover_remote_computers()
-
-    # Verify - got results from working adapter
-    assert computers == ["comp3"]
-
-
 def test_get_transport_adapter_returns_first_match(adapter_client_with_transport, mock_transport_adapter):
     """Test _get_transport_adapter returns first adapter implementing protocol."""
     # Execute
@@ -192,7 +129,6 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
     # Create transport adapter
     transport = Mock(spec=RemoteExecutionProtocol)
     transport.send_command_to_computer = AsyncMock(return_value="req_123")
-    transport.discover_computers = AsyncMock(return_value=["comp1"])
 
     client = AdapterClient()
     client.register_adapter("telegram", ui_adapter)

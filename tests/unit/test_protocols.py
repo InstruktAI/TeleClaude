@@ -18,7 +18,6 @@ def test_remote_execution_protocol_runtime_checkable():
         yield "output"
 
     mock_adapter.poll_output_stream = mock_poll
-    mock_adapter.discover_computers = AsyncMock()
 
     # Protocol is runtime_checkable
     assert isinstance(mock_adapter, RemoteExecutionProtocol)
@@ -37,7 +36,6 @@ def test_protocol_methods_signature():
 
     assert "send_command_to_computer" in protocol_methods
     assert "poll_output_stream" in protocol_methods
-    assert "discover_computers" in protocol_methods
 
 
 @pytest.mark.asyncio
@@ -76,17 +74,3 @@ def test_protocol_poll_output_stream_signature():
     # Method should return AsyncIterator
     stream = mock_adapter.poll_output_stream(session_id="sess_123", timeout=60.0)
     assert hasattr(stream, "__aiter__")
-
-
-@pytest.mark.asyncio
-async def test_protocol_discover_computers_signature():
-    """Test discover_computers method signature."""
-    mock_adapter = Mock(spec=RemoteExecutionProtocol)
-    mock_adapter.discover_computers = AsyncMock(return_value=["comp1", "comp2"])
-
-    # Should return list of strings
-    computers = await mock_adapter.discover_computers()
-
-    assert isinstance(computers, list)
-    assert len(computers) == 2
-    assert all(isinstance(c, str) for c in computers)

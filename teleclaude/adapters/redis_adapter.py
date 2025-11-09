@@ -397,15 +397,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.error("Failed to discover peers: %s", e)
             return []
 
-    async def discover_computers(self) -> list[str]:
-        """Discover available remote computers (RemoteExecutionProtocol implementation).
-
-        Returns:
-            List of computer names accessible via Redis
-        """
-        peers = await self.discover_peers()
-        return [str(peer["name"]) for peer in peers]
-
     def get_max_message_length(self) -> int:
         """Get max message length for Redis (unlimited, but use 4KB for safety).
 
