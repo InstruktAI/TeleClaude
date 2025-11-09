@@ -1591,9 +1591,19 @@ Usage:
             return
 
         session = sessions[0]
-        logger.info("Topic %s closed, cleaning up session %s", topic_id, session.session_id)
+        logger.info("Topic %s closed, deleting it and cleaning up session %s", topic_id, session.session_id)
 
-        # Emit topic closed event to daemon
+        # Delete topic immediately (force sync across all Telegram clients)
+        try:
+            await self.app.bot.delete_forum_topic(
+                chat_id=self.supergroup_id,
+                message_thread_id=topic_id,
+            )
+            logger.info("Deleted forum topic %s for session %s", topic_id, session.session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to delete forum topic %s: %s", topic_id, e)
+
+        # Emit topic closed event to daemon for cleanup
         await self.client.handle_event(
             event=TeleClaudeEvents.TOPIC_CLOSED,
             payload={"session_id": session.session_id},
