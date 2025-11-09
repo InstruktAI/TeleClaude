@@ -428,7 +428,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             return
 
         command_stream = f"commands:{self.computer_name}"
-        last_id = b"0-0"
+        last_id = b"$"  # Only read NEW messages (not old ones from previous runs)
 
         logger.info("Starting Redis command polling: %s", command_stream)
 
