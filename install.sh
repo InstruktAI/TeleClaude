@@ -164,6 +164,34 @@ check_python() {
     exit 1
 }
 
+# Check Node.js (required for Claude Code)
+check_node() {
+    print_info "Checking Node.js..."
+
+    if ! command -v node &> /dev/null; then
+        print_error "Node.js not found"
+        print_info "Node.js is required for Claude Code"
+        print_info ""
+        print_info "Install Node.js:"
+        print_info "  macOS:  brew install node"
+        print_info "  Ubuntu: sudo apt install nodejs npm"
+        print_info "  Fedora: sudo dnf install nodejs npm"
+        print_info ""
+        print_info "Or visit: https://nodejs.org/"
+        exit 1
+    fi
+
+    if ! command -v npm &> /dev/null; then
+        print_error "npm not found"
+        print_info "npm is required for installing Claude Code"
+        exit 1
+    fi
+
+    NODE_VERSION=$(node --version 2>&1)
+    NPM_VERSION=$(npm --version 2>&1)
+    print_success "Found Node.js $NODE_VERSION and npm $NPM_VERSION"
+}
+
 # Install system dependencies
 install_system_deps() {
     print_header "Installing System Dependencies"
@@ -500,6 +528,123 @@ install_launchd_service() {
     fi
 }
 
+# Install Claude Code
+install_claude_code() {
+    print_header "Installing Claude Code"
+
+    if command -v claude-code &> /dev/null; then
+        CLAUDE_VERSION=$(claude-code --version 2>&1 || echo "unknown")
+        print_warning "Claude Code already installed ($CLAUDE_VERSION)"
+        if ! confirm "Reinstall Claude Code?" "n"; then
+            return 0
+        fi
+    fi
+
+    print_info "Installing Claude Code globally via npm..."
+    if npm install -g @anthropic-ai/claude-code &> "$LOG_FILE"; then
+        print_success "Claude Code installed successfully"
+        CLAUDE_VERSION=$(claude-code --version 2>&1 || echo "unknown")
+        print_info "Claude Code version: $CLAUDE_VERSION"
+    else
+        print_error "Failed to install Claude Code"
+        print_info "Check log: $LOG_FILE"
+        print_warning "You can install manually: npm install -g @anthropic-ai/claude-code"
+        # Don't exit - not critical for TeleClaude
+    fi
+}
+
+# Setup periodic cleanup cron job
+setup_cleanup_cron() {
+    print_header "Setting Up Periodic Session Cleanup"
+
+    local cleanup_script="$INSTALL_DIR/scripts/cleanup_stale_sessions.py"
+
+    if [ ! -f "$cleanup_script" ]; then
+        print_error "Cleanup script not found: $cleanup_script"
+        exit 1
+    fi
+
+    # Make script executable
+    chmod +x "$cleanup_script"
+
+    case "$OS" in
+        macos)
+            # Use launchd plist for macOS
+            local plist_file="$HOME/Library/LaunchAgents/ai.instrukt.teleclaude.cleanup.plist"
+
+            cat > "$plist_file" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.instrukt.teleclaude.cleanup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$INSTALL_DIR/.venv/bin/python</string>
+        <string>$cleanup_script</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>StandardOutPath</key>
+    <string>/var/log/teleclaude.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/teleclaude.log</string>
+</dict>
+</plist>
+EOF
+
+            launchctl unload "$plist_file" 2>/dev/null || true
+            launchctl load "$plist_file"
+            print_success "Installed launchd periodic cleanup (every 5 minutes)"
+            ;;
+
+        linux)
+            # Use systemd timer for Linux
+            local timer_file="/etc/systemd/system/teleclaude-cleanup.timer"
+            local service_file="/etc/systemd/system/teleclaude-cleanup.service"
+
+            # Create service file
+            sudo tee "$service_file" > /dev/null <<EOF
+[Unit]
+Description=TeleClaude Stale Session Cleanup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$INSTALL_DIR/.venv/bin/python $cleanup_script
+User=$USER
+WorkingDirectory=$INSTALL_DIR
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+            # Create timer file
+            sudo tee "$timer_file" > /dev/null <<EOF
+[Unit]
+Description=TeleClaude Stale Session Cleanup Timer
+Requires=teleclaude-cleanup.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=teleclaude-cleanup.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+            # Enable and start timer
+            sudo systemctl daemon-reload
+            sudo systemctl enable teleclaude-cleanup.timer
+            sudo systemctl start teleclaude-cleanup.timer
+
+            print_success "Installed systemd timer for periodic cleanup (every 5 minutes)"
+            ;;
+    esac
+}
+
 # Main installation flow
 main() {
     print_header "TeleClaude Installation"
@@ -509,6 +654,7 @@ main() {
     # Pre-flight checks
     detect_os
     check_python
+    check_node
 
     # Install dependencies
     install_system_deps
@@ -521,6 +667,12 @@ main() {
 
     # Install service
     install_service
+
+    # Install Claude Code (optional but recommended)
+    install_claude_code
+
+    # Setup periodic cleanup
+    setup_cleanup_cron
 
     # Success message
     print_header "Installation Complete!"

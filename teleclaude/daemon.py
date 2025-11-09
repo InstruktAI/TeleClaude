@@ -19,6 +19,7 @@ from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
+    session_cleanup,
     session_lifecycle,
     voice_message_handler,
 )
@@ -510,6 +511,15 @@ class TeleClaudeDaemon:
         session = await db.get_session(session_id)
         if not session:
             logger.warning("Session %s not found", session_id)
+            return
+
+        # Check for stale session (on-the-fly cleanup)
+        was_stale = await session_cleanup.cleanup_stale_session(session_id, self.client)
+        if was_stale:
+            logger.warning("Session %s was stale and has been cleaned up", session_id[:8])
+            await self.client.send_message(
+                session_id, "⚠️ This session's terminal was closed externally and has been cleaned up."
+            )
             return
 
         # Strip leading // and replace with / (Telegram workaround - only at start of input)
