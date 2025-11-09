@@ -95,18 +95,26 @@ def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
         >>> parse_command_string("/cd /home/user")
         ("cd", ["/home/user"])
         >>> parse_command_string("/claude -m 'Hello'")
-        ("claude", ["-m", "'Hello'"])
+        ("claude", ["-m", "Hello"])
         >>> parse_command_string("new_session My Project")
         ("new_session", ["My", "Project"])
     """
-    parts = command_str.strip().split(maxsplit=1)
+    import shlex
+
+    # Use shlex.split for proper shell-like parsing (handles quotes)
+    try:
+        parts = shlex.split(command_str.strip())
+    except ValueError:
+        # Invalid quotes/syntax - fall back to simple split
+        parts = command_str.strip().split()
+
     if not parts:
         return None, []
 
     # Extract command name (remove leading slash if present)
     cmd_name = parts[0].lstrip("/")
 
-    # Extract arguments (keep as single string for now - handlers can parse further)
-    args = [parts[1]] if len(parts) > 1 else []
+    # Extract arguments (rest of the parts)
+    args = parts[1:] if len(parts) > 1 else []
 
     return cmd_name, args
