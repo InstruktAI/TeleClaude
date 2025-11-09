@@ -728,9 +728,18 @@ class TeleClaudeDaemon:
         if not success:
             logger.warning("Failed to kill tmux session %s", tmux_session_name)
 
-        # Mark session as closed in database
-        await db.update_session(session_id, closed=True)
-        logger.info("Session %s marked as closed", session_id[:8])
+        # Delete session from database (full cleanup, not just closed=True)
+        await db.delete_session(session_id)
+        logger.info("Deleted session %s from database", session_id[:8])
+
+        # Delete persistent output file
+        try:
+            output_file = self._get_output_file_path(session_id)
+            if output_file.exists():
+                output_file.unlink()
+                logger.debug("Deleted output file for closed session %s", session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to delete output file: %s", e)
 
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.poll_and_send_output (creates background task)."""
