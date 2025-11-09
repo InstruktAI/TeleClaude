@@ -1188,7 +1188,10 @@ Current size: {}
     async def _heartbeat_loop(self) -> None:
         """Send heartbeat every N seconds to General topic."""
         # Send initial heartbeat
-        await self._send_heartbeat()
+        try:
+            await self._send_heartbeat()
+        except Exception as e:
+            logger.error("Initial heartbeat failed: %s", e)
 
         # Then send every heartbeat_interval seconds
         while True:
