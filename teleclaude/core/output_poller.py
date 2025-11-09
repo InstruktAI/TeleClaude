@@ -121,8 +121,28 @@ class OutputPoller:
                     # First poll with output - establish baseline
                     output_buffer = current_output
                     first_poll = False
+                    last_output_changed_at = time.time()
                     logger.debug("Baseline established for %s (size=%d)", session_id[:8], len(output_buffer))
+
+                    # Send initial OutputChanged event with baseline
+                    clean_output = self._strip_exit_markers(output_buffer)
+
+                    # Write to file
+                    try:
+                        output_file.write_text(clean_output, encoding="utf-8")
+                    except Exception as e:
+                        logger.warning("Failed to write initial output file: %s", e)
+
+                    yield OutputChanged(
+                        session_id=session_id,
+                        output=clean_output,
+                        started_at=started_at,
+                        last_changed_at=last_output_changed_at,
+                    )
+
                     # Continue polling (don't check for exit in baseline to avoid old markers)
+                    await asyncio.sleep(poll_interval)
+                    continue
 
                 elif not first_poll:
                     # Check for exit on every poll after baseline (not just when output changes)

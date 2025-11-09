@@ -139,12 +139,16 @@ class TestOutputPollerPoll:
                 async for event in poller.poll("test-456", "test-tmux", output_file, has_exit_marker=True):
                     events.append(event)
 
-                # Verify ProcessExited event with exit code
-                assert len(events) == 1
-                assert isinstance(events[0], ProcessExited)
+                # Verify we get baseline OutputChanged + ProcessExited
+                assert len(events) == 2
+                assert isinstance(events[0], OutputChanged)
                 assert events[0].session_id == "test-456"
-                assert events[0].exit_code == 0
-                assert events[0].final_output == "command output\n"  # Preserves trailing newline
+                assert events[0].output == "command output\n"
+
+                assert isinstance(events[1], ProcessExited)
+                assert events[1].session_id == "test-456"
+                assert events[1].exit_code == 0
+                assert events[1].final_output == "command output\n"  # Preserves trailing newline
 
                 # Verify file written
                 assert output_file.exists()
