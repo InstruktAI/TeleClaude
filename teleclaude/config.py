@@ -203,16 +203,21 @@ def _build_config(raw: dict[str, object]) -> Config:
     )
 
 
-# Load config.yml from project root
+# Load config.yml from project root (falls back to defaults if not found)
 _project_root = Path(__file__).parent.parent
 _config_path = _project_root / "config.yml"
 
-with open(_config_path, encoding="utf-8") as f:
-    _user_config = yaml.safe_load(f)
+try:
+    with open(_config_path, encoding="utf-8") as f:
+        _user_config = yaml.safe_load(f)
 
-# Expand environment variables
-_user_config = expand_env_vars(_user_config)
+    # Expand environment variables
+    _user_config = expand_env_vars(_user_config)
 
-# Merge with defaults and build typed config
-_merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]
+    # Merge with defaults and build typed config
+    _merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]
+except FileNotFoundError:
+    # Config file not found (e.g., in CI or fresh install) - use defaults
+    _merged = DEFAULT_CONFIG
+
 config = _build_config(_merged)
