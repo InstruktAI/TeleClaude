@@ -72,6 +72,10 @@ disable = [
 [tool.pylint.'FORMAT']
 max-line-length = 120
 
+[tool.pylint.typecheck]
+# Decorators that modify function signatures (inject parameters)
+signature-mutators = ["teleclaude.core.command_handlers.with_session"]
+
 [tool.pyproject-fmt]
 indent = 4
 keep_full_version = false
