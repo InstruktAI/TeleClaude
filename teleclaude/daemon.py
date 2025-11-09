@@ -578,6 +578,14 @@ class TeleClaudeDaemon:
         await db.update_session(session_id, closed=True)
         logger.info("Session %s marked as closed", session_id[:8])
 
+        # Actively delete channel in ALL adapters to force sync across devices
+        # This fixes Telegram's client-side caching bug where deleted topics remain visible
+        try:
+            await self.client.delete_channel(session_id)
+            logger.info("Deleted channel for session %s in all adapters", session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to delete channel for session %s: %s", session_id[:8], e)
+
     async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.poll_and_send_output (creates background task)."""
         asyncio.create_task(
