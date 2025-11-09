@@ -428,9 +428,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             return
 
         command_stream = f"commands:{self.computer_name}"
-        last_id = b"$"  # Only read NEW messages (not old ones from previous runs)
+        # Start from 60 seconds ago to catch messages during startup window
+        import time
 
-        logger.info("Starting Redis command polling: %s", command_stream)
+        startup_timestamp = int((time.time() - 60) * 1000)  # 60 seconds ago in milliseconds
+        last_id = f"{startup_timestamp}-0".encode("utf-8")
+
+        logger.info("Starting Redis command polling: %s (from last 60s)", command_stream)
 
         while self._running:
             try:
