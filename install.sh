@@ -585,7 +585,7 @@ setup_cleanup_cron() {
         <string>$cleanup_script</string>
     </array>
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>86400</integer>
     <key>StandardOutPath</key>
     <string>/var/log/teleclaude.log</string>
     <key>StandardErrorPath</key>
@@ -628,7 +628,7 @@ Requires=teleclaude-cleanup.service
 
 [Timer]
 OnBootSec=5min
-OnUnitActiveSec=5min
+OnUnitActiveSec=1d
 Unit=teleclaude-cleanup.service
 
 [Install]
