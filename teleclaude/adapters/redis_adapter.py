@@ -141,6 +141,45 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         logger.info("RedisAdapter stopped")
 
+    async def _get_last_processed_message_id(self) -> Optional[str]:
+        """Get last processed Redis message ID from database.
+
+        Returns:
+            Last message ID or None if not found
+        """
+        try:
+            key = f"redis_last_message_id:{self.computer_name}"
+            cursor = await db._db.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
+            row = await cursor.fetchone()
+            if row:
+                return str(row[0])
+            return None
+        except Exception as e:
+            logger.warning("Failed to get last processed message ID: %s", e)
+            return None
+
+    async def _set_last_processed_message_id(self, message_id: str) -> None:
+        """Persist last processed Redis message ID to database.
+
+        Args:
+            message_id: Redis stream message ID
+        """
+        try:
+            key = f"redis_last_message_id:{self.computer_name}"
+            await db._db.execute(
+                """
+                INSERT INTO system_settings (key, value, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (key, message_id),
+            )
+            await db._db.commit()
+        except Exception as e:
+            logger.error("Failed to persist last processed message ID: %s", e)
+
     async def send_message(self, session_id: str, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send message chunk to Redis output stream.
 
@@ -421,11 +460,16 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             return
 
         command_stream = f"commands:{self.computer_name}"
-        # Start from 60 seconds ago to catch messages during startup window
-        startup_timestamp = int((time.time() - 60) * 1000)  # 60 seconds ago in milliseconds
-        last_id = f"{startup_timestamp}-0".encode("utf-8")
 
-        logger.info("Starting Redis command polling: %s (from last 60s)", command_stream)
+        # Load last processed message ID from database (prevents re-processing on restart)
+        last_id_str = await self._get_last_processed_message_id()
+        if last_id_str:
+            last_id = last_id_str.encode("utf-8")
+            logger.info("Starting Redis command polling: %s (resuming from last_id=%s)", command_stream, last_id_str)
+        else:
+            # First startup - use current time to avoid processing old messages
+            last_id = b"$"  # $ means "latest" in Redis
+            logger.info("Starting Redis command polling: %s (from current time - first startup)", command_stream)
 
         while self._running:
             try:
@@ -467,10 +511,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         )
                         await self._handle_incoming_command(data)
                         last_id = message_id
-                        logger.debug(
-                            "Updated last_id to %s",
-                            last_id.decode("utf-8") if isinstance(last_id, bytes) else last_id,
-                        )
+
+                        # Persist last_id to prevent re-processing on restart
+                        last_id_str = last_id.decode("utf-8") if isinstance(last_id, bytes) else last_id
+                        await self._set_last_processed_message_id(last_id_str)
+
+                        logger.debug("Updated last_id to %s", last_id_str)
 
             except asyncio.CancelledError:
                 break
