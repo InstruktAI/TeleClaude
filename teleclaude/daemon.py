@@ -199,6 +199,21 @@ class TeleClaudeDaemon:
             get_output_file=self._get_output_file_path,
         )
 
+    async def _handle_topic_closed(self, event: str, context: dict[str, object]) -> None:
+        """Handler for TOPIC_CLOSED events.
+
+        Args:
+            event: Event type (always "topic_closed")
+            context: Unified context (all payload + metadata fields)
+        """
+        session_id = context.get("session_id")
+
+        if not session_id:
+            logger.warning("TOPIC_CLOSED event missing session_id")
+            return
+
+        await self.handle_topic_closed(str(session_id), context)
+
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session."""
         return self.output_dir / f"{session_id[:8]}.txt"
