@@ -303,16 +303,28 @@ class TeleClaudeDaemon:
             )
             logger.info("Deploy: marked status as deploying")
 
-            # 2. Git pull
+            # 2. Git pull with automatic merge commit handling
             logger.info("Deploy: executing git pull...")
+
+            # Configure git to auto-commit merges (non-interactive)
+            await asyncio.create_subprocess_exec(
+                "git",
+                "config",
+                "pull.rebase",
+                "false",
+                cwd=Path(__file__).parent.parent,
+            )
+
+            # Pull with merge strategy (accepts default merge commit message)
             result = await asyncio.create_subprocess_exec(
                 "git",
                 "pull",
+                "--no-edit",  # Use default merge commit message
                 cwd=Path(__file__).parent.parent,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await result.communicate()
+            stdout, stderr = await result.communicate()
 
             if result.returncode != 0:
                 error_msg = stderr.decode("utf-8")
@@ -323,7 +335,8 @@ class TeleClaudeDaemon:
                 )
                 return
 
-            logger.info("Deploy: git pull successful")
+            output = stdout.decode("utf-8")
+            logger.info("Deploy: git pull successful - %s", output.strip())
 
             # 3. Write restarting status
             await redis_adapter.redis.set(
