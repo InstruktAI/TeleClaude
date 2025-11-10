@@ -62,6 +62,7 @@ class TeleClaudeMCPServer:
             return [
                 Tool(
                     name="teleclaude__list_computers",
+                    title="TeleClaude: List Computers",
                     description="List all available TeleClaude computers in the network",
                     inputSchema={
                         "type": "object",
@@ -70,6 +71,7 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__list_projects",
+                    title="TeleClaude: List Projects",
                     description=(
                         "**CRITICAL: Call this FIRST before teleclaude__start_session** "
                         "List available project directories on a target computer (from trusted_dirs config). "
@@ -89,6 +91,7 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__list_sessions",
+                    title="TeleClaude: List Sessions",
                     description=(
                         "List active AI-managed Claude Code sessions across all computers with rich metadata "
                         "(project_dir, status, claude_session_id). "
@@ -106,6 +109,7 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__start_session",
+                    title="TeleClaude: Start Session",
                     description=(
                         "Start a new Claude Code session on a remote computer in a specific project. "
                         "**REQUIRED WORKFLOW:** "
@@ -135,6 +139,7 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__send_message",
+                    title="TeleClaude: Send Message",
                     description=(
                         "Send message to an existing Claude Code session and stream initial output. "
                         "**Interest Window Pattern**: Streams output for 15 seconds (configurable), then detaches. "
@@ -164,6 +169,7 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__get_session_status",
+                    title="TeleClaude: Get Session Status",
                     description=(
                         "Check session status and get accumulated output since last checkpoint. "
                         "**Purpose**: Monitor delegated tasks running on remote computers. "
@@ -188,6 +194,7 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__deploy_to_all_computers",
+                    title="TeleClaude: Deploy to All Computers",
                     description=(
                         "Deploy latest code to ALL remote computers (git pull + restart). "
                         "Automatically discovers and deploys to all computers except self. "
