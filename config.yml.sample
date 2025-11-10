@@ -1,5 +1,6 @@
 computer:
     name: Mac  # Unique computer identifier for multi-computer MCP communication
+    role: development  # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
     bot_username: teleclaude_mac_bot  # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
     is_master: false  # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
     default_shell: /bin/zsh

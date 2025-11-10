@@ -19,6 +19,7 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.core.system_stats import get_all_stats
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -424,6 +425,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     peers.append(
                         {
                             "name": info["computer_name"],
+                            "role": info.get("role", "general"),
+                            "system_stats": info.get("system_stats", {}),
+                            "sessions": info.get("sessions", []),
                             "bot_username": info.get("bot_username", ""),
                             "status": "online",
                             "last_seen": last_seen_dt,
@@ -689,16 +693,42 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         key = f"computer:{self.computer_name}:heartbeat"
 
+        # Build enhanced payload with graceful degradation
+        payload: dict[str, object] = {
+            "computer_name": self.computer_name,
+            "last_seen": datetime.now().isoformat(),
+        }
+
+        # Add role
+        try:
+            payload["role"] = config.computer.role
+        except Exception as e:
+            logger.warning("Failed to get computer role: %s", e)
+            payload["role"] = "general"
+
+        # Add system stats (with fallback)
+        try:
+            payload["system_stats"] = get_all_stats()
+        except Exception as e:
+            logger.warning("Failed to get system stats: %s", e)
+            payload["system_stats"] = {}
+
+        # Add active sessions (limited to 50 max)
+        try:
+            all_sessions = await db.get_sessions_by_title_pattern("")
+            active_sessions = [{"session_id": s.session_id, "title": s.title} for s in all_sessions if not s.closed][
+                :50
+            ]  # Limit to 50 sessions
+            payload["sessions"] = active_sessions
+        except Exception as e:
+            logger.warning("Failed to get active sessions: %s", e)
+            payload["sessions"] = []
+
         # Set key with auto-expiry
         await self.redis.setex(
             key,
             self.heartbeat_ttl,
-            json.dumps(
-                {
-                    "computer_name": self.computer_name,
-                    "last_seen": datetime.now().isoformat(),
-                }
-            ),
+            json.dumps(payload),
         )
 
         logger.debug("Sent heartbeat: %s", key)

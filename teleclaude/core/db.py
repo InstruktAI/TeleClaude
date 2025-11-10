@@ -438,13 +438,11 @@ class Db:
         Returns:
             List of sessions with active polling
         """
-        cursor = await self._db.execute(
-            """
+        cursor = await self._db.execute("""
             SELECT * FROM sessions
             WHERE closed = 0
             ORDER BY last_activity DESC
-            """
-        )
+            """)
         rows = await cursor.fetchall()
         all_sessions = [Session.from_dict(dict(row)) for row in rows]
 

@@ -189,6 +189,22 @@ class TelegramAdapter(UiAdapter):
         # Handle voice messages in topics
         self.app.add_handler(MessageHandler(filters.VOICE, self._handle_voice_message))
 
+        # Handle file attachments (documents, photos, etc.) in topics - both new and edited
+        self.app.add_handler(
+            MessageHandler(
+                (filters.Document.ALL | filters.PHOTO) & filters.ChatType.SUPERGROUP,
+                self._handle_file_attachment,
+            )
+        )
+        self.app.add_handler(
+            MessageHandler(
+                (filters.Document.ALL | filters.PHOTO)
+                & filters.ChatType.SUPERGROUP
+                & filters.UpdateType.EDITED_MESSAGE,
+                self._handle_file_attachment,
+            )
+        )
+
         # Handle forum topic closed events
         self.app.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self._handle_topic_closed))
 
@@ -1067,9 +1083,7 @@ class TelegramAdapter(UiAdapter):
 /resize wide - 200x80 (ultrawide)
 
 Current size: {}
-            """.format(
-                session.terminal_size or "80x24"
-            )
+            """.format(session.terminal_size or "80x24")
             await update.effective_message.reply_text(presets_text, parse_mode="Markdown")
             return
 
@@ -1618,6 +1632,66 @@ Usage:
             error_msg = str(e) if str(e).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
             await update.message.reply_text(f"❌ Failed to download voice message: {error_msg}")
+
+    async def _handle_file_attachment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle file attachments (documents, photos) in topics - both new and edited messages."""
+        # Handle both regular messages and edited messages
+        message = update.message or update.edited_message
+        if not message or not update.effective_user:
+            return
+
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        # Get file object (either document or photo)
+        file_obj = None
+        file_name = None
+        file_type = None
+
+        if message.document:
+            file_obj = message.document
+            file_name = message.document.file_name or f"document_{message.message_id}"
+            file_type = "document"
+        elif message.photo:
+            # Photos come as array, get largest one
+            file_obj = message.photo[-1]
+            file_name = f"photo_{message.message_id}.jpg"
+            file_type = "photo"
+
+        if not file_obj:
+            return
+
+        # Download file to temp location
+        telegram_file = await file_obj.get_file()
+        temp_dir = Path(tempfile.gettempdir()) / "teleclaude_files"
+        temp_dir.mkdir(exist_ok=True)
+        temp_file_path = temp_dir / file_name
+
+        try:
+            # Download the file
+            await telegram_file.download_to_drive(temp_file_path)
+            logger.info("Downloaded %s to: %s", file_type, temp_file_path)
+
+            # Emit file event to daemon
+            await self.client.handle_event(
+                event=TeleClaudeEvents.FILE,
+                payload={
+                    "session_id": session.session_id,
+                    "file_path": str(temp_file_path),
+                    "file_name": file_name,
+                    "file_type": file_type,
+                },
+                metadata={
+                    "adapter_type": "telegram",
+                    "user_id": update.effective_user.id,
+                    "message_id": message.message_id,
+                },
+            )
+        except Exception as e:
+            error_msg = str(e) if str(e).strip() else "Unknown error"
+            logger.error("Failed to download %s: %s", file_type, error_msg)
+            await message.reply_text(f"❌ Failed to download {file_type}: {error_msg}")
 
     async def _handle_topic_closed(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle forum topic closed event."""

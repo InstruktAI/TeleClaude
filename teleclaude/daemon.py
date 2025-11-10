@@ -338,13 +338,46 @@ class TeleClaudeDaemon:
             output = stdout.decode("utf-8")
             logger.info("Deploy: git pull successful - %s", output.strip())
 
-            # 3. Write restarting status
+            # 3. Run make install (update dependencies)
+            logger.info("Deploy: running make install...")
+            install_result = await asyncio.create_subprocess_exec(
+                "make",
+                "install",
+                cwd=Path(__file__).parent.parent,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Wait for install to complete with 60s timeout
+            try:
+                install_stdout, install_stderr = await asyncio.wait_for(install_result.communicate(), timeout=60.0)
+            except asyncio.TimeoutError:
+                logger.error("Deploy: make install timed out after 60s")
+                await redis_adapter.redis.set(
+                    status_key,
+                    json.dumps({"status": "error", "error": "make install timed out after 60s"}),
+                )
+                return
+
+            if install_result.returncode != 0:
+                error_msg = install_stderr.decode("utf-8")
+                logger.error("Deploy: make install failed: %s", error_msg)
+                await redis_adapter.redis.set(
+                    status_key,
+                    json.dumps({"status": "error", "error": f"make install failed: {error_msg}"}),
+                )
+                return
+
+            install_output = install_stdout.decode("utf-8")
+            logger.info("Deploy: make install successful - %s", install_output.strip())
+
+            # 4. Write restarting status
             await redis_adapter.redis.set(
                 status_key,
                 json.dumps({"status": "restarting", "timestamp": time.time()}),
             )
 
-            # 4. Trigger restart via service manager
+            # 5. Trigger restart via service manager
             logger.info("Deploy: triggering service manager restart...")
 
             if sys.platform == "darwin":

@@ -24,6 +24,7 @@ class DatabaseConfig:
 @dataclass
 class ComputerConfig:
     name: str
+    role: str
     timezone: str
     default_shell: str
     default_working_dir: str
@@ -91,6 +92,7 @@ DEFAULT_CONFIG: dict[str, object] = {
     },
     "computer": {
         "name": "unknown",
+        "role": "general",
         "timezone": "Europe/Amsterdam",
         "default_shell": "bash",
         "default_working_dir": "~",
@@ -165,6 +167,7 @@ def _build_config(raw: dict[str, object]) -> Config:
         ),
         computer=ComputerConfig(
             name=str(comp["name"]),  # type: ignore[index]
+            role=str(comp["role"]),  # type: ignore[index]
             timezone=str(comp["timezone"]),  # type: ignore[index]
             default_shell=str(comp["default_shell"]),  # type: ignore[index]
             default_working_dir=str(comp["default_working_dir"]),  # type: ignore[index]

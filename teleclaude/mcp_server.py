@@ -63,10 +63,20 @@ class TeleClaudeMCPServer:
                 Tool(
                     name="teleclaude__list_computers",
                     title="TeleClaude: List Computers",
-                    description="List all available TeleClaude computers in the network",
+                    description=(
+                        "List all available TeleClaude computers in the network with detailed information: "
+                        "role, system stats (memory, disk, CPU), and active sessions. "
+                        "Optionally filter by specific computer names."
+                    ),
                     inputSchema={
                         "type": "object",
-                        "properties": {},
+                        "properties": {
+                            "computer_names": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional: Only return these computers (e.g., ['raspi', 'macbook'])",
+                            },
+                        },
                     },
                 ),
                 Tool(
@@ -213,8 +223,14 @@ class TeleClaudeMCPServer:
         async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent]:
             """Handle tool calls."""
             if name == "teleclaude__list_computers":
-                computers = await self.teleclaude__list_computers()
-                return [TextContent(type="text", text=json.dumps(computers, default=str))]
+                # Extract optional filter
+                computer_names_obj = arguments.get("computer_names") if arguments else None
+                computer_names = None
+                if computer_names_obj and isinstance(computer_names_obj, list):
+                    computer_names = [str(c) for c in computer_names_obj]
+
+                computers = await self.teleclaude__list_computers(computer_names)
+                return [TextContent(type="text", text=json.dumps(computers, default=str, indent=2))]
             elif name == "teleclaude__list_projects":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 projects = await self.teleclaude__list_projects(computer)
@@ -347,13 +363,21 @@ class TeleClaudeMCPServer:
             await writer.wait_closed()
             logger.info("MCP client disconnected")
 
-    async def teleclaude__list_computers(self) -> list[dict[str, object]]:
+    async def teleclaude__list_computers(self, computer_names: Optional[list[str]] = None) -> list[dict[str, object]]:
         """List available computers from all adapters.
 
+        Args:
+            computer_names: Optional filter by computer names
+
         Returns:
-            List of online computers with their info.
+            List of online computers with their info (role, system_stats, sessions, etc.)
         """
         result: list[dict[str, object]] = await self.client.discover_peers()
+
+        # Apply filter if provided
+        if computer_names:
+            result = [c for c in result if c.get("name") in computer_names]
+
         return result
 
     async def teleclaude__list_projects(self, computer: str) -> list[str]:
