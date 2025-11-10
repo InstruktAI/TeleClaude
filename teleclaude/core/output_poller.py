@@ -84,7 +84,7 @@ class OutputPoller:
         started_at = None
         last_output_changed_at = None
         ticks_since_last_update = 0
-        update_interval = 5  # Start with 5 seconds
+        update_interval = 3  # Start with 3 seconds to avoid Telegram rate limiting
         next_update_at = update_interval  # When to send next periodic update
         first_poll = True  # Skip exit detection on first poll (establish baseline)
 
@@ -177,7 +177,7 @@ class OutputPoller:
                     idle_ticks = 0
                     notification_sent = False
                     ticks_since_last_update = 0
-                    update_interval = 5  # Reset to initial interval
+                    update_interval = 3  # Reset to initial interval
                     next_update_at = update_interval
                     last_output_changed_at = time.time()
 
@@ -237,6 +237,71 @@ class OutputPoller:
         finally:
             logger.debug("Polling ended for session %s", session_id[:8])
 
+    def _strip_claude_code_hooks(self, output: str) -> str:
+        """Strip Claude Code hook messages from output.
+
+        Removes:
+        1. Hook success prefix lines: ⎿ <hook_name> hook succeeded:
+        2. <system-reminder>...</system-reminder> blocks (can be nested/multiline)
+
+        Examples of patterns removed:
+        - "⎿ UserPromptSubmit hook succeeded: <system-reminder>...</system-reminder>"
+        - "⎿  SessionStart:startup hook succeeded: ..."
+        - Nested: "<system-reminder>...hook...<system-reminder>...</system-reminder></system-reminder>"
+
+        Args:
+            output: Terminal output
+
+        Returns:
+            Output with Claude Code hook messages removed
+        """
+        original_length = len(output)
+
+        # Check if output contains system-reminder tags
+        has_system_reminder = "<system-reminder>" in output or "</system-reminder>" in output
+        if has_system_reminder:
+            logger.info("Found system-reminder tags in output (length: %d)", original_length)
+
+        # Strip hook success prefix lines (⎿ ... hook succeeded: ...)
+        output = re.sub(r"⎿[^\n]*hook succeeded:[^\n]*\n?", "", output)
+
+        # Strip <system-reminder> blocks (handles nesting by running multiple times)
+        # Use [\s\S] instead of . to explicitly match ANY character including newlines
+        for i in range(10):  # Increased iterations for deeply nested blocks
+            before = output
+            output = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>\s*\n?", "", output)
+            if output == before:
+                if i > 0 and has_system_reminder:
+                    logger.info("System-reminder filtering converged after %d iterations", i)
+                break
+
+        # Strip orphaned closing tags and their preceding content
+        # Look for patterns that indicate system-reminder content before the closing tag
+        before_orphan = output
+
+        # Remove everything from "adhere to the best practices" up to </system-reminder>
+        # This is a signature phrase from Claude Code hooks
+        output = re.sub(
+            r"adhere to the best practices[\s\S]*?</system-reminder>\s*\n?", "", output, flags=re.IGNORECASE
+        )
+
+        # Also remove standalone closing tags
+        output = re.sub(r"[^\n]*</system-reminder>\s*\n?", "", output)
+
+        if output != before_orphan:
+            logger.info("Removed orphaned </system-reminder> tag and associated content")
+
+        filtered_length = len(output)
+        if filtered_length < original_length:
+            logger.info(
+                "Filtered Claude Code hooks: %d -> %d bytes (%d bytes removed)",
+                original_length,
+                filtered_length,
+                original_length - filtered_length,
+            )
+
+        return output
+
     def _strip_exit_markers(self, output: str) -> str:
         """Strip exit code markers from output.
 
@@ -250,6 +315,9 @@ class OutputPoller:
         Returns:
             Output with markers removed
         """
+        # Strip Claude Code hook messages first
+        output = self._strip_claude_code_hooks(output)
+
         # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
         # Allow whitespace/newlines within marker due to tmux line wrapping
         # Remove marker + ONE trailing newline (preserves line structure)

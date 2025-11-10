@@ -13,16 +13,20 @@ P = ParamSpec("P")
 logger = logging.getLogger(__name__)
 
 
-def command_retry(max_retries: int = 3) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
-    """Decorator for retrying adapter commands with exponential backoff.
+def command_retry(
+    max_retries: int = 3, max_timeout: float = 30.0
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
+    """Decorator for retrying adapter commands with exponential backoff and max timeout.
 
     Handles:
     - Rate limits: Retry with suggested delay if exception provides retry_after
     - Network errors (connection issues, timeouts): Retry with exponential backoff (1s, 2s, 4s)
     - Other errors: Fail immediately
+    - Max timeout: Stop retrying after total elapsed time exceeds max_timeout
 
     Args:
         max_retries: Maximum number of retry attempts (default: 3)
+        max_timeout: Maximum total time in seconds for all retries (default: 30.0)
 
     Returns:
         Decorator function
@@ -31,6 +35,9 @@ def command_retry(max_retries: int = 3) -> Callable[[Callable[P, Awaitable[T]]],
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            import time
+
+            start_time = time.time()
             last_exception = None
 
             for attempt in range(max_retries):
@@ -38,10 +45,30 @@ def command_retry(max_retries: int = 3) -> Callable[[Callable[P, Awaitable[T]]],
                     return await func(*args, **kwargs)
 
                 except Exception as e:
+                    elapsed_time = time.time() - start_time
+
+                    # Check if max timeout exceeded
+                    if elapsed_time >= max_timeout:
+                        logger.error(
+                            "Max timeout (%.1fs) exceeded after %d attempts (elapsed: %.1fs)",
+                            max_timeout,
+                            attempt + 1,
+                            elapsed_time,
+                        )
+                        raise
+
                     # Check for rate limit (RetryAfter or similar)
                     if hasattr(e, "retry_after"):
                         if attempt < max_retries - 1:
                             retry_after = getattr(e, "retry_after")
+                            # Check if retry would exceed max timeout
+                            if elapsed_time + retry_after >= max_timeout:
+                                logger.error(
+                                    "Rate limit retry (%.1fs) would exceed max timeout (%.1fs), failing",
+                                    retry_after,
+                                    max_timeout,
+                                )
+                                raise
                             logger.warning(
                                 "Rate limited, retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries
                             )
@@ -54,7 +81,15 @@ def command_retry(max_retries: int = 3) -> Callable[[Callable[P, Awaitable[T]]],
                     # Check for network errors
                     elif type(e).__name__ in ("NetworkError", "TimedOut", "ConnectionError", "TimeoutError"):
                         if attempt < max_retries - 1:
-                            delay = 2**attempt  # 1s, 2s, 4s
+                            delay = 2**attempt  # 1s, 2s, 4s, 8s, 16s
+                            # Check if retry would exceed max timeout
+                            if elapsed_time + delay >= max_timeout:
+                                logger.error(
+                                    "Network retry (%.1fs) would exceed max timeout (%.1fs), failing",
+                                    delay,
+                                    max_timeout,
+                                )
+                                raise
                             logger.warning(
                                 "Network error (%s), retrying in %ds (attempt %d/%d)",
                                 type(e).__name__,

@@ -83,6 +83,75 @@ class TestOutputPoller:
         # Removes wrapped marker, preserves newline structure
         assert result == 'ls -la\nfile1.txt\nfile2.txt\n$ '
 
+    def test_strip_claude_code_hooks_removes_hook_prefix_lines(self, poller):
+        """Test stripping hook success prefix lines."""
+        output = "Some output\n⎿ UserPromptSubmit hook succeeded: message\nMore output"
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "Some output\nMore output"
+
+    def test_strip_claude_code_hooks_removes_single_system_reminder(self, poller):
+        """Test stripping single system-reminder block."""
+        output = "Before\n<system-reminder>This is a reminder</system-reminder>\nAfter"
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "Before\nAfter"
+
+    def test_strip_claude_code_hooks_removes_nested_system_reminders(self, poller):
+        """Test stripping nested system-reminder blocks (real-world case from Claude Code hooks)."""
+        # This is the actual pattern from Claude Code's UserPromptSubmit hook
+        output = (
+            "Output\n"
+            "<system-reminder>\n"
+            "⎿ UserPromptSubmit hook succeeded: <system-reminder>Am I required to make any code changes here?</system-reminder>\n"
+            "</system-reminder>\n"
+            "More output"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "Output\nMore output"
+
+    def test_strip_claude_code_hooks_removes_multiline_system_reminder(self, poller):
+        """Test stripping multiline system-reminder blocks."""
+        output = (
+            "Start\n"
+            "<system-reminder>\n"
+            "Line 1\n"
+            "Line 2\n"
+            "Line 3\n"
+            "</system-reminder>\n"
+            "End"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "Start\nEnd"
+
+    def test_strip_claude_code_hooks_handles_both_patterns(self, poller):
+        """Test stripping both hook lines and system-reminder blocks together."""
+        output = (
+            "Output here\n"
+            "⎿  SessionStart:startup hook succeeded: All good\n"
+            "<system-reminder>Reminder text</system-reminder>\n"
+            "⎿ UserPromptSubmit hook succeeded: Done\n"
+            "Final output"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "Output here\nFinal output"
+
+    def test_strip_claude_code_hooks_preserves_clean_output(self, poller):
+        """Test that clean output without hooks is unchanged."""
+        output = "Normal terminal output\nNo hooks here\nAll clean"
+        result = poller._strip_claude_code_hooks(output)
+        assert result == output
+
+    def test_strip_exit_markers_includes_claude_hook_filtering(self, poller):
+        """Test that _strip_exit_markers also strips Claude Code hooks."""
+        output = (
+            "command output\n"
+            "⎿ UserPromptSubmit hook succeeded: test\n"
+            "<system-reminder>Some reminder</system-reminder>\n"
+            "__EXIT__0__\n"
+        )
+        result = poller._strip_exit_markers(output)
+        # Should remove both hooks and exit markers
+        assert result == "command output\n"
+
 
 @pytest.mark.asyncio
 class TestOutputPollerPoll:

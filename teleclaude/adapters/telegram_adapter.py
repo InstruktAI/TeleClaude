@@ -78,6 +78,7 @@ class TelegramAdapter(UiAdapter):
         # Extract from config singleton
         self.trusted_dirs = config.computer.trusted_dirs
         self.trusted_bots = config.telegram.trusted_bots
+
         self.computer_name = config.computer.name
         if not self.computer_name:
             raise ValueError("computer.name is required in config.yml")
@@ -324,14 +325,19 @@ class TelegramAdapter(UiAdapter):
     async def edit_message(
         self, session_id: str, message_id: str, text: str, metadata: Optional[dict[str, object]] = None
     ) -> bool:
-        """Edit an existing message with automatic retry on rate limits and network errors."""
+        """Edit an existing message with automatic retry on rate limits and network errors.
+
+        Retry logic (via @command_retry decorator on _edit_message_with_retry):
+        - Rate limits (RetryAfter): Uses Telegram's suggested delay, keeps retrying until 60s timeout
+        - Network errors: Exponential backoff (1s, 2s, 4s), max 3 attempts OR 60 second timeout
+        """
         self._ensure_started()
 
         # Extract reply_markup if present
         reply_markup = (metadata or {}).get("reply_markup")
 
         try:
-            await self._edit_message_with_retry(message_id, text, reply_markup, session_id)
+            await self._edit_message_with_retry(session_id, message_id, text, reply_markup)
             return True
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -360,15 +366,13 @@ class TelegramAdapter(UiAdapter):
             logger.error("Failed to edit message: %s", e)
             return False
 
-    @command_retry(max_retries=3)
-    async def _edit_message_with_retry(
-        self, message_id: str, formatted_text: str, reply_markup: object, session_id: str
-    ) -> None:
+    @command_retry(max_retries=3, max_timeout=60.0)
+    async def _edit_message_with_retry(self, session_id: str, message_id: str, text: str, reply_markup: object) -> None:
         """Internal method with retry logic for editing messages."""
         await self.app.bot.edit_message_text(
             chat_id=self.supergroup_id,
             message_id=int(message_id),
-            text=formatted_text,
+            text=text,
             parse_mode="Markdown",
             reply_markup=reply_markup,
         )
