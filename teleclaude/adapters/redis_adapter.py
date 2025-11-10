@@ -716,9 +716,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         # Add active sessions (limited to 50 max)
         try:
             all_sessions = await db.get_sessions_by_title_pattern("")
-            active_sessions = [{"session_id": s.session_id, "title": s.title} for s in all_sessions if not s.closed][
-                :50
-            ]  # Limit to 50 sessions
+            active_sessions = [s.title for s in all_sessions if not s.closed][:50]  # Limit to 50 sessions
             payload["sessions"] = active_sessions
         except Exception as e:
             logger.warning("Failed to get active sessions: %s", e)
