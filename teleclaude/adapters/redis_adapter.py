@@ -509,14 +509,16 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                             message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,
                             [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],
                         )
-                        await self._handle_incoming_command(data)
-                        last_id = message_id
 
-                        # Persist last_id to prevent re-processing on restart
+                        # Persist last_id BEFORE processing to prevent re-processing on restart
+                        # This is critical for deploy commands that call os._exit(0)
+                        last_id = message_id
                         last_id_str = last_id.decode("utf-8") if isinstance(last_id, bytes) else last_id
                         await self._set_last_processed_message_id(last_id_str)
+                        logger.debug("Saved last_id %s before processing", last_id_str)
 
-                        logger.debug("Updated last_id to %s", last_id_str)
+                        # Process command (may call os._exit(0) for deploy)
+                        await self._handle_incoming_command(data)
 
             except asyncio.CancelledError:
                 break
