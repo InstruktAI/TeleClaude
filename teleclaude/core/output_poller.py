@@ -171,12 +171,14 @@ class OutputPoller:
                     break
 
                 # Check if output changed (and exit wasn't already detected)
+                output_changed = False
                 if current_output != output_buffer and exit_code is None:
                     # Output changed - update buffer and reset idle counter
                     output_buffer = current_output
                     idle_ticks = 0
                     notification_sent = False
                     last_output_changed_at = time.time()
+                    output_changed = True
 
                     # Write to file (with markers stripped)
                     clean_output = self._strip_exit_markers(output_buffer)
@@ -191,8 +193,9 @@ class OutputPoller:
                 # Increment tick counter
                 ticks_since_last_update += 1
 
-                # Send update if interval reached (respects global interval even when output changes)
-                if output_buffer and ticks_since_last_update >= current_update_interval:
+                # CRITICAL FIX: Send update immediately when output changes OR when interval reached
+                # This fixes the bug where first output was delayed by 2 seconds
+                if output_buffer and (output_changed or ticks_since_last_update >= current_update_interval):
                     # Strip exit markers before sending
                     clean_output = self._strip_exit_markers(output_buffer)
 

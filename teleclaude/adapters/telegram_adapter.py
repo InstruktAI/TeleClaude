@@ -360,13 +360,12 @@ class TelegramAdapter(UiAdapter):
         # Extract reply_markup if present
         reply_markup = (metadata or {}).get("reply_markup")
 
-        # Check if edit already pending for this message
+        # CRITICAL FIX: Remove pending edit optimization - it causes race conditions where
+        # subsequent updates return True without actually sending, leading to stuck messages.
+        # Instead, cancel the pending edit and start fresh with latest data.
         if message_id in self._pending_edits:
-            # UPDATE the pending edit's payload (mutable!)
-            logger.debug("Updating pending edit for message %s with latest content", message_id)
-            self._pending_edits[message_id].text = text
-            self._pending_edits[message_id].reply_markup = reply_markup
-            return True  # Don't start new retry, existing one will use updated data
+            logger.debug("Cancelling stale edit for message %s, starting fresh with latest content", message_id)
+            self._pending_edits.pop(message_id)  # Remove stale edit
 
         # Create new edit context (mutable)
         ctx = EditContext(message_id=message_id, text=text, reply_markup=reply_markup)
