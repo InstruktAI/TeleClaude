@@ -133,6 +133,7 @@ async def poll_and_send_output(
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
+    has_exit_marker: bool = True,
 ) -> None:
     """Poll terminal output and send to all adapters for session.
 
@@ -145,6 +146,7 @@ async def poll_and_send_output(
         output_poller: Output poller instance
         adapter_client: AdapterClient instance (broadcasts to all adapters)
         get_output_file: Function to get output file path for session
+        has_exit_marker: Whether exit marker was appended (default: True)
     """
     # GUARD: Prevent duplicate polling (check and add atomically before any await)
     if await db.is_polling(session_id):
@@ -164,11 +166,8 @@ async def poll_and_send_output(
     await db.update_ux_state(session_id, polling_active=True)
     is_ai_session = _is_ai_to_ai_session(session)
 
-    # Get output file and exit marker status
+    # Get output file
     output_file = get_output_file(session_id)
-    # Exit marker is ALWAYS appended when starting new polling
-    # (we only start polling for NEW commands, not input to running process)
-    has_exit_marker = True
 
     try:
         # Consume events from pure poller

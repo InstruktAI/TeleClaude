@@ -680,19 +680,16 @@ class TeleClaudeDaemon:
             except ValueError:
                 pass
 
-        # Check if a process is currently running (polling active)
-        ux_state = await db.get_ux_state(session_id)
-        is_process_running = ux_state.polling_active
-
-        # Check if interactive TUI is running (claude, vim, etc.)
+        # Check CURRENT state of tmux pane to decide exit marker (single source of truth)
         current_command = await terminal_bridge.get_current_command(session.tmux_session_name)
-        is_interactive_app = current_command in terminal_bridge.LPOLL_DEFAULT_LIST if current_command else False
+        is_interactive_app = terminal_bridge.is_long_running_command(current_command) if current_command else False
 
-        # Only append exit marker if:
-        # 1. No polling active (not running a shell command with exit marker)
-        # 2. AND no interactive app running (at shell prompt)
-        # This prevents infinite polling hangs when sending input to Claude Code, vim, etc.
-        append_exit_marker = not is_process_running and not is_interactive_app
+        # Append exit marker if:
+        # 1. At shell prompt (zsh, bash, etc. - NOT in LPOLL list) → sending COMMAND
+        # 2. Running non-LPOLL command (ls, grep, etc.) → sending COMMAND
+        # Do NOT append if:
+        # 1. Running LPOLL app (vim, claude, etc.) → sending INPUT/MESSAGE
+        append_exit_marker = not is_interactive_app
 
         if is_interactive_app:
             logger.debug(
@@ -720,17 +717,18 @@ class TeleClaudeDaemon:
         # Update activity
         await db.update_last_activity(session_id)
 
-        # Start polling ONLY if exit marker was appended
-        # This ensures we only poll when we actually expect an exit marker
+        # Start polling ONLY if we appended exit marker (shell command, not interactive app input)
+        # Interactive apps (vim, claude) receive input without polling - they're already running
         if append_exit_marker:
-            await self._poll_and_send_output(session_id, session.tmux_session_name)
-        elif is_process_running:
-            logger.debug(
-                "Input sent to running process in session %s, existing poll will capture output", session_id[:8]
-            )
+            # Shell command with exit marker → start polling with exit detection
+            await self._poll_and_send_output(session_id, session.tmux_session_name, has_exit_marker=True)
+            logger.debug("Started polling for shell command in session %s", session_id[:8])
         else:
+            # Interactive app input → no polling needed, just send the input
             logger.debug(
-                "Input sent to interactive app in session %s, no polling started (no exit marker)", session_id[:8]
+                "Sent input to interactive app '%s' in session %s (no polling)",
+                current_command,
+                session_id[:8],
             )
 
     async def handle_topic_closed(self, session_id: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
@@ -763,8 +761,16 @@ class TeleClaudeDaemon:
         except Exception as e:
             logger.warning("Failed to delete output file: %s", e)
 
-    async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
-        """Wrapper around polling_coordinator.poll_and_send_output (creates background task)."""
+    async def _poll_and_send_output(
+        self, session_id: str, tmux_session_name: str, has_exit_marker: bool = True
+    ) -> None:
+        """Wrapper around polling_coordinator.poll_and_send_output (creates background task).
+
+        Args:
+            session_id: Session ID
+            tmux_session_name: tmux session name
+            has_exit_marker: Whether exit marker was appended (default: True)
+        """
         asyncio.create_task(
             polling_coordinator.poll_and_send_output(
                 session_id=session_id,
@@ -772,6 +778,7 @@ class TeleClaudeDaemon:
                 output_poller=self.output_poller,
                 adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
                 get_output_file=self._get_output_file_path,
+                has_exit_marker=has_exit_marker,
             )
         )
 
