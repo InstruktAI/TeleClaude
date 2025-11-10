@@ -257,18 +257,18 @@ class TestPollAndSendOutput:
 class TestAISessionDetection:
     """Test AI-to-AI session detection via metadata."""
 
-    def test_is_ai_to_ai_session_with_metadata_flag(self):
-        """Test detection via is_ai_to_ai metadata flag."""
+    def test_is_ai_to_ai_session_with_target_computer(self):
+        """Test detection via target_computer in metadata."""
         from teleclaude.core.polling_coordinator import _is_ai_to_ai_session
 
-        # AI-to-AI session (has metadata flag)
+        # AI-to-AI session (has target_computer)
         ai_session = Session(
             session_id="test-ai",
             computer_name="comp1",
             tmux_session_name="comp1-ai-123",
-            origin_adapter="telegram",
+            origin_adapter="redis",
             title="$comp1 > $comp2 - Test",
-            adapter_metadata={"channel_id": "123", "is_ai_to_ai": True}
+            adapter_metadata={"target_computer": "comp2"}
         )
         assert _is_ai_to_ai_session(ai_session)
 

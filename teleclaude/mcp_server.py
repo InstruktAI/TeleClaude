@@ -455,7 +455,6 @@ class TeleClaudeMCPServer:
             origin_adapter="redis",
             title=title,
             adapter_metadata={
-                "is_ai_to_ai": True,
                 "is_auto_managed": True,
                 "project_dir": project_dir,
                 "target_computer": computer,
@@ -495,34 +494,54 @@ class TeleClaudeMCPServer:
         return {"session_id": session_id, "status": "success"}
 
     async def teleclaude__list_sessions(self, computer: Optional[str] = None) -> list[dict[str, object]]:
-        """List AI-managed Claude Code sessions with rich metadata.
+        """List sessions from LOCAL database only.
+
+        This tool queries the local database on THIS computer and returns sessions
+        (both Human-to-AI via Telegram and AI-to-AI via MCP). It does NOT query
+        remote computers - each computer maintains its own session database.
 
         Args:
-            computer: Optional filter by target computer name
+            computer: Optional filter by target computer name for AI-to-AI sessions.
+                      If None, returns all sessions from local database.
+                      If specified, filters to AI-to-AI sessions where target_computer matches.
+                      Human-to-AI sessions (no target) are included when computer=None.
 
         Returns:
-            List of session info dicts with metadata
+            List of session dicts with fields:
+            - session_id: Unique session identifier
+            - origin_adapter: Adapter that initiated session (telegram/redis)
+            - target: Target computer name (only for AI-to-AI sessions, None for Human-to-AI)
+            - title: Session title
+            - status: Session status (active/closed)
+            - created_at: ISO timestamp
+            - last_activity: ISO timestamp
+            - metadata: Full adapter_metadata dict (project_dir, is_auto_managed, etc.)
+
+        Note: Only returns sessions with "$" in title (managed sessions).
         """
-        # Get AI-managed sessions by searching for "$" title pattern (AI-to-AI format: "$Source > $Target - project")
+        # Get managed sessions by searching for "$" title pattern
         sessions = await db.get_sessions_by_title_pattern("$")
 
-        # Filter by computer if specified
+        # Filter by target computer if specified
         result = []
         for session in sessions:
-            if computer and session.computer_name != computer:
+            metadata = session.adapter_metadata or {}
+            target_computer = metadata.get("target_computer")
+
+            # If computer filter specified, only include sessions targeting that computer
+            if computer and target_computer != computer:
                 continue
 
-            metadata = session.adapter_metadata or {}
             result.append(
                 {
                     "session_id": session.session_id,
-                    "computer": session.computer_name,
-                    "target": metadata.get("target_computer"),
-                    "project_dir": metadata.get("project_dir"),
-                    "is_auto_managed": metadata.get("is_auto_managed", False),
+                    "origin_adapter": session.origin_adapter,
+                    "target": target_computer,
+                    "title": session.title,
                     "status": "closed" if session.closed else "active",
                     "created_at": session.created_at.isoformat(),
                     "last_activity": session.last_activity.isoformat(),
+                    "metadata": metadata,
                 }
             )
 

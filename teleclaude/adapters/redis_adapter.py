@@ -656,7 +656,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             origin_adapter="redis",
             title=title,
             adapter_metadata={
-                "is_ai_to_ai": True,  # CRITICAL: Mark as AI session for chunked output
+                "target_computer": initiator,  # AI-to-AI session from remote computer
             },
             description=f"AI-to-AI session from {initiator}",
         )

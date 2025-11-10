@@ -83,18 +83,18 @@ async def restore_active_pollers(
 
 
 def _is_ai_to_ai_session(session: Session) -> bool:
-    """Check if session is AI-to-AI via metadata flag.
+    """Check if session is AI-to-AI by presence of target_computer.
 
     Args:
         session: Session object with adapter_metadata
 
     Returns:
-        True if AI-to-AI session, False otherwise
+        True if AI-to-AI session (has target_computer), False otherwise (Human-to-AI)
     """
     if not session or not session.adapter_metadata:
         return False
-    # Check metadata flag (set by teleclaude__start_session)
-    return bool(session.adapter_metadata.get("is_ai_to_ai", False))
+    # AI-to-AI sessions have target_computer in metadata
+    return bool(session.adapter_metadata.get("target_computer"))
 
 
 async def _send_output_chunks_ai_mode(

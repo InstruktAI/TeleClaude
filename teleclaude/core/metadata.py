@@ -21,8 +21,8 @@ class AdapterMetadata(BaseModel):
     # Optional common fields
     user_id: Optional[str] = Field(None, description="Platform user ID (if human)")
     message_id: Optional[str] = Field(None, description="Platform message ID")
-    is_ai_to_ai: bool = Field(False, description="Flag for AI-to-AI sessions")
     origin_adapter: Optional[str] = Field(None, description="Origin adapter for observers")
+    target_computer: Optional[str] = Field(None, description="Target computer for AI-to-AI sessions")
 
     # Platform-specific data (nested dicts)
     telegram: Optional[dict[str, object]] = Field(None, description="Telegram-specific data")
