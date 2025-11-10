@@ -150,35 +150,42 @@ class TelegramAdapter(UiAdapter):
         )
 
         # Register command handlers
-        # Note: By default CommandHandler only handles NEW messages, not edited ones
-        # We need to add them separately to handle edited commands
+        # IMPORTANT: python-telegram-bot filter behavior (applies to ALL handler types):
+        # - WITHOUT UpdateType filter: By default handles MESSAGES (new) in most handlers, but behavior varies
+        # - Filters can be combined using bitwise operators: & (AND), | (OR), ~ (NOT)
+        # - To handle BOTH new AND edited: Use filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE
+        #
+        # For clarity and to prevent double-processing bugs, we explicitly specify filters:
+        # - Use filters.UpdateType.MESSAGE for ONLY new messages
+        # - Use filters.UpdateType.EDITED_MESSAGE for ONLY edited messages
+        # - Use filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE for BOTH
         for command_name, handler in self._get_command_handlers():
-            # Handle both new messages and edited messages
-            self.app.add_handler(CommandHandler(command_name, handler))
-            self.app.add_handler(CommandHandler(command_name, handler, filters=filters.UpdateType.EDITED_MESSAGE))
+            # Handle both new and edited commands (explicit OR filter)
+            self.app.add_handler(
+                CommandHandler(
+                    command_name, handler, filters=filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE
+                )
+            )
 
-        # Cache all commands (for registry discovery)
+        # Cache all commands (for registry discovery) - both new and edited
         # Group 1 so it runs AFTER CommandHandlers (which are in group 0)
         self.app.add_handler(
-            MessageHandler(filters.COMMAND & filters.ChatType.SUPERGROUP, self._cache_command_message), group=1
-        )
-        self.app.add_handler(
             MessageHandler(
-                filters.COMMAND & filters.ChatType.SUPERGROUP & filters.UpdateType.EDITED_MESSAGE,
+                filters.COMMAND
+                & filters.ChatType.SUPERGROUP
+                & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
                 self._cache_command_message,
             ),
             group=1,
         )
 
-        # Handle text messages in topics (not commands)
-        self.app.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.SUPERGROUP, self._handle_text_message)
-        )
-
-        # Handle edited text messages (for registry heartbeat updates)
+        # Handle text messages in topics (not commands) - both new and edited
         self.app.add_handler(
             MessageHandler(
-                filters.TEXT & ~filters.COMMAND & filters.ChatType.SUPERGROUP & filters.UpdateType.EDITED_MESSAGE,
+                filters.TEXT
+                & ~filters.COMMAND
+                & filters.ChatType.SUPERGROUP
+                & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
                 self._handle_text_message,
             )
         )
@@ -192,15 +199,9 @@ class TelegramAdapter(UiAdapter):
         # Handle file attachments (documents, photos, etc.) in topics - both new and edited
         self.app.add_handler(
             MessageHandler(
-                (filters.Document.ALL | filters.PHOTO) & filters.ChatType.SUPERGROUP,
-                self._handle_file_attachment,
-            )
-        )
-        self.app.add_handler(
-            MessageHandler(
                 (filters.Document.ALL | filters.PHOTO)
                 & filters.ChatType.SUPERGROUP
-                & filters.UpdateType.EDITED_MESSAGE,
+                & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
                 self._handle_file_attachment,
             )
         )
