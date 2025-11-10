@@ -131,6 +131,7 @@ class BaseAdapter(ABC):
         session_id: str,
         message_id: str,
         text: str,
+        metadata: Optional[dict[str, object]] = None,
     ) -> bool:
         """Edit existing message (if platform supports).
 
@@ -138,6 +139,7 @@ class BaseAdapter(ABC):
             session_id: Session identifier
             message_id: Message ID from send_message()
             text: New message text
+            metadata: Optional platform-specific metadata (e.g., reply_markup for buttons)
 
         Returns:
             True if successful, False otherwise

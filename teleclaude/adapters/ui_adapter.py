@@ -98,10 +98,10 @@ class UiAdapter(BaseAdapter):
         ux_state = await db.get_ux_state(session_id)
         current_message_id = ux_state.output_message_id
 
-        # Truncate if needed
-        max_message_length = 3800
-        is_truncated = len(output) > max_message_length
-        terminal_output = output[-(max_message_length - 400) :] if is_truncated else output
+        # Truncate if needed (4096 Telegram limit - 96 chars overhead = 4000 max terminal output)
+        max_terminal_output = 4000
+        is_truncated = len(output) > max_terminal_output
+        terminal_output = output[-max_terminal_output:] if is_truncated else output
 
         # Format status line
         if is_final and exit_code is not None:
@@ -141,7 +141,9 @@ class UiAdapter(BaseAdapter):
 
         # Send or edit
         if current_message_id:
-            success = await self.edit_message(session_id, current_message_id, display_output)
+            success = await self.edit_message(
+                session_id, current_message_id, display_output, metadata if metadata else None
+            )
             if success:
                 return current_message_id
             # Edit failed - clear stale message_id and send new
