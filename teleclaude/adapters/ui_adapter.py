@@ -98,8 +98,8 @@ class UiAdapter(BaseAdapter):
         ux_state = await db.get_ux_state(session_id)
         current_message_id = ux_state.output_message_id
 
-        # Truncate if needed (4096 Telegram limit - 96 chars overhead = 4000 max terminal output)
-        max_terminal_output = 4000
+        # Truncate if needed (4096 Telegram limit - 196 chars overhead = 3900 max terminal output)
+        max_terminal_output = 3900
         is_truncated = len(output) > max_terminal_output
         terminal_output = output[-max_terminal_output:] if is_truncated else output
 

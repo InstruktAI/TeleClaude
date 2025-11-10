@@ -200,6 +200,43 @@ class TeleClaudeDaemon:
             get_output_file=self._get_output_file_path,
         )
 
+    async def _handle_file(self, event: str, context: dict[str, object]) -> None:
+        """Handler for FILE events - pure business logic.
+
+        Args:
+            event: Event type (always "file")
+            context: Unified context (all payload + metadata fields)
+        """
+        from teleclaude.core import file_handler
+
+        session_id = context.get("session_id")
+        file_path = context.get("file_path")
+        filename = context.get("filename")
+
+        if not session_id or not file_path or not filename:
+            logger.warning(
+                "FILE event missing required fields: session_id=%s, file_path=%s, filename=%s",
+                session_id,
+                file_path,
+                filename,
+            )
+            return
+
+        async def send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+            """Send feedback message and mark for deletion on next input."""
+            message_id = await self.client.send_message(sid, msg)
+            if message_id:
+                await db.add_pending_deletion(sid, message_id)
+            return message_id
+
+        await file_handler.handle_file(
+            session_id=str(session_id),
+            file_path=str(file_path),
+            filename=str(filename),
+            context=context,
+            send_feedback=send_feedback,
+        )
+
     async def _handle_topic_closed(self, event: str, context: dict[str, object]) -> None:
         """Handler for TOPIC_CLOSED events.
 
@@ -760,6 +797,17 @@ class TeleClaudeDaemon:
                 logger.debug("Deleted output file for closed session %s", session_id[:8])
         except Exception as e:
             logger.warning("Failed to delete output file: %s", e)
+
+        # Delete uploaded files
+        try:
+            import shutil
+
+            session_files_dir = Path("session_files") / session_id
+            if session_files_dir.exists():
+                shutil.rmtree(session_files_dir)
+                logger.debug("Deleted uploaded files for closed session %s", session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to delete uploaded files: %s", e)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, has_exit_marker: bool = True

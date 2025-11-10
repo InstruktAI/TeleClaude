@@ -176,7 +176,7 @@ def format_active_status_line(
     """
     status_parts = [
         f"{status_color} started: {started_time}",
-        f"last active: {last_active_time}",
+        f"active: {last_active_time}",
         f"📊 {size_str}",
     ]
     if is_truncated:

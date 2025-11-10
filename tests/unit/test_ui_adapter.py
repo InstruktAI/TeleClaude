@@ -2,6 +2,7 @@
 
 import time
 from pathlib import Path
+from typing import Optional
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -29,7 +30,7 @@ class TestableUiAdapter(UiAdapter):
     async def send_message(self, session_id: str, text: str, metadata=None) -> str:
         return await self._send_message_mock(session_id, text, metadata)
 
-    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+    async def edit_message(self, session_id: str, message_id: str, text: str, metadata: Optional[dict] = None) -> bool:
         return await self._edit_message_mock(session_id, message_id, text)
 
     async def delete_message(self, session_id: str, message_id: str) -> bool:

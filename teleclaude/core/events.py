@@ -28,6 +28,7 @@ EventType = Literal[
     "claude_resume",
     "message",
     "voice",
+    "file",
     "topic_closed",
     "system_command",
 ]
@@ -76,6 +77,7 @@ class TeleClaudeEvents:
 
     # Media and events
     VOICE: Literal["voice"] = "voice"  # Voice message received
+    FILE: Literal["file"] = "file"  # File or photo uploaded
     TOPIC_CLOSED: Literal["topic_closed"] = "topic_closed"  # Telegram topic closed/deleted
 
     # System commands

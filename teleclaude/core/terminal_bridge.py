@@ -777,3 +777,31 @@ async def stop_pipe_pane(session_name: str) -> bool:
     except Exception as e:
         print(f"Error stopping pipe-pane: {e}")
         return False
+
+
+async def get_pane_title(session_name: str) -> Optional[str]:
+    """Get the pane title for a tmux session.
+
+    Args:
+        session_name: Session name
+
+    Returns:
+        Pane title string or None if failed
+    """
+    try:
+        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_title}"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await result.communicate()
+
+        if result.returncode == 0:
+            return stdout.decode().strip()
+
+        return None
+
+    except Exception as e:
+        logger.error("Failed to get pane title for %s: %s", session_name, e)
+        return None

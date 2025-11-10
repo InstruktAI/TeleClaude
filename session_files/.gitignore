@@ -1,0 +1,4 @@
+# Uploaded files from Telegram sessions
+# Files organized by session_id, deleted when session closes
+*
+!.gitignore

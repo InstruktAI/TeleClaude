@@ -23,7 +23,7 @@ TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your t
 - 📋 **Organized with Topics** - Each session gets its own Telegram topic for clean organization
 - 🔄 **Live output streaming** - See command output in real-time with smart editing (dual-mode: human vs AI)
 - 🎤 **Voice input** - Speak commands, auto-transcribed with Whisper
-- 📁 **File uploads** (planned) - Upload files directly to your terminal session
+- 📎 **File uploads** - Send documents and photos directly to Claude Code for analysis
 
 ## Quick Start
 

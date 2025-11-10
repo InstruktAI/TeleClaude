@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -43,6 +44,19 @@ from .ui_adapter import UiAdapter
 STATUS_EMOJI = {"active": "🟢", "waiting": "🟡", "slow": "🟠", "stalled": "🔴", "idle": "⏸️", "dead": "❌"}
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EditContext:
+    """Mutable context for message edits during rate limit retries.
+
+    Allows updating message content while retry decorator is waiting,
+    ensuring latest data is sent instead of stale payloads.
+    """
+
+    message_id: str
+    text: str
+    reply_markup: Optional[object] = None
 
 
 class TelegramAdapter(UiAdapter):
@@ -87,6 +101,7 @@ class TelegramAdapter(UiAdapter):
         self._processed_voice_messages: set[int] = set()  # Track processed voice message IDs
         self._topic_message_cache: dict[int | None, list[TelegramMessage]] = {}  # Cache for registry polling
         self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
+        self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
 
         # Peer discovery state (heartbeat advertisement only)
         self.registry_message_id: Optional[int] = None  # Message ID for [REGISTRY] heartbeat message
@@ -327,17 +342,38 @@ class TelegramAdapter(UiAdapter):
     ) -> bool:
         """Edit an existing message with automatic retry on rate limits and network errors.
 
+        Uses mutable EditContext to prevent stale data during retries:
+        - If edit already pending: updates context with latest text (prevents stale timestamps)
+        - Otherwise: creates new context and starts retry flow
+
         Retry logic (via @command_retry decorator on _edit_message_with_retry):
         - Rate limits (RetryAfter): Uses Telegram's suggested delay, keeps retrying until 60s timeout
         - Network errors: Exponential backoff (1s, 2s, 4s), max 3 attempts OR 60 second timeout
         """
         self._ensure_started()
 
+        # CRITICAL: Handle None message_id (happens during daemon restart)
+        if not message_id:
+            logger.warning("edit_message called with None message_id for session %s, ignoring", session_id[:8])
+            return False
+
         # Extract reply_markup if present
         reply_markup = (metadata or {}).get("reply_markup")
 
+        # Check if edit already pending for this message
+        if message_id in self._pending_edits:
+            # UPDATE the pending edit's payload (mutable!)
+            logger.debug("Updating pending edit for message %s with latest content", message_id)
+            self._pending_edits[message_id].text = text
+            self._pending_edits[message_id].reply_markup = reply_markup
+            return True  # Don't start new retry, existing one will use updated data
+
+        # Create new edit context (mutable)
+        ctx = EditContext(message_id=message_id, text=text, reply_markup=reply_markup)
+        self._pending_edits[message_id] = ctx
+
         try:
-            await self._edit_message_with_retry(session_id, message_id, text, reply_markup)
+            await self._edit_message_with_retry(session_id, ctx)
             return True
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -365,16 +401,22 @@ class TelegramAdapter(UiAdapter):
         except Exception as e:
             logger.error("Failed to edit message: %s", e)
             return False
+        finally:
+            # Remove from pending edits regardless of outcome
+            self._pending_edits.pop(message_id, None)
 
     @command_retry(max_retries=3, max_timeout=60.0)
-    async def _edit_message_with_retry(self, session_id: str, message_id: str, text: str, reply_markup: object) -> None:
-        """Internal method with retry logic for editing messages."""
+    async def _edit_message_with_retry(self, session_id: str, ctx: EditContext) -> None:
+        """Internal method with retry logic for editing messages.
+
+        Reads from mutable EditContext - always uses latest data even if updated during retry wait.
+        """
         await self.app.bot.edit_message_text(
             chat_id=self.supergroup_id,
-            message_id=int(message_id),
-            text=text,
+            message_id=int(ctx.message_id),
+            text=ctx.text,  # ← Read latest text from mutable context
             parse_mode="Markdown",
-            reply_markup=reply_markup,
+            reply_markup=ctx.reply_markup,  # ← Read latest reply_markup from mutable context
         )
 
     async def delete_message(self, session_id: str, message_id: str) -> bool:
