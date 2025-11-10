@@ -76,6 +76,7 @@ class OutputPoller:
         # Configuration
         idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
+        global_update_interval = 2  # Global update interval (seconds)
 
         # State tracking
         output_buffer = ""
@@ -84,8 +85,7 @@ class OutputPoller:
         started_at = None
         last_output_changed_at = None
         ticks_since_last_update = 0
-        update_interval = 3  # Start with 3 seconds to avoid Telegram rate limiting
-        next_update_at = update_interval  # When to send next periodic update
+        current_update_interval = global_update_interval  # Start with global interval
         first_poll = True  # Skip exit detection on first poll (establish baseline)
 
         try:
@@ -172,25 +172,30 @@ class OutputPoller:
 
                 # Check if output changed (and exit wasn't already detected)
                 if current_output != output_buffer and exit_code is None:
-                    # Output changed - reset idle counter and exponential backoff
+                    # Output changed - update buffer and reset idle counter
                     output_buffer = current_output
                     idle_ticks = 0
                     notification_sent = False
-                    ticks_since_last_update = 0
-                    update_interval = 3  # Reset to initial interval
-                    next_update_at = update_interval
                     last_output_changed_at = time.time()
 
-                    # Strip exit markers from output before showing to user
-                    clean_output = self._strip_exit_markers(output_buffer)
-
                     # Write to file (with markers stripped)
+                    clean_output = self._strip_exit_markers(output_buffer)
                     try:
                         output_file.write_text(clean_output, encoding="utf-8")
                     except Exception as e:
                         logger.warning("Failed to write output file: %s", e)
 
-                    # Yield output changed event (with markers stripped)
+                    # Reset backoff to global interval when activity resumes
+                    current_update_interval = global_update_interval
+
+                # Increment tick counter
+                ticks_since_last_update += 1
+
+                # Send update if interval reached (respects global interval even when output changes)
+                if output_buffer and ticks_since_last_update >= current_update_interval:
+                    # Strip exit markers before sending
+                    clean_output = self._strip_exit_markers(output_buffer)
+
                     yield OutputChanged(
                         session_id=session_id,
                         output=clean_output,
@@ -198,33 +203,22 @@ class OutputPoller:
                         last_changed_at=last_output_changed_at,
                     )
 
-                else:
-                    # Output unchanged - increment idle counter
-                    idle_ticks += 1
-                    ticks_since_last_update += 1
+                    # Reset tick counter
+                    ticks_since_last_update = 0
 
-                    # Send periodic updates with exponential backoff to refresh idle status
-                    # Only if we have output (command is running)
-                    if output_buffer and ticks_since_last_update >= next_update_at:
-                        # Strip exit markers before sending
-                        clean_output = self._strip_exit_markers(output_buffer)
-
-                        yield OutputChanged(
-                            session_id=session_id,
-                            output=clean_output,
-                            started_at=started_at,
-                            last_changed_at=last_output_changed_at,
-                        )
-
-                        # Exponential backoff: double interval, capped at idle_threshold
-                        ticks_since_last_update = 0
-                        update_interval = min(update_interval * 2, idle_threshold)
-                        next_update_at = update_interval
+                    # Apply exponential backoff when idle: 2s -> 4s -> 6s -> 8s -> 10s
+                    if idle_ticks >= current_update_interval:
+                        current_update_interval = min(current_update_interval + 2, 10)
                         logger.debug(
-                            "Sent periodic update for %s, next update in %ds",
+                            "No activity for %ds, increasing update interval to %ds for %s",
+                            idle_ticks,
+                            current_update_interval,
                             session_id[:8],
-                            update_interval,
                         )
+
+                # Increment idle counter when no output change
+                if current_output == output_buffer:
+                    idle_ticks += 1
 
                     # Send idle notification once at threshold
                     if idle_ticks == idle_threshold and not notification_sent:
