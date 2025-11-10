@@ -22,26 +22,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When you've made changes that should be deployed:
 
-1. **Commit changes locally** (using `/commit` command with proper message format)
-2. **Push to GitHub**: `git push`
-3. **Deploy to all machines**: Use `teleclaude__deploy_to_all_computers` MCP tool
-   - This will automatically:
-     - Send deploy command to all remote computers (RasPi, RasPi4, etc.)
-     - Each computer will: `git pull` → restart daemon via service manager
-     - Wait for deployment completion (max 60 seconds per computer)
-     - Return status for each machine (deployed, error, timeout)
+**Use the `/commit-deploy` slash command** - this automates the entire cycle:
+1. Creates commit with AI-generated message (via `/commit`)
+2. Pushes to GitHub (`git push`)
+3. Deploys to all machines (via `teleclaude__deploy_to_all_computers` MCP tool)
 
 **Example workflow:**
 ```
-User: "Deploy these changes to all machines"
+User: "These changes are ready to deploy"
 
-Claude:
-1. Uses teleclaude__deploy_to_all_computers() [NO ARGUMENTS]
-2. Tool automatically discovers ALL computers and deploys
-3. Reports: "Deployed to RasPi (PID 123456), RasPi4 (PID 789012)"
+Claude: /commit-deploy
+1. Analyzes changes and creates commitizen-style commit
+2. Pushes commit to GitHub
+3. Calls teleclaude__deploy_to_all_computers() [NO ARGUMENTS]
+4. Reports: "Deployed to RasPi (PID 123456), RasPi4 (PID 789012)"
 ```
 
-**DO NOT** manually SSH to each machine anymore - the MCP tool handles this automatically via Redis.
+**Notes:**
+- For local-only commits (no deployment), use `/commit` instead
+- The MCP tool handles deployment via Redis - no manual SSH needed
+- Each computer automatically: `git pull` → restart daemon → report status
 
 ### Rule #1: SINGLE DATABASE ONLY
 
@@ -484,9 +484,7 @@ TeleClaude runs on multiple computers (development machine + remote RasPis). Whe
 
 1. **Make changes on development machine** (MozBook)
 2. **Test locally**: `make restart && make status`
-3. **Commit changes**: Use git commit (pre-commit hooks run automatically)
-4. **Push to GitHub**: `git push`
-5. **Deploy to ALL computers**: **ALWAYS use MCP tool first**
+3. **Commit and deploy**: Use `/commit-deploy` command (automates commit → push → deploy)
 
 ### Deploying to Remote Machines
 
