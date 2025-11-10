@@ -1226,8 +1226,7 @@ Current size: {}
                 return
 
             # Read output from file
-            output_dir = Path("session_output")
-            output_file = output_dir / f"{session_id[:8]}.txt"
+            output_file = Path("workspace") / session_id / "output.txt"
 
             if not output_file.exists():
                 await query.edit_message_text("Output file not found", parse_mode="Markdown")
@@ -1662,23 +1661,26 @@ Usage:
         if not file_obj:
             return
 
-        # Download file to temp location
+        # Download file to session workspace
         telegram_file = await file_obj.get_file()
-        temp_dir = Path(tempfile.gettempdir()) / "teleclaude_files"
-        temp_dir.mkdir(exist_ok=True)
-        temp_file_path = temp_dir / file_name
+
+        # Determine subdirectory based on file type
+        subdir = "photos" if file_type == "photo" else "files"
+        session_workspace = Path("workspace") / session.session_id / subdir
+        session_workspace.mkdir(parents=True, exist_ok=True)
+        file_path = session_workspace / file_name
 
         try:
             # Download the file
-            await telegram_file.download_to_drive(temp_file_path)
-            logger.info("Downloaded %s to: %s", file_type, temp_file_path)
+            await telegram_file.download_to_drive(file_path)
+            logger.info("Downloaded %s to: %s", file_type, file_path)
 
             # Emit file event to daemon
             await self.client.handle_event(
                 event=TeleClaudeEvents.FILE,
                 payload={
                     "session_id": session.session_id,
-                    "file_path": str(temp_file_path),
+                    "file_path": str(file_path),
                     "file_name": file_name,
                     "file_type": file_type,
                 },

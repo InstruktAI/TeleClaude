@@ -233,7 +233,7 @@ computers = await client.discover_remote_computers()
 - `command_handlers.py` - Command routing logic (uses AdapterClient)
 - `message_handler.py` - User message handling (uses AdapterClient)
 - `terminal_executor.py` - Terminal command execution (uses AdapterClient)
-- `schema.sql` - Database schema with sessions and recordings tables
+- `schema.sql` - Database schema with session table
 - `events.py` - Event type definitions (MESSAGE, NEW_SESSION, etc.)
 
 ### Adapter Layer (`teleclaude/adapters/`)

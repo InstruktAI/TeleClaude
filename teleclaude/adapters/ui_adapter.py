@@ -309,16 +309,16 @@ class UiAdapter(BaseAdapter):
         Used internally by UI adapters that need to READ the output file
         (e.g., for uploading, processing, voice status appending).
 
-        Default implementation uses standard session_output directory.
+        Default implementation uses standard workspace directory.
         Override if adapter stores output files in custom location.
 
         Args:
             session_id: Session identifier
 
         Returns:
-            Path object pointing to local file (e.g., "session_output/abc123.txt")
+            Path object pointing to local file (e.g., "workspace/abc123/output.txt")
 
         NOTE: This is different from get_session_file() which creates download UI.
         """
-        # Use standard session_output directory (same as daemon)
-        return Path("session_output") / f"{session_id[:8]}.txt"
+        # Use standard workspace directory (same as daemon)
+        return Path("workspace") / session_id / "output.txt"

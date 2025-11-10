@@ -1,4 +1,4 @@
-"""Data models for TeleClaude sessions and recordings."""
+"""Data models for TeleClaude sessions."""
 
 import json
 from dataclasses import asdict, dataclass

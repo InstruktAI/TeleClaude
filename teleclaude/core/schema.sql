@@ -19,21 +19,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE(computer_name, tmux_session_name)
 );
 
--- Indexes created by migration code to avoid conflicts during schema upgrades
-
-CREATE TABLE IF NOT EXISTS recordings (
-    recording_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    recording_type TEXT NOT NULL,  -- 'text' or 'video'
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_recordings_session ON recordings(session_id);
-CREATE INDEX IF NOT EXISTS idx_recordings_timestamp ON recordings(timestamp);
-CREATE INDEX IF NOT EXISTS idx_recordings_type ON recordings(recording_type);
-
 -- Key-value store for system settings
 CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,

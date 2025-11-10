@@ -1,0 +1,9 @@
+# Session workspace directory structure:
+# workspace/{session_id}/
+#   ├── files/         - uploaded documents
+#   ├── photos/        - uploaded photos
+#   └── output.txt     - terminal output (for download button)
+
+# Ignore all session directories
+*
+!.gitignore

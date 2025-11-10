@@ -44,10 +44,7 @@ htmlcov/
 coverage/
 
 # Project-specific
-recordings/
-session_output/
-uploads/
-tmp/
+workspace/
 .history
 
 # Backup files

@@ -24,7 +24,6 @@ terminal:
 recording:
     enabled: true
     rotation_interval_seconds: 60
-    storage_path: ${WORKING_DIR}/recordings
 
 polling:
     idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)

@@ -62,7 +62,7 @@ class TeleClaudeDaemon:
         self.output_poller = OutputPoller()
 
         # Output file directory (persistent files for download button)
-        self.output_dir = Path("session_output")
+        self.output_dir = Path("workspace")
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize REST API
@@ -405,7 +405,9 @@ class TeleClaudeDaemon:
 
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session."""
-        return self.output_dir / f"{session_id[:8]}.txt"
+        session_workspace = self.output_dir / session_id
+        session_workspace.mkdir(parents=True, exist_ok=True)
+        return session_workspace / "output.txt"
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -848,12 +850,12 @@ class TeleClaudeDaemon:
         try:
             import shutil
 
-            session_files_dir = Path("session_files") / session_id
-            if session_files_dir.exists():
-                shutil.rmtree(session_files_dir)
-                logger.debug("Deleted uploaded files for closed session %s", session_id[:8])
+            session_workspace = Path("workspace") / session_id
+            if session_workspace.exists():
+                shutil.rmtree(session_workspace)
+                logger.debug("Deleted workspace for closed session %s", session_id[:8])
         except Exception as e:
-            logger.warning("Failed to delete uploaded files: %s", e)
+            logger.warning("Failed to delete workspace: %s", e)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, has_exit_marker: bool = True

@@ -11,6 +11,7 @@ This can happen when:
 """
 
 import logging
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -65,14 +66,14 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
     except Exception as e:
         logger.warning("Failed to delete channel for stale session %s: %s", session_id[:8], e)
 
-    # Clean up output file if exists
-    output_file = Path("session_output") / f"{session_id}.txt"
-    if output_file.exists():
+    # Clean up session workspace if exists
+    session_workspace = Path("workspace") / session_id
+    if session_workspace.exists():
         try:
-            output_file.unlink()
-            logger.debug("Deleted output file for stale session %s", session_id[:8])
+            shutil.rmtree(session_workspace)
+            logger.debug("Deleted workspace for stale session %s", session_id[:8])
         except Exception as e:
-            logger.warning("Failed to delete output file for stale session %s: %s", session_id[:8], e)
+            logger.warning("Failed to delete workspace for stale session %s: %s", session_id[:8], e)
 
     logger.info("Cleaned up stale session %s", session_id[:8])
     return True
