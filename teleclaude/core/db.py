@@ -213,20 +213,14 @@ class Db:
         await self._db.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
         await self._db.commit()
 
-        # Update UI via AdapterClient if wired
-        if self._client and old_session:
-            # Session closed - add ❌ emoji
-            if "closed" in fields and fields["closed"] and not old_session.closed:
-                await self._client.set_channel_status(session_id, "closed")
-                logger.debug("Updated channel status to closed for %s", session_id[:8])
-
-            # Session reopened - remove ❌ emoji
-            if "closed" in fields and not fields["closed"] and old_session.closed:
-                await self._client.set_channel_status(session_id, "active")
-                logger.debug("Updated channel status to active for %s", session_id[:8])
-
+        # Update UI via AdapterClient
+        if old_session:
             # Working directory changed - update title with last 2 path components
-            if "working_directory" in fields and fields["working_directory"] != old_session.working_directory:
+            if (
+                self._client
+                and "working_directory" in fields
+                and fields["working_directory"] != old_session.working_directory
+            ):
                 from pathlib import Path
 
                 new_path = str(fields["working_directory"])

@@ -228,13 +228,10 @@ class TeleClaudeDaemon:
 
         logger.info("Handling session_closed for %s", session_id[:8] if isinstance(session_id, str) else session_id)
 
-        # Kill tmux session
+        # Kill tmux session (polling will stop automatically when session dies)
         await terminal_bridge.kill_session(session.tmux_session_name)
 
-        # Stop polling
-        await self.polling_coordinator.stop_polling(str(session_id))  # type: ignore[attr-defined]
-
-        # Mark closed in DB (DB will update UI via AdapterClient)
+        # Mark closed in DB
         await db.update_session(str(session_id), closed=True)
 
     async def _handle_session_reopened(self, event: str, context: dict[str, object]) -> None:
@@ -271,7 +268,7 @@ class TeleClaudeDaemon:
         await terminal_bridge.create_tmux_session(
             name=session.tmux_session_name,
             working_dir=session.working_directory,
-            shell=self.config.computer.default_shell,  # type: ignore[attr-defined]
+            shell=config.computer.default_shell,
             cols=cols,
             rows=rows,
         )

@@ -266,3 +266,21 @@ Use the `/usr/bin/log show` command to check system logs for launchd/daemon erro
 
 - Use `/usr/bin/log` (full path) to avoid conflicts with shell built-ins in Bash
 - The `--last` flag takes time units directly (e.g., `5m`, `1h`, `30s`) **without quotes**
+
+## Known Limitations
+
+### Topic Deletion Leaves Orphaned Sessions
+
+**Issue:** When you delete a Telegram forum topic (not just close it), the session remains in the database as active.
+
+**Why:** Telegram does not send deletion events to bots. The Bot API only provides events for:
+- Topic created (`forum_topic_created`)
+- Topic closed (`forum_topic_closed`) - ✅ Handled
+- Topic reopened (`forum_topic_reopened`) - ✅ Handled
+- Topic edited (`forum_topic_edited`)
+
+**Workaround:** Use topic close instead of delete for clean session lifecycle:
+1. Close the topic (we handle cleanup automatically)
+2. Later, delete the topic if needed
+
+**Impact:** Orphaned sessions consume minimal resources (database entries only). The tmux session and polling will continue until manually cleaned up with `/exit` or by killing the tmux session directly.

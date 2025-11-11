@@ -1827,7 +1827,7 @@ Usage:
 
             # Always log full update dict for comprehensive event tracking
             # This ensures we can see ALL events including topic deletions
-            logger.info("Full update data: %s", update_dict)
+            logger.debug("Full update data: %s", update_dict)
 
         except Exception as e:
             logger.error("Error logging update: %s", e)
