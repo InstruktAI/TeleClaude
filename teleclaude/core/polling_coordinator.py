@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Callable
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.output_poller import (
+    DirectoryChanged,
     IdleDetected,
     OutputChanged,
     OutputPoller,
@@ -207,6 +208,10 @@ async def poll_and_send_output(
                     # Persist to DB (survives daemon restart)
                     await db.update_ux_state(event.session_id, idle_notification_message_id=notification_id)
                     logger.debug("Stored idle notification %s for session %s", notification_id, event.session_id[:8])
+
+            elif isinstance(event, DirectoryChanged):
+                # Directory changed - update session (db dispatcher handles title update)
+                await db.update_session(event.session_id, working_directory=event.new_path)
 
             elif isinstance(event, ProcessExited):
                 # Process exited

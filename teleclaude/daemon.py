@@ -619,7 +619,9 @@ class TeleClaudeDaemon:
         )
 
         if not success:
-            await self.client.send_message(session_id, f"Failed to execute command: {command}")
+            error_msg_id = await self.client.send_message(session_id, f"Failed to execute command: {command}")
+            if error_msg_id:
+                await db.add_pending_deletion(session_id, error_msg_id)
             logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
             return False
 
@@ -830,9 +832,11 @@ class TeleClaudeDaemon:
         was_stale = await session_cleanup.cleanup_stale_session(session_id, self.client)
         if was_stale:
             logger.warning("Session %s was stale and has been cleaned up", session_id[:8])
-            await self.client.send_message(
+            warning_msg_id = await self.client.send_message(
                 session_id, "⚠️ This session's terminal was closed externally and has been cleaned up."
             )
+            if warning_msg_id:
+                await db.add_pending_deletion(session_id, warning_msg_id)
             return
 
         # Strip leading // and replace with / (Telegram workaround - only at start of input)
@@ -879,7 +883,9 @@ class TeleClaudeDaemon:
 
         if not success:
             logger.error("Failed to send command to session %s", session_id[:8])
-            await self.client.send_message(session_id, "Failed to send command to terminal")
+            error_msg_id = await self.client.send_message(session_id, "Failed to send command to terminal")
+            if error_msg_id:
+                await db.add_pending_deletion(session_id, error_msg_id)
             return
 
         # Update activity

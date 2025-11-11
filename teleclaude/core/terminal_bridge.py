@@ -805,3 +805,37 @@ async def get_pane_title(session_name: str) -> Optional[str]:
     except Exception as e:
         logger.error("Failed to get pane title for %s: %s", session_name, e)
         return None
+
+
+async def get_current_directory(session_name: str) -> Optional[str]:
+    """Get the current working directory for a tmux session.
+
+    Args:
+        session_name: Session name
+
+    Returns:
+        Current directory path or None if failed
+    """
+    try:
+        cmd = ["tmux", "display", "-p", "-t", session_name, "#{pane_current_path}"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await result.communicate()
+
+        if result.returncode == 0:
+            return stdout.decode().strip()
+
+        logger.warning(
+            "Failed to get current directory for %s: returncode=%d, stderr=%s",
+            session_name,
+            result.returncode,
+            stderr.decode().strip(),
+        )
+        return None
+
+    except Exception as e:
+        logger.error("Exception in get_current_directory for %s: %s", session_name, e)
+        return None

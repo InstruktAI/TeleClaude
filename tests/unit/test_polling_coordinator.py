@@ -35,7 +35,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Session"  # Not matching $X > $Y pattern
+            title="Test Session"  # Not matching $X > $Y pattern
         )
 
         session_manager = Mock()
@@ -74,7 +74,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Session"
+            title="Test Session"
         )
 
         session_manager = Mock()
@@ -114,7 +114,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Session"
+            title="Test Session"
         )
 
         session_manager = Mock()
@@ -148,7 +148,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Session"
+            title="Test Session"
         )
 
         session_manager = Mock()
@@ -187,7 +187,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Session"
+            title="Test Session"
         )
 
         session_manager = Mock()
@@ -228,7 +228,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Session"
+            title="Test Session"
         )
 
         session_manager = Mock()
@@ -282,7 +282,7 @@ class TestAISessionDetection:
             computer_name="comp1",
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
-            title="Human Session",
+            title="Test Session",
             adapter_metadata={"channel_id": "456"}
         )
         assert not _is_ai_to_ai_session(human_session)
@@ -300,6 +300,7 @@ class TestAISessionDetection:
             computer_name="comp1",
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata=None
         )
         assert not _is_ai_to_ai_session(session_no_metadata)
@@ -314,6 +315,7 @@ class TestAISessionDetection:
             computer_name="comp1",
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={"channel_id": "123", "is_ai_to_ai": False}
         )
         assert not _is_ai_to_ai_session(session_false_flag)
@@ -324,6 +326,7 @@ class TestAISessionDetection:
             computer_name="comp1",
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={}
         )
         assert not _is_ai_to_ai_session(session_empty_metadata)
@@ -418,14 +421,14 @@ class TestDualModePolling:
         """Test AI-to-AI session sends raw chunks via adapter_client.send_message()."""
         from teleclaude.core.polling_coordinator import poll_and_send_output
 
-        # Mock AI session (has is_ai_to_ai metadata flag)
+        # Mock AI session (has target_computer in metadata)
         mock_session = Session(
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
-            origin_adapter="telegram",
+            origin_adapter="redis",
             title="$mac1 > $mac2 - Deploy Script",
-            adapter_metadata={"channel_id": "123", "is_ai_to_ai": True}
+            adapter_metadata={"target_computer": "remote"}
         )
 
         db.is_polling = AsyncMock(return_value=False)
@@ -433,11 +436,13 @@ class TestDualModePolling:
         db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
         db.get_session = AsyncMock(return_value=mock_session)
-        db.get_idle_notification_message_id = AsyncMock(return_value=None)
-        db.set_idle_notification_message_id = AsyncMock()
+        db.get_ux_state = AsyncMock(return_value=Mock(polling_active=False, idle_notification_message_id=None))
+        db.update_ux_state = AsyncMock()
 
         adapter_client = Mock()
         adapter_client.send_message = AsyncMock()
+        adapter_client.send_output_update = AsyncMock()
+        adapter_client.delete_message = AsyncMock()
 
         get_output_file = Mock(return_value=Path("/tmp/output.txt"))
 
@@ -475,7 +480,7 @@ class TestDualModePolling:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Human Terminal Session",
+            title="Test Session",
             adapter_metadata={"channel_id": "456"}
         )
 

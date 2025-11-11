@@ -35,7 +35,8 @@ class TestCreateSession:
         session = await session_manager.create_session(
             computer_name="TestPC",
             tmux_session_name="test-session",
-            origin_adapter="telegram"
+            origin_adapter="telegram",
+            title="Test Session"
         )
 
         assert session.session_id is not None
@@ -76,7 +77,8 @@ class TestGetSession:
         created = await session_manager.create_session(
             computer_name="TestPC",
             tmux_session_name="test-session",
-            origin_adapter="telegram"
+            origin_adapter="telegram",
+            title="Test Session"
         )
 
         retrieved = await session_manager.get_session(created.session_id)
@@ -99,9 +101,9 @@ class TestListSessions:
     @pytest.mark.asyncio
     async def test_list_all_sessions(self, session_manager):
         """Test listing all sessions."""
-        await session_manager.create_session("PC1", "session-1", "telegram")
-        await session_manager.create_session("PC2", "session-2", "rest")
-        await session_manager.create_session("PC1", "session-3", "telegram")
+        await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        await session_manager.create_session("PC2", "session-2", "rest", "Test Session")
+        await session_manager.create_session("PC1", "session-3", "telegram", "Test Session")
 
         sessions = await session_manager.list_sessions()
 
@@ -110,9 +112,9 @@ class TestListSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_filter_by_computer(self, session_manager):
         """Test filtering sessions by computer name."""
-        await session_manager.create_session("PC1", "session-1", "telegram")
-        await session_manager.create_session("PC2", "session-2", "telegram")
-        await session_manager.create_session("PC1", "session-3", "telegram")
+        await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        await session_manager.create_session("PC2", "session-2", "telegram", "Test Session")
+        await session_manager.create_session("PC1", "session-3", "telegram", "Test Session")
 
         sessions = await session_manager.list_sessions(computer_name="PC1")
 
@@ -122,8 +124,8 @@ class TestListSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_filter_by_status(self, session_manager):
         """Test filtering sessions by status."""
-        s1 = await session_manager.create_session("PC1", "session-1", "telegram")
-        s2 = await session_manager.create_session("PC1", "session-2", "telegram")
+        s1 = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        s2 = await session_manager.create_session("PC1", "session-2", "telegram", "Test Session")
 
         # Update one to closed
         await session_manager.update_session(s2.session_id, closed=True)
@@ -136,9 +138,9 @@ class TestListSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_filter_by_adapter_type(self, session_manager):
         """Test filtering sessions by adapter type."""
-        await session_manager.create_session("PC1", "session-1", "telegram")
-        await session_manager.create_session("PC1", "session-2", "rest")
-        await session_manager.create_session("PC1", "session-3", "telegram")
+        await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        await session_manager.create_session("PC1", "session-2", "rest", "Test Session")
+        await session_manager.create_session("PC1", "session-3", "telegram", "Test Session")
 
         sessions = await session_manager.list_sessions(origin_adapter="telegram")
 
@@ -148,9 +150,9 @@ class TestListSessions:
     @pytest.mark.asyncio
     async def test_list_sessions_multiple_filters(self, session_manager):
         """Test filtering sessions with multiple criteria."""
-        await session_manager.create_session("PC1", "session-1", "telegram")
-        await session_manager.create_session("PC2", "session-2", "telegram")
-        s3 = await session_manager.create_session("PC1", "session-3", "rest")
+        await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        await session_manager.create_session("PC2", "session-2", "telegram", "Test Session")
+        s3 = await session_manager.create_session("PC1", "session-3", "rest", "Test Session")
 
         sessions = await session_manager.list_sessions(
             computer_name="PC1",
@@ -174,7 +176,7 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_title(self, session_manager):
         """Test updating session title."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
+        session = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
 
         await session_manager.update_session(session.session_id, title="New Title")
 
@@ -184,7 +186,7 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_status(self, session_manager):
         """Test updating session closed status."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
+        session = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
 
         await session_manager.update_session(session.session_id, closed=True)
 
@@ -194,7 +196,7 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_multiple_fields(self, session_manager):
         """Test updating multiple fields at once."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
+        session = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
 
         await session_manager.update_session(
             session.session_id,
@@ -211,7 +213,7 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_no_fields(self, session_manager):
         """Test update with no fields does nothing."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
+        session = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
 
         # Should not raise error
         await session_manager.update_session(session.session_id)
@@ -224,7 +226,7 @@ class TestUpdateSession:
     async def test_update_adapter_metadata(self, session_manager):
         """Test updating adapter_metadata dict."""
         session = await session_manager.create_session(
-            "PC1", "session-1", "telegram",
+            "PC1", "session-1", "telegram", "Test Session",
             adapter_metadata={"topic_id": 123}
         )
 
@@ -244,7 +246,7 @@ class TestUpdateLastActivity:
     @pytest.mark.asyncio
     async def test_update_last_activity(self, session_manager):
         """Test updating last activity timestamp."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
+        session = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
         original_activity = session.last_activity
 
         # Wait a tiny bit to ensure timestamp changes
@@ -264,7 +266,7 @@ class TestDeleteSession:
     @pytest.mark.asyncio
     async def test_delete_existing_session(self, session_manager):
         """Test deleting existing session."""
-        session = await session_manager.create_session("PC1", "session-1", "telegram")
+        session = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
 
         await session_manager.delete_session(session.session_id)
 
@@ -285,9 +287,9 @@ class TestCountSessions:
     @pytest.mark.asyncio
     async def test_count_all_sessions(self, session_manager):
         """Test counting all sessions."""
-        await session_manager.create_session("PC1", "session-1", "telegram")
-        await session_manager.create_session("PC2", "session-2", "telegram")
-        await session_manager.create_session("PC1", "session-3", "telegram")
+        await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        await session_manager.create_session("PC2", "session-2", "telegram", "Test Session")
+        await session_manager.create_session("PC1", "session-3", "telegram", "Test Session")
 
         count = await session_manager.count_sessions()
 
@@ -296,9 +298,9 @@ class TestCountSessions:
     @pytest.mark.asyncio
     async def test_count_sessions_by_computer(self, session_manager):
         """Test counting sessions by computer name."""
-        await session_manager.create_session("PC1", "session-1", "telegram")
-        await session_manager.create_session("PC2", "session-2", "telegram")
-        await session_manager.create_session("PC1", "session-3", "telegram")
+        await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        await session_manager.create_session("PC2", "session-2", "telegram", "Test Session")
+        await session_manager.create_session("PC1", "session-3", "telegram", "Test Session")
 
         count = await session_manager.count_sessions(computer_name="PC1")
 
@@ -307,8 +309,8 @@ class TestCountSessions:
     @pytest.mark.asyncio
     async def test_count_sessions_by_status(self, session_manager):
         """Test counting sessions by closed status."""
-        s1 = await session_manager.create_session("PC1", "session-1", "telegram")
-        s2 = await session_manager.create_session("PC1", "session-2", "telegram")
+        s1 = await session_manager.create_session("PC1", "session-1", "telegram", "Test Session")
+        s2 = await session_manager.create_session("PC1", "session-2", "telegram", "Test Session")
         await session_manager.update_session(s2.session_id, closed=True)
 
         count = await session_manager.count_sessions(closed=False)
@@ -330,11 +332,11 @@ class TestGetSessionsByAdapterMetadata:
     async def test_get_by_metadata(self, session_manager):
         """Test retrieving sessions by adapter metadata."""
         s1 = await session_manager.create_session(
-            "PC1", "session-1", "telegram",
+            "PC1", "session-1", "telegram", "Test Session",
             adapter_metadata={"topic_id": 123}
         )
         s2 = await session_manager.create_session(
-            "PC1", "session-2", "telegram",
+            "PC1", "session-2", "telegram", "Test Session",
             adapter_metadata={"topic_id": 456}
         )
 
@@ -349,7 +351,7 @@ class TestGetSessionsByAdapterMetadata:
     async def test_get_by_metadata_no_match(self, session_manager):
         """Test retrieving sessions with no metadata match."""
         await session_manager.create_session(
-            "PC1", "session-1", "telegram",
+            "PC1", "session-1", "telegram", "Test Session",
             adapter_metadata={"topic_id": 123}
         )
 
@@ -363,11 +365,11 @@ class TestGetSessionsByAdapterMetadata:
     async def test_get_by_metadata_different_adapter(self, session_manager):
         """Test retrieving sessions filters by adapter type."""
         await session_manager.create_session(
-            "PC1", "session-1", "telegram",
+            "PC1", "session-1", "telegram", "Test Session",
             adapter_metadata={"topic_id": 123}
         )
         await session_manager.create_session(
-            "PC1", "session-2", "rest",
+            "PC1", "session-2", "rest", "Test Session",
             adapter_metadata={"topic_id": 123}
         )
 
@@ -392,6 +394,7 @@ class TestDbAdapterClientIntegration:
             computer_name="TestPC",
             tmux_session_name="test-session",
             origin_adapter="telegram",
+            title="Test Session"
         )
 
         # Wire mock client
@@ -415,6 +418,7 @@ class TestDbAdapterClientIntegration:
             computer_name="TestPC",
             tmux_session_name="test-session",
             origin_adapter="telegram",
+            title="Test Session"
         )
         await session_manager.update_session(session.session_id, closed=True)
 
@@ -437,6 +441,7 @@ class TestDbAdapterClientIntegration:
             computer_name="TestPC",
             tmux_session_name="test-session",
             origin_adapter="telegram",
+            title="Test Session"
         )
 
         # Update without wiring client (should not crash)
@@ -456,6 +461,7 @@ class TestDbAdapterClientIntegration:
             computer_name="TestPC",
             tmux_session_name="test-session",
             origin_adapter="telegram",
+            title="Test Session"
         )
 
         # Wire mock client

@@ -77,7 +77,7 @@ class Db:
         computer_name: str,
         tmux_session_name: str,
         origin_adapter: str,
-        title: Optional[str] = None,
+        title: str,
         adapter_metadata: Optional[dict[str, object]] = None,
         terminal_size: str = "80x24",
         working_directory: str = "~",
@@ -224,6 +224,20 @@ class Db:
             if "closed" in fields and not fields["closed"] and old_session.closed:
                 await self._client.set_channel_status(session_id, "active")
                 logger.debug("Updated channel status to active for %s", session_id[:8])
+
+            # Working directory changed - update title with last 2 path components
+            if "working_directory" in fields and fields["working_directory"] != old_session.working_directory:
+                from pathlib import Path
+
+                new_path = str(fields["working_directory"])
+                path_parts = Path(new_path).parts
+                # Get last 2 components (e.g., "projects/teleclaude")
+                last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
+
+                # Update channel title: "{original_title}: {last_two}"
+                new_title = f"{old_session.title}: {last_two}"
+                await self._client.update_channel_title(session_id, new_title)
+                logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.

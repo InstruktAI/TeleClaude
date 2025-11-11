@@ -85,6 +85,7 @@ class TestSendOutputUpdate:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
 
         result = await adapter.send_output_update(
@@ -105,6 +106,7 @@ class TestSendOutputUpdate:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
         await test_db.update_ux_state(session.session_id, output_message_id="msg-456")
 
@@ -127,6 +129,7 @@ class TestSendOutputUpdate:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
         await test_db.update_ux_state(session.session_id, output_message_id="msg-stale")
 
@@ -152,6 +155,7 @@ class TestSendOutputUpdate:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
 
         started_at = time.time() - 10  # 10 seconds ago
@@ -196,6 +200,7 @@ class TestSendStatusMessage:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
         await test_db.update_ux_state(session.session_id, output_message_id="msg-existing")
 
@@ -245,6 +250,7 @@ class TestSendExitMessage:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
 
         await adapter.send_exit_message(
@@ -267,6 +273,7 @@ class TestSendExitMessage:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
         await test_db.update_ux_state(session.session_id, output_message_id="msg-existing")
 
@@ -291,6 +298,7 @@ class TestCleanupFeedbackMessages:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
         await test_db.update_ux_state(
             session.session_id,
@@ -311,6 +319,7 @@ class TestCleanupFeedbackMessages:
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
+            title="Test Session",
         )
         await test_db.update_ux_state(
             session.session_id,

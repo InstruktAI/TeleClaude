@@ -512,7 +512,7 @@ else:
 
 ### Polling Behavior
 
-**Critical polling algorithm** (daemon.py `_poll_and_send_output`):
+**Critical polling algorithm** (output_poller.py `poll()`):
 
 1. **Initial delay**: Wait 2 seconds before first poll
 2. **Poll interval**: Poll tmux output every 1 second
@@ -528,8 +528,14 @@ else:
    - After 60s of no output change
    - Send ephemeral notification (auto-deleted when output resumes)
    - **Does NOT stop polling** - continues until exit code
-6. **Session death detection**: Stop if tmux session no longer exists
-7. **Max duration**: Stop after 600 polls (10 minutes)
+6. **Directory change detection**:
+   - Check current directory every 5 seconds (configurable via `polling.directory_check_interval`)
+   - Uses tmux's `#{pane_current_path}` variable for real-time tracking
+   - Update session title with last 2 path components (e.g., "Dev Session: projects/teleclaude")
+   - Update `working_directory` in database
+   - Set `directory_check_interval: 0` to disable
+7. **Session death detection**: Stop if tmux session no longer exists
+8. **Max duration**: Stop after 600 polls (10 minutes)
 
 ### Output Message Format
 

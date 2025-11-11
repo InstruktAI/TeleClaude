@@ -27,6 +27,7 @@ recording:
 
 polling:
     idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)
+    directory_check_interval: 5 # Check for directory changes every N seconds (0 to disable, default: 5)
     lpoll_extensions: [] # Extend built-in list of long-running interactive processes
     # Examples: ["my-repl", "watch", "docker logs -f"]
     # Built-in list includes: claude, vim, vi, nvim, nano, emacs, top, htop, less, more, python, node, etc.

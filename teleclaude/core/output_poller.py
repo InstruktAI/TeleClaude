@@ -49,6 +49,14 @@ class IdleDetected(OutputEvent):
     idle_seconds: int
 
 
+@dataclass
+class DirectoryChanged(OutputEvent):
+    """Directory changed event."""
+
+    new_path: str
+    old_path: str
+
+
 class OutputPoller:
     """Pure poller - yields output events, no message sending.
 
@@ -71,12 +79,13 @@ class OutputPoller:
             has_exit_marker: Whether exit marker was appended
 
         Yields:
-            OutputEvent subclasses (OutputChanged, ProcessExited, IdleDetected)
+            OutputEvent subclasses (OutputChanged, ProcessExited, IdleDetected, DirectoryChanged)
         """
         # Configuration
         idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
         global_update_interval = 2  # Global update interval (seconds)
+        directory_check_interval = getattr(config.polling, "directory_check_interval", 5)
 
         # State tracking
         output_buffer = ""
@@ -87,6 +96,8 @@ class OutputPoller:
         ticks_since_last_update = 0
         current_update_interval = global_update_interval  # Start with global interval
         first_poll = True  # Skip exit detection on first poll (establish baseline)
+        last_directory = None
+        directory_check_ticks = 0
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -228,6 +239,27 @@ class OutputPoller:
                         logger.info("No output change for %ds for %s, notifying user", idle_threshold, session_id[:8])
                         yield IdleDetected(session_id=session_id, idle_seconds=idle_threshold)
                         notification_sent = True
+
+                # Check for directory changes (if enabled)
+                if directory_check_interval > 0:
+                    directory_check_ticks += 1
+                    if directory_check_ticks >= directory_check_interval:
+                        directory_check_ticks = 0
+                        current_directory = await terminal_bridge.get_current_directory(tmux_session_name)
+                        if current_directory and current_directory != last_directory:
+                            if last_directory is not None:
+                                logger.info(
+                                    "Directory changed for %s: %s -> %s",
+                                    session_id[:8],
+                                    last_directory,
+                                    current_directory,
+                                )
+                                yield DirectoryChanged(
+                                    session_id=session_id,
+                                    new_path=current_directory,
+                                    old_path=last_directory,
+                                )
+                            last_directory = current_directory
 
                 await asyncio.sleep(poll_interval)
 

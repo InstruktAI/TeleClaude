@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from teleclaude.core.output_poller import IdleDetected, OutputChanged, OutputPoller, ProcessExited
+from teleclaude.core.output_poller import DirectoryChanged, IdleDetected, OutputChanged, OutputPoller, ProcessExited
 
 
 @pytest.mark.unit
@@ -269,6 +269,7 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.config") as mock_config:
             mock_config.polling.idle_notification_seconds = 5
+            mock_config.polling.directory_check_interval = 0  # Disable directory checking
 
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -302,6 +303,7 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.config") as mock_config:
             mock_config.polling.idle_notification_seconds = 60
+            mock_config.polling.directory_check_interval = 0  # Disable directory checking
 
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -355,5 +357,83 @@ class TestOutputPollerPoll:
                 # Verify ProcessExited event still yielded
                 assert len(events) == 1
                 assert isinstance(events[0], ProcessExited)
+
+    async def test_directory_change_detection(self, poller, tmp_path):
+        """Test poll detects directory changes and yields DirectoryChanged events."""
+        output_file = tmp_path / "output.txt"
+
+        with patch("teleclaude.core.output_poller.config") as mock_config:
+            # Set directory check interval to 3 seconds
+            mock_config.polling.idle_notification_seconds = 60
+            mock_config.polling.directory_check_interval = 3
+
+            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                    iteration_count = 0
+                    directory_calls = 0
+
+                    async def session_exists_mock(name):
+                        nonlocal iteration_count
+                        iteration_count += 1
+                        # Run for 10 iterations (3 directory checks at intervals 3, 6, 9)
+                        return iteration_count < 10
+
+                    mock_terminal.session_exists = session_exists_mock
+                    mock_terminal.capture_pane = AsyncMock(return_value="output\n")
+
+                    # Directory changes on second check
+                    async def get_current_directory_mock(name):
+                        nonlocal directory_calls
+                        directory_calls += 1
+                        if directory_calls == 1:
+                            return "/home/user/projects"
+                        return "/home/user/projects/teleclaude"
+
+                    mock_terminal.get_current_directory = get_current_directory_mock
+
+                    # Collect events
+                    events = []
+                    async for event in poller.poll("test-dir", "test-tmux", output_file, has_exit_marker=False):
+                        events.append(event)
+
+                    # Find DirectoryChanged event
+                    dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
+                    assert len(dir_events) >= 1
+                    assert dir_events[0].session_id == "test-dir"
+                    assert dir_events[0].old_path == "/home/user/projects"
+                    assert dir_events[0].new_path == "/home/user/projects/teleclaude"
+
+    async def test_directory_check_disabled(self, poller, tmp_path):
+        """Test poll skips directory checks when interval is 0."""
+        output_file = tmp_path / "output.txt"
+
+        with patch("teleclaude.core.output_poller.config") as mock_config:
+            # Disable directory checking
+            mock_config.polling.idle_notification_seconds = 60
+            mock_config.polling.directory_check_interval = 0
+
+            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                    iteration_count = 0
+
+                    async def session_exists_mock(name):
+                        nonlocal iteration_count
+                        iteration_count += 1
+                        return iteration_count < 5
+
+                    mock_terminal.session_exists = session_exists_mock
+                    mock_terminal.capture_pane = AsyncMock(return_value="output\n")
+                    mock_terminal.get_current_directory = AsyncMock(return_value="/home/user")
+
+                    # Collect events
+                    events = []
+                    async for event in poller.poll("test-disabled", "test-tmux", output_file, has_exit_marker=False):
+                        events.append(event)
+
+                    # Verify no DirectoryChanged events
+                    dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
+                    assert len(dir_events) == 0
+                    # Verify get_current_directory never called
+                    mock_terminal.get_current_directory.assert_not_called()
 
 

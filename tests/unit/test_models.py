@@ -12,7 +12,7 @@ class TestSession:
     def test_session_creation_minimal(self):
         """Test creating session with minimal fields."""
         session = Session(
-            session_id="test-123", computer_name="TestPC", tmux_session_name="test-tmux", origin_adapter="telegram"
+            session_id="test-123", computer_name="TestPC", tmux_session_name="test-tmux", origin_adapter="telegram", title="Test Session"
         )
 
         assert session.session_id == "test-123"
@@ -58,6 +58,7 @@ class TestSession:
             computer_name="TestPC",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata=metadata,
             created_at=now,
             last_activity=now,
@@ -80,6 +81,7 @@ class TestSession:
             computer_name="TestPC",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             created_at=None,
             last_activity=None,
         )
@@ -97,6 +99,7 @@ class TestSession:
             computer_name="TestPC",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata=None,
         )
 
@@ -142,6 +145,7 @@ class TestSession:
             "computer_name": "TestPC",
             "tmux_session_name": "test-tmux",
             "adapter_type": "telegram",
+            "title": "Test Session",
             "created_at": now,  # Already datetime, not string
             "last_activity": now,
         }
@@ -161,6 +165,7 @@ class TestSession:
             "computer_name": "TestPC",
             "tmux_session_name": "test-tmux",
             "adapter_type": "telegram",
+            "title": "Test Session",
             "adapter_metadata": metadata,  # Already dict, not JSON string
         }
 

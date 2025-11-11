@@ -679,7 +679,9 @@ async def handle_resize_session(  # type: ignore[explicit-any]
         cols, rows = map(int, size_str.split("x"))
     except ValueError:
         logger.error("Invalid size format: %s", size_str)
-        await client.send_message(session.session_id, f"Invalid size format: {size_str}")
+        error_msg_id = await client.send_message(session.session_id, f"Invalid size format: {size_str}")
+        if error_msg_id:
+            await db.add_pending_deletion(session.session_id, error_msg_id)
         return
 
     # Resize the tmux session
@@ -705,7 +707,9 @@ async def handle_resize_session(  # type: ignore[explicit-any]
             )
     else:
         logger.error("Failed to resize session %s", session.session_id[:8])
-        await client.send_message(session.session_id, "Failed to resize terminal")
+        error_msg_id = await client.send_message(session.session_id, "Failed to resize terminal")
+        if error_msg_id:
+            await db.add_pending_deletion(session.session_id, error_msg_id)
 
 
 @with_session
@@ -753,7 +757,9 @@ async def handle_rename_session(  # type: ignore[explicit-any]
             )
     else:
         logger.error("Failed to update channel title for session %s", session.session_id[:8])
-        await client.send_message(session.session_id, "Failed to update channel title")
+        error_msg_id = await client.send_message(session.session_id, "Failed to update channel title")
+        if error_msg_id:
+            await db.add_pending_deletion(session.session_id, error_msg_id)
 
 
 @with_session
@@ -786,7 +792,9 @@ async def handle_cd_session(  # type: ignore[explicit-any]
             lines.append(f"{idx}. {dir_path}")
 
         response = "\n".join(lines)
-        await client.send_message(session.session_id, response)
+        help_msg_id = await client.send_message(session.session_id, response)
+        if help_msg_id:
+            await db.add_pending_deletion(session.session_id, help_msg_id)
         return
 
     # Change to specified directory

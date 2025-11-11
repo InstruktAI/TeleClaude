@@ -14,7 +14,7 @@ class Session:
     computer_name: str
     tmux_session_name: str
     origin_adapter: str  # Single origin adapter (e.g., "redis" or "telegram")
-    title: Optional[str] = None
+    title: str
     adapter_metadata: Optional[dict[str, object]] = None  # Adapter-specific metadata
     closed: bool = False
     created_at: Optional[datetime] = None

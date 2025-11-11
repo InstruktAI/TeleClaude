@@ -75,6 +75,7 @@ class TestMessaging:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={"channel_id": "123"}
         )
 
@@ -102,6 +103,7 @@ class TestMessaging:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={"channel_id": "123"}
         )
 
@@ -164,6 +166,7 @@ class TestRateLimitHandling:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={"channel_id": "123"}
         )
 
@@ -195,6 +198,7 @@ class TestRateLimitHandling:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={"channel_id": "123"}
         )
 
@@ -243,6 +247,7 @@ class TestReplyMarkup:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
+            title="Test Session",
             adapter_metadata={"channel_id": "123"}
         )
 
