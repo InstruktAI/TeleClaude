@@ -32,6 +32,7 @@ EventType = Literal[
     "topic_closed",
     "topic_reopened",
     "session_closed",
+    "session_reopened",
     "session_deleted",
     "working_dir_changed",
     "system_command",
@@ -87,6 +88,7 @@ class TeleClaudeEvents:
 
     # Database-driven events (emitted by db.py)
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Session marked closed in DB
+    SESSION_REOPENED: Literal["session_reopened"] = "session_reopened"  # Session reopened
     SESSION_DELETED: Literal["session_deleted"] = "session_deleted"  # Session deleted from DB
     WORKING_DIR_CHANGED: Literal["working_dir_changed"] = "working_dir_changed"  # Working directory updated
 

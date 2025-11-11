@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
 
@@ -232,7 +232,7 @@ class TeleClaudeDaemon:
         await terminal_bridge.kill_session(session.tmux_session_name)
 
         # Stop polling
-        await self.polling_coordinator.stop_polling(str(session_id))
+        await self.polling_coordinator.stop_polling(str(session_id))  # type: ignore[attr-defined]
 
         # Mark closed in DB (DB will update UI via AdapterClient)
         await db.update_session(str(session_id), closed=True)
@@ -259,12 +259,21 @@ class TeleClaudeDaemon:
 
     async def _reopen_session(self, session: Session) -> None:
         """Recreate tmux at saved working directory and mark active."""
+        # Parse terminal size (format: "WIDTHxHEIGHT")
+        cols, rows = 120, 40
+        if session.terminal_size:
+            try:
+                width, height = session.terminal_size.split("x")
+                cols, rows = int(width), int(height)
+            except (ValueError, AttributeError):
+                pass
 
-        await terminal_bridge.create_session(
-            session_name=session.tmux_session_name,
-            working_directory=session.working_directory,
-            shell=self.config.computer.default_shell,
-            terminal_size=session.terminal_size or "120x40",
+        await terminal_bridge.create_tmux_session(
+            name=session.tmux_session_name,
+            working_dir=session.working_directory,
+            shell=self.config.computer.default_shell,  # type: ignore[attr-defined]
+            cols=cols,
+            rows=rows,
         )
 
         await db.update_session(session.session_id, closed=False)
@@ -807,7 +816,7 @@ class TeleClaudeDaemon:
         elif command == "exit":
             await command_handlers.handle_exit_session(context, self.client, self._get_output_file_path)
 
-    async def handle_message(self, session_id: str, text: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
+    async def handle_message(self, session_id: str, text: str, context: dict) -> None:  # type: ignore[type-arg]
         """Handle incoming text messages (commands for terminal)."""
         logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
 
@@ -890,7 +899,7 @@ class TeleClaudeDaemon:
                 session_id[:8],
             )
 
-    async def handle_topic_closed(self, session_id: str, context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context
+    async def handle_topic_closed(self, session_id: str, context: dict) -> None:  # type: ignore[type-arg]
         """Handle topic/channel closure event."""
         logger.info("Topic closed for session %s, closing session and tmux", session_id[:8])
 
@@ -945,8 +954,6 @@ class TeleClaudeDaemon:
     async def _cleanup_inactive_sessions(self) -> None:
         """Clean up sessions inactive for 72+ hours."""
         try:
-            from datetime import timedelta
-
             cutoff_time = datetime.now() - timedelta(hours=72)
             sessions = await db.list_sessions()
 

@@ -122,7 +122,7 @@ class TestSessionCloseReopen:
         with patch("teleclaude.daemon.terminal_bridge") as mock_tb, patch(
             "teleclaude.daemon.db"
         ) as mock_db:
-            mock_tb.create_session = AsyncMock()
+            mock_tb.create_tmux_session = AsyncMock()
             mock_db.update_session = AsyncMock()
 
             # Test session
@@ -141,11 +141,12 @@ class TestSessionCloseReopen:
             await daemon._reopen_session(session)
 
             # Verify: tmux created at saved directory
-            mock_tb.create_session.assert_called_once_with(
-                session_name="test-tmux-123",
-                working_directory="/home/user/project",
+            mock_tb.create_tmux_session.assert_called_once_with(
+                name="test-tmux-123",
+                working_dir="/home/user/project",
                 shell="/bin/zsh",
-                terminal_size="120x40",
+                cols=120,
+                rows=40,
             )
 
             # Verify: marked active
