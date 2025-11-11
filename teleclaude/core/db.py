@@ -51,6 +51,15 @@ class Db:
         await self._db.executescript(schema_sql)
         await self._db.commit()
 
+        # Migrations: Add new columns to existing databases
+        try:
+            await self._db.execute("ALTER TABLE sessions ADD COLUMN claude_session_file TEXT")
+            await self._db.commit()
+            logger.info("Added claude_session_file column to sessions table")
+        except Exception:
+            # Column already exists, ignore
+            pass
+
         # NOTE: We do NOT reset polling_active flags here!
         # The daemon's restore_active_pollers() function handles this correctly by:
         # 1. Checking if tmux session still exists
@@ -521,6 +530,7 @@ class Db:
         polling_active: bool | object = ux_state._UNSET,
         idle_notification_message_id: Optional[str] | object = ux_state._UNSET,
         pending_deletions: list[str] | object = ux_state._UNSET,
+        notification_sent: bool | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
 
@@ -530,6 +540,7 @@ class Db:
             polling_active: Whether polling is active (optional)
             idle_notification_message_id: Idle notification message ID (optional)
             pending_deletions: List of message IDs pending deletion (optional)
+            notification_sent: Whether Claude Code notification was sent (optional)
         """
         await ux_state.update_session_ux_state(
             self._db,
@@ -538,7 +549,41 @@ class Db:
             polling_active=polling_active,
             idle_notification_message_id=idle_notification_message_id,
             pending_deletions=pending_deletions,
+            notification_sent=notification_sent,
         )
+
+    async def set_notification_flag(self, session_id: str, value: bool) -> None:
+        """Set notification_sent flag in UX state.
+
+        Used by Claude Code notification hook to signal that notification was sent.
+
+        Args:
+            session_id: Session ID
+            value: Flag value (True = notification sent, False = cleared)
+        """
+        await self.update_ux_state(session_id, notification_sent=value)
+
+    async def clear_notification_flag(self, session_id: str) -> None:
+        """Clear notification_sent flag in UX state.
+
+        Called by polling coordinator when output resumes to re-enable notifications.
+
+        Args:
+            session_id: Session ID
+        """
+        await self.update_ux_state(session_id, notification_sent=False)
+
+    async def get_notification_flag(self, session_id: str) -> bool:
+        """Get notification_sent flag from UX state.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            True if notification was sent, False otherwise
+        """
+        ux_state_data = await self.get_ux_state(session_id)
+        return ux_state_data.notification_sent
 
 
 # Module-level singleton instance (initialized on first import)

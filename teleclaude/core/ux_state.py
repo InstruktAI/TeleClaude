@@ -47,6 +47,7 @@ class SessionUXState:
     polling_active: bool = False
     idle_notification_message_id: Optional[str] = None
     pending_deletions: list[str] = field(default_factory=list)
+    notification_sent: bool = False  # Claude Code notification hook flag
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionUXState":  # type: ignore
@@ -60,6 +61,7 @@ class SessionUXState:
             pending_deletions=(
                 list(data.get("pending_deletions", [])) if isinstance(data.get("pending_deletions"), list) else []
             ),
+            notification_sent=bool(data.get("notification_sent", False)),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -69,6 +71,7 @@ class SessionUXState:
             "polling_active": self.polling_active,
             "idle_notification_message_id": self.idle_notification_message_id,
             "pending_deletions": self.pending_deletions,
+            "notification_sent": self.notification_sent,
         }
 
 
@@ -171,6 +174,7 @@ async def update_session_ux_state(
     polling_active: bool | object = _UNSET,
     idle_notification_message_id: Optional[str] | object = _UNSET,
     pending_deletions: list[str] | object = _UNSET,
+    notification_sent: bool | object = _UNSET,
 ) -> None:
     """Update session UX state (merges with existing).
 
@@ -181,6 +185,7 @@ async def update_session_ux_state(
         polling_active: Whether polling is active (optional)
         idle_notification_message_id: Idle notification message ID (optional)
         pending_deletions: List of message IDs pending deletion (optional)
+        notification_sent: Whether Claude Code notification was sent (optional)
     """
     try:
         # Load existing state
@@ -195,6 +200,8 @@ async def update_session_ux_state(
             existing.idle_notification_message_id = idle_notification_message_id  # type: ignore
         if pending_deletions is not _UNSET:
             existing.pending_deletions = pending_deletions  # type: ignore
+        if notification_sent is not _UNSET:
+            existing.notification_sent = notification_sent  # type: ignore
 
         # Store
         ux_state_json = json.dumps(existing.to_dict())

@@ -198,7 +198,23 @@ async def poll_and_send_output(
                     await db.update_ux_state(event.session_id, idle_notification_message_id=None)
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
+                # Clear notification_sent flag (activity detected, re-enable notifications)
+                if ux_state.notification_sent:
+                    await db.clear_notification_flag(event.session_id)
+                    logger.debug(
+                        "Cleared notification_sent flag for session %s (activity detected)", event.session_id[:8]
+                    )
+
             elif isinstance(event, IdleDetected):
+                # Check if Claude Code notification was sent (skip idle notification if so)
+                notification_sent = await db.get_notification_flag(event.session_id)
+                if notification_sent:
+                    logger.debug(
+                        "Skipping idle notification for session %s (Claude Code notification sent)",
+                        event.session_id[:8],
+                    )
+                    continue
+
                 # Idle detected - send notification (broadcasts to all adapters)
                 notification = (
                     f"⏸️ No output for {event.idle_seconds} seconds - " "process may be waiting or hung up, try cancel"
