@@ -4,9 +4,10 @@ These tests verify that command handlers correctly emit events with proper paylo
 This is the CRITICAL test layer that would have caught the "missing command field" bug.
 """
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, Mock, MagicMock, patch
-from telegram import Update, User, Chat, Message
+from telegram import Chat, Message, Update, User
 from telegram.ext import ContextTypes
 
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
@@ -113,7 +114,7 @@ class TestNewSessionCommand:
         assert metadata["chat_id"] == -100123456789
 
     @pytest.mark.asyncio
-    async def test_unauthorized_user_does_not_emit_event(self, telegram_adapter, mock_adapter_client):
+    async def test_unauthorized_user_does_not_handle_event(self, telegram_adapter, mock_adapter_client):
         """Test that unauthorized user cannot trigger command."""
         update = create_mock_update("/new_session Hacker Session", user_id=99999)  # Not in whitelist
         context = create_mock_context(args=["Hacker", "Session"])

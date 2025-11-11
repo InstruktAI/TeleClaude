@@ -1,12 +1,13 @@
 """Unit tests for telegram_adapter.py."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from telegram.error import RetryAfter
 
-from teleclaude.adapters.telegram_adapter import TelegramAdapter
-from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude import config as config_module
+from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.telegram_adapter import TelegramAdapter
 
 
 @pytest.fixture
@@ -36,7 +37,7 @@ def mock_env(monkeypatch):
 def mock_adapter_client():
     """Mock AdapterClient."""
     client = MagicMock()
-    client.emit_event = AsyncMock()
+    client.handle_event = AsyncMock()
     return client
 
 

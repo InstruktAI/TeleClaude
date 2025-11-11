@@ -75,7 +75,7 @@ self.client.on(TeleClaudeEvents.MESSAGE, self._handle_message)
 self.client.on(TeleClaudeEvents.NEW_SESSION, self._handle_new_session)
 
 # Adapters emit events
-await self.client.emit_event(
+await self.client.handle_event(
     event=TeleClaudeEvents.MESSAGE,
     payload={"session_id": sid, "text": text},
     metadata={"adapter_type": "telegram"}
@@ -115,7 +115,7 @@ sequenceDiagram
 
     Note over User,Daemon: User sends message
     User->>TG: "ls -la"
-    TG->>Client: emit_event(MESSAGE)
+    TG->>Client: handle_event(MESSAGE)
     Client->>Daemon: handle_message()
 
     Note over Daemon: Execute in terminal
@@ -296,7 +296,7 @@ sequenceDiagram
     User->>TG: Types "ls -la" in topic
 
     Note over TG: Platform event loop receives
-    TG->>Client: emit_event(MESSAGE,<br/>session_id, text)
+    TG->>Client: handle_event(MESSAGE,<br/>session_id, text)
 
     Note over Client: Route to subscribers
     Client->>Daemon: _handle_message(payload)
@@ -444,8 +444,8 @@ Platform Events                  Daemon Polling
 │ TelegramAdapter │──┐  Push: immediate callbacks
 │  (own loop)     │  │
 └─────────────────┘  │
-                     ├──> on_message()  ──> client.emit_event()
-┌─────────────────┐  │   on_command()  ──> client.emit_event()
+                     ├──> on_message()  ──> client.handle_event()
+┌─────────────────┐  │   on_command()  ──> client.handle_event()
 │  RedisAdapter   │──┘
 │  (own loop)     │    Pull: XREAD every 1s
 └─────────────────┘
@@ -612,7 +612,7 @@ sequenceDiagram
     participant tmux
 
     User->>TG: /new_session "My Session"
-    TG->>Client: emit_event(NEW_SESSION)
+    TG->>Client: handle_event(NEW_SESSION)
     Client->>Daemon: handle_new_session()
 
     Note over Daemon: Generate session_id upfront

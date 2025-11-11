@@ -69,12 +69,12 @@ def test_offline_detection_logic():
 async def test_discover_peers_returns_empty():
     """Test that discover_peers() returns empty list (bots can't see other bots)."""
     from unittest.mock import AsyncMock, Mock, patch
+
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
-    from teleclaude import config as config_module
 
     # Mock AdapterClient
     mock_client = Mock()
-    mock_client.emit_event = AsyncMock()
+    mock_client.handle_event = AsyncMock()
 
     # Set environment variables
     with patch.dict("os.environ", {
@@ -93,12 +93,12 @@ async def test_discover_peers_returns_empty():
 async def test_heartbeat_edit_same_message():
     """Test that heartbeat messages EDIT the same message, not create new ones."""
     from unittest.mock import AsyncMock, Mock, patch
+
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
-    from teleclaude import config as config_module
 
     # Mock AdapterClient
     mock_client = Mock()
-    mock_client.emit_event = AsyncMock()
+    mock_client.handle_event = AsyncMock()
 
     # Set environment variables
     with patch.dict("os.environ", {
@@ -144,12 +144,12 @@ async def test_heartbeat_edit_same_message():
 async def test_peer_data_format():
     """Test that discover_peers() returns empty list (Telegram doesn't support discovery)."""
     from unittest.mock import AsyncMock, Mock, patch
+
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
-    from teleclaude import config as config_module
 
     # Mock AdapterClient
     mock_client = Mock()
-    mock_client.emit_event = AsyncMock()
+    mock_client.handle_event = AsyncMock()
 
     # Set environment variables
     with patch.dict("os.environ", {

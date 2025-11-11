@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 if TYPE_CHECKING:
-    from teleclaude.core.adapter_client import AdapterClient
     from telegram import Message as TelegramMessage
+
+    from teleclaude.core.adapter_client import AdapterClient
 
 from telegram import (
     BotCommand,
@@ -208,6 +209,7 @@ class TelegramAdapter(UiAdapter):
 
         # Handle forum topic closed events
         self.app.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self._handle_topic_closed))
+        self.app.add_handler(MessageHandler(filters.StatusUpdate.FORUM_TOPIC_REOPENED, self._handle_topic_reopened))
 
         # Add catch-all handler to log ALL updates (for debugging)
         self.app.add_handler(MessageHandler(filters.ALL, self._log_all_updates), group=999)
@@ -1713,21 +1715,41 @@ Usage:
             return
 
         session = sessions[0]
-        logger.info("Topic %s closed, deleting it and cleaning up session %s", topic_id, session.session_id)
+        logger.info("Topic %s closed by user, closing session %s", topic_id, session.session_id[:8])
 
-        # Delete topic immediately (force sync across all Telegram clients)
-        try:
-            await self.app.bot.delete_forum_topic(
-                chat_id=self.supergroup_id,
-                message_thread_id=topic_id,
-            )
-            logger.info("Deleted forum topic %s for session %s", topic_id, session.session_id[:8])
-        except Exception as e:
-            logger.warning("Failed to delete forum topic %s: %s", topic_id, e)
-
-        # Emit topic closed event to daemon for cleanup
+        # Emit session_closed event to daemon for cleanup
         await self.client.handle_event(
-            event=TeleClaudeEvents.TOPIC_CLOSED,
+            event="session_closed",
+            payload={"session_id": session.session_id},
+            metadata={
+                "adapter_type": "telegram",
+                "user_id": update.effective_user.id if update.effective_user else None,
+                "topic_id": topic_id,
+            },
+        )
+
+    async def _handle_topic_reopened(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle forum topic reopened event."""
+        if not update.message or not update.message.message_thread_id:
+            return
+
+        topic_id = update.message.message_thread_id
+
+        # Find session by topic ID (try both formats)
+        sessions = await db.get_sessions_by_adapter_metadata("telegram", "channel_id", str(topic_id))
+        if not sessions:
+            sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)
+
+        if not sessions:
+            logger.warning("No session found for reopened topic %s", topic_id)
+            return
+
+        session = sessions[0]
+        logger.info("Topic %s reopened by user, reopening session %s", topic_id, session.session_id[:8])
+
+        # Emit session_reopened event to daemon
+        await self.client.handle_event(
+            event="session_reopened",
             payload={"session_id": session.session_id},
             metadata={
                 "adapter_type": "telegram",

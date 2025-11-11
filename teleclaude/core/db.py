@@ -32,6 +32,7 @@ class Db:
         """
         self.db_path = db_path
         self._db: Optional[aiosqlite.Connection] = None
+        self._client: Optional["AdapterClient"] = None
 
     async def initialize(self) -> None:
         """Initialize database and create tables (greenfield - no migrations)."""
@@ -56,6 +57,15 @@ class Db:
         # 2. If yes: restart polling
         # 3. If no: mark as inactive
         # Resetting here would prevent automatic polling restoration.
+
+    def set_client(self, client: "AdapterClient") -> None:
+        """Wire database to AdapterClient for event emission.
+
+        Args:
+            client: AdapterClient instance to emit events through
+        """
+        self._client = client
+        logger.info("Database wired to AdapterClient for event emission")
 
     async def close(self) -> None:
         """Close database connection."""
@@ -181,7 +191,7 @@ class Db:
         return [Session.from_dict(dict(row)) for row in rows]
 
     async def update_session(self, session_id: str, **fields: object) -> None:
-        """Update session fields.
+        """Update session fields and emit events.
 
         Args:
             session_id: Session ID
@@ -189,6 +199,9 @@ class Db:
         """
         if not fields:
             return
+
+        # Get old session state for event emission
+        old_session = await self.get_session(session_id)
 
         # Serialize adapter_metadata if it's a dict
         if "adapter_metadata" in fields and isinstance(fields["adapter_metadata"], dict):
@@ -199,6 +212,18 @@ class Db:
 
         await self._db.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
         await self._db.commit()
+
+        # Update UI via AdapterClient if wired
+        if self._client and old_session:
+            # Session closed - add ❌ emoji
+            if "closed" in fields and fields["closed"] and not old_session.closed:
+                await self._client.set_channel_status(session_id, "closed")
+                logger.debug("Updated channel status to closed for %s", session_id[:8])
+
+            # Session reopened - remove ❌ emoji
+            if "closed" in fields and not fields["closed"] and old_session.closed:
+                await self._client.set_channel_status(session_id, "active")
+                logger.debug("Updated channel status to active for %s", session_id[:8])
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -352,13 +377,17 @@ class Db:
         await self.update_ux_state(session_id, pending_deletions=[])
 
     async def delete_session(self, session_id: str) -> None:
-        """Delete session.
+        """Delete session and emit event.
 
         Args:
             session_id: Session ID
         """
+        # Get session before deleting for event emission
+        session = await self.get_session(session_id)
+
         await self._db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await self._db.commit()
+        logger.debug("Deleted session %s from database", session_id[:8])
 
     async def count_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> int:
         """Count sessions with optional filters.

@@ -428,7 +428,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                             "role": info.get("role", "general"),
                             "system_stats": info.get("system_stats", {}),
                             "sessions": info.get("sessions", []),
-                            "bot_username": info.get("bot_username", ""),
                             "status": "online",
                             "last_seen": last_seen_dt,
                             "last_seen_ago": last_seen_ago,

@@ -799,7 +799,12 @@ async def handle_cd_session(  # type: ignore[explicit-any]
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session.session_id, cd_command, True, message_id)
+    success = await execute_terminal_command(session.session_id, cd_command, True, message_id)
+
+    # Save working directory to DB if successful
+    if success:
+        await db.update_session(session.session_id, working_directory=target_dir)
+        logger.debug("Updated working_directory for session %s: %s", session.session_id[:8], target_dir)
 
 
 @with_session

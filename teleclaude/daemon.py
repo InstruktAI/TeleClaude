@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
 
@@ -21,12 +22,12 @@ from teleclaude.core import (
     command_handlers,
     polling_coordinator,
     session_cleanup,
-    session_lifecycle,
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents
+from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
@@ -164,6 +165,14 @@ class TeleClaudeDaemon:
             logger.warning("MESSAGE event missing required fields: session_id=%s, text=%s", session_id, text)
             return
 
+        # Auto-reopen if closed
+        session = await db.get_session(str(session_id))
+        if session and session.closed:
+            logger.info(
+                "Auto-reopening closed session %s", session_id[:8] if isinstance(session_id, str) else session_id
+            )
+            await self._reopen_session(session)
+
         await self.handle_message(str(session_id), str(text), context)
 
     async def _handle_voice(self, event: str, context: dict[str, object]) -> None:
@@ -199,6 +208,67 @@ class TeleClaudeDaemon:
             send_feedback=send_feedback,
             get_output_file=self._get_output_file_path,
         )
+
+    async def _handle_session_closed(self, event: str, context: dict[str, object]) -> None:
+        """Handler for session_closed events - user closed topic.
+
+        Args:
+            event: Event type (always "session_closed")
+            context: Unified context (all payload + metadata fields)
+        """
+        session_id = context.get("session_id")
+        if not session_id:
+            logger.warning("session_closed event missing session_id")
+            return
+
+        session = await db.get_session(str(session_id))
+        if not session:
+            logger.warning("Session %s not found for close event", session_id)
+            return
+
+        logger.info("Handling session_closed for %s", session_id[:8] if isinstance(session_id, str) else session_id)
+
+        # Kill tmux session
+        await terminal_bridge.kill_session(session.tmux_session_name)
+
+        # Stop polling
+        await self.polling_coordinator.stop_polling(str(session_id))
+
+        # Mark closed in DB (DB will update UI via AdapterClient)
+        await db.update_session(str(session_id), closed=True)
+
+    async def _handle_session_reopened(self, event: str, context: dict[str, object]) -> None:
+        """Handler for session_reopened events - user reopened topic.
+
+        Args:
+            event: Event type (always "session_reopened")
+            context: Unified context (all payload + metadata fields)
+        """
+        session_id = context.get("session_id")
+        if not session_id:
+            logger.warning("session_reopened event missing session_id")
+            return
+
+        session = await db.get_session(str(session_id))
+        if not session:
+            logger.warning("Session %s not found for reopen event", session_id)
+            return
+
+        logger.info("Handling session_reopened for %s", session_id[:8] if isinstance(session_id, str) else session_id)
+        await self._reopen_session(session)
+
+    async def _reopen_session(self, session: Session) -> None:
+        """Recreate tmux at saved working directory and mark active."""
+
+        await terminal_bridge.create_session(
+            session_name=session.tmux_session_name,
+            working_directory=session.working_directory,
+            shell=self.config.computer.default_shell,
+            terminal_size=session.terminal_size or "120x40",
+        )
+
+        await db.update_session(session.session_id, closed=False)
+        logger.info("Session %s reopened at %s", session.session_id[:8], session.working_directory)
 
     async def _handle_file(self, event: str, context: dict[str, object]) -> None:
         """Handler for FILE events - pure business logic.
@@ -566,6 +636,10 @@ class TeleClaudeDaemon:
         await db.initialize()
         logger.info("Database initialized")
 
+        # Wire DB to AdapterClient for UI updates
+        db.set_client(self.client)
+        logger.info("Database wired to AdapterClient")
+
         # Initialize voice handler
         init_voice_handler()
         logger.info("Voice handler initialized")
@@ -615,7 +689,7 @@ class TeleClaudeDaemon:
         logger.info("REST API started on http://%s:%s", self.rest_api.bind_address, self.rest_api.port)
 
         # Start periodic cleanup task (runs every hour)
-        self.cleanup_task = asyncio.create_task(session_lifecycle.periodic_cleanup(db, config))
+        self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
         # Restore polling for sessions that were active before restart
@@ -856,6 +930,52 @@ class TeleClaudeDaemon:
                 logger.debug("Deleted workspace for closed session %s", session_id[:8])
         except Exception as e:
             logger.warning("Failed to delete workspace: %s", e)
+
+    async def _periodic_cleanup(self) -> None:
+        """Periodically clean up inactive sessions (72h lifecycle)."""
+        while True:
+            try:
+                await asyncio.sleep(3600)  # Run every hour
+                await self._cleanup_inactive_sessions()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in periodic cleanup: %s", e)
+
+    async def _cleanup_inactive_sessions(self) -> None:
+        """Clean up sessions inactive for 72+ hours."""
+        try:
+            from datetime import timedelta
+
+            cutoff_time = datetime.now() - timedelta(hours=72)
+            sessions = await db.list_sessions()
+
+            for session in sessions:
+                if session.closed:
+                    continue
+
+                # Check last_activity timestamp
+                if not session.last_activity:
+                    logger.warning("No last_activity for session %s", session.session_id[:8])
+                    continue
+
+                if session.last_activity < cutoff_time:
+                    logger.info(
+                        "Cleaning up inactive session %s (inactive for %s)",
+                        session.session_id[:8],
+                        datetime.now() - session.last_activity,
+                    )
+
+                    # Kill tmux session
+                    await terminal_bridge.kill_session(session.tmux_session_name)
+
+                    # Mark as closed
+                    await db.update_session(session.session_id, closed=True)
+
+                    logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
+
+        except Exception as e:
+            logger.error("Error cleaning up inactive sessions: %s", e)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, has_exit_marker: bool = True

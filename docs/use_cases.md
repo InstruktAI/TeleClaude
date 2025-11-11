@@ -38,7 +38,7 @@ sequenceDiagram
     participant tmux
 
     User->>TG: /new "My Session"
-    TG->>Client: emit_event(NEW_SESSION, title="My Session")
+    TG->>Client: handle_event(NEW_SESSION, title="My Session")
     Client->>Daemon: handle_new_session()
 
     Note over Daemon: Generate session_id
@@ -62,6 +62,7 @@ sequenceDiagram
 ```
 
 **Postconditions:**
+
 - New session in database with `origin_adapter="telegram"`
 - Telegram topic created
 - tmux session running
@@ -88,7 +89,7 @@ sequenceDiagram
     participant Poller as OutputPoller
 
     User->>TG: "ls -la" in topic
-    TG->>Client: emit_event(MESSAGE, text="ls -la")
+    TG->>Client: handle_event(MESSAGE, text="ls -la")
     Client->>Daemon: handle_message()
 
     Note over Daemon: Get session
@@ -123,6 +124,7 @@ sequenceDiagram
 ```
 
 **Key Behaviors (Human Mode):**
+
 - First 10 seconds: Edit same message in-place (clean UX)
 - After 10 seconds: Send new messages (preserve history)
 - Output formatted with status line: `⏱️ Running 2m 34s | 📊 145KB`
@@ -171,6 +173,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Idle notification is informational only (does NOT stop polling)
 - Auto-deleted when output resumes
 - Polling continues until exit code detected
@@ -204,7 +207,7 @@ sequenceDiagram
     TG-->>User: Truncated output + [📎 Download]
 
     User->>TG: Clicks download button
-    TG->>Client: emit_event(CALLBACK_QUERY)
+    TG->>Client: handle_event(CALLBACK_QUERY)
     Client->>Daemon: handle_callback_query()
 
     Note over Daemon: Read full output file
@@ -224,6 +227,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Truncation preserves last N chars (most recent output)
 - Full output always persisted to `session_output/{session_id}.txt`
 - Temp file cleaned up in `finally` block
@@ -249,7 +253,7 @@ sequenceDiagram
     participant DB as db
 
     User->>TG: [Voice message]
-    TG->>Client: emit_event(VOICE_MESSAGE, file_id)
+    TG->>Client: handle_event(VOICE_MESSAGE, file_id)
     Client->>Daemon: handle_voice_message()
 
     Note over Daemon: Download voice file
@@ -274,7 +278,7 @@ sequenceDiagram
     TG-->>User: Confirmation buttons
 
     User->>TG: Clicks [Execute]
-    TG->>Client: emit_event(CALLBACK_QUERY, action="execute")
+    TG->>Client: handle_event(CALLBACK_QUERY, action="execute")
     Client->>Daemon: handle_callback_query()
 
     Note over Daemon: Execute as normal command
@@ -284,6 +288,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Transcription status appended to existing output message (clean UX)
 - User must confirm before execution (safety)
 - Temp voice file cleaned up after transcription
@@ -325,7 +330,7 @@ sequenceDiagram
     RedisDB-->>Redis_B: {computer: B, title: Deploy}
 
     Note over Redis_B: Emit event
-    Redis_B->>Daemon_B: emit_event(NEW_SESSION)
+    Redis_B->>Daemon_B: handle_event(NEW_SESSION)
     Daemon_B->>DB_B: create_session(origin_adapter="redis", is_ai_to_ai=true)
     DB_B-->>Daemon_B: Session created
 
@@ -344,6 +349,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Session marked with `is_ai_to_ai=true` in metadata
 - No Telegram topic created (Redis-only transport)
 - Session persists across daemon restarts (SQLite)
@@ -377,7 +383,7 @@ sequenceDiagram
     Redis_B->>RedisDB: XREAD commands
     RedisDB-->>Redis_B: {command: "git status"}
 
-    Redis_B->>Daemon_B: emit_event(MESSAGE, text="git status")
+    Redis_B->>Daemon_B: handle_event(MESSAGE, text="git status")
     Daemon_B->>tmux_B: send_keys("git status; echo __EXIT__$?__")
 
     Note over Poller_B: AI mode - send RAW chunks
@@ -408,6 +414,7 @@ sequenceDiagram
 ```
 
 **Key Behaviors (AI Mode):**
+
 - Output sent as RAW chunks (no backticks, no formatting)
 - No message editing (sequential chunks)
 - Chunk size: 3900 chars
@@ -456,6 +463,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Streaming API (async generator)
 - Blocks for 1s per XREAD (efficient)
 - Timeout configurable (default 300s)
@@ -483,7 +491,7 @@ sequenceDiagram
     participant tmux
 
     User->>TG: /list
-    TG->>Client: emit_event(COMMAND, command="list")
+    TG->>Client: handle_event(COMMAND, command="list")
     Client->>Daemon: handle_command("list")
 
     Daemon->>DB: list_sessions(closed=False)
@@ -521,7 +529,7 @@ sequenceDiagram
     participant FS as FileSystem
 
     User->>TG: /exit
-    TG->>Client: emit_event(COMMAND, command="exit")
+    TG->>Client: handle_event(COMMAND, command="exit")
     Client->>Daemon: handle_command("exit")
 
     Note over Daemon: Stop polling if active
@@ -546,6 +554,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Stops output polling
 - Kills tmux session
 - Deletes output file (cleanup)
@@ -588,6 +597,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Sessions persist in SQLite
 - tmux sessions may survive daemon restart
 - Dead tmux sessions auto-detected and closed
@@ -620,7 +630,7 @@ sequenceDiagram
     participant Whisper
 
     User->>TG: [Voice message]
-    TG->>Client: emit_event(VOICE_MESSAGE)
+    TG->>Client: handle_event(VOICE_MESSAGE)
     Client->>Daemon: handle_voice_message()
 
     Daemon->>Client: send_status_message("🎤 Transcribing...")
@@ -713,6 +723,7 @@ sequenceDiagram
 ```
 
 **Key Points:**
+
 - Origin adapter: CRITICAL (failure raises exception)
 - Observer adapters: Best-effort (failures logged)
 - Only observers with `has_ui=True` receive broadcasts
@@ -723,24 +734,24 @@ sequenceDiagram
 
 ### Use Case Categories
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Human-Interactive (UC-H*) | 5 | User via Telegram UI |
-| AI-to-AI (UC-A*) | 3 | Cross-computer via Redis |
-| Session Management (UC-S*) | 3 | Lifecycle operations |
-| Voice (UC-V*) | 2 | Voice transcription |
-| Multi-Adapter (UC-M*) | 2 | Broadcasting patterns |
+| Category                    | Count | Description              |
+| --------------------------- | ----- | ------------------------ |
+| Human-Interactive (UC-H\*)  | 5     | User via Telegram UI     |
+| AI-to-AI (UC-A\*)           | 3     | Cross-computer via Redis |
+| Session Management (UC-S\*) | 3     | Lifecycle operations     |
+| Voice (UC-V\*)              | 2     | Voice transcription      |
+| Multi-Adapter (UC-M\*)      | 2     | Broadcasting patterns    |
 
 ### Key Behavioral Differences
 
-| Aspect | Human Mode | AI Mode |
-|--------|------------|---------|
-| Output formatting | Formatted with status line | RAW chunks |
-| Message editing | Edit in-place (first 10s) | No editing, sequential |
-| Chunking | Single message (truncated) | Multiple 3900-char chunks |
-| Completion marker | Exit code in message | `[Output Complete]` |
-| Idle notifications | Yes (after 60s) | No |
-| Download buttons | Yes (if > 3800 chars) | No (full streaming) |
+| Aspect             | Human Mode                 | AI Mode                   |
+| ------------------ | -------------------------- | ------------------------- |
+| Output formatting  | Formatted with status line | RAW chunks                |
+| Message editing    | Edit in-place (first 10s)  | No editing, sequential    |
+| Chunking           | Single message (truncated) | Multiple 3900-char chunks |
+| Completion marker  | Exit code in message       | `[Output Complete]`       |
+| Idle notifications | Yes (after 60s)            | No                        |
+| Download buttons   | Yes (if > 3800 chars)      | No (full streaming)       |
 
 ---
 

@@ -17,9 +17,11 @@ A critical bug was discovered where `/new_session` and all other telegram comman
 ## What Was Missing
 
 ### Gap #1: Telegram Command Handler Tests
+
 **Status:** ❌ **COMPLETELY MISSING**
 
 **What should be tested:**
+
 - All `_handle_*` methods in `TelegramAdapter`
 - Event payload structure (presence of required fields)
 - Command name translation (underscores → hyphens)
@@ -31,13 +33,16 @@ A critical bug was discovered where `/new_session` and all other telegram comman
 ---
 
 ### Gap #2: Adapter Client Event Routing Tests
+
 **Status:** ⚠️ **PARTIALLY COVERED**
 
 **What exists:**
+
 - `test_adapter_client_protocols.py` tests cross-computer orchestration
 - Basic event registration tests
 
 **What's missing:**
+
 - Tests for `handle_event()` method with all event types
 - Payload integrity through routing
 - Session lookup integration
@@ -46,13 +51,16 @@ A critical bug was discovered where `/new_session` and all other telegram comman
 ---
 
 ### Gap #3: Daemon Event Handler Tests
+
 **Status:** ⚠️ **PARTIALLY COVERED**
 
 **What exists:**
+
 - `test_event_handlers.py` only tests `handle_topic_closed`
 - `test_daemon.py` has basic daemon tests
 
 **What's missing:**
+
 - Tests for `_handle_command_event()` method
 - Tests for `_handle_message_event()` method
 - Verification that commands are extracted from `payload["command"]`
@@ -61,13 +69,16 @@ A critical bug was discovered where `/new_session` and all other telegram comman
 ---
 
 ### Gap #4: End-to-End Integration Tests
+
 **Status:** ⚠️ **BYPASS ISSUE**
 
 **What exists:**
+
 - `test_full_flow.py` has integration tests
 - **Problem:** Calls `daemon.handle_command()` directly, bypassing adapter layer
 
 **What's needed:**
+
 - Tests that start from telegram Update object
 - Tests that flow through: Update → handler → event → routing → daemon → execution
 - Error propagation tests
@@ -84,20 +95,25 @@ A critical bug was discovered where `/new_session` and all other telegram comman
 **Test Classes:**
 
 1. **TestNewSessionCommand** (3 tests)
+
    - `test_emits_event_with_command_field` ⭐ **Would have caught the bug!**
-   - `test_unauthorized_user_does_not_emit_event`
+   - `test_unauthorized_user_does_not_handle_event`
    - `test_empty_args`
 
 2. **TestListSessionsCommand** (1 test)
+
    - `test_emits_event_with_command_field`
 
 3. **TestCancelCommand** (1 test)
+
    - `test_emits_event_with_command_field`
 
 4. **TestKeyCommands** (1 test)
+
    - `test_key_up_emits_event_with_command`
 
 5. **TestEventToCommandTranslation** (2 tests)
+
    - `test_converts_underscores_to_hyphens`
    - `test_handles_no_underscores`
 
@@ -121,17 +137,20 @@ assert payload["args"] == ["My", "Session"]
 ## Test Strategy Going Forward
 
 ### Priority 1: Critical Path Coverage (DONE ✅)
+
 - [x] Telegram command handlers (`test_telegram_command_handlers.py`)
 - [ ] Adapter client event routing (needs expansion)
 - [ ] Daemon command event handling (needs expansion)
 
 ### Priority 2: Integration Testing
+
 - [ ] Create `tests/integration/test_command_flow_e2e.py`
 - [ ] Test Update → session creation flow
 - [ ] Test authorization failures
 - [ ] Test all command types end-to-end
 
 ### Priority 3: Edge Cases & Error Handling
+
 - [ ] Malformed command payloads
 - [ ] Missing required fields
 - [ ] Concurrent command execution
@@ -144,12 +163,14 @@ assert payload["args"] == ["My", "Session"]
 ### 1. Always Test the Full Flow
 
 **Bad:**
+
 ```python
 # Bypasses adapter layer
 await daemon.handle_command("new-session", ["Test"], context)
 ```
 
 **Good:**
+
 ```python
 # Tests complete flow
 update = create_telegram_update("/new_session Test")
@@ -200,6 +221,7 @@ pytest --cov=teleclaude/adapters/telegram_adapter.py \
 ```
 
 **Coverage Goals:**
+
 - **Critical command flow**: 95%+ (currently ~40%)
 - **Overall codebase**: 85%+ (currently ~35%)
 
@@ -224,6 +246,7 @@ pytest --cov=teleclaude/adapters/telegram_adapter.py \
 **Problem:** Bug caused silent failure - no error, just no action.
 
 **Solution:**
+
 - Add assertions in critical paths
 - Test error propagation
 - Log when expected actions don't occur

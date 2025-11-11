@@ -512,6 +512,7 @@ class TeleClaudeMCPServer:
             - origin_adapter: Adapter that initiated session (telegram/redis)
             - target: Target computer name (only for AI-to-AI sessions, None for Human-to-AI)
             - title: Session title
+            - working_directory: Current working directory of the session
             - status: Session status (active/closed)
             - created_at: ISO timestamp
             - last_activity: ISO timestamp
@@ -538,6 +539,7 @@ class TeleClaudeMCPServer:
                     "origin_adapter": session.origin_adapter,
                     "target": target_computer,
                     "title": session.title,
+                    "working_directory": session.working_directory,
                     "status": "closed" if session.closed else "active",
                     "created_at": session.created_at.isoformat(),
                     "last_activity": session.last_activity.isoformat(),
