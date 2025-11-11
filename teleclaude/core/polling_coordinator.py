@@ -112,8 +112,8 @@ async def _send_output_chunks_ai_mode(
         adapter_client: AdapterClient instance for message sending
         full_output: Complete output to send
     """
-    # Conservative chunk size (most platforms support at least 4000 chars)
-    chunk_size = 3900
+    # Conservative chunk size (avoid Telegram message splitting)
+    chunk_size = 3750
 
     # Split output into chunks
     chunks = [full_output[i : i + chunk_size] for i in range(0, len(full_output), chunk_size)]
