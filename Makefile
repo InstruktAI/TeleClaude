@@ -1,4 +1,4 @@
-.PHONY: help install init format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
+.PHONY: help install init certs format lint test-unit test-e2e test-all test coverage coverage-html coverage-report clean dev start stop restart kill status
 
 # Default target
 help:
@@ -8,6 +8,7 @@ help:
 	@echo "Setup:"
 	@echo "  make install      Install dependencies"
 	@echo "  make init         Run installation wizard (ARGS=-y for unattended)"
+	@echo "  make certs        Generate SSL certificates for REST API"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make format       Format code with black and isort"
@@ -59,12 +60,12 @@ lint:
 
 test-unit:
 	@echo "Running unit tests..."
-	@. .venv/bin/activate && pytest tests/unit/ -v
+	@. .venv/bin/activate && pytest tests/unit/ -v --timeout=1
 	@echo "✓ Unit tests passed"
 
 test-e2e:
 	@echo "Running integration/e2e tests..."
-	@. .venv/bin/activate && pytest tests/integration/ -v
+	@. .venv/bin/activate && pytest tests/integration/ -v --timeout=5
 	@echo "✓ Integration tests passed"
 
 test-all:

@@ -9,7 +9,7 @@ import shlex
 import time
 import types
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -217,6 +217,58 @@ class TeleClaudeMCPServer:
                         "properties": {},
                     },
                 ),
+                Tool(
+                    name="teleclaude__send_file",
+                    title="TeleClaude: Send File",
+                    description=(
+                        "Send a file to Telegram via the current session. "
+                        "Use this to send files for download (logs, session files, etc.). "
+                        "File will be sent to the Telegram topic associated with the current session."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Absolute path to file to send",
+                            },
+                            "caption": {
+                                "type": "string",
+                                "description": "Optional caption for the file",
+                            },
+                        },
+                        "required": ["file_path"],
+                    },
+                ),
+                Tool(
+                    name="teleclaude__send_notification",
+                    title="TeleClaude: Send Notification",
+                    description=(
+                        "Send notification to a session (called by Claude Code hooks). "
+                        "**For mid-session notifications only** (user input needed). "
+                        "Sets notification_sent flag to prevent duplicate idle notifications. "
+                        "Optionally stores claude_session_file path in session state. "
+                        "**Do NOT use for completion messages** - use send_message directly instead."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session UUID",
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Notification message to send",
+                            },
+                            "claude_session_file": {
+                                "type": "string",
+                                "description": "Optional path to Claude session file",
+                            },
+                        },
+                        "required": ["session_id", "message"],
+                    },
+                ),
             ]
 
         @self.server.call_tool()
@@ -269,6 +321,19 @@ class TeleClaudeMCPServer:
                 # No arguments - always deploys to ALL computers
                 deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
                 return [TextContent(type="text", text=json.dumps(deploy_result, default=str))]
+            elif name == "teleclaude__send_file":
+                file_path = str(arguments.get("file_path", "")) if arguments else ""
+                caption_obj = arguments.get("caption") if arguments else None
+                caption = str(caption_obj) if caption_obj else None
+                result_text = await self.teleclaude__send_file(file_path, caption)
+                return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__send_notification":
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                message = str(arguments.get("message", "")) if arguments else ""
+                claude_session_file_obj = arguments.get("claude_session_file") if arguments else None
+                claude_session_file = str(claude_session_file_obj) if claude_session_file_obj else None
+                result_text = await self.teleclaude__send_notification(session_id, message, claude_session_file)
+                return [TextContent(type="text", text=result_text)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -301,8 +366,8 @@ class TeleClaudeMCPServer:
                 lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)), path=str(socket_path)
             )
 
-            # Make socket accessible
-            socket_path.chmod(0o666)
+            # Make socket accessible (owner + root only)
+            socket_path.chmod(0o600)
 
             async with server:
                 await server.serve_forever()
@@ -620,8 +685,8 @@ class TeleClaudeMCPServer:
             yield f"\n[Error: {str(e)}]"
 
         # Save checkpoint (for now, just update timestamp - stream ID tracking needs adapter support)
-        metadata["last_checkpoint_time"] = datetime.utcnow().isoformat()
-        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.utcnow())
+        metadata["last_checkpoint_time"] = datetime.now(UTC).isoformat()
+        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.now(UTC))
 
     async def teleclaude__get_session_status(self, session_id: str) -> dict[str, object]:
         """Get session status and accumulated output since last checkpoint.
@@ -678,11 +743,11 @@ class TeleClaudeMCPServer:
         state_description = "polling_active" if polling_active else "idle"
 
         # Calculate runtime
-        runtime_seconds = (datetime.utcnow() - session.created_at).total_seconds()
+        runtime_seconds = (datetime.now(UTC) - session.created_at).total_seconds()
 
         # Update checkpoint timestamp
-        metadata["last_checkpoint_time"] = datetime.utcnow().isoformat()
-        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.utcnow())
+        metadata["last_checkpoint_time"] = datetime.now(UTC).isoformat()
+        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.now(UTC))
 
         return {
             "status": status,
@@ -749,3 +814,77 @@ class TeleClaudeMCPServer:
                 logger.warning("Deployment to %s timed out", computer)
 
         return results
+
+    async def teleclaude__send_file(self, file_path: str, caption: Optional[str] = None) -> str:
+        """Send file via current session's origin adapter.
+
+        Args:
+            file_path: Absolute path to file
+            caption: Optional caption
+
+        Returns:
+            Success message or error
+        """
+        # Validate file exists
+        path = Path(file_path)
+        if not path.exists():
+            return f"Error: File not found: {file_path}"
+
+        if not path.is_file():
+            return f"Error: Not a file: {file_path}"
+
+        # Get current session from environment variable (set by Claude Code)
+        session_id = os.environ.get("TELECLAUDE_SESSION_ID")
+        if not session_id:
+            return "Error: No active TeleClaude session (TELECLAUDE_SESSION_ID not set)"
+
+        # Get session from database
+        session = await db.get_session(session_id)
+        if not session:
+            return f"Error: Session {session_id} not found"
+
+        # Get origin adapter
+        origin_adapter_name = session.origin_adapter
+        origin_adapter = self.client.adapters.get(origin_adapter_name)
+        if not origin_adapter:
+            return f"Error: Origin adapter '{origin_adapter_name}' not available"
+
+        # Send file via adapter
+        try:
+            message_id = await origin_adapter.send_file(
+                session_id=session_id, file_path=str(path.absolute()), caption=caption
+            )
+            return f"File sent successfully: {path.name} (message_id: {message_id})"
+        except Exception as e:
+            logger.error("Failed to send file %s: %s", file_path, e)
+            return f"Error sending file: {e}"
+
+    async def teleclaude__send_notification(
+        self, session_id: str, message: str, claude_session_file: Optional[str] = None
+    ) -> str:
+        """Send notification to session (called by Claude Code hooks).
+
+        Args:
+            session_id: Session UUID
+            message: Notification message to send
+            claude_session_file: Optional path to Claude session file
+
+        Returns:
+            Success message with message_id
+        """
+        # Verify session exists
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        # Send notification via AdapterClient
+        message_id = await self.client.send_message(session_id, message)
+
+        # Set notification_sent flag (prevents idle notifications)
+        await db.set_notification_flag(session_id, True)
+
+        # Store claude_session_file if provided
+        if claude_session_file:
+            await db.update_ux_state(session_id, claude_session_file=claude_session_file)
+
+        return f"OK: {message_id}"

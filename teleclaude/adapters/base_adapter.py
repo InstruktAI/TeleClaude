@@ -90,8 +90,30 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
+    async def close_channel(self, session_id: str) -> bool:
+        """Soft-close channel (can be reopened).
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True if successful, False if channel doesn't exist
+        """
+
+    @abstractmethod
+    async def reopen_channel(self, session_id: str) -> bool:
+        """Reopen a closed channel.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True if successful, False if channel doesn't exist
+        """
+
+    @abstractmethod
     async def delete_channel(self, session_id: str) -> bool:
-        """Delete channel/topic.
+        """Delete channel/topic (permanent, cannot be reopened).
 
         Args:
             session_id: Session identifier
@@ -159,6 +181,26 @@ class BaseAdapter(ABC):
 
         Returns:
             True if successful, False otherwise
+        """
+
+    @abstractmethod
+    async def send_file(
+        self,
+        session_id: str,
+        file_path: str,
+        caption: Optional[str] = None,
+        metadata: Optional[dict[str, object]] = None,
+    ) -> str:
+        """Send file to channel (if platform supports).
+
+        Args:
+            session_id: Session identifier
+            file_path: Absolute path to file
+            caption: Optional file caption/description
+            metadata: Optional platform-specific metadata
+
+        Returns:
+            message_id of sent file
         """
 
     async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:

@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, TextIO, cast
 
-import uvicorn
 from dotenv import load_dotenv
 
 from teleclaude.adapters.base_adapter import BaseAdapter
@@ -32,7 +31,6 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.rest_api import TeleClaudeAPI
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +63,6 @@ class TeleClaudeDaemon:
         # Output file directory (persistent files for download button)
         self.output_dir = Path("workspace")
         self.output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Initialize REST API
-        api_port = int(os.getenv("PORT", str(config.rest_api.port)))
-        self.rest_api = TeleClaudeAPI(
-            bind_address="127.0.0.1",
-            port=api_port,
-        )
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
@@ -313,21 +304,6 @@ class TeleClaudeDaemon:
             send_feedback=send_feedback,
         )
 
-    async def _handle_topic_closed(self, event: str, context: dict[str, object]) -> None:
-        """Handler for TOPIC_CLOSED events.
-
-        Args:
-            event: Event type (always "topic_closed")
-            context: Unified context (all payload + metadata fields)
-        """
-        session_id = context.get("session_id")
-
-        if not session_id:
-            logger.warning("TOPIC_CLOSED event missing session_id")
-            return
-
-        await self.handle_topic_closed(str(session_id), context)
-
     async def _handle_system_command(self, event: str, context: dict[str, object]) -> None:
         """Handler for SYSTEM_COMMAND events.
 
@@ -477,7 +453,6 @@ class TeleClaudeDaemon:
     async def _handle_health_check(self) -> None:
         """Handle health check system command."""
         logger.info("Health check requested")
-        # Health is already exposed via REST API endpoint
 
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session."""
@@ -684,18 +659,6 @@ class TeleClaudeDaemon:
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
             logger.info("MCP server starting in background")
 
-        # Start FastAPI REST API in background task
-        uvicorn_config = uvicorn.Config(
-            self.rest_api.get_asgi_app(),
-            host=self.rest_api.bind_address,
-            port=self.rest_api.port,
-            log_level="info",
-            access_log=False,  # Reduce noise
-        )
-        self.uvicorn_server = uvicorn.Server(uvicorn_config)
-        self.api_task = asyncio.create_task(self.uvicorn_server.serve())
-        logger.info("REST API started on http://%s:%s", self.rest_api.bind_address, self.rest_api.port)
-
         # Start periodic cleanup task (runs every hour)
         self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
         logger.info("Periodic cleanup task started (72h session lifecycle)")
@@ -735,11 +698,6 @@ class TeleClaudeDaemon:
         for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
             await adapter.stop()
-
-        # Stop REST API
-        if hasattr(self, "uvicorn_server"):
-            self.uvicorn_server.should_exit = True
-            await self.api_task
 
         # Close database
         await db.close()
@@ -901,47 +859,6 @@ class TeleClaudeDaemon:
                 current_command,
                 session_id[:8],
             )
-
-    async def handle_topic_closed(self, session_id: str, context: dict) -> None:  # type: ignore[type-arg]
-        """Handle topic/channel closure event."""
-        logger.info("Topic closed for session %s, closing session and tmux", session_id[:8])
-
-        # Get session
-        session = await db.get_session(session_id)
-        if not session:
-            logger.warning("Session %s not found during topic closure", session_id)
-            return
-
-        # Kill the tmux session
-        tmux_session_name = session.tmux_session_name
-        logger.info("Killing tmux session: %s", tmux_session_name)
-        success = await terminal_bridge.kill_session(tmux_session_name)
-        if not success:
-            logger.warning("Failed to kill tmux session %s", tmux_session_name)
-
-        # Delete session from database (full cleanup, not just closed=True)
-        await db.delete_session(session_id)
-        logger.info("Deleted session %s from database", session_id[:8])
-
-        # Delete persistent output file
-        try:
-            output_file = self._get_output_file_path(session_id)
-            if output_file.exists():
-                output_file.unlink()
-                logger.debug("Deleted output file for closed session %s", session_id[:8])
-        except Exception as e:
-            logger.warning("Failed to delete output file: %s", e)
-
-        # Delete uploaded files
-        try:
-            import shutil
-
-            session_workspace = Path("workspace") / session_id
-            if session_workspace.exists():
-                shutil.rmtree(session_workspace)
-                logger.debug("Deleted workspace for closed session %s", session_id[:8])
-        except Exception as e:
-            logger.warning("Failed to delete workspace: %s", e)
 
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up inactive sessions (72h lifecycle)."""

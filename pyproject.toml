@@ -20,6 +20,9 @@ keywords = ["telegram", "terminal", "tmux", "remote-control"]
 dynamic = ["dependencies", "optional-dependencies"]
 requires-python = ">=3.11"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["teleclaude*"]
 
 [project.urls]
 homepage = "https://github.com/morriz/teleclaude"
@@ -103,8 +106,10 @@ markers = [
   "timeout: Test timeout marker",
 ]
 asyncio_mode = "auto"
-timeout = 5
-timeout_func_only = true
+filterwarnings = [
+  "ignore::telegram.warnings.PTBDeprecationWarning",
+  "ignore:The default datetime adapter is deprecated:DeprecationWarning:aiosqlite",
+]
 
 [tool.coverage.run]
 source = ["teleclaude"]

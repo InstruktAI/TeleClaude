@@ -11,7 +11,7 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db, Db
 
 
-class TestableUiAdapter(UiAdapter):
+class MockUiAdapter(UiAdapter):
     """Concrete implementation of UiAdapter for testing."""
 
     def __init__(self):
@@ -36,6 +36,25 @@ class TestableUiAdapter(UiAdapter):
     async def delete_message(self, session_id: str, message_id: str) -> bool:
         return await self._delete_message_mock(session_id, message_id)
 
+
+    async def close_channel(self, session_id: str) -> bool:
+        return True
+
+    async def reopen_channel(self, session_id: str) -> bool:
+        return True
+
+    async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+        return "file-msg-123"
+
+    async def set_channel_status(self, session_id: str, status: str) -> bool:
+        return True
+
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        if False:
+            yield
+        return
+
+
     async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
         return "test-channel"
 
@@ -50,14 +69,6 @@ class TestableUiAdapter(UiAdapter):
 
     async def discover_peers(self):
         return []
-
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
-        """Mock implementation."""
-        yield "test output"
-
-    async def set_channel_status(self, session_id: str, status: str) -> bool:
-        """Mock implementation."""
-        return True
 
 
 @pytest.fixture
@@ -80,7 +91,7 @@ class TestSendOutputUpdate:
 
     async def test_creates_new_message_when_no_message_id(self, test_db):
         """Test creating new output message when no message_id exists."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -101,7 +112,7 @@ class TestSendOutputUpdate:
 
     async def test_edits_existing_message_when_message_id_exists(self, test_db):
         """Test editing existing message when message_id exists."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -123,7 +134,7 @@ class TestSendOutputUpdate:
 
     async def test_creates_new_when_edit_fails(self, test_db):
         """Test creating new message when edit fails (stale message_id)."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         adapter._edit_message_mock = AsyncMock(return_value=False)
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -150,7 +161,7 @@ class TestSendOutputUpdate:
 
     async def test_includes_exit_code_in_final_message(self, test_db):
         """Test final message includes exit code."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -182,7 +193,7 @@ class TestSendStatusMessage:
 
     async def test_sends_new_message_when_append_false(self, test_db):
         """Test sending new status message."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
 
         result = await adapter.send_status_message(
             "test-session",
@@ -195,7 +206,7 @@ class TestSendStatusMessage:
 
     async def test_appends_to_existing_output_message(self, test_db, tmp_path):
         """Test appending status to existing output message."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -224,7 +235,7 @@ class TestSendStatusMessage:
 
     async def test_append_returns_none_when_no_message_id(self, test_db, tmp_path):
         """Test append returns None when no message_id exists."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         output_file = tmp_path / "output.txt"
         output_file.write_text("some output")
 
@@ -245,7 +256,7 @@ class TestSendExitMessage:
 
     async def test_sends_exit_message(self, test_db):
         """Test sending exit message."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -268,7 +279,7 @@ class TestSendExitMessage:
 
     async def test_edits_existing_message_on_exit(self, test_db):
         """Test editing existing message on exit."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -293,7 +304,7 @@ class TestCleanupFeedbackMessages:
 
     async def test_deletes_pending_messages(self, test_db):
         """Test deleting pending feedback messages."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
@@ -313,7 +324,7 @@ class TestCleanupFeedbackMessages:
 
     async def test_handles_delete_failures_gracefully(self, test_db):
         """Test handling delete failures without raising."""
-        adapter = TestableUiAdapter()
+        adapter = MockUiAdapter()
         adapter._delete_message_mock = AsyncMock(side_effect=Exception("Delete failed"))
         session = await test_db.create_session(
             computer_name="TestPC",

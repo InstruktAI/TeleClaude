@@ -23,11 +23,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 When you've made changes that should be deployed:
 
 **Use the `/commit-deploy` slash command** - this automates the entire cycle:
+
 1. Creates commit with AI-generated message (via `/commit`)
 2. Pushes to GitHub (`git push`)
 3. Deploys to all machines (via `teleclaude__deploy_to_all_computers` MCP tool)
 
 **Example workflow:**
+
 ```
 User: "These changes are ready to deploy"
 
@@ -39,6 +41,7 @@ Claude: /commit-deploy
 ```
 
 **Notes:**
+
 - For local-only commits (no deployment), use `/commit` instead
 - The MCP tool handles deployment via Redis - no manual SSH needed
 - Each computer automatically: `git pull` → restart daemon → report status
@@ -97,6 +100,32 @@ Claude: /commit-deploy
 - ✅ Pytest handles timeouts (5s per test, configured in pyproject.toml)
 - ✅ Total test suite: <10 seconds (unit <1s, integration <5s)
 - ✅ If tests timeout, fix the test - don't wait longer
+
+### Rule #6: TEST CLEANUP POLICY
+
+**CRITICAL**: After running tests, you MUST clean up background bash processes:
+
+```bash
+# Check for any background bash shells you started
+/bashes
+
+# Kill each one using KillShell tool
+# Example: KillShell(shell_id="abc123")
+```
+
+**Why this matters:**
+
+- Background bash processes continue running after tests complete
+- They consume resources and may interfere with production daemon
+- Multiple abandoned processes accumulate over time
+
+**When to clean up:**
+
+- **ALWAYS** after running any tests (`make test`, `pytest`, etc.)
+- After debugging test failures
+- Before reporting completion to user
+
+**Note**: Test fixtures already clean up tmux sessions and database files automatically - you only need to clean up background bash processes you manually started.
 
 ## Essential Development Workflow
 
@@ -190,24 +219,28 @@ make clean                   # Clean generated files and caches
 **CRITICAL**: Telegram adapter (`has_ui=True`) follows strict message management rules for clean UX:
 
 **Output Messages (from terminal commands):**
+
 - **ALWAYS EDITED**, never create new messages
 - One persistent message per session output
 - Message ID stored in `ux_state` (session table)
 - Survives daemon restarts
 
 **Feedback Messages (status/info):**
+
 - **ALWAYS TEMPORARY**, deleted when new input arrives
 - Examples: "Transcribing...", "Changed directory to...", "Session created"
 - Message IDs stored in `ux_state.pending_deletions`
 - Auto-deleted by message handler before processing next input
 
 **System Messages (heartbeats, registry):**
+
 - **ALWAYS EDITED**, never create new messages after initial post
 - Message ID stored in `system_settings` table (system UX state)
 - Examples: `[REGISTRY] {computer} last seen at...`
 - Survives daemon restarts via `SystemUXState.registry_message_id`
 
 **Implementation:**
+
 - All message IDs persisted in `ux_state` column (JSON)
 - `update_session_ux_state()` / `update_system_ux_state()` functions
 - Load state on startup, edit existing messages instead of creating new ones
@@ -498,6 +531,7 @@ teleclaude__deploy_to_all_computers()
 ```
 
 **The MCP tool automatically:**
+
 - Discovers ALL remote computers via Redis
 - Sends deploy command to each computer (excluding self)
 - Each computer: `git pull` → restart daemon
@@ -517,6 +551,7 @@ ssh -A morriz@raspi4.local "cd /home/morriz/apps/TeleClaude && git checkout . &&
 ```
 
 **Why SSH agent forwarding (`-A`) is required:**
+
 - Forwards your local SSH agent to the remote machine
 - Remote git can use your local GitHub keys
 - Enables git pull over SSH (git@github.com)
@@ -537,6 +572,7 @@ ssh morriz@raspi4.local "cd /home/morriz/apps/TeleClaude && make status"
 ```
 
 Expected output:
+
 ```
 [INFO] Service: LOADED
 [INFO] systemctl status: active
@@ -565,4 +601,5 @@ Expected output:
 ## Troubleshooting
 
 @docs/troubleshooting.md
+
 - ALWAYS USE `make restart` to RESTART the daemon!

@@ -142,11 +142,25 @@ class TestChannelManagement:
     @pytest.mark.asyncio
     async def test_delete_channel_success(self, telegram_adapter):
         """Test deleting a forum topic."""
+        from teleclaude.core.models import Session
+
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
         telegram_adapter.app.bot.delete_forum_topic = AsyncMock()
 
-        result = await telegram_adapter.delete_channel("123")
+        # Mock db.get_session to return a session with channel metadata
+        mock_session = Session(
+            session_id="123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            origin_adapter="telegram",
+            adapter_metadata={"channel_id": "456"},
+            title="Test"
+        )
+
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=mock_session)
+            result = await telegram_adapter.delete_channel("123")
 
         assert result is True
         telegram_adapter.app.bot.delete_forum_topic.assert_called_once()

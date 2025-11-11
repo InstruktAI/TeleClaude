@@ -57,7 +57,6 @@ def mock_daemon():
         mock_tb.kill_session = AsyncMock(return_value=True)
         mock_tb.list_sessions = AsyncMock(return_value=[])
         mock_tb.resize_session = AsyncMock(return_value=True)
-        mock_tb.clear_history = AsyncMock(return_value=True)
 
         # Make terminal_bridge accessible as daemon.terminal for tests
         daemon.terminal = mock_tb
@@ -110,6 +109,7 @@ class TestSessionCloseReopen:
     async def test_reopen_session_creates_tmux_at_saved_working_dir(self):
         """Test that _reopen_session creates tmux at saved working_dir."""
         from unittest.mock import AsyncMock, Mock, patch
+
         from teleclaude.core.models import Session
         from teleclaude.daemon import TeleClaudeDaemon
 
@@ -159,8 +159,9 @@ class TestSessionCleanup:
 
     async def test_cleanup_inactive_sessions_cleans_old_sessions(self):
         """Test cleanup of sessions inactive for 72+ hours."""
-        from unittest.mock import AsyncMock, Mock, patch
         from datetime import datetime, timedelta
+        from unittest.mock import AsyncMock, patch
+
         from teleclaude.core.models import Session
         from teleclaude.daemon import TeleClaudeDaemon
 
@@ -197,8 +198,9 @@ class TestSessionCleanup:
 
     async def test_cleanup_skips_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
-        from unittest.mock import AsyncMock, Mock, patch
         from datetime import datetime, timedelta
+        from unittest.mock import AsyncMock, patch
+
         from teleclaude.core.models import Session
         from teleclaude.daemon import TeleClaudeDaemon
 
@@ -232,8 +234,9 @@ class TestSessionCleanup:
 
     async def test_cleanup_skips_closed_sessions(self):
         """Test that closed sessions are skipped."""
-        from unittest.mock import AsyncMock, Mock, patch
         from datetime import datetime, timedelta
+        from unittest.mock import AsyncMock, patch
+
         from teleclaude.core.models import Session
         from teleclaude.daemon import TeleClaudeDaemon
 

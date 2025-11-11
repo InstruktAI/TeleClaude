@@ -9,6 +9,8 @@
 
 Control your terminal sessions remotely via Telegram. Run commands, monitor outputs, and manage multiple computers from your phone, tablet, or desktop.
 
+[![TeleClaude](./assets/TeleClaude.png)](./assets/TeleClaude.png)
+
 ## What is TeleClaude?
 
 TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your terminal. It's **NOT** a custom AI bot. The intelligence comes from whatever you run in the terminal (Claude CLI, vim, htop, or any other tool).

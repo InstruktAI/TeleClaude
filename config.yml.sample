@@ -83,3 +83,9 @@ redis:
     command_stream_maxlen: 1000   # Max commands to keep per computer
     output_stream_maxlen: 10000   # Max output messages per session
     output_stream_ttl: 3600       # Auto-expire output streams after 1 hour
+
+# REST API Configuration
+rest_api:
+    enabled: true  # Enable REST API for HTTP-based communication
+    bind_address: "127.0.0.1"  # Bind to localhost only (not accessible from network)
+    port: 6666

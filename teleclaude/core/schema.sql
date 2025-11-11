@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     working_directory TEXT DEFAULT '~',
     output_message_id TEXT,  -- DEPRECATED: Use ux_state instead
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
-    ux_state TEXT,  -- JSON blob: {output_message_id, idle_notification_message_id, polling_active, ...}
+    ux_state TEXT,  -- JSON blob: {output_message_id, idle_notification_message_id, polling_active, claude_session_file, ...}
     UNIQUE(computer_name, tmux_session_name)
 );
 

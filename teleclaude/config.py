@@ -18,7 +18,19 @@ from teleclaude.utils import expand_env_vars
 
 @dataclass
 class DatabaseConfig:
-    path: str
+    _configured_path: str
+
+    @property
+    def path(self) -> str:
+        """Get database path (lazy-loaded from env var for test compatibility)."""
+        import os
+
+        # Allow tests to override via TELECLAUDE_DB_PATH env var
+        env_path = os.getenv("TELECLAUDE_DB_PATH")
+        if env_path:
+            return env_path
+        # Otherwise use configured path
+        return self._configured_path
 
 
 @dataclass
@@ -163,7 +175,7 @@ def _build_config(raw: dict[str, object]) -> Config:
 
     return Config(
         database=DatabaseConfig(
-            path=str(db["path"]),  # type: ignore[index]
+            _configured_path=str(db["path"]),  # type: ignore[index]
         ),
         computer=ComputerConfig(
             name=str(comp["name"]),  # type: ignore[index]

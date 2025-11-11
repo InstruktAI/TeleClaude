@@ -98,6 +98,8 @@ class OutputPoller:
         first_poll = True  # Skip exit detection on first poll (establish baseline)
         last_directory = None
         directory_check_ticks = 0
+        poll_iteration = 0
+        session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -108,13 +110,33 @@ class OutputPoller:
 
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
+                poll_iteration += 1
+
                 # Exit condition 1: Session died
-                if not await terminal_bridge.session_exists(tmux_session_name):
+                session_exists_now = await terminal_bridge.session_exists(tmux_session_name)
+
+                # WATCHDOG: Detect session disappearing between polls
+                if session_existed_last_poll and not session_exists_now:
+                    age_seconds = time.time() - started_at
+                    logger.critical(
+                        "Session %s disappeared between polls (watchdog triggered)",
+                        tmux_session_name,
+                        extra={
+                            "session_id": session_id[:8],
+                            "age_seconds": round(age_seconds, 2),
+                            "poll_iteration": poll_iteration,
+                            "seconds_since_last_poll": poll_interval,
+                        },
+                    )
+
+                if not session_exists_now:
                     logger.info("Process exited for %s, stopping poll", session_id[:8])
                     yield ProcessExited(
                         session_id=session_id, exit_code=None, final_output=output_buffer, started_at=started_at
                     )
                     break
+
+                session_existed_last_poll = session_exists_now
 
                 # Capture current output
                 current_output = await terminal_bridge.capture_pane(tmux_session_name)

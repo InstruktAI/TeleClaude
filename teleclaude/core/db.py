@@ -11,14 +11,14 @@ import aiosqlite
 
 from teleclaude.config import config
 
-logger = logging.getLogger(__name__)
+from . import ux_state
+from .models import Session
+from .ux_state import SessionUXState
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-from . import ux_state
-from .models import Session
-from .ux_state import SessionUXState
+logger = logging.getLogger(__name__)
 
 
 class Db:
@@ -50,15 +50,6 @@ class Db:
 
         await self._db.executescript(schema_sql)
         await self._db.commit()
-
-        # Migrations: Add new columns to existing databases
-        try:
-            await self._db.execute("ALTER TABLE sessions ADD COLUMN claude_session_file TEXT")
-            await self._db.commit()
-            logger.info("Added claude_session_file column to sessions table")
-        except Exception:
-            # Column already exists, ignore
-            pass
 
         # NOTE: We do NOT reset polling_active flags here!
         # The daemon's restore_active_pollers() function handles this correctly by:
@@ -172,12 +163,18 @@ class Db:
 
         return Session.from_dict(dict(row))
 
-    async def list_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> list[Session]:
+    async def list_sessions(
+        self,
+        computer_name: Optional[str] = None,
+        closed: Optional[bool] = None,
+        origin_adapter: Optional[str] = None,
+    ) -> list[Session]:
         """List sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
             closed: Filter by closed status (False = active, True = closed, None = all)
+            origin_adapter: Filter by origin adapter (telegram, redis, etc.)
 
         Returns:
             List of Session objects
@@ -191,6 +188,9 @@ class Db:
         if closed is not None:
             query += " AND closed = ?"
             params.append(1 if closed else 0)
+        if origin_adapter:
+            query += " AND origin_adapter = ?"
+            params.append(origin_adapter)
 
         query += " ORDER BY last_activity DESC"
 
@@ -224,13 +224,12 @@ class Db:
 
         # Update UI via AdapterClient
         if old_session:
-            # Working directory changed - update title with last 2 path components
             if (
                 self._client
                 and "working_directory" in fields
                 and fields["working_directory"] != old_session.working_directory
             ):
-                from pathlib import Path
+                # Working directory changed - update title with last 2 path components
 
                 new_path = str(fields["working_directory"])
                 path_parts = Path(new_path).parts
@@ -241,6 +240,12 @@ class Db:
                 new_title = f"{old_session.title}: {last_two}"
                 await self._client.update_channel_title(session_id, new_title)
                 logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+
+            # Emit channel status events when closed status changes
+            if self._client and "closed" in fields and fields["closed"] != old_session.closed:
+                status = "closed" if fields["closed"] else "active"
+                await self._client.set_channel_status(session_id, status)
+                logger.info("Updated channel status for session %s to: %s", session_id[:8], status)
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -531,6 +536,7 @@ class Db:
         idle_notification_message_id: Optional[str] | object = ux_state._UNSET,
         pending_deletions: list[str] | object = ux_state._UNSET,
         notification_sent: bool | object = ux_state._UNSET,
+        claude_session_file: Optional[str] | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
 
@@ -541,6 +547,7 @@ class Db:
             idle_notification_message_id: Idle notification message ID (optional)
             pending_deletions: List of message IDs pending deletion (optional)
             notification_sent: Whether Claude Code notification was sent (optional)
+            claude_session_file: Path to native Claude Code session file (optional)
         """
         await ux_state.update_session_ux_state(
             self._db,
@@ -550,6 +557,7 @@ class Db:
             idle_notification_message_id=idle_notification_message_id,
             pending_deletions=pending_deletions,
             notification_sent=notification_sent,
+            claude_session_file=claude_session_file,
         )
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:

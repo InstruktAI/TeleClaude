@@ -525,3 +525,197 @@ class TestDualModePolling:
 
         # VERIFY: Does NOT use send_message for chunks
         adapter_client.send_message.assert_not_called()
+
+
+class TestNotificationFlagCoordination:
+    """Tests for notification_sent flag coordination with idle detection."""
+
+    @pytest.mark.asyncio
+    async def test_idle_notification_skipped_when_flag_set(self):
+        """Test IdleDetected event skipped when notification_sent flag is True."""
+        from unittest.mock import AsyncMock, Mock
+        from teleclaude.core.output_poller import IdleDetected
+        from teleclaude.core.polling_coordinator import poll_and_send_output
+        from pathlib import Path
+
+        # Setup mocks
+        adapter_client = AsyncMock()
+        adapter_client.send_message = AsyncMock()
+        adapter_client.delete_message = AsyncMock()
+
+        # Mock db with notification_sent=True
+        from unittest.mock import patch
+
+        mock_db = AsyncMock()
+        mock_db.is_polling = AsyncMock(return_value=False)  # Allow polling to start
+        mock_db.mark_polling = AsyncMock()
+        mock_db.unmark_polling = AsyncMock()
+        mock_db.clear_pending_deletions = AsyncMock()
+        mock_db.get_session = AsyncMock(
+            return_value=Mock(
+                session_id="test-123",
+                origin_adapter="telegram",
+                adapter_metadata={},
+                tmux_session_name="test-tmux",
+            )
+        )
+        mock_db.get_notification_flag = AsyncMock(return_value=True)  # Flag is set
+        mock_db.get_ux_state = AsyncMock(
+            return_value=Mock(idle_notification_message_id=None, notification_sent=True)
+        )
+        mock_db.update_ux_state = AsyncMock()
+
+        get_output_file = Mock(return_value=Path("/tmp/output.txt"))
+
+        # Mock poller to yield IdleDetected
+        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+            yield IdleDetected(session_id="test-123", idle_seconds=60)
+
+        output_poller = Mock()
+        output_poller.poll = mock_poll
+
+        # Patch db at the point where it's used in polling_coordinator
+        with patch("teleclaude.core.polling_coordinator.db", mock_db):
+            # Execute
+            await poll_and_send_output(
+                session_id="test-123",
+                tmux_session_name="test-tmux",
+                output_poller=output_poller,
+                adapter_client=adapter_client,
+                get_output_file=get_output_file,
+            )
+
+            # VERIFY: Idle notification NOT sent (flag was set)
+            adapter_client.send_message.assert_not_called()
+
+            # VERIFY: get_notification_flag was checked
+            mock_db.get_notification_flag.assert_called_once_with("test-123")
+
+    @pytest.mark.asyncio
+    async def test_idle_notification_sent_when_flag_not_set(self):
+        """Test IdleDetected event sends notification when notification_sent flag is False."""
+        from unittest.mock import AsyncMock, Mock, patch
+        from teleclaude.core.output_poller import IdleDetected
+        from teleclaude.core.polling_coordinator import poll_and_send_output
+        from pathlib import Path
+
+        # Setup mocks
+        adapter_client = AsyncMock()
+        adapter_client.send_message = AsyncMock(return_value="msg-123")
+
+        # Mock db with notification_sent=False
+        mock_db = AsyncMock()
+        mock_db.is_polling = AsyncMock(return_value=False)  # Allow polling to start
+        mock_db.mark_polling = AsyncMock()
+        mock_db.unmark_polling = AsyncMock()
+        mock_db.clear_pending_deletions = AsyncMock()
+        mock_db.get_session = AsyncMock(
+            return_value=Mock(
+                session_id="test-456",
+                origin_adapter="telegram",
+                adapter_metadata={},
+                tmux_session_name="test-tmux",
+            )
+        )
+        mock_db.get_notification_flag = AsyncMock(return_value=False)  # Flag NOT set
+        mock_db.get_ux_state = AsyncMock(
+            return_value=Mock(idle_notification_message_id=None, notification_sent=False)
+        )
+        mock_db.update_ux_state = AsyncMock()
+
+        get_output_file = Mock(return_value=Path("/tmp/output.txt"))
+
+        # Mock poller to yield IdleDetected
+        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+            yield IdleDetected(session_id="test-456", idle_seconds=60)
+
+        output_poller = Mock()
+        output_poller.poll = mock_poll
+
+        # Patch db at the point where it's used in polling_coordinator
+        with patch("teleclaude.core.polling_coordinator.db", mock_db):
+            # Execute
+            await poll_and_send_output(
+                session_id="test-456",
+                tmux_session_name="test-tmux",
+                output_poller=output_poller,
+                adapter_client=adapter_client,
+                get_output_file=get_output_file,
+            )
+
+            # VERIFY: Idle notification WAS sent (flag was not set)
+            adapter_client.send_message.assert_called_once()
+            call_args = adapter_client.send_message.call_args
+            assert "No output for 60 seconds" in call_args[0][1]
+
+            # VERIFY: get_notification_flag was checked
+            mock_db.get_notification_flag.assert_called_once_with("test-456")
+
+            # VERIFY: Message ID persisted to DB (check for idle_notification_message_id call)
+            # update_ux_state is called multiple times:
+            # 1. polling_active=True (line 167)
+            # 2. idle_notification_message_id='msg-123' (line 225)
+            # 3. idle_notification_message_id=None (finally block, line 286)
+            assert any(
+                call[1].get("idle_notification_message_id") == "msg-123" for call in mock_db.update_ux_state.call_args_list
+            )
+
+    @pytest.mark.asyncio
+    async def test_notification_flag_cleared_on_output_change(self):
+        """Test notification_sent flag cleared when OutputChanged event occurs."""
+        from unittest.mock import AsyncMock, Mock, patch
+        from teleclaude.core.output_poller import OutputChanged
+        from teleclaude.core.polling_coordinator import poll_and_send_output
+        from pathlib import Path
+
+        # Setup mocks
+        adapter_client = AsyncMock()
+        adapter_client.send_output_update = AsyncMock()
+
+        # Mock db with notification_sent=True initially
+        mock_db = AsyncMock()
+        mock_db.is_polling = AsyncMock(return_value=False)  # Allow polling to start
+        mock_db.mark_polling = AsyncMock()
+        mock_db.unmark_polling = AsyncMock()
+        mock_db.clear_pending_deletions = AsyncMock()
+        mock_db.get_session = AsyncMock(
+            return_value=Mock(
+                session_id="test-789",
+                origin_adapter="telegram",
+                adapter_metadata={},
+                tmux_session_name="test-tmux",
+            )
+        )
+        mock_db.get_ux_state = AsyncMock(
+            return_value=Mock(
+                idle_notification_message_id=None,
+                notification_sent=True,  # Flag is set initially
+            )
+        )
+        mock_db.clear_notification_flag = AsyncMock()
+        mock_db.update_ux_state = AsyncMock()
+
+        get_output_file = Mock(return_value=Path("/tmp/output.txt"))
+
+        # Mock poller to yield OutputChanged
+        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+            yield OutputChanged(
+                session_id="test-789", output="new output", started_at=1000.0, last_changed_at=1001.0
+            )
+
+        output_poller = Mock()
+        output_poller.poll = mock_poll
+
+        # Patch db at the point where it's used in polling_coordinator
+        with patch("teleclaude.core.polling_coordinator.db", mock_db):
+            # Execute
+            await poll_and_send_output(
+                session_id="test-789",
+                tmux_session_name="test-tmux",
+                output_poller=output_poller,
+                adapter_client=adapter_client,
+                get_output_file=get_output_file,
+            )
+
+            # VERIFY: clear_notification_flag was called (activity detected)
+            mock_db.clear_notification_flag.assert_called_once_with("test-789")

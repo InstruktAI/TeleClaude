@@ -7,6 +7,8 @@ import asyncio
 import logging
 from typing import List, Optional
 
+import psutil
+
 from teleclaude.config import config
 
 logger = logging.getLogger(__name__)
@@ -569,29 +571,6 @@ async def kill_session(session_name: str) -> bool:
         return False
 
 
-async def clear_history(session_name: str) -> bool:
-    """Clear tmux scrollback history for a session.
-
-    Removes all history from the scrollback buffer, including old exit markers.
-
-    Args:
-        session_name: Session name
-
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        cmd = ["tmux", "clear-history", "-t", session_name]
-        result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
-
-        return result.returncode == 0
-
-    except Exception as e:
-        logger.error("Error clearing tmux history for %s: %s", session_name, e)
-        return False
-
-
 async def list_tmux_sessions() -> List[str]:
     """List all tmux sessions.
 
@@ -634,12 +613,41 @@ async def session_exists(session_name: str) -> bool:
         stdout, stderr = await result.communicate()
 
         if result.returncode != 0:
-            logger.info(
-                "Session %s does not exist: returncode=%d, stderr=%s",
-                session_name,
-                result.returncode,
-                stderr.decode().strip(),
-            )
+            # Session died - capture system state for diagnostics
+            try:
+                # Get all tmux sessions
+                tmux_list_result = await asyncio.create_subprocess_exec(
+                    "tmux", "list-sessions", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
+                tmux_list_stdout, _ = await tmux_list_result.communicate()
+                tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
+
+                # Get tmux processes
+                tmux_processes = [
+                    {"pid": p.pid, "create_time": p.create_time()}
+                    for p in psutil.process_iter(["pid", "name", "create_time"])
+                    if "tmux" in p.info["name"].lower()
+                ]
+
+                # Get system metrics
+                memory = psutil.virtual_memory()
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+
+                logger.error(
+                    "Session %s does not exist (died unexpectedly)",
+                    session_name,
+                    extra={
+                        "session_name": session_name,
+                        "stderr": stderr.decode().strip(),
+                        "tmux_sessions_count": len([s for s in tmux_sessions if s]),
+                        "tmux_processes_count": len(tmux_processes),
+                        "system_memory_used_mb": memory.used // 1024 // 1024,
+                        "system_memory_percent": memory.percent,
+                        "system_cpu_percent": cpu_percent,
+                    },
+                )
+            except Exception as diag_error:
+                logger.warning("Failed to capture diagnostics: %s", diag_error)
         else:
             logger.debug("Session %s exists", session_name)
 

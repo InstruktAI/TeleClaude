@@ -45,8 +45,17 @@ class MockTelegramAdapter(BaseAdapter):
     async def set_channel_status(self, session_id: str, status: str) -> bool:
         return True
 
+    async def close_channel(self, session_id: str) -> bool:
+        return True
+
+    async def reopen_channel(self, session_id: str) -> bool:
+        return True
+
     async def delete_channel(self, session_id: str) -> bool:
         return True
+
+    async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+        return "file-msg-123"
 
     async def start(self):
         pass
@@ -92,8 +101,17 @@ class MockRedisAdapter(BaseAdapter):
     async def set_channel_status(self, session_id: str, status: str) -> bool:
         return True
 
+    async def close_channel(self, session_id: str) -> bool:
+        return True
+
+    async def reopen_channel(self, session_id: str) -> bool:
+        return True
+
     async def delete_channel(self, session_id: str) -> bool:
         return True
+
+    async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+        return "redis-file-msg-123"
 
     async def start(self):
         pass
@@ -259,8 +277,17 @@ async def test_ui_observer_receives_broadcasts():
         async def set_channel_status(self, session_id: str, status: str) -> bool:
             return True
 
+        async def close_channel(self, session_id: str) -> bool:
+            return True
+
+        async def reopen_channel(self, session_id: str) -> bool:
+            return True
+
         async def delete_channel(self, session_id: str) -> bool:
             return True
+
+        async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+            return "slack-file-msg-123"
 
         async def start(self):
             pass
@@ -362,8 +389,17 @@ async def test_observer_failure_does_not_affect_origin():
         async def set_channel_status(self, session_id: str, status: str) -> bool:
             return True
 
+        async def close_channel(self, session_id: str) -> bool:
+            return True
+
+        async def reopen_channel(self, session_id: str) -> bool:
+            return True
+
         async def delete_channel(self, session_id: str) -> bool:
             return True
+
+        async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+            return "slack-file-msg-123"
 
         async def start(self):
             pass
@@ -464,8 +500,17 @@ async def test_origin_failure_raises_exception():
         async def set_channel_status(self, session_id: str, status: str) -> bool:
             return True
 
+        async def close_channel(self, session_id: str) -> bool:
+            return True
+
+        async def reopen_channel(self, session_id: str) -> bool:
+            return True
+
         async def delete_channel(self, session_id: str) -> bool:
             return True
+
+        async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+            return "file-msg-123"
 
         async def start(self):
             pass

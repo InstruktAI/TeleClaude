@@ -10,6 +10,7 @@ import os
 from typing import AsyncIterator, Callable, Optional
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
@@ -69,23 +70,23 @@ class AdapterClient:
         self._handlers: dict[EventType, Callable[[EventType, dict[str, object]], object]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
 
-    def _load_adapters(self) -> None:
+    def _load_adapters(self, type: UiAdapter | RedisAdapter | None = None) -> None:
         """Load and initialize adapters from config."""
         # config already imported
 
-        # Load Telegram adapter if configured (always loaded if bot token exists)
-        if os.getenv("TELEGRAM_BOT_TOKEN"):
-            telegram_adapter = TelegramAdapter(self)
-            self.adapters["telegram"] = telegram_adapter
-            logger.info("Loaded Telegram adapter")
+        if type is None or type is UiAdapter:
+            # Load Telegram adapter if configured (always loaded if bot token exists)
+            if os.getenv("TELEGRAM_BOT_TOKEN"):
+                telegram_adapter = TelegramAdapter(self)
+                self.adapters["telegram"] = telegram_adapter
+                logger.info("Loaded Telegram adapter")
 
-        # Load Redis adapter if configured
-        if config.redis.enabled:
-            from teleclaude.adapters.redis_adapter import RedisAdapter
-
-            redis_adapter = RedisAdapter(self)
-            self.adapters["redis"] = redis_adapter
-            logger.info("Loaded Redis adapter")
+        if type is None or type is RedisAdapter:
+            # Load Redis adapter if configured
+            if config.redis.enabled:
+                redis_adapter = RedisAdapter(self)
+                self.adapters["redis"] = redis_adapter
+                logger.info("Loaded Redis adapter")
 
         # Validate at least one adapter is loaded
         if not self.adapters:
@@ -567,7 +568,21 @@ class AdapterClient:
                         except Exception as e:
                             logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
 
-            # 7. Broadcast ALL user actions to observer adapters (not just MESSAGE)
+            # 7. Broadcast session lifecycle events to observer adapters (channel close/reopen)
+            if session and event in ("session_closed", "session_reopened"):
+                for adapter_type, adapter in self.adapters.items():
+                    if adapter_type != session.origin_adapter:
+                        try:
+                            if event == "session_closed":
+                                await adapter.close_channel(session.session_id)
+                                logger.debug("Closed channel in observer adapter: %s", adapter_type)
+                            elif event == "session_reopened":
+                                await adapter.reopen_channel(session.session_id)
+                                logger.debug("Reopened channel in observer adapter: %s", adapter_type)
+                        except Exception as e:
+                            logger.warning("Failed to %s channel in observer %s: %s", event, adapter_type, e)
+
+            # 8. Broadcast ALL user actions to observer adapters (not just MESSAGE)
             if session:
                 # Format event as human-readable action
                 action_text = self._format_event_for_observers(event, payload)

@@ -6,7 +6,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 if TYPE_CHECKING:
     from telegram import Message as TelegramMessage
@@ -305,18 +305,10 @@ class TelegramAdapter(UiAdapter):
 
         self._ensure_started()
 
-        # Look for telegram-specific channel_id first (for observer sessions),
-        # then fall back to top-level channel_id (for origin sessions) or topic_id (legacy)
-        telegram_meta = session.adapter_metadata.get("telegram", {})
-        telegram_meta = telegram_meta if isinstance(telegram_meta, dict) else {}
-        topic_id_obj = (
-            telegram_meta.get("channel_id")
-            or session.adapter_metadata.get("channel_id")
-            or session.adapter_metadata.get("topic_id")
-        )
+        # Get channel_id from metadata (stored as string in DB)
+        topic_id_obj = session.adapter_metadata.get("channel_id")
         if not topic_id_obj:
-            raise AdapterError(f"Session {session_id} has no channel_id/topic_id in metadata")
-        # Type narrowing: we know this is an int from the database
+            raise AdapterError(f"Session {session_id} has no channel_id in metadata")
         topic_id: int = int(str(topic_id_obj))
 
         # Extract reply_markup if present
@@ -332,9 +324,9 @@ class TelegramAdapter(UiAdapter):
                 phrase in error_msg for phrase in ["message thread not found", "thread not found", "topic not found"]
             ):
                 logger.warning("Topic %s was deleted for session %s", topic_id, session_id[:8])
-                # Emit topic deleted event
+                # Emit session closed event (topic was deleted)
                 await self.client.handle_event(
-                    event=TeleClaudeEvents.TOPIC_CLOSED,
+                    event=TeleClaudeEvents.SESSION_CLOSED,
                     payload={"session_id": session_id},
                     metadata={"adapter_type": "telegram", "topic_id": topic_id, "reason": "deleted"},
                 )
@@ -399,9 +391,9 @@ class TelegramAdapter(UiAdapter):
                 phrase in error_msg for phrase in ["message thread not found", "thread not found", "topic not found"]
             ):
                 logger.warning("Topic was deleted for session %s during edit", session_id[:8])
-                # Emit topic deleted event
+                # Emit session closed event (topic was deleted)
                 await self.client.handle_event(
-                    event=TeleClaudeEvents.TOPIC_CLOSED,
+                    event=TeleClaudeEvents.SESSION_CLOSED,
                     payload={"session_id": session_id},
                     metadata={"adapter_type": "telegram", "reason": "deleted"},
                 )
@@ -517,10 +509,11 @@ class TelegramAdapter(UiAdapter):
         if not session or not session.adapter_metadata:
             raise AdapterError(f"Session {session_id} not found")
 
-        # Use channel_id (new) or topic_id (legacy)
-        topic_id_obj = session.adapter_metadata.get("channel_id") or session.adapter_metadata.get("topic_id")
-        # Type narrowing: we know this is an int from the database
-        topic_id: int | None = int(str(topic_id_obj)) if topic_id_obj else None
+        # Get channel_id from metadata (stored as string in DB)
+        topic_id_obj = session.adapter_metadata.get("channel_id")
+        if not topic_id_obj:
+            raise AdapterError(f"Session {session_id} has no channel_id in metadata")
+        topic_id: int = int(str(topic_id_obj))
 
         with open(file_path, "rb") as f:
             message = await self.app.bot.send_document(
@@ -587,18 +580,76 @@ class TelegramAdapter(UiAdapter):
 
         return await self.update_channel_title(channel_id, new_title)
 
-    async def delete_channel(self, channel_id: str) -> bool:
-        """Delete/close a forum topic."""
+    async def close_channel(self, session_id: str) -> bool:
+        """Soft-close forum topic (can be reopened)."""
         self._ensure_started()
 
+        session = await db.get_session(session_id)
+        if not session:
+            return False
+
+        topic_id_obj = session.adapter_metadata.get("channel_id") if session.adapter_metadata else None
+        if not topic_id_obj:
+            return False
+        topic_id = cast(int, topic_id_obj)
+
         try:
-            await self.app.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=int(channel_id))
+            await self.app.bot.close_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+            logger.info("Closed topic %s for session %s", topic_id, session_id[:8])
             return True
         except BadRequest as e:
-            logger.warning("Failed to delete topic %s: %s", channel_id, e)
+            logger.warning("Failed to close topic %s: %s", topic_id, e)
             return False
         except Exception as e:
-            logger.error("Failed to delete topic %s: %s", channel_id, e)
+            logger.error("Failed to close topic %s: %s", topic_id, e)
+            return False
+
+    async def reopen_channel(self, session_id: str) -> bool:
+        """Reopen a closed forum topic."""
+        self._ensure_started()
+
+        session = await db.get_session(session_id)
+        if not session:
+            return False
+
+        topic_id_obj = session.adapter_metadata.get("channel_id") if session.adapter_metadata else None
+        if not topic_id_obj:
+            return False
+        topic_id = cast(int, topic_id_obj)
+
+        try:
+            await self.app.bot.reopen_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+            logger.info("Reopened topic %s for session %s", topic_id, session_id[:8])
+            return True
+        except BadRequest as e:
+            logger.warning("Failed to reopen topic %s: %s", topic_id, e)
+            return False
+        except Exception as e:
+            logger.error("Failed to reopen topic %s: %s", topic_id, e)
+            return False
+
+    async def delete_channel(self, session_id: str) -> bool:
+        """Delete forum topic (permanent)."""
+        self._ensure_started()
+
+        session = await db.get_session(session_id)
+        if not session:
+            return False
+
+        topic_id_obj = session.adapter_metadata.get("channel_id") if session.adapter_metadata else None
+        if not topic_id_obj:
+            return False
+        topic_id = cast(int, topic_id_obj)
+
+        try:
+            await self.app.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+            logger.info("Deleted topic %s for session %s", topic_id, session_id[:8])
+            return True
+        except BadRequest as e:
+            logger.warning("Failed to delete topic %s: %s", topic_id, e)
+            return False
+        except Exception as e:
+            logger.error("Failed to delete topic %s: %s", topic_id, e)
             return False
 
     # ==================== Platform-Specific Parameters ====================

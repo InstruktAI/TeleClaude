@@ -282,6 +282,27 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
 
+    async def send_file(
+        self,
+        session_id: str,
+        file_path: str,
+        caption: Optional[str] = None,
+        metadata: Optional[dict[str, object]] = None,
+    ) -> str:
+        """Send file - not supported by Redis adapter.
+
+        Args:
+            session_id: Session ID
+            file_path: Path to file
+            caption: Optional caption
+            metadata: Optional metadata
+
+        Returns:
+            Empty string (not supported)
+        """
+        logger.warning("send_file not supported by RedisAdapter")
+        return ""
+
     async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Send general message (not implemented for Redis).
 
@@ -365,6 +386,28 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         Returns:
             True
+        """
+        return True
+
+    async def close_channel(self, session_id: str) -> bool:
+        """No-op: Redis has no persistent channels to close.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True (always succeeds)
+        """
+        return True
+
+    async def reopen_channel(self, session_id: str) -> bool:
+        """No-op: Redis has no persistent channels to reopen.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            True (always succeeds)
         """
         return True
 

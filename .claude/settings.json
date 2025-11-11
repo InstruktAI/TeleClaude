@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run ${WORKING_DIR}/teleclaude/hooks/notification.py --notify"
+            "command": "uv run ${CLAUDE_PROJECT_DIR}/.claude/hooks/notification.py"
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run ${WORKING_DIR}/teleclaude/hooks/stop.py --notify --summarize"
+            "command": "uv run ${CLAUDE_PROJECT_DIR}/.claude/hooks/notification.py"
           }
         ]
       }

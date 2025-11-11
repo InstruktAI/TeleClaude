@@ -29,8 +29,6 @@ EventType = Literal[
     "message",
     "voice",
     "file",
-    "topic_closed",
-    "topic_reopened",
     "session_closed",
     "session_reopened",
     "session_deleted",
@@ -83,10 +81,8 @@ class TeleClaudeEvents:
     # Media and events
     VOICE: Literal["voice"] = "voice"  # Voice message received
     FILE: Literal["file"] = "file"  # File or photo uploaded
-    TOPIC_CLOSED: Literal["topic_closed"] = "topic_closed"  # Telegram topic closed by user
-    TOPIC_REOPENED: Literal["topic_reopened"] = "topic_reopened"  # Telegram topic reopened by user
 
-    # Database-driven events (emitted by db.py)
+    # Session lifecycle events
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Session marked closed in DB
     SESSION_REOPENED: Literal["session_reopened"] = "session_reopened"  # Session reopened
     SESSION_DELETED: Literal["session_deleted"] = "session_deleted"  # Session deleted from DB

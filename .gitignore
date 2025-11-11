@@ -51,3 +51,4 @@ workspace/
 *.bak*
 
 .claude/data/
+*.local.json

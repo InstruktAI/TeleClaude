@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""Safety check - ensure no production sessions before running tests."""
+import sys
+import sqlite3
+from pathlib import Path
+
+# Check production database
+db_path = Path(__file__).parent.parent / "teleclaude.db"
+if db_path.exists():
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE closed = 0")
+    count = cursor.fetchone()[0]
+    conn.close()
+    
+    if count > 0:
+        print(f"ERROR: {count} active production sessions found!")
+        print("Running tests will DESTROY your production sessions.")
+        print("Close all sessions first or run tests in Docker.")
+        sys.exit(1)
+
+print("✓ Safe to run tests (no active production sessions)")

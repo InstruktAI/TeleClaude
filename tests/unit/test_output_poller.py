@@ -1,11 +1,17 @@
 """Unit tests for simplified OutputPoller."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from teleclaude.core.output_poller import DirectoryChanged, IdleDetected, OutputChanged, OutputPoller, ProcessExited
+from teleclaude.core.output_poller import (
+    DirectoryChanged,
+    IdleDetected,
+    OutputChanged,
+    OutputPoller,
+    ProcessExited,
+)
 
 
 @pytest.mark.unit
@@ -201,7 +207,6 @@ class TestOutputPollerPoll:
                     return "command output\n__EXIT__0__\n"  # Changed output with exit marker
 
                 mock_terminal.capture_pane = capture_mock
-                mock_terminal.clear_history = AsyncMock()
 
                 # Collect events
                 events = []
