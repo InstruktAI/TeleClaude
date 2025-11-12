@@ -226,9 +226,9 @@ class OutputPoller:
                 # Increment tick counter
                 ticks_since_last_update += 1
 
-                # CRITICAL FIX: Send update immediately when output changes OR when interval reached
-                # This fixes the bug where first output was delayed by 2 seconds
-                if output_buffer and (output_changed or ticks_since_last_update >= current_update_interval):
+                # Send updates based on time interval only (enforce minimum 2s between updates)
+                # This prevents Telegram API rate limiting from excessive message edits
+                if output_buffer and ticks_since_last_update >= current_update_interval:
                     # Strip exit markers before sending
                     clean_output = self._strip_exit_markers(output_buffer)
 
