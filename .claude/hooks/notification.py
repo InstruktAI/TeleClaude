@@ -50,6 +50,9 @@ def main() -> None:
 
         # Get TeleClaude session ID from environment (set by tmux)
         teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
+        # get claude session stuff from data
+        session_id = data.get("session_id")
+        transcript_path = data.get("transcript_path")
 
         if not teleclaude_session_id:
             log("ERROR: TELECLAUDE_SESSION_ID not found in environment")
@@ -75,7 +78,7 @@ def main() -> None:
                 log(f"Spawning summarizer: {summarizer}")
                 # Spawn background process - returns immediately
                 proc = subprocess.Popen(
-                    ["uv", "run", "--quiet", str(summarizer), teleclaude_session_id, transcript_path],
+                    ["uv", "run", "--quiet", str(summarizer), teleclaude_session_id],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     start_new_session=True,  # Detach from parent
@@ -103,7 +106,13 @@ def main() -> None:
             message = prefix + (random_message[0].lower() + random_message[1:]) if prefix else random_message
             log(f"Generated message: {message}")
 
-            mcp_send(teleclaude_session_id, message)
+            mcp_send(
+                "teleclaude__send_notification",
+                {
+                    "session_id": teleclaude_session_id,
+                    "message": message,
+                },
+            )
 
         else:
             log(f"Unknown hook event: {hook_event}, ignoring")

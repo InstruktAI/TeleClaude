@@ -243,13 +243,7 @@ class TeleClaudeMCPServer:
                 Tool(
                     name="teleclaude__send_notification",
                     title="TeleClaude: Send Notification",
-                    description=(
-                        "Send notification to a TeleClaude session (called by Claude Code hooks). "
-                        "**For mid-session notifications only** (user input needed). "
-                        "Sets notification_sent flag to prevent duplicate idle notifications. "
-                        "Optionally stores claude_session_file path in session state. "
-                        "**Do NOT use for completion messages** - use send_message directly instead."
-                    ),
+                    description=("Send notification to a TeleClaude session when asked."),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -261,12 +255,33 @@ class TeleClaudeMCPServer:
                                 "type": "string",
                                 "description": "Notification message to send",
                             },
-                            "claude_session_file": {
-                                "type": "string",
-                                "description": "Optional path to Claude session file",
-                            },
                         },
                         "required": ["session_id", "message"],
+                    },
+                ),
+                Tool(
+                    name="teleclaude__init_from_claude",
+                    title="TeleClaude: Initialize from Claude",
+                    description=(
+                        "Initializes TeleClaude session with Claude session data. USED BY HOOKS, AND FOR INTERNAL USE ONLY, so do not call yourself."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string",
+                                "description": "TeleClaude session UUID (not Claude Code session!)",
+                            },
+                            "claude_session_id": {
+                                "type": "string",
+                                "description": "ID of Claude session",
+                            },
+                            "claude_session_file": {
+                                "type": "string",
+                                "description": "Path to Claude session file",
+                            },
+                        },
+                        "required": ["session_id", "claude_session_id", "claude_session_file"],
                     },
                 ),
             ]
@@ -327,12 +342,20 @@ class TeleClaudeMCPServer:
                 caption = str(caption_obj) if caption_obj else None
                 result_text = await self.teleclaude__send_file(file_path, caption)
                 return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__init_from_claude":
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                claude_session_id_obj = arguments.get("claude_session_id") if arguments else None
+                claude_session_id = str(claude_session_id_obj) if claude_session_id_obj else None
+                claude_session_file_obj = arguments.get("claude_session_file") if arguments else None
+                claude_session_file = str(claude_session_file_obj) if claude_session_file_obj else None
+                result_text = await self.teleclaude__init_from_claude(
+                    session_id, claude_session_id, claude_session_file
+                )
+                return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__send_notification":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 message = str(arguments.get("message", "")) if arguments else ""
-                claude_session_file_obj = arguments.get("claude_session_file") if arguments else None
-                claude_session_file = str(claude_session_file_obj) if claude_session_file_obj else None
-                result_text = await self.teleclaude__send_notification(session_id, message, claude_session_file)
+                result_text = await self.teleclaude__send_notification(session_id, message)
                 return [TextContent(type="text", text=result_text)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
@@ -859,15 +882,38 @@ class TeleClaudeMCPServer:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"
 
-    async def teleclaude__send_notification(
-        self, session_id: str, message: str, claude_session_file: Optional[str] = None
+    async def teleclaude__init_from_claude(
+        self, session_id: str, claude_session_id: Optional[str] = None, claude_session_file: Optional[str] = None
     ) -> str:
-        """Send notification to session (called by Claude Code hooks).
+        """Keep Claude Code status information for TeleClaude session (called by Claude Code hooks).
+
+        Args:
+            session_id: TeleClaude session UUID (not Claude Code session!)
+            claude_session_id: Claude Code session ID
+            claude_session_file: Path to Claude session file
+
+        Returns:
+            Success message
+        """
+        # Verify session exists
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"TeleClaude session {session_id} not found")
+
+        # Store claude_session_file if provided
+        if claude_session_file:
+            await db.update_ux_state(
+                session_id, claude_session_id=claude_session_id, claude_session_file=claude_session_file
+            )
+
+        return "OK"
+
+    async def teleclaude__send_notification(self, session_id: str, message: str) -> str:
+        """Send notification to a session.
 
         Args:
             session_id: TeleClaude session UUID (not Claude Code session!)
             message: Notification message to send
-            claude_session_file: Optional path to Claude session file
 
         Returns:
             Success message with message_id
@@ -885,9 +931,5 @@ class TeleClaudeMCPServer:
 
         # Set notification_sent flag (prevents idle notifications)
         await db.set_notification_flag(session_id, True)
-
-        # Store claude_session_file if provided
-        if claude_session_file:
-            await db.update_ux_state(session_id, claude_session_file=claude_session_file)
 
         return f"OK: {message_id}"

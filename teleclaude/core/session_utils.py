@@ -4,7 +4,12 @@ This module provides shared utilities for session creation and management
 to avoid code duplication across command handlers and MCP server.
 """
 
+from pathlib import Path
+
 from teleclaude.core.db import db
+
+# Session output directory (workspace/{session_id}/output.txt)
+OUTPUT_DIR = Path("workspace")
 
 
 async def ensure_unique_title(base_title: str) -> str:
@@ -41,3 +46,23 @@ async def ensure_unique_title(base_title: str) -> str:
         counter += 1
 
     return f"{base_title} ({counter})"
+
+
+def get_output_file_path(session_id: str) -> Path:
+    """Get output file path for a session.
+
+    Creates session workspace directory if it doesn't exist.
+    Output file stores RAW terminal output (with exit markers) for:
+    1. Delta calculation (ignore old markers in scrollback)
+    2. Download functionality (markers stripped on-the-fly)
+    3. Daemon restart recovery (checkpoint)
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Path to output file (workspace/{session_id}/output.txt)
+    """
+    session_workspace = OUTPUT_DIR / session_id
+    session_workspace.mkdir(parents=True, exist_ok=True)
+    return session_workspace / "output.txt"

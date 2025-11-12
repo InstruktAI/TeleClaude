@@ -26,17 +26,18 @@ def log(message: str) -> None:
         pass
 
 
-def mcp_send(session_id: str, message: str) -> None:
-    """Send notification to TeleClaude via MCP socket.
+def mcp_send(tool, payload) -> None:
+    """Invoke tool call in TeleClaude via MCP socket.
 
     Args:
-        session_id: TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)
-        message: Message to send
+        tool: TeleClaude tool name to invoke
+        payload: Arguments for the tool call, MUST contain 'session_id' key
     """
     try:
         log("=== mcp_send() called ===")
-        log(f"TeleClaude session ID: {session_id}")
-        log(f"Message: {message}")
+        log(f"MCP tool: {tool}")
+        log(f"TeleClaude session ID: {payload.session_id}")
+        log(f"Payload: {payload}")
 
         # Connect to MCP socket
         log(f"Connecting to socket: {MCP_SOCKET}")
@@ -72,11 +73,8 @@ def mcp_send(session_id: str, message: str) -> None:
             "id": 2,
             "method": "tools/call",
             "params": {
-                "name": "teleclaude__send_notification",
-                "arguments": {
-                    "session_id": session_id,
-                    "message": message,
-                },
+                "name": tool,
+                "arguments": payload,
             },
         }
         tool_response = send_message(sock, tool_request)

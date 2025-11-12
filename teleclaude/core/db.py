@@ -530,6 +530,7 @@ class Db:
         idle_notification_message_id: Optional[str] | object = ux_state._UNSET,
         pending_deletions: list[str] | object = ux_state._UNSET,
         notification_sent: bool | object = ux_state._UNSET,
+        claude_session_id: Optional[str] | object = ux_state._UNSET,
         claude_session_file: Optional[str] | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
@@ -541,6 +542,7 @@ class Db:
             idle_notification_message_id: Idle notification message ID (optional)
             pending_deletions: List of message IDs pending deletion (optional)
             notification_sent: Whether Claude Code notification was sent (optional)
+            claude_session_id: Claude Code session ID (optional)
             claude_session_file: Path to native Claude Code session file (optional)
         """
         await ux_state.update_session_ux_state(
@@ -551,6 +553,7 @@ class Db:
             idle_notification_message_id=idle_notification_message_id,
             pending_deletions=pending_deletions,
             notification_sent=notification_sent,
+            claude_session_id=claude_session_id,
             claude_session_file=claude_session_file,
         )
 

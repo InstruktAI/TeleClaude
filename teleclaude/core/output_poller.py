@@ -157,82 +157,115 @@ class OutputPoller:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # Exit condition 2: Exit code detected
-                # On first poll: establish baseline from current output
-                # On subsequent polls: only check when output changes from baseline
+                # Exit condition 2: Exit code detected (DELTA-BASED)
+                # Only check NEW output (delta) for exit markers
+                # This prevents false positives from old markers in tmux scrollback history
                 exit_code = None
+                delta_raw = ""
 
                 if first_poll and current_output.strip():
-                    # First poll with output - establish baseline
-                    output_buffer = current_output
-                    first_poll = False
-                    last_output_changed_at = time.time()
-                    logger.debug("Baseline established for %s (size=%d)", session_id[:8], len(output_buffer))
+                    # First poll - calculate delta from file (handles daemon restart)
+                    previous_raw = ""
+                    if output_file.exists():
+                        try:
+                            previous_raw = output_file.read_text(encoding="utf-8")
+                        except Exception as e:
+                            logger.warning("Failed to read previous output file: %s", e)
 
-                    # Send initial OutputChanged event with baseline
-                    clean_output = self._strip_exit_markers(output_buffer)
+                    # Calculate delta (NEW content only)
+                    if previous_raw and current_output.startswith(previous_raw):
+                        delta_raw = current_output[len(previous_raw) :]
+                        logger.debug(
+                            "Resumed from checkpoint for %s (delta=%d bytes)",
+                            session_id[:8],
+                            len(delta_raw),
+                        )
+                    else:
+                        delta_raw = current_output
+                        logger.debug("Fresh baseline for %s (size=%d)", session_id[:8], len(delta_raw))
 
-                    # Write to file
-                    try:
-                        output_file.write_text(clean_output, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("Failed to write initial output file: %s", e)
+                    # Check delta ONLY for exit (handles fast commands + avoids old markers)
+                    exit_code = self._extract_exit_code(delta_raw, has_exit_marker)
 
-                    yield OutputChanged(
-                        session_id=session_id,
-                        output=clean_output,
-                        started_at=started_at,
-                        last_changed_at=last_output_changed_at,
-                    )
+                    if exit_code is None:
+                        # No exit - establish baseline and continue
+                        output_buffer = current_output
+                        first_poll = False
+                        last_output_changed_at = time.time()
 
-                    # Continue polling (don't check for exit in baseline to avoid old markers)
-                    await asyncio.sleep(poll_interval)
-                    continue
+                        # Write RAW to file (source of truth for delta calculation)
+                        try:
+                            output_file.write_text(current_output, encoding="utf-8")
+                        except Exception as e:
+                            logger.warning("Failed to write output file: %s", e)
+
+                        # Send clean delta to UI
+                        clean_delta = self._strip_exit_markers(delta_raw)
+                        yield OutputChanged(
+                            session_id=session_id,
+                            output=clean_delta,
+                            started_at=started_at,
+                            last_changed_at=last_output_changed_at,
+                        )
+
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                    # Exit detected on first poll - fall through to exit handling below
 
                 elif not first_poll:
-                    # Check for exit on every poll after baseline (not just when output changes)
-                    # This handles fast commands where exit marker appears before first poll
+                    # Subsequent polls - calculate delta from output_buffer
                     if current_output != output_buffer:
-                        # Output changed - always check for exit
-                        exit_code = self._extract_exit_code(current_output, has_exit_marker)
-                    elif has_exit_marker and output_buffer.strip():
-                        # Output unchanged but we expect exit marker - check baseline
-                        exit_code = self._extract_exit_code(output_buffer, has_exit_marker)
+                        # Output changed - calculate delta
+                        if current_output.startswith(output_buffer):
+                            delta_raw = current_output[len(output_buffer) :]
+                        else:
+                            # Scrollback truncated - treat full output as delta
+                            delta_raw = current_output
+                            logger.warning(
+                                "Scrollback truncation for %s (prev=%d, curr=%d)",
+                                session_id[:8],
+                                len(output_buffer),
+                                len(current_output),
+                            )
+
+                        # Check delta ONLY (ignores old markers in output_buffer)
+                        exit_code = self._extract_exit_code(delta_raw, has_exit_marker)
 
                 if exit_code is not None:
-                    # Strip markers from output (both marker and echo command)
-                    current_output = self._strip_exit_markers(current_output)
+                    # Exit detected - write final RAW output and yield
                     logger.info("Exit code %d detected for %s", exit_code, session_id[:8])
 
-                    # Write final output to file for downloads
+                    # Write final RAW output to file (for downloads)
                     try:
                         output_file.write_text(current_output, encoding="utf-8")
                     except Exception as e:
                         logger.warning("Failed to write final output file: %s", e)
 
+                    # Strip markers from full output for final display
+                    clean_output = self._strip_exit_markers(current_output)
                     yield ProcessExited(
-                        session_id=session_id, exit_code=exit_code, final_output=current_output, started_at=started_at
+                        session_id=session_id, exit_code=exit_code, final_output=clean_output, started_at=started_at
                     )
                     break
 
                 # Check if output changed (and exit wasn't already detected)
                 output_changed = False
                 if current_output != output_buffer and exit_code is None:
-                    # Output changed - update buffer and reset idle counter
+                    # Output changed - update buffer and reset idle
                     output_buffer = current_output
                     idle_ticks = 0
                     notification_sent = False
                     last_output_changed_at = time.time()
                     output_changed = True
 
-                    # Write to file (with markers stripped)
-                    clean_output = self._strip_exit_markers(output_buffer)
+                    # Write RAW to file (accumulates all output)
                     try:
-                        output_file.write_text(clean_output, encoding="utf-8")
+                        output_file.write_text(current_output, encoding="utf-8")
                     except Exception as e:
                         logger.warning("Failed to write output file: %s", e)
 
-                    # Reset backoff to global interval when activity resumes
+                    # Reset backoff to global interval
                     current_update_interval = global_update_interval
 
                 # Increment tick counter
@@ -305,12 +338,11 @@ class OutputPoller:
 
         Removes:
         1. Hook success prefix lines: ⎿ <hook_name> hook succeeded:
-        2. <system-reminder>...</system-reminder> blocks (can be nested/multiline)
+        2. <system-reminder>...</system-reminder> blocks (can be multiline, NOT nested)
 
         Examples of patterns removed:
         - "⎿ UserPromptSubmit hook succeeded: <system-reminder>...</system-reminder>"
         - "⎿  SessionStart:startup hook succeeded: ..."
-        - Nested: "<system-reminder>...hook...<system-reminder>...</system-reminder></system-reminder>"
 
         Args:
             output: Terminal output
@@ -320,33 +352,21 @@ class OutputPoller:
         """
         original_length = len(output)
 
+        # Strip hook success prefix lines (⎿ ... hook succeeded: ...)
+        output = re.sub(r"⎿[^\n]*hook succeeded:[^\n]*\n?", "", output)
+
         # Check if output contains system-reminder tags
         has_system_reminder = "<system-reminder>" in output or "</system-reminder>" in output
         if has_system_reminder:
             logger.info("Found system-reminder tags in output (length: %d)", original_length)
 
-        # Strip hook success prefix lines (⎿ ... hook succeeded: ...)
-        output = re.sub(r"⎿[^\n]*hook succeeded:[^\n]*\n?", "", output)
-
-        # Strip <system-reminder> blocks (handles nesting by running multiple times)
+        # Strip <system-reminder> blocks
         # Use [\s\S] instead of . to explicitly match ANY character including newlines
-        for i in range(10):  # Increased iterations for deeply nested blocks
-            before = output
-            output = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>\s*\n?", "", output)
-            if output == before:
-                if i > 0 and has_system_reminder:
-                    logger.info("System-reminder filtering converged after %d iterations", i)
-                break
+        output = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>\s*\n?", "", output)
 
         # Strip orphaned closing tags and their preceding content
         # Look for patterns that indicate system-reminder content before the closing tag
         before_orphan = output
-
-        # Remove everything from "adhere to the best practices" up to </system-reminder>
-        # This is a signature phrase from Claude Code hooks
-        output = re.sub(
-            r"adhere to the best practices[\s\S]*?</system-reminder>\s*\n?", "", output, flags=re.IGNORECASE
-        )
 
         # Also remove standalone closing tags
         output = re.sub(r"[^\n]*</system-reminder>\s*\n?", "", output)

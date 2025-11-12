@@ -1263,12 +1263,18 @@ Current size: {}
                 return
 
             try:
-                # Read the full output
-                output_content = output_file.read_text()
+                # Read RAW output (contains exit markers)
+                raw_output = output_file.read_text()
+
+                # Strip exit markers and Claude Code hooks before sending
+                from teleclaude.core.output_poller import OutputPoller
+
+                poller = OutputPoller()
+                clean_output = poller._strip_exit_markers(raw_output)
 
                 # Create a temporary file to send
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
-                    tmp.write(output_content)
+                    tmp.write(clean_output)
                     tmp_path = tmp.name
 
                 try:

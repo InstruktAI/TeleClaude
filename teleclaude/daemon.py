@@ -457,10 +457,10 @@ class TeleClaudeDaemon:
         logger.info("Health check requested")
 
     def _get_output_file_path(self, session_id: str) -> Path:
-        """Get output file path for a session."""
-        session_workspace = self.output_dir / session_id
-        session_workspace.mkdir(parents=True, exist_ok=True)
-        return session_workspace / "output.txt"
+        """Get output file path for a session (delegates to session_utils)."""
+        from teleclaude.core.session_utils import get_output_file_path
+
+        return get_output_file_path(session_id)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.

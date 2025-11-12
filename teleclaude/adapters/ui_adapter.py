@@ -314,8 +314,7 @@ class UiAdapter(BaseAdapter):
         Used internally by UI adapters that need to READ the output file
         (e.g., for uploading, processing, voice status appending).
 
-        Default implementation uses standard workspace directory.
-        Override if adapter stores output files in custom location.
+        Delegates to session_utils for centralized path management.
 
         Args:
             session_id: Session identifier
@@ -325,5 +324,6 @@ class UiAdapter(BaseAdapter):
 
         NOTE: This is different from get_session_file() which creates download UI.
         """
-        # Use standard workspace directory (same as daemon)
-        return Path("workspace") / session_id / "output.txt"
+        from teleclaude.core.session_utils import get_output_file_path
+
+        return get_output_file_path(session_id)

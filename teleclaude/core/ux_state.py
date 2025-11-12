@@ -48,6 +48,7 @@ class SessionUXState:
     idle_notification_message_id: Optional[str] = None
     pending_deletions: list[str] = field(default_factory=list)
     notification_sent: bool = False  # Claude Code notification hook flag
+    claude_session_id: Optional[str] = None  # Claude Code session ID
     claude_session_file: Optional[str] = None  # Path to native Claude Code session .jsonl file
 
     @classmethod
@@ -63,6 +64,7 @@ class SessionUXState:
                 list(data.get("pending_deletions", [])) if isinstance(data.get("pending_deletions"), list) else []
             ),
             notification_sent=bool(data.get("notification_sent", False)),
+            claude_session_id=str(data["claude_session_id"]) if data.get("claude_session_id") else None,
             claude_session_file=str(data["claude_session_file"]) if data.get("claude_session_file") else None,
         )
 
@@ -74,6 +76,7 @@ class SessionUXState:
             "idle_notification_message_id": self.idle_notification_message_id,
             "pending_deletions": self.pending_deletions,
             "notification_sent": self.notification_sent,
+            "claude_session_id": self.claude_session_id,
             "claude_session_file": self.claude_session_file,
         }
 
@@ -178,6 +181,7 @@ async def update_session_ux_state(
     idle_notification_message_id: Optional[str] | object = _UNSET,
     pending_deletions: list[str] | object = _UNSET,
     notification_sent: bool | object = _UNSET,
+    claude_session_id: Optional[str] | object = _UNSET,
     claude_session_file: Optional[str] | object = _UNSET,
 ) -> None:
     """Update session UX state (merges with existing).
@@ -190,6 +194,7 @@ async def update_session_ux_state(
         idle_notification_message_id: Idle notification message ID (optional)
         pending_deletions: List of message IDs pending deletion (optional)
         notification_sent: Whether Claude Code notification was sent (optional)
+        claude_session_id: Claude Code session ID (optional)
         claude_session_file: Path to native Claude Code session file (optional)
     """
     try:
@@ -207,6 +212,8 @@ async def update_session_ux_state(
             existing.pending_deletions = pending_deletions  # type: ignore
         if notification_sent is not _UNSET:
             existing.notification_sent = notification_sent  # type: ignore
+        if claude_session_id is not _UNSET:
+            existing.claude_session_id = claude_session_id  # type: ignore
         if claude_session_file is not _UNSET:
             existing.claude_session_file = claude_session_file  # type: ignore
 

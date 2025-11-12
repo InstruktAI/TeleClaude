@@ -105,14 +105,16 @@ def main() -> None:
         log("=== Summarizer started ===")
         log(f"Args: {sys.argv}")
 
-        if len(sys.argv) != 3:
+        if len(sys.argv) != 4:
             log(f"Invalid args count: {len(sys.argv)}")
             sys.exit(1)
 
-        session_id = sys.argv[1]
-        transcript_path = sys.argv[2]
+        teleclaude_session_id = sys.argv[1]
+        session_id = sys.argv[2]
+        transcript_path = sys.argv[3]
 
         log(f"Session ID: {session_id}")
+        log(f"TeleClaude Session ID: {teleclaude_session_id}")
         log(f"Transcript path: {transcript_path}")
 
         # Read transcript
@@ -123,7 +125,13 @@ def main() -> None:
         summary = generate_summary(transcript)
         log(f"Final summary: {summary}")
 
-        mcp_send(session_id, summary)
+        mcp_send(
+            "teleclaude__send_notification",
+            {
+                "session_id": teleclaude_session_id,
+                "message": summary,
+            },
+        )
 
     except Exception as e:
         log(f"ERROR: {str(e)}")
