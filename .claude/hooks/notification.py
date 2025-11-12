@@ -89,18 +89,13 @@ def main() -> None:
         elif hook_event == "Notification":
             log("Notification event detected")
 
-            # Skip generic notification message
-            if data.get("message") == "Claude is waiting for your input":
-                log("Skipping generic notification message")
-                sys.exit(0)
-
             # Get engineer name if available
             engineer_name = os.getenv("ENGINEER_NAME", "").strip()
             log(f"Engineer name: {engineer_name or '(not set)'}")
 
             # Create notification message with 30% chance to include name
             prefix = f"{engineer_name}, " if engineer_name and random.random() < 0.3 else ""
-            # Notification event - send random message
+            # Generate custom message (ignore generic message from Claude Code)
             message = prefix + random.choice(NOTIFICATION_MESSAGES)
             log(f"Generated message: {message}")
 
