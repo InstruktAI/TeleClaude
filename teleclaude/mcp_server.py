@@ -880,6 +880,9 @@ class TeleClaudeMCPServer:
         # Send notification via AdapterClient
         message_id = await self.client.send_message(session_id, message)
 
+        # Mark notification message for cleanup on next user input
+        await db.add_pending_deletion(session_id, message_id)
+
         # Set notification_sent flag (prevents idle notifications)
         await db.set_notification_flag(session_id, True)
 

@@ -12,4 +12,4 @@
 
 - [x] user input & feedback messages below a message with a long running process are not collected and removed
 
-  [2025-11-12 01:59:17] **Fixed**: Added `_pre_handle_user_input()` method to UiAdapter to cleanup feedback messages on user input.
+  [2025-11-12 01:59:17] **Fixed**: Added `_pre_handle_user_input()` method to UiAdapter to cleanup feedback messages on user input. Also updated `teleclaude__send_notification` in mcp_server.py to mark notification hook messages for cleanup via `add_pending_deletion()`, ensuring they are removed when user sends next input.

@@ -360,7 +360,6 @@ class TelegramAdapter(UiAdapter):
 
         Retry logic (via @command_retry decorator on _edit_message_with_retry):
         - Rate limits (RetryAfter): Uses Telegram's suggested delay, keeps retrying until 60s timeout
-        - Network errors: Exponential backoff (1s, 2s, 4s), max 3 attempts OR 60 second timeout
         """
         self._ensure_started()
 

@@ -186,3 +186,6 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
 
         # Verify claude_session_file was stored
         assert ux_state.get("claude_session_file") == "/tmp/test_session.json"
+
+        # Verify notification message was marked for cleanup
+        assert "msg123" in ux_state.get("pending_deletions", [])
