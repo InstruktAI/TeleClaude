@@ -18,7 +18,9 @@
 
   [2025-11-12 05:14:00] **Better approach**: Switched from unreliable CWD-based mapping to env var injection. Tmux sessions now inject `TELECLAUDE_SESSION_ID` env var when created. Hook reads directly from `os.getenv()` for reliable 1:1 mapping. Removed `teleclaude__find_session_by_cwd` MCP tool. Notifications now arrive successfully.
 
-  [2025-11-12 05:19:00] **FULLY FIXED**: Fixed NameError in Stop event handler. When renaming `session_id` to `teleclaude_session_id`, missed updating the summarizer spawn call, causing `NameError: name 'session_id' is not defined`. Stop event summaries now work correctly.
+  [2025-11-12 05:19:00] **Fifth bug fixed**: Fixed NameError in Stop event handler. When renaming `session_id` to `teleclaude_session_id`, missed updating the summarizer spawn call, causing `NameError: name 'session_id' is not defined`. Summarizer now spawns correctly.
+
+  [2025-11-12 05:24:00] **FULLY FIXED**: Fixed ModuleNotFoundError in summarizer.py. Relative import `from utils.mcp_send import mcp_send` failed when run as uv script. Added parent directory to sys.path and changed to direct import. Stop event summaries now generate and send successfully.
 
 - [x] pre-commit hook calls format which changes files, but this should NOT reject the commit
 
