@@ -56,6 +56,10 @@ class Session:
         if "status" in data:
             del data["status"]
 
+        # Remove legacy claude_session_file field (should be in ux_state JSON instead)
+        if "claude_session_file" in data:
+            del data["claude_session_file"]
+
         # Parse adapter_metadata JSON if stored as string
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
             data["adapter_metadata"] = json.loads(data["adapter_metadata"])

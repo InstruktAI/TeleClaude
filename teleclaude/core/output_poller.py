@@ -89,14 +89,13 @@ class OutputPoller:
         directory_check_interval = getattr(config.polling, "directory_check_interval", 5)
 
         # State tracking
-        output_buffer = ""
+        output_buffer = ""  # In-memory buffer for display/comparison only
         idle_ticks = 0
         notification_sent = False
         started_at = None
         last_output_changed_at = None
         ticks_since_last_update = 0
         current_update_interval = global_update_interval  # Start with global interval
-        first_poll = True  # Skip exit detection on first poll (establish baseline)
         last_directory = None
         directory_check_ticks = 0
         poll_iteration = 0
@@ -157,49 +156,71 @@ class OutputPoller:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # Exit condition 2: Exit code detected (DELTA-BASED)
-                # Only check NEW output (delta) for exit markers
-                # This prevents false positives from old markers in tmux scrollback history
-                exit_code = None
+                # Exit condition 2: Exit code detected (STATELESS DELTA-BASED)
+                # Calculate delta by comparing tmux output with cumulative file history
+                # File accumulates ENTIRE session, never truncates
+
+                # Read accumulated history from file (source of truth)
+                accumulated = ""
+                if output_file.exists():
+                    try:
+                        accumulated = output_file.read_text(encoding="utf-8")
+                    except Exception as e:
+                        logger.warning("Failed to read output file: %s", e)
+
+                # Calculate delta between tmux view and accumulated history
                 delta_raw = ""
+                if current_output.startswith(accumulated):
+                    # Fast path: tmux has all our history + new content
+                    delta_raw = current_output[len(accumulated) :]
+                else:
+                    # Tmux scrollback truncated: find overlap to determine delta
+                    # Try to find where current output continues from accumulated history
+                    overlap_len = 0
 
-                if first_poll and current_output.strip():
-                    # First poll - calculate delta from file (handles daemon restart)
-                    previous_raw = ""
-                    if output_file.exists():
-                        try:
-                            previous_raw = output_file.read_text(encoding="utf-8")
-                        except Exception as e:
-                            logger.warning("Failed to read previous output file: %s", e)
+                    # Try progressively smaller chunks of current's beginning
+                    for chunk_size in [1000, 500, 100, 50]:
+                        if len(current_output) < chunk_size:
+                            continue
+                        chunk = current_output[:chunk_size]
+                        pos = accumulated.find(chunk)
+                        if pos >= 0:
+                            # Found where current continues from accumulated
+                            overlap_len = len(accumulated) - pos
+                            logger.debug(
+                                "Found overlap at pos %d for %s (overlap_len=%d)",
+                                pos,
+                                session_id[:8],
+                                overlap_len,
+                            )
+                            break
 
-                    # Calculate delta (NEW content only)
-                    if previous_raw and current_output.startswith(previous_raw):
-                        delta_raw = current_output[len(previous_raw) :]
-                        logger.debug(
-                            "Resumed from checkpoint for %s (delta=%d bytes)",
-                            session_id[:8],
-                            len(delta_raw),
-                        )
-                    else:
-                        delta_raw = current_output
-                        logger.debug("Fresh baseline for %s (size=%d)", session_id[:8], len(delta_raw))
+                    # Delta is everything after the overlap point
+                    delta_raw = current_output[overlap_len:]
 
-                    # Check delta ONLY for exit (handles fast commands + avoids old markers)
-                    exit_code = self._extract_exit_code(delta_raw, has_exit_marker)
+                    if overlap_len == 0:
+                        logger.debug("Full reset (clear or major truncation) for %s", session_id[:8])
 
+                # Always check delta for exit code (unconditional)
+                exit_code = self._extract_exit_code(delta_raw, has_exit_marker)
+
+                # Append delta to file (cumulative history, never overwrites)
+                if delta_raw:
+                    try:
+                        with open(output_file, "a", encoding="utf-8") as f:
+                            f.write(delta_raw)
+                    except Exception as e:
+                        logger.warning("Failed to append to output file: %s", e)
+
+                    # Update output_buffer with full accumulated content (for UI display)
+                    output_buffer = accumulated + delta_raw
+                    idle_ticks = 0
+                    notification_sent = False
+                    last_output_changed_at = time.time()
+                    current_update_interval = global_update_interval
+
+                    # Send OutputChanged immediately when delta appears (responsive UI)
                     if exit_code is None:
-                        # No exit - establish baseline and continue
-                        output_buffer = current_output
-                        first_poll = False
-                        last_output_changed_at = time.time()
-
-                        # Write RAW to file (source of truth for delta calculation)
-                        try:
-                            output_file.write_text(current_output, encoding="utf-8")
-                        except Exception as e:
-                            logger.warning("Failed to write output file: %s", e)
-
-                        # Send clean delta to UI
                         clean_delta = self._strip_exit_markers(delta_raw)
                         yield OutputChanged(
                             session_id=session_id,
@@ -207,66 +228,30 @@ class OutputPoller:
                             started_at=started_at,
                             last_changed_at=last_output_changed_at,
                         )
-
-                        await asyncio.sleep(poll_interval)
-                        continue
-
-                    # Exit detected on first poll - fall through to exit handling below
-
-                elif not first_poll:
-                    # Subsequent polls - calculate delta from output_buffer
-                    if current_output != output_buffer:
-                        # Output changed - calculate delta
-                        if current_output.startswith(output_buffer):
-                            delta_raw = current_output[len(output_buffer) :]
-                        else:
-                            # Scrollback truncated - treat full output as delta
-                            delta_raw = current_output
-                            logger.warning(
-                                "Scrollback truncation for %s (prev=%d, curr=%d)",
-                                session_id[:8],
-                                len(output_buffer),
-                                len(current_output),
-                            )
-
-                        # Check delta ONLY (ignores old markers in output_buffer)
-                        exit_code = self._extract_exit_code(delta_raw, has_exit_marker)
+                        # Reset tick counter since we just sent an update
+                        ticks_since_last_update = 0
+                elif not output_buffer and accumulated:
+                    # First poll with existing file but no new delta - initialize buffer
+                    output_buffer = accumulated
 
                 if exit_code is not None:
-                    # Exit detected - write final RAW output and yield
+                    # Exit detected - yield ProcessExited with full accumulated output
                     logger.info("Exit code %d detected for %s", exit_code, session_id[:8])
 
-                    # Write final RAW output to file (for downloads)
-                    try:
-                        output_file.write_text(current_output, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("Failed to write final output file: %s", e)
+                    # Read full accumulated history for final output
+                    final_accumulated = ""
+                    if output_file.exists():
+                        try:
+                            final_accumulated = output_file.read_text(encoding="utf-8")
+                        except Exception as e:
+                            logger.warning("Failed to read final output: %s", e)
 
-                    # Strip markers from full output for final display
-                    clean_output = self._strip_exit_markers(current_output)
+                    # Strip markers from accumulated output for display
+                    clean_output = self._strip_exit_markers(final_accumulated)
                     yield ProcessExited(
                         session_id=session_id, exit_code=exit_code, final_output=clean_output, started_at=started_at
                     )
                     break
-
-                # Check if output changed (and exit wasn't already detected)
-                output_changed = False
-                if current_output != output_buffer and exit_code is None:
-                    # Output changed - update buffer and reset idle
-                    output_buffer = current_output
-                    idle_ticks = 0
-                    notification_sent = False
-                    last_output_changed_at = time.time()
-                    output_changed = True
-
-                    # Write RAW to file (accumulates all output)
-                    try:
-                        output_file.write_text(current_output, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("Failed to write output file: %s", e)
-
-                    # Reset backoff to global interval
-                    current_update_interval = global_update_interval
 
                 # Increment tick counter
                 ticks_since_last_update += 1
@@ -297,8 +282,8 @@ class OutputPoller:
                             session_id[:8],
                         )
 
-                # Increment idle counter when no output change
-                if current_output == output_buffer:
+                # Increment idle counter when no new content
+                if not delta_raw:
                     idle_ticks += 1
 
                     # Send idle notification once at threshold

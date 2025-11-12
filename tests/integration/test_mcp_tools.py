@@ -169,7 +169,6 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
         result = await mcp_server.teleclaude__send_notification(
             session_id=session.session_id,
             message="Claude is ready for action!",
-            claude_session_file="/tmp/test_session.json",
         )
 
         # Verify result
@@ -183,9 +182,6 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
         updated_session = await daemon.db.get_session(session.session_id)
         ux_state = json.loads(updated_session.ux_state) if updated_session.ux_state else {}
         assert ux_state.get("notification_sent") is True
-
-        # Verify claude_session_file was stored
-        assert ux_state.get("claude_session_file") == "/tmp/test_session.json"
 
         # Verify notification message was marked for cleanup
         assert "msg123" in ux_state.get("pending_deletions", [])
