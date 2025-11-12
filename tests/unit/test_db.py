@@ -1,11 +1,11 @@
 """Unit tests for db.py."""
 
-import pytest
-import tempfile
 import os
-from datetime import datetime
-from teleclaude.core.db import db, Db
-from teleclaude.core.models import Session
+import tempfile
+
+import pytest
+
+from teleclaude.core.db import Db
 
 
 @pytest.fixture
@@ -384,55 +384,6 @@ class TestDbAdapterClientIntegration:
     """Tests for DB integration with AdapterClient."""
 
     @pytest.mark.asyncio
-    async def test_update_session_closed_calls_set_channel_status(self, test_db):
-        """Test that updating session to closed calls set_channel_status('closed')."""
-        from unittest.mock import AsyncMock
-
-        # Create session
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
-        )
-
-        # Wire mock client
-        mock_client = AsyncMock()
-        mock_client.set_channel_status = AsyncMock()
-        test_db.set_client(mock_client)
-
-        # Update to closed
-        await test_db.update_session(session.session_id, closed=True)
-
-        # Verify set_channel_status called with "closed"
-        mock_client.set_channel_status.assert_called_once_with(session.session_id, "closed")
-
-    @pytest.mark.asyncio
-    async def test_update_session_reopened_calls_set_channel_status(self, test_db):
-        """Test that updating session to active calls set_channel_status('active')."""
-        from unittest.mock import AsyncMock
-
-        # Create closed session
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
-        )
-        await test_db.update_session(session.session_id, closed=True)
-
-        # Wire mock client
-        mock_client = AsyncMock()
-        mock_client.set_channel_status = AsyncMock()
-        test_db.set_client(mock_client)
-
-        # Reopen session
-        await test_db.update_session(session.session_id, closed=False)
-
-        # Verify set_channel_status called with "active"
-        mock_client.set_channel_status.assert_called_once_with(session.session_id, "active")
-
-    @pytest.mark.asyncio
     async def test_update_session_without_client_does_not_crash(self, test_db):
         """Test that update_session works without client wired."""
         # Create session
@@ -449,30 +400,6 @@ class TestDbAdapterClientIntegration:
         # Verify session updated
         updated = await test_db.get_session(session.session_id)
         assert updated.closed is True
-
-    @pytest.mark.asyncio
-    async def test_update_session_no_status_change_skips_set_channel_status(self, test_db):
-        """Test that updating other fields doesn't call set_channel_status."""
-        from unittest.mock import AsyncMock
-
-        # Create session
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
-        )
-
-        # Wire mock client
-        mock_client = AsyncMock()
-        mock_client.set_channel_status = AsyncMock()
-        test_db.set_client(mock_client)
-
-        # Update title only (no closed field change)
-        await test_db.update_session(session.session_id, title="New Title")
-
-        # Verify set_channel_status NOT called
-        mock_client.set_channel_status.assert_not_called()
 
 
 class TestNotificationFlag:

@@ -332,10 +332,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if not self.redis:
             raise RuntimeError("Redis not initialized")
 
-        # Parse target from title
-        target = self._parse_target_from_title(title)
+        target = metadata.get("target_computer") if metadata else None
         if not target:
-            raise ValueError(f"Could not parse target from title: {title}")
+            raise ValueError("Could not find target in metadata")
 
         # Stream names
         command_stream = f"commands:{target}"
@@ -371,18 +370,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Args:
             session_id: Session identifier
             title: New title
-
-        Returns:
-            True
-        """
-        return True
-
-    async def set_channel_status(self, session_id: str, status: str) -> bool:
-        """Set channel status (no-op for Redis).
-
-        Args:
-            session_id: Session identifier
-            status: Status string
 
         Returns:
             True
@@ -772,24 +759,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         )
 
         logger.debug("Sent heartbeat: %s", key)
-
-    def _parse_target_from_title(self, title: str) -> Optional[str]:
-        """Parse target computer name from title.
-
-        Expected format: "$initiator > $target[project] - description"
-
-        Args:
-            title: Channel title
-
-        Returns:
-            Target computer name or None
-        """
-        # Match: "$anything > $target[project] - anything"
-        match = re.match(r"^\$\w+ > \$(\w+)(?:\[.*?\])? - ", title)
-        if match:
-            return match.group(1)
-
-        return None
 
     # === MCP-specific methods for AI-to-AI communication ===
 

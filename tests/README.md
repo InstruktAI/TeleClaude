@@ -14,6 +14,7 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: User sends command via Telegram → Daemon executes → Output polled → Sent back to Telegram
 
 **Current Coverage**:
+
 - ✅ `test_full_flow::test_message_execution_and_output_polling` - Command execution + output polling
 - ✅ `test_full_flow::test_command_execution_via_terminal` - Direct terminal execution
 - ✅ `test_process_exit_detection::test_process_detection_uses_output_message_id` - Exit detection
@@ -22,6 +23,7 @@ This document maps all critical user pathways to integration tests, identifying 
 - ✅ `test_session_lifecycle::test_close_session_full_cleanup` - Session cleanup
 
 **Missing Tests**:
+
 - ❌ **Notification Chain**: Poller detects idle → MCP send_notification called → Notification sent to Telegram
 - ❌ **Notification Chain**: Poller detects completion → MCP send_notification called → Completion message sent
 - ❌ **Error handling**: Command fails → Error captured → Error message sent to user
@@ -31,6 +33,7 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: AI calls MCP tool → Redis transport → Remote computer executes → Output streamed back
 
 **Current Coverage**:
+
 - ✅ `test_full_flow::test_multi_computer_mcp_command_execution` - Full AI-to-AI flow with real tmux
 - ✅ `test_mcp_tools::test_teleclaude_list_computers` - List computers via MCP
 - ✅ `test_mcp_tools::test_teleclaude_start_session_success` - Start remote session
@@ -39,6 +42,7 @@ This document maps all critical user pathways to integration tests, identifying 
 - ✅ `test_redis_heartbeat::test_discover_peers_new_fields` - Peer discovery
 
 **Missing Tests**:
+
 - ❌ **Interest Window Pattern**: MCP send_message → 15s stream → detach → poll status later
 - ❌ **Error propagation**: Remote command fails → Error returned to AI caller
 - ❌ **Timeout handling**: Remote command times out → Timeout reported to AI
@@ -48,12 +52,14 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: User uploads file → Daemon saves → Path sent to terminal (Claude Code or other process)
 
 **Current Coverage**:
+
 - ✅ `test_file_upload::test_file_upload_with_claude_code` - Upload with @ prefix for Claude
 - ✅ `test_file_upload::test_file_upload_without_claude_code` - Upload with plain path
 - ✅ `test_file_upload::test_rejection_when_no_process_active` - Upload rejected when idle
 - ✅ `test_file_upload::test_session_cleanup_deletes_files` - File cleanup on session end
 
 **Missing Tests**:
+
 - ❌ **Large file handling**: File >10MB upload → Chunked processing
 - ❌ **Voice file handling**: Voice message → Transcription → Text sent to terminal
 
@@ -62,6 +68,7 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: Output generated → Sent to origin adapter → Broadcast to observers (Slack, Redis, etc.)
 
 **Current Coverage**:
+
 - ✅ `test_multi_adapter_broadcasting::test_origin_adapter_receives_output` - Origin receives (critical)
 - ✅ `test_multi_adapter_broadcasting::test_redis_observer_skipped_no_ui` - Redis (has_ui=False) skipped
 - ✅ `test_multi_adapter_broadcasting::test_ui_observer_receives_broadcasts` - UI observers receive
@@ -69,6 +76,7 @@ This document maps all critical user pathways to integration tests, identifying 
 - ✅ `test_multi_adapter_broadcasting::test_origin_failure_raises_exception` - Origin failure critical
 
 **Missing Tests**:
+
 - ❌ **Multiple UI observers**: Telegram + Slack both receive broadcasts
 - ❌ **Observer reconnection**: Redis disconnects → Reconnects → Resumes receiving
 
@@ -77,12 +85,14 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: Poller detects idle (60s no output) → Ephemeral notification sent → Auto-deleted on next output
 
 **Current Coverage**:
+
 - ✅ `test_idle_notification::test_idle_notification_stored_in_ux_state` - State persistence
 - ✅ `test_idle_notification::test_idle_notification_cleared_when_output_resumes` - Auto-cleanup
 - ✅ `test_idle_notification::test_idle_notification_persists_across_restarts` - Survives restart
 - ✅ `test_idle_notification::test_has_idle_notification_check` - Query utility
 
 **Missing Tests**:
+
 - ❌ **Idle notification sent via MCP**: Poller triggers → MCP send_notification → Message appears
 - ❌ **Notification flag prevents duplicate**: notification_sent flag set → Skip sending again
 
@@ -91,6 +101,7 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: Long-running process active → Voice transcription status appended to output message
 
 **Current Coverage**:
+
 - ⚠️ `test_voice_status_append::test_append_status_to_existing_output` - Status appends to output
 - ⚠️ `test_voice_status_append::test_send_new_message_when_no_active_polling` - New message when idle
 - ⚠️ `test_voice_status_append::test_append_without_message_id_sends_new` - Fallback behavior
@@ -103,6 +114,7 @@ This document maps all critical user pathways to integration tests, identifying 
 **Flow**: Create session → Execute commands → Close → Reopen → Delete
 
 **Current Coverage**:
+
 - ✅ `test_session_lifecycle::test_close_session_full_cleanup` - Close cleans up resources
 - ✅ `test_session_lifecycle::test_close_session_with_active_polling` - Close stops polling
 - ✅ `test_session_lifecycle::test_close_session_idempotent` - Multiple closes safe
@@ -111,6 +123,7 @@ This document maps all critical user pathways to integration tests, identifying 
 - ✅ `test_core::test_session_manager_with_metadata` - Metadata handling
 
 **Missing Tests**:
+
 - ❌ **Reopen workflow**: Session closed → User reopens → tmux session recreated at last working_directory
 - ❌ **Channel status updates**: Session closed → Telegram topic shows "🔒 Closed" → Reopened → Shows "active"
 
@@ -121,9 +134,11 @@ This document maps all critical user pathways to integration tests, identifying 
 ### P0: Must Have Before Deployment
 
 1. **✅ COMPLETED: Multi-adapter broadcasting** (origin + observers)
+
    - Tests exist and passing
 
 2. **❌ MISSING: Notification chain end-to-end**
+
    ```python
    # tests/integration/test_notification_chain.py
 
@@ -143,6 +158,7 @@ This document maps all critical user pathways to integration tests, identifying 
    ```
 
 3. **❌ MISSING: MCP interest window pattern**
+
    ```python
    # tests/integration/test_mcp_interest_window.py
 
@@ -158,6 +174,7 @@ This document maps all critical user pathways to integration tests, identifying 
 ### P1: Should Have (Improves Confidence)
 
 4. **❌ MISSING: Session reopen workflow**
+
    ```python
    # tests/integration/test_session_reopen.py
 
@@ -166,16 +183,8 @@ This document maps all critical user pathways to integration tests, identifying 
        # Already exists in test_daemon.py but should be in integration tests
    ```
 
-5. **❌ MISSING: Channel status lifecycle**
-   ```python
-   # tests/integration/test_channel_status.py
+5. **❌ MISSING: Error handling pathways**
 
-   async def test_channel_status_updates_on_close_reopen():
-       """Test: Session closed → Topic shows closed → Reopened → Shows active."""
-       # Test set_channel_status integration
-   ```
-
-6. **❌ MISSING: Error handling pathways**
    ```python
    # tests/integration/test_error_handling.py
 
@@ -188,10 +197,10 @@ This document maps all critical user pathways to integration tests, identifying 
 
 ### P2: Nice to Have (Edge Cases)
 
-7. **❌ MISSING: Large file handling**
-8. **❌ MISSING: Voice transcription workflow**
-9. **❌ MISSING: Multiple UI observers**
-10. **❌ MISSING: Adapter reconnection**
+6. **❌ MISSING: Large file handling**
+7. **❌ MISSING: Voice transcription workflow**
+8. **❌ MISSING: Multiple UI observers**
+9. **❌ MISSING: Adapter reconnection**
 
 ---
 
@@ -212,6 +221,7 @@ When implementing missing tests, ensure:
 ## Test File Organization
 
 ### Current Structure
+
 ```
 tests/
 ├── unit/                      # Component-level tests

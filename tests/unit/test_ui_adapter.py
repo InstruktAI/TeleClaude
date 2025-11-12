@@ -1,14 +1,13 @@
 """Unit tests for UiAdapter base class."""
 
 import time
-from pathlib import Path
 from typing import Optional
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.core.db import db, Db
+from teleclaude.core.db import Db
 
 
 class MockUiAdapter(UiAdapter):
@@ -45,9 +44,6 @@ class MockUiAdapter(UiAdapter):
 
     async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
         return "file-msg-123"
-
-    async def set_channel_status(self, session_id: str, status: str) -> bool:
-        return True
 
     async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
         if False:

@@ -74,22 +74,6 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def set_channel_status(
-        self,
-        session_id: str,
-        status: str,
-    ) -> bool:
-        """Set channel status (e.g., active, idle, closed).
-
-        Args:
-            session_id: Session identifier
-            status: Status string
-
-        Returns:
-            True if successful, False otherwise
-        """
-
-    @abstractmethod
     async def close_channel(self, session_id: str) -> bool:
         """Soft-close channel (can be reopened).
 

@@ -560,26 +560,6 @@ class TelegramAdapter(UiAdapter):
             logger.error("Failed to update topic title: %s", e)
             return False
 
-    async def set_channel_status(self, channel_id: str, status: str) -> bool:
-        """Update status emoji in topic title."""
-        # Get current title from database (try both new and old format)
-        sessions = await db.get_sessions_by_adapter_metadata("telegram", "channel_id", channel_id)
-        if not sessions:
-            # Fallback to old topic_id format
-            sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", int(channel_id))
-
-        if not sessions:
-            return False
-
-        session = sessions[0]
-        emoji = STATUS_EMOJI.get(status, "")
-
-        # Update title with emoji
-        base_title = session.title or f"[{session.computer_name}] Session"
-        new_title = f"{base_title} {emoji}".strip()
-
-        return await self.update_channel_title(channel_id, new_title)
-
     async def close_channel(self, session_id: str) -> bool:
         """Soft-close forum topic (can be reopened)."""
         self._ensure_started()

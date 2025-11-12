@@ -4,13 +4,13 @@ Tests UC-M1: Telegram User with Redis Observer
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import patch
 
 import pytest
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.db import db, Db
+from teleclaude.core.db import Db
 
 
 class MockTelegramAdapter(BaseAdapter):
@@ -40,9 +40,6 @@ class MockTelegramAdapter(BaseAdapter):
         return "channel-123"
 
     async def update_channel_title(self, session_id: str, title: str) -> bool:
-        return True
-
-    async def set_channel_status(self, session_id: str, status: str) -> bool:
         return True
 
     async def close_channel(self, session_id: str) -> bool:
@@ -96,9 +93,6 @@ class MockRedisAdapter(BaseAdapter):
         return "redis-channel-123"
 
     async def update_channel_title(self, session_id: str, title: str) -> bool:
-        return True
-
-    async def set_channel_status(self, session_id: str, status: str) -> bool:
         return True
 
     async def close_channel(self, session_id: str) -> bool:
@@ -274,9 +268,6 @@ async def test_ui_observer_receives_broadcasts():
         async def update_channel_title(self, session_id: str, title: str) -> bool:
             return True
 
-        async def set_channel_status(self, session_id: str, status: str) -> bool:
-            return True
-
         async def close_channel(self, session_id: str) -> bool:
             return True
 
@@ -386,9 +377,6 @@ async def test_observer_failure_does_not_affect_origin():
         async def update_channel_title(self, session_id: str, title: str) -> bool:
             return True
 
-        async def set_channel_status(self, session_id: str, status: str) -> bool:
-            return True
-
         async def close_channel(self, session_id: str) -> bool:
             return True
 
@@ -495,9 +483,6 @@ async def test_origin_failure_raises_exception():
             return "channel-123"
 
         async def update_channel_title(self, session_id: str, title: str) -> bool:
-            return True
-
-        async def set_channel_status(self, session_id: str, status: str) -> bool:
             return True
 
         async def close_channel(self, session_id: str) -> bool:

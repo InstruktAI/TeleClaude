@@ -803,21 +803,6 @@ class AdapterClient:
         transport = self._get_transport_adapter()
         return transport.poll_output_stream(session_id, timeout)
 
-    async def set_channel_status(self, session_id: str, status: str) -> None:
-        """Update channel status (add/remove emoji) in origin adapter.
-
-        Args:
-            session_id: Session ID
-            status: "closed" or "active"
-        """
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        adapter = self.adapters.get(session.origin_adapter)
-        if adapter:
-            await adapter.set_channel_status(session_id, status)
-
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Get first adapter that supports remote execution.
 

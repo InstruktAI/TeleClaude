@@ -241,12 +241,6 @@ class Db:
                 await self._client.update_channel_title(session_id, new_title)
                 logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
-            # Emit channel status events when closed status changes
-            if self._client and "closed" in fields and fields["closed"] != old_session.closed:
-                status = "closed" if fields["closed"] else "active"
-                await self._client.set_channel_status(session_id, status)
-                logger.info("Updated channel status for session %s to: %s", session_id[:8], status)
-
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
 

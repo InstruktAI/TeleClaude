@@ -4,7 +4,12 @@ description: Find out what to do next and continue WIP or break down todo story 
 
 You are now in **WORK mode**. Follow these steps to find out what to do next:
 
-## Step 1: Continue Work In Progress (WIP) or start new task
+## Step 1: Fix Bugs FIRST
+
+1. Open `todos/bugs.md` to see if there are any open bugs (unchecked items).
+2. If there are open bugs, pick the first one and work on fixing it.
+
+## Step 2: Continue Work In Progress (WIP) or start new task
 
 1. Read the `todos/roadmap.md` file to see which story is checked last and remember its title.
 2. Find corresponding `todos/{slug}.md` file and see what task is checked last.
@@ -17,7 +22,7 @@ You are now in **WORK mode**. Follow these steps to find out what to do next:
 6. Mark task as done (checked), then move on to the next.
 7. Finish all tasks, and mark the story as complete in `todos/roadmap.md`.
 
-## Step 2: If no WIP, create PRD + task breakdown for next roadmap item
+## Step 3: If no WIP, create PRD + task breakdown for next roadmap item
 
 1. Read `todos/roadmap.md` to find the first unchecked item.
 2. Generate a comprehensive PRD for that item in `prds/{slug}.md`, by calling `/next-prd`.
