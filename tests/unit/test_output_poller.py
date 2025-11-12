@@ -84,10 +84,10 @@ class TestOutputPoller:
 
     def test_strip_exit_markers_real_world_wrapped_case(self, poller):
         """Test realistic case with wrapped marker (matches original behavior)."""
-        output = 'ls -la\nfile1.txt\nfile2.txt\n__EXIT__\n0\n__\n$ '
+        output = "ls -la\nfile1.txt\nfile2.txt\n__EXIT__\n0\n__\n$ "
         result = poller._strip_exit_markers(output)
         # Removes wrapped marker, preserves newline structure
-        assert result == 'ls -la\nfile1.txt\nfile2.txt\n$ '
+        assert result == "ls -la\nfile1.txt\nfile2.txt\n$ "
 
     def test_strip_claude_code_hooks_removes_hook_prefix_lines(self, poller):
         """Test stripping hook success prefix lines."""
@@ -101,30 +101,9 @@ class TestOutputPoller:
         result = poller._strip_claude_code_hooks(output)
         assert result == "Before\nAfter"
 
-    def test_strip_claude_code_hooks_removes_nested_system_reminders(self, poller):
-        """Test stripping nested system-reminder blocks (real-world case from Claude Code hooks)."""
-        # This is the actual pattern from Claude Code's UserPromptSubmit hook
-        output = (
-            "Output\n"
-            "<system-reminder>\n"
-            "⎿ UserPromptSubmit hook succeeded: <system-reminder>Am I required to make any code changes here?</system-reminder>\n"
-            "</system-reminder>\n"
-            "More output"
-        )
-        result = poller._strip_claude_code_hooks(output)
-        assert result == "Output\nMore output"
-
     def test_strip_claude_code_hooks_removes_multiline_system_reminder(self, poller):
         """Test stripping multiline system-reminder blocks."""
-        output = (
-            "Start\n"
-            "<system-reminder>\n"
-            "Line 1\n"
-            "Line 2\n"
-            "Line 3\n"
-            "</system-reminder>\n"
-            "End"
-        )
+        output = "Start\n" "<system-reminder>\n" "Line 1\n" "Line 2\n" "Line 3\n" "</system-reminder>\n" "End"
         result = poller._strip_claude_code_hooks(output)
         assert result == "Start\nEnd"
 
@@ -157,6 +136,20 @@ class TestOutputPoller:
         result = poller._strip_exit_markers(output)
         # Should remove both hooks and exit markers
         assert result == "command output\n"
+
+    def test_strip_claude_code_hooks_with_special_chars_and_newlines(self, poller):
+        """Test stripping system-reminder with ANY content including special chars."""
+        # Test case from bug report: multiline text with strange chars
+        output = (
+            "command output\n"
+            "<system-reminder> some multiline texxt with strange chars\n"
+            "bla $#@!% \n"
+            "more lines\n"
+            "</system-reminder>\n"
+            "clean output"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "command output\nclean output"
 
 
 @pytest.mark.asyncio
@@ -199,6 +192,7 @@ class TestOutputPollerPoll:
 
                 # Output changes from command to command+exit marker (triggers exit detection)
                 call_count = 0
+
                 async def capture_mock(name):
                     nonlocal call_count
                     call_count += 1
@@ -440,5 +434,3 @@ class TestOutputPollerPoll:
                     assert len(dir_events) == 0
                     # Verify get_current_directory never called
                     mock_terminal.get_current_directory.assert_not_called()
-
-

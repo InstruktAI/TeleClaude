@@ -10,9 +10,14 @@ import os
 import random
 import subprocess
 import sys
+import traceback
+from datetime import datetime
 from pathlib import Path
 
+from utils.mcp_send import mcp_send
+
 MCP_SOCKET = "/tmp/teleclaude.sock"
+LOG_FILE = Path.cwd() / ".claude" / "hooks" / "logs" / "notification.log"
 
 NOTIFICATION_MESSAGES = [
     "Your agent needs your input",
@@ -23,62 +28,93 @@ NOTIFICATION_MESSAGES = [
 ]
 
 
+def log(message: str) -> None:
+    """Write log message to file."""
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a") as f:
+            timestamp = datetime.now().isoformat()
+            f.write(f"[{timestamp}] {message}\n")
+    except:
+        pass
+
+
 def main() -> None:
     """Send notification via MCP socket."""
     try:
+        log("=== Hook triggered ===")
+
         # Read input
         data = json.load(sys.stdin)
-        session_id = data.get("session_id")
+        log(f"Received data: {json.dumps(data)}")
 
+        session_id = data.get("session_id")
         if not session_id:
+            log("No session_id, exiting")
             sys.exit(0)
 
-        # Determine event type and handle accordingly
-        if data.get("stop_hook_active") or data.get("transcript_path"):
+        log(f"Session ID: {session_id}")
+
+        # Determine event type based on hook_event_name
+        hook_event = data.get("hook_event_name", "")
+        log(f"Hook event: {hook_event}")
+
+        if hook_event == "Stop":
+            log("Stop event detected")
             # Stop event - spawn background summarizer (fire and forget)
             transcript_path = data.get("transcript_path", "")
+            log(f"Transcript path: {transcript_path}")
+
             hooks_dir = Path(__file__).parent
-            summarizer = hooks_dir / "scripts" / "summarizer.py"
+            summarizer = hooks_dir / "utils" / "summarizer.py"
 
             if transcript_path and summarizer.exists():
+                log(f"Spawning summarizer: {summarizer}")
                 # Spawn background process - returns immediately
-                subprocess.Popen(
+                proc = subprocess.Popen(
                     ["uv", "run", "--quiet", str(summarizer), session_id, transcript_path],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     start_new_session=True,  # Detach from parent
                 )
+                log(f"Summarizer spawned with PID: {proc.pid}")
+            else:
+                log(
+                    f"Summarizer not found or no transcript: summarizer_exists={summarizer.exists()}, transcript={bool(transcript_path)}"
+                )
+
+            log("Stop event handled, exiting")
             sys.exit(0)  # Return immediately, summarizer runs in background
 
-        elif data.get("message") == "Claude is waiting for your input":
-            # Skip generic notification message
-            sys.exit(0)
+        elif hook_event == "Notification":
+            log("Notification event detected")
 
-        else:
+            # Skip generic notification message
+            if data.get("message") == "Claude is waiting for your input":
+                log("Skipping generic notification message")
+                sys.exit(0)
+
             # Get engineer name if available
             engineer_name = os.getenv("ENGINEER_NAME", "").strip()
+            log(f"Engineer name: {engineer_name or '(not set)'}")
 
             # Create notification message with 30% chance to include name
             prefix = f"{engineer_name}, " if engineer_name and random.random() < 0.3 else ""
             # Notification event - send random message
             message = prefix + random.choice(NOTIFICATION_MESSAGES)
+            log(f"Generated message: {message}")
 
-            # Pipe to mcp_send.py
-            hooks_dir = Path(__file__).parent
-            mcp_send = hooks_dir / "scripts" / "mcp_send.py"
+            mcp_send(session_id, message)
 
-            payload = json.dumps({"session_id": session_id, "message": message})
-            subprocess.run(
-                ["uv", "run", "--quiet", str(mcp_send)],
-                input=payload,
-                text=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+        else:
+            log(f"Unknown hook event: {hook_event}, ignoring")
+            sys.exit(0)
 
-    except:
-        pass  # Fail silently
+    except Exception as e:
+        log(f"ERROR: {str(e)}")
+        log(f"Traceback: {traceback.format_exc()}")
 
+    log("=== Hook finished ===\n")
     sys.exit(0)
 
 
