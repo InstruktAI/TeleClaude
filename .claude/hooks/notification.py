@@ -99,7 +99,8 @@ def main() -> None:
             # Create notification message with 30% chance to include name
             prefix = f"{engineer_name}, " if engineer_name and random.random() < 0.3 else ""
             # Generate custom message (ignore generic message from Claude Code)
-            message = prefix + random.choice(NOTIFICATION_MESSAGES)
+            random_message = random.choice(NOTIFICATION_MESSAGES)
+            message = prefix + (random_message[0].lower() + random_message[1:]) if prefix else random_message
             log(f"Generated message: {message}")
 
             mcp_send(teleclaude_session_id, message)

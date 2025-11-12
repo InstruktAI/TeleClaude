@@ -783,10 +783,6 @@ class TelegramAdapter(UiAdapter):
         """Handle /cancel command - sends CTRL+C to the session."""
         session = await self._get_session_from_topic(update)
 
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
-
         if not session:
             return
 
@@ -811,10 +807,6 @@ class TelegramAdapter(UiAdapter):
     async def _handle_cancel2x(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel2x command - sends CTRL+C twice (for stubborn programs like Claude Code)."""
         session = await self._get_session_from_topic(update)
-
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
 
         if not session:
             return
@@ -841,10 +833,6 @@ class TelegramAdapter(UiAdapter):
         """Handle /kill command - force kill foreground process with SIGKILL."""
         session = await self._get_session_from_topic(update)
 
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
-
         if not session:
             return
 
@@ -869,10 +857,6 @@ class TelegramAdapter(UiAdapter):
     async def _handle_escape(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /escape command - sends ESC key to the session, optionally followed by text+ENTER."""
         session = await self._get_session_from_topic(update)
-
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
 
         if not session:
             return
@@ -922,10 +906,6 @@ class TelegramAdapter(UiAdapter):
     async def _handle_ctrl(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /ctrl command - sends CTRL+key to the session."""
         session = await self._get_session_from_topic(update)
-
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
 
         if not session:
             return
@@ -1120,10 +1100,6 @@ class TelegramAdapter(UiAdapter):
         """Handle /resize command - resize terminal."""
         session = await self._get_session_from_topic(update)
 
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
-
         if not session:
             return
 
@@ -1177,10 +1153,6 @@ Current size: {}
     async def _handle_cd(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cd command - change directory or list trusted directories."""
         session = await self._get_session_from_topic(update)
-
-        # Master bot: schedule cleanup for ALL command messages (even if session not owned)
-        if self.is_master and update.effective_message:
-            asyncio.create_task(self._cleanup_command_message_delayed(update.effective_message))
 
         if not session:
             return
@@ -1509,28 +1481,6 @@ Current size: {}
             self._topic_message_cache[topic_id].append(message)
             if len(self._topic_message_cache[topic_id]) > 100:
                 self._topic_message_cache[topic_id].pop(0)
-
-    async def _cleanup_command_message_delayed(self, message: Message) -> None:
-        """Master bot cleanup: Delete command message after delay (backup for session owner deletion).
-
-        This ensures clean UX even when commands are sent to sessions owned by other bots.
-        The master bot (which has commands registered) acts as cleanup coordinator.
-
-        Args:
-            message: Command message to delete
-        """
-        # Wait for session owner bot to process and delete
-        await asyncio.sleep(3)
-
-        # Try to delete (fails silently if already deleted by session owner)
-        try:
-            await self.app.bot.delete_message(chat_id=message.chat_id, message_id=message.message_id)
-            logger.debug(
-                "Master bot cleaned up command message %s in topic %s", message.message_id, message.message_thread_id
-            )
-        except Exception as e:
-            # Expected if session owner already deleted it (idempotent)
-            logger.debug("Master bot cleanup: message %s already deleted or inaccessible: %s", message.message_id, e)
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command."""
