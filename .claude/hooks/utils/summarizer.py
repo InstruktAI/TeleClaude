@@ -11,9 +11,12 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+# Add parent directory to sys.path for imports when run as script
+sys.path.insert(0, str(Path(__file__).parent))
+
 from anthropic import Anthropic
+from mcp_send import mcp_send
 from openai import OpenAI
-from utils.mcp_send import mcp_send
 
 LOG_FILE = Path.cwd() / ".claude" / "hooks" / "logs" / "summarizer.log"
 
