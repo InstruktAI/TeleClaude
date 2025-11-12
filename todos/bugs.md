@@ -14,7 +14,11 @@
 
   [2025-11-12 04:36:00] **Root cause fixed**: Output poller was sending updates on every output change (every 1s), causing Telegram API rate limiting (HTTP 429). Changed to enforce minimum 2-second interval between all message edits. Verified with logs showing ~2s intervals and successful notification delivery (HTTP 200).
 
-  [2025-11-12 04:44:00] **FULLY FIXED**: Added CWD-based session mapping. Claude Code notification hook was trying to send to Claude Code session IDs which don't exist in TeleClaude. Created `teleclaude__find_session_by_cwd` MCP tool to map Claude Code sessions to TeleClaude terminal sessions by matching working directory. Hook now successfully delivers notifications to correct Telegram topic. Verified end-to-end with real Claude Code session.
+  [2025-11-12 04:44:00] **Fourth bug fixed**: Added CWD-based session mapping. Claude Code notification hook was trying to send to Claude Code session IDs which don't exist in TeleClaude. Created `teleclaude__find_session_by_cwd` MCP tool to map Claude Code sessions to TeleClaude terminal sessions by matching working directory. Hook now successfully delivers notifications to correct Telegram topic. Verified end-to-end with real Claude Code session.
+
+  [2025-11-12 05:14:00] **Better approach**: Switched from unreliable CWD-based mapping to env var injection. Tmux sessions now inject `TELECLAUDE_SESSION_ID` env var when created. Hook reads directly from `os.getenv()` for reliable 1:1 mapping. Removed `teleclaude__find_session_by_cwd` MCP tool. Notifications now arrive successfully.
+
+  [2025-11-12 05:19:00] **FULLY FIXED**: Fixed NameError in Stop event handler. When renaming `session_id` to `teleclaude_session_id`, missed updating the summarizer spawn call, causing `NameError: name 'session_id' is not defined`. Stop event summaries now work correctly.
 
 - [x] pre-commit hook calls format which changes files, but this should NOT reject the commit
 
