@@ -8,7 +8,11 @@
 
   [2025-11-12 03:12:00] **WIP**: Added comprehensive logging to all hook scripts (`notification.py`, `mcp_send.py`, `summarizer.py`).
 
-  [2025-11-12 04:25:00] **Fixed**: Changed event detection logic from checking `data.get("stop_hook_active") or data.get("transcript_path")` to properly checking `hook_event_name` field. The bug was that notification events with `transcript_path` were incorrectly classified as Stop events. Now correctly routes to Notification handler which calls `mcp_send()`. Verified with test showing successful MCP socket connection and tool call.
+  [2025-11-12 04:25:00] **Partial fix**: Changed event detection logic from checking `data.get("stop_hook_active") or data.get("transcript_path")` to properly checking `hook_event_name` field. The bug was that notification events with `transcript_path` were incorrectly classified as Stop events. Now correctly routes to Notification handler which calls `mcp_send()`. Verified with test showing successful MCP socket connection and tool call.
+
+  [2025-11-12 04:29:00] **Second bug fixed**: Removed skip logic that prevented ALL "Claude is waiting for your input" messages from being sent. Hook now generates custom message from templates.
+
+  [2025-11-12 04:36:00] **Root cause fixed**: Output poller was sending updates on every output change (every 1s), causing Telegram API rate limiting (HTTP 429). Changed to enforce minimum 2-second interval between all message edits. Verified with logs showing ~2s intervals and successful notification delivery (HTTP 200).
 
 - [x] pre-commit hook calls format which changes files, but this should NOT reject the commit
 
