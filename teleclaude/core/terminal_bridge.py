@@ -624,11 +624,13 @@ async def list_tmux_sessions() -> List[str]:
         return []
 
 
-async def session_exists(session_name: str) -> bool:
+async def session_exists(session_name: str, log_missing: bool = True) -> bool:
     """Check if a tmux session exists.
 
     Args:
         session_name: Session name
+        log_missing: If True, log ERROR with diagnostics when session is missing.
+                     Set to False when checking closed sessions to avoid noise.
 
     Returns:
         True if session exists, False otherwise
@@ -642,41 +644,44 @@ async def session_exists(session_name: str) -> bool:
         stdout, stderr = await result.communicate()
 
         if result.returncode != 0:
-            # Session died - capture system state for diagnostics
-            try:
-                # Get all tmux sessions
-                tmux_list_result = await asyncio.create_subprocess_exec(
-                    "tmux", "list-sessions", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                tmux_list_stdout, _ = await tmux_list_result.communicate()
-                tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
+            if log_missing:
+                # Session died - capture system state for diagnostics
+                try:
+                    # Get all tmux sessions
+                    tmux_list_result = await asyncio.create_subprocess_exec(
+                        "tmux", "list-sessions", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    tmux_list_stdout, _ = await tmux_list_result.communicate()
+                    tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
 
-                # Get tmux processes
-                tmux_processes = [
-                    {"pid": p.pid, "create_time": p.create_time()}
-                    for p in psutil.process_iter(["pid", "name", "create_time"])
-                    if "tmux" in p.info["name"].lower()
-                ]
+                    # Get tmux processes
+                    tmux_processes = [
+                        {"pid": p.pid, "create_time": p.create_time()}
+                        for p in psutil.process_iter(["pid", "name", "create_time"])
+                        if "tmux" in p.info["name"].lower()
+                    ]
 
-                # Get system metrics
-                memory = psutil.virtual_memory()
-                cpu_percent = psutil.cpu_percent(interval=0.1)
+                    # Get system metrics
+                    memory = psutil.virtual_memory()
+                    cpu_percent = psutil.cpu_percent(interval=0.1)
 
-                logger.error(
-                    "Session %s does not exist (died unexpectedly)",
-                    session_name,
-                    extra={
-                        "session_name": session_name,
-                        "stderr": stderr.decode().strip(),
-                        "tmux_sessions_count": len([s for s in tmux_sessions if s]),
-                        "tmux_processes_count": len(tmux_processes),
-                        "system_memory_used_mb": memory.used // 1024 // 1024,
-                        "system_memory_percent": memory.percent,
-                        "system_cpu_percent": cpu_percent,
-                    },
-                )
-            except Exception as diag_error:
-                logger.warning("Failed to capture diagnostics: %s", diag_error)
+                    logger.error(
+                        "Session %s does not exist (died unexpectedly)",
+                        session_name,
+                        extra={
+                            "session_name": session_name,
+                            "stderr": stderr.decode().strip(),
+                            "tmux_sessions_count": len([s for s in tmux_sessions if s]),
+                            "tmux_processes_count": len(tmux_processes),
+                            "system_memory_used_mb": memory.used // 1024 // 1024,
+                            "system_memory_percent": memory.percent,
+                            "system_cpu_percent": cpu_percent,
+                        },
+                    )
+                except Exception as diag_error:
+                    logger.warning("Failed to capture diagnostics: %s", diag_error)
+            else:
+                logger.debug("Session %s does not exist (expected)", session_name)
         else:
             logger.debug("Session %s exists", session_name)
 

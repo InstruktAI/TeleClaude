@@ -13,6 +13,7 @@ from typing import AsyncIterator, Optional
 
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
+from teleclaude.core.db import db
 
 logger = logging.getLogger(__name__)
 
@@ -112,22 +113,33 @@ class OutputPoller:
             while True:
                 poll_iteration += 1
 
-                # Exit condition 1: Session died
-                session_exists_now = await terminal_bridge.session_exists(tmux_session_name)
+                # Exit condition 1: Session died (don't log ERROR here - we check below)
+                session_exists_now = await terminal_bridge.session_exists(tmux_session_name, log_missing=False)
 
                 # WATCHDOG: Detect session disappearing between polls
                 if session_existed_last_poll and not session_exists_now:
-                    age_seconds = time.time() - started_at
-                    logger.critical(
-                        "Session %s disappeared between polls (watchdog triggered)",
-                        tmux_session_name,
-                        extra={
-                            "session_id": session_id[:8],
-                            "age_seconds": round(age_seconds, 2),
-                            "poll_iteration": poll_iteration,
-                            "seconds_since_last_poll": poll_interval,
-                        },
-                    )
+                    # Check if this was an expected closure (user closed topic)
+                    session = await db.get_session(session_id)
+                    if session and session.closed:
+                        # Expected closure - user closed the topic
+                        logger.debug(
+                            "Session %s disappeared (user closed topic)",
+                            tmux_session_name,
+                            extra={"session_id": session_id[:8]},
+                        )
+                    else:
+                        # Unexpected death - log as critical with diagnostics
+                        age_seconds = time.time() - started_at
+                        logger.critical(
+                            "Session %s disappeared between polls (watchdog triggered)",
+                            tmux_session_name,
+                            extra={
+                                "session_id": session_id[:8],
+                                "age_seconds": round(age_seconds, 2),
+                                "poll_iteration": poll_iteration,
+                                "seconds_since_last_poll": poll_interval,
+                            },
+                        )
 
                 if not session_exists_now:
                     logger.info("Process exited for %s, stopping poll", session_id[:8])
