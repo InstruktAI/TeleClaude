@@ -14,6 +14,8 @@
 
   [2025-11-12 04:36:00] **Root cause fixed**: Output poller was sending updates on every output change (every 1s), causing Telegram API rate limiting (HTTP 429). Changed to enforce minimum 2-second interval between all message edits. Verified with logs showing ~2s intervals and successful notification delivery (HTTP 200).
 
+  [2025-11-12 04:44:00] **FULLY FIXED**: Added CWD-based session mapping. Claude Code notification hook was trying to send to Claude Code session IDs which don't exist in TeleClaude. Created `teleclaude__find_session_by_cwd` MCP tool to map Claude Code sessions to TeleClaude terminal sessions by matching working directory. Hook now successfully delivers notifications to correct Telegram topic. Verified end-to-end with real Claude Code session.
+
 - [x] pre-commit hook calls format which changes files, but this should NOT reject the commit
 
   [2025-11-12 01:57:31] **Fixed**: Added `pass_filenames: true` to pre-commit config and updated format.sh to accept file arguments.
