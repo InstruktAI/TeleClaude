@@ -241,25 +241,6 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__find_session_by_cwd",
-                    title="TeleClaude: Find Session by Working Directory",
-                    description=(
-                        "Find TeleClaude session by current working directory (for Claude Code hooks). "
-                        "Maps Claude Code session to TeleClaude terminal session. "
-                        "Returns session_id if found, raises error otherwise."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "cwd": {
-                                "type": "string",
-                                "description": "Current working directory from Claude Code",
-                            },
-                        },
-                        "required": ["cwd"],
-                    },
-                ),
-                Tool(
                     name="teleclaude__send_notification",
                     title="TeleClaude: Send Notification",
                     description=(
@@ -345,10 +326,6 @@ class TeleClaudeMCPServer:
                 caption_obj = arguments.get("caption") if arguments else None
                 caption = str(caption_obj) if caption_obj else None
                 result_text = await self.teleclaude__send_file(file_path, caption)
-                return [TextContent(type="text", text=result_text)]
-            elif name == "teleclaude__find_session_by_cwd":
-                cwd = str(arguments.get("cwd", "")) if arguments else ""
-                result_text = await self.teleclaude__find_session_by_cwd(cwd)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__send_notification":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -881,25 +858,6 @@ class TeleClaudeMCPServer:
         except Exception as e:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"
-
-    async def teleclaude__find_session_by_cwd(self, cwd: str) -> str:
-        """Find TeleClaude session by working directory (for Claude Code hooks).
-
-        Args:
-            cwd: Current working directory from Claude Code
-
-        Returns:
-            Session ID if found, or error message
-        """
-        # Get active sessions on this computer
-        sessions = await db.list_sessions(computer_name=config.computer.name, closed=False)
-
-        # Find session matching CWD
-        for session in sessions:
-            if session.working_directory == cwd:
-                return session.session_id
-
-        raise ValueError(f"No TeleClaude session found for directory: {cwd}")
 
     async def teleclaude__send_notification(
         self, session_id: str, message: str, claude_session_file: Optional[str] = None

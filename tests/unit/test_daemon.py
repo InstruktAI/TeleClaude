@@ -119,9 +119,7 @@ class TestSessionCloseReopen:
         daemon.config.computer.default_shell = "/bin/zsh"
 
         # Setup mocks
-        with patch("teleclaude.daemon.terminal_bridge") as mock_tb, patch(
-            "teleclaude.daemon.db"
-        ) as mock_db:
+        with patch("teleclaude.daemon.terminal_bridge") as mock_tb, patch("teleclaude.daemon.db") as mock_db:
             mock_tb.create_tmux_session = AsyncMock()
             mock_db.update_session = AsyncMock()
 
@@ -147,6 +145,7 @@ class TestSessionCloseReopen:
                 shell="/bin/zsh",
                 cols=120,
                 rows=40,
+                session_id="test-123",
             )
 
             # Verify: marked active
@@ -180,9 +179,7 @@ class TestSessionCleanup:
             last_activity=old_time,
         )
 
-        with patch("teleclaude.daemon.db") as mock_db, patch(
-            "teleclaude.daemon.terminal_bridge"
-        ) as mock_tb:
+        with patch("teleclaude.daemon.db") as mock_db, patch("teleclaude.daemon.terminal_bridge") as mock_tb:
             mock_db.list_sessions = AsyncMock(return_value=[inactive_session])
             mock_db.update_session = AsyncMock()
             mock_tb.kill_session = AsyncMock()
@@ -218,9 +215,7 @@ class TestSessionCleanup:
             last_activity=recent_time,
         )
 
-        with patch("teleclaude.daemon.db") as mock_db, patch(
-            "teleclaude.daemon.terminal_bridge"
-        ) as mock_tb:
+        with patch("teleclaude.daemon.db") as mock_db, patch("teleclaude.daemon.terminal_bridge") as mock_tb:
             mock_db.list_sessions = AsyncMock(return_value=[active_session])
             mock_db.update_session = AsyncMock()
             mock_tb.kill_session = AsyncMock()
@@ -253,9 +248,7 @@ class TestSessionCleanup:
             last_activity=old_time,
         )
 
-        with patch("teleclaude.daemon.db") as mock_db, patch(
-            "teleclaude.daemon.terminal_bridge"
-        ) as mock_tb:
+        with patch("teleclaude.daemon.db") as mock_db, patch("teleclaude.daemon.terminal_bridge") as mock_tb:
             mock_db.list_sessions = AsyncMock(return_value=[closed_session])
             mock_db.update_session = AsyncMock()
             mock_tb.kill_session = AsyncMock()

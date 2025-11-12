@@ -177,7 +177,7 @@ async def handle_create_session(  # type: ignore[explicit-any]
     # Create actual tmux session
     cols, rows = map(int, terminal_size.split("x"))
     success = await terminal_bridge.create_tmux_session(
-        name=tmux_name, shell=shell, working_dir=working_dir, cols=cols, rows=rows
+        name=tmux_name, shell=shell, working_dir=working_dir, cols=cols, rows=rows, session_id=session_id_new
     )
 
     if success:

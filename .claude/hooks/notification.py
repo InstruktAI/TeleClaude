@@ -48,15 +48,15 @@ def main() -> None:
         data = json.load(sys.stdin)
         log(f"Received data: {json.dumps(data)}")
 
-        session_id = data.get("session_id")
-        cwd = data.get("cwd")
+        # Get TeleClaude session ID from environment (set by tmux)
+        teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
 
-        if not session_id:
-            log("No session_id, exiting")
+        if not teleclaude_session_id:
+            log("ERROR: TELECLAUDE_SESSION_ID not found in environment")
+            log("This hook must be run from within a TeleClaude terminal session")
             sys.exit(0)
 
-        log(f"Claude Code Session ID: {session_id}")
-        log(f"CWD: {cwd}")
+        log(f"TeleClaude session ID: {teleclaude_session_id}")
 
         # Determine event type based on hook_event_name
         hook_event = data.get("hook_event_name", "")
@@ -102,7 +102,7 @@ def main() -> None:
             message = prefix + random.choice(NOTIFICATION_MESSAGES)
             log(f"Generated message: {message}")
 
-            mcp_send(session_id, message, cwd)
+            mcp_send(teleclaude_session_id, message)
 
         else:
             log(f"Unknown hook event: {hook_event}, ignoring")

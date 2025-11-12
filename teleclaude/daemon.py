@@ -263,6 +263,7 @@ class TeleClaudeDaemon:
             shell=config.computer.default_shell,
             cols=cols,
             rows=rows,
+            session_id=session.session_id,
         )
 
         await db.update_session(session.session_id, closed=False)

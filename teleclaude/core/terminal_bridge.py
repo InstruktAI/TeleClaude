@@ -106,7 +106,9 @@ def has_command_separator(command: str) -> bool:
     return any(sep in command for sep in separators)
 
 
-async def create_tmux_session(name: str, shell: str, working_dir: str, cols: int = 80, rows: int = 24) -> bool:
+async def create_tmux_session(
+    name: str, shell: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: str = None
+) -> bool:
     """Create a new tmux session.
 
     Args:
@@ -115,6 +117,7 @@ async def create_tmux_session(name: str, shell: str, working_dir: str, cols: int
         working_dir: Initial working directory
         cols: Terminal columns
         rows: Terminal rows
+        session_id: TeleClaude session ID (injected as TELECLAUDE_SESSION_ID env var)
 
     Returns:
         True if successful, False otherwise
@@ -136,8 +139,13 @@ async def create_tmux_session(name: str, shell: str, working_dir: str, cols: int
             str(cols),  # Width
             "-y",
             str(rows),  # Height
-            shell_cmd,
         ]
+
+        # Inject TeleClaude session ID as env var (for Claude Code hook integration)
+        if session_id:
+            cmd.extend(["-e", f"TELECLAUDE_SESSION_ID={session_id}"])
+
+        cmd.append(shell_cmd)
 
         # Don't capture stdout/stderr - let tmux create its own PTY
         # Using PIPE can leak file descriptors to child processes in tmux
