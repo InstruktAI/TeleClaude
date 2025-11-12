@@ -35,16 +35,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     Implements RemoteExecutionProtocol for cross-computer orchestration.
 
     Architecture:
-    - Each computer polls its command stream: commands:{computer_name}
+    - Each computer polls its message stream: messages:{computer_name}
     - Each session has an output stream: output:{session_id}
     - Computer registry uses Redis keys with TTL for heartbeats
 
     Message flow:
-    - Comp1 → XADD commands:comp2 → Comp2 polls → executes command
+    - Comp1 → XADD messages:comp2 → Comp2 polls → executes message
     - Comp2 → XADD output:session_id → Comp1 polls → streams to MCP
     """
-
-    has_ui = False  # Redis has no visual UI (pure transport)
 
     def __init__(self, adapter_client: "AdapterClient"):
         """Initialize Redis adapter.
@@ -59,7 +57,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         # Get global config singleton
         self.redis: Optional[Redis] = None
-        self._command_poll_task: Optional[asyncio.Task[None]] = None
+        self._message_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._running = False
 
@@ -73,7 +71,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         self.socket_timeout = config.redis.socket_timeout
 
         # Stream configuration
-        self.command_stream_maxlen = config.redis.command_stream_maxlen
+        self.message_stream_maxlen = config.redis.message_stream_maxlen
         self.output_stream_maxlen = config.redis.output_stream_maxlen
         self.output_stream_ttl = config.redis.output_stream_ttl
 
@@ -109,7 +107,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         self._running = True
 
         # Start background tasks
-        self._command_poll_task = asyncio.create_task(self._poll_redis_commands())
+        self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
         logger.info("RedisAdapter started")
@@ -122,10 +120,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         self._running = False
 
         # Cancel background tasks
-        if self._command_poll_task:
-            self._command_poll_task.cancel()
+        if self._message_poll_task:
+            self._message_poll_task.cancel()
             try:
-                await self._command_poll_task
+                await self._message_poll_task
             except asyncio.CancelledError:
                 pass
 
@@ -321,10 +319,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     async def create_channel(self, session_id: str, title: str, metadata: Optional[dict[str, object]] = None) -> str:
         """Create Redis streams for session.
 
+        For AI-to-AI sessions (with target_computer): Creates command + output streams.
+        For local sessions (no target_computer): Creates only output stream.
+
         Args:
             session_id: Session ID
-            title: Channel title (format: "$initiator > $target - description")
-            metadata: Optional metadata
+            title: Channel title
+            metadata: Optional metadata (may contain target_computer for AI-to-AI sessions)
 
         Returns:
             Output stream name as channel_id
@@ -333,20 +334,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             raise RuntimeError("Redis not initialized")
 
         target = metadata.get("target_computer") if metadata else None
-        if not target:
-            raise ValueError("Could not find target in metadata")
-
-        # Stream names
-        command_stream = f"commands:{target}"
         output_stream = f"output:{session_id}"
-
-        # Streams are created automatically on first XADD
-        logger.info(
-            "Created Redis streams for session %s: command=%s, output=%s",
-            session_id[:8],
-            command_stream,
-            output_stream,
-        )
 
         # Store stream names in session metadata
         session = await db.get_session(session_id)
@@ -355,11 +343,29 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             if isinstance(redis_metadata, str):
                 redis_metadata = json.loads(redis_metadata)
 
-            redis_metadata["redis"] = {
-                "command_stream": command_stream,
+            redis_meta: dict[str, str] = {
                 "output_stream": output_stream,
             }
 
+            # AI-to-AI session: include message stream
+            if target:
+                message_stream = f"messages:{target}"
+                redis_meta["message_stream"] = message_stream
+                logger.info(
+                    "Created Redis streams for AI-to-AI session %s: message=%s, output=%s",
+                    session_id[:8],
+                    message_stream,
+                    output_stream,
+                )
+            else:
+                # Local session: only output stream (for potential future use)
+                logger.debug(
+                    "Created Redis output stream for local session %s: %s (no message stream)",
+                    session_id[:8],
+                    output_stream,
+                )
+
+            redis_metadata["redis"] = redis_meta
             await db.update_session(session_id, adapter_metadata=redis_metadata)
 
         return output_stream
@@ -487,34 +493,34 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         return 0.5
 
-    async def _poll_redis_commands(self) -> None:
-        """Background task: Poll commands:{computer_name} stream for incoming commands."""
+    async def _poll_redis_messages(self) -> None:
+        """Background task: Poll messages:{computer_name} stream for incoming messages."""
         if not self.redis:
             return
 
-        command_stream = f"commands:{self.computer_name}"
+        message_stream = f"messages:{self.computer_name}"
 
         # Load last processed message ID from database (prevents re-processing on restart)
         last_id_str = await self._get_last_processed_message_id()
         if last_id_str:
             last_id = last_id_str.encode("utf-8")
-            logger.info("Starting Redis command polling: %s (resuming from last_id=%s)", command_stream, last_id_str)
+            logger.info("Starting Redis message polling: %s (resuming from last_id=%s)", message_stream, last_id_str)
         else:
             # First startup - use current time to avoid processing old messages
             last_id = b"$"  # $ means "latest" in Redis
-            logger.info("Starting Redis command polling: %s (from current time - first startup)", command_stream)
+            logger.info("Starting Redis message polling: %s (from current time - first startup)", message_stream)
 
         while self._running:
             try:
-                # Read commands from stream (blocking)
+                # Read messages from stream (blocking)
                 logger.debug(
                     "About to XREAD from %s with last_id=%s, block=1000ms",
-                    command_stream,
+                    message_stream,
                     last_id,
                 )
 
                 messages = await self.redis.xread(
-                    {command_stream.encode("utf-8"): last_id},
+                    {message_stream.encode("utf-8"): last_id},
                     block=1000,  # Block for 1 second
                     count=5,
                 )
@@ -550,37 +556,39 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         await self._set_last_processed_message_id(last_id_str)
                         logger.debug("Saved last_id %s before processing", last_id_str)
 
-                        # Process command (may call os._exit(0) for deploy)
-                        await self._handle_incoming_command(data)
+                        # Process message (may call os._exit(0) for deploy)
+                        await self._handle_incoming_message(data)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Command polling error: %s", e)
+                logger.error("Message polling error: %s", e)
                 await asyncio.sleep(5)  # Back off on error
 
-    async def _handle_incoming_command(self, data: dict[bytes, bytes]) -> None:
-        """Handle incoming command from Redis stream.
+    async def _handle_incoming_message(self, data: dict[bytes, bytes]) -> None:
+        """Handle incoming message from Redis stream.
 
         Args:
-            data: Command data dict from Redis stream
+            data: Message data dict from Redis stream
         """
         try:
-            # Check if this is a system command
+            # Check if this is a system message
             msg_type = data.get(b"type", b"").decode("utf-8")
             if msg_type == "system":
-                await self._handle_system_command(data)
+                await self._handle_system_message(data)
                 return
 
-            # Regular user command (session-specific)
+            # Regular user message (session-specific)
             session_id = data.get(b"session_id", b"").decode("utf-8")
-            command_str = data.get(b"command", b"").decode("utf-8")
+            message_str = data.get(b"command", b"").decode(
+                "utf-8"
+            )  # Field name stays "command" for protocol compatibility
 
-            if not session_id or not command_str:
-                logger.warning("Invalid command data: %s", data)
+            if not session_id or not message_str:
+                logger.warning("Invalid message data: %s", data)
                 return
 
-            logger.info("Received command for session %s: %s", session_id[:8], command_str[:50])
+            logger.info("Received message for session %s: %s", session_id[:8], message_str[:50])
 
             # Get or create session
             session = await db.get_session(session_id)
@@ -588,19 +596,19 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 # Create new session for incoming AI request
                 await self._create_session_from_redis(session_id, data)
 
-            # Parse command using centralized parser
+            # Parse message using centralized parser
             from teleclaude.core.events import (
                 EventType,
                 TeleClaudeEvents,
                 parse_command_string,
             )
 
-            cmd_name, args = parse_command_string(command_str)
+            cmd_name, args = parse_command_string(message_str)
             if not cmd_name:
-                logger.warning("Empty command received for session %s", session_id[:8])
+                logger.warning("Empty message received for session %s", session_id[:8])
                 return
 
-            # Emit command event to daemon via client
+            # Emit event to daemon via client
             event_type: EventType = cmd_name  # type: ignore[assignment]
 
             # MESSAGE events use "text" in payload, commands use "args"
@@ -622,15 +630,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.debug("handle_event completed for event_type: %s", event_type)
 
         except Exception as e:
-            logger.error("Failed to handle incoming command: %s", e)
+            logger.error("Failed to handle incoming message: %s", e)
 
-    async def _handle_system_command(self, data: dict[bytes, bytes]) -> None:
-        """Handle incoming system command from Redis stream.
+    async def _handle_system_message(self, data: dict[bytes, bytes]) -> None:
+        """Handle incoming system message from Redis stream.
 
-        System commands are daemon-level commands, not session-specific.
+        System messages are daemon-level commands, not session-specific.
 
         Args:
-            data: System command data dict from Redis stream
+            data: System message data dict from Redis stream
         """
         import json
 
@@ -760,19 +768,74 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         logger.debug("Sent heartbeat: %s", key)
 
+    # === Session Observation (Interest Window) ===
+
+    async def signal_observation(
+        self,
+        target_computer: str,
+        session_id: str,
+        duration_seconds: int,
+    ) -> None:
+        """Signal interest in observing a session on target computer.
+
+        Creates a Redis key with TTL that tells the target computer
+        to broadcast session output to Redis stream during the observation window.
+
+        Args:
+            target_computer: Computer hosting the session
+            session_id: Session to observe
+            duration_seconds: How long to observe (TTL for Redis key)
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        key = f"observation:{target_computer}:{session_id}"
+        data = json.dumps(
+            {
+                "observer": self.computer_name,
+                "started_at": time.time(),
+            }
+        )
+
+        # Set key with TTL - auto-expires after duration
+        await self.redis.setex(key, duration_seconds, data)
+        logger.info(
+            "Signaled observation: %s observing %s on %s for %ds",
+            self.computer_name,
+            session_id[:8],
+            target_computer,
+            duration_seconds,
+        )
+
+    async def is_session_observed(self, session_id: str) -> bool:
+        """Check if any observer is watching this session.
+
+        Args:
+            session_id: Session ID to check
+
+        Returns:
+            True if someone is observing this session
+        """
+        if not self.redis:
+            return False
+
+        key = f"observation:{self.computer_name}:{session_id}"
+        exists = await self.redis.exists(key)
+        return bool(exists)
+
     # === MCP-specific methods for AI-to-AI communication ===
 
-    async def send_command_to_computer(
-        self, computer_name: str, session_id: str, command: str, metadata: Optional[dict[str, object]] = None
+    async def send_message_to_computer(
+        self, computer_name: str, session_id: str, message: str, metadata: Optional[dict[str, object]] = None
     ) -> str:
-        """Send command to remote computer's command stream.
+        """Send message to remote computer's message stream.
 
-        Used by MCP server to initiate commands on remote computers.
+        Used by MCP server to send messages to remote computers.
 
         Args:
             computer_name: Target computer name
             session_id: Session ID
-            command: Command to execute
+            message: Message to send
             metadata: Optional metadata (title, initiator, etc.)
 
         Returns:
@@ -781,13 +844,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if not self.redis:
             raise RuntimeError("Redis not initialized")
 
-        command_stream = f"commands:{computer_name}"
+        message_stream = f"messages:{computer_name}"
         metadata = metadata or {}
 
-        # Build command data
+        # Build message data
         data = {
             b"session_id": session_id.encode("utf-8"),
-            b"command": command.encode("utf-8"),
+            b"command": message.encode("utf-8"),  # Field name stays "command" for protocol compatibility
             b"timestamp": str(time.time()).encode("utf-8"),
             b"initiator": self.computer_name.encode("utf-8"),
         }
@@ -803,14 +866,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         # Send to Redis stream
         logger.debug(
             "About to XADD to stream=%s, data keys=%s",
-            command_stream,
+            message_stream,
             [k.decode("utf-8") for k in data.keys()],
         )
 
-        message_id_bytes: bytes = await self.redis.xadd(command_stream, data, maxlen=self.command_stream_maxlen)
+        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
 
         logger.debug("XADD returned message_id=%s", message_id_bytes.decode("utf-8"))
-        logger.info("Sent command to %s: session=%s, command=%s", computer_name, session_id[:8], command[:50])
+        logger.info("Sent message to %s: session=%s, message=%s", computer_name, session_id[:8], message[:50])
         return message_id_bytes.decode("utf-8")
 
     async def send_system_command(
@@ -832,9 +895,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if not self.redis:
             raise RuntimeError("Redis not initialized")
 
-        command_stream = f"commands:{computer_name}"
+        message_stream = f"messages:{computer_name}"
 
-        # Build system command data
+        # Build system message data
         data = {
             b"type": b"system",
             b"command": command.encode("utf-8"),
@@ -850,7 +913,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
-        message_id_bytes: bytes = await self.redis.xadd(command_stream, data, maxlen=self.command_stream_maxlen)
+        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
 
         logger.info("Sent system command to %s: %s", computer_name, command)
         return message_id_bytes.decode("utf-8")

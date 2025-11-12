@@ -35,8 +35,6 @@ class UiAdapter(BaseAdapter):
     Subclasses can override for platform-specific UX (e.g., Telegram: edit first 10s).
     """
 
-    has_ui: bool = True
-
     # === Command Registration ===
 
     # Standard UI commands - subclasses implement handlers with _handle_{command} naming

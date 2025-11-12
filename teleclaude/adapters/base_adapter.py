@@ -14,8 +14,6 @@ class BaseAdapter(ABC):
     All communication with daemon flows through AdapterClient (not direct).
     """
 
-    # Platform identification - override in subclasses
-    has_ui: bool = True  # Whether adapter has human-visible UI (False for Redis)
     client: "AdapterClient"  # Set by subclasses in __init__
 
     def __init__(self) -> None:

@@ -203,6 +203,35 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
+                    name="teleclaude__observe_session",
+                    title="TeleClaude: Observe Session",
+                    description=(
+                        "Watch real-time output from ANY session on any computer (local or AI-to-AI). "
+                        "**Use Cases**: Monitor another AI's work, observe human sessions, debug sessions, multi-device access. "
+                        "**How it works**: Signals observation interest via Redis → target computer streams output → observer receives. "
+                        "**Interest Window Pattern**: Observes for specified duration, then detaches automatically. "
+                        "Works for both local Telegram sessions and AI-to-AI sessions."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name (e.g., 'MozBook', 'RasPi')",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session ID to observe",
+                            },
+                            "duration_seconds": {
+                                "type": "number",
+                                "description": "How long to watch (default: 30 seconds)",
+                            },
+                        },
+                        "required": ["computer", "session_id"],
+                    },
+                ),
+                Tool(
                     name="teleclaude__deploy_to_all_computers",
                     title="TeleClaude: Deploy to All Computers",
                     description=(
@@ -331,6 +360,16 @@ class TeleClaudeMCPServer:
             elif name == "teleclaude__get_session_status":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 result = await self.teleclaude__get_session_status(session_id)
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
+            elif name == "teleclaude__observe_session":
+                computer = str(arguments.get("computer", "")) if arguments else ""
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                duration_seconds = 30
+                if arguments and "duration_seconds" in arguments:
+                    duration_obj = arguments["duration_seconds"]
+                    if isinstance(duration_obj, (int, float)):
+                        duration_seconds = int(duration_obj)
+                result = await self.teleclaude__observe_session(computer, session_id, duration_seconds)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__deploy_to_all_computers":
                 # No arguments - always deploys to ALL computers
@@ -781,6 +820,74 @@ class TeleClaudeMCPServer:
             "runtime_seconds": runtime_seconds,
             "target_computer": target_computer,
             "project_dir": metadata.get("project_dir"),
+        }
+
+    async def teleclaude__observe_session(
+        self,
+        computer: str,
+        session_id: str,
+        duration_seconds: int = 30,
+    ) -> dict[str, object]:
+        """Observe real-time output from any session on any computer.
+
+        Signals observation interest to target computer, then streams output
+        for the specified duration. Target computer will broadcast session
+        output to Redis only during the observation window.
+
+        Args:
+            computer: Target computer name
+            session_id: Session ID to observe
+            duration_seconds: How long to watch (default: 30s)
+
+        Returns:
+            Dict with status and streamed output
+        """
+        from teleclaude.adapters.redis_adapter import RedisAdapter
+
+        # Get Redis adapter
+        redis_adapter_base = self.client.adapters.get("redis")
+        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
+            return {"status": "error", "message": "Redis adapter not available"}
+
+        redis_adapter: RedisAdapter = redis_adapter_base
+
+        # Signal observation interest to target computer
+        try:
+            await redis_adapter.signal_observation(computer, session_id, duration_seconds)
+        except Exception as e:
+            logger.error("Failed to signal observation: %s", e)
+            return {"status": "error", "message": f"Failed to signal observation: {str(e)}"}
+
+        # Stream output for duration
+        output_chunks: list[str] = []
+        start_time = time.time()
+
+        try:
+            async for chunk in self.client.poll_remote_output(session_id, timeout=float(duration_seconds)):
+                output_chunks.append(chunk)
+
+                # Stop if duration exceeded
+                if time.time() - start_time > duration_seconds:
+                    break
+        except asyncio.TimeoutError:
+            # No output during window - that's okay
+            pass
+        except Exception as e:
+            logger.error("Error polling output for observation: %s", e)
+            return {"status": "error", "message": f"Failed to poll output: {str(e)}"}
+
+        output = "".join(output_chunks)
+
+        # Strip exit markers
+        output = re.sub(r"__EXIT__\d+__", "", output)
+
+        return {
+            "status": "success",
+            "computer": computer,
+            "session_id": session_id,
+            "duration_seconds": duration_seconds,
+            "output": output if output.strip() else "[No output during observation window]",
+            "output_length": len(output),
         }
 
     async def teleclaude__deploy_to_all_computers(self) -> dict[str, dict[str, object]]:

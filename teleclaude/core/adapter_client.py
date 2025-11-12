@@ -139,11 +139,11 @@ class AdapterClient:
                 logger.info("%s adapter stopped", adapter_type)
 
     async def send_message(self, session_id: str, text: str, metadata: Optional[dict[str, object]] = None) -> str:
-        """Send message to origin adapter and broadcast to observers with UI.
+        """Send message to origin adapter and broadcast to UI observer adapters.
 
         Origin/Observer Pattern:
         - Origin adapter: Interactive session (CRITICAL - failure throws exception)
-        - Observer adapters: Read-only sessions with has_ui=True (OPTIONAL - failures logged)
+        - Observer adapters: Read-only UI sessions (OPTIONAL - failures logged)
 
         Args:
             session_id: Session identifier
@@ -174,18 +174,28 @@ class AdapterClient:
         origin_message_id: str = await origin_adapter.send_message(session_id, text, metadata)
         logger.debug("Sent message to origin adapter %s for session %s", session.origin_adapter, session_id[:8])
 
-        # Broadcast to observer adapters with has_ui=True (OPTIONAL - catch exceptions)
+        # Broadcast to observer adapters (OPTIONAL - catch exceptions)
         observer_tasks = []
         for adapter_type, adapter in self.adapters.items():
             # Skip origin adapter (already sent)
             if adapter_type == session.origin_adapter:
                 continue
 
-            # Only send to adapters with UI (skip Redis, etc.)
-            if not adapter.has_ui:
+            # UI adapters: always broadcast
+            if isinstance(adapter, UiAdapter):
+                observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
                 continue
 
-            observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
+            # Redis adapter: only broadcast if session is observed
+            if adapter_type == "redis":
+                from teleclaude.adapters.redis_adapter import RedisAdapter
+
+                if isinstance(adapter, RedisAdapter):
+                    is_observed = await adapter.is_session_observed(session_id)
+                    if is_observed:
+                        observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
+                        logger.debug("Broadcasting to Redis (session %s is observed)", session_id[:8])
+                continue
 
         if observer_tasks:
             # Execute observer sends in parallel
@@ -278,7 +288,7 @@ class AdapterClient:
         """Send or edit output message in origin adapter (UI-specific).
 
         Routes to origin adapter's send_output_update() method.
-        Only available for adapters with has_ui=True.
+        Only available for UI adapters (UiAdapter subclasses).
 
         Args:
             session_id: Session identifier
@@ -333,7 +343,7 @@ class AdapterClient:
         """Send exit message in origin adapter (UI-specific).
 
         Routes to origin adapter's send_exit_message() method.
-        Only available for adapters with has_ui=True.
+        Only available for UI adapters (UiAdapter subclasses).
 
         Args:
             session_id: Session identifier
@@ -493,7 +503,7 @@ class AdapterClient:
         UI cleanup delegation (separation of concerns):
         - AdapterClient: Pure coordinator (no UI operations)
         - UI adapters: Own their UI cleanup logic (message deletion, etc.)
-        - Transport adapters (has_ui=False): No pre/post handlers
+        - Transport adapters: No pre/post handlers (not UiAdapter instances)
 
         Args:
             event: Type-checked event name (from EventType literal)
@@ -538,7 +548,7 @@ class AdapterClient:
         # 4. PRE: Call origin adapter's pre-handler for UI cleanup
         if event in USER_INPUT_EVENTS and session:
             origin_adapter = self.adapters.get(session.origin_adapter)
-            if origin_adapter and getattr(origin_adapter, "has_ui", False):
+            if origin_adapter and isinstance(origin_adapter, UiAdapter):
                 pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
                 if pre_handler and callable(pre_handler):
                     try:
@@ -559,7 +569,7 @@ class AdapterClient:
             # 6. POST: Call origin adapter's post-handler for UI state tracking
             if event in USER_INPUT_EVENTS and session and message_id:
                 origin_adapter = self.adapters.get(session.origin_adapter)
-                if origin_adapter and getattr(origin_adapter, "has_ui", False):
+                if origin_adapter and isinstance(origin_adapter, UiAdapter):
                     post_handler = getattr(origin_adapter, "_post_handle_user_input", None)
                     if post_handler and callable(post_handler):
                         try:
@@ -582,15 +592,15 @@ class AdapterClient:
                         except Exception as e:
                             logger.warning("Failed to %s channel in observer %s: %s", event, adapter_type, e)
 
-            # 8. Broadcast ALL user actions to observer adapters (not just MESSAGE)
+            # 8. Broadcast ALL user actions to UI observer adapters (not just MESSAGE)
             if session:
                 # Format event as human-readable action
                 action_text = self._format_event_for_observers(event, payload)
 
                 if action_text:
-                    # Broadcast to all observer adapters (has_ui=True, not origin)
+                    # Broadcast to UI observer adapters (not origin)
                     for adapter_type, adapter in self.adapters.items():
-                        if adapter_type != session.origin_adapter and adapter.has_ui:
+                        if adapter_type != session.origin_adapter and isinstance(adapter, UiAdapter):
                             try:
                                 # Send copy of user action (best-effort, failures logged)
                                 await adapter.send_message(
@@ -656,7 +666,9 @@ class AdapterClient:
         """Create channels in ALL adapters for new session.
 
         Stores each adapter's channel_id in session metadata to enable broadcasting.
-        Observer adapters need their channel_ids to send messages.
+        Each adapter creates its communication primitive:
+        - UI adapters (Telegram): Create topics for user interaction
+        - Transport adapters (Redis): Create streams for AI-to-AI communication
 
         Args:
             session_id: Session ID
@@ -764,23 +776,23 @@ class AdapterClient:
         command: str,
         metadata: Optional[dict[str, object]] = None,
     ) -> str:
-        """Send command to remote computer via transport adapter.
+        """Send message to remote computer via transport adapter.
 
         Args:
             computer_name: Target computer identifier
-            session_id: Session ID for the command
-            command: Command to execute on remote computer
-            metadata: Optional metadata for the command
+            session_id: Session ID for the message
+            command: Message to send to remote computer
+            metadata: Optional metadata for the message
 
         Returns:
-            Request ID for tracking the command
+            Request ID for tracking the message
 
         Raises:
             RuntimeError: If no transport adapter available
-            Exception: If command send fails
+            Exception: If message send fails
         """
         transport = self._get_transport_adapter()
-        return await transport.send_command_to_computer(computer_name, session_id, command, metadata)
+        return await transport.send_message_to_computer(computer_name, session_id, command, metadata)
 
     def poll_remote_output(
         self,

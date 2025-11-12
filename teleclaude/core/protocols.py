@@ -5,7 +5,7 @@ from typing import AsyncIterator, Dict, Optional, Protocol, runtime_checkable
 
 @runtime_checkable
 class RemoteExecutionProtocol(Protocol):
-    """Protocol for adapters that can orchestrate commands on remote computers.
+    """Protocol for adapters that can send messages to remote computers.
 
     This protocol defines the interface for cross-computer communication,
     enabling AI-to-AI orchestration via transport adapters (Redis, Postgres, etc.).
@@ -13,23 +13,23 @@ class RemoteExecutionProtocol(Protocol):
     UI-only adapters (Telegram, Slack) do NOT implement this protocol.
     """
 
-    async def send_command_to_computer(
+    async def send_message_to_computer(
         self,
         computer_name: str,
         session_id: str,
-        command: str,
+        message: str,
         metadata: Optional[Dict[str, object]] = None,
     ) -> str:
-        """Send command to remote computer via transport layer.
+        """Send message to remote computer via transport layer.
 
         Args:
             computer_name: Target computer identifier
-            session_id: Session ID for the command
-            command: Command to execute on remote computer
-            metadata: Optional metadata for the command
+            session_id: Session ID for the message
+            message: Message to send to remote computer
+            metadata: Optional metadata for the message
 
         Returns:
-            Request ID for tracking the command
+            Request ID for tracking the message
 
         Raises:
             RuntimeError: If transport layer fails

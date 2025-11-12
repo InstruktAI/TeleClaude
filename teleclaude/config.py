@@ -70,7 +70,7 @@ class RedisConfig:
     password: str | None
     max_connections: int
     socket_timeout: int
-    command_stream_maxlen: int
+    message_stream_maxlen: int
     output_stream_maxlen: int
     output_stream_ttl: int
 
@@ -130,7 +130,7 @@ DEFAULT_CONFIG: dict[str, object] = {
         "password": None,
         "max_connections": 10,
         "socket_timeout": 5,
-        "command_stream_maxlen": 1000,
+        "message_stream_maxlen": 10000,
         "output_stream_maxlen": 10000,
         "output_stream_ttl": 3600,
     },
@@ -205,7 +205,7 @@ def _build_config(raw: dict[str, object]) -> Config:
             password=str(redis["password"]) if redis["password"] else None,  # type: ignore[index]
             max_connections=int(redis["max_connections"]),  # type: ignore[index]
             socket_timeout=int(redis["socket_timeout"]),  # type: ignore[index]
-            command_stream_maxlen=int(redis["command_stream_maxlen"]),  # type: ignore[index]
+            message_stream_maxlen=int(redis["message_stream_maxlen"]),  # type: ignore[index]
             output_stream_maxlen=int(redis["output_stream_maxlen"]),  # type: ignore[index]
             output_stream_ttl=int(redis["output_stream_ttl"]),  # type: ignore[index]
         ),

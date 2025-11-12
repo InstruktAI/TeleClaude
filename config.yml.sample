@@ -80,7 +80,7 @@ redis:
     socket_timeout: 5
 
     # Stream settings
-    command_stream_maxlen: 1000   # Max commands to keep per computer
+    message_stream_maxlen: 10000  # Max messages to keep per computer
     output_stream_maxlen: 10000   # Max output messages per session
     output_stream_ttl: 3600       # Auto-expire output streams after 1 hour
 
