@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
@@ -23,6 +21,8 @@ from teleclaude.utils import (
     format_completed_status_line,
     format_size,
     format_terminal_message,
+    strip_ansi_codes,
+    strip_exit_markers,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,9 +31,13 @@ logger = logging.getLogger(__name__)
 class UiAdapter(BaseAdapter):
     """Base class for UI-enabled adapters.
 
-    Provides default output message management for platforms with editable messages.
-    Subclasses can override for platform-specific UX (e.g., Telegram: edit first 10s).
+    Provides output message management for platforms with editable messages.
+    Subclasses can override max_message_size and add platform-specific formatting.
     """
+
+    # Platform message size limit (subclasses can override)
+    # Default: 3900 chars (Telegram: 4096 limit - ~196 overhead)
+    max_message_size: int = 3900
 
     # === Command Registration ===
 
@@ -90,17 +94,19 @@ class UiAdapter(BaseAdapter):
         is_final: bool = False,
         exit_code: Optional[int] = None,
     ) -> Optional[str]:
-        """Send or edit output message - default: always edit existing message.
+        """Send or edit output message - generic implementation.
 
-        Subclasses can override for platform-specific UX.
+        Truncates based on self.max_message_size, formats with status line,
+        and always edits existing message (creates new only if edit fails).
+
+        Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
         ux_state = await db.get_ux_state(session_id)
         current_message_id = ux_state.output_message_id
 
-        # Truncate if needed (4096 Telegram limit - 196 chars overhead = 3900 max terminal output)
-        max_terminal_output = 3900
-        is_truncated = len(output) > max_terminal_output
-        terminal_output = output[-max_terminal_output:] if is_truncated else output
+        # Truncate to platform limit
+        is_truncated = len(output) > self.max_message_size
+        terminal_output = output[-self.max_message_size :] if is_truncated else output
 
         # Format status line
         if is_final and exit_code is not None:
@@ -129,14 +135,11 @@ class UiAdapter(BaseAdapter):
                 status_color, started_time, last_active_time, size_str, is_truncated
             )
 
-        # Build message
+        # Build message (shared formatting)
         display_output = format_terminal_message(terminal_output, status_line)
 
-        # Metadata with download button if truncated
-        metadata: dict[str, object] = {}
-        if is_truncated:
-            keyboard = [[InlineKeyboardButton("📎 Download full output", callback_data=f"download_full:{session_id}")]]
-            metadata["reply_markup"] = InlineKeyboardMarkup(keyboard)
+        # Platform-specific metadata (inline keyboards, etc.)
+        metadata = self._build_output_metadata(session_id, is_truncated)
 
         # Send or edit
         if current_message_id:
@@ -154,6 +157,20 @@ class UiAdapter(BaseAdapter):
             await db.update_ux_state(session_id, output_message_id=new_id)
             logger.debug("Stored message_id=%s for session=%s", new_id, session_id[:8])
         return new_id
+
+    def _build_output_metadata(self, session_id: str, is_truncated: bool) -> Optional[dict[str, object]]:
+        """Build platform-specific metadata for output messages.
+
+        Override in subclasses to add inline keyboards, buttons, etc.
+
+        Args:
+            session_id: Session identifier
+            is_truncated: Whether output was truncated
+
+        Returns:
+            Platform-specific metadata dict, or None
+        """
+        return None  # Default: no metadata
 
     async def send_status_message(
         self,
@@ -178,7 +195,11 @@ class UiAdapter(BaseAdapter):
                 return None
 
             output_file = Path(output_file_path)
-            current_output = output_file.read_text(encoding="utf-8") if output_file.exists() else ""
+            raw_output = output_file.read_text(encoding="utf-8") if output_file.exists() else ""
+
+            # Strip ANSI codes and exit markers for display
+            current_output = strip_ansi_codes(raw_output)
+            current_output = strip_exit_markers(current_output)
 
             # Format: terminal output in code block, status OUTSIDE the block
             display_output = format_terminal_message(current_output, text)

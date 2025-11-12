@@ -36,7 +36,7 @@ from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import Session
 from teleclaude.core.ux_state import get_system_ux_state, update_system_ux_state
-from teleclaude.utils import command_retry
+from teleclaude.utils import command_retry, strip_ansi_codes, strip_exit_markers
 
 from .base_adapter import AdapterError
 from .ui_adapter import UiAdapter
@@ -137,6 +137,20 @@ class TelegramAdapter(UiAdapter):
 
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
+
+    def _build_output_metadata(self, session_id: str, is_truncated: bool) -> Optional[dict[str, object]]:
+        """Build Telegram-specific metadata with inline keyboard for downloads.
+
+        Overrides UiAdapter._build_output_metadata() to add download button.
+        """
+        if not is_truncated:
+            return None
+
+        # Add download button for truncated output
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = [[InlineKeyboardButton("📎 Download full output", callback_data=f"download_full:{session_id}")]]
+        return {"reply_markup": InlineKeyboardMarkup(keyboard)}
 
     async def start(self) -> None:
         """Initialize and start Telegram bot."""
@@ -1263,14 +1277,12 @@ Current size: {}
                 return
 
             try:
-                # Read RAW output (contains exit markers)
+                # Read RAW output (contains ANSI codes and exit markers)
                 raw_output = output_file.read_text()
 
-                # Strip exit markers and Claude Code hooks before sending
-                from teleclaude.core.output_poller import OutputPoller
-
-                poller = OutputPoller()
-                clean_output = poller._strip_exit_markers(raw_output)
+                # Strip ANSI codes and exit markers before sending
+                clean_output = strip_ansi_codes(raw_output)
+                clean_output = strip_exit_markers(clean_output)
 
                 # Create a temporary file to send
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:

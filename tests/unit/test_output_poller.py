@@ -134,8 +134,14 @@ class TestOutputPoller:
             "__EXIT__0__\n"
         )
         result = poller._strip_exit_markers(output)
-        # Should remove both hooks and exit markers
-        assert result == "command output\n"
+        # _strip_exit_markers ONLY removes exit markers (for exit code detection)
+        # Claude hooks are filtered later in polling_coordinator
+        expected = (
+            "command output\n"
+            "⎿ UserPromptSubmit hook succeeded: test\n"
+            "<system-reminder>Some reminder</system-reminder>\n"
+        )
+        assert result == expected
 
     def test_strip_claude_code_hooks_with_special_chars_and_newlines(self, poller):
         """Test stripping system-reminder with ANY content including special chars."""
@@ -214,12 +220,14 @@ class TestOutputPollerPoll:
                 assert len(events) == 2
                 assert isinstance(events[0], OutputChanged)
                 assert events[0].session_id == "test-456"
+                # First event: initial delta without exit marker (exit marker appears in next poll)
                 assert events[0].output == "command output\n"
 
                 assert isinstance(events[1], ProcessExited)
                 assert events[1].session_id == "test-456"
                 assert events[1].exit_code == 0
-                assert events[1].final_output == "command output\n"  # Preserves trailing newline
+                # Final event: accumulated RAW output with exit marker
+                assert events[1].final_output == "command output\n__EXIT__0__\n"
 
                 # Verify file written with RAW output (contains exit marker)
                 assert output_file.exists()

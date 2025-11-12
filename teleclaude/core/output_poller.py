@@ -221,10 +221,9 @@ class OutputPoller:
 
                     # Send OutputChanged immediately when delta appears (responsive UI)
                     if exit_code is None:
-                        clean_delta = self._strip_exit_markers(delta_raw)
                         yield OutputChanged(
                             session_id=session_id,
-                            output=clean_delta,
+                            output=delta_raw,  # RAW delta (daemon will filter)
                             started_at=started_at,
                             last_changed_at=last_output_changed_at,
                         )
@@ -246,10 +245,12 @@ class OutputPoller:
                         except Exception as e:
                             logger.warning("Failed to read final output: %s", e)
 
-                    # Strip markers from accumulated output for display
-                    clean_output = self._strip_exit_markers(final_accumulated)
+                    # Yield RAW accumulated output (daemon will filter)
                     yield ProcessExited(
-                        session_id=session_id, exit_code=exit_code, final_output=clean_output, started_at=started_at
+                        session_id=session_id,
+                        exit_code=exit_code,
+                        final_output=final_accumulated,
+                        started_at=started_at,
                     )
                     break
 
@@ -259,12 +260,9 @@ class OutputPoller:
                 # Send updates based on time interval only (enforce minimum 2s between updates)
                 # This prevents Telegram API rate limiting from excessive message edits
                 if output_buffer and ticks_since_last_update >= current_update_interval:
-                    # Strip exit markers before sending
-                    clean_output = self._strip_exit_markers(output_buffer)
-
                     yield OutputChanged(
                         session_id=session_id,
-                        output=clean_output,
+                        output=output_buffer,  # RAW buffer (daemon will filter)
                         started_at=started_at,
                         last_changed_at=last_output_changed_at,
                     )
@@ -371,21 +369,21 @@ class OutputPoller:
         return output
 
     def _strip_exit_markers(self, output: str) -> str:
-        """Strip exit code markers from output.
+        """Strip exit code markers from RAW output (for exit code detection).
 
-        Removes both:
+        This is ONLY used for extracting exit codes from raw tmux output.
+        UI filtering happens in daemon layer.
+
+        Removes:
         1. The __EXIT__N__ marker output
         2. The ; echo "__EXIT__$?__" command text from shell prompts
 
         Args:
-            output: Terminal output
+            output: RAW terminal output
 
         Returns:
-            Output with markers removed
+            Output with exit markers removed (still contains ANSI codes)
         """
-        # Strip Claude Code hook messages first
-        output = self._strip_claude_code_hooks(output)
-
         # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
         # Allow whitespace/newlines within marker due to tmux line wrapping
         # Remove marker + ONE trailing newline (preserves line structure)

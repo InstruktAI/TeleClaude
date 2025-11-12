@@ -159,9 +159,7 @@ async def test_origin_adapter_receives_output():
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Send message (should route to origin)
-                result = await adapter_client.send_message(
-                    session.session_id, "Test output"
-                )
+                result = await adapter_client.send_message(session.session_id, "Test output")
 
                 # Verify send_message called on TelegramAdapter
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -243,10 +241,10 @@ async def test_ui_observer_receives_broadcasts():
     5. Verify slack (observer with has_ui=True) also receives message
     """
 
-    class MockSlackAdapter(BaseAdapter):
-        """Mock Slack adapter (has_ui=True, observer)."""
+    from teleclaude.adapters.ui_adapter import UiAdapter
 
-        has_ui = True
+    class MockSlackAdapter(UiAdapter):
+        """Mock Slack adapter (UI-enabled observer)."""
 
         def __init__(self):
             super().__init__()
@@ -256,7 +254,7 @@ async def test_ui_observer_receives_broadcasts():
             self.send_message_calls.append((session_id, text, metadata))
             return "slack-msg-123"
 
-        async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+        async def edit_message(self, session_id: str, message_id: str, text: str, metadata=None) -> bool:
             return True
 
         async def delete_message(self, session_id: str, message_id: str) -> bool:
@@ -352,10 +350,10 @@ async def test_observer_failure_does_not_affect_origin():
     5. Verify slack exception logged but not raised
     """
 
-    class MockSlackAdapterFailing(BaseAdapter):
-        """Mock Slack adapter that always fails."""
+    from teleclaude.adapters.ui_adapter import UiAdapter
 
-        has_ui = True
+    class MockSlackAdapterFailing(UiAdapter):
+        """Mock Slack adapter that always fails."""
 
         def __init__(self):
             super().__init__()
@@ -365,7 +363,7 @@ async def test_observer_failure_does_not_affect_origin():
             self.send_message_calls.append((session_id, text, metadata))
             raise Exception("Slack API error")
 
-        async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+        async def edit_message(self, session_id: str, message_id: str, text: str, metadata=None) -> bool:
             return True
 
         async def delete_message(self, session_id: str, message_id: str) -> bool:
@@ -434,9 +432,7 @@ async def test_observer_failure_does_not_affect_origin():
                 }
 
                 # Send message (should succeed despite slack failure)
-                result = await adapter_client.send_message(
-                    session.session_id, "Test output"
-                )
+                result = await adapter_client.send_message(session.session_id, "Test output")
 
                 # Verify telegram (origin) succeeded
                 assert len(telegram_adapter.send_message_calls) == 1

@@ -19,11 +19,28 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
+from teleclaude.utils import strip_ansi_codes, strip_exit_markers
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_for_ui(raw_output: str) -> str:
+    """Filter raw terminal output for UI display.
+
+    Strips ANSI escape codes and exit markers from raw output.
+
+    Args:
+        raw_output: Raw terminal output with ANSI codes and markers
+
+    Returns:
+        Filtered output ready for UI display
+    """
+    filtered = strip_ansi_codes(raw_output)
+    filtered = strip_exit_markers(filtered)
+    return filtered
 
 
 async def restore_active_pollers(
@@ -174,18 +191,21 @@ async def poll_and_send_output(
         # Consume events from pure poller
         async for event in output_poller.poll(session_id, tmux_session_name, output_file, has_exit_marker):
             if isinstance(event, OutputChanged):
+                # Filter RAW output for UI display
+                filtered_output = _filter_for_ui(event.output)
+
                 if is_ai_session:
                     # AI mode: Send sequential chunks (no editing, no loss)
                     await _send_output_chunks_ai_mode(
                         event.session_id,
                         adapter_client,
-                        event.output,
+                        filtered_output,
                     )
                 else:
                     # Human mode: Edit same message via AdapterClient
                     await adapter_client.send_output_update(
                         event.session_id,
-                        event.output,
+                        filtered_output,
                         event.started_at,
                         event.last_changed_at,
                     )
@@ -230,13 +250,15 @@ async def poll_and_send_output(
                 await db.update_session(event.session_id, working_directory=event.new_path)
 
             elif isinstance(event, ProcessExited):
-                # Process exited
+                # Process exited - filter RAW output for UI display
+                filtered_final_output = _filter_for_ui(event.final_output)
+
                 if is_ai_session:
                     # AI mode: Send final chunks + completion marker
                     await _send_output_chunks_ai_mode(
                         event.session_id,
                         adapter_client,
-                        event.final_output,
+                        filtered_final_output,
                     )
                     logger.info(
                         "AI session polling stopped for %s (exit code: %s)",
@@ -249,7 +271,7 @@ async def poll_and_send_output(
                         # Exit with code - send final message via AdapterClient
                         await adapter_client.send_output_update(
                             event.session_id,
-                            event.final_output,
+                            filtered_final_output,
                             event.started_at,  # Use actual start time from poller
                             time.time(),
                             is_final=True,

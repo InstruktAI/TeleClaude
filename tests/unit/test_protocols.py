@@ -1,18 +1,19 @@
 """Unit tests for Protocol-based adapter capabilities."""
 
-import pytest
-from unittest.mock import AsyncMock, Mock
 from typing import AsyncIterator
+from unittest.mock import AsyncMock, Mock
 
-from teleclaude.core.protocols import RemoteExecutionProtocol
+import pytest
+
 from teleclaude.adapters.redis_adapter import RedisAdapter
+from teleclaude.core.protocols import RemoteExecutionProtocol
 
 
 def test_remote_execution_protocol_runtime_checkable():
     """Test that RemoteExecutionProtocol can be used with isinstance()."""
     # Create a mock that implements the protocol
     mock_adapter = Mock()
-    mock_adapter.send_command_to_computer = AsyncMock()
+    mock_adapter.send_message_to_computer = AsyncMock()
 
     async def mock_poll():
         yield "output"
@@ -34,30 +35,24 @@ def test_protocol_methods_signature():
     # Get the protocol class methods
     protocol_methods = dir(RemoteExecutionProtocol)
 
-    assert "send_command_to_computer" in protocol_methods
+    assert "send_message_to_computer" in protocol_methods
     assert "poll_output_stream" in protocol_methods
 
 
 @pytest.mark.asyncio
-async def test_protocol_send_command_signature():
-    """Test send_command_to_computer method signature."""
+async def test_protocol_send_message_signature():
+    """Test send_message_to_computer method signature."""
     mock_adapter = Mock(spec=RemoteExecutionProtocol)
-    mock_adapter.send_command_to_computer = AsyncMock(return_value="request_123")
+    mock_adapter.send_message_to_computer = AsyncMock(return_value="request_123")
 
     # Should accept these parameters
-    result = await mock_adapter.send_command_to_computer(
-        computer_name="comp1",
-        session_id="sess_123",
-        command="ls -la",
-        metadata={"key": "value"}
+    result = await mock_adapter.send_message_to_computer(
+        computer_name="comp1", session_id="sess_123", message="ls -la", metadata={"key": "value"}
     )
 
     assert result == "request_123"
-    mock_adapter.send_command_to_computer.assert_called_once_with(
-        computer_name="comp1",
-        session_id="sess_123",
-        command="ls -la",
-        metadata={"key": "value"}
+    mock_adapter.send_message_to_computer.assert_called_once_with(
+        computer_name="comp1", session_id="sess_123", message="ls -la", metadata={"key": "value"}
     )
 
 

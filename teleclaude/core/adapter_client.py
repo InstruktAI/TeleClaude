@@ -285,54 +285,64 @@ class AdapterClient:
         is_final: bool = False,
         exit_code: Optional[int] = None,
     ) -> Optional[str]:
-        """Send or edit output message in origin adapter (UI-specific).
+        """Broadcast output update to ALL UI adapters.
 
-        Routes to origin adapter's send_output_update() method.
-        Only available for UI adapters (UiAdapter subclasses).
+        Sends filtered output to all registered UiAdapters. Each adapter
+        handles truncation and formatting based on its platform limits.
 
         Args:
             session_id: Session identifier
-            output: Terminal output
+            output: Filtered terminal output (ANSI codes/markers already stripped)
             started_at: When process started (timestamp)
             last_output_changed_at: When output last changed (timestamp)
             is_final: Whether this is the final message (process completed)
             exit_code: Exit code if process completed
 
         Returns:
-            Message ID from origin adapter, or None if failed
+            Message ID from first successful adapter, or None if all failed
 
         Raises:
-            ValueError: If session or origin adapter not found
-            AttributeError: If origin adapter doesn't have send_output_update (not a UiAdapter)
+            ValueError: If session not found
         """
         session = await db.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
+        # Broadcast to ALL UI adapters
+        tasks = []
+        for adapter_type, adapter in self.adapters.items():
+            if isinstance(adapter, UiAdapter):
+                tasks.append(
+                    (
+                        adapter_type,
+                        adapter.send_output_update(
+                            session_id, output, started_at, last_output_changed_at, is_final, exit_code
+                        ),
+                    )
+                )
 
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Check if adapter is a UI adapter (type-safe check)
-        if not isinstance(origin_adapter, UiAdapter):
-            # Non-UI adapters (like Redis) don't support send_output_update
-            # Return None silently (they handle output via send_message chunks)
-            logger.debug(
-                "Skipping send_output_update for session %s (origin adapter %s has no UI)",
-                session_id[:8],
-                session.origin_adapter,
-            )
+        if not tasks:
+            logger.warning("No UI adapters available for session %s", session_id[:8])
             return None
 
-        # Type checker now knows this is UiAdapter
-        result = await origin_adapter.send_output_update(
-            session_id, output, started_at, last_output_changed_at, is_final, exit_code
-        )
-        return result
+        # Execute all in parallel
+        results = await asyncio.gather(*[task for _, task in tasks], return_exceptions=True)
+
+        # Log failures and return first success
+        first_success: Optional[str] = None
+        for (adapter_type, _), result in zip(tasks, results):
+            if isinstance(result, Exception):
+                logger.warning(
+                    "UI adapter %s failed send_output_update for session %s: %s",
+                    adapter_type,
+                    session_id[:8],
+                    result,
+                )
+            elif isinstance(result, str) and not first_success:
+                first_success = result
+                logger.debug("Sent output update via %s for session %s", adapter_type, session_id[:8])
+
+        return first_success
 
     async def send_exit_message(
         self,

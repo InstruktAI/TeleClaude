@@ -6,6 +6,7 @@ import os
 import re
 from datetime import datetime
 from functools import wraps
+from pathlib import Path
 from typing import Awaitable, Callable, List, ParamSpec, TypeVar
 
 T = TypeVar("T")
@@ -235,3 +236,74 @@ def apply_code_block_formatting(text: str, metadata: dict[str, object]) -> str:
         return text
     # Wrap in code block
     return f"```\n{text}\n```" if text.strip() else text
+
+
+def strip_ansi_codes(text: str) -> str:
+    """Strip ANSI escape codes from text.
+
+    Args:
+        text: Text with ANSI escape codes
+
+    Returns:
+        Text with ANSI codes removed
+    """
+    # Pattern matches:
+    # - CSI sequences: ESC [ ... (m, H, J, etc.)
+    # - OSC sequences: ESC ] ... (BEL or ST)
+    # - Simple escape sequences: ESC (single char)
+    ansi_pattern = re.compile(
+        r"\x1b"  # ESC
+        r"(?:"  # Start non-capturing group
+        r"\[[0-9;]*[a-zA-Z]"  # CSI sequences (ESC[...m, ESC[...H, etc.)
+        r"|"
+        r"\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences (ESC]...BEL or ESC]...ST)
+        r"|"
+        r"[=>]"  # Simple sequences (ESC=, ESC>)
+        r")"
+    )
+    return ansi_pattern.sub("", text)
+
+
+def strip_exit_markers(text: str) -> str:
+    """Strip exit code markers from text.
+
+    Args:
+        text: Text with exit markers
+
+    Returns:
+        Text with markers removed
+    """
+    # Pattern: __EXIT__<code>__\n
+    marker_pattern = re.compile(r"__EXIT__\d+__\n?")
+    return marker_pattern.sub("", text)
+
+
+def get_filtered_output(output_file: Path, max_len: int) -> tuple[str, bool]:
+    """Get filtered output from raw file (strips ANSI codes and exit markers).
+
+    Args:
+        output_file: Path to raw output file
+        max_len: Maximum length to return (gets last N chars)
+
+    Returns:
+        Tuple of (filtered_output, is_truncated)
+    """
+    if not output_file.exists():
+        return ("", False)
+
+    try:
+        raw_output = output_file.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.warning("Failed to read output file %s: %s", output_file, e)
+        return ("", False)
+
+    # Strip ANSI codes and exit markers
+    filtered = strip_ansi_codes(raw_output)
+    filtered = strip_exit_markers(filtered)
+
+    # Truncate to last N chars
+    is_truncated = len(filtered) > max_len
+    if is_truncated:
+        filtered = filtered[-max_len:]
+
+    return (filtered, is_truncated)
