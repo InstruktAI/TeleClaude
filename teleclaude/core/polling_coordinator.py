@@ -261,12 +261,23 @@ async def poll_and_send_output(
                             event.exit_code,
                         )
                     else:
-                        # Session died - send exit message via AdapterClient
-                        await adapter_client.send_exit_message(
-                            event.session_id,
-                            event.final_output,
-                            "✅ Process exited",
-                        )
+                        # Session died - check if it was user-closed before sending exit message
+                        session = await db.get_session(event.session_id)
+                        if session and session.closed:
+                            # Session was intentionally closed by user - don't send exit message
+                            logger.debug("Session %s was closed by user, skipping exit message", event.session_id[:8])
+                        else:
+                            # Unexpected death - send exit message via AdapterClient
+                            try:
+                                await adapter_client.send_exit_message(
+                                    event.session_id,
+                                    event.final_output,
+                                    "✅ Process exited",
+                                )
+                            except Exception as e:
+                                # Handle errors gracefully (e.g., message too long, topic closed)
+                                logger.warning("Failed to send exit message for %s: %s", event.session_id[:8], e)
+
                         # Delete output file on session death
                         try:
                             if output_file.exists():
