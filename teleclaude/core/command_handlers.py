@@ -594,6 +594,37 @@ async def handle_shift_tab_command(  # type: ignore[explicit-any]
 
 
 @with_session
+async def handle_enter_command(  # type: ignore[explicit-any]
+    session: Session,
+    context: dict[str, Any],
+    client: "AdapterClient",
+    start_polling: StartPollingFunc,
+) -> None:
+    """Send ENTER key to a session.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context
+        client: AdapterClient for message cleanup
+        start_polling: Function to start polling for a session
+    """
+    message_id_obj = context.get("message_id")
+    message_id = str(message_id_obj) if message_id_obj else None
+    success = await _execute_and_poll(
+        terminal_bridge.send_enter,
+        session,
+        message_id,
+        client,
+        start_polling,
+    )
+
+    if success:
+        logger.info("Sent ENTER to session %s", session.session_id[:8])
+    else:
+        logger.error("Failed to send ENTER to session %s", session.session_id[:8])
+
+
+@with_session
 async def handle_arrow_key_command(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],

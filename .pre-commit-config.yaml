@@ -11,6 +11,8 @@ repos:
         name: Format code
         entry: bin/format.sh
         language: script
+        pass_filenames: true
+        types: [python]
       - id: lint
         name: Lint code
         entry: bin/lint.sh

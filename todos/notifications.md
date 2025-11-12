@@ -8,12 +8,13 @@
 
 ### Phase 1: Setup & Directory Structure
 
-- [ ] Create `teleclaude/hooks/` directory if it doesn't exist
+- [ ] Create `.claude/hooks/` directory if it doesn't exist
 - [ ] Verify existing dependencies (python-dotenv, pyyaml, aiosqlite) are available
 
 ### Phase 2: Core Implementation
 
-- [ ] **Create notification hook script** (`teleclaude/hooks/notification.py`)
+- [ ] **Create notification hook script** (`.claude/hooks/notification.py`)
+
   - Add shebang: `#!/usr/bin/env -S uv run --script`
   - Add script dependencies block for uv
   - Implement stdin JSON reading for session_id
@@ -26,6 +27,7 @@
   - Exit cleanly with code 0
 
 - [ ] **Add UX state helper functions** (`teleclaude/core/db.py`)
+
   - Add `set_notification_flag(session_id: str, value: bool)` function
   - Add `clear_notification_flag(session_id: str)` function
   - Add `get_notification_flag(session_id: str) -> bool` function
@@ -41,6 +43,7 @@
 ### Phase 3: Testing
 
 - [ ] **Write unit tests for UX state helpers** (`tests/unit/test_db.py`)
+
   - Test `set_notification_flag()` updates ux_state JSON correctly
   - Test `clear_notification_flag()` removes flag from ux_state
   - Test `get_notification_flag()` returns correct boolean
@@ -48,6 +51,7 @@
   - Test behavior with missing/null ux_state
 
 - [ ] **Write unit tests for message randomization** (`tests/unit/test_notification_hook.py`)
+
   - Test all 15 messages can be selected
   - Test random.choice() is called correctly
   - Mock AdapterClient and verify send_message is called
@@ -55,6 +59,7 @@
   - Test error handling for invalid JSON
 
 - [ ] **Write unit tests for polling coordinator changes** (`tests/unit/test_polling_coordinator.py`)
+
   - Test inactivity timer respects notification_sent flag
   - Test flag is cleared on OutputChanged event
   - Test IdleDetected events are handled correctly with flag set
@@ -70,12 +75,14 @@
 ### Phase 4: Documentation
 
 - [ ] **Update CLAUDE.md** with hook registration instructions
+
   - Add section on notification hook setup
   - Document hook registration in Claude Code settings
   - Provide example hook configuration
   - Document notification_sent flag behavior
 
 - [ ] **Update README.md** with notification feature
+
   - Add notification hook to features list
   - Document user setup instructions
   - Add troubleshooting section for hook issues
@@ -98,11 +105,13 @@
 ### Phase 6: Manual Testing
 
 - [ ] **Test hook script standalone**
-  - Run hook with test JSON: `echo '{"session_id":"test-123"}' | teleclaude/hooks/notification.py`
+
+  - Run hook with test JSON: `echo '{"session_id":"test-123"}' | .claude/hooks/notification.py`
   - Verify message appears in test session
   - Verify UX state updated in database
 
 - [ ] **Test with real Claude Code session**
+
   - Register hook in `.claude/hooks/` or project hooks
   - Start TeleClaude session via Telegram
   - Trigger Claude Code task
@@ -110,6 +119,7 @@
   - Verify no duplicate idle notifications
 
 - [ ] **Test inactivity timer coordination**
+
   - Send notification via hook
   - Wait 60+ seconds with no output
   - Verify idle notification doesn't fire (flag is set)
@@ -135,7 +145,7 @@
 
 ### Implementation Decisions
 
-- **Hook location**: Created in `teleclaude/hooks/` instead of project root to keep code organized
+- **Hook location**: Created in `.claude/hooks/` instead of project root to keep code organized
 - **UX state field**: Using `notification_sent` boolean flag in existing ux_state JSON blob (no schema migration)
 - **Inactivity timer logic**: Reset flag on OutputChanged, pause timer when flag=True
 - **Message templates**: 15 friendly, casual messages with variety
@@ -163,7 +173,7 @@ Before marking this work complete:
   - [ ] AdapterClient bootstrapped correctly
   - [ ] Inactivity timer coordination works
   - [ ] UX state persists across restarts
-  - [ ] >90% test coverage for new code
+  - [ ] > 90% test coverage for new code
   - [ ] Integration test passes
   - [ ] Manual testing in Telegram/Redis works
   - [ ] Documentation updated

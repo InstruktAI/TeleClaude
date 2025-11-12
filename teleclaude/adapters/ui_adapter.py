@@ -52,6 +52,7 @@ class UiAdapter(BaseAdapter):
         "ctrl",
         "tab",
         "shift_tab",
+        "enter",
         "key_up",
         "key_down",
         "key_left",
@@ -224,6 +225,10 @@ class UiAdapter(BaseAdapter):
             new_id = await self.send_message(session_id, final_output, metadata)
             if new_id:
                 await db.update_ux_state(session_id, output_message_id=new_id)
+
+    async def _pre_handle_user_input(self, session_id: str) -> None:
+        """Called before handling user input - cleanup temporary messages."""
+        await self.cleanup_feedback_messages(session_id)
 
     async def cleanup_feedback_messages(self, session_id: str) -> None:
         """Delete temporary feedback messages - default implementation."""

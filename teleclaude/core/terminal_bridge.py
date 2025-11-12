@@ -429,6 +429,27 @@ async def send_shift_tab(session_name: str) -> bool:
         return False
 
 
+async def send_enter(session_name: str) -> bool:
+    """Send ENTER key to a tmux session.
+
+    Args:
+        session_name: Session name
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        cmd = ["tmux", "send-keys", "-t", session_name, "C-m"]
+        result = await asyncio.create_subprocess_exec(*cmd)
+        await result.wait()
+
+        return result.returncode == 0
+
+    except Exception as e:
+        print(f"Error sending enter to tmux: {e}")
+        return False
+
+
 async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> bool:
     """Send arrow key to a tmux session, optionally repeated.
 

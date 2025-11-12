@@ -27,7 +27,7 @@ Currently, when Claude Code finishes processing and waits for user input in Tele
 
 ### High-Level Design
 
-Create a standalone notification hook script (`teleclaude/hooks/notification.py`) that:
+Create a standalone notification hook script (`.claude/hooks/notification.py`) that:
 
 1. Receives JSON input via stdin (standard Claude Code hook protocol)
 2. Bootstraps AdapterClient with config (same pattern as daemon.py)
@@ -39,7 +39,8 @@ The hook will be registered in Claude Code's settings to trigger on appropriate 
 
 ### Key Components
 
-1. **Notification Hook Script** (`teleclaude/hooks/notification.py`)
+1. **Notification Hook Script** (`.claude/hooks/notification.py`)
+
    - Standalone Python script using `#!/usr/bin/env -S uv run --script`
    - Reads session_id from stdin JSON payload
    - Bootstraps AdapterClient from config
@@ -47,6 +48,7 @@ The hook will be registered in Claude Code's settings to trigger on appropriate 
    - Updates UX state to clear inactivity timer
 
 2. **Message Templates**
+
    - 15+ randomized friendly messages
    - Examples: "Claude is ready...", "Claude reporting back for duty...", "Claude is back baby..."
    - Random selection on each invocation
@@ -98,7 +100,7 @@ async def clear_notification_flag(session_id: str) -> None:
 # Example registration (user adds this to their Claude Code settings)
 hooks:
   UserPromptSubmit:
-    - command: /path/to/teleclaude/hooks/notification.py
+    - command: /path/to/.claude/hooks/notification.py
       args: []
 ```
 
@@ -106,7 +108,7 @@ hooks:
 
 ### Files to Create
 
-- `teleclaude/hooks/notification.py` - Main notification hook script
+- `.claude/hooks/notification.py` - Main notification hook script
   - Shebang: `#!/usr/bin/env -S uv run --script`
   - Dependencies: python-dotenv, pyyaml (existing TeleClaude deps)
   - Bootstrap AdapterClient (similar to daemon.py)
@@ -117,6 +119,7 @@ hooks:
 ### Files to Modify
 
 - `teleclaude/core/db.py`
+
   - Add `clear_notification_flag(session_id)` helper
   - Add `set_notification_flag(session_id)` helper (used by hook)
 
@@ -128,11 +131,13 @@ hooks:
 ### Dependencies
 
 **No new dependencies** - uses existing TeleClaude stack:
+
 - python-dotenv (already installed)
 - pyyaml (already installed)
 - aiosqlite (already installed)
 
 **Runtime Requirements**:
+
 - Hook runs as subprocess via `uv run --script`
 - Requires access to `config.yml` and `.env`
 - Requires access to `teleclaude.db` (same as daemon)
@@ -204,10 +209,12 @@ await adapter_client.send_message(session_id, message)
 ### Unit Tests
 
 1. **Test Hook Message Randomization**
+
    - Verify messages are randomly selected
    - Ensure all 15 messages can be selected
 
 2. **Test UX State Updates**
+
    - `set_notification_flag()` correctly updates ux_state JSON
    - `clear_notification_flag()` correctly clears flag
    - Flag persists across daemon restarts (DB test)
@@ -220,6 +227,7 @@ await adapter_client.send_message(session_id, message)
 ### Integration Tests
 
 1. **End-to-End Hook Execution**
+
    - Create test session
    - Invoke hook script with test JSON
    - Verify notification message appears in session
@@ -261,6 +269,7 @@ await adapter_client.send_message(session_id, message)
 ### Rollback Strategy
 
 If notification hook causes issues:
+
 1. User removes hook from Claude Code settings
 2. No code changes needed - feature is opt-in
 3. Existing inactivity timer behavior unchanged
@@ -279,19 +288,23 @@ If notification hook causes issues:
 ## Open Questions
 
 1. **Which Claude Code hook event should trigger this?**
+
    - Likely `UserPromptSubmit` but need to verify with user
    - May need custom event for "agent waiting for input"
 
 2. **Should we rate-limit notifications?**
+
    - If Claude becomes ready multiple times quickly, limit to 1 notification per minute?
    - Initial implementation: no rate limiting (KISS)
 
 3. **Should hook support --notify flag like reference implementation?**
+
    - Reference hook has TTS toggle via --notify flag
    - Our hook is UI-only, so probably not needed
    - Initial implementation: always send notification (KISS)
 
 4. **Error handling when AdapterClient fails?**
+
    - If notification fails, should we retry or fail silently?
    - Initial implementation: log error and exit gracefully (best-effort)
 
@@ -302,20 +315,24 @@ If notification hook causes issues:
 ## References
 
 - **Reference Hook**: `/Users/Morriz/.claude/hooks/notification.py`
+
   - TTS integration (not needed for our use case)
   - Hook structure and stdin/stdout protocol
   - Message randomization pattern
 
 - **TeleClaude Architecture**: `docs/architecture.md`
+
   - Module-level Singleton pattern (db)
   - AdapterClient as central hub
   - Observer pattern for events
 
 - **Existing UX State**: `teleclaude/core/models.py`
+
   - JSON blob structure in `ux_state` column
   - No migration needed for new fields
 
 - **Polling Coordinator**: `teleclaude/core/polling_coordinator.py`
+
   - IdleDetected event handling (line 201)
   - UX state management for notifications
 

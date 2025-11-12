@@ -19,6 +19,7 @@ EventType = Literal[
     "ctrl",
     "tab",
     "shift_tab",
+    "enter",
     "key_up",
     "key_down",
     "key_left",
@@ -63,6 +64,7 @@ class TeleClaudeEvents:
     CTRL: Literal["ctrl"] = "ctrl"
     TAB: Literal["tab"] = "tab"
     SHIFT_TAB: Literal["shift_tab"] = "shift_tab"
+    ENTER: Literal["enter"] = "enter"
     KEY_UP: Literal["key_up"] = "key_up"
     KEY_DOWN: Literal["key_down"] = "key_down"
     KEY_LEFT: Literal["key_left"] = "key_left"

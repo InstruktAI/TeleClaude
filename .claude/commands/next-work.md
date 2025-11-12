@@ -2,12 +2,15 @@
 description: Find out what to do next and continue WIP or break down todo story into PRD + tasks. Start here if asked to do work.
 ---
 
-You are now in **WORK mode**. Follow these steps to find out what to do next:
+You are now in **WORK mode**. Your output is ALWAYS working code that is covered by tests.
+
+Follow these steps to find out what to do next:
 
 ## Step 1: Fix Bugs FIRST
 
 1. Open `todos/bugs.md` to see if there are any open bugs (unchecked items).
 2. If there are open bugs, pick the first one and work on fixing it.
+3. Work on fixing all open bugs before moving on.
 
 ## Step 2: Continue Work In Progress (WIP) or start new task
 

@@ -81,6 +81,7 @@ class TeleClaudeDaemon:
             TeleClaudeEvents.CTRL,
             TeleClaudeEvents.TAB,
             TeleClaudeEvents.SHIFT_TAB,
+            TeleClaudeEvents.ENTER,
             TeleClaudeEvents.KEY_UP,
             TeleClaudeEvents.KEY_DOWN,
             TeleClaudeEvents.KEY_LEFT,
@@ -744,6 +745,8 @@ class TeleClaudeDaemon:
             await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.SHIFT_TAB:
             await command_handlers.handle_shift_tab_command(context, self.client, self._poll_and_send_output)
+        elif command == TeleClaudeEvents.ENTER:
+            await command_handlers.handle_enter_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.KEY_UP:
             await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "up"
