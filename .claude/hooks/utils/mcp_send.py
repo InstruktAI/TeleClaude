@@ -26,16 +26,18 @@ def log(message: str) -> None:
         pass
 
 
-def mcp_send(session_id: str, message: str) -> None:
+def mcp_send(session_id: str, message: str, cwd: str = None) -> None:
     """Send notification to TeleClaude via MCP socket.
 
     Args:
-        session_id: Session UUID
+        session_id: Session UUID (Claude Code session, will be mapped to TeleClaude session)
         message: Message to send
+        cwd: Current working directory (used to find TeleClaude session)
     """
     try:
         log("=== mcp_send() called ===")
-        log(f"Session ID: {session_id}")
+        log(f"Claude Code Session ID: {session_id}")
+        log(f"CWD: {cwd}")
         log(f"Message: {message}")
 
         # Connect to MCP socket
@@ -66,15 +68,42 @@ def mcp_send(session_id: str, message: str) -> None:
         log(f"Sending initialized notification: {json.dumps(initialized_notif)}")
         sock.sendall((json.dumps(initialized_notif) + "\n").encode())
 
-        # 3. Send tool call request
+        # 3. Find TeleClaude session by CWD (if CWD provided)
+        teleclaude_session_id = session_id  # Default to provided session_id
+        if cwd:
+            log(f"Finding TeleClaude session for CWD: {cwd}")
+            find_request = {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "teleclaude__find_session_by_cwd",
+                    "arguments": {"cwd": cwd},
+                },
+            }
+            find_response = send_message(sock, find_request)
+            log(f"Find session response: {json.dumps(find_response)}")
+
+            # Extract session_id from response
+            if "result" in find_response and not find_response.get("result", {}).get("isError"):
+                # Response format: {"result": {"content": [{"type": "text", "text": "session-id"}]}}
+                content = find_response["result"].get("content", [])
+                if content and len(content) > 0:
+                    teleclaude_session_id = content[0].get("text", "")
+                    log(f"Found TeleClaude session: {teleclaude_session_id}")
+            else:
+                log(f"No TeleClaude session found for CWD: {cwd}")
+                return  # Exit if no session found
+
+        # 4. Send notification to TeleClaude session
         tool_request = {
             "jsonrpc": "2.0",
-            "id": 2,
+            "id": 3,
             "method": "tools/call",
             "params": {
                 "name": "teleclaude__send_notification",
                 "arguments": {
-                    "session_id": session_id,
+                    "session_id": teleclaude_session_id,
                     "message": message,
                 },
             },

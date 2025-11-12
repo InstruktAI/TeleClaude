@@ -49,11 +49,14 @@ def main() -> None:
         log(f"Received data: {json.dumps(data)}")
 
         session_id = data.get("session_id")
+        cwd = data.get("cwd")
+
         if not session_id:
             log("No session_id, exiting")
             sys.exit(0)
 
-        log(f"Session ID: {session_id}")
+        log(f"Claude Code Session ID: {session_id}")
+        log(f"CWD: {cwd}")
 
         # Determine event type based on hook_event_name
         hook_event = data.get("hook_event_name", "")
@@ -99,7 +102,7 @@ def main() -> None:
             message = prefix + random.choice(NOTIFICATION_MESSAGES)
             log(f"Generated message: {message}")
 
-            mcp_send(session_id, message)
+            mcp_send(session_id, message, cwd)
 
         else:
             log(f"Unknown hook event: {hook_event}, ignoring")
