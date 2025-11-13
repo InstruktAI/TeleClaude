@@ -47,17 +47,17 @@ If push fails, stop and report the error to the user.
 
 ## Step 4: Restart Local TeleClaude & Claude Code
 
-Restart the local TeleClaude daemon and Claude Code session BEFORE deployment (deployment needs working MCP):
+Restart the local TeleClaude daemon and Claude Code session (MCP tools needed for remote deployment):
 
 ```bash
 make restart
 ```
 
 This ensures:
-- TeleClaude daemon is restarted with latest code
-- Claude Code session reconnects its MCP servers automatically
+- Local daemon runs latest code
+- Claude Code session reconnects MCP servers automatically
 - Work continues immediately with "continue" message
-- MCP tools are available for deployment step
+- MCP tools are available for remote deployment in next step
 
 Wait 5 seconds for services to stabilize before proceeding.
 
