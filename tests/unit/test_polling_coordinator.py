@@ -35,7 +35,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Test Session"  # Not matching $X > $Y pattern
+            title="Test Session",  # Not matching $X > $Y pattern
         )
 
         session_manager = Mock()
@@ -74,7 +74,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Test Session"
+            title="Test Session",
         )
 
         session_manager = Mock()
@@ -114,7 +114,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Test Session"
+            title="Test Session",
         )
 
         session_manager = Mock()
@@ -148,7 +148,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Test Session"
+            title="Test Session",
         )
 
         session_manager = Mock()
@@ -187,7 +187,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Test Session"
+            title="Test Session",
         )
 
         session_manager = Mock()
@@ -228,7 +228,7 @@ class TestPollAndSendOutput:
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
-            title="Test Session"
+            title="Test Session",
         )
 
         session_manager = Mock()
@@ -254,6 +254,7 @@ class TestPollAndSendOutput:
         output_poller = Mock()
         output_poller.poll = mock_poll
 
+
 class TestAISessionDetection:
     """Test AI-to-AI session detection via metadata."""
 
@@ -268,7 +269,7 @@ class TestAISessionDetection:
             tmux_session_name="comp1-ai-123",
             origin_adapter="redis",
             title="$comp1 > $comp2 - Test",
-            adapter_metadata={"target_computer": "comp2"}
+            adapter_metadata={"target_computer": "comp2"},
         )
         assert _is_ai_to_ai_session(ai_session)
 
@@ -283,7 +284,7 @@ class TestAISessionDetection:
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "456"}
+            adapter_metadata={"channel_id": "456"},
         )
         assert not _is_ai_to_ai_session(human_session)
 
@@ -301,7 +302,7 @@ class TestAISessionDetection:
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata=None
+            adapter_metadata=None,
         )
         assert not _is_ai_to_ai_session(session_no_metadata)
 
@@ -316,7 +317,7 @@ class TestAISessionDetection:
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "123", "is_ai_to_ai": False}
+            adapter_metadata={"channel_id": "123", "is_ai_to_ai": False},
         )
         assert not _is_ai_to_ai_session(session_false_flag)
 
@@ -327,7 +328,7 @@ class TestAISessionDetection:
             tmux_session_name="comp1-123",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={}
+            adapter_metadata={},
         )
         assert not _is_ai_to_ai_session(session_empty_metadata)
 
@@ -428,7 +429,7 @@ class TestDualModePolling:
             tmux_session_name="test-tmux",
             origin_adapter="redis",
             title="$mac1 > $mac2 - Deploy Script",
-            adapter_metadata={"target_computer": "remote"}
+            adapter_metadata={"target_computer": "remote"},
         )
 
         db.is_polling = AsyncMock(return_value=False)
@@ -481,7 +482,7 @@ class TestDualModePolling:
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "456"}
+            adapter_metadata={"channel_id": "456"},
         )
 
         db.is_polling = AsyncMock(return_value=False)
@@ -500,9 +501,7 @@ class TestDualModePolling:
 
         # Mock poller to yield OutputChanged
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
-            yield OutputChanged(
-                session_id="test-456", output="human output", started_at=1000.0, last_changed_at=1001.0
-            )
+            yield OutputChanged(session_id="test-456", output="human output", started_at=1000.0, last_changed_at=1001.0)
 
         output_poller = Mock()
         output_poller.poll = mock_poll
@@ -533,10 +532,11 @@ class TestNotificationFlagCoordination:
     @pytest.mark.asyncio
     async def test_idle_notification_skipped_when_flag_set(self):
         """Test IdleDetected event skipped when notification_sent flag is True."""
+        from pathlib import Path
         from unittest.mock import AsyncMock, Mock
+
         from teleclaude.core.output_poller import IdleDetected
         from teleclaude.core.polling_coordinator import poll_and_send_output
-        from pathlib import Path
 
         # Setup mocks
         adapter_client = AsyncMock()
@@ -560,9 +560,7 @@ class TestNotificationFlagCoordination:
             )
         )
         mock_db.get_notification_flag = AsyncMock(return_value=True)  # Flag is set
-        mock_db.get_ux_state = AsyncMock(
-            return_value=Mock(idle_notification_message_id=None, notification_sent=True)
-        )
+        mock_db.get_ux_state = AsyncMock(return_value=Mock(idle_notification_message_id=None, notification_sent=True))
         mock_db.update_ux_state = AsyncMock()
 
         get_output_file = Mock(return_value=Path("/tmp/output.txt"))
@@ -594,10 +592,11 @@ class TestNotificationFlagCoordination:
     @pytest.mark.asyncio
     async def test_idle_notification_sent_when_flag_not_set(self):
         """Test IdleDetected event sends notification when notification_sent flag is False."""
+        from pathlib import Path
         from unittest.mock import AsyncMock, Mock, patch
+
         from teleclaude.core.output_poller import IdleDetected
         from teleclaude.core.polling_coordinator import poll_and_send_output
-        from pathlib import Path
 
         # Setup mocks
         adapter_client = AsyncMock()
@@ -618,9 +617,7 @@ class TestNotificationFlagCoordination:
             )
         )
         mock_db.get_notification_flag = AsyncMock(return_value=False)  # Flag NOT set
-        mock_db.get_ux_state = AsyncMock(
-            return_value=Mock(idle_notification_message_id=None, notification_sent=False)
-        )
+        mock_db.get_ux_state = AsyncMock(return_value=Mock(idle_notification_message_id=None, notification_sent=False))
         mock_db.update_ux_state = AsyncMock()
 
         get_output_file = Mock(return_value=Path("/tmp/output.txt"))
@@ -657,16 +654,18 @@ class TestNotificationFlagCoordination:
             # 2. idle_notification_message_id='msg-123' (line 225)
             # 3. idle_notification_message_id=None (finally block, line 286)
             assert any(
-                call[1].get("idle_notification_message_id") == "msg-123" for call in mock_db.update_ux_state.call_args_list
+                call[1].get("idle_notification_message_id") == "msg-123"
+                for call in mock_db.update_ux_state.call_args_list
             )
 
     @pytest.mark.asyncio
     async def test_notification_flag_cleared_on_output_change(self):
         """Test notification_sent flag cleared when OutputChanged event occurs."""
+        from pathlib import Path
         from unittest.mock import AsyncMock, Mock, patch
+
         from teleclaude.core.output_poller import OutputChanged
         from teleclaude.core.polling_coordinator import poll_and_send_output
-        from pathlib import Path
 
         # Setup mocks
         adapter_client = AsyncMock()
@@ -699,9 +698,7 @@ class TestNotificationFlagCoordination:
 
         # Mock poller to yield OutputChanged
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
-            yield OutputChanged(
-                session_id="test-789", output="new output", started_at=1000.0, last_changed_at=1001.0
-            )
+            yield OutputChanged(session_id="test-789", output="new output", started_at=1000.0, last_changed_at=1001.0)
 
         output_poller = Mock()
         output_poller.poll = mock_poll
@@ -719,3 +716,85 @@ class TestNotificationFlagCoordination:
 
             # VERIFY: clear_notification_flag was called (activity detected)
             mock_db.clear_notification_flag.assert_called_once_with("test-789")
+
+
+class TestFilterForUI:
+    """Test _filter_for_ui function."""
+
+    def test_collapses_multiple_blank_lines(self):
+        """Test that multiple consecutive newlines are collapsed to single newline."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        # Multiple blank lines (3+ newlines) should become single newline
+        raw = "line1\n\n\n\nline2"
+        result = _filter_for_ui(raw)
+        assert result == "line1\nline2"
+
+    def test_preserves_single_newlines(self):
+        """Test that single newlines are preserved."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        raw = "line1\nline2\nline3"
+        result = _filter_for_ui(raw)
+        assert result == "line1\nline2\nline3"
+
+    def test_strips_ansi_codes(self):
+        """Test that ANSI escape codes are removed."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        raw = "\x1b[32mgreen text\x1b[0m"
+        result = _filter_for_ui(raw)
+        assert result == "green text"
+
+    def test_strips_exit_markers(self):
+        """Test that exit markers are removed."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        raw = "command output\n__EXIT__0__\n"
+        result = _filter_for_ui(raw)
+        assert result == "command output\n"
+
+    def test_strips_echo_command(self):
+        """Test that echo command is removed."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        raw = '; echo "__EXIT__$?__"'
+        result = _filter_for_ui(raw)
+        assert result == ""
+
+    def test_combined_filtering(self):
+        """Test all filters working together."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        # Realistic terminal output with ANSI codes, exit markers, and excessive blank lines
+        raw = (
+            "\x1b[32mcommand\x1b[0m\n"
+            "\n\n\n"  # Excessive blank lines
+            "output line 1\n"
+            "output line 2\n"
+            "\n\n"  # More blank lines
+            "__EXIT__0__\n"
+        )
+        result = _filter_for_ui(raw)
+
+        # Should have ANSI stripped, exit marker removed, blank lines collapsed
+        assert "\x1b[" not in result
+        assert "__EXIT__" not in result
+        assert "\n\n" not in result  # No consecutive blank lines
+        assert "command" in result
+        assert "output line 1" in result
+
+    def test_handles_empty_string(self):
+        """Test that empty string is handled gracefully."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        assert _filter_for_ui("") == ""
+
+    def test_handles_only_whitespace(self):
+        """Test handling of output with only newlines."""
+        from teleclaude.core.polling_coordinator import _filter_for_ui
+
+        raw = "\n\n\n\n"
+        result = _filter_for_ui(raw)
+        # Should collapse to single newline
+        assert result == "\n"

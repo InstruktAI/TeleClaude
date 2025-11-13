@@ -139,7 +139,7 @@ class UiAdapter(BaseAdapter):
         display_output = format_terminal_message(terminal_output, status_line)
 
         # Platform-specific metadata (inline keyboards, etc.)
-        metadata = self._build_output_metadata(session_id, is_truncated)
+        metadata = self._build_output_metadata(session_id, is_truncated, ux_state)
 
         # Send or edit
         if current_message_id:
@@ -158,7 +158,9 @@ class UiAdapter(BaseAdapter):
             logger.debug("Stored message_id=%s for session=%s", new_id, session_id[:8])
         return new_id
 
-    def _build_output_metadata(self, session_id: str, is_truncated: bool) -> Optional[dict[str, object]]:
+    def _build_output_metadata(
+        self, session_id: str, is_truncated: bool, ux_state: object
+    ) -> Optional[dict[str, object]]:
         """Build platform-specific metadata for output messages.
 
         Override in subclasses to add inline keyboards, buttons, etc.
@@ -166,6 +168,7 @@ class UiAdapter(BaseAdapter):
         Args:
             session_id: Session identifier
             is_truncated: Whether output was truncated
+            ux_state: Current UX state (for checking Claude session, etc.)
 
         Returns:
             Platform-specific metadata dict, or None

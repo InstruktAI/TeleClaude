@@ -1007,7 +1007,7 @@ class TeleClaudeMCPServer:
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
-        # Store claude_session_file if provided
+        # Store claude_session_file
         if claude_session_file:
             await db.update_ux_state(
                 session_id, claude_session_id=claude_session_id, claude_session_file=claude_session_file

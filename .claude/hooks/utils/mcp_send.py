@@ -36,7 +36,7 @@ def mcp_send(tool, payload) -> None:
     try:
         log("=== mcp_send() called ===")
         log(f"MCP tool: {tool}")
-        log(f"TeleClaude session ID: {payload.session_id}")
+        log(f"TeleClaude session ID: {payload.get('session_id')}")
         log(f"Payload: {payload}")
 
         # Connect to MCP socket

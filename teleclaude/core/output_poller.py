@@ -14,6 +14,7 @@ from typing import AsyncIterator, Optional
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
+from teleclaude.utils import strip_ansi_codes, strip_exit_markers
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +86,10 @@ class OutputPoller:
         # Configuration
         idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
-        global_update_interval = 2  # Global update interval (seconds)
+        global_update_interval = 1  # Global update interval (seconds) - first update after 1s
         directory_check_interval = getattr(config.polling, "directory_check_interval", 5)
 
         # State tracking
-        output_buffer = ""  # In-memory buffer for display/comparison only
         idle_ticks = 0
         notification_sent = False
         started_at = None
@@ -100,6 +100,9 @@ class OutputPoller:
         directory_check_ticks = 0
         poll_iteration = 0
         session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
+        exit_marker_count = None  # Baseline count (None = not established yet)
+        output_sent_at_least_once = False  # Ensure user sees output before exit
+        previous_output = ""  # Track previous clean output for change detection
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -142,8 +145,17 @@ class OutputPoller:
 
                 if not session_exists_now:
                     logger.info("Process exited for %s, stopping poll", session_id[:8])
+
+                    # Read final output from file
+                    final_output = ""
+                    if output_file.exists():
+                        try:
+                            final_output = output_file.read_text(encoding="utf-8")
+                        except Exception as e:
+                            logger.warning("Failed to read final output: %s", e)
+
                     yield ProcessExited(
-                        session_id=session_id, exit_code=None, final_output=output_buffer, started_at=started_at
+                        session_id=session_id, exit_code=None, final_output=final_output, started_at=started_at
                     )
                     break
 
@@ -156,119 +168,136 @@ class OutputPoller:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # Exit condition 2: Exit code detected (STATELESS DELTA-BASED)
-                # Calculate delta by comparing tmux output with cumulative file history
-                # File accumulates ENTIRE session, never truncates
+                # Strip ANSI codes and collapse whitespace, but KEEP markers (for exit detection)
+                current_with_markers = strip_ansi_codes(current_output)
+                current_with_markers = re.sub(r"\n\n+", "\n", current_with_markers)
 
-                # Read accumulated history from file (source of truth)
-                accumulated = ""
-                if output_file.exists():
-                    try:
-                        accumulated = output_file.read_text(encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("Failed to read output file: %s", e)
+                # Also create clean version (markers stripped) for UI
+                current_cleaned = strip_exit_markers(current_with_markers)
 
-                # Calculate delta between tmux view and accumulated history
-                delta_raw = ""
-                if current_output.startswith(accumulated):
-                    # Fast path: tmux has all our history + new content
-                    delta_raw = current_output[len(accumulated) :]
-                else:
-                    # Tmux scrollback truncated: find overlap to determine delta
-                    # Try to find where current output continues from accumulated history
-                    overlap_len = 0
-
-                    # Try progressively smaller chunks of current's beginning
-                    for chunk_size in [1000, 500, 100, 50]:
-                        if len(current_output) < chunk_size:
-                            continue
-                        chunk = current_output[:chunk_size]
-                        pos = accumulated.find(chunk)
-                        if pos >= 0:
-                            # Found where current continues from accumulated
-                            overlap_len = len(accumulated) - pos
-                            logger.debug(
-                                "Found overlap at pos %d for %s (overlap_len=%d)",
-                                pos,
-                                session_id[:8],
-                                overlap_len,
-                            )
-                            break
-
-                    # Delta is everything after the overlap point
-                    delta_raw = current_output[overlap_len:]
-
-                    if overlap_len == 0:
-                        logger.debug("Full reset (clear or major truncation) for %s", session_id[:8])
-
-                # Always check delta for exit code (unconditional)
-                exit_code = self._extract_exit_code(delta_raw, has_exit_marker)
-
-                # Append delta to file (cumulative history, never overwrites)
-                if delta_raw:
-                    try:
-                        with open(output_file, "a", encoding="utf-8") as f:
-                            f.write(delta_raw)
-                    except Exception as e:
-                        logger.warning("Failed to append to output file: %s", e)
-
-                    # Update output_buffer with full accumulated content (for UI display)
-                    output_buffer = accumulated + delta_raw
+                # Detect output changes (for idle tracking)
+                output_changed = current_cleaned != previous_output
+                if output_changed:
+                    previous_output = current_cleaned
                     idle_ticks = 0
                     notification_sent = False
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
-
-                    # Send OutputChanged immediately when delta appears (responsive UI)
-                    if exit_code is None:
-                        yield OutputChanged(
-                            session_id=session_id,
-                            output=delta_raw,  # RAW delta (daemon will filter)
-                            started_at=started_at,
-                            last_changed_at=last_output_changed_at,
-                        )
-                        # Reset tick counter since we just sent an update
-                        ticks_since_last_update = 0
-                elif not output_buffer and accumulated:
-                    # First poll with existing file but no new delta - initialize buffer
-                    output_buffer = accumulated
-
-                if exit_code is not None:
-                    # Exit detected - yield ProcessExited with full accumulated output
-                    logger.info("Exit code %d detected for %s", exit_code, session_id[:8])
-
-                    # Read full accumulated history for final output
-                    final_accumulated = ""
-                    if output_file.exists():
-                        try:
-                            final_accumulated = output_file.read_text(encoding="utf-8")
-                        except Exception as e:
-                            logger.warning("Failed to read final output: %s", e)
-
-                    # Yield RAW accumulated output (daemon will filter)
-                    yield ProcessExited(
-                        session_id=session_id,
-                        exit_code=exit_code,
-                        final_output=final_accumulated,
-                        started_at=started_at,
-                    )
-                    break
+                    ticks_since_last_update = 0
 
                 # Increment tick counter
                 ticks_since_last_update += 1
 
                 # Send updates based on time interval only (enforce minimum 2s between updates)
                 # This prevents Telegram API rate limiting from excessive message edits
-                if output_buffer and ticks_since_last_update >= current_update_interval:
+                # Send FILTERED TMUX PANE (mirrors what user sees in terminal)
+                if ticks_since_last_update >= current_update_interval:
+                    # Send clean output to UI (current_cleaned already has markers stripped)
                     yield OutputChanged(
                         session_id=session_id,
-                        output=output_buffer,  # RAW buffer (daemon will filter)
+                        output=current_cleaned,  # Already clean (markers stripped at line 175)
                         started_at=started_at,
                         last_changed_at=last_output_changed_at,
                     )
 
+                    # Mark that we've sent at least one update
+                    output_sent_at_least_once = True
+
                     # Reset tick counter
                     ticks_since_last_update = 0
+
+                # Exit condition 2: Exit code detected (COUNT-BASED)
+                # Count ACTUAL exit markers (pattern __EXIT__\d+__), NOT echo commands
+                # Handles: baseline, screen clears, new markers
+                # Check AFTER periodic update so user always sees output before exit
+                if has_exit_marker:
+                    current_marker_count = len(re.findall(r"__EXIT__\d+__", current_with_markers))
+
+                    if exit_marker_count is None:
+                        # First poll - check for fast completion
+                        # Fast completion: marker exists and at/near end (<50 chars after)
+                        # If marker has >50 chars after = old scrollback, establish baseline instead
+                        if current_marker_count > 0:
+                            # Check content after LAST marker
+                            marker_match = re.search(r"__EXIT__\d+__", current_with_markers)
+                            if marker_match:
+                                content_after_marker = current_with_markers[marker_match.end() :]
+                                chars_after = len(content_after_marker.strip())
+
+                                if chars_after < 50:
+                                    # Fast completion - marker at/near end
+                                    exit_code = self._extract_exit_code(current_with_markers, has_exit_marker)
+                                    logger.info(
+                                        "Fast completion detected for %s (marker in first poll, %d chars after, exit_code=%d)",
+                                        session_id[:8],
+                                        chars_after,
+                                        exit_code,
+                                    )
+
+                                    # Send output before exit (current_cleaned already has markers stripped)
+                                    if not output_sent_at_least_once:
+                                        yield OutputChanged(
+                                            session_id=session_id,
+                                            output=current_cleaned,
+                                            started_at=started_at,
+                                            last_changed_at=last_output_changed_at,
+                                        )
+
+                                    # Send current cleaned output (what user sees in tmux)
+                                    yield ProcessExited(
+                                        session_id=session_id,
+                                        exit_code=exit_code,
+                                        final_output=current_cleaned,
+                                        started_at=started_at,
+                                    )
+                                    break
+
+                        # Not fast completion - establish baseline (may include old scrollback markers)
+                        exit_marker_count = current_marker_count
+                        logger.debug(
+                            "Exit marker baseline established for %s: %d markers",
+                            session_id[:8],
+                            current_marker_count,
+                        )
+                    elif current_marker_count < exit_marker_count:
+                        # Screen clear detected - markers disappeared from tmux pane
+                        # Reset baseline to current count
+                        logger.debug(
+                            "Screen clear detected for %s: marker count decreased %d -> %d (resetting baseline)",
+                            session_id[:8],
+                            exit_marker_count,
+                            current_marker_count,
+                        )
+                        exit_marker_count = current_marker_count
+                    elif current_marker_count > exit_marker_count:
+                        # NEW marker detected! Count increased from baseline
+                        exit_code = self._extract_exit_code(current_with_markers, has_exit_marker)
+                        logger.info(
+                            "Exit code %d detected for %s (marker count: %d -> %d)",
+                            exit_code,
+                            session_id[:8],
+                            exit_marker_count,
+                            current_marker_count,
+                        )
+
+                        # ALWAYS send output before exit (ensures visibility)
+                        if not output_sent_at_least_once:
+                            yield OutputChanged(
+                                session_id=session_id,
+                                output=current_cleaned,  # Already has markers stripped
+                                started_at=started_at,
+                                last_changed_at=last_output_changed_at,
+                            )
+                            output_sent_at_least_once = True
+
+                        # Send current cleaned output (what user sees in tmux)
+                        yield ProcessExited(
+                            session_id=session_id,
+                            exit_code=exit_code,
+                            final_output=current_cleaned,
+                            started_at=started_at,
+                        )
+                        break
 
                     # Apply exponential backoff when idle: 2s -> 4s -> 6s -> 8s -> 10s
                     if idle_ticks >= current_update_interval:
@@ -281,7 +310,7 @@ class OutputPoller:
                         )
 
                 # Increment idle counter when no new content
-                if not delta_raw:
+                if not output_changed:
                     idle_ticks += 1
 
                     # Send idle notification once at threshold
@@ -368,79 +397,24 @@ class OutputPoller:
 
         return output
 
-    def _strip_exit_markers(self, output: str) -> str:
-        """Strip exit code markers from RAW output (for exit code detection).
-
-        This is ONLY used for extracting exit codes from raw tmux output.
-        UI filtering happens in daemon layer.
-
-        Removes:
-        1. The __EXIT__N__ marker output
-        2. The ; echo "__EXIT__$?__" command text from shell prompts
-
-        Args:
-            output: RAW terminal output
-
-        Returns:
-            Output with exit markers removed (still contains ANSI codes)
-        """
-        # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
-        # Allow whitespace/newlines within marker due to tmux line wrapping
-        # Remove marker + ONE trailing newline (preserves line structure)
-        # Handles: __EXIT__0__, __EXIT__0\n__, __EXIT__\n0__, etc.
-        output = re.sub(r"__EXIT__\s*\d+\s*__\n?", "", output)
-
-        # Strip the echo command from shell prompts (handles line wrapping)
-        # Allow whitespace/newlines within the quoted string and between command parts
-        # Handles: ; echo "__EXIT__$?__", ; echo "__EXIT__$?\n__", etc.
-        output = re.sub(r';\s*echo\s*"__EXIT__\s*\$\?\s*__\s*"', "", output)
-
-        return output
-
     def _extract_exit_code(self, output: str, has_exit_marker: bool) -> Optional[int]:
-        """Extract exit code from output if marker present.
+        """Extract exit code from FULL output using regex.
 
         Args:
-            output: Terminal output
+            output: Terminal output (FULL, not just last N lines)
             has_exit_marker: Whether exit marker was appended
 
         Returns:
-            Exit code or None
+            Exit code from LAST marker in output, or None
         """
         if not has_exit_marker:
             return None
 
-        # Search last 5 NON-EMPTY lines for exit marker
-        # Only check recent lines to avoid detecting old markers from previous commands
-        # Fresh exit markers appear near the end after command completes
-        # Case 1 - Normal exit:
-        #   ...
-        #   __EXIT__0__
-        #   (many empty lines)
-        # Case 2 - After Ctrl+C:
-        #   ...
-        #   __EXIT__130__
-        #   ➜  teleclaude git:(main) ✗
-        #   (many empty lines)
-        lines = output.splitlines()
-        if not lines:
-            return None
-
-        # Get last 5 non-empty lines (recent output only)
-        non_empty_lines = [line for line in lines if line.strip()]
-        if not non_empty_lines:
-            return None
-
-        # Check last 5 non-empty lines for exit marker
-        last_n = non_empty_lines[-5:] if len(non_empty_lines) >= 5 else non_empty_lines
-
-        for line in last_n:
-            # Strict pattern: marker must be on its own line (with optional whitespace)
-            # This prevents matching the marker in typed command text or shell syntax
-            # Valid: "   __EXIT__0__   " or "__EXIT__130__"
-            # Invalid: "echo "__EXIT__$?__"" or "; echo "__EXIT__$?__""
-            match = re.search(r"^\s*__EXIT__(\d+)__\s*$", line)
-            if match:
-                return int(match.group(1))
+        # Find ALL markers in full output using regex
+        # Pattern: __EXIT__\d+__ (actual marker with exit code)
+        # Returns LAST marker (most recent command)
+        matches = re.findall(r"__EXIT__(\d+)__", output)
+        if matches:
+            return int(matches[-1])  # Return LAST match (most recent)
 
         return None

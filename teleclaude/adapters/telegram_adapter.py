@@ -138,19 +138,26 @@ class TelegramAdapter(UiAdapter):
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def _build_output_metadata(self, session_id: str, is_truncated: bool) -> Optional[dict[str, object]]:
+    def _build_output_metadata(
+        self, session_id: str, is_truncated: bool, ux_state: object
+    ) -> Optional[dict[str, object]]:
         """Build Telegram-specific metadata with inline keyboard for downloads.
 
-        Overrides UiAdapter._build_output_metadata() to add download button.
+        Overrides UiAdapter._build_output_metadata().
+        Shows download button only when there's a Claude Code session to download.
         """
-        if not is_truncated:
-            return None
-
-        # Add download button for truncated output
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-        keyboard = [[InlineKeyboardButton("📎 Download full output", callback_data=f"download_full:{session_id}")]]
-        return {"reply_markup": InlineKeyboardMarkup(keyboard)}
+        metadata = {}
+
+        # Add download button if Claude session available
+        if hasattr(ux_state, "claude_session_file") and ux_state.claude_session_file:
+            keyboard = [
+                [InlineKeyboardButton("📎 Download Claude session", callback_data=f"download_full:{session_id}")]
+            ]
+            metadata["reply_markup"] = InlineKeyboardMarkup(keyboard)
+
+        return metadata if metadata else None
 
     async def start(self) -> None:
         """Initialize and start Telegram bot."""
@@ -1264,29 +1271,45 @@ Current size: {}
         action, *args = data.split(":", 1)
 
         if action == "download_full":
-            # Download full output
+            # Download full output (terminal or Claude Code session)
             session_id = args[0] if args else None
             if not session_id or not query.message:
                 return
 
-            # Read output from file
-            output_file = Path("workspace") / session_id / "output.txt"
-
-            if not output_file.exists():
-                await query.edit_message_text("Output file not found", parse_mode="Markdown")
-                return
-
             try:
-                # Read RAW output (contains ANSI codes and exit markers)
-                raw_output = output_file.read_text()
+                # Check if there's a Claude Code session transcript
+                from teleclaude.utils.claude_transcript import parse_claude_transcript
 
-                # Strip ANSI codes and exit markers before sending
-                clean_output = strip_ansi_codes(raw_output)
-                clean_output = strip_exit_markers(clean_output)
+                ux_state = await db.get_ux_state(session_id)
+                claude_session_file = ux_state.claude_session_file if ux_state else None
+
+                if claude_session_file:
+                    # Get session for metadata
+                    session = await db.get_session(session_id)
+                    # Convert Claude transcript to markdown
+                    markdown_content = parse_claude_transcript(claude_session_file, session.title)
+                    filename = f"{session.title.replace(' ', '_')}.md"
+                    caption = "Claude Code session transcript"
+                else:
+                    # Fall back to terminal output
+                    output_file = Path("workspace") / session_id / "output.txt"
+
+                    if not output_file.exists():
+                        await query.edit_message_text("Output file not found", parse_mode="Markdown")
+                        return
+
+                    # Read RAW output (contains ANSI codes and exit markers)
+                    raw_output = output_file.read_text()
+
+                    # Strip ANSI codes and exit markers before sending
+                    markdown_content = strip_ansi_codes(raw_output)
+                    markdown_content = strip_exit_markers(markdown_content)
+                    filename = f"output_{session_id[:8]}.txt"
+                    caption = "Full terminal output"
 
                 # Create a temporary file to send
-                with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
-                    tmp.write(clean_output)
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+                    tmp.write(markdown_content)
                     tmp_path = tmp.name
 
                 try:
@@ -1296,8 +1319,8 @@ Current size: {}
                             chat_id=query.message.chat_id,
                             message_thread_id=query.message.message_thread_id,
                             document=f,
-                            filename=f"output_{session_id[:8]}.txt",
-                            caption="Full terminal output",
+                            filename=filename,
+                            caption=caption,
                         )
                 finally:
                     # Clean up temp file

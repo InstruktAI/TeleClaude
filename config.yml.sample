@@ -15,9 +15,9 @@ database:
     path: ${WORKING_DIR}/teleclaude.db
 
 terminal:
-    default_size: 120x40
+    default_size: 56x20
     sizes:
-        small: 80x20 # mobile
+        small: 56x20 # mobile
         medium: 120x40 # tablet
         large: 180x60 # desktop
 

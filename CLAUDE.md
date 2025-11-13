@@ -6,6 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🚨 CRITICAL RULES (Never Break These)
 
+### Rule #-1: YOU ARE THE ONLY ONE MAKING CODE CHANGES
+
+**CRITICAL SELF-AWARENESS: YOU (CLAUDE) ARE MAKING ALL CODE CHANGES. THERE IS NO "OLD CODE" vs "YOUR CHANGES".**
+
+- When tests pass or fail, they are testing YOUR code changes
+- Don't say "tests passed from old code before my changes" - that makes NO SENSE
+- YOU are the developer. ALL changes are YOUR changes
+- If tests don't catch a bug, the tests need improvement OR the bug only triggers at runtime
+- Stop confusing yourself about whose code is whose - it's ALL YOUR RESPONSIBILITY
+
 ### Rule #0: THE DAEMON MUST NEVER BE DOWN
 
 **USERS DEPEND ON THIS SERVICE 24/7. DOWNTIME IS NOT ACCEPTABLE.**

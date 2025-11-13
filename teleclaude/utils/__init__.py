@@ -267,15 +267,32 @@ def strip_ansi_codes(text: str) -> str:
 def strip_exit_markers(text: str) -> str:
     """Strip exit code markers from text.
 
+    Removes:
+    1. The marker output (__EXIT__0__, __EXIT__1__, etc.)
+    2. The echo command from shell prompts (; echo "__EXIT__$?__")
+
     Args:
         text: Text with exit markers
 
     Returns:
         Text with markers removed
     """
-    # Pattern: __EXIT__<code>__\n
-    marker_pattern = re.compile(r"__EXIT__\d+__\n?")
-    return marker_pattern.sub("", text)
+    # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
+    # Allow whitespace/newlines within marker due to tmux line wrapping
+    text = re.sub(r"__EXIT__\s*\d+\s*__\n?", "", text)
+
+    # Strip the echo command - handles line wrapping
+    # Pattern 1: ; echo (together on same line or across lines) - preserves newline before next content
+    text = re.sub(r';\s*\n?\s*echo\s+"__EXIT__\s*\$\?\s*__"', "", text)
+
+    # Pattern 2: echo at start of line (after line wrap, semicolon lost) - removes the entire line
+    text = re.sub(r'^\s+echo\s+"__EXIT__\s*\$\?\s*__"\s*\n', "", text, flags=re.MULTILINE)
+
+    # Strip Claude Code hook success messages (including wrapped continuation lines)
+    # Matches lines starting with "  ⎿ " and continuation lines indented with 5+ spaces
+    text = re.sub(r"^  ⎿ .*(?:\n {5,}.*)*\n?", "", text, flags=re.MULTILINE)
+
+    return text
 
 
 def get_filtered_output(output_file: Path, max_len: int) -> tuple[str, bool]:

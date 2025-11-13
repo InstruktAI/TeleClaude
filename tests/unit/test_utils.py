@@ -1,8 +1,10 @@
 """Unit tests for utils module."""
 
 import os
+
 import pytest
-from teleclaude.utils import expand_env_vars
+
+from teleclaude.utils import expand_env_vars, strip_exit_markers
 
 
 class TestExpandEnvVars:
@@ -42,10 +44,7 @@ class TestExpandEnvVars:
         """Test expanding env vars in dict config."""
         os.environ["TEST_HOME"] = "/home/test"
 
-        config = {
-            "path": "${TEST_HOME}/project",
-            "name": "test"
-        }
+        config = {"path": "${TEST_HOME}/project", "name": "test"}
 
         result = expand_env_vars(config)
 
@@ -59,13 +58,7 @@ class TestExpandEnvVars:
         """Test expanding env vars in nested dict config."""
         os.environ["TEST_VAR"] = "nested_value"
 
-        config = {
-            "outer": {
-                "inner": {
-                    "value": "${TEST_VAR}"
-                }
-            }
-        }
+        config = {"outer": {"inner": {"value": "${TEST_VAR}"}}}
 
         result = expand_env_vars(config)
 
@@ -93,15 +86,7 @@ class TestExpandEnvVars:
         """Test expanding env vars in complex mixed config."""
         os.environ["TEST_PATH"] = "/test/path"
 
-        config = {
-            "paths": [
-                "${TEST_PATH}/one",
-                "${TEST_PATH}/two"
-            ],
-            "settings": {
-                "base": "${TEST_PATH}"
-            }
-        }
+        config = {"paths": ["${TEST_PATH}/one", "${TEST_PATH}/two"], "settings": {"base": "${TEST_PATH}"}}
 
         result = expand_env_vars(config)
 
@@ -141,3 +126,37 @@ class TestExpandEnvVars:
         result = expand_env_vars([])
 
         assert result == []
+
+
+class TestStripExitMarkers:
+    """Tests for strip_exit_markers() function."""
+
+    def test_strip_exit_marker_output(self):
+        """Test stripping exit code marker from output."""
+        output = "command output\n__EXIT__0__\n"
+        result = strip_exit_markers(output)
+        assert result == "command output\n"
+
+    def test_strip_echo_command_same_line(self):
+        """Test stripping echo command on same line with semicolon."""
+        output = 'command output; echo "__EXIT__$?__"\nprompt > '
+        result = strip_exit_markers(output)
+        assert result == "command output\nprompt > "
+
+    def test_strip_echo_command_line_wrapped(self):
+        """Test stripping echo command when wrapped to next line (THE BUG FIX)."""
+        output = '➜  teleclaude git:(main) ✗ claude --dangerously-skip-permissions\n echo "__EXIT__$?__"\nsome output'
+        result = strip_exit_markers(output)
+        assert result == "➜  teleclaude git:(main) ✗ claude --dangerously-skip-permissions\nsome output"
+
+    def test_strip_both_marker_and_echo(self):
+        """Test stripping both marker and echo command."""
+        output = 'some output; echo "__EXIT__$?__"\n__EXIT__0__\nprompt > '
+        result = strip_exit_markers(output)
+        assert result == "some output\nprompt > "
+
+    def test_strip_wrapped_marker(self):
+        """Test stripping marker that wraps across lines."""
+        output = "command output\n__EXIT__0\n__\n"
+        result = strip_exit_markers(output)
+        assert result == "command output\n"

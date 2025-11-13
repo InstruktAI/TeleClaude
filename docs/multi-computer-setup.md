@@ -137,7 +137,7 @@ computer:
 
 telegram:
   supergroup_id: ${TELEGRAM_SUPERGROUP_ID} # SAME for all computers
-  is_master: true  # Only ONE computer should be master (usually your primary workstation)
+  is_master: true # Only ONE computer should be master (usually your primary workstation)
 
   # Whitelist of trusted bots (SAME for all computers)
   trusted_bots:
@@ -183,6 +183,7 @@ telegram:
 **How it works:**
 
 1. **Master bot** registers all commands with **trailing spaces**:
+
    - Example: `BotCommand("new_session ", "Create a new terminal session")`
    - The trailing space prevents Telegram from appending `@botname` in autocomplete
    - Commands become universal: `/new_session` works for any bot
@@ -375,7 +376,7 @@ In your supergroup, you'll see:
 
   🤖 Starting Claude Code on workstation...
 
-  ```sh
+  ```
   Filesystem      Size  Used Avail Capacity
   /dev/sda1       500G  250G  250G    50%
   ````
