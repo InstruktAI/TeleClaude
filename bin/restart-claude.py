@@ -26,7 +26,7 @@ def main():
 
     try:
         # Find TeleClaude's database
-        teleclaude_db = Path.home().parent / "Documents" / "Workspace" / "morriz" / "teleclaude" / "teleclaude.db"
+        teleclaude_db = Path.home() / "Documents" / "Workspace" / "morriz" / "teleclaude" / "teleclaude.db"
         if not teleclaude_db.exists():
             print(f"ERROR: TeleClaude database not found at {teleclaude_db}")
             with open(debug_log, "a") as f:
