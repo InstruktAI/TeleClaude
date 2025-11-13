@@ -50,12 +50,12 @@ If push fails, stop and report the error to the user.
 Restart the local TeleClaude daemon and Claude Code session BEFORE deployment (deployment needs working MCP):
 
 ```bash
-make restart && .venv/bin/python -m teleclaude.restart_claude
+make restart
 ```
 
 This ensures:
 - TeleClaude daemon is restarted with latest code
-- Claude Code session reconnects its MCP servers
+- Claude Code session reconnects its MCP servers automatically
 - Work continues immediately with "continue" message
 - MCP tools are available for deployment step
 
