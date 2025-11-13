@@ -17,3 +17,9 @@ repos:
         name: Lint code
         entry: bin/lint.sh
         language: script
+      - id: test
+        name: Run tests
+        entry: make test
+        language: system
+        pass_filenames: false
+        always_run: true

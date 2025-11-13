@@ -45,9 +45,17 @@ git push
 
 If push fails, stop and report the error to the user.
 
-## Step 4: Restart Local TeleClaude & Claude Code
+## Step 4: Cache Deployment Targets (BEFORE Restart)
 
-Restart the local TeleClaude daemon and Claude Code session (MCP tools needed for remote deployment):
+**CRITICAL:** Get computer list and paths BEFORE restarting (MCP may disconnect during restart)
+
+1. Get list of computers: `teleclaude__list_computers()`
+2. For each computer, get teleclaude project path: `teleclaude__list_projects(computer)`
+3. Cache this information in memory for use in Step 6
+
+## Step 5: Restart Local TeleClaude & Claude Code
+
+Restart the local TeleClaude daemon and Claude Code session:
 
 ```bash
 make restart
@@ -57,13 +65,12 @@ This ensures:
 - Local daemon runs latest code
 - Claude Code session reconnects MCP servers automatically
 - Work continues immediately with "continue" message
-- MCP tools are available for remote deployment in next step
 
 Wait 5 seconds for services to stabilize before proceeding.
 
-## Step 5: Deploy to All Remote Machines
+## Step 6: Deploy to All Remote Machines
 
-**Try MCP deployment first:**
+**Try MCP deployment first (if reconnected after restart):**
 
 ```
 teleclaude__deploy_to_all_computers()
@@ -74,18 +81,17 @@ This will:
 - Each computer: `git pull` → restart daemon
 - Return deployment status for each machine
 
-**If MCP tool is not available, fall back to manual SSH deployment:**
+**If MCP deployment unavailable after restart, fall back to SSH deployment:**
 
-Get list of known TeleClaude machines from config or ask user for hostnames.
+Use cached computer list and paths from Step 4 to deploy via SSH:
 
-For each remote machine, run:
 ```bash
-ssh <remote-machine> 'cd ~/teleclaude && git pull && make restart && pgrep -f teleclaude.daemon'
+ssh <computer> 'cd <teleclaude-path> && git pull && make restart && pgrep -f teleclaude.daemon'
 ```
 
 Parse output to report deployment status for each machine (success/failure, new PID)
 
-## Step 6: Report Status
+## Step 7: Report Status
 
 After deployment completes, report:
 
