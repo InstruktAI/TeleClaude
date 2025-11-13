@@ -83,11 +83,20 @@ This will:
 
 **If MCP deployment unavailable after restart, fall back to SSH deployment:**
 
-Use cached computer list and paths from Step 4 to deploy via SSH:
+Use cached computer list and paths from Step 4 to deploy via SSH.
+
+**IMPORTANT:** Use 10 second timeout per computer and wait for deployment to complete:
 
 ```bash
-ssh <computer> 'cd <teleclaude-path> && git pull && make restart && pgrep -f teleclaude.daemon'
+# For each computer, run with timeout and wait
+ssh -A <computer> 'cd <teleclaude-path> && git pull && make restart && sleep 5 && pgrep -f teleclaude.daemon'
 ```
+
+**CRITICAL:**
+- Use `-A` flag for SSH agent forwarding
+- Use timeout of 10000ms for each SSH command
+- Wait 5 seconds after restart for daemon to stabilize
+- Check final status with `pgrep` after wait period
 
 Parse output to report deployment status for each machine (success/failure, new PID)
 
