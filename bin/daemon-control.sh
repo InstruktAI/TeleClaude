@@ -297,6 +297,14 @@ restart_daemon() {
     # Use nohup and redirect to /dev/null to fully detach
     (
         sleep 3
+
+        # Get TELECLAUDE_SESSION_ID from tmux session environment
+        TMUX_SESSION=$(tmux display-message -p '#S' 2>/dev/null)
+        if [ -n "$TMUX_SESSION" ]; then
+            TELECLAUDE_SESSION_ID=$(tmux show-environment -t "$TMUX_SESSION" TELECLAUDE_SESSION_ID 2>/dev/null | cut -d= -f2-)
+            export TELECLAUDE_SESSION_ID
+        fi
+
         cd "$PROJECT_ROOT" && "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude >/dev/null 2>&1
     ) </dev/null >/dev/null 2>&1 & disown
 
