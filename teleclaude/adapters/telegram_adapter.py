@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import tempfile
 import traceback
 from dataclasses import dataclass
@@ -146,18 +147,16 @@ class TelegramAdapter(UiAdapter):
         """Apply Telegram-specific formatting to shorten long separator lines.
 
         Overrides UiAdapter.format_message().
-        Shortens lines with repeating separator chars (-, ─, =, etc.) to 54 chars if longer.
+        Reduces sequences of 118 repeating chars to 47 chars.
         """
         message = super().format_message(terminal_output, status_line)
 
         lines = []
         for line in message.split("\n"):
-            stripped = line.strip()
-            # Check if line is repeating single character (separator line)
-            if stripped and len(set(stripped)) == 1 and len(stripped) > 52:
-                lines.append(stripped[0] * 52)
-            else:
-                lines.append(line)
+            # Find sequences of exactly 118 repeating characters and reduce to 47
+            # Pattern: captures any character repeated exactly 118 times
+            modified_line = re.sub(r"(.)\1{117}", lambda m: m.group(1) * 47, line)
+            lines.append(modified_line)
 
         return "\n".join(lines)
 
@@ -1723,9 +1722,6 @@ Usage:
         if not file_obj:
             return
 
-        # Download file to session workspace
-        telegram_file = await file_obj.get_file()
-
         # Determine subdirectory based on file type
         subdir = "photos" if file_type == "photo" else "files"
         session_workspace = Path("workspace") / session.session_id / subdir
@@ -1733,18 +1729,21 @@ Usage:
         file_path = session_workspace / file_name
 
         try:
-            # Download the file
+            # Download file to session workspace
+            telegram_file = await file_obj.get_file()
             await telegram_file.download_to_drive(file_path)
             logger.info("Downloaded %s to: %s", file_type, file_path)
 
-            # Emit file event to daemon
+            # Emit file event to daemon (with optional caption)
             await self.client.handle_event(
                 event=TeleClaudeEvents.FILE,
                 payload={
                     "session_id": session.session_id,
                     "file_path": str(file_path),
-                    "file_name": file_name,
+                    "filename": file_name,
                     "file_type": file_type,
+                    "file_size": file_obj.file_size if hasattr(file_obj, "file_size") else 0,
+                    "caption": message.caption.strip() if message.caption else None,
                 },
                 metadata={
                     "adapter_type": "telegram",
@@ -1753,9 +1752,16 @@ Usage:
                 },
             )
         except Exception as e:
-            error_msg = str(e) if str(e).strip() else "Unknown error"
-            logger.error("Failed to download %s: %s", file_type, error_msg)
-            await message.reply_text(f"❌ Failed to download {file_type}: {error_msg}")
+            # Log detailed error for debugging
+            logger.error("Failed to download %s: %s", file_type, str(e))
+
+            # Send user-friendly error message
+            message_id = await self.client.send_message(
+                session.session_id,
+                f"❌ Failed to upload {file_type}",
+            )
+            if message_id:
+                await db.add_pending_deletion(session.session_id, message_id)
 
     async def _handle_topic_closed(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle forum topic closed event."""

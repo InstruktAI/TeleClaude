@@ -1,7 +1,9 @@
 """Unit tests for terminal_bridge.py."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 from teleclaude.core import terminal_bridge
 
 
@@ -10,9 +12,10 @@ def setup_config():
     """Initialize config for all tests."""
     # Mock the config object at the terminal_bridge module level
     from teleclaude import config as config_module
+
     test_config = MagicMock()
     test_config.polling.lpoll_extensions = []
-    with patch.object(config_module, 'config', test_config):
+    with patch.object(config_module, "config", test_config):
         yield
 
 
@@ -22,7 +25,7 @@ class TestSendKeys:
     @pytest.mark.asyncio
     async def test_append_exit_marker_true(self):
         """Test that exit marker is appended when append_exit_marker=True."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             # Mock subprocess
             mock_process = MagicMock()
             mock_process.returncode = 0
@@ -30,12 +33,10 @@ class TestSendKeys:
             mock_exec.return_value = mock_process
 
             # Mock session exists
-            with patch.object(terminal_bridge, 'session_exists', return_value=True):
+            with patch.object(terminal_bridge, "session_exists", return_value=True):
                 # Execute with append_exit_marker=True
                 success = await terminal_bridge.send_keys(
-                    session_name="test-session",
-                    text="ls -la",
-                    append_exit_marker=True
+                    session_name="test-session", text="ls -la", append_exit_marker=True
                 )
 
                 assert success is True
@@ -43,18 +44,18 @@ class TestSendKeys:
                 # Verify send_keys command includes exit marker
                 call_args_list = mock_exec.call_args_list
                 # Find the send-keys call (not Enter)
-                send_keys_call = [call for call in call_args_list if 'send-keys' in call[0]]
+                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
                 assert len(send_keys_call) > 0
 
                 # Check that the command includes exit marker
                 text_arg = send_keys_call[0][0][4]  # 5th argument is the text
-                assert '__EXIT__' in text_arg, "Should include exit marker"
-                assert 'ls -la' in text_arg, "Should include original command"
+                assert "__EXIT__" in text_arg, "Should include exit marker"
+                assert "ls -la" in text_arg, "Should include original command"
 
     @pytest.mark.asyncio
     async def test_append_exit_marker_false(self):
         """Test that exit marker is NOT appended when append_exit_marker=False."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             # Mock subprocess
             mock_process = MagicMock()
             mock_process.returncode = 0
@@ -62,23 +63,21 @@ class TestSendKeys:
             mock_exec.return_value = mock_process
 
             # Mock session exists
-            with patch.object(terminal_bridge, 'session_exists', return_value=True):
+            with patch.object(terminal_bridge, "session_exists", return_value=True):
                 # Execute with append_exit_marker=False
                 success = await terminal_bridge.send_keys(
-                    session_name="test-session",
-                    text="some input",
-                    append_exit_marker=False
+                    session_name="test-session", text="some input", append_exit_marker=False
                 )
 
                 assert success is True
 
                 # Verify send_keys command does NOT include exit marker
                 call_args_list = mock_exec.call_args_list
-                send_keys_call = [call for call in call_args_list if 'send-keys' in call[0]]
+                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
                 assert len(send_keys_call) > 0
 
                 text_arg = send_keys_call[0][0][4]
-                assert '__EXIT__' not in text_arg, "Should NOT include exit marker"
+                assert "__EXIT__" not in text_arg, "Should NOT include exit marker"
                 assert text_arg == "some input", "Should include only original text"
 
 
@@ -88,16 +87,13 @@ class TestSendCtrlKey:
     @pytest.mark.asyncio
     async def test_send_ctrl_key_success(self):
         """Test sending CTRL+key combination."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_ctrl_key(
-                session_name="test-session",
-                key="d"
-            )
+            success = await terminal_bridge.send_ctrl_key(session_name="test-session", key="d")
 
             assert success is True
             mock_exec.assert_called_once()
@@ -107,16 +103,13 @@ class TestSendCtrlKey:
     @pytest.mark.asyncio
     async def test_send_ctrl_key_uppercase(self):
         """Test that uppercase keys are converted to lowercase."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_ctrl_key(
-                session_name="test-session",
-                key="Z"
-            )
+            success = await terminal_bridge.send_ctrl_key(session_name="test-session", key="Z")
 
             assert success is True
             call_args = mock_exec.call_args[0]
@@ -129,28 +122,24 @@ class TestCommandValidation:
     @pytest.mark.asyncio
     async def test_reject_command_chaining_with_long_running(self):
         """Test that command chaining with long-running processes is rejected."""
-        with patch.object(terminal_bridge, 'session_exists', return_value=True):
+        with patch.object(terminal_bridge, "session_exists", return_value=True):
             success = await terminal_bridge.send_keys(
-                session_name="test-session",
-                text="vim file.txt && ls",
-                append_exit_marker=True
+                session_name="test-session", text="vim file.txt && ls", append_exit_marker=True
             )
             assert success is False, "Should return False when rejecting command chaining"
 
     @pytest.mark.asyncio
     async def test_allow_long_running_without_chaining(self):
         """Test that long-running commands without chaining are allowed."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            with patch.object(terminal_bridge, 'session_exists', return_value=True):
+            with patch.object(terminal_bridge, "session_exists", return_value=True):
                 success = await terminal_bridge.send_keys(
-                    session_name="test-session",
-                    text="vim file.txt",
-                    append_exit_marker=True
+                    session_name="test-session", text="vim file.txt", append_exit_marker=True
                 )
                 assert success is True
 
@@ -241,7 +230,7 @@ class TestSendTab:
     @pytest.mark.asyncio
     async def test_send_tab_success(self):
         """Test sending TAB key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
@@ -257,7 +246,7 @@ class TestSendTab:
     @pytest.mark.asyncio
     async def test_send_tab_failure(self):
         """Test failure when sending TAB key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 1
             mock_process.wait = AsyncMock()
@@ -274,7 +263,7 @@ class TestSendShiftTab:
     @pytest.mark.asyncio
     async def test_send_shift_tab_success(self):
         """Test sending SHIFT+TAB key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
@@ -290,7 +279,7 @@ class TestSendShiftTab:
     @pytest.mark.asyncio
     async def test_send_shift_tab_failure(self):
         """Test failure when sending SHIFT+TAB key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 1
             mock_process.wait = AsyncMock()
@@ -307,89 +296,69 @@ class TestSendArrowKey:
     @pytest.mark.asyncio
     async def test_send_arrow_up(self):
         """Test sending UP arrow key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="up",
-                count=1
-            )
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="up", count=1)
 
             assert success is True
             mock_exec.assert_called_once()
             call_args = mock_exec.call_args[0]
-            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "1", "Up")
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-N", "1", "Up")
 
     @pytest.mark.asyncio
     async def test_send_arrow_down_with_repeat(self):
         """Test sending DOWN arrow key with repeat count."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="down",
-                count=5
-            )
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="down", count=5)
 
             assert success is True
             call_args = mock_exec.call_args[0]
-            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "5", "Down")
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-N", "5", "Down")
 
     @pytest.mark.asyncio
     async def test_send_arrow_left(self):
         """Test sending LEFT arrow key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="left",
-                count=3
-            )
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="left", count=3)
 
             assert success is True
             call_args = mock_exec.call_args[0]
-            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "3", "Left")
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-N", "3", "Left")
 
     @pytest.mark.asyncio
     async def test_send_arrow_right(self):
         """Test sending RIGHT arrow key."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="right",
-                count=10
-            )
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="right", count=10)
 
             assert success is True
             call_args = mock_exec.call_args[0]
-            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-R", "10", "Right")
+            assert call_args == ("tmux", "send-keys", "-t", "test-session", "-N", "10", "Right")
 
     @pytest.mark.asyncio
     async def test_send_arrow_invalid_direction(self):
         """Test failure with invalid direction."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="invalid",
-                count=1
-            )
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="invalid", count=1)
 
             assert success is False
             mock_exec.assert_not_called()
@@ -397,12 +366,8 @@ class TestSendArrowKey:
     @pytest.mark.asyncio
     async def test_send_arrow_invalid_count(self):
         """Test failure with invalid count."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="up",
-                count=0
-            )
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="up", count=0)
 
             assert success is False
             mock_exec.assert_not_called()
@@ -410,12 +375,8 @@ class TestSendArrowKey:
     @pytest.mark.asyncio
     async def test_send_arrow_negative_count(self):
         """Test failure with negative count."""
-        with patch('asyncio.create_subprocess_exec') as mock_exec:
-            success = await terminal_bridge.send_arrow_key(
-                session_name="test-session",
-                direction="down",
-                count=-5
-            )
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="down", count=-5)
 
             assert success is False
             mock_exec.assert_not_called()
@@ -426,7 +387,7 @@ class TestGetLpollList:
 
     def test_returns_defaults(self):
         """Test that defaults are included."""
-        with patch('teleclaude.core.terminal_bridge.config') as mock_config:
+        with patch("teleclaude.core.terminal_bridge.config") as mock_config:
             mock_config.polling.lpoll_extensions = []
             lpoll_list = terminal_bridge._get_lpoll_list()
 
@@ -437,7 +398,7 @@ class TestGetLpollList:
 
     def test_includes_extensions(self):
         """Test that config extensions are added."""
-        with patch('teleclaude.core.terminal_bridge.config') as mock_config:
+        with patch("teleclaude.core.terminal_bridge.config") as mock_config:
             mock_config.polling.lpoll_extensions = ["custom-app", "my-tool"]
             lpoll_list = terminal_bridge._get_lpoll_list()
 
@@ -449,7 +410,7 @@ class TestGetLpollList:
 
     def test_empty_extensions(self):
         """Test with no extensions configured."""
-        with patch('teleclaude.core.terminal_bridge.config') as mock_config:
+        with patch("teleclaude.core.terminal_bridge.config") as mock_config:
             mock_config.polling.lpoll_extensions = []
             lpoll_list = terminal_bridge._get_lpoll_list()
 

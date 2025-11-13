@@ -44,6 +44,7 @@ USER_INPUT_EVENTS = {
     "claude_resume",
     "message",
     "voice",
+    "file",
 }
 
 

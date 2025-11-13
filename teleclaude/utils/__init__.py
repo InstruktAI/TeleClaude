@@ -263,6 +263,31 @@ def strip_ansi_codes(text: str) -> str:
     return ansi_pattern.sub("", text)
 
 
+def strip_claude_code_hooks(output: str) -> str:
+    """Strip Claude Code hook messages from output.
+
+    Removes:
+    1. Hook success prefix lines: ⎿ <hook_name> hook succeeded:
+    2. <system-reminder>...</system-reminder> blocks (can be multiline)
+
+    Args:
+        output: Terminal output
+
+    Returns:
+        Output with Claude Code hook messages removed
+    """
+    # Strip hook success prefix lines (⎿ ... hook succeeded: ...)
+    output = re.sub(r"⎿[^\n]*hook succeeded:[^\n]*\n?", "", output)
+
+    # Strip <system-reminder> blocks
+    output = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>\s*\n?", "", output)
+
+    # Strip orphaned closing tags
+    output = re.sub(r"[^\n]*</system-reminder>\s*\n?", "", output)
+
+    return output
+
+
 def strip_exit_markers(text: str) -> str:
     """Strip exit code markers from text.
 

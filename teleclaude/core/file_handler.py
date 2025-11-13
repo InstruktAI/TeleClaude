@@ -105,12 +105,19 @@ async def handle_file(
 
     is_claude_running = await is_claude_code_running(session.tmux_session_name)
 
+    # Build input text with file path
     if is_claude_running:
         input_text = f"@{file_path}"
         logger.info("Claude Code detected - sending file with @ prefix: %s", input_text)
     else:
         input_text = file_path
         logger.info("Generic process detected - sending plain path: %s", input_text)
+
+    # Append caption text if present
+    caption = context.get("caption")
+    if caption and isinstance(caption, str) and caption.strip():
+        input_text = f"{input_text} {caption.strip()}"
+        logger.info("Appending caption to file input: %s", caption.strip()[:50])
 
     success = await terminal_bridge.send_keys(
         session.tmux_session_name,
@@ -129,18 +136,23 @@ async def handle_file(
 
     await db.update_last_activity(session_id)
 
+    # Escape Markdown special characters in filename for safe display
+    safe_filename = (
+        filename.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[").replace("]", "\\]")
+    )
+
     file_size = context.get("file_size", 0)
     if isinstance(file_size, (int, float)):
         file_size_mb = file_size / 1_048_576
         await send_feedback(
             session_id,
-            f"📎 File uploaded: {filename} ({file_size_mb:.2f} MB)",
+            f"📎 File uploaded: {safe_filename} ({file_size_mb:.2f} MB)",
             True,
         )
     else:
         await send_feedback(
             session_id,
-            f"📎 File uploaded: {filename}",
+            f"📎 File uploaded: {safe_filename}",
             True,
         )
 

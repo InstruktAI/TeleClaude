@@ -21,7 +21,11 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
-from teleclaude.utils import strip_ansi_codes, strip_exit_markers
+from teleclaude.utils import (
+    strip_ansi_codes,
+    strip_claude_code_hooks,
+    strip_exit_markers,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -32,7 +36,7 @@ logger = logging.getLogger(__name__)
 def _filter_for_ui(raw_output: str) -> str:
     """Filter raw terminal output for UI display.
 
-    Strips ANSI escape codes, exit markers, and collapses excessive blank lines.
+    Strips Claude Code hooks, ANSI escape codes, exit markers, and collapses excessive blank lines.
 
     Args:
         raw_output: Raw terminal output with ANSI codes and markers
@@ -40,7 +44,11 @@ def _filter_for_ui(raw_output: str) -> str:
     Returns:
         Filtered output ready for UI display
     """
-    filtered = strip_ansi_codes(raw_output)
+    # Strip Claude Code hooks (thinking tags, system reminders)
+    filtered = strip_claude_code_hooks(raw_output)
+
+    # Strip ANSI codes and exit markers
+    filtered = strip_ansi_codes(filtered)
     filtered = strip_exit_markers(filtered)
 
     # Collapse multiple consecutive newlines into single newline
