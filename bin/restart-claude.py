@@ -53,8 +53,25 @@ def main():
 
         # Send restart command to tmux session
         restart_cmd = "claude --dangerously-skip-permissions --continue 'continue'"
+
+        # Send command text
         result = subprocess.run(
-            ["tmux", "send-keys", "-t", tmux_session, restart_cmd, "Enter"],
+            ["tmux", "send-keys", "-t", tmux_session, restart_cmd],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            print(f"❌ Failed to send command: {result.stderr}")
+            with open(debug_log, "a") as f:
+                f.write(f"❌ Failed to send command: {result.stderr}\n")
+            sys.exit(1)
+
+        # Send Enter key (C-m)
+        result = subprocess.run(
+            ["tmux", "send-keys", "-t", tmux_session, "C-m"],
             capture_output=True,
             text=True,
             timeout=5,
