@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -36,8 +37,6 @@ def command_retry(
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            import time
-
             start_time = time.time()
             last_exception = None
 

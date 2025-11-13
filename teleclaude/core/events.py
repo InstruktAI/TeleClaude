@@ -3,6 +3,7 @@
 Provides type-safe event definitions for adapter-daemon communication.
 """
 
+import shlex
 from typing import Literal, Optional
 
 # Type alias for valid event names - provides compile-time type checking
@@ -115,8 +116,6 @@ def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
         >>> parse_command_string("new_session My Project")
         ("new_session", ["My", "Project"])
     """
-    import shlex
-
     # Use shlex.split for proper shell-like parsing (handles quotes)
     try:
         parts = shlex.split(command_str.strip())

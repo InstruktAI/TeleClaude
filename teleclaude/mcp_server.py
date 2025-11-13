@@ -20,6 +20,7 @@ from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
 
+from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
 from teleclaude.core.command_handlers import get_short_project_name
 from teleclaude.core.db import db
@@ -156,7 +157,8 @@ class TeleClaudeMCPServer:
                         "This allows you to peek at initial execution to verify the task started correctly. "
                         "**IMPORTANT**: After this tool returns, you MUST call teleclaude__get_session_status "
                         "repeatedly to monitor progress until task completes or you determine it's safe to let run. "
-                        "Use teleclaude__list_sessions to find session_id or teleclaude__start_session to create new one."
+                        "Use teleclaude__list_sessions to find session_id or "
+                        "teleclaude__start_session to create new one."
                     ),
                     inputSchema={
                         "type": "object",
@@ -186,8 +188,10 @@ class TeleClaudeMCPServer:
                         "**When to use**: Call repeatedly after teleclaude__send_message until: "
                         "(1) You see output indicating task completed successfully, "
                         "(2) You see errors and need to intervene, or "
-                        "(3) You determine task is progressing well (polling_active=true) and safe to let run. "
-                        "**State field**: Shows 'polling_active' when command is running, 'idle' when waiting for input. "
+                        "(3) You determine task is progressing well (polling_active=true) "
+                        "and safe to let run. "
+                        "**State field**: Shows 'polling_active' when command is running, "
+                        "'idle' when waiting for input. "
                         "**Checkpoint System**: Only returns NEW output since last check (no replay). "
                         "This models human delegation: peek → assess → intervene OR let run → check back later."
                     ),
@@ -206,9 +210,12 @@ class TeleClaudeMCPServer:
                     name="teleclaude__observe_session",
                     title="TeleClaude: Observe Session",
                     description=(
-                        "Watch real-time output from ANY session on any computer (local or AI-to-AI). "
-                        "**Use Cases**: Monitor another AI's work, observe human sessions, debug sessions, multi-device access. "
-                        "**How it works**: Signals observation interest via Redis → target computer streams output → observer receives. "
+                        "Watch real-time output from ANY session on any computer "
+                        "(local or AI-to-AI). "
+                        "**Use Cases**: Monitor another AI's work, observe human sessions, "
+                        "debug sessions, multi-device access. "
+                        "**How it works**: Signals observation interest via Redis "
+                        "→ target computer streams output → observer receives. "
                         "**Interest Window Pattern**: Observes for specified duration, then detaches automatically. "
                         "Works for both local Telegram sessions and AI-to-AI sessions."
                     ),
@@ -292,7 +299,8 @@ class TeleClaudeMCPServer:
                     name="teleclaude__init_from_claude",
                     title="TeleClaude: Initialize from Claude",
                     description=(
-                        "Initializes TeleClaude session with Claude session data. USED BY HOOKS, AND FOR INTERNAL USE ONLY, so do not call yourself."
+                        "Initializes TeleClaude session with Claude session data. "
+                        "USED BY HOOKS, AND FOR INTERNAL USE ONLY, so do not call yourself."
                     ),
                     inputSchema={
                         "type": "object",
@@ -327,7 +335,7 @@ class TeleClaudeMCPServer:
 
                 computers = await self.teleclaude__list_computers(computer_names)
                 return [TextContent(type="text", text=json.dumps(computers, default=str, indent=2))]
-            elif name == "teleclaude__list_projects":
+            if name == "teleclaude__list_projects":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 projects = await self.teleclaude__list_projects(computer)
                 return [TextContent(type="text", text=json.dumps(projects, default=str))]
@@ -556,7 +564,9 @@ class TeleClaudeMCPServer:
         Args:
             computer: Target computer name
             project_dir: Absolute path to project directory
-            continue_last_session: Whether to continue the last opened session. Be careful as this might hijack the session of another user. ONLY provide this flag on explicit request!
+            continue_last_session: Whether to continue the last opened session.
+                Be careful as this might hijack the session of another user.
+                ONLY provide this flag on explicit request!
 
         Returns:
             dict with session_id and output
@@ -629,7 +639,7 @@ class TeleClaudeMCPServer:
 
         Args:
             computer: Optional filter by target computer name for AI-to-AI sessions.
-                      If None, returns all sessions from local database.
+                      If None, returns all active sessions from local database.
                       If specified, filters to AI-to-AI sessions where target_computer matches.
                       Human-to-AI sessions (no target) are included when computer=None.
 
@@ -644,11 +654,9 @@ class TeleClaudeMCPServer:
             - created_at: ISO timestamp
             - last_activity: ISO timestamp
             - metadata: Full adapter_metadata dict (project_dir, is_auto_managed, etc.)
-
-        Note: Only returns sessions with "$" in title (managed sessions).
         """
-        # Get managed sessions by searching for "$" title pattern
-        sessions = await db.get_sessions_by_title_pattern("$")
+        # Get all active sessions (closed=False)
+        sessions = await db.get_all_sessions(closed=False)
 
         # Filter by target computer if specified
         result = []
@@ -723,7 +731,7 @@ class TeleClaudeMCPServer:
 
         # Stream output from AdapterClient during interest window
         start_time = time.time()
-        last_stream_id = metadata.get("last_checkpoint_stream_id", "0-0")
+        # TODO: Track last_checkpoint_stream_id from chunks to save checkpoint (currently unused)
 
         try:
             # Stream output with interest window timeout
@@ -736,7 +744,10 @@ class TeleClaudeMCPServer:
                 # Check if interest window expired
                 elapsed = time.time() - start_time
                 if elapsed >= interest_window_seconds:
-                    yield "\n\n[Interest window closed - task continues remotely. Use teleclaude__get_session_status to check progress]"
+                    yield (
+                        "\n\n[Interest window closed - task continues remotely. "
+                        "Use teleclaude__get_session_status to check progress]"
+                    )
                     # TODO: Track last_stream_id from chunks to save checkpoint
                     break
 
@@ -842,8 +853,6 @@ class TeleClaudeMCPServer:
         Returns:
             Dict with status and streamed output
         """
-        from teleclaude.adapters.redis_adapter import RedisAdapter
-
         # Get Redis adapter
         redis_adapter_base = self.client.adapters.get("redis")
         if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
@@ -900,8 +909,6 @@ class TeleClaudeMCPServer:
             Status for each computer: {computer: {status, timestamp, pid, error}}
         """
         # Get Redis adapter
-        from teleclaude.adapters.redis_adapter import RedisAdapter
-
         redis_adapter_base = self.client.adapters.get("redis")
         if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
             return {"_error": {"status": "error", "message": "Redis adapter not available"}}

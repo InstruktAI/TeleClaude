@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.session_utils import get_output_file_path
+from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils import (
     format_active_status_line,
     format_completed_status_line,
@@ -135,8 +137,8 @@ class UiAdapter(BaseAdapter):
                 status_color, started_time, last_active_time, size_str, is_truncated
             )
 
-        # Build message (shared formatting)
-        display_output = format_terminal_message(terminal_output, status_line)
+        # Format message (base + platform-specific formatting)
+        display_output = self.format_message(terminal_output, status_line)
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session_id, is_truncated, ux_state)
@@ -157,6 +159,25 @@ class UiAdapter(BaseAdapter):
             await db.update_ux_state(session_id, output_message_id=new_id)
             logger.debug("Stored message_id=%s for session=%s", new_id, session_id[:8])
         return new_id
+
+    def format_message(self, terminal_output: str, status_line: str) -> str:
+        """Format message with terminal output and status line.
+
+        Base implementation wraps output in code block and adds status line.
+        Override in subclasses to apply additional formatting like shortening lines.
+
+        Args:
+            terminal_output: Terminal output text
+            status_line: Status line text
+
+        Returns:
+            Formatted message text
+        """
+        message_parts = []
+        if terminal_output:
+            message_parts.append(f"```\n{terminal_output}\n```")
+        message_parts.append(status_line)
+        return "\n".join(message_parts)
 
     def _build_output_metadata(
         self, session_id: str, is_truncated: bool, ux_state: object
@@ -295,8 +316,6 @@ class UiAdapter(BaseAdapter):
             audio_file_path: Path to audio file (any format supported by Whisper)
             context: Platform-specific metadata (user_id, duration, etc.)
         """
-        from teleclaude.core.voice_message_handler import handle_voice
-
         # Delegate to utility module
         await handle_voice(
             session_id=session_id,
@@ -346,6 +365,4 @@ class UiAdapter(BaseAdapter):
 
         NOTE: This is different from get_session_file() which creates download UI.
         """
-        from teleclaude.core.session_utils import get_output_file_path
-
         return get_output_file_path(session_id)

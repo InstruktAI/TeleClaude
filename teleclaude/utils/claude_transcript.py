@@ -81,7 +81,6 @@ def _format_content(content):  # type: ignore[no-untyped-def]
 
     # Assistant messages have content as array of blocks
     parts = []
-    prev_type = None
 
     for block in content:
         block_type = block.get("type")

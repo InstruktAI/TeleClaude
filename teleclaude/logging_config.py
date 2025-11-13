@@ -9,17 +9,17 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 # Add TRACE level (below DEBUG)
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
 
 
-def trace(self: logging.Logger, message: str, *args: Any, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # Pass-through to Logger._log
+def trace(self: logging.Logger, message: str, *args: object, **kwargs: object) -> None:
     """Log trace message."""
     if self.isEnabledFor(TRACE):
-        self._log(TRACE, message, args, **kwargs)  # pylint: disable=protected-access
+        self._log(TRACE, message, args, **kwargs)  # type: ignore[arg-type]  # pylint: disable=protected-access
 
 
 # Add custom methods to Logger class
@@ -55,13 +55,13 @@ LEVEL_COLORS = {
 class PathFormatter(logging.Formatter):
     """Custom formatter that shows relative file paths, milliseconds, and colors."""
 
-    def __init__(self, *args: Any, use_colors: bool = True, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # Pass-through to Formatter.__init__
+    def __init__(self, *args: object, use_colors: bool = True, **kwargs: object) -> None:
         """Initialize formatter.
 
         Args:
             use_colors: Whether to use ANSI colors (True for console, False for files)
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self.use_colors = use_colors
 
     def formatTime(self, record: logging.LogRecord, datefmt: Optional[str] = None) -> str:

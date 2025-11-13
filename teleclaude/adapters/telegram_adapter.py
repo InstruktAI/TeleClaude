@@ -1,10 +1,13 @@
 """Telegram adapter for TeleClaude."""
 
 import asyncio
+import json
 import logging
 import os
 import tempfile
+import traceback
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
@@ -37,6 +40,7 @@ from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import Session
 from teleclaude.core.ux_state import get_system_ux_state, update_system_ux_state
 from teleclaude.utils import command_retry, strip_ansi_codes, strip_exit_markers
+from teleclaude.utils.claude_transcript import parse_claude_transcript
 
 from .base_adapter import AdapterError
 from .ui_adapter import UiAdapter
@@ -138,6 +142,25 @@ class TelegramAdapter(UiAdapter):
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
+    def format_message(self, terminal_output: str, status_line: str) -> str:
+        """Apply Telegram-specific formatting to shorten long separator lines.
+
+        Overrides UiAdapter.format_message().
+        Shortens lines with repeating separator chars (-, ─, =, etc.) to 54 chars if longer.
+        """
+        message = super().format_message(terminal_output, status_line)
+
+        lines = []
+        for line in message.split("\n"):
+            stripped = line.strip()
+            # Check if line is repeating single character (separator line)
+            if stripped and len(set(stripped)) == 1 and len(stripped) > 52:
+                lines.append(stripped[0] * 52)
+            else:
+                lines.append(line)
+
+        return "\n".join(lines)
+
     def _build_output_metadata(
         self, session_id: str, is_truncated: bool, ux_state: object
     ) -> Optional[dict[str, object]]:
@@ -146,8 +169,6 @@ class TelegramAdapter(UiAdapter):
         Overrides UiAdapter._build_output_metadata().
         Shows download button only when there's a Claude Code session to download.
         """
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
         metadata = {}
 
         # Add download button if Claude session available
@@ -774,10 +795,6 @@ class TelegramAdapter(UiAdapter):
         if not update.effective_message or not update.effective_chat:
             return
 
-        import json
-        import os
-        from pathlib import Path
-
         # Get trusted_dirs and default_working_dir from config
         trusted_dirs = config.computer.trusted_dirs
         default_working_dir = config.computer.default_working_dir
@@ -1278,8 +1295,6 @@ Current size: {}
 
             try:
                 # Check if there's a Claude Code session transcript
-                from teleclaude.utils.claude_transcript import parse_claude_transcript
-
                 ux_state = await db.get_ux_state(session_id)
                 claude_session_file = ux_state.claude_session_file if ux_state else None
 
@@ -1288,7 +1303,7 @@ Current size: {}
                     session = await db.get_session(session_id)
                     # Convert Claude transcript to markdown
                     markdown_content = parse_claude_transcript(claude_session_file, session.title)
-                    filename = f"{session.title.replace(' ', '_')}.md"
+                    filename = f"claude-{session_id:8}.md"
                     caption = "Claude Code session transcript"
                 else:
                     # Fall back to terminal output
@@ -1413,8 +1428,6 @@ Current size: {}
 
     async def _send_heartbeat(self) -> None:
         """Send or edit [REGISTRY] heartbeat message in General topic."""
-        from datetime import datetime
-
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
         # Get bot info for @mention
@@ -1880,8 +1893,6 @@ Usage:
 
     async def _handle_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle errors that occur in handlers."""
-        import traceback
-
         logger.error("Exception while handling update %s:", update, exc_info=context.error)
 
         # Log full traceback

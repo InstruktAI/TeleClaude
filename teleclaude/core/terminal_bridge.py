@@ -167,6 +167,7 @@ async def send_keys(
     cols: int = 80,
     rows: int = 24,
     append_exit_marker: bool = True,
+    send_enter: bool = True,
 ) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
 
@@ -176,13 +177,14 @@ async def send_keys(
 
     Args:
         session_name: Session name
-        text: Text to send (will be followed by Enter)
+        text: Text to send
         shell: Shell to use if creating new session (default: /bin/zsh)
         working_dir: Working directory if creating new session (default: ~)
         cols: Terminal columns if creating new session (default: 80)
         rows: Terminal rows if creating new session (default: 24)
         append_exit_marker: If True, append exit code marker for command completion detection.
                            Set to False when sending input to a running process. (default: True)
+        send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
 
     Returns: bool (success)
     """
@@ -227,14 +229,15 @@ async def send_keys(
         # Small delay to let text be processed
         await asyncio.sleep(0.1)
 
-        # Then send C-m (Enter) separately for TUI compatibility (Claude Code, etc)
-        cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
-        result = await asyncio.create_subprocess_exec(*cmd_enter)
-        await result.wait()
+        # Send Enter key if requested (skip for arrow keys, etc.)
+        if send_enter:
+            cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
+            result = await asyncio.create_subprocess_exec(*cmd_enter)
+            await result.wait()
 
-        if result.returncode != 0:
-            logger.error("Failed to send Enter to session %s: returncode=%d", session_name, result.returncode)
-            return False
+            if result.returncode != 0:
+                logger.error("Failed to send Enter to session %s: returncode=%d", session_name, result.returncode)
+                return False
 
         return True
 
@@ -473,17 +476,17 @@ async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> b
         # Validate direction
         valid_directions = {"up": "Up", "down": "Down", "left": "Left", "right": "Right"}
         if direction not in valid_directions:
-            print(f"Invalid arrow direction: {direction}")
+            logger.error("Invalid arrow direction: %s", direction)
             return False
 
         # Validate count
         if count < 1:
-            print(f"Invalid count: {count} (must be >= 1)")
+            logger.error("Invalid count: %s (must be >= 1)", count)
             return False
 
-        # tmux send-keys with -R flag for repeat
+        # tmux send-keys with -N flag for repeat count
         key_name = valid_directions[direction]
-        cmd = ["tmux", "send-keys", "-t", session_name, "-R", str(count), key_name]
+        cmd = ["tmux", "send-keys", "-t", session_name, "-N", str(count), key_name]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -641,7 +644,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await result.communicate()
+        _, stderr = await result.communicate()
 
         if result.returncode != 0:
             if log_missing:

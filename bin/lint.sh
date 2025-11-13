@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+set -e  # Exit on first error
+
 . .venv/bin/activate
 
 dirs="teleclaude"
@@ -6,7 +8,7 @@ dirs="teleclaude"
 echo "Running lint checks"
 
 echo "Running pylint"
-pylint --enable=C0415 --fail-on=C0415 $dirs
+pylint $dirs
 
 echo "Running mypy"
 mypy $dirs

@@ -6,6 +6,7 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
+import json
 import logging
 import os
 import shlex
@@ -115,6 +116,27 @@ async def _execute_and_poll(  # type: ignore[explicit-any]
         await start_polling(session.session_id, session.tmux_session_name)
 
     return success
+
+
+async def _execute_control_key(  # type: ignore[explicit-any]
+    terminal_action: Callable[..., Awaitable[bool]],
+    session: Session,
+    *terminal_args: Any,
+) -> bool:
+    """Execute control/navigation key without polling (TUI interaction).
+
+    Used for keys that interact with TUIs and don't produce shell output:
+    arrow keys, tab, shift+tab, escape, ctrl, cancel, kill.
+
+    Args:
+        terminal_action: Terminal bridge function to execute
+        session: Session object (contains tmux_session_name)
+        *terminal_args: Additional arguments for terminal_action
+
+    Returns:
+        True if terminal action succeeded, False otherwise
+    """
+    return await terminal_action(session.tmux_session_name, *terminal_args)
 
 
 async def handle_create_session(  # type: ignore[explicit-any]
@@ -251,8 +273,6 @@ async def handle_list_projects(  # type: ignore[explicit-any]
         context: Command context with session_id
         client: AdapterClient for sending messages
     """
-    import json
-
     # Get session_id from context (required for AI-to-AI sessions)
     session_id = context.get("session_id")
     if not session_id:
@@ -303,28 +323,19 @@ async def handle_cancel_command(  # type: ignore[explicit-any]
         start_polling: Function to start polling for a session
         double: If True, send CTRL+C twice (for stubborn programs)
     """
-    # Send SIGINT (CTRL+C) to the tmux session
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    # Send SIGINT (CTRL+C) to the tmux session (TUI interaction, no polling)
+    success = await _execute_control_key(
         terminal_bridge.send_signal,
         session,
-        message_id,
-        client,
-        start_polling,
         "SIGINT",
     )
 
     if double and success:
         # Wait a moment then send second SIGINT
         await asyncio.sleep(0.2)
-        # Don't pass message_id for second signal (already deleted)
-        success = await _execute_and_poll(
+        success = await _execute_control_key(
             terminal_bridge.send_signal,
             session,
-            None,
-            client,
-            start_polling,
             "SIGINT",
         )
 
@@ -349,15 +360,10 @@ async def handle_kill_command(  # type: ignore[explicit-any]
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    # Send SIGKILL (forceful termination) to the tmux session
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    # Send SIGKILL (forceful termination) to the tmux session (TUI interaction, no polling)
+    success = await _execute_control_key(
         terminal_bridge.send_signal,
         session,
-        message_id,
-        client,
-        start_polling,
         "SIGKILL",
     )
 
@@ -448,27 +454,18 @@ async def handle_escape_command(  # type: ignore[explicit-any]
         )
         return
 
-    # No args: send ESCAPE only (support double)
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    # No args: send ESCAPE only (TUI navigation, no polling)
+    success = await _execute_control_key(
         terminal_bridge.send_escape,
         session,
-        message_id,
-        client,
-        start_polling,
     )
 
     if double and success:
         # Wait a moment then send second ESCAPE
         await asyncio.sleep(0.2)
-        # Don't pass message_id for second escape (already deleted)
-        success = await _execute_and_poll(
+        success = await _execute_control_key(
             terminal_bridge.send_escape,
             session,
-            None,
-            client,
-            start_polling,
         )
 
     if success:
@@ -513,15 +510,10 @@ async def handle_ctrl_command(  # type: ignore[explicit-any]
     # Get the key to send (first argument)
     key = args[0]
 
-    # Send CTRL+key to the tmux session
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    # Send CTRL+key to the tmux session (TUI interaction, no polling)
+    success = await _execute_control_key(
         terminal_bridge.send_ctrl_key,
         session,
-        message_id,
-        client,
-        start_polling,
         key,
     )
 
@@ -546,14 +538,9 @@ async def handle_tab_command(  # type: ignore[explicit-any]
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    success = await _execute_control_key(
         terminal_bridge.send_tab,
         session,
-        message_id,
-        client,
-        start_polling,
     )
 
     if success:
@@ -577,14 +564,9 @@ async def handle_shift_tab_command(  # type: ignore[explicit-any]
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    success = await _execute_control_key(
         terminal_bridge.send_shift_tab,
         session,
-        message_id,
-        client,
-        start_polling,
     )
 
     if success:
@@ -656,14 +638,9 @@ async def handle_arrow_key_command(  # type: ignore[explicit-any]
             logger.warning("Invalid repeat count '%s', using 1", args[0])
             count = 1
 
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    success = await _execute_control_key(
         terminal_bridge.send_arrow_key,
         session,
-        message_id,
-        client,
-        start_polling,
         direction,
         count,
     )

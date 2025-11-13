@@ -216,7 +216,7 @@ class Db:
         if "adapter_metadata" in fields and isinstance(fields["adapter_metadata"], dict):
             fields["adapter_metadata"] = json.dumps(fields["adapter_metadata"])
 
-        set_clause = ", ".join(f"{key} = ?" for key in fields.keys())
+        set_clause = ", ".join(f"{key} = ?" for key in fields)
         values = list(fields.values()) + [session_id]
 
         await self._db.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
@@ -399,7 +399,7 @@ class Db:
             session_id: Session ID
         """
         # Get session before deleting for event emission
-        session = await self.get_session(session_id)
+        _ = await self.get_session(session_id)
 
         await self._db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await self._db.commit()
@@ -471,6 +471,26 @@ class Db:
             """,
             (f"{pattern}%",),
         )
+        rows = await cursor.fetchall()
+        return [Session.from_dict(dict(row)) for row in rows]
+
+    async def get_all_sessions(self, closed: Optional[bool] = None) -> list[Session]:
+        """Get all sessions with optional closed filter.
+
+        Args:
+            closed: Filter by closed status (False = active, True = closed, None = all)
+
+        Returns:
+            List of sessions ordered by last activity
+        """
+        if closed is None:
+            query = "SELECT * FROM sessions ORDER BY last_activity DESC"
+            params: tuple[int, ...] = ()
+        else:
+            query = "SELECT * FROM sessions WHERE closed = ? ORDER BY last_activity DESC"
+            params = (1 if closed else 0,)
+
+        cursor = await self._db.execute(query, params)
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 

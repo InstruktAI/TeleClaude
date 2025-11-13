@@ -4,16 +4,17 @@ Config is loaded at module import time and available globally via:
     from teleclaude.config import config
 """
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
 
+from teleclaude.utils import expand_env_vars
+
 # Load .env BEFORE expanding config variables
 load_dotenv()
-
-from teleclaude.utils import expand_env_vars
 
 
 @dataclass
@@ -23,8 +24,6 @@ class DatabaseConfig:
     @property
     def path(self) -> str:
         """Get database path (lazy-loaded from env var for test compatibility)."""
-        import os
-
         # Allow tests to override via TELECLAUDE_DB_PATH env var
         env_path = os.getenv("TELECLAUDE_DB_PATH")
         if env_path:

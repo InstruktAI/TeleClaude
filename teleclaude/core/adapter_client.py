@@ -187,14 +187,11 @@ class AdapterClient:
                 continue
 
             # Redis adapter: only broadcast if session is observed
-            if adapter_type == "redis":
-                from teleclaude.adapters.redis_adapter import RedisAdapter
-
-                if isinstance(adapter, RedisAdapter):
-                    is_observed = await adapter.is_session_observed(session_id)
-                    if is_observed:
-                        observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
-                        logger.debug("Broadcasting to Redis (session %s is observed)", session_id[:8])
+            if adapter_type == "redis" and isinstance(adapter, RedisAdapter):
+                is_observed = await adapter.is_session_observed(session_id)
+                if is_observed:
+                    observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
+                    logger.debug("Broadcasting to Redis (session %s is observed)", session_id[:8])
                 continue
 
         if observer_tasks:
@@ -639,7 +636,7 @@ class AdapterClient:
             text_obj = payload.get("text")
             return f"→ {str(text_obj)}" if text_obj else None
 
-        elif event == TeleClaudeEvents.CANCEL:
+        if event == TeleClaudeEvents.CANCEL:
             return "→ [Ctrl+C]"
 
         elif event == TeleClaudeEvents.CANCEL_2X:

@@ -3,9 +3,11 @@
 import asyncio
 import atexit
 import fcntl
+import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -15,6 +17,7 @@ from typing import Any, Optional, TextIO, cast
 from dotenv import load_dotenv
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
@@ -26,8 +29,10 @@ from teleclaude.core import (
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents
+from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
+from teleclaude.core.session_utils import get_output_file_path
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -68,7 +73,7 @@ class TeleClaudeDaemon:
         self.client = AdapterClient()
 
         # Define command events (all route to handle_command via generic handler)
-        COMMAND_EVENTS = {
+        command_events = {
             TeleClaudeEvents.NEW_SESSION,
             TeleClaudeEvents.LIST_SESSIONS,
             TeleClaudeEvents.LIST_PROJECTS,
@@ -101,7 +106,7 @@ class TeleClaudeDaemon:
                 continue
 
             # Commands use generic handler
-            if event_value in COMMAND_EVENTS:
+            if event_value in command_events:
                 self.client.on(cast(EventType, event_value), self._handle_command_event)
                 logger.debug("Auto-registered command: %s → _handle_command_event", event_value)
             else:
@@ -143,11 +148,11 @@ class TeleClaudeDaemon:
         args = list(args_obj) if isinstance(args_obj, list) else []
         await self.handle_command(event, args, context)
 
-    async def _handle_message(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_message(self, _event: str, context: dict[str, object]) -> None:
         """Handler for MESSAGE events - pure business logic (cleanup already done).
 
         Args:
-            event: Event type (always "message")
+            _event: Event type (always "message") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
         session_id = context.get("session_id")
@@ -167,11 +172,11 @@ class TeleClaudeDaemon:
 
         await self.handle_message(str(session_id), str(text), context)
 
-    async def _handle_voice(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_voice(self, _event: str, context: dict[str, object]) -> None:
         """Handler for VOICE events - pure business logic (cleanup already done).
 
         Args:
-            event: Event type (always "voice")
+            _event: Event type (always "voice") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
         session_id = context.get("session_id")
@@ -184,7 +189,7 @@ class TeleClaudeDaemon:
             return
 
         # Define send_feedback to properly track temporary messages for deletion
-        async def send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+        async def send_feedback(sid: str, msg: str, _append: bool) -> Optional[str]:
             """Send feedback message and mark for deletion on next input."""
             message_id = await self.client.send_message(sid, msg)
             if message_id:
@@ -201,11 +206,11 @@ class TeleClaudeDaemon:
             get_output_file=self._get_output_file_path,
         )
 
-    async def _handle_session_closed(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_session_closed(self, _event: str, context: dict[str, object]) -> None:
         """Handler for session_closed events - user closed topic.
 
         Args:
-            event: Event type (always "session_closed")
+            _event: Event type (always "session_closed") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
         session_id = context.get("session_id")
@@ -226,11 +231,11 @@ class TeleClaudeDaemon:
         # Mark closed in DB
         await db.update_session(str(session_id), closed=True)
 
-    async def _handle_session_reopened(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_session_reopened(self, _event: str, context: dict[str, object]) -> None:
         """Handler for session_reopened events - user reopened topic.
 
         Args:
-            event: Event type (always "session_reopened")
+            _event: Event type (always "session_reopened") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
         session_id = context.get("session_id")
@@ -269,15 +274,13 @@ class TeleClaudeDaemon:
         await db.update_session(session.session_id, closed=False)
         logger.info("Session %s reopened at %s", session.session_id[:8], session.working_directory)
 
-    async def _handle_file(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_file(self, _event: str, context: dict[str, object]) -> None:
         """Handler for FILE events - pure business logic.
 
         Args:
-            event: Event type (always "file")
+            _event: Event type (always "file") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        from teleclaude.core import file_handler
-
         session_id = context.get("session_id")
         file_path = context.get("file_path")
         filename = context.get("filename")
@@ -291,14 +294,14 @@ class TeleClaudeDaemon:
             )
             return
 
-        async def send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+        async def send_feedback(sid: str, msg: str, _append: bool) -> Optional[str]:
             """Send feedback message and mark for deletion on next input."""
             message_id = await self.client.send_message(sid, msg)
             if message_id:
                 await db.add_pending_deletion(sid, message_id)
             return message_id
 
-        await file_handler.handle_file(
+        await handle_file(
             session_id=str(session_id),
             file_path=str(file_path),
             filename=str(filename),
@@ -306,13 +309,13 @@ class TeleClaudeDaemon:
             send_feedback=send_feedback,
         )
 
-    async def _handle_system_command(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_system_command(self, _event: str, context: dict[str, object]) -> None:
         """Handler for SYSTEM_COMMAND events.
 
         System commands are daemon-level operations (deploy, restart, etc.)
 
         Args:
-            event: Event type (always "system_command")
+            _event: Event type (always "system_command") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
         command = context.get("command")
@@ -333,14 +336,9 @@ class TeleClaudeDaemon:
         else:
             logger.warning("Unknown system command: %s", command)
 
-    async def _handle_deploy(self, args: dict[str, object]) -> None:
+    async def _handle_deploy(self, _args: dict[str, object]) -> None:
         """Execute deployment: git pull + restart daemon via service manager."""
-        import json
-        import subprocess
-
         # Get Redis adapter for status updates
-        from teleclaude.adapters.redis_adapter import RedisAdapter
-
         redis_adapter_base = self.client.adapters.get("redis")
         if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
             logger.error("Redis adapter not available, cannot update deploy status")
@@ -441,7 +439,8 @@ class TeleClaudeDaemon:
             else:
                 # Linux: trigger systemd restart
                 logger.info("Deploy: triggering systemd restart")
-                subprocess.Popen(["systemctl", "restart", "teleclaude"])
+                with subprocess.Popen(["systemctl", "restart", "teleclaude"]):
+                    pass
                 os._exit(0)
 
         except Exception as e:
@@ -458,8 +457,6 @@ class TeleClaudeDaemon:
 
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
-        from teleclaude.core.session_utils import get_output_file_path
-
         return get_output_file_path(session_id)
 
     def _acquire_lock(self) -> None:
@@ -554,7 +551,7 @@ class TeleClaudeDaemon:
         session_id: str,
         command: str,
         append_exit_marker: bool = True,
-        message_id: Optional[str] = None,
+        _message_id: Optional[str] = None,
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
@@ -562,7 +559,7 @@ class TeleClaudeDaemon:
             session_id: Session ID
             command: Command to execute
             append_exit_marker: Whether to append exit marker (default: True)
-            message_id: Message ID to cleanup (optional)
+            _message_id: Message ID to cleanup (optional) - currently unused
 
         Returns:
             True if successful, False otherwise
@@ -633,8 +630,6 @@ class TeleClaudeDaemon:
         await self.client.start()
 
         # Check if we just restarted from deployment
-        from teleclaude.adapters.redis_adapter import RedisAdapter
-
         redis_adapter_base = self.client.adapters.get("redis")
         if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
             redis_adapter: RedisAdapter = redis_adapter_base
@@ -642,8 +637,6 @@ class TeleClaudeDaemon:
                 status_key = f"system_status:{config.computer.name}:deploy"
                 status_data = await redis_adapter.redis.get(status_key)
                 if status_data:
-                    import json
-
                     try:
                         status = json.loads(status_data.decode("utf-8"))
                         if status.get("status") == "restarting":
@@ -777,7 +770,7 @@ class TeleClaudeDaemon:
         elif command == "exit":
             await command_handlers.handle_exit_session(context, self.client, self._get_output_file_path)
 
-    async def handle_message(self, session_id: str, text: str, context: dict) -> None:  # type: ignore[type-arg]
+    async def handle_message(self, session_id: str, text: str, _context: dict) -> None:  # type: ignore[type-arg]
         """Handle incoming text messages (commands for terminal)."""
         logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
 
@@ -945,7 +938,7 @@ async def main() -> None:
     daemon = TeleClaudeDaemon(str(env_path))
 
     # Setup signal handlers for graceful shutdown
-    def signal_handler(signum: int, frame: object) -> None:
+    def signal_handler(signum: int, _frame: object) -> None:
         """Handle termination signals."""
         sig_name = signal.Signals(signum).name
         logger.info("Received %s signal...", sig_name)

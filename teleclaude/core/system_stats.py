@@ -3,6 +3,11 @@
 import logging
 import shutil
 
+try:
+    import psutil
+except ImportError:
+    psutil = None  # type: ignore[assignment,unused-ignore]
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,8 +18,8 @@ def get_memory_stats() -> dict[str, float]:
         Dict with total_gb, used_gb, percent
     """
     try:
-        import psutil
-
+        if psutil is None:
+            raise ImportError("psutil not available")
         mem = psutil.virtual_memory()
         return {
             "total_gb": round(mem.total / (1024**3), 2),
@@ -58,8 +63,8 @@ def get_cpu_percent() -> float:
         CPU usage percent (0-100)
     """
     try:
-        import psutil
-
+        if psutil is None:
+            raise ImportError("psutil not available")
         cpu_value: float = psutil.cpu_percent(interval=0.1)
         return round(cpu_value, 2)
     except Exception as e:

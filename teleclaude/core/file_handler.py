@@ -10,7 +10,6 @@ Extracted as adapter-agnostic utility following voice_message_handler.py pattern
 
 import logging
 import re
-from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 from teleclaude.core import terminal_bridge

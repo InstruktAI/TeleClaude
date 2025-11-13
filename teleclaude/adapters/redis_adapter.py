@@ -18,6 +18,7 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.system_stats import get_all_stats
 
@@ -597,12 +598,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 await self._create_session_from_redis(session_id, data)
 
             # Parse message using centralized parser
-            from teleclaude.core.events import (
-                EventType,
-                TeleClaudeEvents,
-                parse_command_string,
-            )
-
             cmd_name, args = parse_command_string(message_str)
             if not cmd_name:
                 logger.warning("Empty message received for session %s", session_id[:8])
@@ -640,8 +635,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Args:
             data: System message data dict from Redis stream
         """
-        import json
-
         command = data.get(b"command", b"").decode("utf-8")
         from_computer = data.get(b"from_computer", b"").decode("utf-8")
         args_json = data.get(b"args", b"{}").decode("utf-8")
@@ -659,8 +652,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.info("Received system command '%s' from %s", command, from_computer)
 
         # Emit SYSTEM_COMMAND event to daemon
-        from teleclaude.core.events import TeleClaudeEvents
-
         await self.client.handle_event(
             event=TeleClaudeEvents.SYSTEM_COMMAND,
             payload={
@@ -867,7 +858,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.debug(
             "About to XADD to stream=%s, data keys=%s",
             message_stream,
-            [k.decode("utf-8") for k in data.keys()],
+            [k.decode("utf-8") for k in data],
         )
 
         message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
@@ -907,8 +898,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         # Add args as JSON if provided
         if args:
-            import json
-
             data[b"args"] = json.dumps(args).encode("utf-8")
 
         # Send to Redis stream
@@ -936,8 +925,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         if not data:
             return {"status": "unknown"}
-
-        import json
 
         result: dict[str, object] = json.loads(data.decode("utf-8"))
         return result
@@ -998,7 +985,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     idle_count = 0
 
                     # Process messages
-                    for stream_name, stream_messages in messages:
+                    for _stream_name, stream_messages in messages:
                         for message_id, data in stream_messages:
                             chunk = data.get(b"chunk", b"").decode("utf-8")
 

@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.output_poller import (
@@ -64,8 +65,6 @@ async def restore_active_pollers(
         output_poller: Output poller instance
         get_output_file: Function to get output file path for session
     """
-    from teleclaude.core import terminal_bridge
-
     # Query sessions with polling_active=True
     sessions = await db.get_active_sessions()
     if not sessions:
