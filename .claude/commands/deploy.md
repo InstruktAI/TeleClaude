@@ -63,7 +63,7 @@ Wait 5 seconds for services to stabilize before proceeding.
 
 ## Step 5: Deploy to All Remote Machines
 
-Use the MCP tool to deploy to all TeleClaude machines:
+**Try MCP deployment first:**
 
 ```
 teleclaude__deploy_to_all_computers()
@@ -73,6 +73,17 @@ This will:
 - Send deploy command to all computers via Redis
 - Each computer: `git pull` → restart daemon
 - Return deployment status for each machine
+
+**If MCP tool is not available, fall back to manual SSH deployment:**
+
+Get list of known TeleClaude machines from config or ask user for hostnames.
+
+For each remote machine, run:
+```bash
+ssh <remote-machine> 'cd ~/teleclaude && git pull && make restart && pgrep -f teleclaude.daemon'
+```
+
+Parse output to report deployment status for each machine (success/failure, new PID)
 
 ## Step 6: Report Status
 
