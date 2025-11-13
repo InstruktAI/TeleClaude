@@ -1,7 +1,17 @@
 # Roadmap
 
-## 1. [x] Notifications
+## [ ] - make next-requirements command interactive
 
-Create claude code "notification" hook that sends informative feedback message to the channel/topic via adapter_client.send_message. Look at /Users/Morriz/.claude/hooks/notification.py for inspiration. Imperative is that we use a bootstrapped adapter_client like in daemon.py, as it has all the UiAdapters wired up so they recieve notificaitons. The message can just be randomized out of a set of templates like "Claude is ready...", "Claude is back baby...", "Claude reporting back for duty...", etc. Make like 15 nice ones. Important side note: we keep an inactivity timer, which should be compleetely nuked once that message is sent. I dont know how to signal that to daemon, but I think its best to keep the state in ux_state blob in the db, so you should make daemon check that flag (inside the inactivity timer loop?).
+The requirements command should not assume requirements that have unclear input, but must always seek clarification from user first. DON'T bother the user for things you CAN safely assume, or are not impactful from an architectural/UX perspective.
 
-## 2. [ ]
+When the user calls `/next-requirements` the bot should present the current list of requirements and ask if the user wants to make any changes. If the user wants to make changes, the bot should guide the user through the process of adding, removing or modifying requirements.
+
+## [ ] - Enrich trusted_dirs
+
+Enrich trusted_dirs to be a dict ("name", "desc", "location") with desc describing what the folder is used for (may be empty). (Update the local config.yml to have a folder named "development", with desc "dev projects" to make the dev folder point to "/Users/Morriz/Documents/Workspace/morriz").
+
+## [ ] - New dev project from skaffolding
+
+Create feature to be able to start a whole new project next to TeleClaude project folder based on other project's skaffolding.
+
+We have many projects in different folders on the computer and we would like to point to one of those and create a new project folder based on that example project. It should then create a new project folder (in the trusted_dir desginated as development folder) and only migrate the necessary, tooling and scaffolding files to that new `{developmentFolder}/{newProjectName}` location. This process should be interactive with the user so that any questions are answered before you do things that affects the architecture. Do NOT copy over source files from the example project, only the scaffolding and tooling files. It should be clear to the AI what to do next.
