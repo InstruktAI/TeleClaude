@@ -1275,37 +1275,39 @@ Current size: {}
         )
 
     async def _handle_claude_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /claude_restart command - restart latest Claude Code session."""
-        if not self._validate_update_for_command(update) or not update.effective_chat:
+        """Handle /claude_restart command - restart Claude in this session."""
+        session = await self._get_session_from_topic(update)
+        if not session:
             return
 
-        # Check if authorized
-        if update.effective_user.id not in self.user_whitelist:
-            return
-
-        # Get project root
-        project_root = Path(__file__).parent.parent.parent
-        script_path = project_root / "bin" / "restart-claude.py"
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
 
         try:
-            # Execute restart script
+            # Send restart command directly to tmux
             result = subprocess.run(
-                [str(script_path)],
+                [
+                    "tmux",
+                    "send-keys",
+                    "-t",
+                    session.tmux_session_name,
+                    "claude --dangerously-skip-permissions --continue -m 'continue'",
+                    "Enter",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=5,
                 check=False,
             )
 
             if result.returncode == 0:
-                await update.effective_message.reply_text("✅ Claude Code restarted successfully")
+                await update.effective_message.reply_text("✅ Claude Code restart command sent")
             else:
                 error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-                await update.effective_message.reply_text(f"❌ Failed to restart: {error_msg}")
+                await update.effective_message.reply_text(f"❌ Failed to send restart command: {error_msg}")
         except subprocess.TimeoutExpired:
-            await update.effective_message.reply_text("⏱️ Restart script timed out")
-        except FileNotFoundError:
-            await update.effective_message.reply_text(f"❌ Script not found: {script_path}")
+            await update.effective_message.reply_text("⏱️ Command timed out")
         except Exception as e:
             await update.effective_message.reply_text(f"❌ Error: {str(e)}")
 
