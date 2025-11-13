@@ -266,9 +266,14 @@ def strip_ansi_codes(text: str) -> str:
 def strip_claude_code_hooks(output: str) -> str:
     """Strip Claude Code hook messages from output.
 
-    Removes:
-    1. Hook success prefix lines: ⎿ <hook_name> hook succeeded:
-    2. <system-reminder>...</system-reminder> blocks (can be multiline)
+    Removes lines starting with "  ⎿ " (2 spaces + box char + space)
+    and their continuation lines (indented with 4+ spaces).
+
+    Real examples from tmux capture:
+    - "  ⎿  Read 166 lines"
+    - "  ⎿  Updated file.py with 2 additions\n     and 4 removals"
+    - "  ⎿ UserPromptSubmit hook succeeded: <system-reminder>...\n    adhere to...\n    write tests..."
+    - "  ⎿  SessionStart:resume hook succeeded:"
 
     Args:
         output: Terminal output
@@ -276,14 +281,8 @@ def strip_claude_code_hooks(output: str) -> str:
     Returns:
         Output with Claude Code hook messages removed
     """
-    # Strip hook success prefix lines (⎿ ... hook succeeded: ...)
-    output = re.sub(r"⎿[^\n]*hook succeeded:[^\n]*\n?", "", output)
-
-    # Strip <system-reminder> blocks
-    output = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>\s*\n?", "", output)
-
-    # Strip orphaned closing tags
-    output = re.sub(r"[^\n]*</system-reminder>\s*\n?", "", output)
+    # Pattern: Lines starting with "  ⎿ " and continuation lines (4+ spaces indentation)
+    output = re.sub(r"^  ⎿ .*(?:\n {4,}.*)*\n?", "", output, flags=re.MULTILINE)
 
     return output
 

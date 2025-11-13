@@ -2,11 +2,9 @@
 description: Push to GitHub and deploy to all TeleClaude machines
 ---
 
-You are now in **deploy mode**. This pushes commits to GitHub and deploys to all machines.
+You are now in **deploy mode**. This commits any changes, pushes to GitHub, and deploys to all machines.
 
-**PREREQUISITE**: All changes must be committed before running this command. If you have uncommitted changes, run `/commit` first.
-
-## Step 1: Verify Clean Working Tree
+## Step 1: Commit Changes (if needed)
 
 Check if there are uncommitted changes:
 
@@ -14,9 +12,9 @@ Check if there are uncommitted changes:
 git status --porcelain
 ```
 
-If there are uncommitted changes:
-- **STOP** and tell the user: "You have uncommitted changes. Run `/commit` first, then try again."
-- Do NOT proceed
+If there are uncommitted changes → **invoke `/commit` command** to create a commit
+
+If no uncommitted changes → proceed to Step 2
 
 ## Step 2: Git Pull (Handle Remote Changes)
 
@@ -87,9 +85,8 @@ After deployment completes, report:
 
 ## Important Notes
 
-- **Commits must exist before running** - Use `/commit` first if needed
-- This command does NOT create commits - it only pushes and deploys existing commits
-- Only use this when you're ready to deploy changes to production
+- **Automatically commits changes** - If uncommitted changes exist, creates a commit first
+- Use this when you're ready to deploy changes to production (all machines)
 - For local-only commits without deployment, use `/commit` instead
 - If any step fails, stop and report the error (don't continue to next steps)
 - Uses `git pull --rebase` to keep linear history (avoids merge commits)
