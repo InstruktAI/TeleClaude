@@ -52,7 +52,7 @@ def main():
         print(f"Found TeleClaude session: {teleclaude_session_id[:8]} (tmux: {tmux_session})")
 
         # Send restart command to tmux session
-        restart_cmd = "claude --dangerously-skip-permissions --continue -m 'continue'"
+        restart_cmd = "claude --dangerously-skip-permissions --continue 'continue'"
         result = subprocess.run(
             ["tmux", "send-keys", "-t", tmux_session, restart_cmd, "Enter"],
             capture_output=True,

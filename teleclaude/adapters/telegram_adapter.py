@@ -1292,7 +1292,7 @@ Current size: {}
                     "send-keys",
                     "-t",
                     session.tmux_session_name,
-                    "claude --dangerously-skip-permissions --continue -m 'continue'",
+                    "claude --dangerously-skip-permissions --continue 'continue'",
                     "Enter",
                 ],
                 capture_output=True,

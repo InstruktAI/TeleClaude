@@ -58,7 +58,7 @@ make restart && bin/restart-claude.py
 This ensures:
 - TeleClaude daemon is restarted with latest code
 - Claude Code session reconnects its MCP servers
-- Work continues immediately with `-m "continue"`
+- Work continues immediately with "continue" message
 - MCP tools are available for deployment step
 
 Wait 5 seconds for services to stabilize before proceeding.
