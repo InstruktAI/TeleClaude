@@ -50,7 +50,7 @@ If push fails, stop and report the error to the user.
 Restart the local TeleClaude daemon and Claude Code session BEFORE deployment (deployment needs working MCP):
 
 ```bash
-make restart && bin/restart-claude.py
+make restart && .venv/bin/python -m teleclaude.restart_claude
 ```
 
 This ensures:
