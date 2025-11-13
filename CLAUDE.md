@@ -278,3 +278,7 @@ As seen in [pyproject.toml](pyproject.toml):
 @docs/troubleshooting.md
 
 - ALWAYS USE `make restart` to RESTART the daemon!
+
+---
+
+**NEVER CHANGE CODE WITHOUT FULLY UNDERSTANDING WHAT IT DOES - IF UNSURE, ASK THE USER FIRST!**

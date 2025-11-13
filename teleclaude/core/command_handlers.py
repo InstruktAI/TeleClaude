@@ -898,18 +898,17 @@ async def handle_claude_resume_session(  # type: ignore[explicit-any]
     # Check if session has stored Claude session ID and project_dir
     metadata = session.adapter_metadata or {}
     claude_session_id = metadata.get("claude_session_id")
-    project_dir = metadata.get("project_dir")
+    project_dir = metadata.get("project_dir") or await terminal_bridge.get_current_directory(session.tmux_session_name)
+    claude_cmd = "claude --dangerously-skip-permissions"
 
     # Build command
-    if claude_session_id and project_dir:
-        # AI-managed session: cd to project + explicit session ID
-        cmd = f"cd {shlex.quote(str(project_dir))} && claude --dangerously-skip-permissions --session-id {claude_session_id}"
-    elif claude_session_id:
-        # Has session ID but no project dir
-        cmd = f"claude --dangerously-skip-permissions --session-id {claude_session_id}"
+    if claude_session_id:
+        logger.info("Continuing claude session %s", claude_session_id)
+        cmd = f"cd {shlex.quote(str(project_dir))} && {claude_cmd} --session-id {claude_session_id}"
     else:
-        # Human session: use --continue (current directory)
-        cmd = "claude --dangerously-skip-permissions --continue"
+        # Fresh session: use --continue to resume last claude session in current dir
+        logger.info("Starting fresh claude session with --continue")
+        cmd = f"{claude_cmd} --continue"
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))

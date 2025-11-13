@@ -1299,7 +1299,7 @@ Current size: {}
 
             result = subprocess.run(
                 [str(script_path)],
-                env={**os.environ, "CLAUDE_SESSION_ID": claude_session_id},
+                env={**os.environ, "TELECLAUDE_SESSION_ID": claude_session_id},
                 capture_output=True,
                 text=True,
                 timeout=10,

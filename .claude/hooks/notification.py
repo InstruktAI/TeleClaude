@@ -78,7 +78,7 @@ def main() -> None:
                 log(f"Spawning summarizer: {summarizer}")
                 # Spawn background process - returns immediately
                 proc = subprocess.Popen(
-                    ["uv", "run", "--quiet", str(summarizer), teleclaude_session_id],
+                    ["uv", "run", "--quiet", str(summarizer), teleclaude_session_id, session_id, transcript_path],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     start_new_session=True,  # Detach from parent

@@ -1,18 +1,17 @@
 {
   "mcpServers": {
     "teleclaude": {
-      "transport": {
-        "type": "uds",
-        "path": "/tmp/teleclaude.sock"
+      "command": "python",
+      "args": ["-m", "teleclaude.mcp_server"],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
       }
     },
     "limitless": {
-      "transport": {
-        "type": "http",
-        "url": "https://api.limitless.ai/mcp",
-        "headers": {
-          "X-API-Key": "${LIMITLESS_API_KEY}"
-        }
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-limitless"],
+      "env": {
+        "LIMITLESS_API_KEY": "${LIMITLESS_API_KEY}"
       }
     }
   }

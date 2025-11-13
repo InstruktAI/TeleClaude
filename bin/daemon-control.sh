@@ -239,6 +239,9 @@ except Exception:
 restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
+    # Track exit code for return
+    EXIT_CODE=0
+
     # Kill current process, service manager will auto-restart it
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
@@ -252,33 +255,53 @@ restart_daemon() {
                 NEW_PID=$(cat "$PID_FILE")
                 if [ "$NEW_PID" != "$PID" ]; then
                     log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
-                    return 0
+                    EXIT_CODE=0
+                else
+                    EXIT_CODE=1
                 fi
+            else
+                EXIT_CODE=1
             fi
         fi
     fi
 
     # If auto-restart didn't work, use service manager restart
-    log_warn "Auto-restart didn't work, using service manager restart..."
+    if [ "$EXIT_CODE" -ne 0 ]; then
+        log_warn "Auto-restart didn't work, using service manager restart..."
 
-    if [ "$PLATFORM" = "macos" ]; then
-        launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
-    else
-        sudo systemctl restart "$SERVICE_LABEL"
-    fi
-    sleep 2
+        if [ "$PLATFORM" = "macos" ]; then
+            launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+        else
+            sudo systemctl restart "$SERVICE_LABEL"
+        fi
+        sleep 2
 
-    # Verify
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            log_info "Daemon restarted successfully (PID: $PID)"
-            return 0
+        # Verify
+        err="Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            if ps -p "$PID" > /dev/null 2>&1; then
+                log_info "Daemon restarted successfully (PID: $PID)"
+                EXIT_CODE=0
+            else
+                log_error $err
+                EXIT_CODE=1
+            fi
+        else
+            log_error $err
+            EXIT_CODE=1
         fi
     fi
 
-    log_error "Restart failed. Try: make kill to hard kill the daemon. You will have to stop the mcp socat process separately."
-    return 1
+    # Spawn background subprocess to restart Claude after 3 seconds
+    # Use nohup and redirect to /dev/null to fully detach
+    (
+        sleep 3
+        cd "$PROJECT_ROOT" && "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude >/dev/null 2>&1
+    ) </dev/null >/dev/null 2>&1 & disown
+
+    # Return immediately with collected exit code
+    return $EXIT_CODE
 }
 
 # Kill daemon process (service manager will auto-restart)

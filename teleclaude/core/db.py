@@ -163,6 +163,27 @@ class Db:
 
         return Session.from_dict(dict(row))
 
+    async def get_session_by_ux_state(self, field: str, value: object) -> Optional[Session]:
+        """Get session by ux_state field value.
+
+        Args:
+            field: UX state field name (e.g., "claude_session_id", "output_message_id")
+            value: Value to match
+
+        Returns:
+            Session object or None if not found
+        """
+        cursor = await self._db.execute(
+            f"SELECT * FROM sessions WHERE json_extract(ux_state, '$.{field}') = ?",
+            (value,),
+        )
+        row = await cursor.fetchone()
+
+        if not row:
+            return None
+
+        return Session.from_dict(dict(row))
+
     async def list_sessions(
         self,
         computer_name: Optional[str] = None,
