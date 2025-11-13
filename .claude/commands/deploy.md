@@ -47,7 +47,23 @@ git push
 
 If push fails, stop and report the error to the user.
 
-## Step 4: Deploy to All Machines
+## Step 4: Restart Local TeleClaude & Claude Code
+
+Restart the local TeleClaude daemon and Claude Code session BEFORE deployment (deployment needs working MCP):
+
+```bash
+make restart && bin/restart-claude.py
+```
+
+This ensures:
+- TeleClaude daemon is restarted with latest code
+- Claude Code session reconnects its MCP servers
+- Work continues immediately with `-m "continue"`
+- MCP tools are available for deployment step
+
+Wait 5 seconds for services to stabilize before proceeding.
+
+## Step 5: Deploy to All Remote Machines
 
 Use the MCP tool to deploy to all TeleClaude machines:
 
@@ -60,7 +76,7 @@ This will:
 - Each computer: `git pull` → restart daemon
 - Return deployment status for each machine
 
-## Step 5: Report Status
+## Step 6: Report Status
 
 After deployment completes, report:
 

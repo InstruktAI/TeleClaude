@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import tempfile
 import traceback
 from dataclasses import dataclass
@@ -277,6 +278,7 @@ class TelegramAdapter(UiAdapter):
                 BotCommand("list_projects  ", "List trusted project directories (JSON)"),
                 BotCommand("claude  ", "Start Claude Code in GOD mode"),
                 BotCommand("claude_resume  ", "Resume last Claude Code session (GOD mode)"),
+                BotCommand("claude_restart  ", "Restart latest Claude Code session"),
                 BotCommand("cancel  ", "Send CTRL+C to interrupt current command"),
                 BotCommand("cancel2x  ", "Send CTRL+C twice (for stubborn programs)"),
                 BotCommand("kill  ", "Force kill current process (SIGKILL)"),
@@ -1271,6 +1273,41 @@ Current size: {}
                 "message_id": update.effective_message.message_id,
             },
         )
+
+    async def _handle_claude_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /claude_restart command - restart latest Claude Code session."""
+        if not self._validate_update_for_command(update) or not update.effective_chat:
+            return
+
+        # Check if authorized
+        if update.effective_user.id not in self.user_whitelist:
+            return
+
+        # Get project root
+        project_root = Path(__file__).parent.parent.parent
+        script_path = project_root / "bin" / "restart-claude.py"
+
+        try:
+            # Execute restart script
+            result = subprocess.run(
+                [str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                await update.effective_message.reply_text("✅ Claude Code restarted successfully")
+            else:
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                await update.effective_message.reply_text(f"❌ Failed to restart: {error_msg}")
+        except subprocess.TimeoutExpired:
+            await update.effective_message.reply_text("⏱️ Restart script timed out")
+        except FileNotFoundError:
+            await update.effective_message.reply_text(f"❌ Script not found: {script_path}")
+        except Exception as e:
+            await update.effective_message.reply_text(f"❌ Error: {str(e)}")
 
     async def _handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle button clicks from inline keyboards."""

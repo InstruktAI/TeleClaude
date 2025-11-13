@@ -66,6 +66,7 @@ class UiAdapter(BaseAdapter):
         "cd",
         "claude",
         "claude_resume",
+        "claude_restart",
         "help",
     ]
 
