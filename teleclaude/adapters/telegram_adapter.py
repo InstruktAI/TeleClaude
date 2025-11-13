@@ -1284,30 +1284,35 @@ Current size: {}
         assert update.effective_user is not None
         assert update.effective_message is not None
 
+        # Get Claude session ID from ux_state
+        ux_state = await db.get_ux_state(session.session_id)
+        claude_session_id = ux_state.claude_session_id
+
+        if not claude_session_id:
+            await update.effective_message.reply_text("❌ No Claude Code session found in this topic")
+            return
+
         try:
-            # Send restart command directly to tmux
+            # Execute restart script
+            project_root = Path(__file__).parent.parent.parent
+            script_path = project_root / "bin" / "restart-claude.py"
+
             result = subprocess.run(
-                [
-                    "tmux",
-                    "send-keys",
-                    "-t",
-                    session.tmux_session_name,
-                    "claude --dangerously-skip-permissions --continue",
-                    "Enter",
-                ],
+                [str(script_path)],
+                env={**os.environ, "CLAUDE_SESSION_ID": claude_session_id},
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=10,
                 check=False,
             )
 
             if result.returncode == 0:
-                await update.effective_message.reply_text("✅ Claude Code restart command sent")
+                await update.effective_message.reply_text("✅ Claude Code restarted successfully")
             else:
-                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-                await update.effective_message.reply_text(f"❌ Failed to send restart command: {error_msg}")
+                error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                await update.effective_message.reply_text(f"❌ Failed to restart:\n{error_msg}")
         except subprocess.TimeoutExpired:
-            await update.effective_message.reply_text("⏱️ Command timed out")
+            await update.effective_message.reply_text("⏱️ Restart script timed out")
         except Exception as e:
             await update.effective_message.reply_text(f"❌ Error: {str(e)}")
 
