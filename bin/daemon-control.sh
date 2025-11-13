@@ -200,17 +200,28 @@ status_daemon() {
 
             log_info "Daemon process: RUNNING (PID: $PID, uptime: $UPTIME)"
 
-            # Check health via HTTP endpoint
-            HTTP_PORT="${PORT:-6666}"
-            if command -v curl >/dev/null 2>&1; then
-                HEALTH_CHECK=$(curl -s -m 2 "http://localhost:${HTTP_PORT}/health" 2>/dev/null || echo "")
-                if [ -n "$HEALTH_CHECK" ]; then
-                    log_info "Daemon health: HEALTHY (health endpoint responding)"
+            # Check health via socket connection
+            SOCKET_PATH="/tmp/teleclaude.sock"
+            if command -v python3 >/dev/null 2>&1; then
+                HEALTH_CHECK=$(python3 -c "
+import socket
+import sys
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(2)
+    s.connect('$SOCKET_PATH')
+    s.close()
+    print('ok')
+except Exception:
+    sys.exit(1)
+" 2>/dev/null || echo "")
+                if [ "$HEALTH_CHECK" = "ok" ]; then
+                    log_info "Daemon health: HEALTHY (MCP socket responding)"
                 else
-                    log_warn "Daemon health: health endpoint not responding"
+                    log_warn "Daemon health: MCP socket not responding"
                 fi
             else
-                log_info "Daemon health: UNKNOWN (curl not available)"
+                log_info "Daemon health: UNKNOWN (python3 not available)"
             fi
             return 0
         else
