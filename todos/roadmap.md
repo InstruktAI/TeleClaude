@@ -3,8 +3,9 @@
 ## [ ] - make next-requirements command interactive
 
 The next-requirements command should aid in establishing the list of requirements for a feature/task. When given arguments it should take that as the users starting point, and help from there until the user is satisfied with the list of requirements.
+When the user is satsified, the frontmatter of the requirements.md file should be updated to have `status: approved`, otherwise it should have `status: draft`.
 
-## [>] - Enrich trusted_dirs
+## [x] - Enrich trusted_dirs
 
 Enrich trusted_dirs to be a dict ("name", "desc", "location") with desc describing what the folder is used for (may be empty). (Update the local config.yml to have a folder named "development", with desc "dev projects" to make the dev folder point to "/Users/Morriz/Documents/Workspace/morriz").
 Make teleclaude/config.py's ComputerConfig return the list with the `default_working_dir` merged with desc "TeleClaude folder".

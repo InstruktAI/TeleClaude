@@ -63,7 +63,16 @@ Follow these steps to find out what to do next:
    - If NOT: Run `/next-implementation {slug}`
    - Wait for it to complete, then continue
 
-## Step 5: Execute Implementation Plan
+## Step 5: Assess Current State
+
+1. Read `todos/{slug}/implementation-plan.md`
+2. Count unchecked boxes in each section
+3. Determine what's actually incomplete
+
+**If only deployment/cleanup tasks remain** → Skip to Step 8
+**If implementation tasks remain** → Continue to Step 6
+
+## Step 6: Execute Implementation Plan
 
 1. Read `todos/{slug}/requirements.md` to understand the goals
 2. Read `todos/{slug}/implementation-plan.md` to see the task breakdown
@@ -120,7 +129,7 @@ Follow these steps to find out what to do next:
 2. Wait for both to complete
 3. Run "Integrate components" sequentially
 
-## Step 6: Trigger Review After Implementation
+## Step 7: Trigger Review After Implementation
 
 **After completing all implementation tasks (Groups 1-4)**:
 
@@ -133,7 +142,7 @@ Run `/review {slug}` - this will:
 
 **You can continue to next work item** while review agent works in parallel.
 
-## Step 7: Merge Worktree and Deploy
+## Step 8: Merge Worktree and Deploy
 
 **After all tasks complete and review feedback handled**:
 
