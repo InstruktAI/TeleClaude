@@ -11,15 +11,12 @@ You are now in **review mode**. This analyzes code changes against requirements 
 Read the following files to understand what was supposed to be built:
 
 1. **Requirements**: `todos/{slug}/requirements.md`
+
    - What problem was being solved?
    - What were the goals and success criteria?
    - What were the constraints?
 
-2. **Implementation Plan**: `todos/{slug}/implementation-plan.md`
-   - What tasks were completed?
-   - What was the planned approach?
-
-3. **Code Changes**: Run `git diff main..{slug}`
+2. **Code Changes**: Run `git diff main..{slug}`
    - What files were changed?
    - How much code was added/removed?
    - What's the scope of changes?
@@ -29,6 +26,7 @@ Read the following files to understand what was supposed to be built:
 Review the code changes against these criteria:
 
 ### Requirements Alignment
+
 - ✅ Does implementation fulfill all requirements goals?
 - ✅ Are all success criteria met?
 - ✅ Are constraints respected?
@@ -36,6 +34,7 @@ Review the code changes against these criteria:
 - ❌ Scope creep (implemented non-goals)?
 
 ### Code Quality
+
 - ✅ Follows coding directives (`~/.claude/docs/development/coding-directives.md`)
 - ✅ No inline/dynamic imports
 - ✅ Type hints on all functions
@@ -44,6 +43,7 @@ Review the code changes against these criteria:
 - ❌ Code smells (complexity, duplication, etc.)
 
 ### Architecture
+
 - ✅ Follows TeleClaude patterns (from `CLAUDE.md`, `docs/architecture.md`)
 - ✅ Observer pattern, module-level singletons, etc.
 - ✅ Proper separation of concerns
@@ -51,6 +51,7 @@ Review the code changes against these criteria:
 - ❌ Creates tech debt?
 
 ### Testing
+
 - ✅ Tests exist for new code
 - ✅ Tests follow testing directives (`~/.claude/docs/development/testing-directives.md`)
 - ✅ Tests pass (`make lint && make test`)
@@ -58,6 +59,7 @@ Review the code changes against these criteria:
 - ❌ Flaky tests?
 
 ### Security
+
 - ❌ Command injection vulnerabilities?
 - ❌ SQL injection risks?
 - ❌ XSS vulnerabilities?
@@ -65,7 +67,7 @@ Review the code changes against these criteria:
 - ❌ Unsafe file operations?
 
 ### Documentation
-- ✅ CLAUDE.md updated if architecture changed?
+
 - ✅ docs/architecture.md updated if needed?
 - ✅ Docstrings for public functions?
 - ❌ Missing or outdated docs?
@@ -88,21 +90,25 @@ Brief 2-3 sentence overview of what was implemented and overall assessment.
 ## Requirements Alignment
 
 **Met**:
+
 - ✅ Requirement 1
 - ✅ Requirement 2
 
 **Issues**:
+
 - ❌ Issue 1: Description and suggested fix
-- ⚠️  Warning 1: Minor concern
+- ⚠️ Warning 1: Minor concern
 
 ## Code Quality Issues
 
 ### Critical (Must Fix)
+
 1. **[File:Line]**: Description
    - **Why**: Explanation
    - **Fix**: Specific guidance
 
 ### Minor (Should Fix)
+
 1. **[File:Line]**: Description
    - **Suggestion**: Optional improvement
 
@@ -132,6 +138,7 @@ Brief 2-3 sentence overview of what was implemented and overall assessment.
 ## Auto-Fix Assessment
 
 **Can auto-fix**: {YES/NO}
+
 - If YES: Agent will attempt to fix automatically
 - If NO: Manual intervention required - {explain why}
 ```
@@ -141,39 +148,32 @@ Brief 2-3 sentence overview of what was implemented and overall assessment.
 Update `todos/{slug}/implementation-plan.md`:
 
 Find the "Review & Finalize" group and mark:
+
 ```markdown
 - [x] Review created
 - [ ] Review feedback handled
 ```
 
-## Step 5: Spawn Feedback Handler Agent
+## Step 5: Process Review Feedback
 
 **If review found issues AND auto-fix is possible**:
 
-Use Task tool to spawn agent with this prompt:
+Use SlashCommand tool to invoke the process-review command:
 
 ```
-Handle code review feedback for {slug}.
-
-Follow these steps:
-
-1. Read todos/{slug}/review.md for all issues
-2. Change directory: cd worktrees/{slug}/
-3. Fix all critical issues listed in review
-4. Address minor issues if straightforward
-5. Run make lint && make test to verify fixes
-6. If tests pass:
-   a. Update checkbox in todos/{slug}/implementation-plan.md:
-      - [x] Review feedback handled
-   b. Commit with: /commit "Address code review feedback"
-7. If tests fail:
-   - Log error in todos/{slug}/review.md notes section
-   - Mark as needing manual intervention
-
-Work in the worktree directory. Do not merge or deploy - just fix and commit.
+SlashCommand("/process-review {slug}")
 ```
+
+This spawns an agent that will:
+- Read the review.md file
+- Switch to worktree directory
+- Fix all critical issues
+- Address minor issues if straightforward
+- Run tests and commit fixes
+- Update implementation-plan.md checkbox
 
 **If manual intervention needed**:
+
 - Write in review.md: "Manual intervention required: {reason}"
 - Don't spawn agent
 - User will handle manually
