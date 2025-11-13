@@ -86,7 +86,8 @@ class TeleClaudeMCPServer:
                     description=(
                         "**CRITICAL: Call this FIRST before teleclaude__start_session** "
                         "List available project directories on a target computer (from trusted_dirs config). "
-                        "Returns project paths that can be used in teleclaude__start_session. "
+                        "Returns structured data with name, desc, and location for each directory. "
+                        "Use the 'location' field in teleclaude__start_session. "
                         "Always use this to discover and match the correct project before starting a session."
                     ),
                     inputSchema={
@@ -515,14 +516,14 @@ class TeleClaudeMCPServer:
 
         return result
 
-    async def teleclaude__list_projects(self, computer: str) -> list[str]:
-        """List available project directories on target computer.
+    async def teleclaude__list_projects(self, computer: str) -> list[dict[str, str]]:
+        """List available project directories on target computer with metadata.
 
         Args:
             computer: Target computer name
 
         Returns:
-            List of trusted project directories
+            List of dicts with keys: name, desc, location
         """
         # Validate computer is online
         peers = await self.client.discover_peers()
@@ -538,13 +539,13 @@ class TeleClaudeMCPServer:
         await self.client.send_remote_command(computer_name=computer, session_id=session_id, command="list_projects")
 
         # Stream response from AdapterClient
-        result: list[str] = []
+        result: list[dict[str, str]] = []
         try:
             async with asyncio.timeout(10):
                 async for chunk in self.client.poll_remote_output(session_id, timeout=10.0):
                     # Look for JSON array response
                     if chunk.strip().startswith("["):
-                        projects: list[str] = json.loads(chunk.strip())
+                        projects: list[dict[str, str]] = json.loads(chunk.strip())
                         result = projects
                         break
         except asyncio.TimeoutError:

@@ -36,7 +36,7 @@ class TestCreateSession:
             computer_name="TestPC",
             tmux_session_name="test-session",
             origin_adapter="telegram",
-            title=None  # Test default title generation
+            title=None,  # Test default title generation
         )
 
         # Test OUR business logic, not SQLite
@@ -58,7 +58,7 @@ class TestCreateSession:
             title="Custom Title",
             adapter_metadata=metadata,
             terminal_size="120x40",
-            working_directory="/home/user"
+            working_directory="/home/user",
         )
 
         assert session.title == "Custom Title"
@@ -74,10 +74,7 @@ class TestGetSession:
     async def test_get_existing_session(self, test_db):
         """Test retrieving existing session."""
         created = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
 
         retrieved = await test_db.get_session(created.session_id)
@@ -153,10 +150,7 @@ class TestListSessions:
         await test_db.create_session("PC2", "session-2", "telegram", "Test Session")
         s3 = await test_db.create_session("PC1", "session-3", "rest", "Test Session")
 
-        sessions = await test_db.list_sessions(
-            computer_name="PC1",
-            origin_adapter="rest"
-        )
+        sessions = await test_db.list_sessions(computer_name="PC1", origin_adapter="rest")
 
         assert len(sessions) == 1
         assert sessions[0].session_id == s3.session_id
@@ -197,12 +191,7 @@ class TestUpdateSession:
         """Test updating multiple fields at once."""
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
-        await test_db.update_session(
-            session.session_id,
-            title="Updated Title",
-            closed=True,
-            terminal_size="100x30"
-        )
+        await test_db.update_session(session.session_id, title="Updated Title", closed=True, terminal_size="100x30")
 
         updated = await test_db.get_session(session.session_id)
         assert updated.title == "Updated Title"
@@ -225,15 +214,11 @@ class TestUpdateSession:
     async def test_update_adapter_metadata(self, test_db):
         """Test updating adapter_metadata dict."""
         session = await test_db.create_session(
-            "PC1", "session-1", "telegram", "Test Session",
-            adapter_metadata={"topic_id": 123}
+            "PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123}
         )
 
         new_metadata = {"topic_id": 456, "user_id": 789}
-        await test_db.update_session(
-            session.session_id,
-            adapter_metadata=new_metadata
-        )
+        await test_db.update_session(session.session_id, adapter_metadata=new_metadata)
 
         updated = await test_db.get_session(session.session_id)
         assert updated.adapter_metadata == new_metadata
@@ -250,6 +235,7 @@ class TestUpdateLastActivity:
 
         # Wait a tiny bit to ensure timestamp changes
         import asyncio
+
         await asyncio.sleep(0.01)
 
         await test_db.update_last_activity(session.session_id)
@@ -331,17 +317,13 @@ class TestGetSessionsByAdapterMetadata:
     async def test_get_by_metadata(self, test_db):
         """Test retrieving sessions by adapter metadata."""
         s1 = await test_db.create_session(
-            "PC1", "session-1", "telegram", "Test Session",
-            adapter_metadata={"topic_id": 123}
+            "PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123}
         )
         s2 = await test_db.create_session(
-            "PC1", "session-2", "telegram", "Test Session",
-            adapter_metadata={"topic_id": 456}
+            "PC1", "session-2", "telegram", "Test Session", adapter_metadata={"topic_id": 456}
         )
 
-        sessions = await test_db.get_sessions_by_adapter_metadata(
-            "telegram", "topic_id", 123
-        )
+        sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
 
         assert len(sessions) == 1
         assert sessions[0].session_id == s1.session_id
@@ -349,32 +331,19 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata_no_match(self, test_db):
         """Test retrieving sessions with no metadata match."""
-        await test_db.create_session(
-            "PC1", "session-1", "telegram", "Test Session",
-            adapter_metadata={"topic_id": 123}
-        )
+        await test_db.create_session("PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123})
 
-        sessions = await test_db.get_sessions_by_adapter_metadata(
-            "telegram", "topic_id", 999
-        )
+        sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 999)
 
         assert len(sessions) == 0
 
     @pytest.mark.asyncio
     async def test_get_by_metadata_different_adapter(self, test_db):
         """Test retrieving sessions filters by adapter type."""
-        await test_db.create_session(
-            "PC1", "session-1", "telegram", "Test Session",
-            adapter_metadata={"topic_id": 123}
-        )
-        await test_db.create_session(
-            "PC1", "session-2", "rest", "Test Session",
-            adapter_metadata={"topic_id": 123}
-        )
+        await test_db.create_session("PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123})
+        await test_db.create_session("PC1", "session-2", "rest", "Test Session", adapter_metadata={"topic_id": 123})
 
-        sessions = await test_db.get_sessions_by_adapter_metadata(
-            "telegram", "topic_id", 123
-        )
+        sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
 
         assert len(sessions) == 1
         assert sessions[0].origin_adapter == "telegram"
@@ -388,10 +357,7 @@ class TestDbAdapterClientIntegration:
         """Test that update_session works without client wired."""
         # Create session
         session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
 
         # Update without wiring client (should not crash)
@@ -410,10 +376,7 @@ class TestNotificationFlag:
         """Test setting notification_sent flag."""
         # Create session
         session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
 
         # Set flag to True
@@ -428,10 +391,7 @@ class TestNotificationFlag:
         """Test clearing notification_sent flag."""
         # Create session and set flag
         session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
         await test_db.set_notification_flag(session.session_id, True)
 
@@ -447,10 +407,7 @@ class TestNotificationFlag:
         """Test get_notification_flag returns False for new session."""
         # Create session (no flag set)
         session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
 
         # Verify flag defaults to False
@@ -462,19 +419,12 @@ class TestNotificationFlag:
         """Test notification_sent flag persists when other UX state fields change."""
         # Create session and set flag
         session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
         await test_db.set_notification_flag(session.session_id, True)
 
         # Update other UX state fields
-        await test_db.update_ux_state(
-            session.session_id,
-            output_message_id="msg123",
-            polling_active=True
-        )
+        await test_db.update_ux_state(session.session_id, output_message_id="msg123", polling_active=True)
 
         # Verify notification flag still set
         flag_value = await test_db.get_notification_flag(session.session_id)
@@ -485,10 +435,7 @@ class TestNotificationFlag:
         """Test toggling notification_sent flag multiple times."""
         # Create session
         session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test-session",
-            origin_adapter="telegram",
-            title="Test Session"
+            computer_name="TestPC", tmux_session_name="test-session", origin_adapter="telegram", title="Test Session"
         )
 
         # Toggle: False -> True -> False -> True

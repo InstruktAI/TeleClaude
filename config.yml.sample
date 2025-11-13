@@ -6,10 +6,21 @@ computer:
     default_shell: /bin/zsh
     default_working_dir: ${WORKING_DIR}
     timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)
+    host: null  # Optional hostname/IP for SSH remote execution (null = local computer)
+
+    # Trusted directories with metadata for AI understanding
+    # Format: { name: "identifier", desc: "purpose description", location: "/absolute/path" }
+    # Note: default_working_dir is automatically included with desc "TeleClaude folder"
     trusted_dirs:
-        - ${WORKING_DIR}
-        - ${HOME}/Documents
-        - ${HOME}/Projects
+        - name: documents
+          desc: personal documents
+          location: ${HOME}/Documents
+        - name: projects
+          desc: coding projects
+          location: ${HOME}/Projects
+        # Old format (list of strings) still supported for backward compatibility:
+        # - ${HOME}/Documents
+        # - ${HOME}/Projects
 
 database:
     path: ${WORKING_DIR}/teleclaude.db

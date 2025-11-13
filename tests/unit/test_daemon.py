@@ -110,18 +110,26 @@ class TestSessionCloseReopen:
         """Test that _reopen_session creates tmux at saved working_dir."""
         from unittest.mock import AsyncMock, Mock, patch
 
+        from teleclaude import config as config_module
         from teleclaude.core.models import Session
         from teleclaude.daemon import TeleClaudeDaemon
 
         # Create daemon instance without full initialization
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-        daemon.config = Mock()
-        daemon.config.computer.default_shell = "/bin/zsh"
 
-        # Setup mocks
-        with patch("teleclaude.daemon.terminal_bridge") as mock_tb, patch("teleclaude.daemon.db") as mock_db:
+        # Setup mocks (must patch at daemon module namespace, not config_module)
+        with (
+            patch("teleclaude.daemon.terminal_bridge") as mock_tb,
+            patch("teleclaude.daemon.db") as mock_db,
+            patch("teleclaude.daemon.config") as mock_config,  # Patch where it's imported
+        ):
             mock_tb.create_tmux_session = AsyncMock()
             mock_db.update_session = AsyncMock()
+
+            # Mock config.computer.default_shell (must set up the mock chain properly)
+            mock_computer = Mock()
+            mock_computer.default_shell = "/bin/zsh"
+            mock_config.computer = mock_computer
 
             # Test session
             session = Session(

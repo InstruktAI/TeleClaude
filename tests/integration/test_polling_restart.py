@@ -89,8 +89,7 @@ async def test_polling_restarts_after_process_exits(tmp_path):
         # This is the bug: is_process_running should be False here
         # (because first process exited and unmark_polling was called)
         assert not is_process_running, (
-            "polling_active should be False after first process exits, "
-            "so second command triggers polling restart"
+            "polling_active should be False after first process exits, " "so second command triggers polling restart"
         )
 
         # If this assertion fails, it means polling won't restart,

@@ -265,9 +265,9 @@ async def handle_list_projects(  # type: ignore[explicit-any]
     context: dict[str, Any],
     client: "AdapterClient",
 ) -> None:
-    """List trusted project directories as JSON.
+    """List trusted project directories as JSON with metadata.
 
-    For AI-to-AI sessions via Redis, returns JSON array of available project paths.
+    For AI-to-AI sessions via Redis, returns JSON array with name, desc, location.
 
     Args:
         context: Command context with session_id
@@ -279,29 +279,27 @@ async def handle_list_projects(  # type: ignore[explicit-any]
         logger.error("No session_id in context for list_projects")
         return
 
-    # Get trusted_dirs and default_working_dir from config
-    trusted_dirs = config.computer.trusted_dirs
-    default_working_dir = config.computer.default_working_dir
+    # Get all trusted dirs (includes default_working_dir merged in)
+    all_trusted_dirs = config.computer.get_all_trusted_dirs()
 
-    # Expand environment variables and filter existing paths
-    all_dirs = []
-
-    # Always include default_working_dir first if it exists
-    if default_working_dir:
-        expanded_default = os.path.expanduser(os.path.expandvars(default_working_dir))
-        if Path(expanded_default).exists():
-            all_dirs.append(expanded_default)
-
-    # Add trusted_dirs (skip duplicates and non-existent paths)
-    for dir_path in trusted_dirs:
-        expanded = os.path.expanduser(os.path.expandvars(dir_path))
-        if Path(expanded).exists() and expanded not in all_dirs:
-            all_dirs.append(expanded)
+    # Build structured response with name, desc, location
+    # Filter to only existing directories
+    dirs_data = []
+    for trusted_dir in all_trusted_dirs:
+        expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.location))
+        if Path(expanded_location).exists():
+            dirs_data.append(
+                {
+                    "name": trusted_dir.name,
+                    "desc": trusted_dir.desc,
+                    "location": expanded_location,
+                }
+            )
 
     # Send as JSON array to the session's output stream
     await client.send_message(
         session_id=session_id,
-        text=json.dumps(all_dirs),
+        text=json.dumps(dirs_data),
         metadata={},
     )
 
@@ -792,12 +790,14 @@ async def handle_cd_session(  # type: ignore[explicit-any]
 
     # If no args, list trusted directories
     if not args:
-        # Always prepend TC WORKDIR to the list
-        trusted_dirs = ["TC WORKDIR"] + config.computer.trusted_dirs
+        # Get all trusted dirs (includes TC WORKDIR from get_all_trusted_dirs)
+        all_trusted_dirs = config.computer.get_all_trusted_dirs()
 
         lines = ["**Trusted Directories:**\n"]
-        for idx, dir_path in enumerate(trusted_dirs, 1):
-            lines.append(f"{idx}. {dir_path}")
+        for idx, trusted_dir in enumerate(all_trusted_dirs, 1):
+            # Show name - desc (if desc available)
+            display_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
+            lines.append(f"{idx}. {display_text}")
 
         response = "\n".join(lines)
         help_msg_id = await client.send_message(session.session_id, response)

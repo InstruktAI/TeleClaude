@@ -8,6 +8,7 @@ from telegram.error import RetryAfter
 from teleclaude import config as config_module
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
+from teleclaude.config import TrustedDir
 
 
 @pytest.fixture
@@ -16,12 +17,13 @@ def mock_full_config():
     return {
         "computer": {
             "name": "test_computer",
-            "trusted_dirs": ["/tmp", "/home/user"]
+            "default_working_dir": "/teleclaude",
+            "trusted_dirs": [
+                TrustedDir(name="tmp", desc="temp files", location="/tmp"),
+                TrustedDir(name="user", desc="user home", location="/home/user"),
+            ],
         },
-        "telegram": {
-            "enabled": True,
-            "trusted_bots": ["teleclaude_bot1", "teleclaude_bot2"]
-        }
+        "telegram": {"enabled": True, "trusted_bots": ["teleclaude_bot1", "teleclaude_bot2"]},
     }
 
 
@@ -45,9 +47,14 @@ def mock_adapter_client():
 def telegram_adapter(mock_full_config, mock_env, mock_adapter_client):
     """Create TelegramAdapter instance."""
     # Mock the config module
-    with patch.object(config_module, 'config') as mock_config:
+    with patch.object(config_module, "config") as mock_config:
         mock_config.computer.name = mock_full_config["computer"]["name"]
+        mock_config.computer.default_working_dir = mock_full_config["computer"]["default_working_dir"]
         mock_config.computer.trusted_dirs = mock_full_config["computer"]["trusted_dirs"]
+        # Mock get_all_trusted_dirs to return teleclaude folder + trusted_dirs
+        mock_config.computer.get_all_trusted_dirs.return_value = [
+            TrustedDir(name="teleclaude", desc="TeleClaude folder", location="/teleclaude")
+        ] + mock_full_config["computer"]["trusted_dirs"]
         mock_config.telegram.enabled = mock_full_config["telegram"]["enabled"]
         return TelegramAdapter(mock_adapter_client)
 
@@ -76,7 +83,7 @@ class TestMessaging:
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "123"}
+            adapter_metadata={"channel_id": "123"},
         )
 
         telegram_adapter.app = MagicMock()
@@ -104,7 +111,7 @@ class TestMessaging:
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "123"}
+            adapter_metadata={"channel_id": "123"},
         )
 
         telegram_adapter.app = MagicMock()
@@ -155,7 +162,7 @@ class TestChannelManagement:
             tmux_session_name="test-session",
             origin_adapter="telegram",
             adapter_metadata={"channel_id": "456"},
-            title="Test"
+            title="Test",
         )
 
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
@@ -181,16 +188,14 @@ class TestRateLimitHandling:
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "123"}
+            adapter_metadata={"channel_id": "123"},
         )
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
 
         # First call raises rate limit, second succeeds
-        telegram_adapter.app.bot.edit_message_text = AsyncMock(
-            side_effect=[RetryAfter(retry_after=0.01), None]
-        )
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=[RetryAfter(retry_after=0.01), None])
 
         # Mock session_manager
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
@@ -213,16 +218,14 @@ class TestRateLimitHandling:
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "123"}
+            adapter_metadata={"channel_id": "123"},
         )
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
 
         # Always raises rate limit
-        telegram_adapter.app.bot.edit_message_text = AsyncMock(
-            side_effect=RetryAfter(retry_after=0.01)
-        )
+        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=RetryAfter(retry_after=0.01))
 
         # Mock session_manager
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
@@ -262,7 +265,7 @@ class TestReplyMarkup:
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             title="Test Session",
-            adapter_metadata={"channel_id": "123"}
+            adapter_metadata={"channel_id": "123"},
         )
 
         telegram_adapter.app = MagicMock()
@@ -275,7 +278,9 @@ class TestReplyMarkup:
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
-            result = await telegram_adapter.edit_message("session-123", "456", "text", metadata={"reply_markup": markup})
+            result = await telegram_adapter.edit_message(
+                "session-123", "456", "text", metadata={"reply_markup": markup}
+            )
 
             assert result is True
             telegram_adapter.app.bot.edit_message_text.assert_called_once()

@@ -13,7 +13,7 @@ def test_parse_registry_message():
     message_text = "/pong by macbook at 2025-11-04 15:30:45"
 
     # Test the regex pattern from ComputerRegistry._refresh_computer_list
-    match = re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', message_text.strip())
+    match = re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", message_text.strip())
     assert match is not None
     assert match.group(1) == "macbook"
     assert match.group(2) == "2025-11-04 15:30:45"
@@ -23,7 +23,7 @@ def test_parse_registry_message_with_whitespace():
     """Test parsing /pong command with extra whitespace."""
     message_text = "  /pong by workstation at 2025-11-04 16:45:30  "
 
-    match = re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', message_text.strip())
+    match = re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", message_text.strip())
     assert match is not None
     assert match.group(1) == "workstation"
     assert match.group(2) == "2025-11-04 16:45:30"
@@ -32,19 +32,19 @@ def test_parse_registry_message_with_whitespace():
 def test_parse_invalid_registry_message():
     """Test that invalid messages don't match."""
     # Missing /pong prefix
-    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "macbook at 2025-11-04 15:30:45") is None
+    assert re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", "macbook at 2025-11-04 15:30:45") is None
 
     # Missing "by"
-    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "/pong macbook at 2025-11-04 15:30:45") is None
+    assert re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", "/pong macbook at 2025-11-04 15:30:45") is None
 
     # Missing "at"
-    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "/pong by macbook 2025-11-04 15:30:45") is None
+    assert re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", "/pong by macbook 2025-11-04 15:30:45") is None
 
     # Wrong format
-    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "computer: macbook") is None
+    assert re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", "computer: macbook") is None
 
     # Empty
-    assert re.match(r'^/pong by (\w+) at ([\d\-: ]+)$', "") is None
+    assert re.match(r"^/pong by (\w+) at ([\d\-: ]+)$", "") is None
 
 
 def test_offline_detection_logic():
@@ -69,6 +69,7 @@ def test_offline_detection_logic():
 
 def test_get_online_computers_filtering():
     """Test filtering online computers only."""
+
     # Create mock registry
     class MockAdapter:
         pass
@@ -86,7 +87,7 @@ def test_get_online_computers_filtering():
     registry.computers = {
         "macbook": {"name": "macbook", "status": "online"},
         "workstation": {"name": "workstation", "status": "offline"},
-        "server": {"name": "server", "status": "online"}
+        "server": {"name": "server", "status": "online"},
     }
 
     # Test get_online_computers
@@ -99,6 +100,7 @@ def test_get_online_computers_filtering():
 
 def test_get_all_computers():
     """Test getting all computers (online and offline)."""
+
     class MockAdapter:
         pass
 
@@ -114,7 +116,7 @@ def test_get_all_computers():
     registry.computers = {
         "macbook": {"name": "macbook", "status": "online"},
         "workstation": {"name": "workstation", "status": "offline"},
-        "server": {"name": "server", "status": "online"}
+        "server": {"name": "server", "status": "online"},
     }
 
     all_computers = registry.get_all_computers()
@@ -123,6 +125,7 @@ def test_get_all_computers():
 
 def test_is_computer_online():
     """Test checking if specific computer is online."""
+
     class MockAdapter:
         pass
 
@@ -137,7 +140,7 @@ def test_is_computer_online():
 
     registry.computers = {
         "macbook": {"name": "macbook", "status": "online"},
-        "workstation": {"name": "workstation", "status": "offline"}
+        "workstation": {"name": "workstation", "status": "offline"},
     }
 
     assert registry.is_computer_online("macbook") is True
@@ -147,6 +150,7 @@ def test_is_computer_online():
 
 def test_get_computer_info():
     """Test getting info for specific computer."""
+
     class MockAdapter:
         pass
 
@@ -159,9 +163,7 @@ def test_get_computer_info():
         bot_username="teleclaude_macbook_bot",
     )
 
-    registry.computers = {
-        "macbook": {"name": "macbook", "status": "online", "last_seen_ago": "10s ago"}
-    }
+    registry.computers = {"macbook": {"name": "macbook", "status": "online", "last_seen_ago": "10s ago"}}
 
     info = registry.get_computer_info("macbook")
     assert info is not None

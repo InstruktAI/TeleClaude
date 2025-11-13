@@ -11,7 +11,7 @@ import pytest
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.db import db, Db
+from teleclaude.core.db import Db, db
 from teleclaude.core.models import Session
 
 

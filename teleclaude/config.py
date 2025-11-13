@@ -18,6 +18,21 @@ load_dotenv()
 
 
 @dataclass
+class TrustedDir:
+    """Represents a trusted directory with metadata for AI understanding.
+
+    Attributes:
+        name: Human-readable identifier (e.g., "development", "documents", "projects")
+        desc: Purpose description for AI context (e.g., "dev projects", "personal docs"). Can be empty.
+        location: Absolute file system path to the directory
+    """
+
+    name: str
+    desc: str
+    location: str
+
+
+@dataclass
 class DatabaseConfig:
     _configured_path: str
 
@@ -40,7 +55,35 @@ class ComputerConfig:
     default_shell: str
     default_working_dir: str
     is_master: bool
-    trusted_dirs: list[str]
+    trusted_dirs: list[TrustedDir]
+    host: str | None = None  # Optional hostname/IP for SSH remote execution
+
+    def get_all_trusted_dirs(self) -> list[TrustedDir]:
+        """Get all trusted directories including default_working_dir.
+
+        Returns list with default_working_dir first (desc="TeleClaude folder"),
+        followed by configured trusted_dirs. Deduplicates by location path.
+
+        Returns:
+            List of TrustedDir objects with default_working_dir merged in
+        """
+        # Start with default working dir
+        all_dirs = [
+            TrustedDir(
+                name="teleclaude",
+                desc="TeleClaude folder",
+                location=self.default_working_dir,
+            )
+        ]
+
+        # Add trusted_dirs, skipping duplicates (compare by location)
+        seen_locations = {self.default_working_dir}
+        for trusted_dir in self.trusted_dirs:
+            if trusted_dir.location not in seen_locations:
+                all_dirs.append(trusted_dir)
+                seen_locations.add(trusted_dir.location)
+
+        return all_dirs
 
 
 @dataclass
@@ -109,6 +152,7 @@ DEFAULT_CONFIG: dict[str, object] = {
         "default_working_dir": "~",
         "is_master": False,
         "trusted_dirs": [],
+        "host": None,
     },
     "logging": {
         "level": "INFO",
@@ -161,6 +205,46 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
     return result
 
 
+def _parse_trusted_dirs(raw_dirs: list[str | dict[str, str]]) -> list[TrustedDir]:
+    """Parse trusted_dirs from config, handling both old and new formats.
+
+    Supports backward compatibility:
+    - Old format: list[str] - converts to TrustedDir with name=basename, desc=""
+    - New format: list[dict] - creates TrustedDir from dict fields
+
+    Args:
+        raw_dirs: List of strings (old format) or dicts (new format)
+
+    Returns:
+        List of TrustedDir objects
+    """
+    trusted_dirs = []
+    for item in raw_dirs:
+        if isinstance(item, str):
+            # Old format: just a path string
+            # Convert to new format with auto-generated name
+            trusted_dirs.append(
+                TrustedDir(
+                    name=os.path.basename(item.rstrip("/")),
+                    desc="",
+                    location=item,
+                )
+            )
+        elif isinstance(item, dict):
+            # New format: dict with name, desc, location
+            trusted_dirs.append(
+                TrustedDir(
+                    name=str(item["name"]),
+                    desc=str(item.get("desc", "")),
+                    location=str(item["location"]),
+                )
+            )
+        else:
+            raise ValueError(f"Invalid trusted_dirs entry type: {type(item)}")
+
+    return trusted_dirs
+
+
 def _build_config(raw: dict[str, object]) -> Config:
     """Build typed Config from raw dict with proper type conversion."""
     db = raw["database"]
@@ -183,7 +267,8 @@ def _build_config(raw: dict[str, object]) -> Config:
             default_shell=str(comp["default_shell"]),  # type: ignore[index]
             default_working_dir=str(comp["default_working_dir"]),  # type: ignore[index]
             is_master=bool(comp["is_master"]),  # type: ignore[index]
-            trusted_dirs=list(comp["trusted_dirs"]),  # type: ignore[index]
+            trusted_dirs=_parse_trusted_dirs(list(comp["trusted_dirs"])),  # type: ignore[index]
+            host=str(comp["host"]) if comp["host"] else None,  # type: ignore[index]
         ),
         logging=LoggingConfig(
             level=str(log["level"]),  # type: ignore[index]

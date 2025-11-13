@@ -35,7 +35,6 @@ class MockUiAdapter(UiAdapter):
     async def delete_message(self, session_id: str, message_id: str) -> bool:
         return await self._delete_message_mock(session_id, message_id)
 
-
     async def close_channel(self, session_id: str) -> bool:
         return True
 
@@ -49,7 +48,6 @@ class MockUiAdapter(UiAdapter):
         if False:
             yield
         return
-
 
     async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
         return "test-channel"

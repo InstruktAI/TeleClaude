@@ -9,6 +9,7 @@ import pytest
 async def test_adapter_client_register_adapter():
     """Test adapter registration."""
     from unittest.mock import Mock
+
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()
@@ -32,28 +33,31 @@ async def test_adapter_client_register_adapter():
 async def test_adapter_client_discover_peers_single_adapter():
     """Test peer discovery with single adapter."""
     from unittest.mock import AsyncMock, Mock
+
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()
 
     # Create mock adapter
     mock_client = Mock()
-    mock_client.discover_peers = AsyncMock(return_value=[
-        {
-            "name": "macbook",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "10s ago",
-            "adapter_type": "telegram"
-        },
-        {
-            "name": "workstation",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "5s ago",
-            "adapter_type": "telegram"
-        }
-    ])
+    mock_client.discover_peers = AsyncMock(
+        return_value=[
+            {
+                "name": "macbook",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "10s ago",
+                "adapter_type": "telegram",
+            },
+            {
+                "name": "workstation",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "5s ago",
+                "adapter_type": "telegram",
+            },
+        ]
+    )
 
     # Register adapter
     client.register_adapter("telegram", mock_client)
@@ -69,39 +73,44 @@ async def test_adapter_client_discover_peers_single_adapter():
 async def test_adapter_client_discover_peers_multiple_adapters():
     """Test peer discovery aggregation from multiple adapters."""
     from unittest.mock import AsyncMock, Mock
+
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()
 
     # Create mock adapters with different peers
     mock_telegram = Mock()
-    mock_telegram.discover_peers = AsyncMock(return_value=[
-        {
-            "name": "macbook",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "10s ago",
-            "adapter_type": "telegram"
-        }
-    ])
+    mock_telegram.discover_peers = AsyncMock(
+        return_value=[
+            {
+                "name": "macbook",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "10s ago",
+                "adapter_type": "telegram",
+            }
+        ]
+    )
 
     mock_redis = Mock()
-    mock_redis.discover_peers = AsyncMock(return_value=[
-        {
-            "name": "workstation",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "5s ago",
-            "adapter_type": "redis"
-        },
-        {
-            "name": "server",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "3s ago",
-            "adapter_type": "redis"
-        }
-    ])
+    mock_redis.discover_peers = AsyncMock(
+        return_value=[
+            {
+                "name": "workstation",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "5s ago",
+                "adapter_type": "redis",
+            },
+            {
+                "name": "server",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "3s ago",
+                "adapter_type": "redis",
+            },
+        ]
+    )
 
     # Register adapters
     client.register_adapter("telegram", mock_telegram)
@@ -119,39 +128,44 @@ async def test_adapter_client_discover_peers_multiple_adapters():
 async def test_adapter_client_deduplication():
     """Test that duplicate peers are deduplicated (first adapter wins)."""
     from unittest.mock import AsyncMock, Mock
+
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()
 
     # Create mock adapters with overlapping peers
     mock_telegram = Mock()
-    mock_telegram.discover_peers = AsyncMock(return_value=[
-        {
-            "name": "macbook",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "10s ago",
-            "adapter_type": "telegram"
-        }
-    ])
+    mock_telegram.discover_peers = AsyncMock(
+        return_value=[
+            {
+                "name": "macbook",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "10s ago",
+                "adapter_type": "telegram",
+            }
+        ]
+    )
 
     mock_redis = Mock()
-    mock_redis.discover_peers = AsyncMock(return_value=[
-        {
-            "name": "macbook",  # Duplicate!
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "5s ago",
-            "adapter_type": "redis"
-        },
-        {
-            "name": "workstation",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "3s ago",
-            "adapter_type": "redis"
-        }
-    ])
+    mock_redis.discover_peers = AsyncMock(
+        return_value=[
+            {
+                "name": "macbook",  # Duplicate!
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "5s ago",
+                "adapter_type": "redis",
+            },
+            {
+                "name": "workstation",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "3s ago",
+                "adapter_type": "redis",
+            },
+        ]
+    )
 
     # Register adapters (order matters - first wins)
     client.register_adapter("telegram", mock_telegram)
@@ -171,6 +185,7 @@ async def test_adapter_client_deduplication():
 async def test_adapter_client_handles_adapter_errors():
     """Test that errors from one adapter don't break discovery from others."""
     from unittest.mock import AsyncMock, Mock
+
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()
@@ -180,15 +195,17 @@ async def test_adapter_client_handles_adapter_errors():
     mock_failing_adapter.discover_peers = AsyncMock(side_effect=Exception("Connection failed"))
 
     mock_working_adapter = Mock()
-    mock_working_adapter.discover_peers = AsyncMock(return_value=[
-        {
-            "name": "workstation",
-            "status": "online",
-            "last_seen": datetime.now(),
-            "last_seen_ago": "5s ago",
-            "adapter_type": "redis"
-        }
-    ])
+    mock_working_adapter.discover_peers = AsyncMock(
+        return_value=[
+            {
+                "name": "workstation",
+                "status": "online",
+                "last_seen": datetime.now(),
+                "last_seen_ago": "5s ago",
+                "adapter_type": "redis",
+            }
+        ]
+    )
 
     # Register both adapters
     client.register_adapter("telegram", mock_failing_adapter)
@@ -204,6 +221,7 @@ async def test_adapter_client_handles_adapter_errors():
 async def test_adapter_client_empty_peers():
     """Test behavior when no peers are discovered."""
     from unittest.mock import AsyncMock, Mock
+
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()

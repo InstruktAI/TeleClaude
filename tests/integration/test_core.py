@@ -9,7 +9,7 @@ import pytest
 
 from teleclaude import config as config_module
 from teleclaude.core import terminal_bridge
-from teleclaude.core.db import db, Db
+from teleclaude.core.db import Db, db
 
 
 @pytest.mark.asyncio
@@ -33,7 +33,7 @@ async def test_session_manager_crud():
             origin_adapter="telegram",
             title="Test Session",
             terminal_size="80x24",
-            working_directory="~"
+            working_directory="~",
         )
 
         assert session.session_id is not None
@@ -78,16 +78,13 @@ async def test_terminal_bridge_tmux_operations():
     base_dir = Path(__file__).parent
     config_module._config = None
     from teleclaude.daemon import TeleClaudeDaemon
+
     daemon = TeleClaudeDaemon(str(base_dir / ".env"))
 
     try:
         # Create tmux session
         success = await terminal_bridge.create_tmux_session(
-            name=session_name,
-            shell="/bin/sh",
-            working_dir="/tmp",
-            cols=80,
-            rows=24
+            name=session_name, shell="/bin/sh", working_dir="/tmp", cols=80, rows=24
         )
         assert success, "Should create tmux session"
 
@@ -115,6 +112,7 @@ async def test_terminal_bridge_tmux_operations():
 async def test_session_manager_with_metadata():
     """Test Db adapter metadata queries."""
     import os
+
     db_path = "/tmp/teleclaude_test_metadata.db"
 
     # Clean up old database if exists
@@ -132,13 +130,11 @@ async def test_session_manager_with_metadata():
             tmux_session_name="test-metadata",
             origin_adapter="telegram",
             adapter_metadata={"topic_id": 123, "user_id": 456},
-            title="Metadata Test"
+            title="Metadata Test",
         )
 
         # Query by metadata
-        results = await session_mgr.get_sessions_by_adapter_metadata(
-            "telegram", "topic_id", 123
-        )
+        results = await session_mgr.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
         assert len(results) == 1
         assert results[0].session_id == session.session_id
 

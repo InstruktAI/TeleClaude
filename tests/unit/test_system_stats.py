@@ -95,9 +95,11 @@ def test_get_cpu_percent_error_handling():
 
 def test_get_all_stats():
     """Test get_all_stats returns dict with all stats."""
-    with patch("psutil.virtual_memory") as mock_vm, patch("psutil.cpu_percent") as mock_cpu, patch(
-        "shutil.disk_usage"
-    ) as mock_disk:
+    with (
+        patch("psutil.virtual_memory") as mock_vm,
+        patch("psutil.cpu_percent") as mock_cpu,
+        patch("shutil.disk_usage") as mock_disk,
+    ):
         # Mock memory
         mock_mem = MagicMock()
         mock_mem.total = 32 * (1024**3)
@@ -126,9 +128,11 @@ def test_get_all_stats():
 
 def test_get_all_stats_partial_failure():
     """Test get_all_stats handles partial failures gracefully."""
-    with patch("psutil.virtual_memory") as mock_vm, patch("psutil.cpu_percent") as mock_cpu, patch(
-        "shutil.disk_usage"
-    ) as mock_disk:
+    with (
+        patch("psutil.virtual_memory") as mock_vm,
+        patch("psutil.cpu_percent") as mock_cpu,
+        patch("shutil.disk_usage") as mock_disk,
+    ):
         # Memory fails
         mock_vm.side_effect = Exception("Memory error")
 

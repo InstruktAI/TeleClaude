@@ -38,7 +38,7 @@ class TestSanitizeFilename:
 
     def test_removes_special_characters(self):
         """Test that special characters are replaced with underscores."""
-        assert file_handler.sanitize_filename("file<>:\"/|?*.txt") == "file________.txt"
+        assert file_handler.sanitize_filename('file<>:"/|?*.txt') == "file________.txt"
 
     def test_preserves_valid_characters(self):
         """Test that valid characters are preserved."""
@@ -88,9 +88,7 @@ class TestIsClaudeCodeRunning:
     @pytest.mark.asyncio
     async def test_handles_exception(self):
         """Test handles exception from terminal_bridge."""
-        with patch(
-            "teleclaude.core.file_handler.terminal_bridge.get_pane_title", side_effect=Exception("tmux error")
-        ):
+        with patch("teleclaude.core.file_handler.terminal_bridge.get_pane_title", side_effect=Exception("tmux error")):
             result = await file_handler.is_claude_code_running("test_session")
             assert result is False
 

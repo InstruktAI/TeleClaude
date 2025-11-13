@@ -97,7 +97,7 @@ class TelegramAdapter(UiAdapter):
         self.user_whitelist = [int(uid.strip()) for uid in user_ids_str.split(",") if uid.strip()]
 
         # Extract from config singleton
-        self.trusted_dirs = config.computer.trusted_dirs
+        self.trusted_dirs = config.computer.get_all_trusted_dirs()
         self.trusted_bots = config.telegram.trusted_bots
 
         self.computer_name = config.computer.name
@@ -792,31 +792,29 @@ class TelegramAdapter(UiAdapter):
         )
 
     async def _handle_list_projects(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /list_projects command - returns trusted_dirs as JSON."""
+        """Handle /list_projects command - returns trusted_dirs as JSON with metadata."""
         if not update.effective_message or not update.effective_chat:
             return
 
-        # Get trusted_dirs and default_working_dir from config
-        trusted_dirs = config.computer.trusted_dirs
-        default_working_dir = config.computer.default_working_dir
+        # Get all trusted dirs (includes default_working_dir merged in)
+        all_trusted_dirs = config.computer.get_all_trusted_dirs()
 
-        # Expand environment variables and filter existing paths
-        all_dirs = []
-
-        # Always include default_working_dir first if it exists
-        if default_working_dir:
-            expanded_default = os.path.expanduser(os.path.expandvars(default_working_dir))
-            if Path(expanded_default).exists():
-                all_dirs.append(expanded_default)
-
-        # Add trusted_dirs (skip duplicates and non-existent paths)
-        for dir_path in trusted_dirs:
-            expanded = os.path.expanduser(os.path.expandvars(dir_path))
-            if Path(expanded).exists() and expanded not in all_dirs:
-                all_dirs.append(expanded)
+        # Build structured response with name, desc, location
+        # Filter to only existing directories
+        dirs_data = []
+        for trusted_dir in all_trusted_dirs:
+            expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.location))
+            if Path(expanded_location).exists():
+                dirs_data.append(
+                    {
+                        "name": trusted_dir.name,
+                        "desc": trusted_dir.desc,
+                        "location": expanded_location,
+                    }
+                )
 
         # Send as JSON array
-        await update.effective_message.reply_text(json.dumps(all_dirs), parse_mode=None)
+        await update.effective_message.reply_text(json.dumps(dirs_data), parse_mode=None)
 
     async def _handle_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command - sends CTRL+C to the session."""
@@ -1213,13 +1211,13 @@ Current size: {}
             )
             return
 
-        # No args - show trusted directories as buttons (always include TC WORKDIR)
-        all_dirs = ["TC WORKDIR"] + self.trusted_dirs
-
-        # Create inline keyboard with directory buttons
+        # No args - show trusted directories as buttons (includes TC WORKDIR from get_all_trusted_dirs)
+        # Create inline keyboard with directory buttons showing name + desc
         keyboard = []
-        for dir_path in all_dirs:
-            keyboard.append([InlineKeyboardButton(text=dir_path, callback_data=f"cd:{dir_path}")])
+        for trusted_dir in self.trusted_dirs:
+            # Format button text: "name - desc" or just "name" if no desc
+            button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
+            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"cd:{trusted_dir.location}")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.effective_message.reply_text(

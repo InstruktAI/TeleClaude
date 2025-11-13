@@ -1,9 +1,10 @@
 """Shared fixtures for integration tests."""
 
 import os
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+import pytest
 from dotenv import load_dotenv
 
 
@@ -22,8 +23,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
 
     # NOW import teleclaude modules (after env var is set)
-    from teleclaude.core import terminal_bridge
     from teleclaude.core import db as db_module
+    from teleclaude.core import terminal_bridge
     from teleclaude.core.db import Db
     from teleclaude.daemon import TeleClaudeDaemon
 
@@ -35,23 +36,23 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     # CRITICAL: Patch db singleton in ALL modules that imported it at module load time
     # Without this, modules keep reference to old uninitialized db instance
     modules_to_patch = [
-        'teleclaude.adapters.telegram_adapter',
-        'teleclaude.core.adapter_client',
-        'teleclaude.adapters.redis_adapter',
-        'teleclaude.daemon',
-        'teleclaude.mcp_server',
-        'teleclaude.core.polling_coordinator',
-        'teleclaude.core.command_handlers',
-        'teleclaude.core.session_cleanup',
-        'teleclaude.adapters.ui_adapter',
-        'teleclaude.core.file_handler',
-        'teleclaude.core.session_utils',
-        'teleclaude.core.voice_message_handler',
-        'teleclaude.core.computer_registry',
+        "teleclaude.adapters.telegram_adapter",
+        "teleclaude.core.adapter_client",
+        "teleclaude.adapters.redis_adapter",
+        "teleclaude.daemon",
+        "teleclaude.mcp_server",
+        "teleclaude.core.polling_coordinator",
+        "teleclaude.core.command_handlers",
+        "teleclaude.core.session_cleanup",
+        "teleclaude.adapters.ui_adapter",
+        "teleclaude.core.file_handler",
+        "teleclaude.core.session_utils",
+        "teleclaude.core.voice_message_handler",
+        "teleclaude.core.computer_registry",
     ]
 
     for module_name in modules_to_patch:
-        monkeypatch.setattr(f'{module_name}.db', db_module.db)
+        monkeypatch.setattr(f"{module_name}.db", db_module.db)
 
     # Create daemon (config is loaded automatically from config.yml)
     daemon = TeleClaudeDaemon(str(base_dir / ".env"))

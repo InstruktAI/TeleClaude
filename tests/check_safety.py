@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Safety check - ensure no production sessions before running tests."""
-import sys
+
 import sqlite3
+import sys
 from pathlib import Path
 
 # Check production database
@@ -11,7 +12,7 @@ if db_path.exists():
     cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE closed = 0")
     count = cursor.fetchone()[0]
     conn.close()
-    
+
     if count > 0:
         print(f"ERROR: {count} active production sessions found!")
         print("Running tests will DESTROY your production sessions.")

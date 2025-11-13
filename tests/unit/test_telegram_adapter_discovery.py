@@ -11,7 +11,7 @@ def test_parse_registry_message_new_format():
     message_text = "[REGISTRY] macbook last seen at 2025-11-04 15:30:45"
 
     # Test the regex pattern from TelegramAdapter._refresh_discovered_peers
-    match = re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', message_text.strip())
+    match = re.match(r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", message_text.strip())
     assert match is not None
     assert match.group(1) == "macbook"
     assert match.group(2) == "2025-11-04 15:30:45"
@@ -21,7 +21,7 @@ def test_parse_registry_message_with_whitespace():
     """Test parsing [REGISTRY] message with extra whitespace."""
     message_text = "  [REGISTRY] workstation last seen at 2025-11-04 16:45:30  "
 
-    match = re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', message_text.strip())
+    match = re.match(r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", message_text.strip())
     assert match is not None
     assert match.group(1) == "workstation"
     assert match.group(2) == "2025-11-04 16:45:30"
@@ -30,19 +30,26 @@ def test_parse_registry_message_with_whitespace():
 def test_parse_invalid_registry_message():
     """Test that invalid [REGISTRY] messages don't match."""
     # Missing [REGISTRY] prefix
-    assert re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', "macbook last seen at 2025-11-04 15:30:45") is None
+    assert (
+        re.match(r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", "macbook last seen at 2025-11-04 15:30:45") is None
+    )
 
     # Missing "last seen at"
-    assert re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', "[REGISTRY] macbook 2025-11-04 15:30:45") is None
+    assert re.match(r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", "[REGISTRY] macbook 2025-11-04 15:30:45") is None
 
     # Wrong bracket format
-    assert re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', "(REGISTRY) macbook last seen at 2025-11-04 15:30:45") is None
+    assert (
+        re.match(
+            r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", "(REGISTRY) macbook last seen at 2025-11-04 15:30:45"
+        )
+        is None
+    )
 
     # Empty
-    assert re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', "") is None
+    assert re.match(r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", "") is None
 
     # Old /pong format should NOT match
-    assert re.match(r'^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$', "/pong by macbook at 2025-11-04 15:30:45") is None
+    assert re.match(r"^\[REGISTRY\] (\w+) last seen at ([\d\-: ]+)$", "/pong by macbook at 2025-11-04 15:30:45") is None
 
 
 def test_offline_detection_logic():
@@ -77,11 +84,10 @@ async def test_discover_peers_returns_empty():
     mock_client.handle_event = AsyncMock()
 
     # Set environment variables
-    with patch.dict("os.environ", {
-        "TELEGRAM_BOT_TOKEN": "test_token",
-        "TELEGRAM_SUPERGROUP_ID": "-100123456789",
-        "TELEGRAM_USER_IDS": "12345"
-    }):
+    with patch.dict(
+        "os.environ",
+        {"TELEGRAM_BOT_TOKEN": "test_token", "TELEGRAM_SUPERGROUP_ID": "-100123456789", "TELEGRAM_USER_IDS": "12345"},
+    ):
         adapter = TelegramAdapter(mock_client)
 
         # Test discover_peers returns empty (Telegram doesn't support bot-to-bot discovery)
@@ -101,11 +107,10 @@ async def test_heartbeat_edit_same_message():
     mock_client.handle_event = AsyncMock()
 
     # Set environment variables
-    with patch.dict("os.environ", {
-        "TELEGRAM_BOT_TOKEN": "test_token",
-        "TELEGRAM_SUPERGROUP_ID": "-100123456789",
-        "TELEGRAM_USER_IDS": "12345"
-    }):
+    with patch.dict(
+        "os.environ",
+        {"TELEGRAM_BOT_TOKEN": "test_token", "TELEGRAM_SUPERGROUP_ID": "-100123456789", "TELEGRAM_USER_IDS": "12345"},
+    ):
         adapter = TelegramAdapter(mock_client)
 
     # Mock message returned from first post
@@ -152,11 +157,10 @@ async def test_peer_data_format():
     mock_client.handle_event = AsyncMock()
 
     # Set environment variables
-    with patch.dict("os.environ", {
-        "TELEGRAM_BOT_TOKEN": "test_token",
-        "TELEGRAM_SUPERGROUP_ID": "-100123456789",
-        "TELEGRAM_USER_IDS": "12345"
-    }):
+    with patch.dict(
+        "os.environ",
+        {"TELEGRAM_BOT_TOKEN": "test_token", "TELEGRAM_SUPERGROUP_ID": "-100123456789", "TELEGRAM_USER_IDS": "12345"},
+    ):
         adapter = TelegramAdapter(mock_client)
 
         # Test discover_peers returns empty list

@@ -12,13 +12,17 @@ class TestSession:
     def test_session_creation_minimal(self):
         """Test creating session with minimal fields."""
         session = Session(
-            session_id="test-123", computer_name="TestPC", tmux_session_name="test-tmux", origin_adapter="telegram", title="Test Session"
+            session_id="test-123",
+            computer_name="TestPC",
+            tmux_session_name="test-tmux",
+            origin_adapter="telegram",
+            title="Test Session",
         )
 
         assert session.session_id == "test-123"
         assert session.computer_name == "TestPC"
         assert session.tmux_session_name == "test-tmux"
-        assert session.origin_adapter== "telegram"
+        assert session.origin_adapter == "telegram"
         assert session.closed is False
 
     def test_session_creation_with_all_fields(self):

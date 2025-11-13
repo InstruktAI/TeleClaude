@@ -11,6 +11,7 @@ from telegram import Chat, Message, Update, User
 from telegram.ext import ContextTypes
 
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
+from teleclaude.config import TrustedDir
 from teleclaude.core.events import TeleClaudeEvents
 
 
@@ -70,7 +71,13 @@ def telegram_adapter(mock_adapter_client, monkeypatch):
 
     with patch("teleclaude.adapters.telegram_adapter.config") as mock_config:
         mock_config.computer.name = "test_computer"
-        mock_config.computer.trusted_dirs = ["/tmp"]
+        mock_config.computer.default_working_dir = "/teleclaude"
+        mock_config.computer.trusted_dirs = [TrustedDir(name="tmp", desc="temp files", location="/tmp")]
+        # Mock get_all_trusted_dirs to return teleclaude folder + trusted_dirs
+        mock_config.computer.get_all_trusted_dirs.return_value = [
+            TrustedDir(name="teleclaude", desc="TeleClaude folder", location="/teleclaude"),
+            TrustedDir(name="tmp", desc="temp files", location="/tmp"),
+        ]
 
         adapter = TelegramAdapter(mock_adapter_client)
         adapter.user_whitelist = [12345, 67890]  # Authorized users
@@ -166,13 +173,14 @@ class TestCancelCommand:
         """Test /cancel emits correct event with session context."""
         # Mock session lookup
         from teleclaude.core.models import Session
+
         mock_session = Session(
             session_id="test-123",
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             adapter_metadata={"topic_id": "456"},
-            title="Test"
+            title="Test",
         )
 
         with patch.object(telegram_adapter, "_get_session_from_topic", return_value=mock_session):
@@ -197,13 +205,14 @@ class TestKeyCommands:
     async def test_key_up_emits_event_with_command(self, telegram_adapter, mock_adapter_client):
         """Test /key_up emits correct event."""
         from teleclaude.core.models import Session
+
         mock_session = Session(
             session_id="test-456",
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             adapter_metadata={"topic_id": "789"},
-            title="Test"
+            title="Test",
         )
 
         with patch.object(telegram_adapter, "_get_session_from_topic", return_value=mock_session):
@@ -246,13 +255,14 @@ class TestClaudeCommands:
     async def test_claude_command_emits_event(self, telegram_adapter, mock_adapter_client):
         """Test /claude emits correct event."""
         from teleclaude.core.models import Session
+
         mock_session = Session(
             session_id="test-789",
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             adapter_metadata={"topic_id": "111"},
-            title="Test"
+            title="Test",
         )
 
         with patch.object(telegram_adapter, "_get_session_from_topic", return_value=mock_session):
@@ -273,13 +283,14 @@ class TestClaudeCommands:
     async def test_claude_resume_emits_event(self, telegram_adapter, mock_adapter_client):
         """Test /claude_resume emits correct event."""
         from teleclaude.core.models import Session
+
         mock_session = Session(
             session_id="test-012",
             computer_name="test",
             tmux_session_name="test-tmux",
             origin_adapter="telegram",
             adapter_metadata={"topic_id": "222"},
-            title="Test"
+            title="Test",
         )
 
         with patch.object(telegram_adapter, "_get_session_from_topic", return_value=mock_session):
