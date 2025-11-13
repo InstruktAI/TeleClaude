@@ -29,10 +29,10 @@ async def main() -> None:
     # Setup logging (config already loaded at module level)
     setup_logging(level=str(config.logging.level), log_file=str(config.logging.file))
 
-    # Get Claude session ID from environment (set by Claude Code)
-    claude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
-    if not claude_session_id:
-        logger.debug("TELECLAUDE_SESSION_ID not set - not running in Claude session")
+    # Get TeleClaude session ID from environment (set by TeleClaude)
+    teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
+    if not teleclaude_session_id:
+        logger.debug("TELECLAUDE_SESSION_ID not set - not running in TeleClaude session")
         sys.exit(1)
 
     # Initialize database connection
@@ -40,11 +40,11 @@ async def main() -> None:
     await db.initialize()
 
     try:
-        # Use db method to find session by ux_state field
-        session = await db.get_session_by_ux_state("claude_session_id", claude_session_id)
+        # Get session by TeleClaude session ID (primary key)
+        session = await db.get_session(teleclaude_session_id)
 
         if not session:
-            logger.error("No TeleClaude session found for Claude session %s", claude_session_id)
+            logger.error("No TeleClaude session found for session ID %s", teleclaude_session_id)
             sys.exit(1)
 
         logger.info("Found TeleClaude session: %s (tmux: %s)", session.session_id[:8], session.tmux_session_name)

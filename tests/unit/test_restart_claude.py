@@ -60,7 +60,7 @@ class TestRestartClaude:
             # Mock db
             mock_db_instance = AsyncMock()
             mock_db_instance.initialize = AsyncMock()
-            mock_db_instance.get_session_by_ux_state = AsyncMock(return_value=mock_session)
+            mock_db_instance.get_session = AsyncMock(return_value=mock_session)
             mock_db_instance.close = AsyncMock()
 
             # Mock terminal_bridge
@@ -77,9 +77,7 @@ class TestRestartClaude:
 
                 # Verify db methods called
                 mock_db_instance.initialize.assert_called_once()
-                mock_db_instance.get_session_by_ux_state.assert_called_once_with(
-                    "claude_session_id", "test-claude-session-123"
-                )
+                mock_db_instance.get_session.assert_called_once_with("test-claude-session-123")
                 mock_db_instance.close.assert_called_once()
 
                 # Verify terminal_bridge.send_keys called correctly
@@ -99,7 +97,7 @@ class TestRestartClaude:
     @pytest.mark.asyncio
     @pytest.mark.unit
     async def test_exits_when_session_not_found(self):
-        """Test that script exits when no session is found for claude_session_id."""
+        """Test that script exits when no session is found for teleclaude_session_id."""
         # Set env var
         os.environ["TELECLAUDE_SESSION_ID"] = "nonexistent-session"
 
@@ -107,7 +105,7 @@ class TestRestartClaude:
             # Mock db to return None (session not found)
             mock_db_instance = AsyncMock()
             mock_db_instance.initialize = AsyncMock()
-            mock_db_instance.get_session_by_ux_state = AsyncMock(return_value=None)
+            mock_db_instance.get_session = AsyncMock(return_value=None)
             mock_db_instance.close = AsyncMock()
 
             with patch("teleclaude.restart_claude.Db") as mock_db_class:
@@ -138,7 +136,7 @@ class TestRestartClaude:
             # Mock db
             mock_db_instance = AsyncMock()
             mock_db_instance.initialize = AsyncMock()
-            mock_db_instance.get_session_by_ux_state = AsyncMock(return_value=mock_session)
+            mock_db_instance.get_session = AsyncMock(return_value=mock_session)
             mock_db_instance.close = AsyncMock()
 
             # Mock terminal_bridge to return False (failure)
