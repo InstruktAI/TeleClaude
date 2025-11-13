@@ -15,9 +15,11 @@ Follow these steps to find out what to do next:
 ## Step 2: Determine Subject
 
 **If subject provided as argument**:
+
 - Use that subject to find `todos/{slug}/` folder
 
 **If NO subject provided**:
+
 1. Read `todos/roadmap.md`
 2. Find the item marked as in-progress (`- [>]`)
 3. If no in-progress item, find first unchecked item (`- [ ]`)
@@ -29,10 +31,12 @@ Follow these steps to find out what to do next:
 **CRITICAL**: All work must be done in an isolated worktree to avoid conflicts.
 
 1. **Check if worktree already exists**:
+
    - Run `/list_worktrees_prompt`
    - Look for worktree with branch name matching `{slug}`
 
 2. **If worktree exists**:
+
    - Switch to existing worktree directory: `cd worktrees/{slug}`
    - Continue with existing work
 
@@ -43,6 +47,7 @@ Follow these steps to find out what to do next:
      - Create git branch `{slug}`
      - Set up isolated environment
      - Switch to the worktree directory
+   - Run `make install` first to get all the tools to work
    - Continue with new work
 
 **Important**: Always verify you're in the worktree directory before proceeding with implementation tasks.
@@ -50,6 +55,7 @@ Follow these steps to find out what to do next:
 ## Step 4: Check Requirements & Implementation Plan Exist
 
 1. Check if `todos/{slug}/requirements.md` exists
+
    - If NOT: Run `/next-requirements {subject}`
    - Wait for it to complete, then continue
 
@@ -67,10 +73,12 @@ Follow these steps to find out what to do next:
 **For each task group** (sequentially):
 
 1. **Identify parallel vs sequential tasks**:
+
    - Tasks marked with `**PARALLEL**` can run simultaneously
    - Tasks marked with `**SEQUENTIAL**` or `**DEPENDS:**` must run in order
 
 2. **Execute parallel tasks**:
+
    ```
    If multiple tasks in group are marked **PARALLEL**:
    - Create separate tool calls for each parallel task
@@ -79,16 +87,19 @@ Follow these steps to find out what to do next:
    ```
 
 3. **Execute sequential tasks**:
+
    - Run one at a time
    - Wait for completion before next task
 
 4. **Complete task workflow** (per task):
+
    - Make code changes
-   - Run tests (`make lint && make test`)
+   - **Delegate to `debugger` subagent**: Run tests and fix issues (`make lint && make test`)
    - Update checkbox from `- [ ]` to `- [x]` in `todos/{slug}/implementation-plan.md`
    - Commit ONCE with both code changes AND todo update: `/commit`
 
    **IMPORTANT**:
+
    - Use `/commit` (not `/deploy`) while in worktree
    - Each commit = one completed task (code + todo checkbox)
    - Only use `/deploy` after merging to main branch
@@ -97,12 +108,14 @@ Follow these steps to find out what to do next:
 
 ```markdown
 ### Group 2: Core Implementation
+
 - [ ] **PARALLEL** Create handler.py
 - [ ] **PARALLEL** Create validator.py
 - [ ] **DEPENDS: Group 1** Integrate components
 ```
 
 **Execution**:
+
 1. Run "Create handler.py" AND "Create validator.py" in parallel (single message, multiple tool calls)
 2. Wait for both to complete
 3. Run "Integrate components" sequentially
@@ -112,6 +125,7 @@ Follow these steps to find out what to do next:
 **After completing all implementation tasks (Groups 1-4)**:
 
 Run `/review {slug}` - this will:
+
 - Analyze code changes against requirements and implementation plan
 - Create `todos/{slug}/review.md` with detailed analysis
 - Spawn agent to auto-fix issues in worktree
@@ -124,23 +138,28 @@ Run `/review {slug}` - this will:
 **After all tasks complete and review feedback handled**:
 
 1. **Ensure all changes committed in worktree**:
+
    - Verify `git status` is clean
    - All tasks should be committed (you've been doing `/commit` per task)
 
 2. **Switch back to main branch**:
+
    - `cd` to project root (outside worktree): `cd ../..`
    - `git checkout main`
 
 3. **Merge worktree branch to main**:
+
    - `git merge {slug}`
    - Resolve any conflicts if needed
 
 4. **Push and deploy to all machines**:
+
    - Run `/deploy` to push to GitHub and deploy to all machines
    - No new commit needed - merge already brought all commits to main
    - This pushes everything and deploys to production
 
 5. **Remove worktree**:
+
    - Run `/remove_worktree_prompt {slug}`
    - This removes both the worktree directory and branch
 
@@ -171,27 +190,21 @@ For each work session:
 5. 🎯 Identify current task group
 6. ⚡ Execute parallel tasks simultaneously
 
-**Per task completion**:
-7. 🧪 Run `make lint && make test`
-8. ✔️  Update checkbox in implementation-plan.md
-9. 💾 `/commit` (one commit with code + checkbox)
+**Per task completion**: 7. 🧪 Run `make lint && make test` 8. ✔️ Update checkbox in implementation-plan.md 9. 💾 `/commit` (one commit with code + checkbox)
 
-**After all tasks in worktree**:
-10. 🔍 Review: `/review {slug}` (spawns agent, continues in parallel)
-11. ✅ Wait for review feedback handled
-12. 🔀 Merge to main: `cd ../.. && git checkout main && git merge {slug}`
-13. 🚀 Deploy: `/deploy` (now push to everyone)
-14. 🧹 Cleanup: `/remove_worktree_prompt {slug}`
+**After all tasks in worktree**: 10. 🔍 Review: `/review {slug}` (spawns agent, continues in parallel) 11. ✅ Wait for review feedback handled 12. 🔀 Merge to main: `cd ../.. && git checkout main && git merge {slug}` 13. 🚀 Deploy: `/deploy` (now push to everyone) 14. 🧹 Cleanup: `/remove_worktree_prompt {slug}`
 
 ## Error Handling
 
 If a task fails:
+
 1. Log the error in implementation-plan.md notes section
 2. Fix the issue
 3. Re-run the task
 4. Only mark complete when successful
 
 If blocked:
+
 1. Document blocker in implementation-plan.md
 2. Ask user for clarification
 3. Don't proceed until unblocked

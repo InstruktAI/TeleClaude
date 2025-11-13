@@ -133,10 +133,6 @@ make status                  # Check daemon status and uptime
 
 **Only use `make stop`/`make start` for full service lifecycle management** (e.g., disabling service completely). For normal development, just use `make restart`.
 
-### When Things Break
-
-@docs/troubleshooting.md
-
 ## Quick Command Reference
 
 ### Code Quality
@@ -271,14 +267,14 @@ As seen in [pyproject.toml](pyproject.toml):
 
 ## Technical Architecture
 
-@docs/architecture.md
+docs/architecture.md
 
 ## Troubleshooting
 
-@docs/troubleshooting.md
+docs/troubleshooting.md
 
 - ALWAYS USE `make restart` to RESTART the daemon!
 
 ---
 
-**NEVER CHANGE CODE WITHOUT FULLY UNDERSTANDING WHAT IT DOES - IF UNSURE, ASK THE USER FIRST!**
+**NEVER CHANGE CODE WITHOUT FULLY UNDERSTANDING WHAT IT DOES - IF UNSURE, INVESTIGATE DEEPER AND READ MORE FILES, ULTIMATELY ASKING THE USER FIRST!**

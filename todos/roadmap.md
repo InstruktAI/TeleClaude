@@ -2,13 +2,14 @@
 
 ## [ ] - make next-requirements command interactive
 
-The requirements command should not assume requirements that have unclear input, but must always seek clarification from user first. DON'T bother the user for things you CAN safely assume, or are not impactful from an architectural/UX perspective.
+The next-requirements command should aid in establishing the list of requirements for a feature/task. When given arguments it should take that as the users starting point, and help from there until the user is satisfied with the list of requirements.
 
-When the user calls `/next-requirements` the bot should present the current list of requirements and ask if the user wants to make any changes. If the user wants to make changes, the bot should guide the user through the process of adding, removing or modifying requirements.
-
-## [ ] - Enrich trusted_dirs
+## [>] - Enrich trusted_dirs
 
 Enrich trusted_dirs to be a dict ("name", "desc", "location") with desc describing what the folder is used for (may be empty). (Update the local config.yml to have a folder named "development", with desc "dev projects" to make the dev folder point to "/Users/Morriz/Documents/Workspace/morriz").
+Make teleclaude/config.py's ComputerConfig return the list with the `default_working_dir` merged with desc "TeleClaude folder".
+
+Also add a `host` field that can be empty or a hostname/ip. If set, teleclaude can ssh into that host and run commands there (assuming the trusted_dir is mounted there too). Add proper descriptions to all fields so AI understands them.
 
 ## [ ] - New dev project from skaffolding
 

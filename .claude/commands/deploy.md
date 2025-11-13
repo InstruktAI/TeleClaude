@@ -51,7 +51,7 @@ If push fails, stop and report the error to the user.
 
 1. Get list of computers: `teleclaude__list_computers()`
 2. For each computer, get teleclaude project path: `teleclaude__list_projects(computer)`
-3. Cache this information in memory for use in Step 6
+3. Remember this information (computer names and their teleclaude paths) for Step 6
 
 ## Step 5: Restart Local TeleClaude & Claude Code
 
@@ -83,22 +83,24 @@ This will:
 
 **If MCP deployment unavailable after restart, fall back to SSH deployment:**
 
-Use cached computer list and paths from Step 4 to deploy via SSH.
+Use the computer list and paths remembered from Step 4.
 
-**IMPORTANT:** Use 10 second timeout per computer and wait for deployment to complete:
+**For each computer**, run this SSH command with 10 second timeout:
 
 ```bash
-# For each computer, run with timeout and wait
-ssh -A <computer> 'cd <teleclaude-path> && git pull && make restart && sleep 5 && pgrep -f teleclaude.daemon'
+ssh -A <computer-name> 'cd <teleclaude-path> && git pull && make restart && sleep 5 && pgrep -f teleclaude.daemon'
 ```
+
+Replace `<computer-name>` with the actual computer hostname and `<teleclaude-path>` with the path from Step 4.
 
 **CRITICAL:**
 - Use `-A` flag for SSH agent forwarding
 - Use timeout of 10000ms for each SSH command
+- Run commands sequentially (one computer at a time)
 - Wait 5 seconds after restart for daemon to stabilize
 - Check final status with `pgrep` after wait period
 
-Parse output to report deployment status for each machine (success/failure, new PID)
+Parse output from each computer to report deployment status (computer name, success/failure, new PID)
 
 ## Step 7: Report Status
 
