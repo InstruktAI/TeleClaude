@@ -24,7 +24,7 @@ Follow these steps to find out what to do next:
 4. Extract description and generate slug
 5. Use that as the subject
 
-## Step 2.5: Create or Switch to Worktree
+## Step 3: Create or Switch to Worktree
 
 **CRITICAL**: All work must be done in an isolated worktree to avoid conflicts.
 
@@ -47,7 +47,7 @@ Follow these steps to find out what to do next:
 
 **Important**: Always verify you're in the worktree directory before proceeding with implementation tasks.
 
-## Step 3: Check Requirements & Implementation Plan Exist
+## Step 4: Check Requirements & Implementation Plan Exist
 
 1. Check if `todos/{slug}/requirements.md` exists
    - If NOT: Run `/next-requirements {subject}`
@@ -57,7 +57,7 @@ Follow these steps to find out what to do next:
    - If NOT: Run `/next-implementation {slug}`
    - Wait for it to complete, then continue
 
-## Step 4: Execute Implementation Plan
+## Step 5: Execute Implementation Plan
 
 1. Read `todos/{slug}/requirements.md` to understand the goals
 2. Read `todos/{slug}/implementation-plan.md` to see the task breakdown
@@ -89,9 +89,9 @@ Follow these steps to find out what to do next:
    - Commit ONCE with both code changes AND todo update: `/commit`
 
    **IMPORTANT**:
-   - Use `/commit` (not `/commit-deploy`) while in worktree
+   - Use `/commit` (not `/deploy`) while in worktree
    - Each commit = one completed task (code + todo checkbox)
-   - Only use `/commit-deploy` after merging to main branch
+   - Only use `/deploy` after merging to main branch
 
 ### Parallel Execution Example
 
@@ -107,15 +107,9 @@ Follow these steps to find out what to do next:
 2. Wait for both to complete
 3. Run "Integrate components" sequentially
 
-## Step 5: Continue Until Complete
+## Step 6: Trigger Review After Implementation
 
-1. Work through all task groups sequentially
-2. Execute parallel tasks within each group simultaneously
-3. Mark tasks as complete in implementation-plan.md
-4. When all implementation tasks done (Groups 1-4), trigger review
-5. When review is complete, proceed to deployment
-
-**After completing all implementation tasks (before deployment):**
+**After completing all implementation tasks (Groups 1-4)**:
 
 Run `/review {slug}` - this will:
 - Analyze code changes against requirements and implementation plan
@@ -125,7 +119,7 @@ Run `/review {slug}` - this will:
 
 **You can continue to next work item** while review agent works in parallel.
 
-## Step 5.5: Merge Worktree and Cleanup
+## Step 7: Merge Worktree and Deploy
 
 **After all tasks complete and review feedback handled**:
 
@@ -142,7 +136,7 @@ Run `/review {slug}` - this will:
    - Resolve any conflicts if needed
 
 4. **Push and deploy to all machines**:
-   - Run `/commit-deploy` to push to GitHub and deploy to all machines
+   - Run `/deploy` to push to GitHub and deploy to all machines
    - No new commit needed - merge already brought all commits to main
    - This pushes everything and deploys to production
 
@@ -154,18 +148,6 @@ Run `/review {slug}` - this will:
    - Run `/list_worktrees_prompt` to confirm worktree removed
    - Check main branch has all changes
 
-## Step 6: If No Implementation Plan Exists
-
-If requirements.md exists but implementation-plan.md doesn't:
-1. Run `/next-implementation {slug}`
-2. Wait for completion
-3. Return to Step 4
-
-If neither exists:
-1. Run `/next-requirements {subject}`
-2. Run `/next-implementation {slug}`
-3. Return to Step 4
-
 ## Important Notes
 
 - **Worktree isolation**: ALWAYS work in a worktree to avoid conflicts with main branch
@@ -173,7 +155,7 @@ If neither exists:
 - **Testing is mandatory**: All code changes must have passing tests
 - **Commit per task**: One commit = code changes + checkbox update (NOT two separate commits)
 - **Use /commit in worktree**: Create local commits with `/commit` (no deployment yet)
-- **Use /commit-deploy after merge**: Only push and deploy after merging to main
+- **Use /deploy after merge**: Only push and deploy after merging to main
 - **Check dependencies**: Always verify `**DEPENDS:**` requirements are met
 - **Update roadmap**: Mark items in-progress (`[>]`) and complete (`[x]`)
 - **Ask questions**: If requirements unclear, ask before implementing
@@ -198,7 +180,7 @@ For each work session:
 10. 🔍 Review: `/review {slug}` (spawns agent, continues in parallel)
 11. ✅ Wait for review feedback handled
 12. 🔀 Merge to main: `cd ../.. && git checkout main && git merge {slug}`
-13. 🚀 Deploy: `/commit-deploy` (now push to everyone)
+13. 🚀 Deploy: `/deploy` (now push to everyone)
 14. 🧹 Cleanup: `/remove_worktree_prompt {slug}`
 
 ## Error Handling

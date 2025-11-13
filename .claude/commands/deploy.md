@@ -90,5 +90,5 @@ After deployment completes, report:
 **After merging to main**:
 ```
 git merge {feature-branch}  # brings all commits to main
-/commit-deploy              # push + deploy everything
+/deploy              # push + deploy everything
 ```

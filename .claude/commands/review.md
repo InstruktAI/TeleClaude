@@ -68,7 +68,8 @@ Review the code changes against these criteria:
 
 ### Documentation
 
-- ✅ docs/architecture.md updated if needed?
+- ✅ README.md updated if user-facing changes (installation, usage, commands, requirements)?
+- ✅ docs/architecture.md updated if architecture changed?
 - ✅ Docstrings for public functions?
 - ❌ Missing or outdated docs?
 

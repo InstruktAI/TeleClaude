@@ -101,11 +101,12 @@ The `/next-breakdown` command is automatically invoked and:
 - [ ] Test integration with adapter_client
 
 ### Phase 4: Documentation & Cleanup
-- [ ] Update CLAUDE.md with hook usage
+- [ ] Update README.md if user-facing changes
+- [ ] Update docs/architecture.md if architecture changed
 - [ ] Run `make format` and `make lint`
 
 ### Phase 5: Deployment
-- [ ] Deploy with `/commit-deploy`
+- [ ] Deploy with `/deploy`
 ```
 
 ### Step 4: Implementation
@@ -124,7 +125,7 @@ When all tasks are complete:
 1. Mark all checkboxes as `[x]`
 2. Verify success criteria from PRD
 3. Mark roadmap item as complete in `todos/roadmap.md`: `[x]`
-4. Deploy changes with `/commit-deploy`
+4. Deploy changes with `/deploy`
 
 ## Command Reference
 
@@ -168,7 +169,7 @@ When all tasks are complete:
 4. **Update checkboxes as you go** - Don't wait until the end
 5. **Use TodoWrite tool** - Track progress in your active Claude session
 6. **Test incrementally** - Don't wait until all code is written
-7. **Deploy often** - Use `/commit-deploy` after each logical milestone
+7. **Deploy often** - Use `/deploy` after each logical milestone
 
 ## Example: Full Workflow
 
@@ -186,7 +187,7 @@ echo "1. [ ] Add Redis health check endpoint" >> todos/roadmap.md
 # Update checkboxes as you complete each task
 
 # 4. Deploy when ready
-/commit-deploy
+/deploy
 
 # 5. Mark complete
 # Edit todos/roadmap.md: change [ ] to [x]

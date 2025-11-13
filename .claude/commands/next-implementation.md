@@ -69,8 +69,8 @@ Create `todos/{slug}/implementation-plan.md` with this structure:
 ### Group 4: Documentation & Polish
 *These tasks can run in parallel*
 
-- [ ] **PARALLEL** Update CLAUDE.md if architecture changed
-- [ ] **PARALLEL** Update docs/architecture.md if needed
+- [ ] **PARALLEL** Update README.md if user-facing changes (installation, usage, commands, requirements)
+- [ ] **PARALLEL** Update docs/architecture.md if architecture changed
 - [ ] **DEPENDS: Group 3** Run `make format && make lint && make test`
 
 ### Group 5: Review & Finalize
@@ -85,7 +85,7 @@ Create `todos/{slug}/implementation-plan.md` with this structure:
 - [ ] Test locally with `make restart && make status`
 - [ ] Switch to main: `cd ../.. && git checkout main`
 - [ ] Merge worktree branch: `git merge {slug}`
-- [ ] Push and deploy: `/commit-deploy`
+- [ ] Push and deploy: `/deploy`
 - [ ] Verify deployment on all computers
 - [ ] Cleanup worktree: `/remove_worktree_prompt {slug}`
 

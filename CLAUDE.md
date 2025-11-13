@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🚨 CRITICAL RULES (Never Break These)
 
-### Rule #-1: YOU ARE THE ONLY ONE MAKING CODE CHANGES
+### YOU ARE THE ONLY ONE MAKING CODE CHANGES
 
 **CRITICAL SELF-AWARENESS: YOU (CLAUDE) ARE MAKING ALL CODE CHANGES. THERE IS NO "OLD CODE" vs "YOUR CHANGES".**
 
@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - If tests don't catch a bug, the tests need improvement OR the bug only triggers at runtime
 - Stop confusing yourself about whose code is whose - it's ALL YOUR RESPONSIBILITY
 
-### Rule #0: THE DAEMON MUST NEVER BE DOWN
+### THE DAEMON MUST NEVER BE DOWN
 
 **USERS DEPEND ON THIS SERVICE 24/7. DOWNTIME IS NOT ACCEPTABLE.**
 
@@ -25,36 +25,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ALWAYS verify daemon is running before stepping away with `make status`
 - If unsure about stability, test in a separate environment first
 - The daemon provides critical infrastructure - treat restarts as production deployments
-
-### Rule #0.5: AUTOMATED DEPLOYMENT WORKFLOW
-
-**AFTER COMMITTING CHANGES, ALWAYS DEPLOY TO ALL MACHINES USING THE MCP TOOL.**
-
-When you've made changes that should be deployed:
-
-**Use the `/commit-deploy` slash command** - this automates the entire cycle:
-
-1. Creates commit with AI-generated message (via `/commit`)
-2. Pushes to GitHub (`git push`)
-3. Deploys to all machines (via `teleclaude__deploy_to_all_computers` MCP tool)
-
-**Example workflow:**
-
-```
-User: "These changes are ready to deploy"
-
-Claude: /commit-deploy
-1. Analyzes changes and creates commitizen-style commit
-2. Pushes commit to GitHub
-3. Calls teleclaude__deploy_to_all_computers() [NO ARGUMENTS]
-4. Reports: "Deployed to RasPi (PID 123456), RasPi4 (PID 789012)"
-```
-
-**Notes:**
-
-- For local-only commits (no deployment), use `/commit` instead
-- The MCP tool handles deployment via Redis - no manual SSH needed
-- Each computer automatically: `git pull` → restart daemon → report status
 
 ### Rule #1: SINGLE DATABASE ONLY
 
@@ -152,19 +122,6 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
 
 **Never stop the service to check logs** - use `tail -f` instead.
 
-### Interactive Debugging (Rare)
-
-Only use `make dev` when you need interactive debugging with breakpoints:
-
-```bash
-make stop                    # Stop the service first
-make dev                     # Run in foreground (Ctrl+C to stop)
-# ... debug interactively ...
-make start                   # Re-enable service when done
-```
-
-For normal development, **always keep the service running** and use `tail -f /var/log/teleclaude.log`.
-
 ### Service Lifecycle Commands
 
 ```bash
@@ -182,20 +139,14 @@ make status                  # Check daemon status and uptime
 
 ## Quick Command Reference
 
-### Environment Setup
-
-```bash
-make install                 # Install Python dependencies
-make init                    # Run installation wizard (interactive)
-make init ARGS=-y            # Run in unattended mode
-```
-
 ### Code Quality
 
 ```bash
 make format                  # Format code (isort + black)
 make lint                    # Run linting checks (pylint, mypy)
 ```
+
+ALWAYS run `make lint` after changing code!
 
 ### Testing
 
@@ -206,54 +157,16 @@ make test-all                # Run all tests
 make test                    # Alias for test-all
 ```
 
-### Development
-
-```bash
-make dev                     # Run daemon in foreground (Ctrl+C to stop)
-make clean                   # Clean generated files and caches
-```
+ALWAYS run `make test` after changing code!
 
 ## Testing Requirements for Code Changes
 
 **Before reporting completion of ANY code change:**
 
 1. Add proper test case in `tests/unit/` or `tests/integration/`
-2. Run `make test-unit` or `make test-e2e` to verify tests pass
+2. Run `make test` to verify tests pass
 3. Only report "Done" after automated tests pass
 4. ❌ **NEVER rely on manual inspection** - write automated tests instead
-
-## Command Implementation Patterns
-
-### Clean UX Rule for Telegram Adapter
-
-**CRITICAL**: Telegram adapter (`has_ui=True`) follows strict message management rules for clean UX:
-
-**Output Messages (from terminal commands):**
-
-- **ALWAYS EDITED**, never create new messages
-- One persistent message per session output
-- Message ID stored in `ux_state` (session table)
-- Survives daemon restarts
-
-**Feedback Messages (status/info):**
-
-- **ALWAYS TEMPORARY**, deleted when new input arrives
-- Examples: "Transcribing...", "Changed directory to...", "Session created"
-- Message IDs stored in `ux_state.pending_deletions`
-- Auto-deleted by message handler before processing next input
-
-**System Messages (heartbeats, registry):**
-
-- **ALWAYS EDITED**, never create new messages after initial post
-- Message ID stored in `system_settings` table (system UX state)
-- Examples: `[REGISTRY] {computer} last seen at...`
-- Survives daemon restarts via `SystemUXState.registry_message_id`
-
-**Implementation:**
-
-- All message IDs persisted in `ux_state` column (JSON)
-- `update_session_ux_state()` / `update_system_ux_state()` functions
-- Load state on startup, edit existing messages instead of creating new ones
 
 ### Master Bot Pattern (Multi-Computer Setup)
 
@@ -279,8 +192,8 @@ BotCommand definitions **intentionally include trailing spaces**:
 
 ```python
 commands = [
-    BotCommand("new_session ", "Create a new terminal session"),  # Note the trailing space
-    BotCommand("list_sessions ", "List all active sessions"),
+    BotCommand("new_session  ", "Create a new terminal session"),  # Note the trailing spaces
+    BotCommand("list_sessions  ", "List all active sessions"),
 ]
 ```
 
@@ -292,146 +205,6 @@ commands = [
 - Users can type commands without specifying which bot to use
 
 **DO NOT remove trailing spaces from BotCommand definitions** - this is intentional, not a bug!
-
-### Adding a New Bot Command
-
-When adding a new command to the Telegram bot, you MUST follow ALL these steps:
-
-1. **Register command handler** in `telegram_adapter.py` `start()` method:
-
-   ```python
-   self.app.add_handler(CommandHandler("command_name", self._handle_command_name))
-   ```
-
-2. **Add to Telegram's command list** in `telegram_adapter.py` `start()` method:
-
-   ```python
-   commands = [
-       # ... existing commands
-       BotCommand("command_name ", "Description shown in Telegram UI"),  # Note trailing space!
-   ]
-   await self.app.bot.set_my_commands(commands)
-   ```
-
-   ⚠️ **CRITICAL**: Without this step, the command won't appear in Telegram's autocomplete!
-   ⚠️ **IMPORTANT**: Include trailing space after command name (see Master Bot Pattern above)
-
-3. **Implement handler method** in `telegram_adapter.py`:
-
-   - ALWAYS use `session = await self._get_session_from_topic(update)` (DRY pattern)
-   - Never duplicate authorization/session-finding logic
-   - Example:
-
-   ```python
-   async def _handle_command_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-       session = await self._get_session_from_topic(update)
-       if not session:
-           return
-       # Your command logic here
-   ```
-
-4. **Route command in daemon** (`daemon.py` `handle_command()`):
-
-   ```python
-   elif command == "command-name":
-       await self._command_name(context, args)
-   ```
-
-5. **Implement daemon handler** in `daemon.py`
-
-6. **Update help text** in `_handle_help()` method
-
-### Using Inline Keyboards for User Selections
-
-Pattern for creating clickable button menus (like `/cd` directory selection):
-
-1. **Create inline keyboard**:
-
-   ```python
-   keyboard = []
-   for item in items:
-       keyboard.append([
-           InlineKeyboardButton(text=display_text, callback_data=f"action:{data}")
-       ])
-   reply_markup = InlineKeyboardMarkup(keyboard)
-   await update.message.reply_text("Select:", reply_markup=reply_markup)
-   ```
-
-2. **Handle button clicks** in `_handle_callback_query()`:
-
-   - Parse `callback_data` as "action:args"
-   - Find session from `query.message.message_thread_id`
-   - Call `await query.answer()` first
-   - Update message with `await query.edit_message_text()`
-
-3. **Register callback handler** in `start()` (already done):
-   ```python
-   self.app.add_handler(CallbackQueryHandler(self._handle_callback_query))
-   ```
-
-### Shell Command Construction Safety
-
-When constructing shell commands that include user input or file paths:
-
-**ALWAYS use `shlex.quote()` to prevent injection and handle special characters:**
-
-```python
-import shlex
-
-# CORRECT:
-cd_command = f"cd {shlex.quote(user_path)}"
-
-# WRONG (vulnerable to spaces, injection):
-cd_command = f"cd {user_path}"
-```
-
-This handles:
-
-- Paths with spaces
-- Special shell characters (`$`, `;`, `|`, etc.)
-- Quote characters
-
-## Common Development Tasks
-
-### Adding Config-Driven Features
-
-To add features that use configuration values (like `trusted_dirs`):
-
-1. **Add to `config.yml.sample`** with comments and examples
-2. **Pass from daemon to adapter** in `telegram_config`:
-   ```python
-   telegram_config = {
-       # ... existing config
-       "feature_data": self.config.get("section", {}).get("key", []),
-   }
-   ```
-3. **Store in adapter's `__init__`**:
-   ```python
-   self.feature_data = config.get("feature_data", [])
-   ```
-4. **Use in handler methods** as `self.feature_data`
-
-### Adding a New Adapter
-
-1. Create `adapters/{platform}_adapter.py`
-2. Inherit from `BaseAdapter`
-3. Implement all abstract methods
-4. Add adapter initialization in `daemon.py`
-5. Update config schema for platform-specific settings
-
-### Modifying Database Schema
-
-1. Update `teleclaude/core/schema.sql`
-2. Add migration logic in `SessionManager.initialize()`
-3. Test with existing database
-4. Update `models.py` if data classes change
-
-### Adding New Configuration Options
-
-1. Add to `config.yml.sample` with comments
-2. Document in `prds/teleclaude.md` (design doc)
-3. Access via `self.config[key]` in daemon
-4. Add validation if required field
 
 ## Code Standards
 
@@ -495,114 +268,6 @@ As seen in [pyproject.toml](pyproject.toml):
 - Function docstrings: brief description + Args + Returns
 - Class docstrings: brief description of purpose
 - Module docstrings: one-line overview of module purpose
-
-## Installation Workflow
-
-All installation is managed through make commands:
-
-1. **`make install`** - Install Python dependencies (creates venv, installs packages)
-2. **`make init`** - Run installation wizard that:
-   - Detects OS (macOS/Linux)
-   - Installs system dependencies (tmux, ffmpeg)
-   - Creates `.env` and `config.yml` from templates
-   - Prompts for Telegram bot token, user ID, supergroup ID
-   - Generates system service file from template (launchd plist on macOS, systemd unit on Linux)
-   - Starts system service with auto-restart enabled
-
-**Unattended mode** (for CI/automation):
-
-```bash
-# In CI: environment variables already loaded by CI system
-# Locally: source .env first if needed
-make install && make init ARGS=-y
-```
-
-**Never** run `./install.sh` directly - always use `make init`.
-
-## Multi-Computer Development Workflow
-
-TeleClaude runs on multiple computers (development machine + remote RasPis). When making changes, you must update all instances.
-
-### Standard Deployment Flow
-
-1. **Make changes on development machine** (MozBook)
-2. **Test locally**: `make restart && make status`
-3. **Commit and deploy**: Use `/commit-deploy` command (automates commit → push → deploy)
-
-### Deploying to Remote Machines
-
-**🚨 CRITICAL: ALWAYS use MCP tool for deployment!**
-
-```python
-# Primary method - NO ARGUMENTS, deploys to ALL computers automatically
-teleclaude__deploy_to_all_computers()
-# Automatically discovers all computers and deploys
-# Returns: {"RasPi": {"status": "deployed", "pid": 12345}, ...}
-```
-
-**The MCP tool automatically:**
-
-- Discovers ALL remote computers via Redis
-- Sends deploy command to each computer (excluding self)
-- Each computer: `git pull` → restart daemon
-- Returns deployment status for each machine
-- Handles timeouts and errors
-
-**Manual deployment (ONLY if MCP server is down):**
-
-Use SSH agent forwarding (`-A` flag) as fallback:
-
-```bash
-# RasPi (morriz@raspberrypi.local) - ONLY if MCP tool unavailable
-ssh -A morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && git checkout . && git pull && make restart"
-
-# RasPi4 (morriz@raspi4.local)
-ssh -A morriz@raspi4.local "cd /home/morriz/apps/TeleClaude && git checkout . && git pull && make restart"
-```
-
-**Why SSH agent forwarding (`-A`) is required:**
-
-- Forwards your local SSH agent to the remote machine
-- Remote git can use your local GitHub keys
-- Enables git pull over SSH (git@github.com)
-- Without it, git operations fail with "Permission denied (publickey)"
-
-**Important**: Always use `git checkout .` before pull to discard any local changes from previous failed operations.
-
-### Verification
-
-After updating each machine, verify daemon is healthy:
-
-```bash
-# Check RasPi
-ssh morriz@raspberrypi.local "cd /home/morriz/apps/TeleClaude && make status"
-
-# Check RasPi4
-ssh morriz@raspi4.local "cd /home/morriz/apps/TeleClaude && make status"
-```
-
-Expected output:
-
-```
-[INFO] Service: LOADED
-[INFO] systemctl status: active
-[INFO] Daemon process: RUNNING (PID: XXXXX, uptime: XX:XX)
-[INFO] Daemon health: HEALTHY (health endpoint responding)
-```
-
-### Common Mistakes to Avoid
-
-❌ **DON'T**: Manually SSH to each machine (use MCP tool!)
-❌ **DON'T**: Use `make kill` (leaves orphaned MCP processes like socat)
-❌ **DON'T**: Forget `-A` flag for manual SSH (causes git permission errors)
-❌ **DON'T**: Change git remote from SSH to HTTPS (breaks key-based auth)
-❌ **DON'T**: Skip verification after deployment
-
-✅ **DO**: Use `teleclaude__deploy_to_all_computers()` MCP tool
-✅ **DO**: Only use manual SSH if MCP server is down
-✅ **DO**: Use `make restart` (clean daemon restart)
-✅ **DO**: Verify daemon health after updates
-✅ **DO**: Push to GitHub before deploying
 
 ## Technical Architecture
 

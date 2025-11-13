@@ -5,6 +5,15 @@
         "type": "uds",
         "path": "/tmp/teleclaude.sock"
       }
+    },
+    "limitless": {
+      "transport": {
+        "type": "http",
+        "url": "https://api.limitless.ai/mcp",
+        "headers": {
+          "X-API-Key": "${LIMITLESS_API_KEY}"
+        }
+      }
     }
   }
 }

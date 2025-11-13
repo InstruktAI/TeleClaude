@@ -9,6 +9,7 @@ You are now in **review processing mode**. This handles review feedback automati
 ## Step 1: Read Review
 
 Read `todos/{slug}/review.md` to understand:
+
 - All critical issues that MUST be fixed
 - Minor issues that SHOULD be fixed if straightforward
 - Auto-fix assessment (can this be automated?)
@@ -18,10 +19,12 @@ Read `todos/{slug}/review.md` to understand:
 Look for "Auto-Fix Assessment" section in review.md:
 
 **If "Can auto-fix: NO"**:
+
 - Report to user: "Review requires manual intervention - see todos/{slug}/review.md"
 - Exit without making changes
 
 **If "Can auto-fix: YES"**:
+
 - Proceed with automated fixes
 
 ## Step 3: Switch to Worktree
@@ -39,6 +42,7 @@ Verify you're in the correct directory before proceeding.
 Work through issues in priority order:
 
 1. **Critical Issues** (MUST fix all):
+
    - Read each issue carefully
    - Apply the suggested fix
    - Verify the fix addresses the root cause
@@ -48,6 +52,7 @@ Work through issues in priority order:
    - Skip if requires architectural changes
 
 **Important**:
+
 - Make focused, surgical changes
 - Don't refactor unrelated code
 - Follow coding directives from review
@@ -61,9 +66,11 @@ make lint && make test
 ```
 
 **If tests pass**:
+
 - Proceed to Step 6
 
 **If tests fail**:
+
 - Fix test failures
 - Re-run tests until all pass
 - If stuck after 2 attempts:
@@ -79,8 +86,9 @@ Mark the review feedback as handled:
 # In todos/{slug}/implementation-plan.md
 
 ### Group 5: Review & Finalize
+
 - [x] Review created (automated via `/review {slug}`)
-- [x] Review feedback handled (automated by spawned agent)
+- [x] Review feedback handled (automated via `/process-review {slug}`)
 ```
 
 Update the checkbox from `- [ ]` to `- [x]` for "Review feedback handled".
@@ -88,12 +96,14 @@ Update the checkbox from `- [ ]` to `- [x]` for "Review feedback handled".
 ## Step 7: Commit Changes
 
 Create ONE commit with:
+
 - All code fixes
 - Updated checkbox in implementation-plan.md
 
-Use `/commit` command (NOT `/commit-deploy` - we're in a worktree).
+Use `/commit` command (NOT `/deploy` - we're in a worktree).
 
 The commit message should be:
+
 ```
 fix(review): address code review feedback for {slug}
 
@@ -136,6 +146,7 @@ Ready for merge to main.
 ## Error Handling
 
 If any step fails:
+
 1. Document the failure in review.md notes section
 2. Mark "Manual intervention required: {specific reason}"
 3. Don't commit partial fixes
