@@ -86,7 +86,7 @@ class OutputPoller:
         # Configuration
         idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
-        global_update_interval = 1  # Global update interval (seconds) - first update after 1s
+        global_update_interval = 2  # Global update interval (seconds) - first update after 1s
         directory_check_interval = getattr(config.polling, "directory_check_interval", 5)
 
         # State tracking

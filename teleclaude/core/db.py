@@ -631,6 +631,38 @@ class Db:
         ux_state_data = await self.get_ux_state(session_id)
         return ux_state_data.notification_sent
 
+    async def get_system_setting(self, key: str) -> Optional[str]:
+        """Get system setting value by key.
+
+        Args:
+            key: Setting key
+
+        Returns:
+            Setting value or None if not found
+        """
+        cursor = await self._db.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        return str(row[0]) if row else None
+
+    async def set_system_setting(self, key: str, value: str) -> None:
+        """Set system setting value (upsert).
+
+        Args:
+            key: Setting key
+            value: Setting value
+        """
+        await self._db.execute(
+            """
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (key, value),
+        )
+        await self._db.commit()
+
 
 # Module-level singleton instance (initialized on first import)
 db = Db(config.database.path)

@@ -149,11 +149,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         try:
             key = f"redis_last_message_id:{self.computer_name}"
-            cursor = await db._db.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
-            row = await cursor.fetchone()
-            if row:
-                return str(row[0])
-            return None
+            return await db.get_system_setting(key)
         except Exception as e:
             logger.warning("Failed to get last processed message ID: %s", e)
             return None
@@ -166,17 +162,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         try:
             key = f"redis_last_message_id:{self.computer_name}"
-            await db._db.execute(
-                """
-                INSERT INTO system_settings (key, value, updated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (key, message_id),
-            )
-            await db._db.commit()
+            await db.set_system_setting(key, message_id)
         except Exception as e:
             logger.error("Failed to persist last processed message ID: %s", e)
 
@@ -594,8 +580,17 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             # Get or create session
             session = await db.get_session(session_id)
             if not session:
-                # Create new session for incoming AI request
-                await self._create_session_from_redis(session_id, data)
+                # Only create session if metadata indicates real session initialization
+                metadata = json.loads(data.get(b"metadata", b"{}").decode("utf-8"))
+                if metadata.get("title") and metadata.get("project_dir"):
+                    # Real AI-to-AI session initialization (has title + project_dir)
+                    await self._create_session_from_redis(session_id, data)
+                    logger.info("Created session from Redis: %s (title: %s)", session_id[:8], metadata.get("title"))
+                else:
+                    # Ephemeral query command (list_projects, etc.) - skip session creation
+                    logger.debug(
+                        "Skipping session creation for ephemeral command: %s (no title/project_dir)", session_id[:8]
+                    )
 
             # Parse message using centralized parser
             cmd_name, args = parse_command_string(message_str)

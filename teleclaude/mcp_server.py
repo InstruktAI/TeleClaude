@@ -816,8 +816,10 @@ class TeleClaudeMCPServer:
         status = "running"  # Session is alive unless marked closed
         state_description = "polling_active" if polling_active else "idle"
 
-        # Calculate runtime
-        runtime_seconds = (datetime.now(UTC) - session.created_at).total_seconds()
+        # Calculate runtime (ensure both datetimes are timezone-aware)
+        now = datetime.now(UTC)
+        created_at = session.created_at.replace(tzinfo=UTC) if session.created_at.tzinfo is None else session.created_at
+        runtime_seconds = (now - created_at).total_seconds()
 
         # Update checkpoint timestamp
         metadata["last_checkpoint_time"] = datetime.now(UTC).isoformat()

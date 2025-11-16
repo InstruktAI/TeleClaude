@@ -553,98 +553,6 @@ install_claude_code() {
     fi
 }
 
-# Setup periodic cleanup cron job
-setup_cleanup_cron() {
-    print_header "Setting Up Periodic Session Cleanup"
-
-    local cleanup_script="$INSTALL_DIR/scripts/cleanup_stale_sessions.py"
-
-    if [ ! -f "$cleanup_script" ]; then
-        print_error "Cleanup script not found: $cleanup_script"
-        exit 1
-    fi
-
-    # Make script executable
-    chmod +x "$cleanup_script"
-
-    case "$OS" in
-        macos)
-            # Use launchd plist for macOS
-            local plist_file="$HOME/Library/LaunchAgents/ai.instrukt.teleclaude.cleanup.plist"
-
-            cat > "$plist_file" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>ai.instrukt.teleclaude.cleanup</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$INSTALL_DIR/.venv/bin/python</string>
-        <string>$cleanup_script</string>
-    </array>
-    <key>StartInterval</key>
-    <integer>86400</integer>
-    <key>StandardOutPath</key>
-    <string>/var/log/teleclaude.log</string>
-    <key>StandardErrorPath</key>
-    <string>/var/log/teleclaude.log</string>
-</dict>
-</plist>
-EOF
-
-            launchctl unload "$plist_file" 2>/dev/null || true
-            launchctl load "$plist_file"
-            print_success "Installed launchd periodic cleanup (every 5 minutes)"
-            ;;
-
-        linux)
-            # Use systemd timer for Linux
-            local timer_file="/etc/systemd/system/teleclaude-cleanup.timer"
-            local service_file="/etc/systemd/system/teleclaude-cleanup.service"
-
-            # Create service file
-            sudo tee "$service_file" > /dev/null <<EOF
-[Unit]
-Description=TeleClaude Stale Session Cleanup
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=$INSTALL_DIR/.venv/bin/python $cleanup_script
-User=$USER
-WorkingDirectory=$INSTALL_DIR
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-            # Create timer file
-            sudo tee "$timer_file" > /dev/null <<EOF
-[Unit]
-Description=TeleClaude Stale Session Cleanup Timer
-Requires=teleclaude-cleanup.service
-
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=1d
-Unit=teleclaude-cleanup.service
-
-[Install]
-WantedBy=timers.target
-EOF
-
-            # Enable and start timer
-            sudo systemctl daemon-reload
-            sudo systemctl enable teleclaude-cleanup.timer
-            sudo systemctl start teleclaude-cleanup.timer
-
-            print_success "Installed systemd timer for periodic cleanup (every 5 minutes)"
-            ;;
-    esac
-}
-
 # Main installation flow
 main() {
     print_header "TeleClaude Installation"
@@ -670,9 +578,6 @@ main() {
 
     # Install Claude Code (optional but recommended)
     install_claude_code
-
-    # Setup periodic cleanup
-    setup_cleanup_cron
 
     # Success message
     print_header "Installation Complete!"
