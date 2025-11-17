@@ -532,8 +532,8 @@ install_launchd_service() {
 install_claude_code() {
     print_header "Installing Claude Code"
 
-    if command -v claude-code &> /dev/null; then
-        CLAUDE_VERSION=$(claude-code --version 2>&1 || echo "unknown")
+    if command -v claude &> /dev/null; then
+        CLAUDE_VERSION=$(claude --version 2>&1 || echo "unknown")
         print_warning "Claude Code already installed ($CLAUDE_VERSION)"
         if ! confirm "Reinstall Claude Code?" "n"; then
             return 0
@@ -543,8 +543,7 @@ install_claude_code() {
     print_info "Installing Claude Code globally via npm..."
     if npm install -g @anthropic-ai/claude-code &> "$LOG_FILE"; then
         print_success "Claude Code installed successfully"
-        CLAUDE_VERSION=$(claude-code --version 2>&1 || echo "unknown")
-        print_info "Claude Code version: $CLAUDE_VERSION"
+        print_info "Note: You may need to restart your shell for 'claude' command to be available"
     else
         print_error "Failed to install Claude Code"
         print_info "Check log: $LOG_FILE"

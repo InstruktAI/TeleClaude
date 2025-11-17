@@ -25,9 +25,9 @@ where = ["."]
 include = ["teleclaude*"]
 
 [project.urls]
-homepage = "https://github.com/morriz/teleclaude"
-"Source Code" = "https://github.com/morriz/teleclaude"
-"Bug Tracker" = "https://github.com/morriz/teleclaude/issues"
+homepage = "https://github.com/InstruktAI/TeleClaude"
+"Source Code" = "https://github.com/InstruktAI/TeleClaude"
+"Bug Tracker" = "https://github.com/InstruktAI/TeleClaude/issues"
 
 [tool.black]
 line-length = 120
