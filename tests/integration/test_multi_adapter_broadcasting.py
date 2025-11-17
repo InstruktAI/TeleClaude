@@ -107,6 +107,9 @@ class MockRedisAdapter(BaseAdapter):
     async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
         return "redis-file-msg-123"
 
+    async def is_session_observed(self, session_id: str) -> bool:
+        return False  # Mock: no observers by default
+
     async def start(self):
         pass
 

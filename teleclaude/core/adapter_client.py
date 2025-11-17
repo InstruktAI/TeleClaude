@@ -71,23 +71,21 @@ class AdapterClient:
         self._handlers: dict[EventType, Callable[[EventType, dict[str, object]], object]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
 
-    def _load_adapters(self, type: UiAdapter | RedisAdapter | None = None) -> None:
+    def _load_adapters(self) -> None:
         """Load and initialize adapters from config."""
         # config already imported
 
-        if type is None or type is UiAdapter:
-            # Load Telegram adapter if configured (always loaded if bot token exists)
-            if os.getenv("TELEGRAM_BOT_TOKEN"):
-                telegram_adapter = TelegramAdapter(self)
-                self.adapters["telegram"] = telegram_adapter
-                logger.info("Loaded Telegram adapter")
+        # Load Telegram adapter if configured (always loaded if bot token exists)
+        if os.getenv("TELEGRAM_BOT_TOKEN"):
+            telegram_adapter = TelegramAdapter(self)
+            self.adapters["telegram"] = telegram_adapter
+            logger.info("Loaded Telegram adapter")
 
-        if type is None or type is RedisAdapter:
-            # Load Redis adapter if configured
-            if config.redis.enabled:
-                redis_adapter = RedisAdapter(self)
-                self.adapters["redis"] = redis_adapter
-                logger.info("Loaded Redis adapter")
+        # Load Redis adapter if configured (only instantiate when enabled)
+        if config.redis.enabled:
+            redis_adapter = RedisAdapter(self)
+            self.adapters["redis"] = redis_adapter
+            logger.info("Loaded Redis adapter")
 
         # Validate at least one adapter is loaded
         if not self.adapters:
@@ -188,8 +186,8 @@ class AdapterClient:
                 continue
 
             # Redis adapter: only broadcast if session is observed
-            if adapter_type == "redis" and isinstance(adapter, RedisAdapter):
-                is_observed = await adapter.is_session_observed(session_id)
+            if adapter_type == "redis":
+                is_observed = await adapter.is_session_observed(session_id)  # type: ignore[attr-defined]
                 if is_observed:
                     observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
                     logger.debug("Broadcasting to Redis (session %s is observed)", session_id[:8])
