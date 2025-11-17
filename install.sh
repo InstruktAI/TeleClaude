@@ -48,7 +48,7 @@ done
 
 # Logging function
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
 
 # Print functions
@@ -393,6 +393,24 @@ EOF
     fi
 }
 
+# Setup log file
+setup_log_file() {
+    print_header "Setting Up Log File"
+
+    local log_file="/var/log/teleclaude.log"
+
+    if [ -f "$log_file" ]; then
+        print_success "Log file already exists: $log_file"
+        return 0
+    fi
+
+    print_info "Creating log file: $log_file"
+    sudo touch "$log_file"
+    sudo chown "$USER" "$log_file"
+    sudo chmod 644 "$log_file"
+    print_success "Log file created and owned by $USER"
+}
+
 # Install service
 install_service() {
     print_header "Installing System Service"
@@ -532,8 +550,8 @@ install_launchd_service() {
 install_claude_code() {
     print_header "Installing Claude Code"
 
-    if command -v claude-code &> /dev/null; then
-        CLAUDE_VERSION=$(claude-code --version 2>&1 || echo "unknown")
+    if command -v claude &> /dev/null; then
+        CLAUDE_VERSION=$(claude --version 2>&1 || echo "unknown")
         print_warning "Claude Code already installed ($CLAUDE_VERSION)"
         if ! confirm "Reinstall Claude Code?" "n"; then
             return 0
@@ -543,8 +561,7 @@ install_claude_code() {
     print_info "Installing Claude Code globally via npm..."
     if npm install -g @anthropic-ai/claude-code &> "$LOG_FILE"; then
         print_success "Claude Code installed successfully"
-        CLAUDE_VERSION=$(claude-code --version 2>&1 || echo "unknown")
-        print_info "Claude Code version: $CLAUDE_VERSION"
+        print_info "Note: You may need to restart your shell for 'claude' command to be available"
     else
         print_error "Failed to install Claude Code"
         print_info "Check log: $LOG_FILE"
@@ -572,6 +589,9 @@ main() {
 
     # Configuration
     setup_config
+
+    # Setup log file
+    setup_log_file
 
     # Install service
     install_service
