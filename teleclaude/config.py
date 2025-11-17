@@ -123,11 +123,6 @@ class TelegramConfig:
 
 
 @dataclass
-class RestAPIConfig:
-    port: int
-
-
-@dataclass
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
@@ -136,7 +131,6 @@ class Config:
     mcp: MCPConfig
     redis: RedisConfig
     telegram: TelegramConfig
-    rest_api: RestAPIConfig
 
 
 # Default configuration values (single source of truth)
@@ -179,9 +173,6 @@ DEFAULT_CONFIG: dict[str, object] = {
     },
     "telegram": {
         "trusted_bots": [],
-    },
-    "rest_api": {
-        "port": 6666,
     },
 }
 
@@ -254,7 +245,6 @@ def _build_config(raw: dict[str, object]) -> Config:
     mcp = raw["mcp"]
     redis = raw["redis"]
     tg = raw["telegram"]
-    api = raw["rest_api"]
 
     return Config(
         database=DatabaseConfig(
@@ -295,9 +285,6 @@ def _build_config(raw: dict[str, object]) -> Config:
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg["trusted_bots"]),  # type: ignore[index]
-        ),
-        rest_api=RestAPIConfig(
-            port=int(api["port"]),  # type: ignore[index]
         ),
     )
 

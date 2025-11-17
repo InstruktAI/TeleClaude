@@ -25,32 +25,12 @@ computer:
 database:
     path: ${WORKING_DIR}/teleclaude.db
 
-terminal:
-    default_size: 56x20
-    sizes:
-        small: 56x20 # mobile
-        medium: 120x40 # tablet
-        large: 180x60 # desktop
-
-recording:
-    enabled: true
-    rotation_interval_seconds: 60
-
 polling:
     idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)
     directory_check_interval: 5 # Check for directory changes every N seconds (0 to disable, default: 5)
     lpoll_extensions: [] # Extend built-in list of long-running interactive processes
     # Examples: ["my-repl", "watch", "docker logs -f"]
     # Built-in list includes: claude, vim, vi, nvim, nano, emacs, top, htop, less, more, python, node, etc.
-
-sessions:
-    max_total: 100
-    warn_at: 50
-
-uploads:
-    directory: ${WORKING_DIR}/uploads
-    max_file_size_mb: 50
-    append_timestamp_on_duplicate: true
 
 logging:
     max_size_mb: 10
@@ -94,9 +74,3 @@ redis:
     message_stream_maxlen: 10000  # Max messages to keep per computer
     output_stream_maxlen: 10000   # Max output messages per session
     output_stream_ttl: 3600       # Auto-expire output streams after 1 hour
-
-# REST API Configuration
-rest_api:
-    enabled: true  # Enable REST API for HTTP-based communication
-    bind_address: "127.0.0.1"  # Bind to localhost only (not accessible from network)
-    port: 6666
