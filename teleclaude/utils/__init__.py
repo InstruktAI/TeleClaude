@@ -291,8 +291,9 @@ def strip_exit_markers(text: str) -> str:
     """Strip exit code markers from text.
 
     Removes:
-    1. The marker output (__EXIT__0__, __EXIT__1__, etc.)
-    2. The echo command from shell prompts (; echo "__EXIT__$?__")
+    1. Old format marker output (__EXIT__0__, __EXIT__1__, etc.)
+    2. New format marker output with hash (__EXIT__a1b2c3d4__0__, etc.)
+    3. The echo command from shell prompts (; echo "__EXIT__$?__" or ; echo "__EXIT__{hash}__$?__")
 
     Args:
         text: Text with exit markers
@@ -300,15 +301,25 @@ def strip_exit_markers(text: str) -> str:
     Returns:
         Text with markers removed
     """
-    # Strip the marker output (__EXIT__0__, __EXIT__1__, etc.)
+    # Strip new format marker (__EXIT__{marker_id}__\d+__)
+    # marker_id is an alphanumeric string (usually 8-char hex from MD5, but can vary)
+    text = re.sub(r"__EXIT__[a-zA-Z0-9]+__\s*\d+\s*__\n?", "", text)
+
+    # Strip old format marker (__EXIT__0__, __EXIT__1__, etc.)
     # Allow whitespace/newlines within marker due to tmux line wrapping
     text = re.sub(r"__EXIT__\s*\d+\s*__\n?", "", text)
 
     # Strip the echo command - handles line wrapping
-    # Pattern 1: ; echo (together on same line or across lines) - preserves newline before next content
+    # Pattern 1: new format with marker_id ; echo "__EXIT__{id}__$?__"
+    text = re.sub(r';\s*\n?\s*echo\s+"__EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"', "", text)
+
+    # Pattern 2: old format ; echo "__EXIT__$?__"
     text = re.sub(r';\s*\n?\s*echo\s+"__EXIT__\s*\$\?\s*__"', "", text)
 
-    # Pattern 2: echo at start of line (after line wrap, semicolon lost) - removes the entire line
+    # Pattern 3: echo at start of line (after line wrap) - new format
+    text = re.sub(r'^\s+echo\s+"__EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"\s*\n', "", text, flags=re.MULTILINE)
+
+    # Pattern 4: echo at start of line (after line wrap) - old format
     text = re.sub(r'^\s+echo\s+"__EXIT__\s*\$\?\s*__"\s*\n', "", text, flags=re.MULTILINE)
 
     # Strip Claude Code hook success messages (including wrapped continuation lines)

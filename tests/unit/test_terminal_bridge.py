@@ -34,9 +34,10 @@ class TestSendKeys:
 
             # Mock session exists
             with patch.object(terminal_bridge, "session_exists", return_value=True):
-                # Execute with append_exit_marker=True
+                # Execute with append_exit_marker=True and marker_id
+                marker_id = "abc12345"
                 success = await terminal_bridge.send_keys(
-                    session_name="test-session", text="ls -la", append_exit_marker=True
+                    session_name="test-session", text="ls -la", append_exit_marker=True, marker_id=marker_id
                 )
 
                 assert success is True
@@ -47,9 +48,9 @@ class TestSendKeys:
                 send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
                 assert len(send_keys_call) > 0
 
-                # Check that the command includes exit marker
+                # Check that the command includes exit marker with marker_id
                 text_arg = send_keys_call[0][0][4]  # 5th argument is the text
-                assert "__EXIT__" in text_arg, "Should include exit marker"
+                assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker with marker_id"
                 assert "ls -la" in text_arg, "Should include original command"
 
     @pytest.mark.asyncio
@@ -139,7 +140,7 @@ class TestCommandValidation:
 
             with patch.object(terminal_bridge, "session_exists", return_value=True):
                 success = await terminal_bridge.send_keys(
-                    session_name="test-session", text="vim file.txt", append_exit_marker=True
+                    session_name="test-session", text="vim file.txt", append_exit_marker=True, marker_id="vimmrkr1"
                 )
                 assert success is True
 

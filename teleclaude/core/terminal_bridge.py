@@ -4,7 +4,9 @@ All functions are stateless and use config imported from teleclaude.config.
 """
 
 import asyncio
+import hashlib
 import logging
+import time
 from typing import List, Optional
 
 import psutil
@@ -168,6 +170,7 @@ async def send_keys(
     rows: int = 24,
     append_exit_marker: bool = True,
     send_enter: bool = True,
+    marker_id: Optional[str] = None,
 ) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
 
@@ -185,6 +188,7 @@ async def send_keys(
         append_exit_marker: If True, append exit code marker for command completion detection.
                            Set to False when sending input to a running process. (default: True)
         send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
+        marker_id: Unique identifier for exit marker (hash-based). Required when append_exit_marker=True.
 
     Returns: bool (success)
     """
@@ -212,10 +216,13 @@ async def send_keys(
             command_text = text
             logger.debug("Sending input WITHOUT exit marker to %s (running process)", session_name)
         else:
-            # Append exit marker for reliable completion detection
-            # Delta-based polling prevents false detection from old markers
-            command_text = f'{text}; echo "__EXIT__$?__"'
-            logger.debug("Sending command WITH exit marker to %s", session_name)
+            # Append exit marker with unique ID for reliable completion detection
+            # Hash-based marker_id ensures each command has unique marker (immune to old scrollback)
+            # Auto-generate marker_id if not provided (for backward compatibility)
+            if not marker_id:
+                marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
+            command_text = f'{text}; echo "__EXIT__{marker_id}__$?__"'
+            logger.debug("Sending command WITH exit marker %s to %s", marker_id, session_name)
 
         # Send command with marker (no pipes - don't leak file descriptors)
         cmd_text = ["tmux", "send-keys", "-t", session_name, command_text]

@@ -3,6 +3,7 @@
 import asyncio
 import atexit
 import fcntl
+import hashlib
 import json
 import logging
 import os
@@ -578,6 +579,11 @@ class TeleClaudeDaemon:
             except ValueError:
                 pass
 
+        # Generate unique marker_id for exit detection (hash of command + timestamp)
+        marker_id = None
+        if append_exit_marker:
+            marker_id = hashlib.md5(f"{command}:{time.time()}".encode()).hexdigest()[:8]
+
         # Send command
         success = await terminal_bridge.send_keys(
             session.tmux_session_name,
@@ -587,6 +593,7 @@ class TeleClaudeDaemon:
             cols=cols,
             rows=rows,
             append_exit_marker=append_exit_marker,
+            marker_id=marker_id,
         )
 
         if not success:
@@ -605,7 +612,7 @@ class TeleClaudeDaemon:
 
         # Start polling if exit marker was appended
         if append_exit_marker:
-            await self._poll_and_send_output(session_id, session.tmux_session_name)
+            await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id)
 
         logger.info("Executed command in session %s: %s", session_id[:8], command)
         return True
@@ -822,6 +829,11 @@ class TeleClaudeDaemon:
                 session_id[:8],
             )
 
+        # Generate unique marker_id for exit detection (if appending marker)
+        marker_id = None
+        if append_exit_marker:
+            marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
+
         # Send command to terminal (will create fresh session if needed)
         success = await terminal_bridge.send_keys(
             session.tmux_session_name,
@@ -831,6 +843,7 @@ class TeleClaudeDaemon:
             cols=cols,
             rows=rows,
             append_exit_marker=append_exit_marker,
+            marker_id=marker_id,
         )
 
         if not success:
@@ -847,7 +860,7 @@ class TeleClaudeDaemon:
         # Interactive apps (vim, claude) receive input without polling - they're already running
         if append_exit_marker:
             # Shell command with exit marker → start polling with exit detection
-            await self._poll_and_send_output(session_id, session.tmux_session_name, has_exit_marker=True)
+            await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id=marker_id)
             logger.debug("Started polling for shell command in session %s", session_id[:8])
         else:
             # Interactive app input → no polling needed, just send the input
@@ -902,14 +915,14 @@ class TeleClaudeDaemon:
             logger.error("Error cleaning up inactive sessions: %s", e)
 
     async def _poll_and_send_output(
-        self, session_id: str, tmux_session_name: str, has_exit_marker: bool = True
+        self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None
     ) -> None:
         """Wrapper around polling_coordinator.poll_and_send_output (creates background task).
 
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
-            has_exit_marker: Whether exit marker was appended (default: True)
+            marker_id: Unique marker ID for exit detection (None = no exit marker)
         """
         asyncio.create_task(
             polling_coordinator.poll_and_send_output(
@@ -918,7 +931,7 @@ class TeleClaudeDaemon:
                 output_poller=self.output_poller,
                 adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
                 get_output_file=self._get_output_file_path,
-                has_exit_marker=has_exit_marker,
+                marker_id=marker_id,
             )
         )
 

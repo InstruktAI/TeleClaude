@@ -2,6 +2,8 @@
 """Test full message flow including output polling."""
 
 import asyncio
+import hashlib
+import time
 
 import pytest
 
@@ -148,6 +150,10 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     # Create output file
     output_file = tmp_path / f"{session.session_id[:8]}.txt"
 
+    # Generate marker_id for both send_keys and polling
+    command = "echo 'Multi-computer test output'"
+    marker_id = hashlib.md5(f"{command}:{time.time()}".encode()).hexdigest()[:8]
+
     # Use REAL polling coordinator with daemon's adapter_client
     poll_task = asyncio.create_task(
         polling_coordinator.poll_and_send_output(
@@ -156,12 +162,12 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
             output_poller=OutputPoller(),
             adapter_client=daemon.client,  # Use daemon's adapter_client (has access to daemon.db)
             get_output_file=lambda sid: output_file,
+            marker_id=marker_id,
         )
     )
 
-    # Send command to tmux
-    command = "echo 'Multi-computer test output'"
-    await terminal_bridge.send_keys(session.tmux_session_name, command, append_exit_marker=True)
+    # Send command to tmux with same marker_id
+    await terminal_bridge.send_keys(session.tmux_session_name, command, append_exit_marker=True, marker_id=marker_id)
 
     # Wait for polling to complete
     try:

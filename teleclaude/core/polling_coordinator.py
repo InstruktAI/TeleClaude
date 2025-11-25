@@ -9,7 +9,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Optional
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
@@ -164,7 +164,7 @@ async def poll_and_send_output(
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
-    has_exit_marker: bool = True,
+    marker_id: Optional[str] = None,
 ) -> None:
     """Poll terminal output and send to all adapters for session.
 
@@ -177,7 +177,7 @@ async def poll_and_send_output(
         output_poller: Output poller instance
         adapter_client: AdapterClient instance (broadcasts to all adapters)
         get_output_file: Function to get output file path for session
-        has_exit_marker: Whether exit marker was appended (default: True)
+        marker_id: Unique marker ID for exit detection (None = no exit marker)
     """
     # GUARD: Prevent duplicate polling (check and add atomically before any await)
     if await db.is_polling(session_id):
@@ -202,7 +202,7 @@ async def poll_and_send_output(
 
     try:
         # Consume events from pure poller
-        async for event in output_poller.poll(session_id, tmux_session_name, output_file, has_exit_marker):
+        async for event in output_poller.poll(session_id, tmux_session_name, output_file, marker_id):
             if isinstance(event, OutputChanged):
                 # Output is already clean (poller writes filtered output to file)
                 clean_output = event.output
@@ -324,7 +324,7 @@ async def poll_and_send_output(
     finally:
         # Cleanup state
         await db.unmark_polling(session_id)
-        await db.clear_pending_deletions(session_id)
+        # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
         # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
         # Only cleared when session closes (/exit command)
 

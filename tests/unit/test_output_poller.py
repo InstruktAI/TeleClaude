@@ -25,24 +25,31 @@ class TestOutputPoller:
 
     def test_extract_exit_code_with_marker(self, poller):
         """Test exit code extraction when marker present."""
-        output = "some output\n__EXIT__0__\n"
-        exit_code = poller._extract_exit_code(output, has_exit_marker=True)
+        marker_id = "abc12345"
+        output = f"some output\n__EXIT__{marker_id}__0__\n"
+        exit_code = poller._extract_exit_code(output, marker_id=marker_id)
         assert exit_code == 0
 
-        output = "error output\n__EXIT__1__\n"
-        exit_code = poller._extract_exit_code(output, has_exit_marker=True)
+        output = f"error output\n__EXIT__{marker_id}__1__\n"
+        exit_code = poller._extract_exit_code(output, marker_id=marker_id)
         assert exit_code == 1
 
     def test_extract_exit_code_without_marker(self, poller):
-        """Test exit code extraction when no marker."""
-        output = "some output\n__EXIT__0__\n"
-        exit_code = poller._extract_exit_code(output, has_exit_marker=False)
+        """Test exit code extraction when no marker_id provided."""
+        output = "some output\n__EXIT__abc12345__0__\n"
+        exit_code = poller._extract_exit_code(output, marker_id=None)
         assert exit_code is None
 
     def test_extract_exit_code_no_match(self, poller):
-        """Test exit code when no marker in output."""
+        """Test exit code when marker_id doesn't match output."""
+        marker_id = "abc12345"
         output = "some output without marker\n"
-        exit_code = poller._extract_exit_code(output, has_exit_marker=True)
+        exit_code = poller._extract_exit_code(output, marker_id=marker_id)
+        assert exit_code is None
+
+        # Different marker_id in output - should not match
+        output = "some output\n__EXIT__different__0__\n"
+        exit_code = poller._extract_exit_code(output, marker_id=marker_id)
         assert exit_code is None
 
     def test_strip_claude_code_hooks_removes_hook_prefix_lines(self, poller):
@@ -119,7 +126,7 @@ class TestOutputPollerPoll:
 
                     # Collect events
                     events = []
-                    async for event in poller.poll("test-123", "test-tmux", output_file, has_exit_marker=False):
+                    async for event in poller.poll("test-123", "test-tmux", output_file, marker_id=None):
                         events.append(event)
 
                 # Verify ProcessExited event with no exit code
@@ -131,6 +138,7 @@ class TestOutputPollerPoll:
     async def test_exit_code_detection(self, poller, tmp_path):
         """Test poll detects exit code and stops."""
         output_file = tmp_path / "output.txt"
+        marker_id = "testmrkr"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -139,16 +147,16 @@ class TestOutputPollerPoll:
 
                 # Output appears immediately with exit marker
                 async def capture_mock(name):
-                    return "command output\n__EXIT__0__\n"
+                    return f"command output\n__EXIT__{marker_id}__0__\n"
 
                 mock_terminal.capture_pane = capture_mock
 
                 # Collect events
                 events = []
-                async for event in poller.poll("test-456", "test-tmux", output_file, has_exit_marker=True):
+                async for event in poller.poll("test-456", "test-tmux", output_file, marker_id=marker_id):
                     events.append(event)
 
-                # Fast completion sends OutputChanged first, then ProcessExited
+                # Sends OutputChanged first, then ProcessExited
                 assert len(events) == 2
                 assert isinstance(events[0], OutputChanged)
                 assert events[0].output == "command output\n"
@@ -160,6 +168,7 @@ class TestOutputPollerPoll:
     async def test_exit_code_detection_with_prompt_on_same_line(self, poller, tmp_path):
         """Test exit marker detection when marker and prompt are on same line (after SIGINT)."""
         output_file = tmp_path / "output.txt"
+        marker_id = "sigintmk"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -167,31 +176,29 @@ class TestOutputPollerPoll:
 
                 # Realistic output after SIGINT: marker followed by prompt on SAME line
                 async def capture_mock(name):
-                    return "^C\n__EXIT__130__➜  teleclaude git:(main) ✗ "
+                    return f"^C\n__EXIT__{marker_id}__130__➜  teleclaude git:(main) ✗ "
 
                 mock_terminal.capture_pane = capture_mock
 
                 # Collect events
                 events = []
-                async for event in poller.poll("test-sigint", "test-tmux", output_file, has_exit_marker=True):
+                async for event in poller.poll("test-sigint", "test-tmux", output_file, marker_id=marker_id):
                     events.append(event)
 
-                # Fast completion sends OutputChanged first, then ProcessExited
+                # Sends OutputChanged first, then ProcessExited
                 assert len(events) == 2
                 assert isinstance(events[0], OutputChanged)
                 assert isinstance(events[1], ProcessExited)
                 assert events[1].exit_code == 130  # SIGINT exit code
 
     async def test_exit_code_detection_with_repeating_headers(self, poller, tmp_path):
-        """Test exit marker detection when TUI has repeating headers (rfind() fix).
+        """Test exit marker detection when TUI has repeating headers.
 
-        This tests the bug where:
-        - accumulated has "HEADER content1\nHEADER content2"
-        - current has "HEADER content2\n__EXIT__0__"
-        - Old code used find() and found HEADER at beginning, calculated wrong overlap
-        - Fixed code uses rfind() to find LAST occurrence, correct overlap
+        With hash-based markers, each command has a unique marker_id,
+        so repeating headers don't affect detection at all.
         """
         output_file = tmp_path / "output.txt"
+        marker_id = "repthdr1"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -208,19 +215,16 @@ class TestOutputPollerPoll:
                         return "Sonnet 4.5 · Claude Max\n/Users/test/project\nInitial content\n"
                     else:
                         # Second poll: TUI cleared, shows header again + exit marker
-                        # This repeating header is the KEY - old code would find header at pos=0
-                        # and calculate wrong overlap, missing the exit marker
-                        return "Sonnet 4.5 · Claude Max\n/Users/test/project\n__EXIT__0__\n"
+                        return f"Sonnet 4.5 · Claude Max\n/Users/test/project\n__EXIT__{marker_id}__0__\n"
 
                 mock_terminal.capture_pane = capture_mock
 
                 # Collect events
                 events = []
-                async for event in poller.poll("test-rfind", "test-tmux", output_file, has_exit_marker=True):
+                async for event in poller.poll("test-rfind", "test-tmux", output_file, marker_id=marker_id):
                     events.append(event)
 
-                # CRITICAL: Should detect exit code despite repeating header
-                # Counter-based detection handles repeating headers correctly
+                # Should detect exit code
                 assert len(events) >= 1
                 assert isinstance(events[-1], ProcessExited)
                 assert events[-1].exit_code == 0
@@ -229,17 +233,15 @@ class TestOutputPollerPoll:
                 assert "__EXIT__" not in events[-1].final_output  # Marker stripped
                 assert "Sonnet 4.5 · Claude Max" in events[-1].final_output
 
-    async def test_exit_marker_counting_ignores_echo_command(self, poller, tmp_path):
-        r"""Test that we count ACTUAL markers (__EXIT__\d+__), not echo commands.
+    async def test_exit_marker_with_echo_command_visible(self, poller, tmp_path):
+        """Test that echo command in output doesn't affect marker detection.
 
-        CRITICAL BUG: Counting "__EXIT__" matches BOTH:
-        - echo "__EXIT__$?__" (the command itself)
-        - __EXIT__0__ (the actual marker)
-
-        This caused count to start at 1 (from echo), never increase, exit never detected.
-        Fix: Use regex to count only __EXIT__\d+__ pattern.
+        With hash-based markers, the echo command shows __EXIT__{marker_id}__$?__
+        while the actual marker is __EXIT__{marker_id}__0__. The exact pattern
+        match ensures only the resolved marker is detected.
         """
         output_file = tmp_path / "output.txt"
+        marker_id = "echomrkr"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -252,17 +254,17 @@ class TestOutputPollerPoll:
                     iteration += 1
 
                     if iteration == 1:
-                        # First poll: command with echo visible (no actual marker yet)
-                        return '$ ls -la; echo "__EXIT__$?__"\nfile1.txt\nfile2.txt\n'
+                        # First poll: command with echo visible (marker template, not resolved)
+                        return f'$ ls -la; echo "__EXIT__{marker_id}__$?__"\nfile1.txt\nfile2.txt\n'
                     else:
-                        # Second poll: echo + ACTUAL marker appears
-                        return '$ ls -la; echo "__EXIT__$?__"\nfile1.txt\nfile2.txt\n__EXIT__0__\n'
+                        # Second poll: echo + ACTUAL resolved marker appears
+                        return f'$ ls -la; echo "__EXIT__{marker_id}__$?__"\nfile1.txt\nfile2.txt\n__EXIT__{marker_id}__0__\n'
 
                 mock_terminal.capture_pane = capture_mock
 
                 # Collect events
                 events = []
-                async for event in poller.poll("test-count", "test-tmux", output_file, has_exit_marker=True):
+                async for event in poller.poll("test-count", "test-tmux", output_file, marker_id=marker_id):
                     events.append(event)
 
                 # Should detect exit on second poll (when ACTUAL marker appears)
@@ -271,12 +273,18 @@ class TestOutputPollerPoll:
                 assert events[-1].exit_code == 0
 
                 # Verify final output has markers stripped
-                assert "__EXIT__" not in events[-1].final_output
+                assert f"__EXIT__{marker_id}__0__" not in events[-1].final_output
                 assert "file1.txt" in events[-1].final_output
 
-    async def test_exit_marker_baseline_ignores_old_markers_in_scrollback(self, poller, tmp_path):
-        """Test that first poll establishes baseline, ignoring old markers in scrollback."""
+    async def test_old_markers_in_scrollback_ignored_due_to_different_marker_id(self, poller, tmp_path):
+        """Test that old markers from previous commands are ignored due to different marker_id.
+
+        With hash-based markers, each command has a unique marker_id. Old markers
+        in scrollback have different marker_ids, so they're naturally ignored.
+        """
         output_file = tmp_path / "output.txt"
+        current_marker_id = "newcmd01"
+        old_marker_id = "oldcmd99"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -296,9 +304,8 @@ class TestOutputPollerPoll:
                         iteration += 1
 
                         if iteration == 1:
-                            # First poll: old marker from PREVIOUS command in scrollback
-                            # Has >50 chars after marker to trigger old marker heuristic
-                            return "previous command\n__EXIT__0__\n$ new_command with lots of output\nline1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n"
+                            # First poll: OLD marker from PREVIOUS command in scrollback (different marker_id)
+                            return f"previous command\n__EXIT__{old_marker_id}__0__\n$ new_command with output\nline1\nline2\n"
                         else:
                             # Later polls: just current command output (no new marker yet)
                             return "$ new_command\nmore output\n"
@@ -306,23 +313,29 @@ class TestOutputPollerPoll:
                     mock_terminal.session_exists = session_exists_mock
                     mock_terminal.capture_pane = capture_mock
 
-                    # Collect events (should NOT exit on first poll due to old marker!)
+                    # Collect events - should NOT exit on first poll due to different marker_id
                     events = []
-                    async for event in poller.poll("test-baseline", "test-tmux", output_file, has_exit_marker=True):
+                    async for event in poller.poll(
+                        "test-baseline", "test-tmux", output_file, marker_id=current_marker_id
+                    ):
                         events.append(event)
 
-                    # Should NOT detect exit from marker (>50 chars after = old scrollback)
-                    # Output changes between polls, so we get OutputChanged events, then ProcessExited (session died)
-                    # With 1s update interval, may get multiple OutputChanged before session dies
+                    # Should NOT detect exit from old marker (different marker_id)
+                    # Session dies eventually, so we get ProcessExited with exit_code=None
                     assert len(events) >= 2
                     assert isinstance(events[-1], ProcessExited)
                     assert events[-1].exit_code is None  # Session death, not marker-based exit
                     # At least one OutputChanged before exit
                     assert any(isinstance(e, OutputChanged) for e in events)
 
-    async def test_exit_marker_screen_clear_resets_baseline(self, poller, tmp_path):
-        """Test that screen clear (count decrease) resets baseline."""
+    async def test_marker_detection_unaffected_by_screen_clear(self, poller, tmp_path):
+        """Test that screen clear doesn't affect marker detection.
+
+        With hash-based markers, we search for exact marker pattern.
+        Screen clears don't affect detection - marker either matches or doesn't.
+        """
         output_file = tmp_path / "output.txt"
+        marker_id = "clrmrkr1"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -335,23 +348,23 @@ class TestOutputPollerPoll:
                     iteration += 1
 
                     if iteration == 1:
-                        # Baseline: 1 old marker
-                        return "old_content\n__EXIT__0__\n"
+                        # First poll: some content (no marker yet)
+                        return "old_content\ncommand running\n"
                     elif iteration == 2:
-                        # Screen clear: markers gone (count=0)
+                        # Screen clear: content gone
                         return "TUI cleared screen\n"
                     else:
-                        # NEW marker appears
-                        return "TUI cleared screen\n__EXIT__0__\n"
+                        # Marker appears after screen clear
+                        return f"TUI cleared screen\n__EXIT__{marker_id}__0__\n"
 
                 mock_terminal.capture_pane = capture_mock
 
                 # Collect events
                 events = []
-                async for event in poller.poll("test-clear", "test-tmux", output_file, has_exit_marker=True):
+                async for event in poller.poll("test-clear", "test-tmux", output_file, marker_id=marker_id):
                     events.append(event)
 
-                # Should detect exit on 3rd poll (after baseline reset)
+                # Should detect exit when marker appears (screen clear doesn't matter)
                 assert len(events) >= 1
                 assert isinstance(events[-1], ProcessExited)
                 assert events[-1].exit_code == 0
@@ -389,7 +402,7 @@ class TestOutputPollerPoll:
 
                     # Collect events
                     events = []
-                    async for event in poller.poll("test-consistent", "test-tmux", output_file, has_exit_marker=False):
+                    async for event in poller.poll("test-consistent", "test-tmux", output_file, marker_id=None):
                         events.append(event)
 
                     # Find OutputChanged events
@@ -437,7 +450,7 @@ class TestOutputPollerPoll:
 
                     # Collect events
                     events = []
-                    async for event in poller.poll("test-789", "test-tmux", output_file, has_exit_marker=False):
+                    async for event in poller.poll("test-789", "test-tmux", output_file, marker_id=None):
                         events.append(event)
 
                 # Verify OutputChanged events (sent every 2 poll iterations)
@@ -475,7 +488,7 @@ class TestOutputPollerPoll:
 
                         # Collect events
                         events = []
-                        async for event in poller.poll("test-idle", "test-tmux", output_file, has_exit_marker=False):
+                        async for event in poller.poll("test-idle", "test-tmux", output_file, marker_id=None):
                             events.append(event)
 
                     # Find IdleDetected event
@@ -520,9 +533,7 @@ class TestOutputPollerPoll:
 
                         # Collect events
                         events = []
-                        async for event in poller.poll(
-                            "test-periodic", "test-tmux", output_file, has_exit_marker=False
-                        ):
+                        async for event in poller.poll("test-periodic", "test-tmux", output_file, marker_id=None):
                             events.append(event)
 
                     # Verify periodic OutputChanged events sent
@@ -545,7 +556,7 @@ class TestOutputPollerPoll:
 
                     # Should not raise exception, just log warning
                     events = []
-                    async for event in poller.poll("test-err", "test-tmux", output_file, has_exit_marker=False):
+                    async for event in poller.poll("test-err", "test-tmux", output_file, marker_id=None):
                         events.append(event)
 
                 # Verify ProcessExited event still yielded
@@ -581,24 +592,23 @@ class TestOutputPollerPoll:
                         async def get_current_directory_mock(name):
                             nonlocal directory_calls
                             directory_calls += 1
+                            if directory_calls == 1:
+                                return "/home/user/projects"
+                            return "/home/user/projects/teleclaude"
 
-                        if directory_calls == 1:
-                            return "/home/user/projects"
-                        return "/home/user/projects/teleclaude"
+                        mock_terminal.get_current_directory = get_current_directory_mock
 
-                    mock_terminal.get_current_directory = get_current_directory_mock
+                        # Collect events
+                        events = []
+                        async for event in poller.poll("test-dir", "test-tmux", output_file, marker_id=None):
+                            events.append(event)
 
-                    # Collect events
-                    events = []
-                    async for event in poller.poll("test-dir", "test-tmux", output_file, has_exit_marker=False):
-                        events.append(event)
-
-                    # Find DirectoryChanged event
-                    dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
-                    assert len(dir_events) >= 1
-                    assert dir_events[0].session_id == "test-dir"
-                    assert dir_events[0].old_path == "/home/user/projects"
-                    assert dir_events[0].new_path == "/home/user/projects/teleclaude"
+                        # Find DirectoryChanged event
+                        dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
+                        assert len(dir_events) >= 1
+                        assert dir_events[0].session_id == "test-dir"
+                        assert dir_events[0].old_path == "/home/user/projects"
+                        assert dir_events[0].new_path == "/home/user/projects/teleclaude"
 
     async def test_directory_check_disabled(self, poller, tmp_path):
         """Test poll skips directory checks when interval is 0."""
@@ -626,13 +636,11 @@ class TestOutputPollerPoll:
 
                         # Collect events
                         events = []
-                        async for event in poller.poll(
-                            "test-disabled", "test-tmux", output_file, has_exit_marker=False
-                        ):
+                        async for event in poller.poll("test-disabled", "test-tmux", output_file, marker_id=None):
                             events.append(event)
 
-                    # Verify no DirectoryChanged events
-                    dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
-                    assert len(dir_events) == 0
-                    # Verify get_current_directory never called
-                    mock_terminal.get_current_directory.assert_not_called()
+                        # Verify no DirectoryChanged events
+                        dir_events = [e for e in events if isinstance(e, DirectoryChanged)]
+                        assert len(dir_events) == 0
+                        # Verify get_current_directory never called
+                        mock_terminal.get_current_directory.assert_not_called()

@@ -70,7 +70,7 @@ class OutputPoller:
         session_id: str,
         tmux_session_name: str,
         output_file: Path,
-        has_exit_marker: bool,
+        marker_id: Optional[str],
     ) -> AsyncIterator[OutputEvent]:
         """Poll terminal output and yield events.
 
@@ -78,7 +78,7 @@ class OutputPoller:
             session_id: Session ID
             tmux_session_name: tmux session name
             output_file: Path to output file
-            has_exit_marker: Whether exit marker was appended
+            marker_id: Unique marker ID for exit detection (None = no exit marker)
 
         Yields:
             OutputEvent subclasses (OutputChanged, ProcessExited, IdleDetected, DirectoryChanged)
@@ -100,7 +100,6 @@ class OutputPoller:
         directory_check_ticks = 0
         poll_iteration = 0
         session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
-        exit_marker_count = None  # Baseline count (None = not established yet)
         output_sent_at_least_once = False  # Ensure user sees output before exit
         previous_output = ""  # Track previous clean output for change detection
 
@@ -109,7 +108,7 @@ class OutputPoller:
             await asyncio.sleep(1.0)
             started_at = time.time()
             last_output_changed_at = started_at
-            logger.debug("Polling started for %s with has_exit_marker=%s", session_id[:8], has_exit_marker)
+            logger.debug("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
 
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
@@ -206,91 +205,31 @@ class OutputPoller:
                     # Reset tick counter
                     ticks_since_last_update = 0
 
-                # Exit condition 2: Exit code detected (COUNT-BASED)
-                # Count ACTUAL exit markers (pattern __EXIT__\d+__), NOT echo commands
-                # Handles: baseline, screen clears, new markers
+                # Exit condition 2: Exit code detected (EXACT MARKER MATCHING)
+                # Search for unique marker pattern - no counting, no baseline needed
                 # Check AFTER periodic update so user always sees output before exit
-                if has_exit_marker:
-                    current_marker_count = len(re.findall(r"__EXIT__\d+__", current_with_markers))
+                if marker_id:
+                    marker_pattern = f"__EXIT__{marker_id}__(\\d+)__"
+                    marker_match = re.search(marker_pattern, current_with_markers)
 
-                    if exit_marker_count is None:
-                        # First poll - check for fast completion
-                        # Fast completion: marker exists and at/near end (<50 chars after)
-                        # If marker has >50 chars after = old scrollback, establish baseline instead
-                        if current_marker_count > 0:
-                            # Check content after LAST marker
-                            marker_match = re.search(r"__EXIT__\d+__", current_with_markers)
-                            if marker_match:
-                                content_after_marker = current_with_markers[marker_match.end() :]
-                                chars_after = len(content_after_marker.strip())
-
-                                if chars_after < 50:
-                                    # Fast completion - marker at/near end
-                                    exit_code = self._extract_exit_code(current_with_markers, has_exit_marker)
-                                    logger.info(
-                                        "Fast completion detected for %s (marker in first poll, %d chars after, exit_code=%d)",
-                                        session_id[:8],
-                                        chars_after,
-                                        exit_code,
-                                    )
-
-                                    # Send output before exit (current_cleaned already has markers stripped)
-                                    if not output_sent_at_least_once:
-                                        yield OutputChanged(
-                                            session_id=session_id,
-                                            output=current_cleaned,
-                                            started_at=started_at,
-                                            last_changed_at=last_output_changed_at,
-                                        )
-
-                                    # Send current cleaned output (what user sees in tmux)
-                                    yield ProcessExited(
-                                        session_id=session_id,
-                                        exit_code=exit_code,
-                                        final_output=current_cleaned,
-                                        started_at=started_at,
-                                    )
-                                    break
-
-                        # Not fast completion - establish baseline (may include old scrollback markers)
-                        exit_marker_count = current_marker_count
-                        logger.debug(
-                            "Exit marker baseline established for %s: %d markers",
-                            session_id[:8],
-                            current_marker_count,
-                        )
-                    elif current_marker_count < exit_marker_count:
-                        # Screen clear detected - markers disappeared from tmux pane
-                        # Reset baseline to current count
-                        logger.debug(
-                            "Screen clear detected for %s: marker count decreased %d -> %d (resetting baseline)",
-                            session_id[:8],
-                            exit_marker_count,
-                            current_marker_count,
-                        )
-                        exit_marker_count = current_marker_count
-                    elif current_marker_count > exit_marker_count:
-                        # NEW marker detected! Count increased from baseline
-                        exit_code = self._extract_exit_code(current_with_markers, has_exit_marker)
+                    if marker_match:
+                        exit_code = int(marker_match.group(1))
                         logger.info(
-                            "Exit code %d detected for %s (marker count: %d -> %d)",
+                            "Exit code %d detected for %s (marker_id=%s)",
                             exit_code,
                             session_id[:8],
-                            exit_marker_count,
-                            current_marker_count,
+                            marker_id,
                         )
 
-                        # ALWAYS send output before exit (ensures visibility)
+                        # Ensure output is sent before exit
                         if not output_sent_at_least_once:
                             yield OutputChanged(
                                 session_id=session_id,
-                                output=current_cleaned,  # Already has markers stripped
+                                output=current_cleaned,
                                 started_at=started_at,
                                 last_changed_at=last_output_changed_at,
                             )
-                            output_sent_at_least_once = True
 
-                        # Send current cleaned output (what user sees in tmux)
                         yield ProcessExited(
                             session_id=session_id,
                             exit_code=exit_code,
@@ -299,15 +238,15 @@ class OutputPoller:
                         )
                         break
 
-                    # Apply exponential backoff when idle: 2s -> 4s -> 6s -> 8s -> 10s
-                    if idle_ticks >= current_update_interval:
-                        current_update_interval = min(current_update_interval + 2, 10)
-                        logger.debug(
-                            "No activity for %ds, increasing update interval to %ds for %s",
-                            idle_ticks,
-                            current_update_interval,
-                            session_id[:8],
-                        )
+                # Apply exponential backoff when idle: 2s -> 4s -> 6s -> 8s -> 10s
+                if idle_ticks >= current_update_interval:
+                    current_update_interval = min(current_update_interval + 2, 10)
+                    logger.debug(
+                        "No activity for %ds, increasing update interval to %ds for %s",
+                        idle_ticks,
+                        current_update_interval,
+                        session_id[:8],
+                    )
 
                 # Increment idle counter when no new content
                 if not output_changed:
@@ -397,24 +336,24 @@ class OutputPoller:
 
         return output
 
-    def _extract_exit_code(self, output: str, has_exit_marker: bool) -> Optional[int]:
-        """Extract exit code from FULL output using regex.
+    def _extract_exit_code(self, output: str, marker_id: Optional[str]) -> Optional[int]:
+        """Extract exit code from output using exact marker matching.
 
         Args:
-            output: Terminal output (FULL, not just last N lines)
-            has_exit_marker: Whether exit marker was appended
+            output: Terminal output
+            marker_id: Unique marker ID (None = no exit marker)
 
         Returns:
-            Exit code from LAST marker in output, or None
+            Exit code from matching marker, or None
         """
-        if not has_exit_marker:
+        if not marker_id:
             return None
 
-        # Find ALL markers in full output using regex
-        # Pattern: __EXIT__\d+__ (actual marker with exit code)
-        # Returns LAST marker (most recent command)
-        matches = re.findall(r"__EXIT__(\d+)__", output)
-        if matches:
-            return int(matches[-1])  # Return LAST match (most recent)
+        # Search for exact marker with marker_id
+        # Pattern: __EXIT__{marker_id}__\d+__
+        pattern = f"__EXIT__{marker_id}__(\\d+)__"
+        match = re.search(pattern, output)
+        if match:
+            return int(match.group(1))
 
         return None
