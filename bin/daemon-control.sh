@@ -52,6 +52,34 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Wait for daemon to come up with retries
+# Args: max_attempts (default 10), old_pid (optional - wait for this PID to die first)
+# Returns 0 if daemon started with new PID, 1 if timeout
+wait_for_daemon() {
+    local max_attempts=${1:-10}
+    local old_pid=${2:-""}
+    local attempt=1
+
+    while [ $attempt -le $max_attempts ]; do
+        if [ -f "$PID_FILE" ]; then
+            PID=$(cat "$PID_FILE")
+            # If old_pid specified, skip if PID file still has old value
+            if [ -n "$old_pid" ] && [ "$PID" = "$old_pid" ]; then
+                : # continue waiting for new PID
+            elif ps -p "$PID" > /dev/null 2>&1; then
+                return 0
+            fi
+        fi
+
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "Waiting for daemon to start (attempt $attempt/$max_attempts)..."
+            sleep 1
+        fi
+        attempt=$((attempt + 1))
+    done
+    return 1
+}
+
 # Check if service is loaded/enabled
 is_service_loaded() {
     if [ "$PLATFORM" = "macos" ]; then
@@ -77,32 +105,27 @@ start_daemon() {
         if ! is_service_loaded; then
             log_info "Loading launchd service..."
             launchctl load "$SERVICE_PATH"
-            sleep 2
         else
             log_info "Service already loaded, kickstarting..."
             launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
-            sleep 2
         fi
     else
         # Linux: systemd
         log_info "Starting systemd service..."
         sudo systemctl start "$SERVICE_LABEL"
-        sleep 2
     fi
 
-    # Verify it's running
-    if [ -f "$PID_FILE" ]; then
+    # Wait for daemon to come up (up to 10 seconds)
+    if wait_for_daemon 10; then
         PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            log_info "Daemon started successfully (PID: $PID)"
-            log_info "Service manager will auto-restart if killed"
-            return 0
-        fi
+        log_info "Daemon started successfully (PID: $PID)"
+        log_info "Service manager will auto-restart if killed"
+        return 0
     fi
 
-    # If not running, check why
+    # If not running after retries, check why
     if is_service_loaded; then
-        log_error "Service loaded but daemon not running"
+        log_error "Service loaded but daemon not running after 10 seconds"
         if [ "$PLATFORM" = "macos" ]; then
             log_error "Check status: launchctl list | grep teleclaude"
         else
@@ -239,34 +262,28 @@ except Exception:
 restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
-    # Track exit code for return
-    EXIT_CODE=0
-
-    # Kill current process, service manager will auto-restart it
+    OLD_PID=""
     if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            log_info "Killing daemon process (PID: $PID)..."
-            kill "$PID" 2>/dev/null || true
-            sleep 3
-
-            # Verify service manager restarted it
-            if [ -f "$PID_FILE" ]; then
-                NEW_PID=$(cat "$PID_FILE")
-                if [ "$NEW_PID" != "$PID" ]; then
-                    log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
-                    EXIT_CODE=0
-                else
-                    EXIT_CODE=1
-                fi
-            else
-                EXIT_CODE=1
-            fi
-        fi
+        OLD_PID=$(cat "$PID_FILE")
     fi
 
-    # If auto-restart didn't work, use service manager restart
-    if [ "$EXIT_CODE" -ne 0 ]; then
+    # Kill current process, service manager will auto-restart it
+    if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then
+        log_info "Killing daemon process (PID: $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+    fi
+
+    # Wait for daemon to come up with new PID (up to 10 seconds)
+    if wait_for_daemon 10 "$OLD_PID"; then
+        NEW_PID=$(cat "$PID_FILE")
+        if [ "$NEW_PID" != "$OLD_PID" ]; then
+            log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
+        else
+            log_info "Daemon restarted successfully (PID: $NEW_PID)"
+        fi
+        EXIT_CODE=0
+    else
+        # Fallback: use service manager restart
         log_warn "Auto-restart didn't work, using service manager restart..."
 
         if [ "$PLATFORM" = "macos" ]; then
@@ -274,21 +291,13 @@ restart_daemon() {
         else
             sudo systemctl restart "$SERVICE_LABEL"
         fi
-        sleep 2
 
-        # Verify
-        err="Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
-        if [ -f "$PID_FILE" ]; then
+        if wait_for_daemon 10; then
             PID=$(cat "$PID_FILE")
-            if ps -p "$PID" > /dev/null 2>&1; then
-                log_info "Daemon restarted successfully (PID: $PID)"
-                EXIT_CODE=0
-            else
-                log_error $err
-                EXIT_CODE=1
-            fi
+            log_info "Daemon restarted successfully (PID: $PID)"
+            EXIT_CODE=0
         else
-            log_error $err
+            log_error "Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
             EXIT_CODE=1
         fi
     fi
@@ -321,34 +330,24 @@ kill_daemon() {
         return 1
     fi
 
-    PID=$(cat "$PID_FILE")
-    if ! ps -p "$PID" > /dev/null 2>&1; then
-        log_warn "Process $PID not running"
+    OLD_PID=$(cat "$PID_FILE")
+    if ! ps -p "$OLD_PID" > /dev/null 2>&1; then
+        log_warn "Process $OLD_PID not running"
         return 1
     fi
 
-    log_info "Killing daemon process (PID: $PID)..."
-    kill "$PID" 2>/dev/null || true
-    sleep 3
+    log_info "Killing daemon process (PID: $OLD_PID)..."
+    kill "$OLD_PID" 2>/dev/null || true
 
-    # Verify service manager restarted it
-    if [ -f "$PID_FILE" ]; then
+    # Wait for service manager to auto-restart (up to 10 seconds)
+    if wait_for_daemon 10 "$OLD_PID"; then
         NEW_PID=$(cat "$PID_FILE")
-        if [ "$NEW_PID" != "$PID" ]; then
+        if [ "$NEW_PID" != "$OLD_PID" ]; then
             log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
-            return 0
-        fi
-    fi
-
-    log_warn "Service manager hasn't restarted yet, give it a moment..."
-    sleep 2
-
-    if [ -f "$PID_FILE" ]; then
-        NEW_PID=$(cat "$PID_FILE")
-        if ps -p "$NEW_PID" > /dev/null 2>&1; then
+        else
             log_info "Daemon restarted (PID: $NEW_PID)"
-            return 0
         fi
+        return 0
     fi
 
     log_error "Service manager didn't auto-restart. Check: make status"
