@@ -16,6 +16,14 @@ jobs:
         with:
           python-version: 3.11
 
+      - name: Install tmux
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Setup test environment
+        run: |
+          # Copy test .env to project root for CI
+          cp tests/integration/.env .env
+
       - name: Create venv
         run: python -m venv .venv
 
@@ -30,3 +38,5 @@ jobs:
           bin/format.sh
           bin/lint.sh
           bin/test.sh
+        env:
+          TELECLAUDE_CONFIG_PATH: tests/integration/config.yml

@@ -132,14 +132,23 @@ def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -
 
     # File handler (if specified) - ALWAYS use this
     if log_file:
-        # Ensure log directory exists
-        log_dir = os.path.dirname(log_file)
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
+        try:
+            # Ensure log directory exists
+            log_dir = os.path.dirname(log_file)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
 
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setFormatter(file_formatter)
-        handlers.append(file_handler)
+            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            file_handler.setFormatter(file_formatter)
+            handlers.append(file_handler)
+        except (PermissionError, OSError) as e:
+            # Fall back to /tmp/ if configured log file is not writable (e.g., CI environments)
+            fallback_log = f"/tmp/teleclaude-{os.getpid()}.log"
+            file_handler = logging.FileHandler(fallback_log, encoding="utf-8")
+            file_handler.setFormatter(file_formatter)
+            handlers.append(file_handler)
+            # Log warning about fallback (will be written to fallback file)
+            print(f"Warning: Could not write to {log_file}: {e}. Using fallback: {fallback_log}", file=sys.stderr)
 
     # Console handler - only if stdout is a TTY (interactive terminal)
     # This avoids duplicates when launchd/nohup redirects stdout to the log file

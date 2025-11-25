@@ -328,13 +328,13 @@ class TeleClaudeMCPServer:
         async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent]:
             """Handle tool calls."""
             if name == "teleclaude__list_computers":
-                # Extract optional filter
-                computer_names_obj = arguments.get("computer_names") if arguments else None
-                computer_names = None
-                if computer_names_obj and isinstance(computer_names_obj, list):
-                    computer_names = [str(c) for c in computer_names_obj]
+                # Extract optional filter (currently unused by implementation)
+                # computer_names_obj = arguments.get("computer_names") if arguments else None
+                # computer_names = None
+                # if computer_names_obj and isinstance(computer_names_obj, list):
+                #     computer_names = [str(c) for c in computer_names_obj]
 
-                computers = await self.teleclaude__list_computers(computer_names)
+                computers = await self.teleclaude__list_computers()
                 return [TextContent(type="text", text=json.dumps(computers, default=str, indent=2))]
             if name == "teleclaude__list_projects":
                 computer = str(arguments.get("computer", "")) if arguments else ""
@@ -499,25 +499,16 @@ class TeleClaudeMCPServer:
             await writer.wait_closed()
             logger.info("MCP client disconnected")
 
-    async def teleclaude__list_computers(self, computer_names: Optional[list[str]] = None) -> list[dict[str, object]]:
-        """List available computers from all adapters.
-
-        Args:
-            computer_names: Optional filter by computer names
+    async def teleclaude__list_computers(self) -> list[dict[str, object]]:
+        """List available computers.
 
         Returns:
             List of online computers with their info (role, system_stats, sessions, etc.)
         """
-        result: list[dict[str, object]] = await self.client.discover_peers()
-
-        # Apply filter if provided
-        if computer_names:
-            result = [c for c in result if c.get("name") in computer_names]
-
-        return result
+        return await self.client.discover_peers()
 
     async def teleclaude__list_projects(self, computer: str) -> list[dict[str, str]]:
-        """List available project directories on target computer with metadata.
+        """List available projects on target computer with metadata.
 
         Args:
             computer: Target computer name
@@ -560,7 +551,7 @@ class TeleClaudeMCPServer:
         project_dir: str,
         continue_last_session: bool = False,
     ) -> dict[str, object]:
-        """Start new Claude Code session on remote computer.
+        """Start new Claude Code session on remote computer in a specific project.
 
         Args:
             computer: Target computer name
@@ -688,7 +679,7 @@ class TeleClaudeMCPServer:
     async def teleclaude__send_message(
         self, session_id: str, message: str, interest_window_seconds: float = 15
     ) -> AsyncIterator[str]:
-        """Send message to existing AI-to-AI session and stream response during interest window.
+        """Send message to claude in an existing AI-to-AI session and stream response during interest window.
 
         Args:
             session_id: Session ID from teleclaude__start_session

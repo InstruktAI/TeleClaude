@@ -289,9 +289,10 @@ def _build_config(raw: dict[str, object]) -> Config:
     )
 
 
-# Load config.yml from project root (falls back to defaults if not found)
+# Load config.yml from project root or TELECLAUDE_CONFIG_PATH env var (falls back to defaults if not found)
 _project_root = Path(__file__).parent.parent
-_config_path = _project_root / "config.yml"
+_config_path_env = os.getenv("TELECLAUDE_CONFIG_PATH")
+_config_path = Path(_config_path_env) if _config_path_env else _project_root / "config.yml"
 
 try:
     with open(_config_path, encoding="utf-8") as f:
