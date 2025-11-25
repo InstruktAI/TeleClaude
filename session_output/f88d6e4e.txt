@@ -1,0 +1,23 @@
+cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [03:56:35] [~/apps/TeleClaude] 
+-> % cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [03:56:35] [~/apps/TeleClaude] [main *]
+-> % claude --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.0.36
+▝▜█████▛▘  Sonnet 4.5 · Claude API
+  ▘▘ ▝▝    /home/morriz/apps/TeleClaude
+
+────────────────────────────────────────────────────────────────────────────────
+> Try "how do I log an error?"
+────────────────────────────────────────────────────────────────────────────────
+   cwd: /home/morriz/apps/TeleClaude ...
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+
+
+
+
+

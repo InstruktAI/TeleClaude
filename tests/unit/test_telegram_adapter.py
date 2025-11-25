@@ -19,8 +19,8 @@ def mock_full_config():
             "name": "test_computer",
             "default_working_dir": "/teleclaude",
             "trusted_dirs": [
-                TrustedDir(name="tmp", desc="temp files", location="/tmp"),
-                TrustedDir(name="user", desc="user home", location="/home/user"),
+                TrustedDir(name="tmp", desc="temp files", path="/tmp"),
+                TrustedDir(name="user", desc="user home", path="/home/user"),
             ],
         },
         "telegram": {"enabled": True, "trusted_bots": ["teleclaude_bot1", "teleclaude_bot2"]},
@@ -53,7 +53,7 @@ def telegram_adapter(mock_full_config, mock_env, mock_adapter_client):
         mock_config.computer.trusted_dirs = mock_full_config["computer"]["trusted_dirs"]
         # Mock get_all_trusted_dirs to return teleclaude folder + trusted_dirs
         mock_config.computer.get_all_trusted_dirs.return_value = [
-            TrustedDir(name="teleclaude", desc="TeleClaude folder", location="/teleclaude")
+            TrustedDir(name="teleclaude", desc="TeleClaude folder", path="/teleclaude")
         ] + mock_full_config["computer"]["trusted_dirs"]
         mock_config.telegram.enabled = mock_full_config["telegram"]["enabled"]
         return TelegramAdapter(mock_adapter_client)

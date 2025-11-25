@@ -72,11 +72,11 @@ def telegram_adapter(mock_adapter_client, monkeypatch):
     with patch("teleclaude.adapters.telegram_adapter.config") as mock_config:
         mock_config.computer.name = "test_computer"
         mock_config.computer.default_working_dir = "/teleclaude"
-        mock_config.computer.trusted_dirs = [TrustedDir(name="tmp", desc="temp files", location="/tmp")]
+        mock_config.computer.trusted_dirs = [TrustedDir(name="tmp", desc="temp files", path="/tmp")]
         # Mock get_all_trusted_dirs to return teleclaude folder + trusted_dirs
         mock_config.computer.get_all_trusted_dirs.return_value = [
-            TrustedDir(name="teleclaude", desc="TeleClaude folder", location="/teleclaude"),
-            TrustedDir(name="tmp", desc="temp files", location="/tmp"),
+            TrustedDir(name="teleclaude", desc="TeleClaude folder", path="/teleclaude"),
+            TrustedDir(name="tmp", desc="temp files", path="/tmp"),
         ]
 
         adapter = TelegramAdapter(mock_adapter_client)

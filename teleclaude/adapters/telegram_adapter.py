@@ -803,7 +803,7 @@ class TelegramAdapter(UiAdapter):
         # Filter to only existing directories
         dirs_data = []
         for trusted_dir in all_trusted_dirs:
-            expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.location))
+            expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.path))
             if Path(expanded_location).exists():
                 dirs_data.append(
                     {
@@ -1154,7 +1154,9 @@ class TelegramAdapter(UiAdapter):
 /resize wide - 200x80 (ultrawide)
 
 Current size: {}
-            """.format(session.terminal_size or "80x24")
+            """.format(
+                session.terminal_size or "80x24"
+            )
             await update.effective_message.reply_text(presets_text, parse_mode="Markdown")
             return
 
@@ -1217,7 +1219,7 @@ Current size: {}
         for trusted_dir in self.trusted_dirs:
             # Format button text: "name - desc" or just "name" if no desc
             button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
-            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"cd:{trusted_dir.location}")])
+            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"cd:{trusted_dir.path}")])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.effective_message.reply_text(

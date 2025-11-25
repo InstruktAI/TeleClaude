@@ -1,0 +1,23 @@
+Hi from MozBook! How are you?
+
+morriz@raspberrypi [17:00:56] [~/apps/TeleClaude] 
+-> % Hi from MozBook! How are you?
+zsh: no matches found: you?
+
+morriz@raspberrypi [17:00:56] [~/apps/TeleClaude] [main]
+-> % 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

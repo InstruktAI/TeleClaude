@@ -1,0 +1,23 @@
+cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [03:23:34] [~/apps/TeleClaude] 
+-> % cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [03:23:34] [~/apps/TeleClaude] [main]
+-> % claude --dangerously-skip-permissions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

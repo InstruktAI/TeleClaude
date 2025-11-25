@@ -18,23 +18,23 @@ class TestParseTrustedDirs:
         # Check first entry
         assert result[0].name == "projects"
         assert result[0].desc == ""
-        assert result[0].location == "/home/user/projects"
+        assert result[0].path == "/home/user/projects"
 
         # Check second entry
         assert result[1].name == "workspace"
         assert result[1].desc == ""
-        assert result[1].location == "/tmp/workspace"
+        assert result[1].path == "/tmp/workspace"
 
         # Check third entry (trailing slash should be stripped for name)
         assert result[2].name == "data"
         assert result[2].desc == ""
-        assert result[2].location == "/var/data"
+        assert result[2].path == "/var/data"
 
     def test_parse_new_format_dicts(self):
         """Test parsing new format (list of dicts) works correctly."""
         raw_dirs = [
-            {"name": "development", "desc": "dev projects", "location": "/home/user/dev"},
-            {"name": "documents", "desc": "personal docs", "location": "/home/user/docs"},
+            {"name": "development", "desc": "dev projects", "path": "/home/user/dev"},
+            {"name": "documents", "desc": "personal docs", "path": "/home/user/docs"},
         ]
 
         result = _parse_trusted_dirs(raw_dirs)
@@ -43,16 +43,16 @@ class TestParseTrustedDirs:
 
         assert result[0].name == "development"
         assert result[0].desc == "dev projects"
-        assert result[0].location == "/home/user/dev"
+        assert result[0].path == "/home/user/dev"
 
         assert result[1].name == "documents"
         assert result[1].desc == "personal docs"
-        assert result[1].location == "/home/user/docs"
+        assert result[1].path == "/home/user/docs"
 
     def test_parse_new_format_with_missing_desc(self):
         """Test parsing new format with missing desc defaults to empty string."""
         raw_dirs = [
-            {"name": "myproject", "location": "/home/user/project"},
+            {"name": "myproject", "path": "/home/user/project"},
         ]
 
         result = _parse_trusted_dirs(raw_dirs)
@@ -60,13 +60,13 @@ class TestParseTrustedDirs:
         assert len(result) == 1
         assert result[0].name == "myproject"
         assert result[0].desc == ""
-        assert result[0].location == "/home/user/project"
+        assert result[0].path == "/home/user/project"
 
     def test_parse_mixed_format(self):
         """Test parsing mixed old and new formats (edge case)."""
         raw_dirs = [
             "/home/user/old",
-            {"name": "new", "desc": "new format", "location": "/home/user/new"},
+            {"name": "new", "desc": "new format", "path": "/home/user/new"},
         ]
 
         result = _parse_trusted_dirs(raw_dirs)
@@ -76,12 +76,12 @@ class TestParseTrustedDirs:
         # Old format entry
         assert result[0].name == "old"
         assert result[0].desc == ""
-        assert result[0].location == "/home/user/old"
+        assert result[0].path == "/home/user/old"
 
         # New format entry
         assert result[1].name == "new"
         assert result[1].desc == "new format"
-        assert result[1].location == "/home/user/new"
+        assert result[1].path == "/home/user/new"
 
     def test_parse_empty_list(self):
         """Test parsing empty list returns empty list."""
@@ -112,7 +112,7 @@ class TestGetAllTrustedDirs:
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[
-                TrustedDir(name="projects", desc="my projects", location="/home/projects"),
+                TrustedDir(name="projects", desc="my projects", path="/home/projects"),
             ],
             host=None,
         )
@@ -122,10 +122,10 @@ class TestGetAllTrustedDirs:
         assert len(result) == 2
         assert result[0].name == "teleclaude"
         assert result[0].desc == "TeleClaude folder"
-        assert result[0].location == "/home/teleclaude"
+        assert result[0].path == "/home/teleclaude"
 
-    def test_deduplicates_by_location(self):
-        """Test that duplicate locations are removed."""
+    def test_deduplicates_by_path(self):
+        """Test that duplicate paths are removed."""
         config = ComputerConfig(
             name="test",
             role="dev",
@@ -134,8 +134,8 @@ class TestGetAllTrustedDirs:
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[
-                TrustedDir(name="teleclaude_dup", desc="duplicate", location="/home/teleclaude"),
-                TrustedDir(name="projects", desc="my projects", location="/home/projects"),
+                TrustedDir(name="teleclaude_dup", desc="duplicate", path="/home/teleclaude"),
+                TrustedDir(name="projects", desc="my projects", path="/home/projects"),
             ],
             host=None,
         )
@@ -144,8 +144,8 @@ class TestGetAllTrustedDirs:
 
         # Should only have 2 items (default_working_dir + projects, duplicate removed)
         assert len(result) == 2
-        assert result[0].location == "/home/teleclaude"
-        assert result[1].location == "/home/projects"
+        assert result[0].path == "/home/teleclaude"
+        assert result[1].path == "/home/projects"
 
     def test_empty_trusted_dirs(self):
         """Test with empty trusted_dirs list."""
@@ -165,7 +165,7 @@ class TestGetAllTrustedDirs:
         assert len(result) == 1
         assert result[0].name == "teleclaude"
         assert result[0].desc == "TeleClaude folder"
-        assert result[0].location == "/home/teleclaude"
+        assert result[0].path == "/home/teleclaude"
 
     def test_preserves_order(self):
         """Test that order is preserved (default_working_dir first, then trusted_dirs)."""
@@ -177,9 +177,9 @@ class TestGetAllTrustedDirs:
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[
-                TrustedDir(name="a", desc="first", location="/a"),
-                TrustedDir(name="b", desc="second", location="/b"),
-                TrustedDir(name="c", desc="third", location="/c"),
+                TrustedDir(name="a", desc="first", path="/a"),
+                TrustedDir(name="b", desc="second", path="/b"),
+                TrustedDir(name="c", desc="third", path="/c"),
             ],
             host=None,
         )
@@ -187,7 +187,7 @@ class TestGetAllTrustedDirs:
         result = config.get_all_trusted_dirs()
 
         assert len(result) == 4
-        assert result[0].location == "/home/teleclaude"
-        assert result[1].location == "/a"
-        assert result[2].location == "/b"
-        assert result[3].location == "/c"
+        assert result[0].path == "/home/teleclaude"
+        assert result[1].path == "/a"
+        assert result[2].path == "/b"
+        assert result[3].path == "/c"

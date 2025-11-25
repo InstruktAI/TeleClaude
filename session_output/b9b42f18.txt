@@ -1,0 +1,39 @@
+cd /home/morriz/srv
+
+morriz@raspberrypi [15:37:41] [~/apps/TeleClaude] 
+-> % cd /home/morriz/srv
+
+morriz@raspberrypi [15:37:41] [~/srv] [main]
+-> % 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

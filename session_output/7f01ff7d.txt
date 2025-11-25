@@ -1,0 +1,39 @@
+cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [03:59:40] [~/apps/TeleClaude] 
+-> % cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [03:59:40] [~/apps/TeleClaude] [main *]
+-> % claude --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.0.36
+▝▜█████▛▘  Sonnet 4.5 · Claude API
+  ▘▘ ▝▝    /home/morriz/apps/TeleClaude
+
+> hello with debug enabled 
+
+● I'll help you run a command with debug logging enabled. Let me check the
+  current daemon configuration and restart it with debug mode.
+
+● Read(config.yml)
+  ⎿  Read 81 lines
+
+● Good! I can see that debug logging is already enabled in the config
+  (log_level: DEBUG on line 13 and logging.level: DEBUG on line 48). Now let
+   me restart the daemon to ensure it's running with debug mode and then
+  monitor the logs:
+
+● Bash(make restart)
+  ⎿  Running…
+
+● Bash(sleep 2 && make status)
+  ⎿  Waiting…
+
+✶ Envisioning… (esc to interrupt)
+
+────────────────────────────────────────────────────────────────────────────────
+>  
+────────────────────────────────────────────────────────────────────────────────
+   cwd: /home/morriz/apps/TeleClaude ...        Thinking off (tab to toggle)
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+

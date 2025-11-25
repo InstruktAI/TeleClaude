@@ -24,12 +24,12 @@ class TrustedDir:
     Attributes:
         name: Human-readable identifier (e.g., "development", "documents", "projects")
         desc: Purpose description for AI context (e.g., "dev projects", "personal docs"). Can be empty.
-        location: Absolute file system path to the directory
+        path: Absolute file system path to the directory
     """
 
     name: str
     desc: str
-    location: str
+    path: str
 
 
 @dataclass
@@ -72,16 +72,16 @@ class ComputerConfig:
             TrustedDir(
                 name="teleclaude",
                 desc="TeleClaude folder",
-                location=self.default_working_dir,
+                path=self.default_working_dir,
             )
         ]
 
-        # Add trusted_dirs, skipping duplicates (compare by location)
-        seen_locations = {self.default_working_dir}
+        # Add trusted_dirs, skipping duplicates (compare by path)
+        seen_paths = {self.default_working_dir}
         for trusted_dir in self.trusted_dirs:
-            if trusted_dir.location not in seen_locations:
+            if trusted_dir.path not in seen_paths:
                 all_dirs.append(trusted_dir)
-                seen_locations.add(trusted_dir.location)
+                seen_paths.add(trusted_dir.path)
 
         return all_dirs
 
@@ -218,16 +218,16 @@ def _parse_trusted_dirs(raw_dirs: list[str | dict[str, str]]) -> list[TrustedDir
                 TrustedDir(
                     name=os.path.basename(item.rstrip("/")),
                     desc="",
-                    location=item,
+                    path=item,
                 )
             )
         elif isinstance(item, dict):
-            # New format: dict with name, desc, location
+            # New format: dict with name, desc, path
             trusted_dirs.append(
                 TrustedDir(
                     name=str(item["name"]),
                     desc=str(item.get("desc", "")),
-                    location=str(item["location"]),
+                    path=str(item["path"]),
                 )
             )
         else:

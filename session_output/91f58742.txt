@@ -1,0 +1,258 @@
+cd /home/morriz/apps/TeleClaude
+claude --dangerously-skip-permissions
+
+morriz@raspberrypi [16:19:56] [~/apps/TeleClaude] 
+-> % cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [16:19:56] [~/apps/TeleClaude] 
+-> % claude --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.0.36
+▝▜█████▛▘  Sonnet 4.5 · Claude API
+  ▘▘ ▝▝    /home/morriz/apps/TeleClaude
+
+> hey, howsit going? can you go online and do research how to connect slack 
+into our stack? 
+
+● Hey! I'm doing well. I'll research how to integrate Slack into the
+  TeleClaude stack for you.
+
+● Web Search("Slack Bot API Python integration architecture 2025")
+  ⎿  Did 1 search in 17s                                                   
+
+● Web Search("slack-bolt Python async adapter pattern best practices")
+  ⎿  Did 1 search in 15s                                                   
+
+● Web Search("Slack API channels topics threading Python bot 2025")
+  ⎿  Did 1 search in 19s                                                   
+
+● Great! I've gathered information on Slack integration. Let me look at the
+  current TeleClaude architecture to understand how to map Slack concepts to
+   your existing adapter pattern.
+
+● Read(teleclaude/adapters/telegram_adapter.py)
+  ⎿  Read 1793 lines
+
+● Read(teleclaude/adapters/base_adapter.py)
+  ⎿  Read 247 lines
+
+● Based on my research and understanding of the TeleClaude architecture,
+  here's a comprehensive integration plan for Slack:
+
+  Slack Integration Strategy for TeleClaude
+
+  Architecture Mapping
+
+  Slack concepts → TeleClaude patterns:
+  - Slack Channels → TeleClaude topics/sessions (like Telegram forum topics)
+  - Slack Threads → Session-specific conversations (like Telegram message
+  threads)
+  - Slack Bot → SlackAdapter (like TelegramAdapter)
+  - Bot Events API → Event-driven message handling (like Telegram's update
+  handlers)
+
+  Key Integration Points
+
+  1. Slack SDK & Framework
+
+  - Use slack-bolt (modern async framework) instead of legacy slackclient
+  - Bolt provides async support compatible with your asyncio event loop
+  - Built-in adapters for FastAPI/AIOHTTP (you already use FastAPI for REST
+  API)
+
+  2. Message Threading Pattern
+
+  Slack's threading is similar to Telegram's topics:
+  # Post to channel
+  client.chat_postMessage(channel="C123456", text="Output")
+
+  # Reply in thread (session-specific)
+  client.chat_postMessage(
+      channel="C123456",
+      thread_ts="1476746830.000003",  # Parent message timestamp
+      text="Command output"
+  )
+
+  This maps perfectly to your session model where each session has a
+  "channel" (thread_ts).
+
+  3. Command Registration
+
+  Slack supports slash commands similar to Telegram:
+  - /new_session → Creates new thread
+  - /cancel → Send CTRL+C
+  - /list_sessions → Shows active sessions
+
+  Slack commands are registered via App Config (not API calls), so the
+  "master bot pattern" isn't needed.
+
+  4. Event Handling Architecture
+
+  Your existing observer pattern fits perfectly:
+  class SlackAdapter(UiAdapter):
+      async def start(self):
+          # Initialize Bolt app
+          self.app = AsyncApp(token=bot_token)
+
+          # Register command handlers
+          self.app.command("/new_session")(self._handle_new_session)
+
+          # Register message handler
+          self.app.message("")(self._handle_message)
+
+          # Start event loop (Socket Mode or HTTP)
+          await self.handler.start()
+
+  5. Socket Mode vs Webhooks
+
+  Two deployment options:
+  - Socket Mode: Long-lived WebSocket (like Telegram polling) - simpler for
+  MVP, no public URL needed
+  - Events API + Webhooks: HTTP callbacks (more scalable) - requires public
+  HTTPS endpoint
+
+  Socket Mode is better for your RasPi deployment (no need for ngrok/reverse
+   proxy).
+
+  6. Key Differences from Telegram
+
+  | Feature         | Telegram                         | Slack
+                         |
+  |-----------------|----------------------------------|--------------------
+  -----------------------|
+  | Threading       | Forum topics (separate channels) | Message threads
+  (within channel)          |
+  | Bot visibility  | Bots can't see other bots        | Bots CAN see other
+  bots (with Events API) |
+  | Message editing | Supported                        | Supported
+                         |
+  | Voice messages  | Native support                   | Not native
+  (requires file upload)         |
+  | File download   | Simple download                  | OAuth scopes
+  required                     |
+
+  7. Authentication Flow
+
+  Slack requires OAuth (more complex than Telegram):
+  # config.yml
+  slack:
+    enabled: true
+    bot_token: ${SLACK_BOT_TOKEN}        # xoxb-...
+    app_token: ${SLACK_APP_TOKEN}        # xapp-... (for Socket Mode)
+    signing_secret: ${SLACK_SIGNING_SECRET}
+
+  8. Clean UX Pattern
+
+  Your Telegram UX state management translates well:
+  - Output messages: Use chat.update instead of posting new messages
+  - Feedback messages: Use ephemeral messages (response_type="ephemeral")
+  - System messages: Pin heartbeat message in channel
+
+  9. Multi-Computer Pattern
+
+  Slack's bot visibility solves your "master bot" issue:
+  - All bots can see each other's messages
+  - No need for Redis for peer discovery
+  - Heartbeat messages visible to all bots in channel
+
+  10. Code Structure
+
+  teleclaude/adapters/
+  ├── base_adapter.py          # Already exists
+  ├── ui_adapter.py            # Already exists
+  ├── telegram_adapter.py      # Reference implementation
+  └── slack_adapter.py         # NEW - implement similar to Telegram
+      ├── __init__              # SlackAdapter(UiAdapter)
+      ├── start()               # Initialize Bolt app
+      ├── send_message()        # Post or update thread message
+      ├── create_channel()      # Start new thread in channel
+      ├── _handle_message()     # Emit MESSAGE event
+      └── _handle_command()     # Emit command events
+
+  Implementation Checklist
+
+  1. Install dependencies: slack-bolt (async version)
+  2. Create Slack app in Slack API console
+  3. Enable Socket Mode or Events API webhook
+  4. Add bot scopes: chat:write, commands, channels:history,
+  app_mentions:read
+  5. Implement SlackAdapter following TelegramAdapter pattern
+  6. Add to config.yml.sample with Slack-specific settings
+  7. Update daemon.py to load SlackAdapter when slack.enabled: true
+  8. Test multi-adapter broadcasting (origin=telegram, observer=slack)
+
+  Critical Design Decisions
+
+  Threading Model: Use Slack threads (not channels) because:
+  - Matches your session-per-topic pattern
+  - One channel can host many sessions (like Telegram supergroup with
+  topics)
+  - Cleaner UX than creating separate channels per session
+
+  Socket Mode vs HTTP: Use Socket Mode for MVP because:
+  - No public HTTPS endpoint required (works on RasPi behind NAT)
+  - Simpler auth flow
+  - Real-time message delivery (no polling)
+
+  Message Formatting: Slack uses mrkdwn (not Markdown):
+  - Code blocks: ```code``` (same as Telegram)
+  - Bold: *bold* (same)
+  - Italic: _italic_ (same)
+  - Links: <https://url|text> (different from Telegram)
+
+  Would you like me to start implementing the SlackAdapter based on this
+  architecture?
+
+> ps aux | grep claude 
+
+● Bash(ps aux | grep claude)
+  ⎿ morriz    609379  0.0  0.0   5252  1496 pts/3    S+   02:53   0:06 tail
+     -n 1000 -f /var/log/teleclaude.log
+    morriz   1412253  0.8  1.1 482308 94384 ?        Ssl  16:10   0:11 /hom
+    … +18 lines (ctrl+o to expand)
+
+
+
+● Here are the Claude processes running on your system:
+
+  TeleClaude Daemon:
+  - PID 1412253: /home/morriz/apps/TeleClaude/.venv/bin/python -m 
+  teleclaude.daemon
+    - Running for ~22 minutes since 16:10
+    - Using 94MB RAM (1.1%)
+
+  Active Claude Code Sessions:
+  1. PID 1455659 (pts/0): 406MB RAM, running 39 minutes - started 16:17
+  2. PID 1472911 (pts/1): 255MB RAM, running 24 minutes - started 16:19
+  3. PID 3717765 (pts/6): 115MB RAM, running since Nov 7 (old session)
+
+  MCP socat Connections:
+  - PID 1456149: Connected to pts/0 Claude session
+  - PID 1473459: Connected to pts/1 Claude session
+
+  The daemon is healthy and has two active Claude Code sessions with MCP
+  connections established. The old pts/6 session from yesterday might be
+  orphaned.
+
+> echo ssh-ed25519 
+AAAAC3NzaC1lZDI1NTE5AAAAIHrNHBeC/mX/vRsQWYkE7VKKbBO+Ay8qzRTw6tQ0qrGY 
+maurice@instrukt.ai >> ~/.ssh/authorized_keys && chmod 600 
+~/.ssh/authorized_keys && echo Key added successfully 
+
+● Bash(echo ssh-ed25519
+      AAAAC3NzaC1lZDI1NTE5AAAAIHrNHBeC/mX/vRsQWYkE7VKKbBO+Ay8qzRTw6tQ0qrGY
+      maurice@instrukt.ai >> ~/.ssh/authorized_keys && chmod 600
+      ~/.ssh/authoriz…)
+  ⎿  Key added successfully
+
+● Key added successfully. Your SSH public key has been appended to
+  ~/.ssh/authorized_keys with the correct permissions (600).
+
+────────────────────────────────────────────────────────────────────────────────
+>  
+────────────────────────────────────────────────────────────────────────────────
+   cwd: /home/morriz/apps/TeleClaude ...
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+
+

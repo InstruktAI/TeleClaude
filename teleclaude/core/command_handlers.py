@@ -286,7 +286,7 @@ async def handle_list_projects(  # type: ignore[explicit-any]
     # Filter to only existing directories
     dirs_data = []
     for trusted_dir in all_trusted_dirs:
-        expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.location))
+        expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.path))
         if Path(expanded_location).exists():
             dirs_data.append(
                 {

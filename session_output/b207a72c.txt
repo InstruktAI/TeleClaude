@@ -1,0 +1,59 @@
+                                                                                                                        
+
+morriz@raspberrypi [15:00:37] [~/apps/TeleClaude] 
+-> % 
+
+morriz@raspberrypi [15:00:37] [~/apps/TeleClaude] [main]
+-> % l
+total 268K
+drwxr-xr-x 2 morriz morriz 4.0K 2025-11-05 22:53 bin
+drwxr-xr-x 2 morriz morriz 4.0K 2025-11-05 22:53 config
+drwxr-xr-x 2 morriz morriz 4.0K 2025-11-06 04:31 docs
+drwxr-xr-x 8 morriz morriz 4.0K 2025-11-06 15:00 .git
+drwxr-xr-x 3 morriz morriz 4.0K 2025-11-05 22:53 .github
+drwxr-xr-x 2 morriz morriz 4.0K 2025-11-06 14:59 session_output
+drwxr-xr-x 6 morriz morriz 4.0K 2025-11-06 04:31 teleclaude
+drwxr-xr-x 4 morriz morriz 4.0K 2025-11-05 22:53 tests
+drwxr-xr-x 2 morriz morriz 4.0K 2025-11-06 04:31 todos
+drwxr-xr-x 5 morriz morriz 4.0K 2025-11-05 22:53 .venv
+drwxr-xr-x 2 morriz morriz 4.0K 2025-11-05 22:53 .vscode
+-rw-r--r-- 1 morriz morriz  13K 2025-11-05 22:53 CLAUDE.md
+-rw-r--r-- 1 morriz morriz 2.0K 2025-11-06 14:27 config.yml
+-rw-r--r-- 1 morriz morriz 2.2K 2025-11-06 13:46 config.yml.sample
+-rw-r--r-- 1 morriz morriz  304 2025-11-05 22:53 .cspell.json
+-rw-r--r-- 1 morriz morriz  595 2025-11-05 23:22 .env
+-rw-r--r-- 1 morriz morriz  379 2025-11-06 00:28 .env.sample
+-rw-r--r-- 1 morriz morriz  463 2025-11-05 22:53 .gitignore
+-rw-r--r-- 1 morriz morriz 1.7K 2025-11-05 22:56 install.log
+-rwxr-xr-x 1 morriz morriz  16K 2025-11-06 00:28 install.sh
+-rw-r--r-- 1 morriz morriz  34K 2025-11-05 22:53 LICENSE
+-rw-r--r-- 1 morriz morriz 4.1K 2025-11-05 22:53 Makefile
+-rw-r--r-- 1 morriz morriz  439 2025-11-05 22:53 .pre-commit-config.yaml
+-rw-r--r-- 1 morriz morriz 3.1K 2025-11-06 00:28 pyproject.toml
+-rw-r--r-- 1 morriz morriz  17K 2025-11-06 00:28 README.md
+-rw-r--r-- 1 morriz morriz  221 2025-11-05 22:53 requirements-test.txt
+-rw-r--r-- 1 morriz morriz  153 2025-11-05 22:53 requirements.txt
+-rw-r--r-- 1 morriz morriz  60K 2025-11-06 15:00 teleclaude.db
+-rw-r--r-- 1 morriz morriz  13K 2025-11-06 15:00 teleclaude.db-journal
+-rw-r--r-- 1 morriz morriz    7 2025-11-06 14:47 teleclaude.pid
+
+morriz@raspberrypi [15:00:42] [~/apps/TeleClaude] [main]
+-> % claude --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.0.34
+▝▜█████▛▘  Sonnet 4.5 · Claude API
+  ▘▘ ▝▝    /home/morriz/apps/TeleClaude
+
+
+morriz@raspberrypi [15:01:00] [~/apps/TeleClaude] [main]
+-> % claude --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.0.34
+▝▜█████▛▘  Sonnet 4.5 · Claude API
+  ▘▘ ▝▝    /home/morriz/apps/TeleClaude
+
+
+morriz@raspberrypi [15:01:37] [~/apps/TeleClaude] [main]
+-> % claude --dangerously-skip-permissions
+
+

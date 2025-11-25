@@ -1,0 +1,119 @@
+cd /home/morriz/apps/TeleClaude
+claude --dangerously-skip-permissions
+
+morriz@raspberrypi [04:33:21] [~/apps/TeleClaude] 
+-> % cd /home/morriz/apps/TeleClaude
+
+morriz@raspberrypi [04:33:21] [~/apps/TeleClaude] 
+-> % claude --dangerously-skip-permissions
+
+ ▐▛███▜▌   Claude Code v2.0.36
+▝▜█████▛▘  Sonnet 4.5 · Claude API
+  ▘▘ ▝▝    /home/morriz/apps/TeleClaude
+
+> List the Python files in this directory and tell me what the main entry 
+point is 
+
+● I'll list the Python files in this directory and identify the main entry
+  point.
+
+● Search(pattern: "**/*.py")
+  ⎿  Found 67 files (ctrl+o to expand)
+
+● Based on the Python files in this directory, here's the structure:
+
+  Main Python Files
+
+  Main Entry Point:
+  - teleclaude/daemon.py - This is the main entry point
+
+  Core Modules:
+  - teleclaude/config.py - Configuration management
+  - teleclaude/logging_config.py - Logging setup
+  - teleclaude/mcp_server.py - MCP (Model Context Protocol) server
+  - teleclaude/rest_api.py - REST API endpoints
+
+  Core Package (teleclaude/core/):
+  - adapter_client.py - Central hub for adapter operations
+  - command_handlers.py - Command routing logic
+  - computer_registry.py - Computer registration/discovery
+  - db.py - Database/session management (module-level singleton)
+  - events.py - Event type definitions
+  - event_handlers.py - Event handling logic
+  - message_handler.py - User message handling
+  - metadata.py - Metadata utilities
+  - models.py - Data models (Session, Recording, etc.)
+  - output_poller.py - Terminal output polling
+  - polling_coordinator.py - Polling coordination
+  - protocols.py - Protocol definitions (RemoteExecutionProtocol)
+  - session_lifecycle.py - Session lifecycle management
+  - terminal_bridge.py - tmux interaction wrapper
+  - terminal_executor.py - Terminal command execution
+  - ux_state.py - UX state management
+  - voice_handler.py - Voice message handling
+  - voice_message_handler.py - Voice message processing
+
+  Adapters Package (teleclaude/adapters/):
+  - base_adapter.py - Abstract adapter interface
+  - redis_adapter.py - Redis Streams adapter
+  - telegram_adapter.py - Telegram Bot API adapter
+  - ui_adapter.py - UI adapter base
+
+  Tests:
+  - tests/unit/ - Unit tests
+  - tests/integration/ - Integration tests
+
+  The daemon is typically run via make commands (e.g., make restart, make 
+  dev) or as a system service (launchd/systemd).
+
+> Hello! Can you list the main Python files in this project? 
+
+● I just listed them in my previous response! Here's a summary of the main 
+  Python files in the TeleClaude project:
+
+  Main Entry Point
+
+  - teleclaude/daemon.py - The daemon that orchestrates everything
+
+  Core Application Files
+
+  - teleclaude/config.py - Configuration management
+  - teleclaude/logging_config.py - Logging setup
+  - teleclaude/mcp_server.py - MCP server for AI-to-AI communication
+  - teleclaude/rest_api.py - REST API endpoints
+
+  Core Package (teleclaude/core/)
+
+  Key files:
+  - adapter_client.py - Central hub for all adapter operations
+  - db.py - Database/session persistence (module-level singleton)
+  - terminal_bridge.py - tmux interaction wrapper
+  - command_handlers.py - Command routing logic
+  - message_handler.py - User message handling
+  - output_poller.py - Terminal output polling
+  - models.py - Data models (Session, Recording)
+  - events.py - Event type definitions
+  - protocols.py - Protocol definitions (RemoteExecutionProtocol)
+
+  Adapters (teleclaude/adapters/)
+
+  - base_adapter.py - Abstract adapter interface
+  - telegram_adapter.py - Telegram Bot API implementation
+  - redis_adapter.py - Redis Streams implementation
+
+  The project follows a clean architecture with:
+  1. Daemon coordinates everything
+  2. Core contains business logic
+  3. Adapters handle platform-specific communication (Telegram, Redis)
+  4. MCP Server enables AI-to-AI interactions across computers
+
+────────────────────────────────────────────────────────────────────────────────
+>  
+────────────────────────────────────────────────────────────────────────────────
+   cwd: /home/morriz/apps/TeleClaude ...
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+
+
+
+

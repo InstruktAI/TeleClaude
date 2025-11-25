@@ -1,0 +1,47 @@
+cd /home/morriz
+claude --dangerously-skip-permissions
+
+morriz@raspberrypi [17:02:15] [~/apps/TeleClaude] 
+-> % cd /home/morriz
+
+morriz@raspberrypi [17:02:15] [~] 
+-> % claude --dangerously-skip-permissions
+
+╭─── Claude Code v2.0.36 ──────────────────────────────────────────────────────╮
+│                             │ Tips for getting started                       │
+│        Welcome back!        │ Run /init to create a CLAUDE.md file with ins… │
+│                             │ Note: You have launched claude in your home d… │
+│           ▐▛███▜▌           │ ────────────────────────────────────────────── │
+│          ▝▜█████▛▘          │ Recent activity                                │
+│            ▘▘ ▝▝            │ No recent activity                             │
+│                             │                                                │
+│   Sonnet 4.5 · Claude API   │                                                │
+│        /home/morriz         │                                                │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+> echo Hi from MozBook! How are you?; echo __EXIT__$?__
+ 
+
+● I see you'd like me to run that command. Let me execute it for you.
+
+● Bash(echo Hi from MozBook! How are you?; echo __EXIT__$?__)
+  ⎿  Error: Exit code 1
+     (eval):1: no matches found: you?
+
+● The command failed because the ? character needs to be escaped or quoted
+  in bash. Let me run it properly:
+
+● Bash(echo "Hi from MozBook! How are you?"; echo __EXIT__$?__)
+  ⎿  Hi from MozBook! How are you?
+          
+● Done. The command executed successfully - greeted from MozBook and
+  returned exit status 0 (success).
+
+────────────────────────────────────────────────────────────────────────────────
+>  
+────────────────────────────────────────────────────────────────────────────────
+   cwd: /home/morriz  Model: Sonnet 4...
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+
+
+
