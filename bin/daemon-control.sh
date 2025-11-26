@@ -265,41 +265,27 @@ restart_daemon() {
     OLD_PID=""
     if [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE")
-    fi
-
-    # Kill current process, service manager will auto-restart it
-    if [ -n "$OLD_PID" ] && ps -p "$OLD_PID" > /dev/null 2>&1; then
-        log_info "Killing daemon process (PID: $OLD_PID)..."
-        kill "$OLD_PID" 2>/dev/null || true
-    fi
-
-    # Wait for daemon to come up with new PID (up to 10 seconds)
-    if wait_for_daemon 10 "$OLD_PID"; then
-        NEW_PID=$(cat "$PID_FILE")
-        if [ "$NEW_PID" != "$OLD_PID" ]; then
-            log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
-        else
-            log_info "Daemon restarted successfully (PID: $NEW_PID)"
+        if ps -p "$OLD_PID" > /dev/null 2>&1; then
+            log_info "Killing daemon process (PID: $OLD_PID)..."
+            kill "$OLD_PID" 2>/dev/null || true
         fi
+    fi
+
+    # Use service manager restart (reliable and fast)
+    if [ "$PLATFORM" = "macos" ]; then
+        launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+    else
+        sudo systemctl restart "$SERVICE_LABEL"
+    fi
+
+    # Wait for daemon to come up (up to 10 seconds)
+    if wait_for_daemon 10 "$OLD_PID"; then
+        PID=$(cat "$PID_FILE")
+        log_info "Daemon restarted successfully (PID: $PID)"
         EXIT_CODE=0
     else
-        # Fallback: use service manager restart
-        log_warn "Auto-restart didn't work, using service manager restart..."
-
-        if [ "$PLATFORM" = "macos" ]; then
-            launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
-        else
-            sudo systemctl restart "$SERVICE_LABEL"
-        fi
-
-        if wait_for_daemon 10; then
-            PID=$(cat "$PID_FILE")
-            log_info "Daemon restarted successfully (PID: $PID)"
-            EXIT_CODE=0
-        else
-            log_error "Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
-            EXIT_CODE=1
-        fi
+        log_error "Restart failed. Try: make kill to hard kill the daemon. You may have to stop the mcp process separately."
+        EXIT_CODE=1
     fi
 
     # Spawn background subprocess to restart Claude after 3 seconds

@@ -449,6 +449,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         {
                             "name": info["computer_name"],
                             "role": info.get("role", "general"),
+                            "host": info.get("host"),
                             "system_stats": info.get("system_stats", {}),
                             "sessions": info.get("sessions", []),
                             "status": "online",
@@ -716,34 +717,19 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         key = f"computer:{self.computer_name}:heartbeat"
 
+        # Add active sessions (limited to 50 max)
+        all_sessions = await db.get_sessions_by_title_pattern("")
+        active_sessions = [s.title for s in all_sessions if not s.closed][:50]  # Limit to 50 sessions
+
         # Build enhanced payload with graceful degradation
         payload: dict[str, object] = {
             "computer_name": self.computer_name,
             "last_seen": datetime.now().isoformat(),
+            "role": config.computer.role,
+            "host": config.computer.host,
+            "system_stats": get_all_stats(),
+            "sessions": active_sessions,
         }
-
-        # Add role
-        try:
-            payload["role"] = config.computer.role
-        except Exception as e:
-            logger.warning("Failed to get computer role: %s", e)
-            payload["role"] = "general"
-
-        # Add system stats (with fallback)
-        try:
-            payload["system_stats"] = get_all_stats()
-        except Exception as e:
-            logger.warning("Failed to get system stats: %s", e)
-            payload["system_stats"] = {}
-
-        # Add active sessions (limited to 50 max)
-        try:
-            all_sessions = await db.get_sessions_by_title_pattern("")
-            active_sessions = [s.title for s in all_sessions if not s.closed][:50]  # Limit to 50 sessions
-            payload["sessions"] = active_sessions
-        except Exception as e:
-            logger.warning("Failed to get active sessions: %s", e)
-            payload["sessions"] = []
 
         # Set key with auto-expiry
         await self.redis.setex(
