@@ -20,33 +20,6 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 
 logger = logging.getLogger(__name__)
 
-# Events that represent user input (need cleanup of previous messages)
-USER_INPUT_EVENTS = {
-    "new_session",
-    "close_session",
-    "list_sessions",
-    "list_projects",
-    "cd",
-    "kill",
-    "cancel",
-    "cancel2x",
-    "escape",
-    "escape2x",
-    "ctrl",
-    "tab",
-    "shift_tab",
-    "key_up",
-    "key_down",
-    "key_left",
-    "key_right",
-    "rename",
-    "claude",
-    "claude_resume",
-    "message",
-    "voice",
-    "file",
-}
-
 
 class AdapterClient:
     """Unified interface for multi-adapter operations.
@@ -552,7 +525,7 @@ class AdapterClient:
             session = await db.get_session(str(session_id))
 
         # 4. PRE: Call origin adapter's pre-handler for UI cleanup
-        if event in USER_INPUT_EVENTS and session:
+        if session and message_id:
             origin_adapter = self.adapters.get(session.origin_adapter)
             if origin_adapter and isinstance(origin_adapter, UiAdapter):
                 pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
@@ -573,7 +546,7 @@ class AdapterClient:
             logger.debug("Handler completed for event: %s", event)
 
             # 6. POST: Call origin adapter's post-handler for UI state tracking
-            if event in USER_INPUT_EVENTS and session and message_id:
+            if session and message_id:
                 origin_adapter = self.adapters.get(session.origin_adapter)
                 if origin_adapter and isinstance(origin_adapter, UiAdapter):
                     post_handler = getattr(origin_adapter, "_post_handle_user_input", None)

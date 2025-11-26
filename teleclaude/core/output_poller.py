@@ -167,35 +167,15 @@ class OutputPoller:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # LOG: Raw output sample BEFORE any stripping
-                raw_sample = current_output[:200].replace("\n", "\\n") if current_output else "(empty)"
-                logger.debug("[POLL %s] RAW captured (first 200 chars): '%s...'", session_id[:8], raw_sample)
-
                 # Strip ANSI codes and collapse whitespace, but KEEP markers (for exit detection)
                 current_with_markers = strip_ansi_codes(current_output)
                 current_with_markers = re.sub(r"\n\n+", "\n", current_with_markers)
-
-                # LOG: After ANSI stripping
-                after_ansi_sample = (
-                    current_with_markers[:200].replace("\n", "\\n") if current_with_markers else "(empty)"
-                )
-                logger.debug("[POLL %s] After ANSI strip: '%s...'", session_id[:8], after_ansi_sample)
 
                 # Also create clean version (markers stripped) for UI
                 current_cleaned = strip_exit_markers(current_with_markers)
 
                 # Detect output changes (for idle tracking)
                 output_changed = current_cleaned != previous_output
-
-                # LOG: Change detection with output sample
-                output_sample = current_cleaned[:100].replace("\n", "\\n") if current_cleaned else "(empty)"
-                logger.debug(
-                    "[POLL %s] iter=%d, output_changed=%s, sample='%s...'",
-                    session_id[:8],
-                    poll_iteration,
-                    output_changed,
-                    output_sample,
-                )
 
                 if output_changed:
                     previous_output = current_cleaned

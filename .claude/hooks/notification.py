@@ -65,9 +65,9 @@ def main() -> None:
         hook_event = data.get("hook_event_name", "")
         log(f"Hook event: {hook_event}")
 
-        if hook_event == "Stop":
-            log("Stop event detected")
-            # Stop event - spawn background summarizer (fire and forget)
+        if hook_event == "SessionEnd":
+            log("SessionEnd event detected")
+            # SessionEnd event - spawn background summarizer (fire and forget)
             transcript_path = data.get("transcript_path", "")
             log(f"Transcript path: {transcript_path}")
 
@@ -89,7 +89,7 @@ def main() -> None:
                     f"Summarizer not found or no transcript: summarizer_exists={summarizer.exists()}, transcript={bool(transcript_path)}"
                 )
 
-            log("Stop event handled, exiting")
+            log("SessionEnd event handled, exiting")
             sys.exit(0)  # Return immediately, summarizer runs in background
 
         elif hook_event == "Notification":
