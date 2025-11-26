@@ -267,3 +267,39 @@ class TestSessionCleanup:
             # Verify NO cleanup
             mock_tb.kill_session.assert_not_called()
             mock_db.update_session.assert_not_called()
+
+
+def test_all_events_have_handlers():
+    """Test that every event in TeleClaudeEvents has a registered handler.
+
+    This prevents bugs where new events are added but not registered in COMMAND_EVENTS
+    or don't have a specific handler method.
+    """
+    from teleclaude.core.events import TeleClaudeEvents
+    from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
+
+    # Get all events from TeleClaudeEvents
+    all_events = []
+    for attr_name in dir(TeleClaudeEvents):
+        if attr_name.startswith("_"):
+            continue
+        event_value = getattr(TeleClaudeEvents, attr_name)
+        if isinstance(event_value, str):
+            all_events.append(event_value)
+
+    # Check each event has a handler
+    missing_handlers = []
+    for event in all_events:
+        # Command events have generic handler
+        if event in COMMAND_EVENTS:
+            continue
+
+        # Non-command events need specific handler method
+        handler_name = f"_handle_{event}"
+        if not hasattr(TeleClaudeDaemon, handler_name):
+            missing_handlers.append(f"{event} (expected {handler_name})")
+
+    # Report missing handlers
+    assert not missing_handlers, (
+        f"Events missing handlers: {missing_handlers}\n" f"Add to COMMAND_EVENTS in daemon.py or create handler method"
+    )

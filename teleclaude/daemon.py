@@ -44,6 +44,32 @@ DEFAULT_LOG_LEVEL = "INFO"
 
 logger = logging.getLogger(__name__)
 
+# Command events that route to handle_command via generic handler
+# All events in this set use _handle_command_event → handle_command()
+COMMAND_EVENTS = {
+    TeleClaudeEvents.NEW_SESSION,
+    TeleClaudeEvents.LIST_SESSIONS,
+    TeleClaudeEvents.LIST_PROJECTS,
+    TeleClaudeEvents.GET_COMPUTER_INFO,
+    TeleClaudeEvents.CD,
+    TeleClaudeEvents.KILL,
+    TeleClaudeEvents.CANCEL,
+    TeleClaudeEvents.CANCEL_2X,
+    TeleClaudeEvents.ESCAPE,
+    TeleClaudeEvents.ESCAPE_2X,
+    TeleClaudeEvents.CTRL,
+    TeleClaudeEvents.TAB,
+    TeleClaudeEvents.SHIFT_TAB,
+    TeleClaudeEvents.ENTER,
+    TeleClaudeEvents.KEY_UP,
+    TeleClaudeEvents.KEY_DOWN,
+    TeleClaudeEvents.KEY_LEFT,
+    TeleClaudeEvents.KEY_RIGHT,
+    TeleClaudeEvents.RENAME,
+    TeleClaudeEvents.CLAUDE,
+    TeleClaudeEvents.CLAUDE_RESUME,
+}
+
 
 class DaemonLockError(Exception):
     """Raised when another daemon instance is already running."""
@@ -77,30 +103,6 @@ class TeleClaudeDaemon:
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
 
-        # Define command events (all route to handle_command via generic handler)
-        command_events = {
-            TeleClaudeEvents.NEW_SESSION,
-            TeleClaudeEvents.LIST_SESSIONS,
-            TeleClaudeEvents.LIST_PROJECTS,
-            TeleClaudeEvents.CD,
-            TeleClaudeEvents.KILL,
-            TeleClaudeEvents.CANCEL,
-            TeleClaudeEvents.CANCEL_2X,
-            TeleClaudeEvents.ESCAPE,
-            TeleClaudeEvents.ESCAPE_2X,
-            TeleClaudeEvents.CTRL,
-            TeleClaudeEvents.TAB,
-            TeleClaudeEvents.SHIFT_TAB,
-            TeleClaudeEvents.ENTER,
-            TeleClaudeEvents.KEY_UP,
-            TeleClaudeEvents.KEY_DOWN,
-            TeleClaudeEvents.KEY_LEFT,
-            TeleClaudeEvents.KEY_RIGHT,
-            TeleClaudeEvents.RENAME,
-            TeleClaudeEvents.CLAUDE,
-            TeleClaudeEvents.CLAUDE_RESUME,
-        }
-
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
             if attr_name.startswith("_"):
@@ -111,7 +113,7 @@ class TeleClaudeDaemon:
                 continue
 
             # Commands use generic handler
-            if event_value in command_events:
+            if event_value in COMMAND_EVENTS:
                 self.client.on(cast(EventType, event_value), self._handle_command_event)
                 logger.debug("Auto-registered command: %s → _handle_command_event", event_value)
             else:
@@ -278,6 +280,24 @@ class TeleClaudeDaemon:
 
         await db.update_session(session.session_id, closed=False)
         logger.info("Session %s reopened at %s", session.session_id[:8], session.working_directory)
+
+    async def _handle_session_deleted(self, _event: str, context: dict[str, object]) -> None:
+        """Handler for session_deleted events (placeholder - not currently emitted).
+
+        Args:
+            _event: Event type (always "session_deleted") - unused but required by event handler signature
+            context: Unified context (all payload + metadata fields)
+        """
+        logger.debug("session_deleted event received but not implemented: %s", context)
+
+    async def _handle_working_dir_changed(self, _event: str, context: dict[str, object]) -> None:
+        """Handler for working_dir_changed events (placeholder - not currently emitted).
+
+        Args:
+            _event: Event type (always "working_dir_changed") - unused but required by event handler signature
+            context: Unified context (all payload + metadata fields)
+        """
+        logger.debug("working_dir_changed event received but not implemented: %s", context)
 
     async def _handle_file(self, _event: str, context: dict[str, object]) -> None:
         """Handler for FILE events - pure business logic.
