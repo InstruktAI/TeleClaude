@@ -13,9 +13,10 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 def mock_transport_adapter():
     """Create mock adapter implementing RemoteExecutionProtocol."""
     adapter = Mock(spec=RemoteExecutionProtocol)
-    adapter.send_message_to_computer = AsyncMock(return_value="req_123")
+    adapter.send_request = AsyncMock(return_value="req_123")
+    adapter.send_response = AsyncMock(return_value="resp_123")
 
-    async def mock_stream(session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:
+    async def mock_stream(request_id: str, timeout: float = 300.0) -> AsyncIterator[str]:
         yield "chunk1"
         yield "chunk2"
 
@@ -55,35 +56,33 @@ def adapter_client_without_transport(mock_ui_adapter):
 
 
 @pytest.mark.asyncio
-async def test_send_remote_command_success(adapter_client_with_transport, mock_transport_adapter):
-    """Test sending command to remote computer via transport adapter."""
+async def test_send_request_success(adapter_client_with_transport, mock_transport_adapter):
+    """Test sending request to remote computer via transport adapter."""
     # Execute
-    request_id = await adapter_client_with_transport.send_remote_command(
-        computer_name="comp1", session_id="sess_123", command="ls -la", metadata={"key": "value"}
+    stream_id = await adapter_client_with_transport.send_request(
+        computer_name="comp1", request_id="req_123", command="ls -la", metadata={"key": "value"}
     )
 
     # Verify
-    assert request_id == "req_123"
-    mock_transport_adapter.send_message_to_computer.assert_called_once_with(
-        "comp1", "sess_123", "ls -la", {"key": "value"}
-    )
+    assert stream_id == "req_123"
+    mock_transport_adapter.send_request.assert_called_once_with("comp1", "req_123", "ls -la", {"key": "value"})
 
 
 @pytest.mark.asyncio
-async def test_send_remote_command_no_transport_fails(adapter_client_without_transport):
-    """Test sending command fails when no transport adapter available."""
+async def test_send_request_no_transport_fails(adapter_client_without_transport):
+    """Test sending request fails when no transport adapter available."""
     with pytest.raises(RuntimeError, match="No transport adapter available"):
-        await adapter_client_without_transport.send_remote_command(
-            computer_name="comp1", session_id="sess_123", command="ls -la"
+        await adapter_client_without_transport.send_request(
+            computer_name="comp1", request_id="req_123", command="ls -la"
         )
 
 
 @pytest.mark.asyncio
-async def test_poll_remote_output_success(adapter_client_with_transport):
-    """Test streaming output from remote session."""
+async def test_poll_response_success(adapter_client_with_transport):
+    """Test streaming response from remote request."""
     # Execute
     chunks = []
-    async for chunk in adapter_client_with_transport.poll_remote_output("sess_123", timeout=60.0):
+    async for chunk in adapter_client_with_transport.poll_response("req_123", timeout=60.0):
         chunks.append(chunk)
 
     # Verify
@@ -91,10 +90,10 @@ async def test_poll_remote_output_success(adapter_client_with_transport):
 
 
 @pytest.mark.asyncio
-async def test_poll_remote_output_no_transport_fails(adapter_client_without_transport):
-    """Test polling output fails when no transport adapter available."""
+async def test_poll_response_no_transport_fails(adapter_client_without_transport):
+    """Test polling response fails when no transport adapter available."""
     with pytest.raises(RuntimeError, match="No transport adapter available"):
-        stream = adapter_client_without_transport.poll_remote_output("sess_123")
+        stream = adapter_client_without_transport.poll_response("req_123")
         # Trigger the exception by starting iteration
         async for _ in stream:
             pass
@@ -127,16 +126,28 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
 
     # Create transport adapter
     transport = Mock(spec=RemoteExecutionProtocol)
-    transport.send_message_to_computer = AsyncMock(return_value="req_123")
+    transport.send_request = AsyncMock(return_value="req_123")
+    transport.send_response = AsyncMock(return_value="resp_123")
 
     client = AdapterClient()
     client.register_adapter("telegram", ui_adapter)
     client.register_adapter("redis", transport)
 
     # Execute cross-computer operation
-    request_id = await client.send_remote_command("comp1", "sess_123", "ls")
+    stream_id = await client.send_request("comp1", "req_123", "ls")
 
     # Verify - only transport adapter used
-    assert request_id == "req_123"
-    transport.send_message_to_computer.assert_called_once()
-    assert not hasattr(ui_adapter, "send_message_to_computer")  # UI adapter not called
+    assert stream_id == "req_123"
+    transport.send_request.assert_called_once()
+    assert not hasattr(ui_adapter, "send_request")  # UI adapter not called
+
+
+@pytest.mark.asyncio
+async def test_send_response_success(adapter_client_with_transport, mock_transport_adapter):
+    """Test sending response for ephemeral request."""
+    # Execute
+    stream_id = await adapter_client_with_transport.send_response(request_id="req_123", data='{"status": "ok"}')
+
+    # Verify
+    assert stream_id == "resp_123"
+    mock_transport_adapter.send_response.assert_called_once_with("req_123", '{"status": "ok"}')

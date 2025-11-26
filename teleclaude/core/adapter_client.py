@@ -773,53 +773,70 @@ class AdapterClient:
         result: str = await adapter.send_general_message(text, metadata)
         return result
 
-    # === Cross-Computer Orchestration (AI-to-AI) ===
+    # === Request/Response pattern for AI-to-AI communication ===
 
-    async def send_remote_command(
+    async def send_request(
         self,
         computer_name: str,
-        session_id: str,
+        request_id: str,
         command: str,
         metadata: Optional[dict[str, object]] = None,
     ) -> str:
-        """Send message to remote computer via transport adapter.
+        """Send request to remote computer via transport adapter.
 
         Args:
             computer_name: Target computer identifier
-            session_id: Session ID for the message
-            command: Message to send to remote computer
-            metadata: Optional metadata for the message
+            request_id: Correlation ID for request/response matching
+            command: Command to send to remote computer
+            metadata: Optional metadata (title, project_dir for session creation)
 
         Returns:
-            Request ID for tracking the message
+            Redis stream entry ID
 
         Raises:
             RuntimeError: If no transport adapter available
-            Exception: If message send fails
         """
         transport = self._get_transport_adapter()
-        return await transport.send_message_to_computer(computer_name, session_id, command, metadata)
+        return await transport.send_request(computer_name, request_id, command, metadata)
 
-    def poll_remote_output(
-        self,
-        session_id: str,
-        timeout: float = 300.0,
-    ) -> AsyncIterator[str]:
-        """Stream output from remote session via transport adapter.
+    async def send_response(self, request_id: str, data: str) -> str:
+        """Send response for an ephemeral request.
+
+        Used by command handlers (list_projects, etc.) to respond without DB session.
 
         Args:
-            session_id: Session ID to poll output from
-            timeout: Maximum time to wait for output (seconds)
+            request_id: Correlation ID from the request
+            data: Response data (typically JSON)
 
-        Yields:
-            Output chunks from the remote session
+        Returns:
+            Stream entry ID
 
         Raises:
             RuntimeError: If no transport adapter available
-            TimeoutError: If no output received within timeout
         """
         transport = self._get_transport_adapter()
-        return transport.poll_output_stream(session_id, timeout)
+        return await transport.send_response(request_id, data)
+
+    def poll_response(
+        self,
+        request_id: str,
+        timeout: float = 300.0,
+    ) -> AsyncIterator[str]:
+        """Stream response for a request via transport adapter.
+
+        Args:
+            request_id: Request ID to poll response from
+            timeout: Maximum time to wait for response (seconds)
+
+        Yields:
+            Response chunks
+
+        Raises:
+            RuntimeError: If no transport adapter available
+            TimeoutError: If no response received within timeout
+        """
+        transport = self._get_transport_adapter()
+        return transport.poll_output_stream(request_id, timeout)
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Get first adapter that supports remote execution.

@@ -809,20 +809,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         exists = await self.redis.exists(key)
         return bool(exists)
 
-    # === MCP-specific methods for AI-to-AI communication ===
+    # === Request/Response pattern for ephemeral queries (list_projects, etc.) ===
 
-    async def send_message_to_computer(
-        self, computer_name: str, session_id: str, message: str, metadata: Optional[dict[str, object]] = None
+    async def send_request(
+        self, computer_name: str, request_id: str, command: str, metadata: Optional[dict[str, object]] = None
     ) -> str:
-        """Send message to remote computer's message stream.
+        """Send request to remote computer's message stream.
 
-        Used by MCP server to send messages to remote computers.
+        Used for ephemeral queries (list_projects, etc.) and session commands.
 
         Args:
             computer_name: Target computer name
-            session_id: Session ID
-            message: Message to send
-            metadata: Optional metadata (title, initiator, etc.)
+            request_id: Correlation ID for request/response matching
+            command: Command to send
+            metadata: Optional metadata (title, project_dir for session creation)
 
         Returns:
             Redis stream entry ID
@@ -833,10 +833,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         message_stream = f"messages:{computer_name}"
         metadata = metadata or {}
 
-        # Build message data
+        # Build message data (session_id field kept for protocol compatibility)
         data = {
-            b"session_id": session_id.encode("utf-8"),
-            b"command": message.encode("utf-8"),  # Field name stays "command" for protocol compatibility
+            b"session_id": request_id.encode("utf-8"),
+            b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"initiator": self.computer_name.encode("utf-8"),
         }
@@ -859,7 +859,37 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
 
         logger.debug("XADD returned message_id=%s", message_id_bytes.decode("utf-8"))
-        logger.info("Sent message to %s: session=%s, message=%s", computer_name, session_id[:8], message[:50])
+        logger.info("Sent request to %s: request_id=%s, command=%s", computer_name, request_id[:8], command[:50])
+        return message_id_bytes.decode("utf-8")
+
+    async def send_response(self, request_id: str, data: str) -> str:
+        """Send response for an ephemeral request directly to Redis stream.
+
+        Used by command handlers (list_projects, etc.) to respond without DB session.
+
+        Args:
+            request_id: Correlation ID from the request
+            data: Response data (typically JSON)
+
+        Returns:
+            Redis stream entry ID
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        output_stream = f"output:{request_id}"
+
+        message_id_bytes: bytes = await self.redis.xadd(
+            output_stream,
+            {
+                b"chunk": data.encode("utf-8"),
+                b"timestamp": str(time.time()).encode("utf-8"),
+                b"request_id": request_id.encode("utf-8"),
+            },
+            maxlen=self.output_stream_maxlen,
+        )
+
+        logger.debug("Sent response to stream %s: %s", output_stream, message_id_bytes)
         return message_id_bytes.decode("utf-8")
 
     async def send_system_command(

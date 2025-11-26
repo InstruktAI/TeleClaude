@@ -504,19 +504,22 @@ class TeleClaudeMCPServer:
         target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
 
         if not target_online:
+            logger.warning("Computer %s not online, skipping list_projects", computer)
             return []
 
         # Generate session ID for this query
         session_id = str(uuid.uuid4())
+        logger.debug("Sending list_projects request to %s with request_id=%s", computer, session_id[:8])
 
         # Send list_projects command via AdapterClient
-        await self.client.send_remote_command(computer_name=computer, session_id=session_id, command="list_projects")
+        await self.client.send_request(computer_name=computer, request_id=session_id, command="list_projects")
+        logger.debug("Request sent, starting to poll response...")
 
         # Stream response from AdapterClient
         result: list[dict[str, str]] = []
         try:
             async with asyncio.timeout(10):
-                async for chunk in self.client.poll_remote_output(session_id, timeout=10.0):
+                async for chunk in self.client.poll_response(session_id, timeout=10.0):
                     # Look for JSON array response
                     if chunk.strip().startswith("["):
                         projects: list[dict[str, str]] = json.loads(chunk.strip())
@@ -586,18 +589,18 @@ class TeleClaudeMCPServer:
 
         # cd to dir on remote computer via AdapterClient
         cd_cmd = f"/cd {shlex.quote(project_dir)}"
-        await self.client.send_remote_command(
+        await self.client.send_request(
             computer_name=computer,
-            session_id=session_id,
+            request_id=session_id,
             command=cd_cmd,
             metadata={"title": title, "project_dir": project_dir},
         )
 
         # Start Claude Code
         claude_cmd = "/claude" + (" --continue" if continue_last_session else "")
-        await self.client.send_remote_command(
+        await self.client.send_request(
             computer_name=computer,
-            session_id=session_id,
+            request_id=session_id,
             command=claude_cmd,
             metadata={"title": title, "project_dir": project_dir},
         )
@@ -698,7 +701,7 @@ class TeleClaudeMCPServer:
 
         # Send command to remote computer via AdapterClient
         try:
-            await self.client.send_remote_command(computer_name=target_computer, session_id=session_id, command=command)
+            await self.client.send_request(computer_name=target_computer, request_id=session_id, command=command)
         except Exception as e:
             logger.error("Failed to send command to %s: %s", target_computer, e)
             yield f"[Error: Failed to send command: {str(e)}]"
@@ -710,7 +713,7 @@ class TeleClaudeMCPServer:
 
         try:
             # Stream output with interest window timeout
-            async for chunk in self.client.poll_remote_output(session_id, timeout=interest_window_seconds):
+            async for chunk in self.client.poll_response(session_id, timeout=interest_window_seconds):
                 # Strip exit markers from output (internal infrastructure, not user-visible)
                 clean_chunk = re.sub(r"__EXIT__\d+__", "", chunk)
                 if clean_chunk:  # Only yield if there's content after stripping
@@ -765,7 +768,7 @@ class TeleClaudeMCPServer:
         # Poll for new output with short timeout (2s - just check what's available)
         new_output_chunks: list[str] = []
         try:
-            async for chunk in self.client.poll_remote_output(session_id, timeout=2.0):
+            async for chunk in self.client.poll_response(session_id, timeout=2.0):
                 new_output_chunks.append(chunk)
         except asyncio.TimeoutError:
             # No new output - that's fine
@@ -849,7 +852,7 @@ class TeleClaudeMCPServer:
         start_time = time.time()
 
         try:
-            async for chunk in self.client.poll_remote_output(session_id, timeout=float(duration_seconds)):
+            async for chunk in self.client.poll_response(session_id, timeout=float(duration_seconds)):
                 output_chunks.append(chunk)
 
                 # Stop if duration exceeded

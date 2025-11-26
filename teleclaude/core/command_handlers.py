@@ -265,18 +265,18 @@ async def handle_list_projects(  # type: ignore[explicit-any]
     context: dict[str, Any],
     client: "AdapterClient",
 ) -> None:
-    """List trusted project directories as JSON with metadata.
+    """List trusted project directories as JSON response.
 
-    For AI-to-AI sessions via Redis, returns JSON array with name, desc, location.
+    Ephemeral request/response - no DB session required.
 
     Args:
-        context: Command context with session_id
-        client: AdapterClient for sending messages
+        context: Command context with request_id (passed as session_id in Redis protocol)
+        client: AdapterClient for sending response
     """
-    # Get session_id from context (required for AI-to-AI sessions)
-    session_id = context.get("session_id")
-    if not session_id:
-        logger.error("No session_id in context for list_projects")
+    # Get request_id from context (passed as session_id in Redis protocol)
+    request_id = context.get("session_id")
+    if not request_id:
+        logger.error("No request_id in context for list_projects")
         return
 
     # Get all trusted dirs (includes default_working_dir merged in)
@@ -296,12 +296,8 @@ async def handle_list_projects(  # type: ignore[explicit-any]
                 }
             )
 
-    # Send as JSON array to the session's output stream
-    await client.send_message(
-        session_id=session_id,
-        text=json.dumps(dirs_data),
-        metadata={},
-    )
+    # Send response directly to Redis stream (no DB session lookup)
+    await client.send_response(request_id=str(request_id), data=json.dumps(dirs_data))
 
 
 @with_session

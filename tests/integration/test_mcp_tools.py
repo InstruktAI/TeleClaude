@@ -87,8 +87,8 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
         with patch.object(mcp_server.client, "create_channel", new_callable=AsyncMock) as mock_create_channel:
             mock_create_channel.return_value = None
 
-            # Mock send_remote_command to avoid actual Redis call
-            with patch.object(mcp_server.client, "send_remote_command", new_callable=AsyncMock) as mock_send:
+            # Mock send_request to avoid actual Redis call
+            with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
                 mock_send.return_value = None
 
                 result = await mcp_server.teleclaude__start_session(
@@ -126,16 +126,16 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
         adapter_metadata={"target_computer": {"name": "workstation"}, "claude_session_id": "test-claude-123"},
     )
 
-    # Mock send_remote_command
-    with patch.object(mcp_server.client, "send_remote_command", new_callable=AsyncMock) as mock_send:
+    # Mock send_request
+    with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = "sent"
 
-        # Mock poll_remote_output
+        # Mock poll_response
         async def mock_poll():
             yield "Output line 1\n"
             yield "Output line 2\n"
 
-        with patch.object(mcp_server.client, "poll_remote_output", return_value=mock_poll()):
+        with patch.object(mcp_server.client, "poll_response", return_value=mock_poll()):
             chunks = []
             async for chunk in mcp_server.teleclaude__send_message(session_id=session.session_id, message="ls -la"):
                 chunks.append(chunk)
