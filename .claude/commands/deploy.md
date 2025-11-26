@@ -90,10 +90,10 @@ Use the computer list and paths remembered from Step 4.
 **For each computer**, run this SSH command with 10 second timeout:
 
 ```bash
-ssh -A <computer-name> 'cd <teleclaude-path> && git pull && make restart && sleep 5 && pgrep -f teleclaude.daemon'
+ssh -A {user}@{host} 'cd <teleclaude-path> && git pull && make restart && sleep 5 && pgrep -f teleclaude.daemon'
 ```
 
-Replace `<computer-name>` with the actual computer hostname and `<teleclaude-path>` with the path from Step 4.
+Replace `{user}` with the user field, `{host}` with the host field, and `<teleclaude-path>` with the path from Step 4.
 
 **CRITICAL:**
 
