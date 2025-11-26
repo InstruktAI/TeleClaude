@@ -817,26 +817,53 @@ class AdapterClient:
         transport = self._get_transport_adapter()
         return await transport.send_response(request_id, data)
 
-    def poll_response(
+    async def read_response(
         self,
         request_id: str,
-        timeout: float = 300.0,
-    ) -> AsyncIterator[str]:
-        """Stream response for a request via transport adapter.
+        timeout: float = 3.0,
+    ) -> str:
+        """Read single response from request (for ephemeral request/response).
+
+        Used for one-shot requests like list_projects, get_computer_info.
+        Reads the response in one go instead of streaming.
 
         Args:
-            request_id: Request ID to poll response from
-            timeout: Maximum time to wait for response (seconds)
+            request_id: Request ID to read response from
+            timeout: Maximum time to wait for response (seconds, default 3.0)
 
-        Yields:
-            Response chunks
+        Returns:
+            Response data as string
 
         Raises:
             RuntimeError: If no transport adapter available
             TimeoutError: If no response received within timeout
         """
         transport = self._get_transport_adapter()
-        return transport.poll_output_stream(request_id, timeout)
+        return await transport.read_single_response(request_id, timeout)
+
+    async def stream_session_output(
+        self,
+        session_id: str,
+        timeout: float = 2.0,
+    ) -> AsyncIterator[str]:
+        """Stream output from a tmux session (for continuous session streaming).
+
+        Used for streaming real tmux session output in send_message, get_session_status, observe_session.
+        Yields chunks of output as they arrive.
+
+        Args:
+            session_id: Session ID to stream output from
+            timeout: Maximum time to wait for each chunk (seconds)
+
+        Yields:
+            Output chunks as strings
+
+        Raises:
+            RuntimeError: If no transport adapter available
+        """
+        transport = self._get_transport_adapter()
+        async for chunk in transport.poll_output_stream(session_id, timeout):
+            yield chunk
 
     def _get_transport_adapter(self) -> RemoteExecutionProtocol:
         """Get first adapter that supports remote execution.

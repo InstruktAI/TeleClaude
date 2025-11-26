@@ -130,12 +130,12 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
     with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = "sent"
 
-        # Mock poll_response
+        # Mock stream_session_output
         async def mock_poll():
             yield "Output line 1\n"
             yield "Output line 2\n"
 
-        with patch.object(mcp_server.client, "poll_response", return_value=mock_poll()):
+        with patch.object(mcp_server.client, "stream_session_output", return_value=mock_poll()):
             chunks = []
             async for chunk in mcp_server.teleclaude__send_message(session_id=session.session_id, message="ls -la"):
                 chunks.append(chunk)

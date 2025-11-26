@@ -11,6 +11,7 @@ EventType = Literal[
     "new_session",
     "list_sessions",
     "list_projects",
+    "get_computer_info",
     "cd",
     "kill",
     "cancel",
@@ -52,6 +53,7 @@ class TeleClaudeEvents:
 
     # Project management
     LIST_PROJECTS: Literal["list_projects"] = "list_projects"
+    GET_COMPUTER_INFO: Literal["get_computer_info"] = "get_computer_info"
     CD: Literal["cd"] = "cd"
 
     # Process control

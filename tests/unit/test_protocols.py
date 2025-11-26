@@ -15,6 +15,7 @@ def test_remote_execution_protocol_runtime_checkable():
     mock_adapter = Mock()
     mock_adapter.send_request = AsyncMock()
     mock_adapter.send_response = AsyncMock()
+    mock_adapter.read_single_response = AsyncMock()
 
     async def mock_poll():
         yield "output"

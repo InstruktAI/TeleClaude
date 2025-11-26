@@ -55,6 +55,24 @@ class RemoteExecutionProtocol(Protocol):
         """
         ...
 
+    async def read_single_response(self, request_id: str, timeout: float = 3.0) -> str:
+        """Read single response from ephemeral request (non-streaming).
+
+        Used for one-shot queries like list_projects, get_computer_info.
+        Reads the response in one go instead of streaming.
+
+        Args:
+            request_id: Request ID to read response from
+            timeout: Maximum time to wait for response (seconds, default 3.0)
+
+        Returns:
+            Response data as string
+
+        Raises:
+            TimeoutError: If no response received within timeout
+        """
+        ...
+
     def poll_output_stream(
         self,
         request_id: str,

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -20,7 +21,6 @@ from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.protocols import RemoteExecutionProtocol
-from teleclaude.core.system_stats import get_all_stats
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -445,13 +445,37 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     else:
                         last_seen_ago = f"{int(age_seconds / 3600)}h ago"
 
+                    computer_name = info["computer_name"]
+
+                    # Skip self
+                    if computer_name == self.computer_name:
+                        continue
+
+                    # Request computer info via get_computer_info command
+                    request_id = str(uuid.uuid4())
+                    computer_info = None
+                    try:
+                        await self.send_request(computer_name, request_id, "get_computer_info")
+
+                        # Wait for response (short timeout) - use read_response for one-shot query
+                        response_data = await self.client.read_response(request_id, timeout=2.0)
+                        if response_data.strip().startswith("{"):
+                            computer_info = json.loads(response_data.strip())
+
+                    except (TimeoutError, Exception) as e:
+                        logger.debug("Failed to get info from %s: %s", computer_name, e)
+                        continue  # Skip this peer if request fails
+
+                    # Skip if no response received
+                    if not computer_info:
+                        continue
+
                     peers.append(
                         {
-                            "name": info["computer_name"],
-                            "role": info.get("role", "general"),
-                            "host": info.get("host"),
-                            "system_stats": info.get("system_stats", {}),
-                            "sessions": info.get("sessions", []),
+                            "name": computer_name,
+                            "user": computer_info.get("user"),
+                            "role": computer_info.get("role"),
+                            "host": computer_info.get("host"),
                             "status": "online",
                             "last_seen": last_seen_dt,
                             "last_seen_ago": last_seen_ago,
@@ -711,24 +735,16 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 await asyncio.sleep(self.heartbeat_interval)
 
     async def _send_heartbeat(self) -> None:
-        """Send Redis key with TTL as heartbeat."""
+        """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
         if not self.redis:
             return
 
         key = f"computer:{self.computer_name}:heartbeat"
 
-        # Add active sessions (limited to 50 max)
-        all_sessions = await db.get_sessions_by_title_pattern("")
-        active_sessions = [s.title for s in all_sessions if not s.closed][:50]  # Limit to 50 sessions
-
-        # Build enhanced payload with graceful degradation
-        payload: dict[str, object] = {
+        # Minimal payload - just alive ping
+        payload: dict[str, str] = {
             "computer_name": self.computer_name,
             "last_seen": datetime.now().isoformat(),
-            "role": config.computer.role,
-            "host": config.computer.host,
-            "system_stats": get_all_stats(),
-            "sessions": active_sessions,
         }
 
         # Set key with auto-expiry
@@ -877,6 +893,53 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         logger.debug("Sent response to stream %s: %s", output_stream, message_id_bytes)
         return message_id_bytes.decode("utf-8")
+
+    async def read_single_response(self, request_id: str, timeout: float = 3.0) -> str:
+        """Read single response from ephemeral request (non-streaming).
+
+        Used for one-shot request/response like list_projects, get_computer_info.
+        Reads once from the Redis stream instead of continuous polling.
+
+        Args:
+            request_id: Request ID to read response from
+            timeout: Maximum time to wait for response (seconds, default 3.0)
+
+        Returns:
+            Response data as string
+
+        Raises:
+            TimeoutError: If no response received within timeout
+        """
+        if not self.redis:
+            raise RuntimeError("Redis not initialized")
+
+        output_stream = f"output:{request_id}"
+        start_time = time.time()
+
+        try:
+            while True:
+                # Check timeout
+                if time.time() - start_time > timeout:
+                    raise TimeoutError(f"No response received for request {request_id[:8]} within {timeout}s")
+
+                # Read from stream (blocking with 100ms timeout)
+                messages = await self.redis.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
+
+                if messages:
+                    # Got response - extract and return
+                    for _stream_name, stream_messages in messages:
+                        for _message_id, data in stream_messages:
+                            chunk_bytes: bytes = data.get(b"chunk", b"")
+                            chunk: str = chunk_bytes.decode("utf-8")
+                            if chunk:
+                                return chunk
+
+                # No message yet, continue polling
+                await asyncio.sleep(0.1)
+
+        except asyncio.CancelledError:
+            logger.debug("read_single_response cancelled for request %s", request_id[:8])
+            raise
 
     async def send_system_command(
         self, computer_name: str, command: str, args: Optional[dict[str, object]] = None

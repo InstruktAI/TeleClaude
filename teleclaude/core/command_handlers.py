@@ -300,6 +300,35 @@ async def handle_list_projects(  # type: ignore[explicit-any]
     await client.send_response(request_id=str(request_id), data=json.dumps(dirs_data))
 
 
+async def handle_get_computer_info(  # type: ignore[explicit-any]
+    context: dict[str, Any],
+    client: "AdapterClient",
+) -> None:
+    """Return computer info as JSON response.
+
+    Ephemeral request/response - no DB session required.
+
+    Args:
+        context: Command context with request_id (passed as session_id in Redis protocol)
+        client: AdapterClient for sending response
+    """
+    # Get request_id from context (passed as session_id in Redis protocol)
+    request_id = context.get("session_id")
+    if not request_id:
+        logger.error("No request_id in context for get_computer_info")
+        return
+
+    # Build info from config
+    info_data = {
+        "user": config.computer.user,
+        "role": config.computer.role,
+        "host": config.computer.host,
+    }
+
+    # Send response directly to Redis stream (no DB session lookup)
+    await client.send_response(request_id=str(request_id), data=json.dumps(info_data))
+
+
 @with_session
 async def handle_cancel_command(  # type: ignore[explicit-any]
     session: Session,

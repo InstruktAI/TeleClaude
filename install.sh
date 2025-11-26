@@ -405,9 +405,10 @@ EOF
     if [ ! -f "$INSTALL_DIR/config.yml" ]; then
         cp "$INSTALL_DIR/config.yml.sample" "$INSTALL_DIR/config.yml"
 
-        # Update computer name in config.yml
+        # Update computer name and user in config.yml
         if command -v sed &> /dev/null; then
             sed -i.bak "s/name: .*/name: $COMPUTER_NAME/" "$INSTALL_DIR/config.yml"
+            sed -i.bak "s/user: {USER}/user: $USER/" "$INSTALL_DIR/config.yml"
             rm -f "$INSTALL_DIR/config.yml.bak"
         fi
 

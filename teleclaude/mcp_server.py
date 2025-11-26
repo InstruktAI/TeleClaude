@@ -513,23 +513,20 @@ class TeleClaudeMCPServer:
 
         # Send list_projects command via AdapterClient
         await self.client.send_request(computer_name=computer, request_id=session_id, command="list_projects")
-        logger.debug("Request sent, starting to poll response...")
+        logger.debug("Request sent, reading response...")
 
-        # Stream response from AdapterClient
-        result: list[dict[str, str]] = []
+        # Read response from AdapterClient (one-shot, not streaming)
         try:
-            async with asyncio.timeout(10):
-                async for chunk in self.client.poll_response(session_id, timeout=10.0):
-                    # Look for JSON array response
-                    if chunk.strip().startswith("["):
-                        projects: list[dict[str, str]] = json.loads(chunk.strip())
-                        result = projects
-                        break
-        except asyncio.TimeoutError:
+            response_data = await self.client.read_response(session_id, timeout=3.0)
+            # Parse JSON array response
+            if response_data.strip().startswith("["):
+                projects: list[dict[str, str]] = json.loads(response_data.strip())
+                return projects
+            logger.warning("Unexpected response format from %s: %s", computer, response_data[:100])
+            return []
+        except TimeoutError:
             logger.warning("Timeout waiting for list_projects response from %s", computer)
             return []
-
-        return result
 
     async def teleclaude__start_session(
         self,
@@ -713,7 +710,7 @@ class TeleClaudeMCPServer:
 
         try:
             # Stream output with interest window timeout
-            async for chunk in self.client.poll_response(session_id, timeout=interest_window_seconds):
+            async for chunk in self.client.stream_session_output(session_id, timeout=interest_window_seconds):
                 # Strip exit markers from output (internal infrastructure, not user-visible)
                 clean_chunk = re.sub(r"__EXIT__\d+__", "", chunk)
                 if clean_chunk:  # Only yield if there's content after stripping
@@ -768,7 +765,7 @@ class TeleClaudeMCPServer:
         # Poll for new output with short timeout (2s - just check what's available)
         new_output_chunks: list[str] = []
         try:
-            async for chunk in self.client.poll_response(session_id, timeout=2.0):
+            async for chunk in self.client.stream_session_output(session_id, timeout=2.0):
                 new_output_chunks.append(chunk)
         except asyncio.TimeoutError:
             # No new output - that's fine
@@ -852,7 +849,7 @@ class TeleClaudeMCPServer:
         start_time = time.time()
 
         try:
-            async for chunk in self.client.poll_response(session_id, timeout=float(duration_seconds)):
+            async for chunk in self.client.stream_session_output(session_id, timeout=float(duration_seconds)):
                 output_chunks.append(chunk)
 
                 # Stop if duration exceeded

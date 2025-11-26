@@ -51,7 +51,7 @@ If push fails, stop and report the error to the user.
 
 1. Get list of computers: `teleclaude__list_computers()`
 2. For each computer, get teleclaude project path: `teleclaude__list_projects(computer)`
-3. Remember this information (computer names and their teleclaude paths) for Step 6
+3. Remember this information (computer host names and their teleclaude paths) for Step 6
 
 ## Step 5: Restart Local TeleClaude & Claude Code
 
@@ -62,6 +62,7 @@ make restart
 ```
 
 This ensures:
+
 - Local daemon runs latest code
 - Claude Code session reconnects MCP servers automatically
 - Work continues immediately with "continue" message
@@ -70,13 +71,14 @@ Wait 5 seconds for services to stabilize before proceeding.
 
 ## Step 6: Deploy to All Remote Machines
 
-**Try MCP deployment first (if reconnected after restart):**
+**Try MCP deployment first (only works if mcp reconnected after restart):**
 
 ```
 teleclaude__deploy_to_all_computers()
 ```
 
 This will:
+
 - Send deploy command to all computers via Redis
 - Each computer: `git pull` → restart daemon
 - Return deployment status for each machine
@@ -94,6 +96,7 @@ ssh -A <computer-name> 'cd <teleclaude-path> && git pull && make restart && slee
 Replace `<computer-name>` with the actual computer hostname and `<teleclaude-path>` with the path from Step 4.
 
 **CRITICAL:**
+
 - Use `-A` flag for SSH agent forwarding
 - Use timeout of 10000ms for each SSH command
 - Run commands sequentially (one computer at a time)
@@ -122,6 +125,7 @@ After deployment completes, report:
 ## Typical Workflow
 
 **In worktree** (feature development):
+
 ```
 /commit  # per task (multiple times)
 /commit  # per task
@@ -129,6 +133,7 @@ After deployment completes, report:
 ```
 
 **After merging to main**:
+
 ```
 git merge {feature-branch}  # brings all commits to main
 /deploy              # push + deploy everything

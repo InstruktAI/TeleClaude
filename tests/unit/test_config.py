@@ -106,6 +106,7 @@ class TestGetAllTrustedDirs:
         """Test that default_working_dir is always included first."""
         config = ComputerConfig(
             name="test",
+            user="testuser",
             role="dev",
             timezone="UTC",
             default_shell="/bin/bash",
@@ -128,6 +129,7 @@ class TestGetAllTrustedDirs:
         """Test that duplicate paths are removed."""
         config = ComputerConfig(
             name="test",
+            user="testuser",
             role="dev",
             timezone="UTC",
             default_shell="/bin/bash",
@@ -151,6 +153,7 @@ class TestGetAllTrustedDirs:
         """Test with empty trusted_dirs list."""
         config = ComputerConfig(
             name="test",
+            user="testuser",
             role="dev",
             timezone="UTC",
             default_shell="/bin/bash",
@@ -171,6 +174,7 @@ class TestGetAllTrustedDirs:
         """Test that order is preserved (default_working_dir first, then trusted_dirs)."""
         config = ComputerConfig(
             name="test",
+            user="testuser",
             role="dev",
             timezone="UTC",
             default_shell="/bin/bash",

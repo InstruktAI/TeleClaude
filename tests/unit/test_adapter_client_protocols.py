@@ -78,11 +78,11 @@ async def test_send_request_no_transport_fails(adapter_client_without_transport)
 
 
 @pytest.mark.asyncio
-async def test_poll_response_success(adapter_client_with_transport):
-    """Test streaming response from remote request."""
+async def test_stream_session_output_success(adapter_client_with_transport):
+    """Test streaming session output from remote request."""
     # Execute
     chunks = []
-    async for chunk in adapter_client_with_transport.poll_response("req_123", timeout=60.0):
+    async for chunk in adapter_client_with_transport.stream_session_output("req_123", timeout=60.0):
         chunks.append(chunk)
 
     # Verify
@@ -90,10 +90,10 @@ async def test_poll_response_success(adapter_client_with_transport):
 
 
 @pytest.mark.asyncio
-async def test_poll_response_no_transport_fails(adapter_client_without_transport):
-    """Test polling response fails when no transport adapter available."""
+async def test_stream_session_output_no_transport_fails(adapter_client_without_transport):
+    """Test streaming session output fails when no transport adapter available."""
     with pytest.raises(RuntimeError, match="No transport adapter available"):
-        stream = adapter_client_without_transport.poll_response("req_123")
+        stream = adapter_client_without_transport.stream_session_output("req_123")
         # Trigger the exception by starting iteration
         async for _ in stream:
             pass
