@@ -1,5 +1,7 @@
 """Integration tests for MCP tools."""
 
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -185,3 +187,95 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
 
         # Verify notification message was marked for cleanup
         assert "msg123" in ux_state.get("pending_deletions", [])
+
+
+@pytest.mark.integration
+async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram, monkeypatch):
+    """Test teleclaude__send_file sends file via AdapterClient to origin adapter."""
+    daemon = daemon_with_mocked_telegram
+
+    # Create session with telegram origin
+    session = await daemon.db.create_session(
+        computer_name="testcomp",
+        tmux_session_name="test-file-upload",
+        origin_adapter="telegram",
+        title="Test File Upload",
+        adapter_metadata={"channel_id": "12345"},
+    )
+
+    # Create temporary test file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+        tmp.write("Test file content for MCP upload")
+        test_file_path = tmp.name
+
+    try:
+        # Mock TELECLAUDE_SESSION_ID environment variable (set by Claude Code hooks)
+        monkeypatch.setenv("TELECLAUDE_SESSION_ID", session.session_id)
+
+        # Call MCP tool
+        result = await mcp_server.teleclaude__send_file(file_path=test_file_path, caption="Test upload from Claude")
+
+        # Verify success message
+        assert "File sent successfully" in result
+        assert Path(test_file_path).name in result
+        assert "file-msg-789" in result
+
+        # Verify adapter.send_file was called via client layer
+        telegram_adapter = daemon.client.adapters.get("telegram")
+        telegram_adapter.send_file.assert_called_once()
+
+        # Verify call arguments (positional args: session_id, file_path, caption)
+        call_args = telegram_adapter.send_file.call_args.args
+        assert call_args[0] == session.session_id
+        assert call_args[1] == test_file_path
+        assert call_args[2] == "Test upload from Claude"
+
+    finally:
+        # Cleanup test file
+        Path(test_file_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_teleclaude_send_file_missing_session_env(mcp_server, monkeypatch):
+    """Test teleclaude__send_file fails gracefully when TELECLAUDE_SESSION_ID not set."""
+    # Clear environment variable
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+
+    # Create temporary test file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+        tmp.write("Test content")
+        test_file_path = tmp.name
+
+    try:
+        result = await mcp_server.teleclaude__send_file(file_path=test_file_path)
+
+        # Verify error message
+        assert "Error:" in result
+        assert "TELECLAUDE_SESSION_ID not set" in result
+
+    finally:
+        Path(test_file_path).unlink(missing_ok=True)
+
+
+@pytest.mark.integration
+async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_mocked_telegram, monkeypatch):
+    """Test teleclaude__send_file fails gracefully for missing files."""
+    daemon = daemon_with_mocked_telegram
+
+    # Create session
+    session = await daemon.db.create_session(
+        computer_name="testcomp",
+        tmux_session_name="test-missing-file",
+        origin_adapter="telegram",
+        title="Test Missing File",
+        adapter_metadata={"channel_id": "12345"},
+    )
+
+    monkeypatch.setenv("TELECLAUDE_SESSION_ID", session.session_id)
+
+    # Try to send non-existent file
+    result = await mcp_server.teleclaude__send_file(file_path="/tmp/nonexistent-file-12345.txt")
+
+    # Verify error message
+    assert "Error:" in result
+    assert "File not found" in result

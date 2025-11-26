@@ -952,23 +952,16 @@ class TeleClaudeMCPServer:
         if not session_id:
             return "Error: No active TeleClaude session (TELECLAUDE_SESSION_ID not set)"
 
-        # Get session from database
-        session = await db.get_session(session_id)
-        if not session:
-            return f"Error: Session {session_id} not found"
-
-        # Get origin adapter
-        origin_adapter_name = session.origin_adapter
-        origin_adapter = self.client.adapters.get(origin_adapter_name)
-        if not origin_adapter:
-            return f"Error: Origin adapter '{origin_adapter_name}' not available"
-
-        # Send file via adapter
+        # Send file via AdapterClient (routes to origin adapter only, no observer broadcasting)
         try:
-            message_id = await origin_adapter.send_file(
+            message_id = await self.client.send_file(
                 session_id=session_id, file_path=str(path.absolute()), caption=caption
             )
             return f"File sent successfully: {path.name} (message_id: {message_id})"
+        except ValueError as e:
+            # Session or adapter not found
+            logger.error("Failed to send file %s: %s", file_path, e)
+            return f"Error: {e}"
         except Exception as e:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"

@@ -245,6 +245,49 @@ class AdapterClient:
         result = await origin_adapter.delete_message(session_id, message_id)
         return bool(result)
 
+    async def send_file(
+        self,
+        session_id: str,
+        file_path: str,
+        caption: Optional[str] = None,
+    ) -> str:
+        """Send file to origin adapter only (no observer broadcasting).
+
+        Used by MCP tools to upload files to the session's UI adapter.
+        Unlike send_message(), files are NOT broadcast to observers -
+        they only go to the origin adapter where the session is interactive.
+
+        Args:
+            session_id: Session identifier
+            file_path: Absolute path to file
+            caption: Optional file caption/description
+
+        Returns:
+            message_id from adapter
+
+        Raises:
+            ValueError: If session or origin adapter not found
+        """
+
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        if not session.origin_adapter:
+            raise ValueError(f"Session {session_id} has no origin adapter configured")
+
+        # Get origin adapter
+        origin_adapter = self.adapters.get(session.origin_adapter)
+        if not origin_adapter:
+            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
+
+        # Send file to origin adapter only (no broadcasting)
+        result: str = await origin_adapter.send_file(session_id, file_path, caption)
+        logger.debug(
+            "Sent file %s to origin adapter %s for session %s", file_path, session.origin_adapter, session_id[:8]
+        )
+        return result
+
     async def send_output_update(
         self,
         session_id: str,
@@ -381,8 +424,16 @@ class AdapterClient:
         if not origin_adapter:
             raise ValueError(f"Origin adapter {session.origin_adapter} not available")
 
-        # Delegate to origin adapter
-        result = await origin_adapter.update_channel_title(session_id, title)
+        # Get channel_id from session metadata
+        if not session.adapter_metadata:
+            raise ValueError(f"Session {session_id} has no adapter_metadata")
+
+        channel_id = session.adapter_metadata.get("channel_id")
+        if not channel_id:
+            raise ValueError(f"Session {session_id} has no channel_id in adapter_metadata")
+
+        # Delegate to origin adapter with channel_id
+        result = await origin_adapter.update_channel_title(str(channel_id), title)
         return bool(result)
 
     async def delete_channel(self, session_id: str) -> bool:
