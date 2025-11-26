@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
@@ -355,12 +356,14 @@ class TelegramAdapter(UiAdapter):
             raise AdapterError(f"Session {session_id} has no channel_id in metadata")
         topic_id: int = int(str(topic_id_obj))
 
-        # Extract reply_markup if present
+        # Extract reply_markup and parse_mode if present
         reply_markup = (metadata or {}).get("reply_markup")
+        parse_mode_obj = (metadata or {}).get("parse_mode", "Markdown")
+        parse_mode = str(parse_mode_obj) if parse_mode_obj is not None else None
 
         # Send message with error handling for deleted topics
         try:
-            message = await self._send_message_with_retry(topic_id, text, reply_markup)
+            message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)
             return str(message.message_id)
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -382,13 +385,15 @@ class TelegramAdapter(UiAdapter):
             return None
 
     @command_retry(max_retries=3)
-    async def _send_message_with_retry(self, topic_id: int, formatted_text: str, reply_markup: object) -> Message:
+    async def _send_message_with_retry(
+        self, topic_id: int, formatted_text: str, reply_markup: object, parse_mode: Optional[str]
+    ) -> Message:
         """Internal method with retry logic for sending messages."""
         return await self.app.bot.send_message(
             chat_id=self.supergroup_id,
             message_thread_id=topic_id,
             text=formatted_text,
-            parse_mode="Markdown",
+            parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
 
@@ -426,7 +431,11 @@ class TelegramAdapter(UiAdapter):
         self._pending_edits[message_id] = ctx
 
         try:
+            start_time = time.time()
+            logger.debug("[TELEGRAM %s] Starting edit_message API call", session_id[:8])
             await self._edit_message_with_retry(session_id, ctx)
+            elapsed = time.time() - start_time
+            logger.debug("[TELEGRAM %s] edit_message completed in %.2fs", session_id[:8], elapsed)
             return True
         except BadRequest as e:
             error_msg = str(e).lower()
@@ -1154,9 +1163,7 @@ class TelegramAdapter(UiAdapter):
 /resize wide - 200x80 (ultrawide)
 
 Current size: {}
-            """.format(
-                session.terminal_size or "80x24"
-            )
+            """.format(session.terminal_size or "80x24")
             await update.effective_message.reply_text(presets_text, parse_mode="Markdown")
             return
 
@@ -1799,10 +1806,11 @@ Usage:
             # Log detailed error for debugging
             logger.error("Failed to download %s: %s", file_type, str(e))
 
-            # Send user-friendly error message
+            # Send user-friendly error message (plain text, no Markdown parsing)
             message_id = await self.client.send_message(
                 session.session_id,
                 f"❌ Failed to upload {file_type}",
+                metadata={"parse_mode": None},
             )
             if message_id:
                 await db.add_pending_deletion(session.session_id, message_id)

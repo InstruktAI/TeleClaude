@@ -6,13 +6,15 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
+import hashlib
 import json
 import logging
 import os
 import shlex
+import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 # Type alias for start_polling function
-StartPollingFunc = Callable[[str, str], Awaitable[None]]
+StartPollingFunc = Callable[[str, str, Optional[str]], Awaitable[None]]
 
 
 def get_short_project_name(project_path: str) -> str:
@@ -90,6 +92,7 @@ async def _execute_and_poll(  # type: ignore[explicit-any]
     client: "AdapterClient",
     start_polling: StartPollingFunc,
     *terminal_args: Any,
+    marker_id: Optional[str] = None,
 ) -> bool:
     """Execute terminal action, cleanup messages on success, start polling.
 
@@ -103,6 +106,7 @@ async def _execute_and_poll(  # type: ignore[explicit-any]
         client: AdapterClient for message cleanup
         start_polling: Function to start output polling
         *terminal_args: Additional arguments for terminal_action (after tmux_session_name)
+        marker_id: Unique marker ID for exit detection (None for TUI commands)
 
     Returns:
         True if terminal action succeeded, False otherwise
@@ -112,8 +116,8 @@ async def _execute_and_poll(  # type: ignore[explicit-any]
 
     if success:
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
-        # Start polling for output
-        await start_polling(session.session_id, session.tmux_session_name)
+        # Start polling for output (with marker_id for exit detection)
+        await start_polling(session.session_id, session.tmux_session_name, marker_id)
 
     return success
 
@@ -448,6 +452,11 @@ async def handle_escape_command(  # type: ignore[explicit-any]
         # Check if process is running for exit marker logic
         is_process_running = await db.is_polling(session.session_id)
 
+        # Generate unique marker_id for exit detection (if appending marker)
+        marker_id = None
+        if not is_process_running:
+            marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
+
         # Send text + ENTER
         success = await terminal_bridge.send_keys(
             session.tmux_session_name,
@@ -457,6 +466,7 @@ async def handle_escape_command(  # type: ignore[explicit-any]
             cols=cols,
             rows=rows,
             append_exit_marker=not is_process_running,
+            marker_id=marker_id,
         )
 
         if not success:
@@ -468,9 +478,9 @@ async def handle_escape_command(  # type: ignore[explicit-any]
 
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
-        # Start polling if needed
+        # Start polling if needed (pass marker_id for exit detection)
         if not is_process_running:
-            await start_polling(session.session_id, session.tmux_session_name)
+            await start_polling(session.session_id, session.tmux_session_name, marker_id)
 
         logger.info(
             "Sent %s ESCAPE + '%s' to session %s", "double" if double else "single", text, session.session_id[:8]
@@ -516,7 +526,9 @@ async def handle_ctrl_command(  # type: ignore[explicit-any]
     """
     if not args:
         logger.warning("No key argument provided to ctrl command")
-        feedback_msg_id = await client.send_message(session.session_id, "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)")
+        feedback_msg_id = await client.send_message(
+            session.session_id, "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)", metadata={"parse_mode": None}
+        )
 
         # Track both command message AND feedback message for deletion
         # Track command message (e.g., /ctrl)
@@ -725,9 +737,9 @@ async def handle_resize_session(  # type: ignore[explicit-any]
 
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
-        # Send feedback message
+        # Send feedback message (plain text, no Markdown)
         feedback_msg_id = await client.send_message(
-            session.session_id, f"Terminal resized to {size_str} ({cols}x{rows})"
+            session.session_id, f"Terminal resized to {size_str} ({cols}x{rows})", metadata={"parse_mode": None}
         )
 
         # Track feedback message for cleanup on next user input
@@ -777,8 +789,10 @@ async def handle_rename_session(  # type: ignore[explicit-any]
         # Cleanup old messages AND delete current command
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
-        # Send feedback message
-        feedback_msg_id = await client.send_message(session.session_id, f"Session renamed to: {new_title}")
+        # Send feedback message (plain text, no Markdown)
+        feedback_msg_id = await client.send_message(
+            session.session_id, f"Session renamed to: {new_title}", metadata={"parse_mode": None}
+        )
 
         # Track feedback message for cleanup on next user input
         if feedback_msg_id:

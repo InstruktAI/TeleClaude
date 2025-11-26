@@ -1,5 +1,6 @@
 """Unit tests for simplified OutputPoller."""
 
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -12,6 +13,26 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
+
+
+def make_advancing_time_mock(start_time=1000.0, increment=1.0):
+    """Create a time.time() mock that advances by increment on each call.
+
+    Args:
+        start_time: Starting timestamp
+        increment: Seconds to advance on each call
+
+    Returns:
+        Mock function that returns advancing time
+    """
+    current_time = [start_time]  # Use list for mutable state
+
+    def advancing_time():
+        result = current_time[0]
+        current_time[0] += increment
+        return result
+
+    return advancing_time
 
 
 @pytest.mark.unit
@@ -288,37 +309,38 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                with patch("teleclaude.core.output_poller.db") as mock_db:
-                    iteration = 0
+                with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
+                    with patch("teleclaude.core.output_poller.db") as mock_db:
+                        iteration = 0
 
-                    # Mock db.get_session to avoid AttributeError in watchdog
-                    mock_db.get_session = AsyncMock(return_value=None)
+                        # Mock db.get_session to avoid AttributeError in watchdog
+                        mock_db.get_session = AsyncMock(return_value=None)
 
-                    async def session_exists_mock(name, log_missing=True):
-                        nonlocal iteration
-                        # Session dies after 3 polls (stops loop)
-                        return iteration < 3
+                        async def session_exists_mock(name, log_missing=True):
+                            nonlocal iteration
+                            # Session dies after 3 polls (stops loop)
+                            return iteration < 3
 
-                    async def capture_mock(name):
-                        nonlocal iteration
-                        iteration += 1
+                        async def capture_mock(name):
+                            nonlocal iteration
+                            iteration += 1
 
-                        if iteration == 1:
-                            # First poll: OLD marker from PREVIOUS command in scrollback (different marker_id)
-                            return f"previous command\n__EXIT__{old_marker_id}__0__\n$ new_command with output\nline1\nline2\n"
-                        else:
-                            # Later polls: just current command output (no new marker yet)
-                            return "$ new_command\nmore output\n"
+                            if iteration == 1:
+                                # First poll: OLD marker from PREVIOUS command in scrollback (different marker_id)
+                                return f"previous command\n__EXIT__{old_marker_id}__0__\n$ new_command with output\nline1\nline2\n"
+                            else:
+                                # Later polls: just current command output (no new marker yet)
+                                return "$ new_command\nmore output\n"
 
-                    mock_terminal.session_exists = session_exists_mock
-                    mock_terminal.capture_pane = capture_mock
+                        mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.capture_pane = capture_mock
 
-                    # Collect events - should NOT exit on first poll due to different marker_id
-                    events = []
-                    async for event in poller.poll(
-                        "test-baseline", "test-tmux", output_file, marker_id=current_marker_id
-                    ):
-                        events.append(event)
+                        # Collect events - should NOT exit on first poll due to different marker_id
+                        events = []
+                        async for event in poller.poll(
+                            "test-baseline", "test-tmux", output_file, marker_id=current_marker_id
+                        ):
+                            events.append(event)
 
                     # Should NOT detect exit from old marker (different marker_id)
                     # Session dies eventually, so we get ProcessExited with exit_code=None
@@ -375,35 +397,36 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                with patch("teleclaude.core.output_poller.db") as mock_db:
-                    mock_terminal.session_exists = AsyncMock(return_value=True)
-                    mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
-                    mock_db.get_session = AsyncMock(return_value=None)
+                with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
+                    with patch("teleclaude.core.output_poller.db") as mock_db:
+                        mock_terminal.session_exists = AsyncMock(return_value=True)
+                        mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
+                        mock_db.get_session = AsyncMock(return_value=None)
 
-                    # Output accumulates over time
-                    call_count = 0
+                        # Output accumulates over time
+                        call_count = 0
 
-                    async def capture_mock(name):
-                        nonlocal call_count
-                        call_count += 1
-                        if call_count < 3:
-                            return "line 1\n"
-                        if call_count < 5:
+                        async def capture_mock(name):
+                            nonlocal call_count
+                            call_count += 1
+                            if call_count < 3:
+                                return "line 1\n"
+                            if call_count < 5:
+                                return "line 1\nline 2\n"
+                            # Session dies after 5 calls
                             return "line 1\nline 2\n"
-                        # Session dies after 5 calls
-                        return "line 1\nline 2\n"
 
-                    async def session_exists_mock(name, log_missing=True):
-                        nonlocal call_count
-                        return call_count < 5
+                        async def session_exists_mock(name, log_missing=True):
+                            nonlocal call_count
+                            return call_count < 5
 
-                    mock_terminal.capture_pane = capture_mock
-                    mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.capture_pane = capture_mock
+                        mock_terminal.session_exists = session_exists_mock
 
-                    # Collect events
-                    events = []
-                    async for event in poller.poll("test-consistent", "test-tmux", output_file, marker_id=None):
-                        events.append(event)
+                        # Collect events
+                        events = []
+                        async for event in poller.poll("test-consistent", "test-tmux", output_file, marker_id=None):
+                            events.append(event)
 
                     # Find OutputChanged events
                     output_events = [e for e in events if isinstance(e, OutputChanged)]
@@ -423,35 +446,36 @@ class TestOutputPollerPoll:
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
             with patch("teleclaude.core.output_poller.db") as mock_db:
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                    call_count = 0
+                    with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
+                        call_count = 0
 
-                    async def session_exists_mock(name, log_missing=True):
-                        nonlocal call_count
-                        call_count += 1
-                        # Exit after 6 iterations (3 poll cycles * 2-second update interval)
-                        return call_count < 6
+                        async def session_exists_mock(name, log_missing=True):
+                            nonlocal call_count
+                            call_count += 1
+                            # Exit after 6 iterations (3 poll cycles * 2-second update interval)
+                            return call_count < 6
 
-                    mock_terminal.session_exists = session_exists_mock
-                    mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
-                    mock_db.get_session = AsyncMock(return_value=None)
+                        mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
+                        mock_db.get_session = AsyncMock(return_value=None)
 
-                    # Output accumulates over time
-                    outputs = ["output 1\n", "output 1\noutput 2\n"]
-                    output_index = 0
+                        # Output accumulates over time
+                        outputs = ["output 1\n", "output 1\noutput 2\n"]
+                        output_index = 0
 
-                    async def capture_mock(name):
-                        nonlocal output_index
-                        # Return accumulated output
-                        result = outputs[min(output_index // 2, len(outputs) - 1)]
-                        output_index += 1
-                        return result
+                        async def capture_mock(name):
+                            nonlocal output_index
+                            # Return accumulated output
+                            result = outputs[min(output_index // 2, len(outputs) - 1)]
+                            output_index += 1
+                            return result
 
-                    mock_terminal.capture_pane = capture_mock
+                        mock_terminal.capture_pane = capture_mock
 
-                    # Collect events
-                    events = []
-                    async for event in poller.poll("test-789", "test-tmux", output_file, marker_id=None):
-                        events.append(event)
+                        # Collect events
+                        events = []
+                        async for event in poller.poll("test-789", "test-tmux", output_file, marker_id=None):
+                            events.append(event)
 
                 # Verify OutputChanged events (sent every 2 poll iterations)
                 # 6 iterations / 2 = 3 potential updates, but last is ProcessExited
@@ -508,33 +532,34 @@ class TestOutputPollerPoll:
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
                 with patch("teleclaude.core.output_poller.db") as mock_db:
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                        iteration_count = 0
+                        with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
+                            iteration_count = 0
 
-                        async def session_exists_mock(name, log_missing=True):
-                            nonlocal iteration_count
-                            iteration_count += 1
-                            # Run for 20 iterations (need: 1 initial + 5 for first periodic + 10 for second periodic = 16)
-                            return iteration_count < 20
+                            async def session_exists_mock(name, log_missing=True):
+                                nonlocal iteration_count
+                                iteration_count += 1
+                                # Run for 20 iterations (need: 1 initial + 5 for first periodic + 10 for second periodic = 16)
+                                return iteration_count < 20
 
-                        mock_terminal.session_exists = session_exists_mock
-                        mock_db.get_session = AsyncMock(return_value=None)
+                            mock_terminal.session_exists = session_exists_mock
+                            mock_db.get_session = AsyncMock(return_value=None)
 
-                        # Output doesn't change after first
-                        first_call = True
+                            # Output doesn't change after first
+                            first_call = True
 
-                        async def capture_mock(name):
-                            nonlocal first_call
-                            if first_call:
-                                first_call = False
-                                return "initial output\n"
-                            return "initial output\n"  # Same output
+                            async def capture_mock(name):
+                                nonlocal first_call
+                                if first_call:
+                                    first_call = False
+                                    return "initial output\n"
+                                return "initial output\n"  # Same output
 
-                        mock_terminal.capture_pane = capture_mock
+                            mock_terminal.capture_pane = capture_mock
 
-                        # Collect events
-                        events = []
-                        async for event in poller.poll("test-periodic", "test-tmux", output_file, marker_id=None):
-                            events.append(event)
+                            # Collect events
+                            events = []
+                            async for event in poller.poll("test-periodic", "test-tmux", output_file, marker_id=None):
+                                events.append(event)
 
                     # Verify periodic OutputChanged events sent
                     output_changed_events = [e for e in events if isinstance(e, OutputChanged)]

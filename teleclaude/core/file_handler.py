@@ -136,23 +136,19 @@ async def handle_file(
 
     await db.update_last_activity(session_id)
 
-    # Escape Markdown special characters in filename for safe display
-    safe_filename = (
-        filename.replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[").replace("]", "\\]")
-    )
-
+    # Send feedback with plain text (no Markdown parsing)
     file_size = context.get("file_size", 0)
     if isinstance(file_size, (int, float)):
         file_size_mb = file_size / 1_048_576
         await send_feedback(
             session_id,
-            f"📎 File uploaded: {safe_filename} ({file_size_mb:.2f} MB)",
+            f"📎 File uploaded: {filename} ({file_size_mb:.2f} MB)",
             True,
         )
     else:
         await send_feedback(
             session_id,
-            f"📎 File uploaded: {safe_filename}",
+            f"📎 File uploaded: {filename}",
             True,
         )
 

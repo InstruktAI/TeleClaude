@@ -198,7 +198,7 @@ class TeleClaudeDaemon:
         # Define send_feedback to properly track temporary messages for deletion
         async def send_feedback(sid: str, msg: str, _append: bool) -> Optional[str]:
             """Send feedback message and mark for deletion on next input."""
-            message_id = await self.client.send_message(sid, msg)
+            message_id = await self.client.send_message(sid, msg, metadata={"parse_mode": None})
             if message_id:
                 # Mark feedback message for deletion when next input arrives
                 await db.add_pending_deletion(sid, message_id)
@@ -321,7 +321,7 @@ class TeleClaudeDaemon:
 
         async def send_feedback(sid: str, msg: str, _append: bool) -> Optional[str]:
             """Send feedback message and mark for deletion on next input."""
-            message_id = await self.client.send_message(sid, msg)
+            message_id = await self.client.send_message(sid, msg, metadata={"parse_mode": None})
             if message_id:
                 await db.add_pending_deletion(sid, message_id)
             return message_id

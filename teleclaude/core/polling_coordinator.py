@@ -204,23 +204,42 @@ async def poll_and_send_output(
         # Consume events from pure poller
         async for event in output_poller.poll(session_id, tmux_session_name, output_file, marker_id):
             if isinstance(event, OutputChanged):
+                logger.debug(
+                    "[COORDINATOR %s] Received OutputChanged event from poller",
+                    session_id[:8],
+                )
                 # Output is already clean (poller writes filtered output to file)
                 clean_output = event.output
 
                 if is_ai_session:
                     # AI mode: Send sequential chunks (no editing, no loss)
+                    start_time = time.time()
                     await _send_output_chunks_ai_mode(
                         event.session_id,
                         adapter_client,
                         clean_output,
                     )
+                    elapsed = time.time() - start_time
+                    logger.debug(
+                        "[COORDINATOR %s] AI chunks sent in %.2fs",
+                        session_id[:8],
+                        elapsed,
+                    )
                 else:
                     # Human mode: Edit same message via AdapterClient
+                    start_time = time.time()
+                    logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
                     await adapter_client.send_output_update(
                         event.session_id,
                         clean_output,
                         event.started_at,
                         event.last_changed_at,
+                    )
+                    elapsed = time.time() - start_time
+                    logger.debug(
+                        "[COORDINATOR %s] send_output_update completed in %.2fs",
+                        session_id[:8],
+                        elapsed,
                     )
 
                 # Delete idle notification if one exists (output resumed)

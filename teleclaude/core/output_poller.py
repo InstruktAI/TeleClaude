@@ -94,7 +94,6 @@ class OutputPoller:
         notification_sent = False
         started_at = None
         last_output_changed_at = None
-        ticks_since_last_update = 0
         current_update_interval = global_update_interval  # Start with global interval
         last_directory = None
         directory_check_ticks = 0
@@ -108,6 +107,7 @@ class OutputPoller:
             await asyncio.sleep(1.0)
             started_at = time.time()
             last_output_changed_at = started_at
+            last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
             logger.debug("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
 
             # Poll loop - EXPLICIT EXIT CONDITIONS
@@ -167,30 +167,63 @@ class OutputPoller:
                     await asyncio.sleep(poll_interval)
                     continue
 
+                # LOG: Raw output sample BEFORE any stripping
+                raw_sample = current_output[:200].replace("\n", "\\n") if current_output else "(empty)"
+                logger.debug("[POLL %s] RAW captured (first 200 chars): '%s...'", session_id[:8], raw_sample)
+
                 # Strip ANSI codes and collapse whitespace, but KEEP markers (for exit detection)
                 current_with_markers = strip_ansi_codes(current_output)
                 current_with_markers = re.sub(r"\n\n+", "\n", current_with_markers)
+
+                # LOG: After ANSI stripping
+                after_ansi_sample = (
+                    current_with_markers[:200].replace("\n", "\\n") if current_with_markers else "(empty)"
+                )
+                logger.debug("[POLL %s] After ANSI strip: '%s...'", session_id[:8], after_ansi_sample)
 
                 # Also create clean version (markers stripped) for UI
                 current_cleaned = strip_exit_markers(current_with_markers)
 
                 # Detect output changes (for idle tracking)
                 output_changed = current_cleaned != previous_output
+
+                # LOG: Change detection with output sample
+                output_sample = current_cleaned[:100].replace("\n", "\\n") if current_cleaned else "(empty)"
+                logger.debug(
+                    "[POLL %s] iter=%d, output_changed=%s, sample='%s...'",
+                    session_id[:8],
+                    poll_iteration,
+                    output_changed,
+                    output_sample,
+                )
+
                 if output_changed:
                     previous_output = current_cleaned
                     idle_ticks = 0
                     notification_sent = False
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
-                    ticks_since_last_update = 0
+                    logger.debug(
+                        "[POLL %s] Output CHANGED - reset interval to %ds, idle_ticks=0",
+                        session_id[:8],
+                        global_update_interval,
+                    )
 
-                # Increment tick counter
-                ticks_since_last_update += 1
+                # Check if enough time elapsed since last yield (wall-clock, not tick-based)
+                current_time = time.time()
+                elapsed_since_last_yield = current_time - last_yield_time
 
                 # Send updates based on time interval only (enforce minimum 2s between updates)
                 # This prevents Telegram API rate limiting from excessive message edits
                 # Send FILTERED TMUX PANE (mirrors what user sees in terminal)
-                if ticks_since_last_update >= current_update_interval:
+                if elapsed_since_last_yield >= current_update_interval:
+                    logger.debug(
+                        "[POLL %s] YIELDING OutputChanged: elapsed=%.1fs >= interval=%ds, idle_ticks=%d",
+                        session_id[:8],
+                        elapsed_since_last_yield,
+                        current_update_interval,
+                        idle_ticks,
+                    )
                     # Send clean output to UI (current_cleaned already has markers stripped)
                     yield OutputChanged(
                         session_id=session_id,
@@ -198,12 +231,22 @@ class OutputPoller:
                         started_at=started_at,
                         last_changed_at=last_output_changed_at,
                     )
+                    logger.debug("[POLL %s] Resumed after yield, consumer processed event", session_id[:8])
 
                     # Mark that we've sent at least one update
                     output_sent_at_least_once = True
 
-                    # Reset tick counter
-                    ticks_since_last_update = 0
+                    # Update last yield time (ONLY after yielding, not on every change!)
+                    last_yield_time = current_time
+                else:
+                    wait_time = current_update_interval - elapsed_since_last_yield
+                    logger.debug(
+                        "[POLL %s] SKIPPING yield: elapsed=%.1fs < interval=%ds (waiting %.1f more seconds)",
+                        session_id[:8],
+                        elapsed_since_last_yield,
+                        current_update_interval,
+                        wait_time,
+                    )
 
                 # Exit condition 2: Exit code detected (EXACT MARKER MATCHING)
                 # Search for unique marker pattern - no counting, no baseline needed
@@ -240,17 +283,25 @@ class OutputPoller:
 
                 # Apply exponential backoff when idle: 2s -> 4s -> 6s -> 8s -> 10s
                 if idle_ticks >= current_update_interval:
+                    old_interval = current_update_interval
                     current_update_interval = min(current_update_interval + 2, 10)
                     logger.debug(
-                        "No activity for %ds, increasing update interval to %ds for %s",
-                        idle_ticks,
-                        current_update_interval,
+                        "[POLL %s] BACK-OFF APPLIED: idle_ticks=%d, interval %ds → %ds",
                         session_id[:8],
+                        idle_ticks,
+                        old_interval,
+                        current_update_interval,
                     )
 
                 # Increment idle counter when no new content
                 if not output_changed:
                     idle_ticks += 1
+                    logger.debug(
+                        "[POLL %s] Output unchanged - idle_ticks=%d, current_interval=%ds",
+                        session_id[:8],
+                        idle_ticks,
+                        current_update_interval,
+                    )
 
                     # Send idle notification once at threshold
                     if idle_ticks == idle_threshold and not notification_sent:
