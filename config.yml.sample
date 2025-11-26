@@ -32,10 +32,6 @@ polling:
     # Examples: ["my-repl", "watch", "docker logs -f"]
     # Built-in list includes: claude, vim, vi, nvim, nano, emacs, top, htop, less, more, python, node, etc.
 
-logging:
-    max_size_mb: 10
-    level: INFO
-
 telegram:
     # Whitelist of trusted bots (security for AI-to-AI communication)
     trusted_bots:
@@ -45,16 +41,9 @@ telegram:
         # Add other computer bot usernames here
 
 mcp:
-    enabled: true  # Enable MCP server for multi-computer communication
-
-    # Transport type: 'stdio' for Claude Code integration
-    transport: stdio
-
-    # Socket path if using socket transport (not used for stdio)
+    enabled: true  # Enable MCP server (Claude Code connects via socat)
     socket_path: /tmp/teleclaude.sock
-
-    # Command to start Claude Code (for /claude_resume in AI-to-AI sessions)
-    claude_command: claude  # Or: cd ~/project && claude
+    claude_command: claude  # Command to start Claude Code (for /claude_resume)
 
 # Redis Configuration (for AI-to-AI communication)
 redis:

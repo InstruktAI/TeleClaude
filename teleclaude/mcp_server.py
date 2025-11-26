@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp.server import Server
-from mcp.server.stdio import stdio_server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
 
@@ -409,42 +408,26 @@ class TeleClaudeMCPServer:
                 raise ValueError(f"Unknown tool: {name}")
 
     async def start(self) -> None:
-        """Start MCP server with configured transport."""
-        # config already imported
-        mcp_config = config.mcp.__dict__
-        transport = mcp_config.get("transport", "socket")
+        """Start MCP server on Unix socket."""
+        socket_path_str = os.path.expandvars(config.mcp.socket_path)
+        socket_path = Path(socket_path_str)
 
-        logger.info("Starting MCP server for %s (transport: %s)", self.computer_name, transport)
+        # Remove existing socket file if present
+        if socket_path.exists():
+            socket_path.unlink()
 
-        if transport == "stdio":
-            # Use stdio transport (for subprocess spawning)
-            async with stdio_server() as (read_stream, write_stream):
-                await self.server.run(read_stream, write_stream, self.server.create_initialization_options())
+        logger.info("MCP server listening on socket: %s", socket_path)
 
-        elif transport == "socket":
-            # Use Unix socket transport (for connecting to running daemon)
-            socket_path_str = os.path.expandvars(str(mcp_config.get("socket_path", "/tmp/teleclaude.sock")))
-            socket_path = Path(socket_path_str)
+        # Create Unix socket server
+        server = await asyncio.start_unix_server(
+            lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)), path=str(socket_path)
+        )
 
-            # Remove existing socket file if present
-            if socket_path.exists():
-                socket_path.unlink()
+        # Make socket accessible (owner only)
+        socket_path.chmod(0o600)
 
-            logger.info("MCP server listening on socket: %s", socket_path)
-
-            # Create Unix socket server using asyncio
-            server = await asyncio.start_unix_server(
-                lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)), path=str(socket_path)
-            )
-
-            # Make socket accessible (owner + root only)
-            socket_path.chmod(0o600)
-
-            async with server:
-                await server.serve_forever()
-
-        else:
-            raise NotImplementedError(f"Transport '{transport}' not yet implemented")
+        async with server:
+            await server.serve_forever()
 
     async def _handle_socket_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handle a single MCP client connection over Unix socket."""

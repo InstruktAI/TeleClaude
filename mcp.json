@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "teleclaude": {
+      "type": "stdio",
+      "command": "socat",
+      "args": ["-", "UNIX-CONNECT:/tmp/teleclaude.sock"]
+    }
+  }
+}

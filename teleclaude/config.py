@@ -13,8 +13,11 @@ from dotenv import load_dotenv
 
 from teleclaude.utils import expand_env_vars
 
-# Load .env BEFORE expanding config variables
-load_dotenv()
+# Project root (relative to this file)
+_project_root = Path(__file__).parent.parent
+
+# Load .env from project root BEFORE expanding config variables
+load_dotenv(_project_root / ".env")
 
 
 @dataclass
@@ -87,12 +90,6 @@ class ComputerConfig:
 
 
 @dataclass
-class LoggingConfig:
-    level: str
-    file: str
-
-
-@dataclass
 class PollingConfig:
     idle_notification_seconds: int
     lpoll_extensions: list[str]
@@ -101,7 +98,6 @@ class PollingConfig:
 @dataclass
 class MCPConfig:
     enabled: bool
-    transport: str
     socket_path: str
 
 
@@ -126,7 +122,6 @@ class TelegramConfig:
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
-    logging: LoggingConfig
     polling: PollingConfig
     mcp: MCPConfig
     redis: RedisConfig
@@ -148,17 +143,12 @@ DEFAULT_CONFIG: dict[str, object] = {
         "trusted_dirs": [],
         "host": None,
     },
-    "logging": {
-        "level": "INFO",
-        "file": "/var/log/teleclaude.log",
-    },
     "polling": {
         "idle_notification_seconds": 60,
         "lpoll_extensions": [],
     },
     "mcp": {
         "enabled": True,
-        "transport": "socket",
         "socket_path": "/tmp/teleclaude.sock",
     },
     "redis": {
@@ -240,7 +230,6 @@ def _build_config(raw: dict[str, object]) -> Config:
     """Build typed Config from raw dict with proper type conversion."""
     db = raw["database"]
     comp = raw["computer"]
-    log = raw["logging"]
     poll = raw["polling"]
     mcp = raw["mcp"]
     redis = raw["redis"]
@@ -260,17 +249,12 @@ def _build_config(raw: dict[str, object]) -> Config:
             trusted_dirs=_parse_trusted_dirs(list(comp["trusted_dirs"])),  # type: ignore[index]
             host=str(comp["host"]) if comp["host"] else None,  # type: ignore[index]
         ),
-        logging=LoggingConfig(
-            level=str(log["level"]),  # type: ignore[index]
-            file=str(log["file"]),  # type: ignore[index]
-        ),
         polling=PollingConfig(
             idle_notification_seconds=int(poll["idle_notification_seconds"]),  # type: ignore[index]
             lpoll_extensions=list(poll["lpoll_extensions"]),  # type: ignore[index]
         ),
         mcp=MCPConfig(
             enabled=bool(mcp["enabled"]),  # type: ignore[index]
-            transport=str(mcp["transport"]),  # type: ignore[index]
             socket_path=str(mcp["socket_path"]),  # type: ignore[index]
         ),
         redis=RedisConfig(
@@ -289,22 +273,19 @@ def _build_config(raw: dict[str, object]) -> Config:
     )
 
 
-# Load config.yml from project root or TELECLAUDE_CONFIG_PATH env var (falls back to defaults if not found)
-_project_root = Path(__file__).parent.parent
-_config_path_env = os.getenv("TELECLAUDE_CONFIG_PATH")
-_config_path = Path(_config_path_env) if _config_path_env else _project_root / "config.yml"
+# Load config.yml from project root (required)
+_config_path = _project_root / "config.yml"
 
-try:
-    with open(_config_path, encoding="utf-8") as f:
-        _user_config = yaml.safe_load(f)
+if not _config_path.exists():
+    raise FileNotFoundError(f"Config file not found: {_config_path}. Run 'make init' to create it.")
 
-    # Expand environment variables
-    _user_config = expand_env_vars(_user_config)
+with open(_config_path, encoding="utf-8") as f:
+    _user_config = yaml.safe_load(f)
 
-    # Merge with defaults and build typed config
-    _merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]
-except FileNotFoundError:
-    # Config file not found (e.g., in CI or fresh install) - use defaults
-    _merged = DEFAULT_CONFIG
+# Expand environment variables
+_user_config = expand_env_vars(_user_config)
+
+# Merge with defaults and build typed config
+_merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]
 
 config = _build_config(_merged)

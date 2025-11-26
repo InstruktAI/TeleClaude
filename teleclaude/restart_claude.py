@@ -26,8 +26,10 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     """Find Claude's TeleClaude session and restart it."""
 
-    # Setup logging (config already loaded at module level)
-    setup_logging(level=str(config.logging.level), log_file=str(config.logging.file))
+    # Setup logging from environment variables
+    log_level = os.getenv("TELECLAUDE_LOG_LEVEL", "INFO")
+    log_file = os.getenv("TELECLAUDE_LOG_FILE", "/var/log/teleclaude.log")
+    setup_logging(level=log_level, log_file=log_file)
 
     # Get TeleClaude session ID from environment (set by TeleClaude)
     teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")

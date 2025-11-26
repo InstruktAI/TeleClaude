@@ -38,6 +38,10 @@ from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
+# Logging defaults (can be overridden via environment variables)
+DEFAULT_LOG_FILE = "/var/log/teleclaude.log"
+DEFAULT_LOG_LEVEL = "INFO"
+
 logger = logging.getLogger(__name__)
 
 
@@ -944,8 +948,10 @@ async def main() -> None:
 
     # Note: .env already loaded at module import time (before config expansion)
 
-    # Setup logging (config already loaded at module level)
-    setup_logging(level=str(config.logging.level), log_file=str(config.logging.file))
+    # Setup logging from environment variables
+    log_level = os.getenv("TELECLAUDE_LOG_LEVEL", DEFAULT_LOG_LEVEL)
+    log_file = os.getenv("TELECLAUDE_LOG_FILE", DEFAULT_LOG_FILE)
+    setup_logging(level=log_level, log_file=log_file)
 
     # Create daemon
     daemon = TeleClaudeDaemon(str(env_path))

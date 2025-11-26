@@ -215,17 +215,15 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claud
 2. **Add all bots to the same Telegram supergroup**
 3. **Configure Claude Code** to use the TeleClaude MCP server:
 
+   `make init` configures this automatically. For manual setup, add to `~/.claude.json`:
+
 ```json
-// ~/.claude.json
 {
   "mcpServers": {
     "teleclaude": {
-      "command": "/path/to/teleclaude/.venv/bin/python",
-      "args": ["-m", "teleclaude.mcp_server"],
-      "env": {
-        "TELECLAUDE_CONFIG": "/path/to/teleclaude/config.yml",
-        "TELECLAUDE_ENV": "/path/to/teleclaude/.env"
-      }
+      "type": "stdio",
+      "command": "socat",
+      "args": ["-", "UNIX-CONNECT:/tmp/teleclaude.sock"]
     }
   }
 }

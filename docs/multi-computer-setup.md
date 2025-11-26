@@ -288,30 +288,27 @@ claude
 
 To use TeleClaude's MCP tools from Claude Code, add the MCP server to your Claude Code config.
 
-### Add to Claude Code Config
+### Automatic Configuration (Recommended)
 
-**macOS**: `~/.config/claude/config.json`
-**Linux**: `~/.config/claude/config.json`
+If you used `install.sh`, MCP is already configured. The installer merges TeleClaude's MCP server into your Claude Code config automatically.
+
+### Manual Configuration
+
+**Config file**: `~/.claude.json`
 
 ```json
 {
   "mcpServers": {
     "teleclaude": {
-      "command": "/Users/username/teleclaude/.venv/bin/python",
-      "args": ["-m", "teleclaude.mcp_server"],
-      "env": {
-        "TELECLAUDE_CONFIG": "/Users/username/teleclaude/config.yml",
-        "TELECLAUDE_ENV": "/Users/username/teleclaude/.env"
-      }
+      "type": "stdio",
+      "command": "socat",
+      "args": ["-", "UNIX-CONNECT:/tmp/teleclaude.sock"]
     }
   }
 }
 ```
 
-**Adjust paths for your system:**
-
-- Replace `/Users/username/teleclaude` with your actual TeleClaude installation directory
-- On Linux, paths might be `/home/username/teleclaude`
+**Note:** This uses `socat` to bridge stdio to the daemon's Unix socket. Ensure `socat` is installed (`make init` installs it automatically).
 
 ### Verify MCP Tools Available
 
