@@ -357,15 +357,12 @@ class TelegramAdapter(UiAdapter):
         # - telegram.channel_id = Telegram topic ID (integer)
         # - redis.channel_id = Redis stream key (string)
         telegram_meta = session.adapter_metadata.get("telegram")
-        if isinstance(telegram_meta, dict):
-            topic_id_obj = telegram_meta.get("channel_id")
-        else:
-            # Fallback to legacy channel_id for backward compatibility
-            topic_id_obj = session.adapter_metadata.get("channel_id")
+        if not isinstance(telegram_meta, dict):
+            raise AdapterError(f"Session {session_id} has no telegram metadata (got {type(telegram_meta).__name__})")
 
+        topic_id_obj = telegram_meta.get("channel_id")
         if not topic_id_obj:
-            logger.debug("No Telegram channel_id found for session %s, skipping message", session_id[:8])
-            return None
+            raise AdapterError(f"Session {session_id} telegram metadata has no channel_id")
 
         topic_id: int = int(str(topic_id_obj))
 
