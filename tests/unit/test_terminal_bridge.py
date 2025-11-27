@@ -10,12 +10,8 @@ from teleclaude.core import terminal_bridge
 @pytest.fixture(autouse=True)
 def setup_config():
     """Initialize config for all tests."""
-    # Mock the config object at the terminal_bridge module level
-    from teleclaude import config as config_module
-
-    test_config = MagicMock()
-    test_config.polling.lpoll_extensions = []
-    with patch.object(config_module, "config", test_config):
+    # Mock _SHELL_NAME for consistent test behavior
+    with patch.object(terminal_bridge, "_SHELL_NAME", "zsh"):
         yield
 
 
@@ -23,8 +19,8 @@ class TestSendKeys:
     """Tests for send_keys() function."""
 
     @pytest.mark.asyncio
-    async def test_append_exit_marker_true(self):
-        """Test that exit marker is appended when append_exit_marker=True."""
+    async def test_append_exit_marker_when_shell_ready(self):
+        """Test that exit marker is appended when shell is ready (current_command is 'zsh')."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
             # Mock subprocess
             mock_process = MagicMock()
@@ -32,30 +28,29 @@ class TestSendKeys:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            # Mock session exists
+            # Mock session exists and get_current_command returns shell
             with patch.object(terminal_bridge, "session_exists", return_value=True):
-                # Execute with append_exit_marker=True and marker_id
-                marker_id = "abc12345"
-                success = await terminal_bridge.send_keys(
-                    session_name="test-session", text="ls -la", append_exit_marker=True, marker_id=marker_id
-                )
+                with patch.object(terminal_bridge, "get_current_command", return_value="zsh"):
+                    # Execute - should automatically append marker
+                    success, marker_id = await terminal_bridge.send_keys(session_name="test-session", text="ls -la")
 
-                assert success is True
+                    assert success is True
+                    assert marker_id is not None, "Should return auto-generated marker_id"
 
-                # Verify send_keys command includes exit marker
-                call_args_list = mock_exec.call_args_list
-                # Find the send-keys call (not Enter)
-                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
-                assert len(send_keys_call) > 0
+                    # Verify send_keys command includes exit marker
+                    call_args_list = mock_exec.call_args_list
+                    # Find the send-keys call (not Enter)
+                    send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                    assert len(send_keys_call) > 0
 
-                # Check that the command includes exit marker with marker_id
-                text_arg = send_keys_call[0][0][4]  # 5th argument is the text
-                assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker with marker_id"
-                assert "ls -la" in text_arg, "Should include original command"
+                    # Check that the command includes exit marker with marker_id
+                    text_arg = send_keys_call[0][0][4]  # 5th argument is the text
+                    assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker with marker_id"
+                    assert "ls -la" in text_arg, "Should include original command"
 
     @pytest.mark.asyncio
-    async def test_append_exit_marker_false(self):
-        """Test that exit marker is NOT appended when append_exit_marker=False."""
+    async def test_no_exit_marker_when_process_running(self):
+        """Test that exit marker is NOT appended when a process is running (e.g., vim)."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
             # Mock subprocess
             mock_process = MagicMock()
@@ -63,23 +58,51 @@ class TestSendKeys:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            # Mock session exists
+            # Mock session exists and get_current_command returns 'vim'
             with patch.object(terminal_bridge, "session_exists", return_value=True):
-                # Execute with append_exit_marker=False
-                success = await terminal_bridge.send_keys(
-                    session_name="test-session", text="some input", append_exit_marker=False
-                )
+                with patch.object(terminal_bridge, "get_current_command", return_value="vim"):
+                    # Execute - should NOT append marker (process running)
+                    success, marker_id = await terminal_bridge.send_keys(session_name="test-session", text="some input")
 
-                assert success is True
+                    assert success is True
+                    assert marker_id is None, "Should not return marker_id when no marker appended"
 
-                # Verify send_keys command does NOT include exit marker
-                call_args_list = mock_exec.call_args_list
-                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
-                assert len(send_keys_call) > 0
+                    # Verify send_keys command does NOT include exit marker
+                    call_args_list = mock_exec.call_args_list
+                    send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                    assert len(send_keys_call) > 0
 
-                text_arg = send_keys_call[0][0][4]
-                assert "__EXIT__" not in text_arg, "Should NOT include exit marker"
-                assert text_arg == "some input", "Should include only original text"
+                    text_arg = send_keys_call[0][0][4]
+                    assert "__EXIT__" not in text_arg, "Should NOT include exit marker"
+                    assert text_arg == "some input", "Should include only original text"
+
+    @pytest.mark.asyncio
+    async def test_append_exit_marker_when_no_command(self):
+        """Test that exit marker is appended when no command is running (None)."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            # Mock subprocess
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            # Mock session exists and get_current_command returns None
+            with patch.object(terminal_bridge, "session_exists", return_value=True):
+                with patch.object(terminal_bridge, "get_current_command", return_value=None):
+                    # Execute - should append marker (shell ready)
+                    success, marker_id = await terminal_bridge.send_keys(session_name="test-session", text="echo hello")
+
+                    assert success is True
+                    assert marker_id is not None, "Should return marker_id when marker appended"
+
+                    # Verify send_keys command includes exit marker
+                    call_args_list = mock_exec.call_args_list
+                    send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                    assert len(send_keys_call) > 0
+
+                    text_arg = send_keys_call[0][0][4]
+                    assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker"
+                    assert "echo hello" in text_arg, "Should include original command"
 
 
 class TestSendCtrlKey:
@@ -115,114 +138,6 @@ class TestSendCtrlKey:
             assert success is True
             call_args = mock_exec.call_args[0]
             assert call_args == ("tmux", "send-keys", "-t", "test-session", "C-z")
-
-
-class TestCommandValidation:
-    """Tests for command chaining validation."""
-
-    @pytest.mark.asyncio
-    async def test_reject_command_chaining_with_long_running(self):
-        """Test that command chaining with long-running processes is rejected."""
-        with patch.object(terminal_bridge, "session_exists", return_value=True):
-            success = await terminal_bridge.send_keys(
-                session_name="test-session", text="vim file.txt && ls", append_exit_marker=True
-            )
-            assert success is False, "Should return False when rejecting command chaining"
-
-    @pytest.mark.asyncio
-    async def test_allow_long_running_without_chaining(self):
-        """Test that long-running commands without chaining are allowed."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            with patch.object(terminal_bridge, "session_exists", return_value=True):
-                success = await terminal_bridge.send_keys(
-                    session_name="test-session", text="vim file.txt", append_exit_marker=True, marker_id="vimmrkr1"
-                )
-                assert success is True
-
-
-class TestIsLongRunningCommand:
-    """Tests for is_long_running_command() function."""
-
-    def test_claude_is_long_running(self):
-        """Test that 'claude' is recognized as long-running."""
-        assert terminal_bridge.is_long_running_command("claude")
-        assert terminal_bridge.is_long_running_command("claude .")
-        assert terminal_bridge.is_long_running_command("Claude")  # case-insensitive
-
-    def test_text_editors_are_long_running(self):
-        """Test that text editors are recognized as long-running."""
-        editors = ["vim", "vi", "nvim", "nano", "emacs", "micro", "helix"]
-        for editor in editors:
-            assert terminal_bridge.is_long_running_command(editor)
-            assert terminal_bridge.is_long_running_command(f"{editor} file.txt")
-
-    def test_system_monitors_are_long_running(self):
-        """Test that system monitors are recognized as long-running."""
-        monitors = ["top", "htop", "btop", "iotop", "glances"]
-        for monitor in monitors:
-            assert terminal_bridge.is_long_running_command(monitor)
-
-    def test_pagers_are_long_running(self):
-        """Test that pagers are recognized as long-running."""
-        assert terminal_bridge.is_long_running_command("less file.log")
-        assert terminal_bridge.is_long_running_command("more file.txt")
-
-    def test_repls_are_long_running(self):
-        """Test that REPLs are recognized as long-running."""
-        repls = ["python", "python3", "node", "irb", "psql"]
-        for repl in repls:
-            assert terminal_bridge.is_long_running_command(repl)
-
-    def test_regular_commands_not_long_running(self):
-        """Test that regular commands are NOT long-running."""
-        regular_commands = ["ls", "cat", "echo", "pwd", "cd", "mkdir"]
-        for cmd in regular_commands:
-            assert not terminal_bridge.is_long_running_command(cmd)
-
-    def test_empty_command(self):
-        """Test empty command."""
-        assert not terminal_bridge.is_long_running_command("")
-        assert not terminal_bridge.is_long_running_command("   ")
-
-
-class TestHasCommandSeparator:
-    """Tests for has_command_separator() function."""
-
-    def test_detects_semicolon(self):
-        """Test detection of semicolon separator."""
-        assert terminal_bridge.has_command_separator("echo 1; echo 2")
-        assert terminal_bridge.has_command_separator("ls -la; pwd")
-
-    def test_detects_and_operator(self):
-        """Test detection of && operator."""
-        assert terminal_bridge.has_command_separator("make build && make test")
-        assert terminal_bridge.has_command_separator("cd /tmp && ls")
-
-    def test_detects_or_operator(self):
-        """Test detection of || operator."""
-        assert terminal_bridge.has_command_separator("test -f file || echo missing")
-        assert terminal_bridge.has_command_separator("command1 || command2")
-
-    def test_no_separator(self):
-        """Test commands without separators."""
-        assert not terminal_bridge.has_command_separator("ls -la")
-        assert not terminal_bridge.has_command_separator("echo hello world")
-
-    def test_pipe_not_separator(self):
-        """Test that pipes are NOT considered command separators."""
-        # Pipes should be allowed (not blocked)
-        assert not terminal_bridge.has_command_separator("ls | grep txt")
-        assert not terminal_bridge.has_command_separator("cat file | wc -l")
-
-    def test_redirect_not_separator(self):
-        """Test that redirects are NOT considered command separators."""
-        assert not terminal_bridge.has_command_separator("echo hello > file.txt")
-        assert not terminal_bridge.has_command_separator("cat < input.txt")
 
 
 class TestSendTab:
@@ -406,39 +321,3 @@ class TestSendArrowKey:
 
             assert success is False
             mock_exec.assert_not_called()
-
-
-class TestGetLpollList:
-    """Tests for _get_lpoll_list() function."""
-
-    def test_returns_defaults(self):
-        """Test that defaults are included."""
-        with patch("teleclaude.core.terminal_bridge.config") as mock_config:
-            mock_config.polling.lpoll_extensions = []
-            lpoll_list = terminal_bridge._get_lpoll_list()
-
-            # Check some known defaults
-            assert "claude" in lpoll_list
-            assert "vim" in lpoll_list
-            assert "top" in lpoll_list
-
-    def test_includes_extensions(self):
-        """Test that config extensions are added."""
-        with patch("teleclaude.core.terminal_bridge.config") as mock_config:
-            mock_config.polling.lpoll_extensions = ["custom-app", "my-tool"]
-            lpoll_list = terminal_bridge._get_lpoll_list()
-
-            # Check defaults still present
-            assert "claude" in lpoll_list
-            # Check extensions added
-            assert "custom-app" in lpoll_list
-            assert "my-tool" in lpoll_list
-
-    def test_empty_extensions(self):
-        """Test with no extensions configured."""
-        with patch("teleclaude.core.terminal_bridge.config") as mock_config:
-            mock_config.polling.lpoll_extensions = []
-            lpoll_list = terminal_bridge._get_lpoll_list()
-
-            # Should just have defaults
-            assert len(lpoll_list) == len(terminal_bridge.LPOLL_DEFAULT_LIST)

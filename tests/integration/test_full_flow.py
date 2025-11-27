@@ -2,8 +2,6 @@
 """Test full message flow including output polling."""
 
 import asyncio
-import hashlib
-import time
 
 import pytest
 
@@ -130,7 +128,7 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
 
     # Create tmux session first
     tmux_name = "test-polling-flow"
-    await terminal_bridge.create_tmux_session(tmux_name, shell="/bin/bash", working_dir="~")
+    await terminal_bridge.create_tmux_session(tmux_name, working_dir="~")
 
     # Create session in daemon's db (same db as adapter_client uses)
     session = await daemon.db.create_session(
@@ -150,9 +148,11 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     # Create output file
     output_file = tmp_path / f"{session.session_id[:8]}.txt"
 
-    # Generate marker_id for both send_keys and polling
+    # Send command to tmux to get auto-generated marker_id
     command = "echo 'Multi-computer test output'"
-    marker_id = hashlib.md5(f"{command}:{time.time()}".encode()).hexdigest()[:8]
+    success, marker_id = await terminal_bridge.send_keys(session.tmux_session_name, command)
+    assert success, "Failed to send command"
+    assert marker_id is not None, "Should have marker_id for shell-ready command"
 
     # Use REAL polling coordinator with daemon's adapter_client
     poll_task = asyncio.create_task(
@@ -165,9 +165,6 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
             marker_id=marker_id,
         )
     )
-
-    # Send command to tmux with same marker_id
-    await terminal_bridge.send_keys(session.tmux_session_name, command, append_exit_marker=True, marker_id=marker_id)
 
     # Wait for polling to complete
     try:

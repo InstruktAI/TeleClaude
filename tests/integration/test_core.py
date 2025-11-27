@@ -83,9 +83,7 @@ async def test_terminal_bridge_tmux_operations():
 
     try:
         # Create tmux session
-        success = await terminal_bridge.create_tmux_session(
-            name=session_name, shell="/bin/sh", working_dir="/tmp", cols=80, rows=24
-        )
+        success = await terminal_bridge.create_tmux_session(name=session_name, working_dir="/tmp", cols=80, rows=24)
         assert success, "Should create tmux session"
 
         # Check if exists

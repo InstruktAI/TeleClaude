@@ -65,7 +65,7 @@ class TestRestartClaude:
             mock_db_instance.close = AsyncMock()
 
             # Mock terminal_bridge
-            mock_send_keys = AsyncMock(return_value=True)
+            mock_send_keys = AsyncMock(return_value=(True, "marker123"))
             mock_send_signal = AsyncMock(return_value=True)
             mock_sleep = AsyncMock()
 
@@ -96,7 +96,6 @@ class TestRestartClaude:
                 call_kwargs = mock_send_keys.call_args.kwargs
                 assert call_kwargs["session_name"] == "test-tmux-session"
                 assert "claude --dangerously-skip-permissions --resume test-session-id-12345" in call_kwargs["text"]
-                assert call_kwargs["append_exit_marker"] is True
                 assert call_kwargs["send_enter"] is True
                 assert call_kwargs["working_dir"] == "/home/test"  # Uses session's working_directory
 
@@ -150,8 +149,8 @@ class TestRestartClaude:
             mock_db_instance.get_session = AsyncMock(return_value=mock_session)
             mock_db_instance.close = AsyncMock()
 
-            # Mock terminal_bridge to return False (failure)
-            mock_send_keys = AsyncMock(return_value=False)
+            # Mock terminal_bridge to return (False, None) for failure
+            mock_send_keys = AsyncMock(return_value=(False, None))
 
             with (
                 patch("teleclaude.restart_claude.Db") as mock_db_class,

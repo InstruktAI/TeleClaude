@@ -48,9 +48,9 @@ class TestFileUploadFlow:
         sent_keys = []
         sent_messages = []
 
-        async def mock_send_keys(session_name: str, text: str, append_exit_marker: bool) -> bool:
-            sent_keys.append((session_name, text, append_exit_marker))
-            return True
+        async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
+            sent_keys.append((session_name, text))
+            return (True, "marker123")
 
         async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
             sent_messages.append((sid, msg, append))
@@ -76,7 +76,6 @@ class TestFileUploadFlow:
         assert len(sent_keys) == 1
         assert sent_keys[0][0] == "tmux_test"
         assert sent_keys[0][1] == "@/tmp/document.pdf"
-        assert sent_keys[0][2] is False
 
         assert len(sent_messages) == 1
         assert "document.pdf" in sent_messages[0][1]
@@ -87,9 +86,9 @@ class TestFileUploadFlow:
         """Test file upload flow with generic process."""
         sent_keys = []
 
-        async def mock_send_keys(session_name: str, text: str, append_exit_marker: bool) -> bool:
-            sent_keys.append((session_name, text, append_exit_marker))
-            return True
+        async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
+            sent_keys.append((session_name, text))
+            return (True, "marker123")
 
         async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
             return "msg_123"

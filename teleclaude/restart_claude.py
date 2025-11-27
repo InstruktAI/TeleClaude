@@ -82,12 +82,11 @@ async def main() -> None:
             logger.info("Starting fresh Claude session (no session ID in database)")
 
         # Use terminal_bridge.send_keys() which handles both text and Enter
-        success = await terminal_bridge.send_keys(
+        # Automatic detection: shell ready, marker appended
+        success, _ = await terminal_bridge.send_keys(
             session_name=session.tmux_session_name,
             text=restart_cmd,
-            shell=config.computer.default_shell,
             working_dir=session.working_directory,
-            append_exit_marker=True,
             send_enter=True,
         )
 

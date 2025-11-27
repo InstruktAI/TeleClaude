@@ -6,116 +6,31 @@ All functions are stateless and use config imported from teleclaude.config.
 import asyncio
 import hashlib
 import logging
+import os
+import pwd
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import psutil
 
-from teleclaude.config import config
-
 logger = logging.getLogger(__name__)
 
-# Default list of long-running interactive processes (lpoll)
-# These commands will NOT have exit markers appended
-LPOLL_DEFAULT_LIST = [
-    # Claude Code
-    "claude",
-    # Text editors
-    "vim",
-    "vi",
-    "nvim",
-    "nano",
-    "emacs",
-    "micro",
-    "helix",
-    "ed",
-    # System monitors
-    "top",
-    "htop",
-    "btop",
-    "iotop",
-    "nethogs",
-    "iftop",
-    "glances",
-    # Pagers
-    "less",
-    "more",
-    # Interactive shells/REPLs
-    "python",
-    "python3",
-    "node",
-    "irb",
-    "psql",
-    "mysql",
-    "redis-cli",
-    "mongo",
-    "sqlite3",
-    # Log viewers (command part only, flags handled separately)
-    "tail",
-    "journalctl",
-    # Interactive tools
-    "tmux",
-    "screen",
-    "fzf",
-    "ncdu",
-    "ranger",
-    "mc",
-    # Debuggers
-    "gdb",
-    "lldb",
-    "pdb",
-    # Others
-    "watch",
-    "docker",
-    "kubectl",
-]
-
-
-def _get_lpoll_list() -> List[str]:
-    """Get long-running process list: defaults + config extensions."""
-    defaults = LPOLL_DEFAULT_LIST.copy()
-    return defaults + config.polling.lpoll_extensions
-
-
-def is_long_running_command(command: str) -> bool:
-    """Check if command is a known long-running interactive process.
-
-    Args:
-        command: The command string to check
-
-    Returns:
-        True if command is in the lpoll list
-    """
-    lpoll_list = _get_lpoll_list()
-    # Extract first word (command name)
-    first_word = command.strip().split()[0] if command.strip() else ""
-    first_word_lower = first_word.lower()
-
-    return any(first_word_lower == known.lower() for known in lpoll_list)
-
-
-def has_command_separator(command: str) -> bool:
-    """Check if command chains multiple commands with separators.
-
-    Args:
-        command: The command string to check
-
-    Returns:
-        True if command contains chaining separators (;, &&, ||)
-    """
-    # Only block actual command chaining, not pipes or redirects
-    separators = [";", "&&", "||"]
-    return any(sep in command for sep in separators)
+# User's shell basename, computed once at import
+# Used for shell readiness detection in send_keys()
+_SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
 
 
 async def create_tmux_session(
-    name: str, shell: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: str = None
+    name: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: str = None
 ) -> bool:
     """Create a new tmux session.
 
+    Tmux automatically uses the $SHELL environment variable to determine which shell to use.
+    No explicit shell parameter needed - tmux handles this natively.
+
     Args:
         name: Session name
-        shell: Shell to use (e.g., /bin/zsh)
         working_dir: Initial working directory
         cols: Terminal columns
         rows: Terminal rows
@@ -125,9 +40,9 @@ async def create_tmux_session(
         True if successful, False otherwise
     """
     try:
-        # Create tmux session in detached mode with login shell
-        # tmux creates proper PTYs automatically, no need for manual redirection
-        shell_cmd = f"{shell} -l"
+        # Create tmux session in detached mode
+        # tmux automatically uses $SHELL for the session's shell
+        # No need for explicit shell command - tmux creates proper PTY with user's default shell
 
         cmd = [
             "tmux",
@@ -146,8 +61,6 @@ async def create_tmux_session(
         # Inject TeleClaude session ID as env var (for Claude Code hook integration)
         if session_id:
             cmd.extend(["-e", f"TELECLAUDE_SESSION_ID={session_id}"])
-
-        cmd.append(shell_cmd)
 
         # Don't capture stdout/stderr - let tmux create its own PTY
         # Using PIPE can leak file descriptors to child processes in tmux
@@ -204,15 +117,16 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
 async def send_keys(
     session_name: str,
     text: str,
-    shell: str = "/bin/zsh",
     working_dir: str = "~",
     cols: int = 80,
     rows: int = 24,
-    append_exit_marker: bool = True,
     send_enter: bool = True,
-    marker_id: Optional[str] = None,
-) -> bool:
+) -> tuple[bool, Optional[str]]:
     """Send keys (text) to a tmux session, creating a new session if needed.
+
+    Exit markers are automatically appended when shell is ready. Automatic detection:
+    - Shell ready (current_command matches user's shell): append marker
+    - Process running (current_command is NOT shell): no marker (sending input)
 
     If the session doesn't exist (crashed or never created), creates a fresh
     session with the same name. Previous state is lost - this is NOT recovery,
@@ -221,48 +135,43 @@ async def send_keys(
     Args:
         session_name: Session name
         text: Text to send
-        shell: Shell to use if creating new session (default: /bin/zsh)
         working_dir: Working directory if creating new session (default: ~)
         cols: Terminal columns if creating new session (default: 80)
         rows: Terminal rows if creating new session (default: 24)
-        append_exit_marker: If True, append exit code marker for command completion detection.
-                           Set to False when sending input to a running process. (default: True)
         send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
-        marker_id: Unique identifier for exit marker (hash-based). Required when append_exit_marker=True.
 
-    Returns: bool (success)
+    Returns:
+        tuple[bool, Optional[str]]: (success, marker_id)
+        - success: True if command sent successfully, False on failure
+        - marker_id: marker ID if exit marker was appended, None if no marker (process running)
     """
     try:
-        # Detect if command is long-running interactive process
-        is_long_running = is_long_running_command(text)
-
-        # Validate: reject command chaining with long-running processes
-        if is_long_running and has_command_separator(text):
-            error_msg = "⚠️ Cannot chain commands with interactive processes (claude, vim, etc.). Run them separately."
-            logger.warning("Rejected command chaining with long-running process: %s", text)
-            raise ValueError(error_msg)
-
         # Check if session exists, create if not
         if not await session_exists(session_name):
             logger.info("Session %s not found, creating new session...", session_name)
-            success = await create_tmux_session(session_name, shell, working_dir, cols, rows)
+            success = await create_tmux_session(session_name, working_dir, cols, rows)
             if not success:
                 logger.error("Failed to create session %s", session_name)
-                return False
+                return False, None
             logger.info("Created fresh session %s", session_name)
 
+        # Automatic exit marker decision: check if shell is ready
+        current_command = await get_current_command(session_name)
+        append_exit_marker = not current_command or current_command.lower() == _SHELL_NAME
+
+        marker_id = None
         if not append_exit_marker:
             # Sending input to running process - no marker
             command_text = text
-            logger.debug("Sending input WITHOUT exit marker to %s (running process)", session_name)
+            logger.debug("Sending input WITHOUT exit marker to %s (process running: %s)", session_name, current_command)
         else:
             # Append exit marker with unique ID for reliable completion detection
             # Hash-based marker_id ensures each command has unique marker (immune to old scrollback)
-            # Auto-generate marker_id if not provided (for backward compatibility)
-            if not marker_id:
-                marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
+            marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
             command_text = f'{text}; echo "__EXIT__{marker_id}__$?__"'
-            logger.debug("Sending command WITH exit marker %s to %s", marker_id, session_name)
+            logger.debug(
+                "Sending command WITH exit marker %s to %s (shell ready: %s)", marker_id, session_name, current_command
+            )
 
         # Send command with marker (no pipes - don't leak file descriptors)
         cmd_text = ["tmux", "send-keys", "-t", session_name, command_text]
@@ -271,7 +180,7 @@ async def send_keys(
 
         if result.returncode != 0:
             logger.error("Failed to send text to session %s: returncode=%d", session_name, result.returncode)
-            return False
+            return False, None
 
         # Small delay to let text be processed
         await asyncio.sleep(0.1)
@@ -284,13 +193,13 @@ async def send_keys(
 
             if result.returncode != 0:
                 logger.error("Failed to send Enter to session %s: returncode=%d", session_name, result.returncode)
-                return False
+                return False, None
 
-        return True
+        return True, marker_id
 
     except Exception as e:
         logger.exception("Error sending keys to tmux session %s: %s", session_name, e)
-        return False
+        return False, None
 
 
 async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:

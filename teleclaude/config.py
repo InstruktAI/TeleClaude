@@ -56,7 +56,6 @@ class ComputerConfig:
     user: str
     role: str
     timezone: str
-    default_shell: str
     default_working_dir: str
     is_master: bool
     trusted_dirs: list[TrustedDir]
@@ -93,7 +92,6 @@ class ComputerConfig:
 @dataclass
 class PollingConfig:
     idle_notification_seconds: int
-    lpoll_extensions: list[str]
 
 
 @dataclass
@@ -139,7 +137,6 @@ DEFAULT_CONFIG: dict[str, object] = {
         "user": "unknown",
         "role": "general",
         "timezone": "Europe/Amsterdam",
-        "default_shell": "bash",
         "default_working_dir": "~",
         "is_master": False,
         "trusted_dirs": [],
@@ -147,7 +144,6 @@ DEFAULT_CONFIG: dict[str, object] = {
     },
     "polling": {
         "idle_notification_seconds": 60,
-        "lpoll_extensions": [],
     },
     "mcp": {
         "enabled": True,
@@ -246,7 +242,6 @@ def _build_config(raw: dict[str, object]) -> Config:
             user=str(comp["user"]),  # type: ignore[index]
             role=str(comp["role"]),  # type: ignore[index]
             timezone=str(comp["timezone"]),  # type: ignore[index]
-            default_shell=str(comp["default_shell"]),  # type: ignore[index]
             default_working_dir=str(comp["default_working_dir"]),  # type: ignore[index]
             is_master=bool(comp["is_master"]),  # type: ignore[index]
             trusted_dirs=_parse_trusted_dirs(list(comp["trusted_dirs"])),  # type: ignore[index]
@@ -254,7 +249,6 @@ def _build_config(raw: dict[str, object]) -> Config:
         ),
         polling=PollingConfig(
             idle_notification_seconds=int(poll["idle_notification_seconds"]),  # type: ignore[index]
-            lpoll_extensions=list(poll["lpoll_extensions"]),  # type: ignore[index]
         ),
         mcp=MCPConfig(
             enabled=bool(mcp["enabled"]),  # type: ignore[index]

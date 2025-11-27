@@ -3,7 +3,6 @@
 import asyncio
 import atexit
 import fcntl
-import hashlib
 import json
 import logging
 import os
@@ -272,7 +271,6 @@ class TeleClaudeDaemon:
         await terminal_bridge.create_tmux_session(
             name=session.tmux_session_name,
             working_dir=session.working_directory,
-            shell=config.computer.default_shell,
             cols=cols,
             rows=rows,
             session_id=session.session_id,
@@ -571,15 +569,15 @@ class TeleClaudeDaemon:
         self,
         session_id: str,
         command: str,
-        append_exit_marker: bool = True,
         _message_id: Optional[str] = None,
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
+        Exit markers are automatically appended based on shell readiness.
+
         Args:
             session_id: Session ID
             command: Command to execute
-            append_exit_marker: Whether to append exit marker (default: True)
             _message_id: Message ID to cleanup (optional) - currently unused
 
         Returns:
@@ -599,53 +597,14 @@ class TeleClaudeDaemon:
             except ValueError:
                 pass
 
-        # Check if command is interactive (overrides append_exit_marker parameter)
-        current_command = await terminal_bridge.get_current_command(session.tmux_session_name)
-        current_is_interactive = terminal_bridge.is_long_running_command(current_command) if current_command else False
-        sending_interactive_command = terminal_bridge.is_long_running_command(command)
-
-        logger.info(
-            "Interactive check for session %s: command='%s', current='%s', "
-            "current_is_interactive=%s, sending_interactive=%s, append_exit_marker(before)=%s",
-            session_id[:8],
-            command,
-            current_command or "(none)",
-            current_is_interactive,
-            sending_interactive_command,
-            append_exit_marker,
-        )
-
-        # Override append_exit_marker if interactive app is running or being started
-        if current_is_interactive or sending_interactive_command:
-            append_exit_marker = False
-            if current_is_interactive:
-                logger.info(
-                    "Interactive app '%s' running in session %s, overriding to append_exit_marker=False",
-                    current_command,
-                    session_id[:8],
-                )
-            else:
-                logger.info(
-                    "Sending interactive command '%s' to session %s, overriding to append_exit_marker=False",
-                    command.split()[0] if command.split() else command,
-                    session_id[:8],
-                )
-
-        # Generate unique marker_id for exit detection (hash of command + timestamp)
-        marker_id = None
-        if append_exit_marker:
-            marker_id = hashlib.md5(f"{command}:{time.time()}".encode()).hexdigest()[:8]
-
-        # Send command
-        success = await terminal_bridge.send_keys(
+        # Send command (automatic exit marker decision based on shell readiness)
+        # Returns (success, marker_id) tuple
+        success, marker_id = await terminal_bridge.send_keys(
             session.tmux_session_name,
             command,
-            shell=config.computer.default_shell,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
-            append_exit_marker=append_exit_marker,
-            marker_id=marker_id,
         )
 
         if not success:
@@ -867,45 +826,15 @@ class TeleClaudeDaemon:
             except ValueError:
                 pass
 
-        # Check CURRENT state of tmux pane AND the command we're about to send
-        current_command = await terminal_bridge.get_current_command(session.tmux_session_name)
-        current_is_interactive = terminal_bridge.is_long_running_command(current_command) if current_command else False
-        sending_interactive_command = terminal_bridge.is_long_running_command(text)
-
-        # Append exit marker ONLY if:
-        # 1. NOT currently in an interactive app (vim, claude, etc.)
-        # 2. NOT sending a command that starts an interactive app
-        # Otherwise, we're either sending input to an interactive app OR starting one
-        append_exit_marker = not (current_is_interactive or sending_interactive_command)
-
-        if current_is_interactive:
-            logger.debug(
-                "Interactive app '%s' running in session %s, not appending exit marker",
-                current_command,
-                session_id[:8],
-            )
-        elif sending_interactive_command:
-            logger.debug(
-                "Sending interactive command '%s' to session %s, not appending exit marker",
-                text.split()[0] if text.split() else text,
-                session_id[:8],
-            )
-
-        # Generate unique marker_id for exit detection (if appending marker)
-        marker_id = None
-        if append_exit_marker:
-            marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
-
         # Send command to terminal (will create fresh session if needed)
-        success = await terminal_bridge.send_keys(
+        # Automatic exit marker decision based on shell readiness
+        # Returns (success, marker_id) tuple
+        success, marker_id = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
-            shell=config.computer.default_shell,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
-            append_exit_marker=append_exit_marker,
-            marker_id=marker_id,
         )
 
         if not success:
@@ -918,19 +847,10 @@ class TeleClaudeDaemon:
         # Update activity
         await db.update_last_activity(session_id)
 
-        # Start polling ONLY if we appended exit marker (shell command, not interactive app input)
-        # Interactive apps (vim, claude) receive input without polling - they're already running
-        if append_exit_marker:
-            # Shell command with exit marker → start polling with exit detection
-            await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id=marker_id)
-            logger.debug("Started polling for shell command in session %s", session_id[:8])
-        else:
-            # Interactive app input → no polling needed, just send the input
-            logger.debug(
-                "Sent input to interactive app '%s' in session %s (no polling)",
-                current_command,
-                session_id[:8],
-            )
+        # Start polling with marker_id for exit detection
+        # send_keys() already decided whether to append marker based on shell readiness
+        await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id=marker_id)
+        logger.debug("Started polling for session %s with marker_id=%s", session_id[:8], marker_id)
 
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up inactive sessions (72h lifecycle)."""

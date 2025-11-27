@@ -4,7 +4,6 @@ computer:
     role: development  # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
     bot_username: teleclaude_mac_bot  # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
     is_master: false  # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
-    default_shell: /bin/zsh
     default_working_dir: ${WORKING_DIR}
     timezone: Europe/Amsterdam  # Timezone for timestamps (default: Europe/Amsterdam)
     host: null  # Optional hostname/IP for SSH remote execution (null = local computer)
@@ -29,9 +28,6 @@ database:
 polling:
     idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)
     directory_check_interval: 5 # Check for directory changes every N seconds (0 to disable, default: 5)
-    lpoll_extensions: [] # Extend built-in list of long-running interactive processes
-    # Examples: ["my-repl", "watch", "docker logs -f"]
-    # Built-in list includes: claude, vim, vi, nvim, nano, emacs, top, htop, less, more, python, node, etc.
 
 telegram:
     # Whitelist of trusted bots (security for AI-to-AI communication)

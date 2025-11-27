@@ -119,10 +119,10 @@ async def handle_file(
         input_text = f"{input_text} {caption.strip()}"
         logger.info("Appending caption to file input: %s", caption.strip()[:50])
 
-    success = await terminal_bridge.send_keys(
+    # Automatic detection: if process running, no marker
+    success, _ = await terminal_bridge.send_keys(
         session.tmux_session_name,
         input_text,
-        append_exit_marker=False,
     )
 
     if not success:

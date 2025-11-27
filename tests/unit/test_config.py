@@ -109,7 +109,6 @@ class TestGetAllTrustedDirs:
             user="testuser",
             role="dev",
             timezone="UTC",
-            default_shell="/bin/bash",
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[
@@ -132,7 +131,6 @@ class TestGetAllTrustedDirs:
             user="testuser",
             role="dev",
             timezone="UTC",
-            default_shell="/bin/bash",
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[
@@ -156,7 +154,6 @@ class TestGetAllTrustedDirs:
             user="testuser",
             role="dev",
             timezone="UTC",
-            default_shell="/bin/bash",
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[],
@@ -177,7 +174,6 @@ class TestGetAllTrustedDirs:
             user="testuser",
             role="dev",
             timezone="UTC",
-            default_shell="/bin/bash",
             default_working_dir="/home/teleclaude",
             is_master=False,
             trusted_dirs=[

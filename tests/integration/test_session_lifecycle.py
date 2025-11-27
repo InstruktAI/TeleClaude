@@ -54,7 +54,6 @@ async def test_close_session_full_cleanup():
             # Create tmux session
             success = await terminal_bridge.create_tmux_session(
                 name=tmux_session_name,
-                shell="/bin/sh",
                 working_dir="/tmp",
                 cols=80,
                 rows=24,
@@ -153,7 +152,6 @@ async def test_close_session_with_active_polling():
             # Create tmux session
             await terminal_bridge.create_tmux_session(
                 name=tmux_session_name,
-                shell="/bin/sh",
                 working_dir="/tmp",
                 cols=80,
                 rows=24,

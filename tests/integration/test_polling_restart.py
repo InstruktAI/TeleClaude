@@ -18,7 +18,6 @@ import pytest
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import Db
-from teleclaude.core.models import Session
 
 
 @pytest.mark.asyncio
@@ -54,10 +53,9 @@ async def test_polling_restarts_after_process_exits(tmp_path):
     try:
         # Phase 1: Run first command that exits quickly
         command1 = "echo 'First command' && sleep 1"
-        success = await terminal_bridge.send_keys(
+        success, marker_id = await terminal_bridge.send_keys(
             tmux_session_name,
             command1,
-            append_exit_marker=True,
         )
         assert success, "Failed to send first command"
 
@@ -74,10 +72,9 @@ async def test_polling_restarts_after_process_exits(tmp_path):
 
         # Phase 2: Run second command
         command2 = "echo 'Second command' && sleep 1"
-        success = await terminal_bridge.send_keys(
+        success, marker_id = await terminal_bridge.send_keys(
             tmux_session_name,
             command2,
-            append_exit_marker=True,
         )
         assert success, "Failed to send second command"
 

@@ -150,7 +150,6 @@ class TestSessionCloseReopen:
             mock_tb.create_tmux_session.assert_called_once_with(
                 name="test-tmux-123",
                 working_dir="/home/user/project",
-                shell="/bin/zsh",
                 cols=120,
                 rows=40,
                 session_id="test-123",

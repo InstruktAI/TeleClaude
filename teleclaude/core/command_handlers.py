@@ -6,12 +6,10 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
-import hashlib
 import json
 import logging
 import os
 import shlex
-import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
@@ -162,7 +160,6 @@ async def handle_create_session(  # type: ignore[explicit-any]
 
     computer_name = config.computer.name
     working_dir = os.path.expanduser(config.computer.default_working_dir)
-    shell = config.computer.default_shell
     terminal_size = "120x40"  # Default terminal size
 
     # Generate tmux session name
@@ -201,7 +198,7 @@ async def handle_create_session(  # type: ignore[explicit-any]
     # Create actual tmux session
     cols, rows = map(int, terminal_size.split("x"))
     success = await terminal_bridge.create_tmux_session(
-        name=tmux_name, shell=shell, working_dir=working_dir, cols=cols, rows=rows, session_id=session_id_new
+        name=tmux_name, working_dir=working_dir, cols=cols, rows=rows, session_id=session_id_new
     )
 
     if success:
@@ -210,7 +207,6 @@ async def handle_create_session(  # type: ignore[explicit-any]
 
 Computer: {computer_name}
 Working directory: {working_dir}
-Shell: {shell}
 
 You can now send commands to this session.
 """
@@ -452,19 +448,13 @@ async def handle_escape_command(  # type: ignore[explicit-any]
 
         # Generate unique marker_id for exit detection (if appending marker)
         marker_id = None
-        if not is_process_running:
-            marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
-
-        # Send text + ENTER
-        success = await terminal_bridge.send_keys(
+        # Send text + ENTER (automatic exit marker decision)
+        success, marker_id = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
-            shell=config.computer.default_shell,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
-            append_exit_marker=not is_process_running,
-            marker_id=marker_id,
         )
 
         if not success:
