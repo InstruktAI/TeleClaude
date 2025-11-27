@@ -963,18 +963,27 @@ async def handle_exit_session(  # type: ignore[explicit-any]
 async def handle_claude_session(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],
+    args: list[str],
     execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
 ) -> None:
-    """Start Claude Code in session.
+    """Start Claude Code in session with optional arguments.
 
     Args:
         session: Session object (injected by @with_session)
         context: Command context with message_id
+        args: Command arguments (passed to claude command)
         execute_terminal_command: Function to execute terminal command
     """
+    # Build command with args
+    base_cmd = "claude --dangerously-skip-permissions"
+    if args:
+        cmd = f"{base_cmd} {' '.join(args)}"
+    else:
+        cmd = base_cmd
+
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session.session_id, "claude --dangerously-skip-permissions", True, message_id)
+    await execute_terminal_command(session.session_id, cmd, True, message_id)
 
 
 @with_session

@@ -1265,7 +1265,7 @@ Current size: {}
         )
 
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /claude command - start Claude Code."""
+        """Handle /claude command - start Claude Code with optional flags."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
@@ -1278,7 +1278,7 @@ Current size: {}
             event=TeleClaudeEvents.CLAUDE,
             payload={
                 "command": self._event_to_command("claude"),
-                "args": [],
+                "args": context.args or [],
                 "session_id": session.session_id,
             },
             metadata={
