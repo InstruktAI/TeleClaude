@@ -857,7 +857,7 @@ async def handle_cd_session(  # type: ignore[explicit-any]
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, Optional[str]], Awaitable[bool]],
 ) -> None:
     """Change directory in session or list trusted directories.
 
@@ -898,7 +898,7 @@ async def handle_cd_session(  # type: ignore[explicit-any]
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    success = await execute_terminal_command(session.session_id, cd_command, True, message_id)
+    success = await execute_terminal_command(session.session_id, cd_command, message_id)
 
     # Save working directory to DB if successful
     if success:
@@ -952,7 +952,7 @@ async def handle_claude_session(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],
     args: list[str],
-    execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, Optional[str]], Awaitable[bool]],
 ) -> None:
     """Start Claude Code in session with optional arguments.
 
@@ -971,14 +971,14 @@ async def handle_claude_session(  # type: ignore[explicit-any]
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session.session_id, cmd, True, message_id)
+    await execute_terminal_command(session.session_id, cmd, message_id)
 
 
 @with_session
 async def handle_claude_resume_session(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],
-    execute_terminal_command: Callable[[str, str, bool, str], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, Optional[str]], Awaitable[bool]],
 ) -> None:
     """Resume Claude Code session using explicit session ID from metadata.
 
@@ -1004,4 +1004,4 @@ async def handle_claude_resume_session(  # type: ignore[explicit-any]
 
     # Execute command and start polling
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session.session_id, cmd, True, message_id)
+    await execute_terminal_command(session.session_id, cmd, message_id)
