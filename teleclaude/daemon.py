@@ -453,22 +453,11 @@ class TeleClaudeDaemon:
                 json.dumps({"status": "restarting", "timestamp": time.time()}),
             )
 
-            # 5. Trigger restart via service manager
-            logger.info("Deploy: triggering restart via bin/daemon-control.sh...")
-
-            # Use daemon-control.sh which handles platform-specific restart properly
-            # This avoids double-restart issues and handles sudo on Linux correctly
-            restart_script = Path(__file__).parent.parent / "bin" / "daemon-control.sh"
-            result = await asyncio.create_subprocess_exec(
-                str(restart_script),
-                "restart",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            # Don't wait for completion - daemon will exit as part of restart
-            # The restart script will kill this process and start a new one
-            logger.info("Deploy: restart triggered, daemon will exit now")
+            # 5. Exit to trigger service manager restart
+            # With Restart=on-failure, any non-zero exit triggers restart
+            # Use exit code 42 to indicate intentional deploy restart (not a crash)
+            logger.info("Deploy: exiting with code 42 to trigger service manager restart")
+            os._exit(42)
 
         except Exception as e:
             logger.error("Deploy failed: %s", e, exc_info=True)
