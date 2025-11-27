@@ -863,6 +863,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if "project_dir" in metadata:
             project_dir_str = str(metadata["project_dir"])
             data[b"project_dir"] = project_dir_str.encode("utf-8")
+        if "channel_metadata" in metadata:
+            channel_metadata_str = json.dumps(metadata["channel_metadata"])
+            data[b"channel_metadata"] = channel_metadata_str.encode("utf-8")
 
         # Send to Redis stream
         logger.debug(
