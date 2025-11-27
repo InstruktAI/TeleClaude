@@ -258,15 +258,19 @@ class TeleClaudeMCPServer:
                     title="TeleClaude: Send File",
                     description=(
                         "Send a file to Telegram via the specified session. "
-                        "Use this to send files for download (logs, session files, etc.). "
-                        "File will be sent to the Telegram topic associated with the session."
+                        "Use this to send files for download (logs, reports, screenshots, etc.). "
+                        "**IMPORTANT**: Get session_id from TELECLAUDE_SESSION_ID env var OR by calling "
+                        "teleclaude__list_sessions to find the active session for your current working directory."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "session_id": {
                                 "type": "string",
-                                "description": "TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)",
+                                "description": (
+                                    "TeleClaude session UUID. Get from TELECLAUDE_SESSION_ID env var, "
+                                    "or call teleclaude__list_sessions and match by working_directory"
+                                ),
                             },
                             "file_path": {
                                 "type": "string",
