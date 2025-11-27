@@ -702,31 +702,35 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         title = data.get(b"title", b"Unknown Session").decode("utf-8")
         initiator = data.get(b"initiator", b"unknown").decode("utf-8")
 
+        # Extract channel_metadata sent by initiator (contains channel_ids for all adapters)
+        channel_metadata_bytes = data.get(b"channel_metadata", b"{}")
+        try:
+            channel_metadata = json.loads(channel_metadata_bytes.decode("utf-8"))
+        except json.JSONDecodeError:
+            logger.warning("Invalid channel_metadata JSON, using empty dict")
+            channel_metadata = {}
+
         # Create tmux session name
         tmux_session_name = f"{self.computer_name}-ai-{session_id[:8]}"
 
         # Create session with redis as origin adapter
+        # Note: For AI-to-AI sessions, the INITIATOR creates channels (Telegram topic, Redis stream)
+        # The TARGET receives and stores the same channel_ids from initiator
+        # We do NOT call create_channel() here - that would create duplicate Telegram topics
+        metadata = channel_metadata.copy()
+        metadata["target_computer"] = initiator  # Add target_computer to track AI-to-AI origin
+
         await db.create_session(
             session_id=session_id,
             computer_name=self.computer_name,
             tmux_session_name=tmux_session_name,
             origin_adapter="redis",
             title=title,
-            adapter_metadata={
-                "target_computer": initiator,  # AI-to-AI session from remote computer
-            },
+            adapter_metadata=metadata,
             description=f"AI-to-AI session from {initiator}",
         )
 
-        # Create channels in ALL adapters (Telegram, Redis, etc.)
-        # AdapterClient.create_channel() stores all adapter channel_ids in metadata
-        await self.client.create_channel(
-            session_id=session_id,
-            title=title,
-            origin_adapter="redis",
-        )
-
-        logger.info("Created session %s from Redis command with channels in all adapters", session_id[:8])
+        logger.info("Created session %s from Redis with channel_ids from initiator", session_id[:8])
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""

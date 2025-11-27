@@ -597,13 +597,22 @@ class TeleClaudeMCPServer:
             origin_adapter="redis",
         )
 
+        # Get updated session with channel_ids from create_channel
+        updated_session = await db.get_session(session_id)
+        if not updated_session:
+            return {"status": "error", "message": "Failed to retrieve session after channel creation"}
+
+        # Send channel metadata to target so it can store the same channel_ids
+        # This prevents duplicate channel creation on target computer
+        channel_metadata = updated_session.adapter_metadata or {}
+
         # cd to dir on remote computer via AdapterClient
         cd_cmd = f"/cd {shlex.quote(project_dir)}"
         await self.client.send_request(
             computer_name=computer,
             request_id=session_id,
             command=cd_cmd,
-            metadata={"title": title, "project_dir": project_dir},
+            metadata={"title": title, "project_dir": project_dir, "channel_metadata": channel_metadata},
         )
 
         # Start Claude Code
@@ -612,7 +621,7 @@ class TeleClaudeMCPServer:
             computer_name=computer,
             request_id=session_id,
             command=claude_cmd,
-            metadata={"title": title, "project_dir": project_dir},
+            metadata={"title": title, "project_dir": project_dir, "channel_metadata": channel_metadata},
         )
 
         # Send initial message immediately to prevent timeout
