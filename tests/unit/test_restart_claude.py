@@ -23,6 +23,7 @@ def mock_session():
         closed=False,
         terminal_size="120x40",
         working_directory="/home/test",
+        ux_state='{"claude_session_id": "test-session-id-12345"}',
     )
 
 

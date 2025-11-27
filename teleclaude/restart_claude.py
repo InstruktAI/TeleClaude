@@ -4,13 +4,15 @@
 This script can be called from anywhere. It checks for TELECLAUDE_SESSION_ID
 environment variable and exits gracefully if not set (e.g., when run from
 a regular terminal). When run from within a TeleClaude tmux session where
-Claude is running, it queries the database and sends a command to restart claude.
+Claude is running, it reads the Claude session ID from database (updated by
+SessionStart hook via MCP) and sends a command to restart claude.
 (It is not possible for Claude Code to restart itself in a regular terminal session)
 
 Uses the db module properly with async initialization.
 """
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -51,6 +53,15 @@ async def main() -> None:
 
         logger.info("Found TeleClaude session: %s (tmux: %s)", session.session_id[:8], session.tmux_session_name)
 
+        # Extract Claude Code session ID from ux_state (updated by SessionStart hook via MCP)
+        claude_session_id = None
+        if session.ux_state:
+            try:
+                ux_state = json.loads(session.ux_state)
+                claude_session_id = ux_state.get("claude_session_id")
+            except (json.JSONDecodeError, AttributeError) as e:
+                logger.warning("Failed to parse ux_state: %s", e)
+
         # Kill Claude first (send CTRL+C twice like /cancel2x)
         logger.info("Sending CTRL+C twice to kill Claude Code...")
         success = await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
@@ -60,9 +71,15 @@ async def main() -> None:
             await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
             await asyncio.sleep(3.0)  # Wait for Claude to fully exit (needs time to disconnect MCP, cleanup state)
 
-        # Send restart command using terminal_bridge (proper codebase pattern)
-        # Use --resume to resume the existing session by its ID
-        restart_cmd = f"claude --dangerously-skip-permissions --resume {session.session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
+        # Build restart command using Claude session ID from database
+        if claude_session_id:
+            # Resume existing Claude session (database updated by SessionStart hook via MCP)
+            restart_cmd = f"claude --dangerously-skip-permissions --resume {claude_session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
+            logger.info("Resuming Claude session %s (from database)", claude_session_id[:8])
+        else:
+            # No existing session - start fresh (NEVER use --continue in multi-session environment!)
+            restart_cmd = "claude --dangerously-skip-permissions"
+            logger.info("Starting fresh Claude session (no session ID in database)")
 
         # Use terminal_bridge.send_keys() which handles both text and Enter
         success = await terminal_bridge.send_keys(
