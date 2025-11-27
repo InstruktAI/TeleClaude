@@ -41,16 +41,6 @@ def main() -> None:
         claude_session_id = data.get("session_id")
         claude_session_file = data.get("transcript_path")
 
-        # Inject Claude session info into environment (for restart_claude.py)
-        claude_env_file = os.getenv("CLAUDE_ENV_FILE")
-        if claude_env_file:
-            with open(claude_env_file, "a", encoding="utf-8") as f:
-                f.write(f'export CLAUDE_SESSION_ID="{claude_session_id}"\n')
-                f.write(f'export CLAUDE_SESSION_FILE="{claude_session_file}"\n')
-            log(f"Injected CLAUDE_SESSION_ID into environment: {claude_session_id[:8]}")
-        else:
-            log("WARNING: CLAUDE_ENV_FILE not set - cannot inject env vars")
-
         # Get TeleClaude session ID from environment (set by tmux)
         teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
         if not teleclaude_session_id:
@@ -59,6 +49,16 @@ def main() -> None:
             sys.exit(0)
 
         log(f"TeleClaude session ID: {teleclaude_session_id}")
+
+        # Inject TELECLAUDE_SESSION_ID into CLAUDE_ENV_FILE
+        # This ensures processes spawned by Claude Code (e.g., restart_claude.py) have access to it
+        claude_env_file = os.getenv("CLAUDE_ENV_FILE")
+        if claude_env_file:
+            with open(claude_env_file, "a", encoding="utf-8") as f:
+                f.write(f'export TELECLAUDE_SESSION_ID="{teleclaude_session_id}"\n')
+            log(f"Injected TELECLAUDE_SESSION_ID into CLAUDE_ENV_FILE: {teleclaude_session_id[:8]}")
+        else:
+            log("WARNING: CLAUDE_ENV_FILE not set - cannot inject env vars")
 
         # Update database via MCP
         mcp_send(
