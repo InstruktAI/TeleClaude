@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import signal
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -455,18 +454,10 @@ class TeleClaudeDaemon:
             )
 
             # 5. Trigger restart via service manager
-            logger.info("Deploy: triggering service manager restart...")
-
-            if sys.platform == "darwin":
-                # macOS: launchd will auto-restart (KeepAlive=true)
-                logger.info("Deploy: exiting to trigger launchd restart")
-                os._exit(0)
-            else:
-                # Linux: trigger systemd restart
-                logger.info("Deploy: triggering systemd restart")
-                with subprocess.Popen(["systemctl", "restart", "teleclaude"]):
-                    pass
-                os._exit(0)
+            # Both launchd (macOS) and systemd (Linux) are configured to auto-restart
+            # Just exit cleanly - service manager will restart automatically
+            logger.info("Deploy: exiting to trigger auto-restart (service manager will restart daemon)")
+            os._exit(0)
 
         except Exception as e:
             logger.error("Deploy failed: %s", e, exc_info=True)
