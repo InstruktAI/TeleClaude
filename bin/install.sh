@@ -468,6 +468,20 @@ install_systemd_service() {
     local service_name="teleclaude"
     local service_file="/etc/systemd/system/${service_name}.service"
 
+    # Create wrapper script for SSH agent support
+    print_info "Creating daemon wrapper script..."
+    cat > "$INSTALL_DIR/bin/teleclaude-wrapper.sh" <<'EOF'
+#!/bin/bash
+# Source keychain SSH agent environment
+if [ -f ~/.keychain/$(hostname)-sh ]; then
+    source ~/.keychain/$(hostname)-sh
+fi
+# Execute daemon
+exec $INSTALL_DIR/.venv/bin/python -m teleclaude.daemon
+EOF
+    chmod +x "$INSTALL_DIR/bin/teleclaude-wrapper.sh"
+    print_success "Created daemon wrapper script"
+
     # Create service file
     print_info "Creating systemd service..."
 
@@ -481,7 +495,8 @@ Type=simple
 User=$USER
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=$INSTALL_DIR/.venv/bin/python -m teleclaude.daemon
+# SSH_AUTH_SOCK sourced from keychain in wrapper
+ExecStart=$INSTALL_DIR/bin/teleclaude-wrapper.sh
 Restart=on-failure
 RestartSec=10
 StandardOutput=null

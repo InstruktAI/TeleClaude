@@ -238,7 +238,7 @@ After=default.target
 [Service]
 Type=simple
 WorkingDirectory=%h/apps/TeleClaude
-ExecStart=%h/apps/TeleClaude/teleclaude-wrapper.sh
+ExecStart=%h/apps/TeleClaude/bin/teleclaude-wrapper.sh
 Restart=always
 RestartSec=10
 
@@ -249,7 +249,7 @@ WantedBy=default.target
 **3. Create wrapper script:**
 
 ```bash
-# Create: ~/apps/TeleClaude/teleclaude-wrapper.sh
+# Create: ~/apps/TeleClaude/bin/teleclaude-wrapper.sh
 #!/bin/bash
 # Source keychain environment (auto-updates when keychain restarts)
 if [ -f ~/.keychain/$(hostname)-sh ]; then
@@ -259,7 +259,7 @@ exec /path/to/TeleClaude/.venv/bin/python -m teleclaude.daemon
 ```
 
 ```bash
-chmod +x ~/apps/TeleClaude/teleclaude-wrapper.sh
+chmod +x ~/apps/TeleClaude/bin/teleclaude-wrapper.sh
 ```
 
 **4. Enable and start user service:**

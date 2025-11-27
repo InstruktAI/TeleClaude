@@ -46,7 +46,7 @@ install:
 
 init:
 	@echo "Running installation wizard..."
-	@./install.sh $(ARGS)
+	@./bin/install.sh $(ARGS)
 
 format:
 	@echo "Formatting code..."
