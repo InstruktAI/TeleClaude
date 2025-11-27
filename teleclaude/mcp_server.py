@@ -542,6 +542,7 @@ class TeleClaudeMCPServer:
         computer: str,
         project_dir: str,
         continue_last_session: bool = False,
+        initial_message: Optional[str] = None,
     ) -> dict[str, object]:
         """Start new Claude Code session on remote computer in a specific project.
 
@@ -551,6 +552,9 @@ class TeleClaudeMCPServer:
             continue_last_session: Whether to continue the last opened session.
                 Be careful as this might hijack the session of another user.
                 ONLY provide this flag on explicit request!
+            initial_message: Optional message to send immediately after starting Claude
+                to prevent session timeout. If not provided, Claude will timeout after
+                15 seconds waiting for input.
 
         Returns:
             dict with session_id and output
@@ -610,6 +614,16 @@ class TeleClaudeMCPServer:
             command=claude_cmd,
             metadata={"title": title, "project_dir": project_dir},
         )
+
+        # Send initial message immediately to prevent timeout
+        if initial_message:
+            message_cmd = f"/message {initial_message}"
+            await self.client.send_request(
+                computer_name=computer,
+                request_id=session_id,
+                command=message_cmd,
+            )
+            logger.info("Sent initial message to session %s: %s", session_id[:8], initial_message[:50])
 
         # Return immediately - polling happens automatically on remote side
         return {"session_id": session_id, "status": "success"}
