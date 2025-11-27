@@ -257,13 +257,17 @@ class TeleClaudeMCPServer:
                     name="teleclaude__send_file",
                     title="TeleClaude: Send File",
                     description=(
-                        "Send a file to Telegram via the current session. "
+                        "Send a file to Telegram via the specified session. "
                         "Use this to send files for download (logs, session files, etc.). "
-                        "File will be sent to the Telegram topic associated with the current session."
+                        "File will be sent to the Telegram topic associated with the session."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
+                            "session_id": {
+                                "type": "string",
+                                "description": "TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)",
+                            },
                             "file_path": {
                                 "type": "string",
                                 "description": "Absolute path to file to send",
@@ -273,7 +277,7 @@ class TeleClaudeMCPServer:
                                 "description": "Optional caption for the file",
                             },
                         },
-                        "required": ["file_path"],
+                        "required": ["session_id", "file_path"],
                     },
                 ),
                 Tool(
@@ -384,10 +388,11 @@ class TeleClaudeMCPServer:
                 deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
                 return [TextContent(type="text", text=json.dumps(deploy_result, default=str))]
             elif name == "teleclaude__send_file":
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
                 file_path = str(arguments.get("file_path", "")) if arguments else ""
                 caption_obj = arguments.get("caption") if arguments else None
                 caption = str(caption_obj) if caption_obj else None
-                result_text = await self.teleclaude__send_file(file_path, caption)
+                result_text = await self.teleclaude__send_file(session_id, file_path, caption)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__init_from_claude":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -929,17 +934,19 @@ class TeleClaudeMCPServer:
 
         return results
 
-    async def teleclaude__send_file(self, file_path: str, caption: Optional[str] = None) -> str:
-        """Send file via current session's origin adapter.
+    async def teleclaude__send_file(
+        self, session_id: str, file_path: str, caption: str | None = None
+    ) -> str:
+        """Send file via session's origin adapter.
 
         Args:
+            session_id: TeleClaude session UUID
             file_path: Absolute path to file
             caption: Optional caption
 
         Returns:
             Success message or error
         """
-        # Validate file exists
         path = Path(file_path)
         if not path.exists():
             return f"Error: File not found: {file_path}"
@@ -947,19 +954,12 @@ class TeleClaudeMCPServer:
         if not path.is_file():
             return f"Error: Not a file: {file_path}"
 
-        # Get current session from environment variable (set by Claude Code)
-        session_id = os.environ.get("TELECLAUDE_SESSION_ID")
-        if not session_id:
-            return "Error: No active TeleClaude session (TELECLAUDE_SESSION_ID not set)"
-
-        # Send file via AdapterClient (routes to origin adapter only, no observer broadcasting)
         try:
             message_id = await self.client.send_file(
                 session_id=session_id, file_path=str(path.absolute()), caption=caption
             )
             return f"File sent successfully: {path.name} (message_id: {message_id})"
         except ValueError as e:
-            # Session or adapter not found
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error: {e}"
         except Exception as e:
