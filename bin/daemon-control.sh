@@ -198,9 +198,13 @@ status_daemon() {
         # STATUS is the exit code - 0 means running normally, non-zero means last exit was abnormal
         EXIT_CODE=$(echo "$SERVICE_STATUS" | awk '{print $2}')
         if [ -n "$EXIT_CODE" ] && [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "-" ]; then
-            log_warn "Last exit code: $EXIT_CODE (process may have crashed previously)"
-            if [ "$EXIT_CODE" = "-9" ]; then
-                log_warn "Last instance was killed (SIGKILL)"
+            if [ "$EXIT_CODE" = "42" ]; then
+                log_info "Last exit code: 42 (deployment restart)"
+            else
+                log_warn "Last exit code: $EXIT_CODE (process may have crashed previously)"
+                if [ "$EXIT_CODE" = "-9" ]; then
+                    log_warn "Last instance was killed (SIGKILL)"
+                fi
             fi
         fi
     else
