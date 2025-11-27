@@ -51,8 +51,17 @@ async def main() -> None:
 
         logger.info("Found TeleClaude session: %s (tmux: %s)", session.session_id[:8], session.tmux_session_name)
 
+        # Kill Claude first (send CTRL+C twice like /cancel2x)
+        logger.info("Sending CTRL+C twice to kill Claude Code...")
+        success = await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+
+        if success:
+            await asyncio.sleep(0.2)
+            await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+            await asyncio.sleep(1.0)  # Wait for Claude to fully exit
+
         # Send restart command using terminal_bridge (proper codebase pattern)
-        restart_cmd = "claude --dangerously-skip-permissions --continue 'continue if needed'"
+        restart_cmd = f"claude --dangerously-skip-permissions --session-id {session.session_id} 'continue if needed'"
 
         # Use terminal_bridge.send_keys() which handles both text and Enter
         success = await terminal_bridge.send_keys(
@@ -60,7 +69,7 @@ async def main() -> None:
             text=restart_cmd,
             shell=config.computer.default_shell,
             working_dir=session.working_directory,
-            append_exit_marker=False,  # Claude is long-running, don't append marker
+            append_exit_marker=True,
             send_enter=True,
         )
 
