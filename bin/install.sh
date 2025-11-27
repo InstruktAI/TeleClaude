@@ -14,7 +14,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Installation directory (where script is located)
-INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_FILE="${INSTALL_DIR}/install.log"
 
 # Configuration

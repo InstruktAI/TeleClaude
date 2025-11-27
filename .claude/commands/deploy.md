@@ -12,7 +12,7 @@ Check if there are uncommitted changes:
 git status --porcelain
 ```
 
-If there are uncommitted changes → **invoke `/commit` command** to create a commit
+If there are uncommitted changes → **invoke `/commit-commands:commit` command** to create a commit
 
 If no uncommitted changes → proceed to Step 2
 
@@ -118,7 +118,7 @@ After deployment completes, report:
 
 - **Automatically commits changes** - If uncommitted changes exist, creates a commit first
 - Use this when you're ready to deploy changes to production (all machines)
-- For local-only commits without deployment, use `/commit` instead
+- For local-only commits without deployment, use `/commit-commands:commit` instead
 - If any step fails, stop and report the error (don't continue to next steps)
 - Uses `git pull --rebase` to keep linear history (avoids merge commits)
 
@@ -127,9 +127,9 @@ After deployment completes, report:
 **In worktree** (feature development):
 
 ```
-/commit  # per task (multiple times)
-/commit  # per task
-/commit  # per task
+/commit-commands:commit  # per task (multiple times)
+/commit-commands:commit  # per task
+/commit-commands:commit  # per task
 ```
 
 **After merging to main**:

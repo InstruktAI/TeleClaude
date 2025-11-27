@@ -662,9 +662,9 @@ class TeleClaudeDaemon:
         # - POST handler tracks message_id for deletion
         # - PRE handler deletes on NEXT user input (better UX - failed commands stay visible)
 
-        # Start polling if exit marker was appended
-        if append_exit_marker:
-            await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id)
+        # Always start polling, but only pass marker_id if exit marker was appended
+        # For interactive commands (append_exit_marker=False), polling runs indefinitely (marker_id=None)
+        await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id)
 
         logger.info("Executed command in session %s: %s", session_id[:8], command)
         return True
