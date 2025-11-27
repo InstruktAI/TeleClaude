@@ -404,7 +404,11 @@ class TeleClaudeDaemon:
             stdout, stderr = await result.communicate()
 
             if result.returncode != 0:
-                error_msg = stderr.decode("utf-8")
+                # Capture both stdout and stderr (git sends different errors to different streams)
+                # Uncommitted changes → stderr, merge conflicts → stdout
+                stdout_msg = stdout.decode("utf-8").strip()
+                stderr_msg = stderr.decode("utf-8").strip()
+                error_msg = f"{stderr_msg}\n{stdout_msg}".strip()
                 logger.error("Deploy: git pull failed: %s", error_msg)
                 await redis_adapter.redis.set(
                     status_key,
