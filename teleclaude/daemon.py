@@ -599,6 +599,27 @@ class TeleClaudeDaemon:
             except ValueError:
                 pass
 
+        # Check if command is interactive (overrides append_exit_marker parameter)
+        current_command = await terminal_bridge.get_current_command(session.tmux_session_name)
+        current_is_interactive = terminal_bridge.is_long_running_command(current_command) if current_command else False
+        sending_interactive_command = terminal_bridge.is_long_running_command(command)
+
+        # Override append_exit_marker if interactive app is running or being started
+        if current_is_interactive or sending_interactive_command:
+            append_exit_marker = False
+            if current_is_interactive:
+                logger.debug(
+                    "Interactive app '%s' running in session %s, not appending exit marker",
+                    current_command,
+                    session_id[:8],
+                )
+            else:
+                logger.debug(
+                    "Sending interactive command '%s' to session %s, not appending exit marker",
+                    command.split()[0] if command.split() else command,
+                    session_id[:8],
+                )
+
         # Generate unique marker_id for exit detection (hash of command + timestamp)
         marker_id = None
         if append_exit_marker:
