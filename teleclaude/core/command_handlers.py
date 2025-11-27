@@ -588,24 +588,39 @@ async def handle_tab_command(  # type: ignore[explicit-any]
 async def handle_shift_tab_command(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],
+    args: list[str],
     client: "AdapterClient",
     start_polling: StartPollingFunc,
 ) -> None:
-    """Send SHIFT+TAB key to a session.
+    """Send SHIFT+TAB key to a session with optional repeat count.
 
     Args:
         session: Session object (injected by @with_session)
         context: Command context
+        args: Command arguments (optional repeat count)
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
+    # Parse repeat count from args (default: 1)
+    count = 1
+    if args:
+        try:
+            count = int(args[0])
+            if count < 1:
+                logger.warning("Invalid repeat count %d (must be >= 1), using 1", count)
+                count = 1
+        except ValueError:
+            logger.warning("Invalid repeat count '%s', using 1", args[0])
+            count = 1
+
     success = await _execute_control_key(
         terminal_bridge.send_shift_tab,
         session,
+        count,
     )
 
     if success:
-        logger.info("Sent SHIFT+TAB to session %s", session.session_id[:8])
+        logger.info("Sent SHIFT+TAB (x%d) to session %s", count, session.session_id[:8])
     else:
         logger.error("Failed to send SHIFT+TAB to session %s", session.session_id[:8])
 

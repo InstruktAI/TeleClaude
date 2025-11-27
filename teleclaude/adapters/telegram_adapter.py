@@ -287,7 +287,8 @@ class TelegramAdapter(UiAdapter):
                 BotCommand("escape2x  ", "Send ESC twice (for Claude Code, etc.)"),
                 BotCommand("ctrl  ", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
                 BotCommand("tab  ", "Send TAB key"),
-                BotCommand("shift_tab  ", "Send SHIFT+TAB key"),
+                BotCommand("shift_tab  ", "Send SHIFT+TAB key (optional count)"),
+                BotCommand("claude_plan  ", "Navigate to Claude Code plan mode"),
                 BotCommand("enter  ", "Send ENTER key"),
                 BotCommand("key_up  ", "Send UP arrow key (optional repeat count)"),
                 BotCommand("key_down  ", "Send DOWN arrow key (optional repeat count)"),
@@ -999,7 +1000,7 @@ class TelegramAdapter(UiAdapter):
         )
 
     async def _handle_shift_tab(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /shift_tab command - sends SHIFT+TAB key to the session."""
+        """Handle /shift_tab command - sends SHIFT+TAB key to the session with optional count."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
@@ -1012,7 +1013,7 @@ class TelegramAdapter(UiAdapter):
             event=TeleClaudeEvents.SHIFT_TAB,
             payload={
                 "command": self._event_to_command("shift_tab"),
-                "args": [],
+                "args": context.args or [],
                 "session_id": session.session_id,
             },
             metadata={
@@ -1021,6 +1022,11 @@ class TelegramAdapter(UiAdapter):
                 "message_id": update.effective_message.message_id,
             },
         )
+
+    async def _handle_claude_plan(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /claude_plan command - alias for /shift_tab 3 (navigate to Claude Code plan mode)."""
+        context.args = ["3"]
+        await self._handle_shift_tab(update, context)
 
     async def _handle_enter(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /enter command - sends ENTER key to the session."""
