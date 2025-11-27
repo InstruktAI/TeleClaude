@@ -61,7 +61,7 @@ async def main() -> None:
             await asyncio.sleep(1.0)  # Wait for Claude to fully exit
 
         # Send restart command using terminal_bridge (proper codebase pattern)
-        restart_cmd = f"claude --dangerously-skip-permissions --session-id {session.session_id} 'continue if needed'"
+        restart_cmd = f"claude --dangerously-skip-permissions --session-id {session.session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
 
         # Use terminal_bridge.send_keys() which handles both text and Enter
         success = await terminal_bridge.send_keys(
