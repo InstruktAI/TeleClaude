@@ -27,5 +27,7 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>AbandonProcessGroup</key>
+    <true/>
 </dict>
 </plist>

@@ -486,6 +486,7 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=null
 StandardError=null
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target
