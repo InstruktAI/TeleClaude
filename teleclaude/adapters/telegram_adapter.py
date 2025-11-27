@@ -350,12 +350,20 @@ class TelegramAdapter(UiAdapter):
         if not session or not session.adapter_metadata:
             raise AdapterError(f"Session {session_id} not found or has no topic")
 
+        # Skip Telegram messaging for Redis-originated sessions (they use Redis streams, not Telegram topics)
+        if session.origin_adapter == "redis":
+            logger.debug("Skipping Telegram send_message for Redis-originated session %s", session_id[:8])
+            return None
+
         self._ensure_started()
 
         # Get channel_id from metadata (stored as string in DB)
         topic_id_obj = session.adapter_metadata.get("channel_id")
         if not topic_id_obj:
             raise AdapterError(f"Session {session_id} has no channel_id in metadata")
+
+        # For Telegram sessions, channel_id is a topic ID (integer)
+        # For Redis sessions, it's a stream key (string) - but we already returned above
         topic_id: int = int(str(topic_id_obj))
 
         # Extract reply_markup and parse_mode if present
