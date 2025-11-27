@@ -835,21 +835,27 @@ class TeleClaudeDaemon:
             except ValueError:
                 pass
 
-        # Check CURRENT state of tmux pane to decide exit marker (single source of truth)
+        # Check CURRENT state of tmux pane AND the command we're about to send
         current_command = await terminal_bridge.get_current_command(session.tmux_session_name)
-        is_interactive_app = terminal_bridge.is_long_running_command(current_command) if current_command else False
+        current_is_interactive = terminal_bridge.is_long_running_command(current_command) if current_command else False
+        sending_interactive_command = terminal_bridge.is_long_running_command(text)
 
-        # Append exit marker if:
-        # 1. At shell prompt (zsh, bash, etc. - NOT in LPOLL list) → sending COMMAND
-        # 2. Running non-LPOLL command (ls, grep, etc.) → sending COMMAND
-        # Do NOT append if:
-        # 1. Running LPOLL app (vim, claude, etc.) → sending INPUT/MESSAGE
-        append_exit_marker = not is_interactive_app
+        # Append exit marker ONLY if:
+        # 1. NOT currently in an interactive app (vim, claude, etc.)
+        # 2. NOT sending a command that starts an interactive app
+        # Otherwise, we're either sending input to an interactive app OR starting one
+        append_exit_marker = not (current_is_interactive or sending_interactive_command)
 
-        if is_interactive_app:
+        if current_is_interactive:
             logger.debug(
-                "Interactive app '%s' detected in session %s, not appending exit marker",
+                "Interactive app '%s' running in session %s, not appending exit marker",
                 current_command,
+                session_id[:8],
+            )
+        elif sending_interactive_command:
+            logger.debug(
+                "Sending interactive command '%s' to session %s, not appending exit marker",
+                text.split()[0] if text.split() else text,
                 session_id[:8],
             )
 
