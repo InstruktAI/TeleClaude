@@ -1302,7 +1302,7 @@ Current size: {}
         try:
             # Execute restart script
             project_root = Path(__file__).parent.parent.parent
-            script_path = project_root / "bin" / "restart-claude.py"
+            script_path = project_root / "teleclaude" / "restart_claude.py"
 
             result = subprocess.run(
                 [str(script_path)],
