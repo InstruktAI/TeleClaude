@@ -58,10 +58,11 @@ async def main() -> None:
         if success:
             await asyncio.sleep(0.2)
             await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
-            await asyncio.sleep(1.0)  # Wait for Claude to fully exit
+            await asyncio.sleep(3.0)  # Wait for Claude to fully exit (needs time to disconnect MCP, cleanup state)
 
         # Send restart command using terminal_bridge (proper codebase pattern)
-        restart_cmd = f"claude --dangerously-skip-permissions --session-id {session.session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
+        # Use --resume to resume the existing session by its ID
+        restart_cmd = f"claude --dangerously-skip-permissions --resume {session.session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
 
         # Use terminal_bridge.send_keys() which handles both text and Enter
         success = await terminal_bridge.send_keys(

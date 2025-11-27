@@ -94,7 +94,7 @@ class TestRestartClaude:
                 mock_send_keys.assert_called_once()
                 call_kwargs = mock_send_keys.call_args.kwargs
                 assert call_kwargs["session_name"] == "test-tmux-session"
-                assert "claude --dangerously-skip-permissions --session-id test-session-id-12345" in call_kwargs["text"]
+                assert "claude --dangerously-skip-permissions --resume test-session-id-12345" in call_kwargs["text"]
                 assert call_kwargs["append_exit_marker"] is True
                 assert call_kwargs["send_enter"] is True
                 assert call_kwargs["working_dir"] == "/home/test"  # Uses session's working_directory
