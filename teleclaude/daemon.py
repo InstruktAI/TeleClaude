@@ -604,18 +604,29 @@ class TeleClaudeDaemon:
         current_is_interactive = terminal_bridge.is_long_running_command(current_command) if current_command else False
         sending_interactive_command = terminal_bridge.is_long_running_command(command)
 
+        logger.info(
+            "Interactive check for session %s: command='%s', current='%s', "
+            "current_is_interactive=%s, sending_interactive=%s, append_exit_marker(before)=%s",
+            session_id[:8],
+            command,
+            current_command or "(none)",
+            current_is_interactive,
+            sending_interactive_command,
+            append_exit_marker,
+        )
+
         # Override append_exit_marker if interactive app is running or being started
         if current_is_interactive or sending_interactive_command:
             append_exit_marker = False
             if current_is_interactive:
-                logger.debug(
-                    "Interactive app '%s' running in session %s, not appending exit marker",
+                logger.info(
+                    "Interactive app '%s' running in session %s, overriding to append_exit_marker=False",
                     current_command,
                     session_id[:8],
                 )
             else:
-                logger.debug(
-                    "Sending interactive command '%s' to session %s, not appending exit marker",
+                logger.info(
+                    "Sending interactive command '%s' to session %s, overriding to append_exit_marker=False",
                     command.split()[0] if command.split() else command,
                     session_id[:8],
                 )
