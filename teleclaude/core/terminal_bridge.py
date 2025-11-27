@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import logging
 import time
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import psutil
 
@@ -158,6 +158,46 @@ async def create_tmux_session(
 
     except Exception as e:
         print(f"Error creating tmux session: {e}")
+        return False
+
+
+async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bool:
+    """Update environment variables in an existing tmux session.
+
+    Uses tmux setenv to update environment variables. Note: Only NEW processes
+    spawned after this update will see the new values. Existing shell processes
+    won't see the changes.
+
+    Args:
+        session_name: Session name
+        env_vars: Dictionary of environment variables to update
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        for var_name, var_value in env_vars.items():
+            cmd = ["tmux", "setenv", "-t", session_name, var_name, var_value]
+            result = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to set %s in session %s: returncode=%d, stderr=%s",
+                    var_name,
+                    session_name,
+                    result.returncode,
+                    stderr.decode().strip(),
+                )
+                return False
+
+        logger.debug("Updated tmux env vars in %s: %s", session_name, list(env_vars.keys()))
+        return True
+
+    except Exception as e:
+        logger.error("Exception updating tmux session %s: %s", session_name, e)
         return False
 
 

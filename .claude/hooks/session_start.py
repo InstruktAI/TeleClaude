@@ -1,4 +1,5 @@
 # make it send
+import asyncio
 import json
 import os
 import sys
@@ -6,7 +7,12 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from utils.mcp_send import mcp_send
+# Add project root to path for imports (must be before local imports)
+sys.path.insert(0, str(Path.cwd()))
+
+from utils.mcp_send import mcp_send  # noqa: E402
+
+from teleclaude.core.terminal_bridge import update_tmux_session  # noqa: E402
 
 LOG_FILE = Path.cwd() / ".claude" / "hooks" / "logs" / "session_start.log"
 
@@ -15,10 +21,10 @@ def log(message: str) -> None:
     """Write log message to file."""
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_FILE, "a") as f:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
             timestamp = datetime.now().isoformat()
             f.write(f"[{timestamp}] {message}\n")
-    except:
+    except Exception:  # noqa: S110
         pass
 
 
@@ -63,6 +69,19 @@ def main() -> None:
                 "claude_session_file": claude_session_file,
             },
         )
+
+        # Update tmux session environment (redundancy layer)
+        # Tmux session name is the teleclaude_session_id
+        asyncio.run(
+            update_tmux_session(
+                teleclaude_session_id,
+                {
+                    "CLAUDE_SESSION_ID": claude_session_id,
+                    "CLAUDE_SESSION_FILE": claude_session_file,
+                },
+            )
+        )
+        log(f"Updated tmux environment with CLAUDE_SESSION_ID: {claude_session_id[:8]}")
 
     except Exception as e:
         log(f"ERROR: {str(e)}")

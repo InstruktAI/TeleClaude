@@ -934,9 +934,7 @@ class TeleClaudeMCPServer:
 
         return results
 
-    async def teleclaude__send_file(
-        self, session_id: str, file_path: str, caption: str | None = None
-    ) -> str:
+    async def teleclaude__send_file(self, session_id: str, file_path: str, caption: str | None = None) -> str:
         """Send file via session's origin adapter.
 
         Args:
