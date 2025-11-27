@@ -56,6 +56,7 @@ class UiAdapter(BaseAdapter):
         "ctrl",
         "tab",
         "shift_tab",
+        "backspace",
         "claude_plan",
         "enter",
         "key_up",

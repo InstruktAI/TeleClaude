@@ -626,6 +626,47 @@ async def handle_shift_tab_command(  # type: ignore[explicit-any]
 
 
 @with_session
+async def handle_backspace_command(  # type: ignore[explicit-any]
+    session: Session,
+    context: dict[str, Any],
+    args: list[str],
+    client: "AdapterClient",
+    start_polling: StartPollingFunc,
+) -> None:
+    """Send BACKSPACE key to a session with optional repeat count.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context
+        args: Command arguments (optional repeat count)
+        client: AdapterClient for message cleanup
+        start_polling: Function to start polling for a session
+    """
+    # Parse repeat count from args (default: 1)
+    count = 1
+    if args:
+        try:
+            count = int(args[0])
+            if count < 1:
+                logger.warning("Invalid repeat count %d (must be >= 1), using 1", count)
+                count = 1
+        except ValueError:
+            logger.warning("Invalid repeat count '%s', using 1", args[0])
+            count = 1
+
+    success = await _execute_control_key(
+        terminal_bridge.send_backspace,
+        session,
+        count,
+    )
+
+    if success:
+        logger.info("Sent BACKSPACE (x%d) to session %s", count, session.session_id[:8])
+    else:
+        logger.error("Failed to send BACKSPACE to session %s", session.session_id[:8])
+
+
+@with_session
 async def handle_enter_command(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],

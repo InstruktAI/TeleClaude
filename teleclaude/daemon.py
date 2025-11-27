@@ -59,6 +59,7 @@ COMMAND_EVENTS = {
     TeleClaudeEvents.CTRL,
     TeleClaudeEvents.TAB,
     TeleClaudeEvents.SHIFT_TAB,
+    TeleClaudeEvents.BACKSPACE,
     TeleClaudeEvents.ENTER,
     TeleClaudeEvents.KEY_UP,
     TeleClaudeEvents.KEY_DOWN,
@@ -763,6 +764,8 @@ class TeleClaudeDaemon:
             await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.SHIFT_TAB:
             await command_handlers.handle_shift_tab_command(context, args, self.client, self._poll_and_send_output)
+        elif command == TeleClaudeEvents.BACKSPACE:
+            await command_handlers.handle_backspace_command(context, args, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.ENTER:
             await command_handlers.handle_enter_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.KEY_UP:

@@ -494,6 +494,34 @@ async def send_shift_tab(session_name: str, count: int = 1) -> bool:
         return False
 
 
+async def send_backspace(session_name: str, count: int = 1) -> bool:
+    """Send BACKSPACE key to a tmux session, optionally repeated.
+
+    Args:
+        session_name: Session name
+        count: Number of times to repeat the key (default: 1)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Validate count
+        if count < 1:
+            logger.error("Invalid count: %s (must be >= 1)", count)
+            return False
+
+        # tmux send-keys with -N flag for repeat count
+        cmd = ["tmux", "send-keys", "-t", session_name, "-N", str(count), "BSpace"]
+        result = await asyncio.create_subprocess_exec(*cmd)
+        await result.wait()
+
+        return result.returncode == 0
+
+    except Exception as e:
+        print(f"Error sending backspace (x{count}) to tmux: {e}")
+        return False
+
+
 async def send_enter(session_name: str) -> bool:
     """Send ENTER key to a tmux session.
 

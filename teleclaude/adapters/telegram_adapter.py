@@ -288,6 +288,7 @@ class TelegramAdapter(UiAdapter):
                 BotCommand("ctrl  ", "Send CTRL+key (e.g., /ctrl d for CTRL+D)"),
                 BotCommand("tab  ", "Send TAB key"),
                 BotCommand("shift_tab  ", "Send SHIFT+TAB key (optional count)"),
+                BotCommand("backspace  ", "Send BACKSPACE key (optional count)"),
                 BotCommand("claude_plan  ", "Navigate to Claude Code plan mode"),
                 BotCommand("enter  ", "Send ENTER key"),
                 BotCommand("key_up  ", "Send UP arrow key (optional repeat count)"),
@@ -1013,6 +1014,30 @@ class TelegramAdapter(UiAdapter):
             event=TeleClaudeEvents.SHIFT_TAB,
             payload={
                 "command": self._event_to_command("shift_tab"),
+                "args": context.args or [],
+                "session_id": session.session_id,
+            },
+            metadata={
+                "adapter_type": "telegram",
+                "user_id": update.effective_user.id,
+                "message_id": update.effective_message.message_id,
+            },
+        )
+
+    async def _handle_backspace(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /backspace command - sends BACKSPACE key to the session with optional count."""
+        session = await self._get_session_from_topic(update)
+        if not session:
+            return
+
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
+        await self.client.handle_event(
+            event=TeleClaudeEvents.BACKSPACE,
+            payload={
+                "command": self._event_to_command("backspace"),
                 "args": context.args or [],
                 "session_id": session.session_id,
             },
