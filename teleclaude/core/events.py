@@ -9,6 +9,7 @@ from typing import Literal, Optional
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
     "new_session",
+    "create_session",
     "list_sessions",
     "list_projects",
     "get_computer_info",
@@ -50,6 +51,7 @@ class TeleClaudeEvents:
 
     # Session lifecycle
     NEW_SESSION: Literal["new_session"] = "new_session"
+    CREATE_SESSION: Literal["create_session"] = "create_session"
     LIST_SESSIONS: Literal["list_sessions"] = "list_sessions"
 
     # Project management

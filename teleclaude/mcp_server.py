@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import re
-import shlex
 import time
 import types
 import uuid
@@ -532,42 +531,41 @@ class TeleClaudeMCPServer:
         self,
         computer: str,
         project_dir: str,
-        continue_last_session: bool = False,
-        initial_message: Optional[str] = None,
     ) -> dict[str, object]:
-        """Start new Claude Code session on remote computer in a specific project.
+        """Create AI-to-AI session metadata in both local and remote databases.
+
+        This is a lightweight operation that only creates database entries with session metadata.
+        It does NOT initialize the remote tmux session or start Claude Code - that happens
+        lazily on first send_message call.
+
+        Design by contract: Assumes computer is online. Fails explicitly if offline.
 
         Args:
-            computer: Target computer name
-            project_dir: Absolute path to project directory
-            continue_last_session: Whether to continue the last opened session.
-                Be careful as this might hijack the session of another user.
-                ONLY provide this flag on explicit request!
-            initial_message: Optional message to send immediately after starting Claude
-                to prevent session timeout. If not provided, Claude will timeout after
-                15 seconds waiting for input.
+            computer: Target computer name (from teleclaude__list_computers)
+            project_dir: Absolute path to project directory on remote computer
+                (from teleclaude__list_projects)
 
         Returns:
-            dict with session_id and output
+            dict with session_id and status
         """
 
-        # Validate computer is online
+        # Validate computer is online - fail fast if not
         peers = await self.client.discover_peers()
         target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
 
         if not target_online:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
-        # Generate Claude session UUID
-        claude_session_id = str(uuid.uuid4())
+        # Generate session UUID
+        session_id = str(uuid.uuid4())
 
-        # Create session in database to track this AI-to-AI session
+        # Create session in local database
         short_project = get_short_project_name(project_dir)
         base_title = f"${self.computer_name} > ${computer}[{short_project}] - AI Session"
         title = await ensure_unique_title(base_title)
         session = await db.create_session(
             computer_name=self.computer_name,
-            tmux_session_name=f"{self.computer_name}-ai-{claude_session_id[:8]}",
+            tmux_session_name=f"{self.computer_name}-ai-{session_id[:8]}",
             origin_adapter="redis",
             title=title,
             adapter_metadata={
@@ -580,53 +578,50 @@ class TeleClaudeMCPServer:
 
         session_id = session.session_id
 
-        # Create channels in ALL adapters (Telegram, Redis, etc.)
-        # This enables observer broadcasting to Telegram
+        # Create channels in ALL adapters (Telegram topic, Redis output stream)
         await self.client.create_channel(
             session_id=session_id,
             title=title,
             origin_adapter="redis",
         )
 
-        # Get updated session with channel_ids from create_channel
+        # Get updated session with channel_ids
         updated_session = await db.get_session(session_id)
         if not updated_session:
             return {"status": "error", "message": "Failed to retrieve session after channel creation"}
 
-        # Send channel metadata to target so it can store the same channel_ids
-        # This prevents duplicate channel creation on target computer
         channel_metadata = updated_session.adapter_metadata or {}
 
-        # cd to dir on remote computer via AdapterClient
-        cd_cmd = f"/cd {shlex.quote(project_dir)}"
+        # Send create_session command to remote - creates DB entry and returns remote session_id
+        create_cmd = "/create_session"
         await self.client.send_request(
             computer_name=computer,
             request_id=session_id,
-            command=cd_cmd,
+            command=create_cmd,
             metadata={"title": title, "project_dir": project_dir, "channel_metadata": channel_metadata},
         )
 
-        # Start Claude Code
-        claude_cmd = "/claude" + (" --continue" if continue_last_session else "")
-        await self.client.send_request(
-            computer_name=computer,
-            request_id=session_id,
-            command=claude_cmd,
-            metadata={"title": title, "project_dir": project_dir, "channel_metadata": channel_metadata},
-        )
+        # Wait for response with remote session_id
+        try:
+            response_data = await self.client.read_response(session_id, timeout=5.0)
+            response = json.loads(response_data.strip())
+            remote_session_id = response.get("session_id")
 
-        # Send initial message immediately to prevent timeout
-        if initial_message:
-            message_cmd = f"/message {initial_message}"
-            await self.client.send_request(
-                computer_name=computer,
-                request_id=session_id,
-                command=message_cmd,
-            )
-            logger.info("Sent initial message to session %s: %s", session_id[:8], initial_message[:50])
+            if not remote_session_id:
+                return {"status": "error", "message": "Remote did not return session_id"}
 
-        # Return immediately - polling happens automatically on remote side
-        return {"session_id": session_id, "status": "success"}
+            # Store remote_session_id in metadata
+            channel_metadata["remote_session_id"] = remote_session_id
+            await db.update_session(session_id=session_id, adapter_metadata=channel_metadata)
+
+            logger.info("Session bridged: local=%s remote=%s", session_id[:8], remote_session_id[:8])
+            return {"session_id": session_id, "status": "success"}
+
+        except TimeoutError:
+            return {"status": "error", "message": "Timeout waiting for remote session creation"}
+        except Exception as e:
+            logger.error("Failed to create remote session: %s", e)
+            return {"status": "error", "message": f"Failed to create remote session: {str(e)}"}
 
     async def teleclaude__list_sessions(self, computer: Optional[str] = None) -> list[dict[str, object]]:
         """List sessions from LOCAL database only.
@@ -685,7 +680,13 @@ class TeleClaudeMCPServer:
     async def teleclaude__send_message(
         self, session_id: str, message: str, interest_window_seconds: float = 15
     ) -> AsyncIterator[str]:
-        """Send message to claude in an existing AI-to-AI session and stream response during interest window.
+        """Send message to Claude in existing AI-to-AI session and stream response.
+
+        Initializes remote tmux session on first call (sends /cd and /claude commands).
+        Subsequent calls assume initialization is complete and send message directly.
+
+        Design by contract: Assumes session exists in database (from start_session).
+        Fails explicitly if session not found.
 
         Args:
             session_id: Session ID from teleclaude__start_session
@@ -695,36 +696,47 @@ class TeleClaudeMCPServer:
         Yields:
             str: Response chunks from remote Claude Code during interest window
         """
-        # Get session from database
+        # Get session from database - assume it exists (contract)
         session = await db.get_session(session_id)
         if not session:
-            yield "[Error: Session not found]"
+            yield "[Error: Session not found - violated contract, call start_session first]"
             return
 
-        # Verify session is active
         if session.closed:
             yield "[Error: Session is closed]"
             return
 
-        # Get target computer from session metadata
+        # Get metadata - assume target_computer and remote_session_id exist (contract)
         metadata = session.adapter_metadata or {}
-        target_computer_obj = metadata.get("target_computer")
-        if not target_computer_obj:
-            yield "[Error: Session metadata missing target_computer]"
-            return
+        target_computer = str(metadata["target_computer"])
+        project_dir = str(metadata["project_dir"])
+        remote_session_id = str(metadata["remote_session_id"])
 
-        target_computer = str(target_computer_obj)
+        # Initialize remote tmux session on first send_message call
+        if not metadata.get("remote_initialized"):
+            # Send /cd command using remote session_id
+            cd_cmd = f"/cd {project_dir}"
+            await self.client.send_request(computer_name=target_computer, request_id=remote_session_id, command=cd_cmd)
 
-        # Wrap non-command messages with /message prefix for proper event routing
-        # Commands start with /, plain text needs to be wrapped
+            # Send /claude command using remote session_id
+            claude_cmd = "/claude"
+            await self.client.send_request(
+                computer_name=target_computer, request_id=remote_session_id, command=claude_cmd
+            )
+
+            # Mark as initialized
+            metadata["remote_initialized"] = True
+            await db.update_session(session_id=session_id, adapter_metadata=metadata)
+
+        # Wrap non-command messages with /message prefix
         command = message if message.startswith("/") else f"/message {message}"
 
-        # Send command to remote computer via AdapterClient
+        # Send message to remote Claude using remote session_id
         try:
-            await self.client.send_request(computer_name=target_computer, request_id=session_id, command=command)
+            await self.client.send_request(computer_name=target_computer, request_id=remote_session_id, command=command)
         except Exception as e:
-            logger.error("Failed to send command to %s: %s", target_computer, e)
-            yield f"[Error: Failed to send command: {str(e)}]"
+            logger.error("Failed to send message to %s: %s", target_computer, e)
+            yield f"[Error: Failed to send message: {str(e)}]"
             return
 
         # Stream output from AdapterClient during interest window

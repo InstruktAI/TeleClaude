@@ -93,25 +93,31 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
             with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
                 mock_send.return_value = None
 
-                result = await mcp_server.teleclaude__start_session(
-                    computer="workstation", project_dir="/home/user/project"
-                )
+                # Mock read_response to return remote session_id
+                with patch.object(mcp_server.client, "read_response", new_callable=AsyncMock) as mock_read:
+                    mock_read.return_value = '{"session_id": "remote-uuid-123"}'
 
-                # Verify result
-                assert isinstance(result, dict)
-                assert result["status"] == "success"
-                assert "session_id" in result
+                    result = await mcp_server.teleclaude__start_session(
+                        computer="workstation", project_dir="/home/user/project"
+                    )
 
-                # Verify session created in database
-                session = await daemon.db.get_session(result["session_id"])
-                assert session is not None
-                assert session.origin_adapter == "redis"
-                assert "workstation" in session.title
+                    # Verify result
+                    assert isinstance(result, dict)
+                    assert result["status"] == "success"
+                    assert "session_id" in result
 
-                # Verify mocks were called
-                mock_discover.assert_called_once()
-                mock_create_channel.assert_called_once()
-                assert mock_send.call_count == 2  # cd + claude commands
+                    # Verify session created in database
+                    session = await daemon.db.get_session(result["session_id"])
+                    assert session is not None
+                    assert session.origin_adapter == "redis"
+                    assert "workstation" in session.title
+                    assert session.adapter_metadata["remote_session_id"] == "remote-uuid-123"
+
+                    # Verify mocks were called
+                    mock_discover.assert_called_once()
+                    mock_create_channel.assert_called_once()
+                    mock_send.assert_called_once()  # create_session command
+                    mock_read.assert_called_once()  # Wait for response
 
 
 @pytest.mark.integration
@@ -119,13 +125,17 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
     """Test teleclaude__send_message sends to existing session."""
     daemon = daemon_with_mocked_telegram
 
-    # Create session
+    # Create session with required metadata
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-send",
         origin_adapter="redis",
         title="Test Send",
-        adapter_metadata={"target_computer": {"name": "workstation"}, "claude_session_id": "test-claude-123"},
+        adapter_metadata={
+            "target_computer": "workstation",
+            "project_dir": "/home/user/project",
+            "remote_session_id": "remote-uuid-123",
+        },
     )
 
     # Mock send_request

@@ -288,10 +288,17 @@ def test_all_events_have_handlers():
             all_events.append(event_value)
 
     # Check each event has a handler
+    # Redis-only events (handled in Redis adapter, not daemon)
+    REDIS_ONLY_EVENTS = {"create_session"}
+
     missing_handlers = []
     for event in all_events:
         # Command events have generic handler
         if event in COMMAND_EVENTS:
+            continue
+
+        # Redis-only events handled in Redis adapter
+        if event in REDIS_ONLY_EVENTS:
             continue
 
         # Non-command events need specific handler method
