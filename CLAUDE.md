@@ -115,8 +115,8 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
 
 1. **Make code changes** as needed
 2. **Restart daemon**: `make restart`
-   - Kills the current PID
-   - Service manager (launchd/systemd) auto-restarts it in ~1 second via KeepAlive
+   - Runs `systemctl restart teleclaude` (proper systemd restart)
+   - Daemon restarts in ~1-2 seconds
 3. **Verify**: `make status`
 4. **Monitor logs**: `tail -f /var/log/teleclaude.log`
 
@@ -125,13 +125,29 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
 ### Service Lifecycle Commands
 
 ```bash
-make start                   # Start/enable service (after install or manual stop)
-make stop                    # Stop/disable service (rarely needed)
-make restart                 # Kill PID → auto-restart (~1 sec)
+make start                   # Enable and start service (after install or emergency stop)
+make stop                    # Stop AND disable service (EMERGENCY ONLY - use when code goes haywire)
+make restart                 # Restart daemon via systemctl (~1-2 sec)
 make status                  # Check daemon status and uptime
 ```
 
-**Only use `make stop`/`make start` for full service lifecycle management** (e.g., disabling service completely). For normal development, just use `make restart`.
+**CRITICAL: Do NOT use `make stop` during normal development** - it disables the service completely. Only use in emergencies when code is broken and continuously crashing. For normal development, always use `make restart`.
+
+### How Restarts Work
+
+**Two different restart mechanisms:**
+
+1. **Manual Restart** (`make restart`):
+   - Runs `systemctl restart teleclaude`
+   - Systemd sends SIGTERM → clean shutdown → starts fresh process
+   - Used during development after code changes
+
+2. **Deployment Restart** (automated):
+   - Daemon receives `/deploy` command via Redis
+   - Executes `git pull` + `make install`
+   - Exits with code 42 → triggers `Restart=on-failure`
+   - Systemd automatically restarts with new code
+   - Enables zero-SSH multi-computer deployments
 
 ### Direct SSH Access to Remote Computers
 

@@ -25,7 +25,7 @@ help:
 	@echo ""
 	@echo "Daemon Control:"
 	@echo "  make start        Start daemon via launchd"
-	@echo "  make stop         Stop daemon (disables service)"
+	@echo "  make stop         Stop daemon AND disable service (emergency only)"
 	@echo "  make restart      Restart daemon"
 	@echo "  make kill         Kills daemon (won't stop mcp server, so very messy)"
 	@echo "  make status       Check daemon status"

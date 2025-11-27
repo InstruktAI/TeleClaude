@@ -110,8 +110,9 @@ start_daemon() {
             launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
         fi
     else
-        # Linux: systemd
-        log_info "Starting systemd service..."
+        # Linux: enable and start systemd service
+        log_info "Enabling and starting systemd service..."
+        sudo systemctl enable "$SERVICE_LABEL"
         sudo systemctl start "$SERVICE_LABEL"
     fi
 
@@ -153,9 +154,10 @@ stop_daemon() {
         launchctl unload "$SERVICE_PATH" 2>/dev/null || true
         sleep 1
     else
-        # Linux: stop systemd service
-        log_info "Stopping systemd service..."
+        # Linux: stop and disable systemd service
+        log_info "Stopping and disabling systemd service..."
         sudo systemctl stop "$SERVICE_LABEL"
+        sudo systemctl disable "$SERVICE_LABEL"
         sleep 1
     fi
 
