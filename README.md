@@ -117,6 +117,8 @@ make stop      # Stop service
 make start     # Start service
 ```
 
+**Note for multi-computer deployments:** For automated git operations (Redis deployments), you must configure the daemon as a **user service** with SSH agent access. See [SSH Agent Configuration](#ssh-agent-configuration-for-deployments) section below.
+
 The service automatically:
 
 - Starts on system boot
@@ -198,6 +200,107 @@ Use `/list-sessions` to see all sessions across all computers.
 **AI-to-AI sessions** - Enable Claude Code instances to collaborate (see next section).
 
 For detailed multi-computer setup with MCP server, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md).
+
+### SSH Agent Configuration for Deployments
+
+**Critical for automated git operations** (like Redis-based deployments):
+
+The daemon needs access to your SSH agent to perform git operations (pulls, pushes). On Linux systems, configure as follows:
+
+**1. Use keychain for persistent SSH agent:**
+
+```bash
+# Install keychain
+sudo apt-get install keychain  # Debian/Ubuntu
+sudo dnf install keychain      # Fedora/RHEL
+
+# Add to ~/.zshrc (or ~/.bashrc):
+eval $(keychain --eval --quiet --agents ssh id_ed25519)
+
+# Remove oh-my-zsh ssh-agent plugin if present:
+# Change: plugins=(git ssh-agent)
+# To: plugins=(git)
+```
+
+**2. Run as user service (not system service):**
+
+The daemon must run as a **user systemd service** to access your SSH agent:
+
+```bash
+# Create user service directory
+mkdir -p ~/.config/systemd/user/
+
+# Create service file: ~/.config/systemd/user/teleclaude.service
+[Unit]
+Description=TeleClaude Terminal Bridge Daemon
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/TeleClaude
+ExecStart=%h/apps/TeleClaude/teleclaude-wrapper.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+**3. Create wrapper script:**
+
+```bash
+# Create: ~/apps/TeleClaude/teleclaude-wrapper.sh
+#!/bin/bash
+# Source keychain environment (auto-updates when keychain restarts)
+if [ -f ~/.keychain/$(hostname)-sh ]; then
+    source ~/.keychain/$(hostname)-sh
+fi
+exec /path/to/TeleClaude/.venv/bin/python -m teleclaude.daemon
+```
+
+```bash
+chmod +x ~/apps/TeleClaude/teleclaude-wrapper.sh
+```
+
+**4. Enable and start user service:**
+
+```bash
+# Enable user service
+systemctl --user enable teleclaude.service
+systemctl --user start teleclaude.service
+
+# Enable linger (keeps service running after logout)
+sudo loginctl enable-linger $USER
+
+# Check status
+systemctl --user status teleclaude
+```
+
+**5. Initialize SSH key after reboot:**
+
+After each system reboot, SSH in once to unlock your key:
+
+```bash
+ssh user@your-machine
+# Enter SSH key passphrase when prompted
+# Keychain will persist the unlocked key until next reboot
+```
+
+**Why this is needed:**
+
+- Keychain maintains a persistent SSH agent with your unlocked keys
+- The wrapper sources `~/.keychain/$(hostname)-sh` which contains the current agent socket path
+- No hardcoded ephemeral socket paths - keychain updates the file automatically
+- User services inherit your user session's environment (including SSH agent)
+
+**Verification:**
+
+```bash
+# Check daemon has access to SSH agent
+ps aux | grep teleclaude.daemon | awk '{print $2}' | xargs -I {} sudo cat /proc/{}/environ | tr '\0' '\n' | grep SSH
+
+# Should show: SSH_AUTH_SOCK=/tmp/ssh-xxxxx/agent.xxxxx
+```
 
 ### AI-to-AI Communication (MCP Server)
 
@@ -397,10 +500,9 @@ See developer documentation:
   - ✅ Concurrent session support (15+ tested)
   - ✅ Multi-hop communication (Comp1 → Comp2 → Comp3)
 - ✅ Voice input with Whisper transcription
+- ✅ File upload handling via MCP (send files to Telegram from daemon)
 
 **Planned:**
-
-- 🔲 File upload handling
 - 🔲 AI-generated session titles
 - 🔲 REST API endpoints for output access
 - 🔲 Session sharing for pair programming
