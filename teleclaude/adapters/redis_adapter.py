@@ -610,7 +610,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
             # Handle create_session specially - generates NEW session_id and responds
             if cmd_name == "create_session":
-                await self._handle_create_session(session_id, data)
+                await self._create_session_from_redis(session_id, data, respond_with_session_id=True)
                 return
 
             # Get or create session for non-create_session commands
@@ -697,15 +697,19 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             metadata={"adapter_type": "redis"},
         )
 
-    async def _create_session_from_redis(self, session_id: str, data: dict[bytes, bytes]) -> None:
+    async def _create_session_from_redis(
+        self, request_id: str, data: dict[bytes, bytes], respond_with_session_id: bool = False
+    ) -> None:
         """Create session from incoming Redis command data.
 
         Args:
-            session_id: Session ID
+            request_id: Request ID (for create_session, this is just routing ID; otherwise actual session_id)
             data: Command data from Redis
+            respond_with_session_id: If True, generates NEW session_id and sends response (create_session flow)
         """
         # Extract metadata from command
         title = data.get(b"title", b"Unknown Session").decode("utf-8")
+        project_dir = data.get(b"project_dir", b"").decode("utf-8")
         initiator = data.get(b"initiator", b"unknown").decode("utf-8")
 
         # Extract channel_metadata sent by initiator (contains channel_ids for all adapters)
@@ -716,15 +720,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.warning("Invalid channel_metadata JSON, using empty dict")
             channel_metadata = {}
 
-        # Create tmux session name
+        # For create_session: generate NEW session_id; otherwise use request_id
+        session_id = str(uuid.uuid4()) if respond_with_session_id else request_id
         tmux_session_name = f"{self.computer_name}-ai-{session_id[:8]}"
 
-        # Create session with redis as origin adapter
-        # Note: For AI-to-AI sessions, the INITIATOR creates channels (Telegram topic, Redis stream)
-        # The TARGET receives and stores the same channel_ids from initiator
-        # We do NOT call create_channel() here - that would create duplicate Telegram topics
+        # Create session with channel_ids from initiator
         metadata = channel_metadata.copy()
-        metadata["target_computer"] = initiator  # Add target_computer to track AI-to-AI origin
+        metadata["target_computer"] = initiator
+        if project_dir:
+            metadata["project_dir"] = project_dir
 
         await db.create_session(
             session_id=session_id,
@@ -736,56 +740,19 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             description=f"AI-to-AI session from {initiator}",
         )
 
-        logger.info("Created session %s from Redis with channel_ids from initiator", session_id[:8])
-
-    async def _handle_create_session(self, request_id: str, data: dict[bytes, bytes]) -> None:
-        """Handle create_session command - generates NEW session_id and responds.
-
-        Args:
-            request_id: Request ID from initiator (used for response routing only)
-            data: Command data with metadata (title, project_dir, channel_metadata)
-        """
-        # Extract metadata
-        title = data.get(b"title", b"Unknown Session").decode("utf-8")
-        project_dir = data.get(b"project_dir", b"").decode("utf-8")
-        initiator = data.get(b"initiator", b"unknown").decode("utf-8")
-
-        channel_metadata_bytes = data.get(b"channel_metadata", b"{}")
-        try:
-            channel_metadata = json.loads(channel_metadata_bytes.decode("utf-8"))
-        except json.JSONDecodeError:
-            logger.warning("Invalid channel_metadata JSON, using empty dict")
-            channel_metadata = {}
-
-        # Generate NEW session_id (don't reuse request_id)
-        new_session_id = str(uuid.uuid4())
-        tmux_session_name = f"{self.computer_name}-ai-{new_session_id[:8]}"
-
-        # Create session with channel_ids from initiator
-        metadata = channel_metadata.copy()
-        metadata["target_computer"] = initiator
-        metadata["project_dir"] = project_dir
-
-        await db.create_session(
-            session_id=new_session_id,
-            computer_name=self.computer_name,
-            tmux_session_name=tmux_session_name,
-            origin_adapter="redis",
-            title=title,
-            adapter_metadata=metadata,
-            description=f"AI-to-AI session from {initiator}",
-        )
-
-        logger.info(
-            "Created AI-to-AI session: local=%s for remote_request=%s from %s",
-            new_session_id[:8],
-            request_id[:8],
-            initiator,
-        )
-
-        # Respond with new session_id
-        response_data = json.dumps({"session_id": new_session_id})
-        await self.send_response(request_id, response_data)
+        if respond_with_session_id:
+            # create_session flow: respond with new session_id
+            logger.info(
+                "Created AI-to-AI session: local=%s for remote_request=%s from %s",
+                session_id[:8],
+                request_id[:8],
+                initiator,
+            )
+            response_data = json.dumps({"session_id": session_id})
+            await self.send_response(request_id, response_data)
+        else:
+            # Legacy flow: session created with same ID
+            logger.info("Created session %s from Redis with channel_ids from initiator", session_id[:8])
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
