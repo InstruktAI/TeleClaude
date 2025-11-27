@@ -482,7 +482,7 @@ User=$USER
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$INSTALL_DIR/.venv/bin/python -m teleclaude.daemon
-Restart=always
+Restart=on-failure
 RestartSec=10
 StandardOutput=null
 StandardError=null

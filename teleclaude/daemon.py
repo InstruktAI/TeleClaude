@@ -454,10 +454,21 @@ class TeleClaudeDaemon:
             )
 
             # 5. Trigger restart via service manager
-            # Both launchd (macOS) and systemd (Linux) are configured to auto-restart
-            # Just exit cleanly - service manager will restart automatically
-            logger.info("Deploy: exiting to trigger auto-restart (service manager will restart daemon)")
-            os._exit(0)
+            logger.info("Deploy: triggering restart via bin/daemon-control.sh...")
+
+            # Use daemon-control.sh which handles platform-specific restart properly
+            # This avoids double-restart issues and handles sudo on Linux correctly
+            restart_script = Path(__file__).parent.parent / "bin" / "daemon-control.sh"
+            result = await asyncio.create_subprocess_exec(
+                str(restart_script),
+                "restart",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            # Don't wait for completion - daemon will exit as part of restart
+            # The restart script will kill this process and start a new one
+            logger.info("Deploy: restart triggered, daemon will exit now")
 
         except Exception as e:
             logger.error("Deploy failed: %s", e, exc_info=True)
