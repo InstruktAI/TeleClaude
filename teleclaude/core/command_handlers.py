@@ -195,10 +195,8 @@ async def handle_create_session(  # type: ignore[explicit-any]
     )
 
     # Create channel via client (now we have a real session_id)
-    channel_id = await client.create_channel(session_id=session_id_new, title=title, origin_adapter=str(adapter_type))
-
-    # Update session with channel_id
-    await db.update_session(session.session_id, adapter_metadata={"channel_id": channel_id})
+    # This stores both legacy channel_id and namespaced adapter metadata internally
+    await client.create_channel(session_id=session_id_new, title=title, origin_adapter=str(adapter_type))
 
     # Create actual tmux session
     cols, rows = map(int, terminal_size.split("x"))

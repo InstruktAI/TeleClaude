@@ -352,20 +352,20 @@ class TelegramAdapter(UiAdapter):
 
         self._ensure_started()
 
-        # Get Telegram's channel_id from metadata
-        # Two storage patterns:
-        # 1. Telegram-originated sessions: channel_id stored directly in metadata (legacy)
-        # 2. Multi-adapter sessions (Redis-originated): telegram.channel_id (namespaced)
+        # Get Telegram's channel_id from namespaced metadata
+        # All sessions use unified adapter_client.create_channel() which stores:
+        # metadata["telegram"]["channel_id"] = Telegram topic ID
+        # metadata["redis"]["channel_id"] = Redis stream key (if applicable)
         telegram_meta = session.adapter_metadata.get("telegram")
-        if isinstance(telegram_meta, dict) and "channel_id" in telegram_meta:
-            # Namespaced (multi-adapter sessions)
-            topic_id_obj = telegram_meta["channel_id"]
-        else:
-            # Legacy (Telegram-originated sessions)
-            topic_id_obj = session.adapter_metadata.get("channel_id")
+        if not isinstance(telegram_meta, dict):
+            raise AdapterError(
+                f"Session {session_id} has no telegram metadata. "
+                f"This indicates the session was not created via adapter_client.create_channel()."
+            )
 
+        topic_id_obj = telegram_meta.get("channel_id")
         if not topic_id_obj:
-            raise AdapterError(f"Session {session_id} has no channel_id in metadata")
+            raise AdapterError(f"Session {session_id} telegram metadata has no channel_id")
 
         topic_id: int = int(str(topic_id_obj))
 
