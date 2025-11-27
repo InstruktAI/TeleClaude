@@ -606,11 +606,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             session = await db.get_session(session_id)
             if not session:
                 # Only create session if metadata indicates real session initialization
-                metadata = json.loads(data.get(b"metadata", b"{}").decode("utf-8"))
-                if metadata.get("title") and metadata.get("project_dir"):
+                # Metadata is sent as separate Redis fields (title, project_dir), not JSON
+                title = data.get(b"title", b"").decode("utf-8")
+                project_dir = data.get(b"project_dir", b"").decode("utf-8")
+                logger.debug(
+                    "Session %s not found. Checking metadata for session creation: title=%s, project_dir=%s, all_keys=%s",
+                    session_id[:8],
+                    title,
+                    project_dir,
+                    [k.decode("utf-8") for k in data.keys()],
+                )
+                if title and project_dir:
                     # Real AI-to-AI session initialization (has title + project_dir)
                     await self._create_session_from_redis(session_id, data)
-                    logger.info("Created session from Redis: %s (title: %s)", session_id[:8], metadata.get("title"))
+                    logger.info("Created session from Redis: %s (title: %s)", session_id[:8], title)
                 else:
                     # Ephemeral query command (list_projects, etc.) - skip session creation
                     logger.debug(

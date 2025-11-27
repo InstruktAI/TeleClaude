@@ -133,6 +133,59 @@ make status                  # Check daemon status and uptime
 
 **Only use `make stop`/`make start` for full service lifecycle management** (e.g., disabling service completely). For normal development, just use `make restart`.
 
+### Direct SSH Access to Remote Computers
+
+**You can SSH directly into any online computer** for manual operations, debugging, or running commands.
+
+**Get computer information:**
+
+First, get the list of online computers with their connection details:
+
+```python
+teleclaude__list_computers()
+```
+
+This returns computer info including `user`, `host`, `name`, and `status`.
+
+**SSH command format:**
+
+```bash
+ssh -A {user}@{host} '<commands>'
+```
+
+Replace `{user}` with the user field and `{host}` with the host field from the computer info.
+
+**CRITICAL:**
+
+- **Always use `-A` flag** for SSH agent forwarding (required for git operations)
+- Use timeout of 10000ms for commands that might hang
+- Run commands sequentially (one computer at a time)
+- Quote commands properly when running multiple commands with `&&`
+
+**Common SSH operations:**
+
+```bash
+# Check daemon status
+ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make status'
+
+# View recent logs
+ssh -A morriz@raspberrypi.local 'tail -50 /var/log/teleclaude.log'
+
+# Restart daemon
+ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart'
+
+# Check running processes
+ssh -A morriz@raspberrypi.local 'pgrep -f teleclaude.daemon'
+
+# Pull latest code
+ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && git pull'
+```
+
+**When to use SSH vs MCP tools:**
+
+- **Use MCP tools** (`teleclaude__start_session`, `teleclaude__send_message`) for AI-to-AI delegation
+- **Use SSH** for direct system operations, debugging, manual intervention, or when MCP is unavailable
+
 ## Quick Command Reference
 
 ### Code Quality
