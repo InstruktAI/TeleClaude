@@ -470,16 +470,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
                         # Wait for response (short timeout) - use read_response for one-shot query
                         response_data = await self.client.read_response(request_id, timeout=2.0)
-                        if response_data.strip().startswith("{"):
-                            computer_info = json.loads(response_data.strip())
+                        envelope = json.loads(response_data.strip())
+
+                        # Unwrap envelope response
+                        if envelope.get("status") == "error":
+                            logger.debug("Computer %s returned error: %s", computer_name, envelope.get("error"))
+                            continue
+
+                        # Extract data from success envelope
+                        computer_info = envelope.get("data")
+                        if not computer_info or not isinstance(computer_info, dict):
+                            logger.debug("Invalid response data from %s", computer_name)
+                            continue
 
                     except (TimeoutError, Exception) as e:
                         logger.debug("Failed to get info from %s: %s", computer_name, e)
                         continue  # Skip this peer if request fails
-
-                    # Skip if no response received
-                    if not computer_info:
-                        continue
 
                     peers.append(
                         {
