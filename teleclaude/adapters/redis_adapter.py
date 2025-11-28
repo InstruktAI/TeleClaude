@@ -715,8 +715,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
         if not self.redis:
+            logger.error("Heartbeat loop: self.redis is None, exiting")
             return
 
+        logger.info("Heartbeat loop started for computer: %s", self.computer_name)
         while self._running:
             try:
                 await self._send_heartbeat()
