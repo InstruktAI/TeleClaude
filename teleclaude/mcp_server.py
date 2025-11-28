@@ -358,6 +358,7 @@ class TeleClaudeMCPServer:
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent]:
             """Handle tool calls."""
+            logger.debug("MCP call_tool() invoked: name=%s, arguments=%s", name, arguments)
             if name == "teleclaude__list_computers":
                 # Extract optional filter (currently unused by implementation)
                 # computer_names_obj = arguments.get("computer_names") if arguments else None
@@ -527,7 +528,10 @@ class TeleClaudeMCPServer:
         Returns:
             List of online computers with their info (role, system_stats, sessions, etc.)
         """
-        return await self.client.discover_peers()
+        logger.debug("teleclaude__list_computers() called")
+        result = await self.client.discover_peers()
+        logger.debug("teleclaude__list_computers() returning %d computers", len(result))
+        return result
 
     async def teleclaude__list_projects(self, computer: str) -> list[dict[str, str]]:
         """List available projects on target computer with metadata.

@@ -321,6 +321,9 @@ async def handle_get_computer_info(  # type: ignore[explicit-any]
     Returns:
         Dict with user, role, host
     """
+    request_id = context.get("session_id", "unknown")
+    logger.debug("handle_get_computer_info() called with request_id=%s", request_id)
+
     # Build info from config
     info_data = {
         "user": config.computer.user,
@@ -328,6 +331,7 @@ async def handle_get_computer_info(  # type: ignore[explicit-any]
         "host": config.computer.host,
     }
 
+    logger.debug("handle_get_computer_info() returning info for request_id=%s: %s", request_id, info_data)
     return info_data
 
 

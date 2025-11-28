@@ -473,6 +473,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
                     # Request computer info via get_computer_info command
                     request_id = str(uuid.uuid4())
+                    logger.debug(
+                        "Generated unique request_id=%s for get_computer_info from %s", request_id, computer_name
+                    )
                     computer_info = None
                     try:
                         await self.send_request(computer_name, request_id, "get_computer_info")
@@ -971,6 +974,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             raise RuntimeError("Redis not initialized")
 
         output_stream = f"output:{request_id}"
+        logger.debug(
+            "send_response() sending to stream=%s for request_id=%s (data_length=%d)",
+            output_stream,
+            request_id,
+            len(data),
+        )
 
         message_id_bytes: bytes = await self.redis.xadd(
             output_stream,
@@ -982,7 +991,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             maxlen=self.output_stream_maxlen,
         )
 
-        logger.debug("Sent response to stream %s: %s", output_stream, message_id_bytes)
+        logger.debug(
+            "send_response() completed for request_id=%s, stream=%s, message_id=%s",
+            request_id,
+            output_stream,
+            message_id_bytes,
+        )
         return message_id_bytes.decode("utf-8")
 
     async def read_response(self, request_id: str, timeout: float = 3.0) -> str:
@@ -1006,23 +1020,44 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         output_stream = f"output:{request_id}"
         start_time = time.time()
+        logger.debug("read_response() waiting for response on stream=%s, timeout=%s", output_stream, timeout)
 
         try:
+            poll_count = 0
             while True:
                 # Check timeout
-                if time.time() - start_time > timeout:
+                elapsed = time.time() - start_time
+                if elapsed > timeout:
+                    logger.warning(
+                        "read_response() timed out after %d polls (%.1fs) for request %s",
+                        poll_count,
+                        elapsed,
+                        request_id[:8],
+                    )
                     raise TimeoutError(f"No response received for request {request_id[:8]} within {timeout}s")
 
                 # Read from stream (blocking with 100ms timeout)
+                poll_count += 1
+                logger.debug(
+                    "read_response() poll #%d for request %s (elapsed=%.1fs)", poll_count, request_id[:8], elapsed
+                )
                 messages = await self.redis.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
 
                 if messages:
                     # Got response - extract and return
+                    logger.debug(
+                        "read_response() received message for request %s after %d polls", request_id[:8], poll_count
+                    )
                     for _stream_name, stream_messages in messages:
                         for _message_id, data in stream_messages:
                             chunk_bytes: bytes = data.get(b"chunk", b"")
                             chunk: str = chunk_bytes.decode("utf-8")
                             if chunk:
+                                logger.debug(
+                                    "read_response() returning response for request %s (length=%d)",
+                                    request_id[:8],
+                                    len(chunk),
+                                )
                                 return chunk
 
                 # No message yet, continue polling

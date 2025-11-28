@@ -479,10 +479,12 @@ class AdapterClient:
             - last_seen_ago: Human-readable string (e.g., "30s ago")
             - adapter_type: Which adapter discovered this peer
         """
+        logger.debug("AdapterClient.discover_peers() called, adapters: %s", list(self.adapters.keys()))
         all_peers = []
 
         # Collect peers from all adapters
         for adapter_type, adapter in self.adapters.items():
+            logger.debug("Calling discover_peers() on %s adapter", adapter_type)
             try:
                 peers = await adapter.discover_peers()
                 all_peers.extend(peers)

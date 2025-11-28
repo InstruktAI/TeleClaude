@@ -739,7 +739,10 @@ class TeleClaudeDaemon:
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects(context, self.client)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
-            return await command_handlers.handle_get_computer_info(context, self.client)
+            logger.debug("Calling handle_get_computer_info with context keys: %s", list(context.keys()))
+            result = await command_handlers.handle_get_computer_info(context, self.client)
+            logger.debug("handle_get_computer_info returned: %s", result)
+            return result
         elif command == TeleClaudeEvents.CANCEL:
             return await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.CANCEL_2X:
