@@ -179,9 +179,43 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
+                    name="teleclaude__get_session_data",
+                    title="TeleClaude: Get Session Data",
+                    description=(
+                        "Retrieve session data from a remote computer's Claude Code session. "
+                        "Reads from the claude_session_file which contains complete session history. "
+                        "Optionally filter by timestamp to get only recent messages. "
+                        "**Use this to check on delegated work** after teleclaude__send_message. "
+                        "**Replaces**: teleclaude__get_session_status (use this instead for new code)"
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name where session is running",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session ID to retrieve data for",
+                            },
+                            "since_timestamp": {
+                                "type": "string",
+                                "description": (
+                                    "Optional ISO 8601 UTC timestamp. "
+                                    "Returns only messages since this time. "
+                                    "Example: '2025-11-28T10:30:00Z'"
+                                ),
+                            },
+                        },
+                        "required": ["computer", "session_id"],
+                    },
+                ),
+                Tool(
                     name="teleclaude__get_session_status",
                     title="TeleClaude: Get Session Status",
                     description=(
+                        "**DEPRECATED**: Use teleclaude__get_session_data instead. "
                         "Check session status and get accumulated output since last checkpoint. "
                         "**Purpose**: Monitor delegated tasks running on remote computers. "
                         "**When to use**: Call repeatedly after teleclaude__send_message until: "
@@ -364,6 +398,13 @@ class TeleClaudeMCPServer:
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__get_session_data":
+                computer = str(arguments.get("computer", "")) if arguments else ""
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                since_timestamp_obj = arguments.get("since_timestamp") if arguments else None
+                since_timestamp = str(since_timestamp_obj) if since_timestamp_obj else None
+                result = await self.teleclaude__get_session_data(computer, session_id, since_timestamp)
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__get_session_status":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 result = await self.teleclaude__get_session_status(session_id)
@@ -756,8 +797,58 @@ class TeleClaudeMCPServer:
         metadata["last_checkpoint_time"] = datetime.now(UTC).isoformat()
         await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.now(UTC))
 
+    async def teleclaude__get_session_data(
+        self,
+        computer: str,
+        session_id: str,
+        since_timestamp: Optional[str] = None,
+    ) -> dict[str, object]:
+        """Get session data from remote computer.
+
+        Pulls accumulated session data from claude_session_file on remote computer.
+
+        Args:
+            computer: Target computer name
+            session_id: Session ID on remote computer
+            since_timestamp: Optional ISO 8601 UTC timestamp
+
+        Returns:
+            Dict with session data, status, and messages
+        """
+        # Generate unique request ID
+        request_id = f"{session_id}-data-{int(time.time() * 1000)}"
+
+        # Build command with optional timestamp
+        command = f"/session_data {since_timestamp}" if since_timestamp else "/session_data"
+
+        # Send request to remote computer
+        await self.client.send_request(
+            computer_name=computer,
+            request_id=request_id,
+            command=command,
+            metadata={"session_id": session_id},
+        )
+
+        # Read response (remote reads claude_session_file)
+        try:
+            response = await self.client.read_response(request_id, timeout=5.0)
+            result = json.loads(response)
+            return dict(result) if isinstance(result, dict) else {"status": "error", "error": "Invalid response format"}
+        except TimeoutError:
+            return {
+                "status": "error",
+                "error": f"Timeout waiting for session data from {computer}",
+            }
+        except json.JSONDecodeError:
+            return {
+                "status": "error",
+                "error": "Invalid JSON response from remote computer",
+            }
+
     async def teleclaude__get_session_status(self, session_id: str) -> dict[str, object]:
         """Get session status and accumulated output since last checkpoint.
+
+        DEPRECATED: Use teleclaude__get_session_data instead.
 
         Args:
             session_id: Session ID to check status for

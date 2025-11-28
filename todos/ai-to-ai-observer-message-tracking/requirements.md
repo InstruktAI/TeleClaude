@@ -1,89 +1,293 @@
-# AI-to-AI Observer Message Tracking
+# Unified Adapter Architecture: Remove AI Session Special Cases
 
 > **Created**: 2025-11-28
 > **Status**: 📝 Requirements
+> **Goal**: Simplify adapter architecture by removing all AI session special cases and making Redis adapter work exactly like other adapters
 
 ## Problem Statement
 
-When an AI session is initiated from MozBook to RasPi4 (AI-to-AI communication), the RasPi4 TelegramAdapter acts as an "observer" - it receives real-time output updates to display in Telegram. However, we recently implemented per-adapter message tracking (commit 7e9e2c7) that should allow observer adapters to edit a SINGLE message instead of creating multiple new messages for each output chunk.
+The current architecture has **two separate code paths** for handling session output:
+
+1. **Human sessions** (Telegram-originated): Use `send_output_update()` which edits a single message
+2. **AI sessions** (Redis AI-to-AI): Use `_send_output_chunks_ai_mode()` which streams sequential chunks
+
+This creates unnecessary complexity, duplication, and makes Redis adapter a special case instead of following the unified adapter pattern.
 
 **Pain Points**:
-- Code deployed but not verified in production
-- Unknown if `adapter_metadata[adapter_type]["output_message_id"]` is being correctly stored and retrieved
-- Telegram message spam (multiple messages vs one edited message) creates poor UX
-- No test coverage for observer message tracking in live AI-to-AI sessions
+- Polling coordinator has `if is_ai_session:` branching logic
+- Redis adapter has custom streaming code that other adapters don't use
+- AI sessions create dual database entries (local tracking session + remote execution session)
+- Output streaming via Redis streams duplicates what Claude Code already stores in session files
+- Observers (Telegram) can't properly track message IDs due to chunked output pattern
+- Code is harder to maintain, test, and reason about
 
-**Why Now**: The observer message tracking feature was just deployed to production. We need to verify it works as designed before building additional features on top of this foundation.
+**Why Now**: We have an opportunity to massively simplify the architecture by leveraging what Claude Code already does (stores complete session to file) and making all adapters behave uniformly.
 
 ## Goals
 
 **Primary Goals**:
-- Verify observer message tracking works correctly in live AI-to-AI sessions
-- Fix any bugs preventing observers from editing single messages
-- Document the verified behavior for future reference
+1. **Remove all AI session special cases** - polling coordinator has ONE code path for all session types
+2. **Unify adapter pattern** - Redis adapter implements same interface as Telegram adapter
+3. **Eliminate output streaming** - use request/response pattern to read from Claude session files instead
+4. **Single session architecture** - client mode creates NO local database session
+5. **Shared session data access** - all adapters read from same `claude_session_file` using BaseAdapter method
 
 **Secondary Goals**:
-- Add logging to make debugging easier in production
-- Consider integration tests for observer message tracking
+- Improve code maintainability by reducing branching logic
+- Make observer pattern work correctly for all adapter types
+- Reduce database complexity (fewer sessions to track)
+- Leverage existing Claude Code session file storage
 
 ## Non-Goals
 
-- Implementing new features (stay focused on verification/fixes only)
-- Changing the architecture of observer pattern
-- Optimizing performance (unless blocking verification)
-- Adding UI improvements beyond message editing
+- Changing the observer pattern fundamentally (still uses `adapter_metadata` for tracking)
+- Optimizing performance (unless it blocks the refactoring)
+- Adding new features (pure refactoring/simplification effort)
+- Changing MCP tool interfaces for users (maintain backward compatibility where possible)
 
-## User Stories / Use Cases
+## Architecture Changes
 
-### Story 1: Multi-Computer AI Collaboration
+### 1. Polling Coordinator Simplification
 
-As a **user running AI sessions across multiple computers**, I want observer adapters (like Telegram on RasPi4) to edit a single message with streaming updates so that I can follow the session progress without message spam.
+**Before** (two code paths):
+```python
+if is_ai_session:
+    # AI mode: Send sequential chunks (no editing, no loss)
+    await _send_output_chunks_ai_mode(
+        event.session_id,
+        adapter_client,
+        clean_output,
+    )
+else:
+    # Human mode: Edit same message via AdapterClient
+    await adapter_client.send_output_update(
+        event.session_id,
+        clean_output,
+        event.started_at,
+        event.last_changed_at,
+    )
+```
 
-**Acceptance Criteria**:
-- [ ] When MozBook initiates AI-to-AI session on RasPi4, RasPi4 Telegram shows ONE message
-- [ ] The single message updates continuously with new output (not multiple messages)
-- [ ] Message edits reflect latest output with proper status line formatting
+**After** (one unified path):
+```python
+# ALL sessions use send_output_update - broadcasts to all adapters
+await adapter_client.send_output_update(
+    event.session_id,
+    clean_output,
+    event.started_at,
+    event.last_changed_at,
+)
+```
 
-### Story 2: Developer Debugging Observer Issues
+**Changes**:
+- Remove `_is_ai_to_ai_session()` function
+- Remove `_send_output_chunks_ai_mode()` function
+- Remove `if is_ai_session:` branching in `poll_and_send_output()`
+- All sessions treated identically by polling coordinator
 
-As a **developer debugging AI-to-AI sessions**, I want clear logs showing when message_id is stored/retrieved so that I can diagnose observer tracking issues.
+### 2. Redis Adapter Refactoring
 
-**Acceptance Criteria**:
-- [ ] Logs show when `adapter_metadata[adapter_type]["output_message_id"]` is written
-- [ ] Logs show when message_id is retrieved for editing
-- [ ] Logs indicate which adapter (telegram/redis) is performing the action
+#### Client Mode (MozBook initiating to RasPi4)
+
+**Before**:
+- Creates local DB session on MozBook
+- Stores local Claude session file
+- Polls Redis output stream for chunks
+- Streams chunks to MCP client
+
+**After**:
+- Does NOT create local DB session (no session in local database at all)
+- Does NOT store local Claude session file (session only exists remotely)
+- Uses request/response pattern: `send_request("/session_data")` + `read_response()`
+- MCP tool `teleclaude__get_session_data()` pulls data on demand
+
+**Key Change**: Client becomes a pure transport layer - no local session resources created.
+
+#### Server Mode (RasPi4 receiving from MozBook)
+
+**Before**:
+- Implements custom output streaming to Redis streams
+- Special chunking logic for AI consumption
+
+**After**:
+- Does NOT implement `send_output_update()` at all
+- Polling coordinator calls `send_output_update()` which broadcasts to ALL adapters on that computer
+- Telegram adapter (observer) edits single message using `adapter_metadata["telegram"]["output_message_id"]`
+- Redis adapter handles `/session_data` command by reading `claude_session_file` (no streaming)
+
+**Key Change**: No special output handling - relies on Claude Code's existing session file storage.
+
+### 3. Session Data Access Pattern
+
+**New BaseAdapter Method**:
+```python
+# teleclaude/adapters/base_adapter.py
+async def get_session_data(
+    self,
+    session_id: str,
+    since_timestamp: Optional[str] = None
+) -> str:
+    """Read session data from Claude Code session file.
+
+    This is a shared capability for ALL adapters (Telegram, Redis, Slack, etc.)
+    to serve session data from the standard claude_session_file location.
+
+    Args:
+        session_id: Session identifier
+        since_timestamp: Optional UTC timestamp to filter messages since
+
+    Returns:
+        Formatted session data (messages, outputs, etc.)
+    """
+    # Implementation reads from storage/{session_id}/claude_session_file
+    # Parses markdown format
+    # Filters by timestamp if provided
+    # Returns formatted content
+```
+
+**All adapters get this capability**:
+- Telegram: Can serve session data for downloads or queries
+- Redis: Responds to `/session_data` requests from remote clients
+- Future adapters (Slack, WhatsApp): Automatically inherit this capability
+
+**Command Pattern**:
+- Standard command: `/session_data {timestamp_utc}`
+- Handled by BaseAdapter (all adapters use same implementation)
+- Returns content from `claude_session_file` filtered by timestamp
+
+### 4. MCP Tool Changes
+
+**Rename and refactor**:
+- `teleclaude__get_session_status` → `teleclaude__get_session_data`
+
+**New signature**:
+```python
+async def teleclaude__get_session_data(
+    computer: str,
+    session_id: str,
+    since_timestamp: Optional[str] = None,
+) -> dict[str, object]:
+    """Get session data from remote computer.
+
+    Pulls accumulated session data from claude_session_file on remote computer.
+    This replaces the streaming pattern with a simple request/response pattern.
+
+    Args:
+        computer: Target computer name
+        session_id: Session ID on remote computer
+        since_timestamp: Optional UTC timestamp to get messages since
+
+    Returns:
+        Dict with session data (messages, outputs, status)
+    """
+```
+
+**Implementation**:
+```python
+# Send request to remote
+await self.client.send_request(
+    computer_name=computer,
+    request_id=f"{session_id}-data-{timestamp()}",
+    command=f"/session_data {since_timestamp or ''}",
+)
+
+# Read response (remote reads claude_session_file and returns content)
+response = await self.client.read_response(request_id, timeout=5.0)
+return json.loads(response)
+```
+
+### 5. Observer Pattern (Unchanged Conceptually)
+
+**Telegram as Observer**:
+- RasPi4 runs session, Telegram adapter is observer
+- Polling coordinator calls `adapter_client.send_output_update()`
+- Telegram adapter uses `adapter_metadata["telegram"]["output_message_id"]` to edit ONE message
+- Works correctly because all output goes through `send_output_update()` (not chunks)
+
+**Redis as Observer** (if needed):
+- Could observe sessions on same computer
+- Would use `adapter_metadata["redis"]` to track state
+- Currently not a primary use case (Redis used for cross-computer communication)
 
 ## Technical Constraints
 
-- Must work with existing `UiAdapter.send_output_update()` architecture
-- Must use `adapter_metadata[adapter_type]` storage pattern (already implemented)
-- Must support multiple observer adapters simultaneously (Telegram on different computers)
-- Cannot break existing origin adapter behavior (sessions initiated from Telegram directly)
-- Must work with Redis output stream distribution (already implemented)
+- Must maintain backward compatibility with existing MCP tools (users' workflows shouldn't break)
+- Must work with existing `BaseAdapter` → `UiAdapter` → `TelegramAdapter` hierarchy
+- Must preserve observer pattern using `adapter_metadata[adapter_type]`
+- Must work with existing tmux/Claude Code session lifecycle
+- All tests must pass (`make test && make lint`)
+- No breaking changes to Telegram adapter (users' primary interface)
 
 ## Success Criteria
 
-How will we know this is successful?
+### Code Quality
+- [ ] Remove `if is_ai_session:` check from polling_coordinator.py
+- [ ] Remove `_send_output_chunks_ai_mode()` function
+- [ ] Remove `_is_ai_to_ai_session()` function
+- [ ] Remove Redis output streaming code
+- [ ] Add `get_session_data()` method to BaseAdapter
+- [ ] Update Redis adapter to NOT create local sessions in client mode
+- [ ] All tests pass: `make test`
+- [ ] All linting passes: `make lint`
+- [ ] Test coverage maintained or improved
 
-- [ ] **Live Verification**: Start AI-to-AI session MozBook → RasPi4, confirm RasPi4 Telegram edits ONE message (not multiple)
-- [ ] **Database Verification**: Confirm `adapter_metadata.telegram.output_message_id` is stored in remote session
-- [ ] **Log Verification**: Logs show message_id storage and retrieval events
-- [ ] **Regression Check**: Existing Telegram sessions (non-observer) still work correctly
-- [ ] **Code Quality**: All tests pass (`make test && make lint`)
+### Functional Verification
+- [ ] **Local Telegram sessions** still work (edit single message, no regression)
+- [ ] **AI-to-AI sessions** work with new request/response pattern
+- [ ] **Observer pattern** works (Telegram on RasPi4 edits ONE message when MozBook runs AI session)
+- [ ] **Session data retrieval** works via new `teleclaude__get_session_data` tool
+- [ ] **No dual sessions** - verify only remote session exists in DB for AI-to-AI
+- [ ] **All adapters** can serve session data via `/session_data` command
+
+### Architecture Verification
+- [ ] Polling coordinator has ONE code path (no branching by session type)
+- [ ] Redis adapter follows same pattern as other adapters
+- [ ] BaseAdapter provides shared session data access capability
+- [ ] Session files are the single source of truth (no duplicate storage)
 
 ## Open Questions
 
-- ❓ Is the `_get_adapter_key()` method correctly identifying adapter type via class name?
-- ❓ Is `send_output_update()` being called for observer adapters during AI-to-AI sessions?
-- ❓ Is the Redis output stream correctly distributing updates to observer adapters?
-- ❓ Does the database update correctly when storing message_id in `adapter_metadata`?
+- ❓ Should we keep `teleclaude__start_session` signature the same or simplify since no local session is created?
+- ❓ Do we need to migrate existing AI-to-AI sessions in database, or just handle new sessions correctly?
+- ❓ Should `get_session_data()` return raw markdown or parsed/formatted data?
+- ❓ What timestamp format should we use? ISO 8601 UTC string?
+- ❓ Should we version the session file format to make parsing more reliable?
+
+## Migration Path
+
+### Phase 1: Add Session Data Access (No Breaking Changes)
+1. Add `get_session_data()` to BaseAdapter
+2. Add `/session_data` command handler to BaseAdapter
+3. Update MCP server with new `teleclaude__get_session_data` tool (keep old tool for now)
+4. Test that session data can be retrieved correctly
+
+### Phase 2: Refactor Redis Adapter
+1. Update Redis adapter client mode to NOT create local sessions
+2. Update Redis adapter server mode to use `get_session_data()` instead of streaming
+3. Remove output stream polling code
+4. Test AI-to-AI sessions work with new pattern
+
+### Phase 3: Simplify Polling Coordinator
+1. Remove `if is_ai_session:` branching
+2. Remove `_send_output_chunks_ai_mode()` function
+3. Remove `_is_ai_to_ai_session()` function
+4. All sessions use unified `send_output_update()` path
+5. Verify observer pattern works for all adapter types
+
+### Phase 4: Cleanup
+1. Remove deprecated `teleclaude__get_session_status` tool (after migration period)
+2. Remove Redis output streaming configuration
+3. Update documentation and architecture diagrams
+4. Remove any AI session special case comments
 
 ## References
 
-- **Recent commit**: 7e9e2c7 - feat(adapters): per-adapter message tracking for observers
-- **Architecture docs**: docs/architecture.md (Observer Pattern section)
+- **Architecture docs**: docs/architecture.md (needs update after this refactor)
 - **Code locations**:
-  - `teleclaude/adapters/ui_adapter.py` - `_get_adapter_key()`, `send_output_update()`
-  - `teleclaude/adapters/telegram_adapter.py` - Observer adapter implementation
-  - `teleclaude/adapters/redis_adapter.py` - AI-to-AI session creation and output streaming
-  - `teleclaude/core/polling_coordinator.py` - Output distribution to adapters
+  - `teleclaude/core/polling_coordinator.py` - Remove AI session branching
+  - `teleclaude/adapters/base_adapter.py` - Add get_session_data() method
+  - `teleclaude/adapters/redis_adapter.py` - Remove streaming, use request/response
+  - `teleclaude/adapters/ui_adapter.py` - Observer pattern via adapter_metadata
+  - `teleclaude/mcp_server.py` - New teleclaude__get_session_data tool
+- **Session file format**: storage/{session_id}/claude_session_file (markdown format)
+- **Related work**: Observer message tracking (commit 7e9e2c7) enables this simplification
