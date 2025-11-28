@@ -76,7 +76,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
 
 @pytest.mark.integration
 async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__start_session creates session."""
+    """Test teleclaude__start_session creates session on remote (no local session)."""
     daemon = daemon_with_mocked_telegram
 
     # Mock discover_peers to show computer online
@@ -85,79 +85,57 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
             {"name": "workstation", "status": "online", "bot_username": "@teleclaude_workstation_bot"}
         ]
 
-        # Mock create_channel to avoid Redis initialization
-        with patch.object(mcp_server.client, "create_channel", new_callable=AsyncMock) as mock_create_channel:
-            mock_create_channel.return_value = None
+        # Mock send_request to avoid actual Redis call
+        with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
+            mock_send.return_value = None
 
-            # Mock send_request to avoid actual Redis call
-            with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
-                mock_send.return_value = None
+            # Mock read_response to return remote session_id
+            with patch.object(mcp_server.client, "read_response", new_callable=AsyncMock) as mock_read:
+                mock_read.return_value = '{"session_id": "remote-uuid-123"}'
 
-                # Mock read_response to return remote session_id
-                with patch.object(mcp_server.client, "read_response", new_callable=AsyncMock) as mock_read:
-                    mock_read.return_value = '{"session_id": "remote-uuid-123"}'
+                result = await mcp_server.teleclaude__start_session(
+                    computer="workstation", project_dir="/home/user/project"
+                )
 
-                    result = await mcp_server.teleclaude__start_session(
-                        computer="workstation", project_dir="/home/user/project"
-                    )
+                # Verify result (ONLY remote session ID returned, no local session)
+                assert isinstance(result, dict)
+                assert result["status"] == "success"
+                assert result["session_id"] == "remote-uuid-123"
 
-                    # Verify result
-                    assert isinstance(result, dict)
-                    assert result["status"] == "success"
-                    assert "session_id" in result
+                # Verify NO local session created
+                session = await daemon.db.get_session(result["session_id"])
+                assert session is None
 
-                    # Verify session created in database
-                    session = await daemon.db.get_session(result["session_id"])
-                    assert session is not None
-                    assert session.origin_adapter == "redis"
-                    assert "workstation" in session.title
-                    assert session.adapter_metadata["remote_session_id"] == "remote-uuid-123"
-
-                    # Verify mocks were called
-                    mock_discover.assert_called_once()
-                    mock_create_channel.assert_called_once()
-                    mock_send.assert_called_once()  # create_session command
-                    mock_read.assert_called_once()  # Wait for response
+                # Verify mocks were called
+                mock_discover.assert_called_once()
+                mock_send.assert_called_once()  # /create_session command
+                mock_read.assert_called_once()  # Wait for response
 
 
 @pytest.mark.integration
 async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__send_message sends to existing session."""
+    """Test teleclaude__send_message sends via request/response (no streaming)."""
     daemon = daemon_with_mocked_telegram
 
-    # Create session with required metadata
-    session = await daemon.db.create_session(
-        computer_name="testcomp",
-        tmux_session_name="test-send",
-        origin_adapter="redis",
-        title="Test Send",
-        adapter_metadata={
-            "target_computer": "workstation",
-            "project_dir": "/home/user/project",
-            "remote_session_id": "remote-uuid-123",
-        },
-    )
+    # Remote session ID (no local session needed)
+    remote_session_id = "remote-uuid-123"
 
-    # Mock send_message (new architecture uses send_message instead of send_request)
-    with patch.object(mcp_server.client, "send_message", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = "msg-id"
+    # Mock send_request (new architecture uses request/response)
+    with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = None
 
-        # Mock stream_session_output
-        async def mock_poll():
-            yield "Output line 1\n"
-            yield "Output line 2\n"
+        chunks = []
+        async for chunk in mcp_server.teleclaude__send_message(session_id=remote_session_id, message="ls -la"):
+            chunks.append(chunk)
 
-        with patch.object(mcp_server.client, "stream_session_output", return_value=mock_poll()):
-            chunks = []
-            async for chunk in mcp_server.teleclaude__send_message(session_id=session.session_id, message="ls -la"):
-                chunks.append(chunk)
+        output = "".join(chunks)
+        # New architecture returns acknowledgment, not output
+        assert "Message sent" in output
+        assert remote_session_id[:8] in output
+        assert "teleclaude__get_session_data" in output
 
-            output = "".join(chunks)
-            assert "Output line 1" in output
-            assert "Output line 2" in output
-
-            # Verify send_message was called with session_id and message
-            mock_send.assert_called_once_with(session.session_id, "ls -la")
+        # Verify send_request was called
+        mock_send.assert_called_once()
 
 
 @pytest.mark.integration

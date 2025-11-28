@@ -63,6 +63,7 @@ class UiAdapter(BaseAdapter):
         "new_session",
         "list_sessions",
         "list_projects",
+        "get_session_data",  # Get session data from claude_session_file (inherited from BaseAdapter)
         "cancel",
         "cancel2x",
         "kill",

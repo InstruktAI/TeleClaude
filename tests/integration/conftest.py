@@ -73,6 +73,36 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         monkeypatch.setattr(telegram_adapter, "update_channel_title", AsyncMock(return_value=True))
         monkeypatch.setattr(telegram_adapter, "send_general_message", AsyncMock(return_value="msg-456"))
 
+    # CRITICAL: Mock terminal_bridge.send_keys to prevent actual command execution
+    # Set daemon.mock_command_mode to control behavior:
+    # - "short": Quick completion (default)
+    # - "long": Long-running interactive process
+    daemon.mock_command_mode = "short"
+    original_send_keys = terminal_bridge.send_keys
+
+    async def mock_send_keys(
+        session_name: str,
+        text: str,
+        working_dir: str = "~",
+        cols: int = 80,
+        rows: int = 24,
+        send_enter: bool = True,
+    ):
+        """Mock send_keys to replace commands based on configured mode."""
+        if daemon.mock_command_mode == "passthrough":
+            # Passthrough mode - don't mock, send original text
+            return await original_send_keys(session_name, text, working_dir, cols, rows, send_enter)
+        elif daemon.mock_command_mode == "long":
+            # Long-running interactive process that waits for input
+            mock_command = "python3 -c \"import sys; print('Ready', flush=True); [print(f'Echo: {line.strip()}', flush=True) for line in sys.stdin]\""
+        else:
+            # Short-lived command (instant completion)
+            mock_command = "echo 'Command executed'"
+
+        return await original_send_keys(session_name, mock_command, working_dir, cols, rows, send_enter)
+
+    monkeypatch.setattr(terminal_bridge, "send_keys", mock_send_keys)
+
     # Clean up any leftover sessions from previous test runs
     # ONLY clean up sessions that are in the test database (temp db)
     old_sessions = await daemon.db.list_sessions()
