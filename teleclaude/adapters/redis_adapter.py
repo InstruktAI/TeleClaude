@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import re
+import ssl
 import time
 import uuid
 from datetime import datetime
@@ -92,13 +93,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.warning("RedisAdapter already running")
             return
 
-        # Create Redis client
+        # Create Redis client with TLS support
         self.redis = Redis.from_url(
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
             socket_timeout=self.socket_timeout,
             decode_responses=False,  # We handle decoding manually
+            ssl_cert_reqs=ssl.CERT_NONE,  # Disable certificate verification for self-signed certs
         )
 
         # Test connection
@@ -427,7 +429,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             List of peer dicts with name, status, last_seen, etc.
         """
+        logger.debug("discover_peers() called, self.redis=%s", "present" if self.redis else "None")
+
         if not self.redis:
+            logger.warning("discover_peers: self.redis is None, returning empty list")
             return []
 
         try:
