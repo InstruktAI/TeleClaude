@@ -731,6 +731,12 @@ class TeleClaudeDaemon:
         Note: Handlers decorated with @with_session have modified signatures (decorator injects session parameter).
         """
         logger.info("Command received: %s %s", command, args)
+        logger.debug("Command type: %s, value repr: %r", type(command).__name__, command)
+        logger.debug(
+            "Checking against GET_COMPUTER_INFO: %r (match: %s)",
+            TeleClaudeEvents.GET_COMPUTER_INFO,
+            command == TeleClaudeEvents.GET_COMPUTER_INFO,
+        )
 
         if command == TeleClaudeEvents.NEW_SESSION:
             return await command_handlers.handle_create_session(context, args, self.client)
