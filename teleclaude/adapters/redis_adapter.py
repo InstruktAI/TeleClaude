@@ -429,7 +429,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             List of peer dicts with name, status, last_seen, etc.
         """
-        logger.debug("discover_peers() called, self.redis=%s", "present" if self.redis else "None")
+        logger.info(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
 
         if not self.redis:
             logger.warning("discover_peers: self.redis is None, returning empty list")
@@ -438,7 +438,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         try:
             # Find all heartbeat keys
             keys = await self.redis.keys(b"computer:*:heartbeat")
-            logger.debug("discover_peers found %d heartbeat keys: %s", len(keys), keys)
+            logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)
 
             peers = []
             for key in keys:
@@ -481,7 +481,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         await self.send_request(computer_name, request_id, "get_computer_info")
 
                         # Wait for response (short timeout) - use read_response for one-shot query
-                        response_data = await self.client.read_response(request_id, timeout=2.0)
+                        response_data = await self.client.read_response(request_id, timeout=30.0)
                         envelope = json.loads(response_data.strip())
 
                         # Unwrap envelope response
@@ -620,10 +620,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             if msg_type == "system":
                 return await self._handle_system_message(data)
 
-            request_id = data.get(b"request_id", b"").decode("utf-8")
-
-            # Regular user message (session-specific)
+            # For ephemeral requests (get_computer_info, list_projects), session_id IS the request_id
+            # For regular session commands, session_id is the actual session ID
             session_id = data.get(b"session_id", b"").decode("utf-8")
+            request_id = session_id  # Use session_id as request_id for response correlation
             message_str = data.get(b"command", b"").decode(
                 "utf-8"
             )  # Field name stays "command" for protocol compatibility
@@ -667,13 +667,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 except json.JSONDecodeError:
                     logger.warning("Invalid channel_metadata JSON in message")
 
-            logger.debug("About to call handle_event for event_type: %s", event_type)
+            logger.info(">>> About to call handle_event for event_type: %s", event_type)
             result = await self.client.handle_event(
                 event=event_type,
                 payload=payload,
                 metadata=metadata_to_send,
             )
-            logger.debug("handle_event completed for event_type: %s", event_type)
+            logger.info(
+                ">>> handle_event completed for event_type: %s, result type: %s", event_type, type(result).__name__
+            )
 
             # Start output stream listener for new AI-to-AI sessions
             if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":
@@ -686,7 +688,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
             # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
             response_json = json.dumps(result)
+            logger.info(
+                ">>> About to send_response for request_id: %s, response length: %d", request_id[:8], len(response_json)
+            )
             await self.send_response(request_id, response_json)
+            logger.info(">>> send_response completed for request_id: %s", request_id[:8])
 
         except Exception as e:
             logger.error("Failed to handle incoming message: %s", e)

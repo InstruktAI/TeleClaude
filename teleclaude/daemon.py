@@ -731,8 +731,8 @@ class TeleClaudeDaemon:
         Note: Handlers decorated with @with_session have modified signatures (decorator injects session parameter).
         """
         logger.info("Command received: %s %s", command, args)
-        logger.debug("Command type: %s, value repr: %r", type(command).__name__, command)
-        logger.debug(
+        logger.info("Command type: %s, value repr: %r", type(command).__name__, command)
+        logger.info(
             "Checking against GET_COMPUTER_INFO: %r (match: %s)",
             TeleClaudeEvents.GET_COMPUTER_INFO,
             command == TeleClaudeEvents.GET_COMPUTER_INFO,
@@ -745,9 +745,10 @@ class TeleClaudeDaemon:
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects(context, self.client)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
-            logger.debug("Calling handle_get_computer_info with context keys: %s", list(context.keys()))
+            logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
+            logger.info("Calling handle_get_computer_info with context keys: %s", list(context.keys()))
             result = await command_handlers.handle_get_computer_info(context, self.client)
-            logger.debug("handle_get_computer_info returned: %s", result)
+            logger.info("handle_get_computer_info returned: %s", result)
             return result
         elif command == TeleClaudeEvents.CANCEL:
             return await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
