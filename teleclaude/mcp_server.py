@@ -557,14 +557,26 @@ class TeleClaudeMCPServer:
         # Read response from AdapterClient (one-shot, not streaming)
         try:
             response_data = await self.client.read_response(session_id, timeout=3.0)
-            # Parse JSON array response
-            if response_data.strip().startswith("["):
-                projects: list[dict[str, str]] = json.loads(response_data.strip())
-                return projects
-            logger.warning("Unexpected response format from %s: %s", computer, response_data[:100])
-            return []
+            envelope = json.loads(response_data.strip())
+
+            # Handle error response
+            if envelope.get("status") == "error":
+                error_msg = envelope.get("error", "Unknown error")
+                logger.error("list_projects failed on %s: %s", computer, error_msg)
+                return []
+
+            # Extract projects list from success envelope
+            data = envelope.get("data", [])
+            if not isinstance(data, list):
+                logger.warning("Unexpected data format from %s: %s", computer, type(data).__name__)
+                return []
+            return list(data)  # Type assertion for mypy
+
         except TimeoutError:
-            logger.warning("Timeout waiting for list_projects response from %s", computer)
+            logger.error("Timeout waiting for list_projects response from %s", computer)
+            return []
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON response from %s: %s", computer, e)
             return []
 
     async def teleclaude__start_session(
@@ -774,8 +786,20 @@ class TeleClaudeMCPServer:
         # Read response (remote reads claude_session_file)
         try:
             response = await self.client.read_response(request_id, timeout=5.0)
-            result = json.loads(response)
-            return dict(result) if isinstance(result, dict) else {"status": "error", "error": "Invalid response format"}
+            envelope = json.loads(response)
+
+            # Handle error response
+            if envelope.get("status") == "error":
+                error_msg = envelope.get("error", "Unknown error")
+                return {"status": "error", "error": f"Remote error: {error_msg}"}
+
+            # Extract session data from success envelope
+            data = envelope.get("data")
+            if isinstance(data, dict):
+                return data
+
+            # Data is missing or wrong type
+            return {"status": "error", "error": "Invalid response data format"}
         except TimeoutError:
             return {
                 "status": "error",
