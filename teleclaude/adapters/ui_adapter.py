@@ -41,6 +41,21 @@ class UiAdapter(BaseAdapter):
     # Default: 3900 chars (Telegram: 4096 limit - ~196 overhead)
     max_message_size: int = 3900
 
+    def _get_adapter_key(self) -> str:
+        """Get adapter key for metadata storage.
+
+        Uses class name to determine adapter type at runtime.
+
+        Returns:
+            Adapter key string (e.g., "telegram", "redis")
+        """
+        class_name = self.__class__.__name__
+        if class_name == "TelegramAdapter":
+            return "telegram"
+        if class_name == "RedisAdapter":
+            return "redis"
+        return "unknown"
+
     # === Command Registration ===
 
     # Standard UI commands - subclasses implement handlers with _handle_{command} naming
@@ -106,8 +121,25 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Session %s not found, cannot send output update", session_id[:8])
+            return None
+
         ux_state = await db.get_ux_state(session_id)
-        current_message_id = ux_state.output_message_id
+
+        # Check adapter_metadata for this adapter's message_id (for observers)
+        # Origin adapter uses ux_state.output_message_id, observers use adapter_metadata
+        adapter_metadata: dict[str, object] = session.adapter_metadata or {}
+        adapter_key = self._get_adapter_key()  # e.g., "telegram", "redis"
+        adapter_data_obj = adapter_metadata.get(adapter_key, {})
+        adapter_data: dict[str, object] = adapter_data_obj if isinstance(adapter_data_obj, dict) else {}
+
+        # Prefer adapter-specific message_id, fallback to ux_state (for origin adapter)
+        message_id_obj = adapter_data.get("output_message_id")
+        current_message_id: Optional[str] = (
+            message_id_obj if isinstance(message_id_obj, str) else None
+        ) or ux_state.output_message_id
 
         # Truncate to platform limit
         is_truncated = len(output) > self.max_message_size
@@ -155,12 +187,30 @@ class UiAdapter(BaseAdapter):
                 return current_message_id
             # Edit failed - clear stale message_id and send new
             logger.warning("Failed to edit message %s, clearing stale message_id and sending new", current_message_id)
+            # Clear from both locations
             await db.update_ux_state(session_id, output_message_id=None)
+            if adapter_key in adapter_metadata and isinstance(adapter_metadata[adapter_key], dict):
+                adapter_data_dict = adapter_metadata[adapter_key]
+                if isinstance(adapter_data_dict, dict) and "output_message_id" in adapter_data_dict:
+                    adapter_data_dict["output_message_id"] = None
+                    await db.update_session(session_id, adapter_metadata=adapter_metadata)
 
         new_id = await self.send_message(session_id, display_output, metadata if metadata else None)
         if new_id:
+            # Store in ux_state (for origin adapter) AND adapter_metadata (for all adapters)
             await db.update_ux_state(session_id, output_message_id=new_id)
-            logger.debug("Stored message_id=%s for session=%s", new_id, session_id[:8])
+
+            # Also store in adapter_metadata for this adapter type
+            if adapter_key not in adapter_metadata:
+                adapter_metadata[adapter_key] = {}
+            adapter_data_dict = adapter_metadata[adapter_key]
+            if not isinstance(adapter_data_dict, dict):
+                adapter_data_dict = {}
+                adapter_metadata[adapter_key] = adapter_data_dict
+            adapter_data_dict["output_message_id"] = new_id
+            await db.update_session(session_id, adapter_metadata=adapter_metadata)
+
+            logger.debug("Stored message_id=%s for adapter=%s session=%s", new_id, adapter_key, session_id[:8])
         return new_id
 
     def format_message(self, terminal_output: str, status_line: str) -> str:

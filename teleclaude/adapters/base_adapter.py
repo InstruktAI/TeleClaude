@@ -16,13 +16,6 @@ class BaseAdapter(ABC):
 
     client: "AdapterClient"  # Set by subclasses in __init__
 
-    def __init__(self) -> None:
-        """Initialize adapter.
-
-        Subclasses should accept adapter_client as first parameter.
-        """
-        pass
-
     # ==================== Lifecycle Methods ====================
 
     @abstractmethod
