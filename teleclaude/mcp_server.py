@@ -22,7 +22,6 @@ from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
 from teleclaude.core.command_handlers import get_short_project_name
 from teleclaude.core.db import db
-from teleclaude.core.session_utils import ensure_unique_title
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -573,11 +572,13 @@ class TeleClaudeMCPServer:
         computer: str,
         project_dir: str,
     ) -> dict[str, object]:
-        """Create AI-to-AI session metadata in both local and remote databases.
+        """Create remote session via request/response pattern.
 
-        This is a lightweight operation that only creates database entries with session metadata.
-        It does NOT initialize the remote tmux session or start Claude Code - that happens
-        lazily on first send_message call.
+        Client mode creates NO local session - only sends request to remote computer
+        which creates session in its own database and returns session_id.
+
+        This follows the unified adapter architecture where only ONE session exists
+        (on the remote computer), and the client pulls data on demand.
 
         Design by contract: Assumes computer is online. Fails explicitly if offline.
 
@@ -587,7 +588,7 @@ class TeleClaudeMCPServer:
                 (from teleclaude__list_projects)
 
         Returns:
-            dict with session_id and status
+            dict with remote session_id and status
         """
 
         # Validate computer is online - fail fast if not
@@ -597,71 +598,32 @@ class TeleClaudeMCPServer:
         if not target_online:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
-        # Generate session UUID
-        session_id = str(uuid.uuid4())
+        # Generate request ID for this operation
+        request_id = f"create-session-{int(time.time() * 1000)}"
 
-        # Create session in local database
+        # Build session title
         short_project = get_short_project_name(project_dir)
-        base_title = f"${self.computer_name} > ${computer}[{short_project}] - AI Session"
-        title = await ensure_unique_title(base_title)
-        session = await db.create_session(
-            computer_name=self.computer_name,
-            tmux_session_name=f"{self.computer_name}-ai-{session_id[:8]}",
-            origin_adapter="redis",
-            title=title,
-            adapter_metadata={
-                "is_auto_managed": True,
-                "project_dir": project_dir,
-                "target_computer": computer,
-            },
-            description=f"Auto-managed AI session for {project_dir} on {computer}",
-        )
-
-        session_id = session.session_id
-
-        # Create channels in ALL adapters (Telegram topic, Redis output stream)
-        await self.client.create_channel(
-            session_id=session_id,
-            title=title,
-            origin_adapter="redis",
-        )
-
-        # Get updated session with channel_ids
-        updated_session = await db.get_session(session_id)
-        if not updated_session:
-            return {"status": "error", "message": "Failed to retrieve session after channel creation"}
-
-        channel_metadata = updated_session.adapter_metadata or {}
+        title = f"{self.computer_name} > {computer}[{short_project}] - AI Session"
 
         # Send create_session command to remote - creates DB entry and returns remote session_id
-        create_cmd = "/create_session"
         await self.client.send_request(
             computer_name=computer,
-            request_id=session_id,
-            command=create_cmd,
-            metadata={"title": title, "project_dir": project_dir, "channel_metadata": channel_metadata},
+            request_id=request_id,
+            command="/create_session",
+            metadata={"title": title, "project_dir": project_dir},
         )
 
         # Wait for response with remote session_id
         try:
-            response_data = await self.client.read_response(session_id, timeout=5.0)
+            response_data = await self.client.read_response(request_id, timeout=5.0)
             response = json.loads(response_data.strip())
             remote_session_id = response.get("session_id")
 
             if not remote_session_id:
                 return {"status": "error", "message": "Remote did not return session_id"}
 
-            # Store remote_session_id and update output stream to point to remote session
-            channel_metadata["remote_session_id"] = remote_session_id
-            # Update Redis metadata to use remote session's output stream (shared bidirectional stream)
-            if "redis" in channel_metadata and isinstance(channel_metadata["redis"], dict):
-                redis_meta = channel_metadata["redis"]
-                redis_meta["output_stream"] = f"output:{remote_session_id}"
-                redis_meta["channel_id"] = f"output:{remote_session_id}"
-            await db.update_session(session_id=session_id, adapter_metadata=channel_metadata)
-
-            logger.info("Session bridged: local=%s remote=%s", session_id[:8], remote_session_id[:8])
-            return {"session_id": session_id, "status": "success"}
+            logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
+            return {"session_id": remote_session_id, "status": "success"}
 
         except TimeoutError:
             return {"status": "error", "message": "Timeout waiting for remote session creation"}
@@ -673,129 +635,79 @@ class TeleClaudeMCPServer:
         """List sessions from LOCAL database only.
 
         This tool queries the local database on THIS computer and returns sessions
-        (both Human-to-AI via Telegram and AI-to-AI via MCP). It does NOT query
-        remote computers - each computer maintains its own session database.
+        (Human-to-AI via Telegram). It does NOT query remote computers - each computer
+        maintains its own session database.
+
+        NOTE: After unified architecture refactoring, MCP client mode creates NO local
+        sessions. Use teleclaude__get_session_data to query remote sessions instead.
 
         Args:
-            computer: Optional filter by target computer name for AI-to-AI sessions.
-                      If None, returns all active sessions from local database.
-                      If specified, filters to AI-to-AI sessions where target_computer matches.
-                      Human-to-AI sessions (no target) are included when computer=None.
+            computer: Unused - kept for backwards compatibility. Will be removed in future.
 
         Returns:
             List of session dicts with fields:
             - session_id: Unique session identifier
-            - origin_adapter: Adapter that initiated session (telegram/redis)
-            - target: Target computer name (only for AI-to-AI sessions, None for Human-to-AI)
+            - origin_adapter: Adapter that initiated session (telegram)
+            - target: Always None (no AI-to-AI local sessions)
             - title: Session title
             - working_directory: Current working directory of the session
             - status: Session status (active/closed)
             - created_at: ISO timestamp
             - last_activity: ISO timestamp
-            - metadata: Full adapter_metadata dict (project_dir, is_auto_managed, etc.)
+            - metadata: Full adapter_metadata dict
         """
         # Get all active sessions (closed=False)
         sessions = await db.get_all_sessions(closed=False)
 
-        # Filter by target computer if specified
-        result = []
-        for session in sessions:
-            metadata = session.adapter_metadata or {}
-            target_computer = metadata.get("target_computer")
-
-            # If computer filter specified, only include sessions targeting that computer
-            if computer and target_computer != computer:
-                continue
-
-            result.append(
-                {
-                    "session_id": session.session_id,
-                    "origin_adapter": session.origin_adapter,
-                    "target": target_computer,
-                    "title": session.title,
-                    "working_directory": session.working_directory,
-                    "status": "closed" if session.closed else "active",
-                    "created_at": session.created_at.isoformat(),
-                    "last_activity": session.last_activity.isoformat(),
-                    "metadata": metadata,
-                }
-            )
-
-        return result
+        # Return all sessions (no AI-to-AI local sessions exist anymore)
+        return [
+            {
+                "session_id": session.session_id,
+                "origin_adapter": session.origin_adapter,
+                "target": None,  # No AI-to-AI local sessions
+                "title": session.title,
+                "working_directory": session.working_directory,
+                "status": "closed" if session.closed else "active",
+                "created_at": session.created_at.isoformat(),
+                "last_activity": session.last_activity.isoformat(),
+                "metadata": session.adapter_metadata or {},
+            }
+            for session in sessions
+        ]
 
     async def teleclaude__send_message(
         self, session_id: str, message: str, interest_window_seconds: float = 15
     ) -> AsyncIterator[str]:
-        """Send message to Claude in existing AI-to-AI session and stream response.
+        """Send message to remote session via request/response pattern.
 
-        Initializes remote tmux session on first call (sends /cd and /claude commands).
-        Subsequent calls assume initialization is complete and send message directly.
-
-        Design by contract: Assumes session exists in database (from start_session).
-        Fails explicitly if session not found.
+        Simplified design - no local session, no streaming. Just sends message to remote
+        and returns acknowledgment. Use teleclaude__get_session_data to pull results.
 
         Args:
-            session_id: Session ID from teleclaude__start_session
+            session_id: Remote session ID (from teleclaude__start_session)
             message: Message/command to send to remote Claude Code
-            interest_window_seconds: Seconds to monitor output before detaching (default: 15)
+            interest_window_seconds: Unused - kept for backwards compatibility
 
         Yields:
-            str: Response chunks from remote Claude Code during interest window
+            str: Acknowledgment message
         """
-        # Get session from database - assume it exists (contract)
-        session = await db.get_session(session_id)
-        if not session:
-            yield "[Error: Session not found - violated contract, call start_session first]"
-            return
+        # Generate request ID
+        request_id = f"send-{int(time.time() * 1000)}"
 
-        if session.closed:
-            yield "[Error: Session is closed]"
-            return
-
-        # Get metadata for checkpoint tracking
-        metadata = session.adapter_metadata or {}
-
-        # Send message to remote Claude via shared output stream
-        # The local session's output_stream points to the remote session's stream (set during start_session)
-        # The remote RedisAdapter polls this stream and triggers MESSAGE events locally
+        # Send message to remote computer (session_id identifies both computer and session)
         try:
-            await self.client.send_message(session_id, message)
+            await self.client.send_request(
+                computer_name="",  # Extracted from session_id by AdapterClient
+                request_id=request_id,
+                command=f"/send {message}",
+                metadata={"session_id": session_id},
+            )
+
+            yield f"Message sent to session {session_id[:8]}. Use teleclaude__get_session_data to check output."
+
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
-            return
-
-        # Stream output from AdapterClient during interest window
-        start_time = time.time()
-        # TODO: Track last_checkpoint_stream_id from chunks to save checkpoint (currently unused)
-
-        try:
-            # Stream output with interest window timeout
-            async for chunk in self.client.stream_session_output(session_id, timeout=interest_window_seconds):
-                # Strip exit markers from output (internal infrastructure, not user-visible)
-                clean_chunk = re.sub(r"__EXIT__\d+__", "", chunk)
-                if clean_chunk:  # Only yield if there's content after stripping
-                    yield clean_chunk
-
-                # Check if interest window expired
-                elapsed = time.time() - start_time
-                if elapsed >= interest_window_seconds:
-                    yield (
-                        "\n\n[Interest window closed - task continues remotely. "
-                        "Use teleclaude__get_session_status to check progress]"
-                    )
-                    # TODO: Track last_stream_id from chunks to save checkpoint
-                    break
-
-        except asyncio.TimeoutError:
-            yield "\n[Interest window timed out - no output received]"
-        except Exception as e:
-            logger.error("Error streaming output for session %s: %s", session_id[:8], e)
-            yield f"\n[Error: {str(e)}]"
-
-        # Save checkpoint (for now, just update timestamp - stream ID tracking needs adapter support)
-        metadata["last_checkpoint_time"] = datetime.now(UTC).isoformat()
-        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.now(UTC))
 
     async def teleclaude__get_session_data(
         self,
