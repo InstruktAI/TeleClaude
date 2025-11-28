@@ -301,13 +301,11 @@ async def teleclaude__get_session_data(
 
 ---
 
-## Phase 2: Refactor Redis Adapter + AdapterClient Inheritance
+## Phase 2: Refactor Redis Adapter
 
-**Goal**: Remove Redis output streaming, use request/response pattern, eliminate local session creation in client mode. Make AdapterClient inherit from BaseAdapter.
+**Goal**: Remove Redis output streaming, use request/response pattern, eliminate local session creation in client mode.
 
-**Status**: ✅ COMPLETED
-
-**Key Achievement**: AdapterClient must inherit from BaseAdapter to get `get_session_data()` method for polling coordinator to use.
+**Status**: ⏳ Not started
 
 ### Task Group 2.1: Remove Local Session Creation in Client Mode
 
@@ -464,13 +462,9 @@ async def _handle_redis_message(self, message_data: dict) -> None:
 
 ## Phase 3: Simplify Polling Coordinator
 
-**Goal**: Remove all AI session special cases from polling coordinator. Keep using tmux output for ALL sessions.
+**Goal**: Remove all AI session special cases from polling coordinator.
 
 **Status**: ⏳ Not started
-
-**IMPORTANT**: This phase does NOT change output source - all sessions continue polling tmux output as before. The UX improvement (polling claude_session_file for Claude sessions) is deferred to roadmap (see Phase 4).
-
----
 
 ### Task Group 3.1: Remove AI Session Detection
 
@@ -538,7 +532,7 @@ async def _send_output_chunks_ai_mode(
 
 ---
 
-### Task Group 3.3: Unify Output Handling (Tmux Only)
+### Task Group 3.3: Unify Output Handling
 
 **Files**:
 - `teleclaude/core/polling_coordinator.py`
@@ -562,12 +556,9 @@ else:
     )
 ```
 
-**Replace with** (unified tmux output for all sessions):
+**Replace with** (unified path):
 ```python
-# Unified output handling - ALL sessions use tmux output
-# No distinction between AI vs human sessions
-
-# Use existing clean_output from tmux capture (already computed above)
+# ALL sessions use send_output_update (broadcasts to all adapters)
 await adapter_client.send_output_update(
     event.session_id,
     clean_output,
@@ -576,32 +567,21 @@ await adapter_client.send_output_update(
 )
 ```
 
-**Key Changes**:
-1. Remove ALL session-type branching (`if is_ai_session:`)
-2. Remove chunked output streaming (`_send_output_chunks_ai_mode`)
-3. Use unified `send_output_update()` for ALL sessions
-4. ALL sessions poll tmux output (no changes to output source)
-
-**No UX changes** - This is purely architectural cleanup. Output behavior stays the same.
-
 **Also update in DirectoryChanged and ProcessExited handlers** (lines ~280-320):
-- Remove any `is_ai_session` checks
-- Use unified `send_output_update()` for all events
+- Same pattern: remove `if is_ai_session:` branching
+- Use only `send_output_update()` for all events
 
 **Testing**:
 - Run full test suite: `make test`
-- Test Telegram bash session (should work exactly as before)
-- Test Telegram /claude session (should work exactly as before)
-- Test AI-to-AI session (same behavior, cleaner code)
+- Test local Telegram session (should still work)
+- Test AI-to-AI session (should work with new pattern)
 - Test observer pattern (Telegram editing single message)
 
 **Acceptance Criteria**:
 - [ ] All `if is_ai_session:` checks removed from coordinator
-- [ ] `_send_output_chunks_ai_mode()` function removed
-- [ ] Only `send_output_update()` used for ALL output events
-- [ ] ALL sessions use tmux output (no behavioral changes)
+- [ ] Only `send_output_update()` used for output events
 - [ ] All tests pass
-- [ ] Manual verification: Telegram sessions work exactly as before
+- [ ] Manual verification: Telegram sessions work
 - [ ] Manual verification: Observer edits single message
 
 ---
@@ -611,8 +591,6 @@ await adapter_client.send_output_update(
 **Goal**: Remove deprecated code, update docs, verify everything works.
 
 **Status**: ⏳ Not started
-
-**Note**: Phase 5 (UX improvement) is OUT OF SCOPE for this refactoring cycle and goes on the roadmap as future work.
 
 ### Task Group 4.1: Remove Deprecated MCP Tool
 
@@ -882,79 +860,3 @@ If issues detected:
 **Total**: 8-12 days for complete implementation and testing.
 
 **Deployment**: Can deploy phases incrementally over 2-3 weeks to ensure stability.
-
----
-
-## Phase 5: UX Improvement - Claude Session File Polling (ROADMAP ITEM)
-
-**Goal**: Enable live output updates for Claude sessions by polling claude_session_file instead of tmux.
-
-**Status**: 🚫 OUT OF SCOPE - Not to be implemented in this refactoring cycle
-
-**Rationale**: This is a UX enhancement, not architectural cleanup. It should be planned and implemented as a separate feature after the unified adapter architecture is stable.
-
-**Future Implementation Outline** (for roadmap):
-
-### Overview
-
-Claude Code writes session output to `storage/{session_id}/claude_session_file` in markdown format. By polling this file instead of tmux output for Claude sessions, we can show live updates of Claude's thinking/responses in Telegram and other UIs.
-
-### Key Changes Needed
-
-1. **Command-Type Detection**:
-   - Add `_is_claude_command(session)` function to detect if `claude` binary is running
-   - Check `Path(session.adapter_metadata.get("running_command", "")).name == "claude"`
-   - Set `running_command` metadata when `/claude` command is sent
-
-2. **Polling Coordinator Update**:
-   ```python
-   # Branch on COMMAND TYPE, not session type
-   if _is_claude_command(session):
-       # Poll claude_session_file with timestamp
-       metadata = session.adapter_metadata or {}
-       last_poll = metadata.get("last_claude_poll")
-
-       session_data = await adapter_client.get_session_data(
-           event.session_id,
-           since_timestamp=last_poll
-       )
-       output = session_data.get("messages", "")
-
-       # Update timestamp for next poll
-       metadata["last_claude_poll"] = datetime.now(UTC).isoformat()
-       await db.update_session(event.session_id, adapter_metadata=metadata)
-   else:
-       # Use tmux output (existing behavior)
-       output = clean_output
-
-   # Unified broadcast
-   await adapter_client.send_output_update(session_id, output, ...)
-   ```
-
-3. **AdapterClient Inheritance**:
-   - Make AdapterClient inherit from BaseAdapter
-   - This provides access to `get_session_data()` method
-
-### Benefits
-
-- **Live Claude Output**: Users see Claude's responses update in real-time in Telegram
-- **Consistent with Architecture**: Uses same session file that Claude already writes
-- **No Duplicate Storage**: Leverages existing data, no new storage needed
-
-### Dependencies
-
-- Requires Phase 1-4 to be complete (unified adapter architecture)
-- Requires stable `get_session_data()` implementation
-- Requires timestamp filtering in session file parser
-
-### Estimated Effort
-
-- Implementation: 2-3 days
-- Testing: 1-2 days
-- Documentation: 1 day
-
-### Timeline
-
-Plan for implementation after Phase 1-4 are deployed and stable for at least 2 weeks.
-
----
