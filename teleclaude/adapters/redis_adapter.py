@@ -433,6 +433,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         try:
             # Find all heartbeat keys
             keys = await self.redis.keys(b"computer:*:heartbeat")
+            logger.debug("discover_peers found %d heartbeat keys: %s", len(keys), keys)
 
             peers = []
             for key in keys:
