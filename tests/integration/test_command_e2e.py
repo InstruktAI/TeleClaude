@@ -101,23 +101,27 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     # For the second send (sending input to running process), temporarily disable mock
     daemon.mock_command_mode = "passthrough"
 
-    # Send input to the interactive process
-    await terminal_bridge.send_keys(session.tmux_session_name, "test message")
+    try:
+        # Send input to the interactive process
+        await terminal_bridge.send_keys(session.tmux_session_name, "test message")
 
-    # Wait for response and polling to send output
-    await asyncio.sleep(2.0)
+        # Wait for response and polling to send output
+        await asyncio.sleep(2.0)
 
-    # Verify terminal has both initial output and response
-    output = await terminal_bridge.capture_pane(session.tmux_session_name)
-    assert "Echo: test message" in output, f"Should see response to input, got: {output[:500]}"
+        # Verify terminal has both initial output and response
+        output = await terminal_bridge.capture_pane(session.tmux_session_name)
+        assert "Echo: test message" in output, f"Should see response to input, got: {output[:500]}"
 
-    # Verify output was sent to Telegram
-    total_calls = telegram.send_message.call_count + telegram.edit_message.call_count
-    assert total_calls >= 1, (
-        f"Should have sent output to Telegram. "
-        f"send_message calls: {telegram.send_message.call_count}, "
-        f"edit_message calls: {telegram.edit_message.call_count}"
-    )
+        # Verify output was sent to Telegram
+        total_calls = telegram.send_message.call_count + telegram.edit_message.call_count
+        assert total_calls >= 1, (
+            f"Should have sent output to Telegram. "
+            f"send_message calls: {telegram.send_message.call_count}, "
+            f"edit_message calls: {telegram.edit_message.call_count}"
+        )
+    finally:
+        # CRITICAL: Reset mock mode to prevent subsequent tests from running real commands
+        daemon.mock_command_mode = "short"
 
 
 if __name__ == "__main__":
