@@ -344,6 +344,92 @@ docs/troubleshooting.md
 
 - ALWAYS USE `make restart` to RESTART the daemon!
 
+## Development Workflow: Rsync for Fast Iteration
+
+**CRITICAL: Use rsync to sync changes during active development. Only commit when code is tested and working.**
+
+### Why Rsync Over Git During Development
+
+- **Faster iteration**: rsync syncs changes in <1 second vs git commit/push/pull cycle
+- **Clean git history**: No WIP commits, no "fix typo", no broken intermediate states
+- **Atomic commits**: Git commits represent complete, tested, working changes (Unix philosophy)
+- **Production-ready**: Every commit can be deployed immediately
+
+### Rsync Development Workflow
+
+**1. Make changes locally** (on development machine)
+
+**2. Sync to remote computers** with rsync:
+
+```bash
+# Sync to a specific computer
+rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+  /Users/Morriz/Documents/Workspace/morriz/teleclaude/ \
+  morriz@raspberrypi.local:/home/morriz/apps/TeleClaude/
+
+# Restart daemon on remote
+ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart'
+
+# Monitor remote logs
+ssh -A morriz@raspberrypi.local 'tail -f /var/log/teleclaude.log'
+```
+
+**3. Iterate quickly** - repeat steps 1-2 until feature works
+
+**4. Test thoroughly**:
+```bash
+make test        # Run all tests
+make lint        # Verify code quality
+```
+
+**5. Only then commit** - when code is complete, tested, and working:
+```bash
+git add .
+git commit -m "feat(component): add feature description"
+git push
+```
+
+### Multi-Computer Development Pattern
+
+**For changes that need testing across multiple computers:**
+
+```bash
+# Define target computers
+TARGETS="morriz@raspberrypi.local morriz@macbook.local"
+
+# Sync to all targets
+for target in $TARGETS; do
+  echo "Syncing to $target..."
+  rsync -avz --exclude='.git' --exclude='__pycache__' \
+    /path/to/teleclaude/ $target:/path/to/TeleClaude/
+  ssh -A $target 'cd /path/to/TeleClaude && make restart'
+done
+```
+
+### When to Commit
+
+✅ **DO commit when:**
+- All tests pass (`make test`)
+- All lint checks pass (`make lint`)
+- Feature is complete and working
+- Code has been tested on target environments
+- Change represents one atomic, logical unit
+
+❌ **DO NOT commit:**
+- Work-in-progress code
+- Broken or untested code
+- Debug statements or temporary changes
+- "Just to save my work" (use git stash or rsync instead)
+
+### Git Philosophy
+
+**Unix thinking: Each commit does one thing completely and well.**
+
+- Commits are atomic units of working software
+- Git is version control, not a backup tool
+- History should tell a story of deliberate, complete changes
+- Every commit in main branch should be deployable
+
 ---
 
 **NEVER CHANGE CODE WITHOUT FULLY UNDERSTANDING WHAT IT DOES - IF UNSURE, INVESTIGATE DEEPER AND READ MORE FILES, ULTIMATELY ASKING THE USER FIRST!**
