@@ -12,7 +12,7 @@ import re
 import time
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 from redis.asyncio import Redis
 
@@ -80,6 +80,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         # Heartbeat config
         self.heartbeat_interval = 30  # Send heartbeat every 30s
         self.heartbeat_ttl = 60  # Key expires after 60s
+
+        # Track pending new_session requests for response
+        self._pending_new_session_request: Optional[str] = None
 
         logger.info("RedisAdapter initialized for computer: %s", self.computer_name)
 
@@ -194,24 +197,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
-        # Get output stream name from session metadata
-        redis_metadata: dict[str, object] = session.adapter_metadata or {}
-        if isinstance(redis_metadata, str):
-            redis_metadata = json.loads(redis_metadata)
+        # Get output stream name from session metadata (top-level channel_id)
+        session_metadata: dict[str, object] = session.adapter_metadata or {}
+        if isinstance(session_metadata, str):
+            session_metadata = json.loads(session_metadata)
 
-        redis_meta: dict[str, object] = redis_metadata.get("redis", {})  # type: ignore[assignment]
-        # Try redis-specific channel_id first, then fall back to output_stream
-        output_stream = redis_meta.get("channel_id") or redis_meta.get("output_stream")
+        # Use top-level channel_id (common interface for all adapters)
+        output_stream = session_metadata.get("channel_id")
 
         if not output_stream:
             # Create stream name if not exists
             output_stream = f"output:{session_id}"
-            redis_meta["channel_id"] = output_stream
-            redis_meta["output_stream"] = output_stream
-            redis_metadata["redis"] = redis_meta
+            session_metadata["channel_id"] = output_stream
+            session_metadata["redis"] = {"output_stream": output_stream}
 
             # Update session
-            await db.update_session(session_id, adapter_metadata=redis_metadata)
+            await db.update_session(session_id, adapter_metadata=session_metadata)
 
         # Send to Redis stream
         message_id_bytes: bytes = await self.redis.xadd(
@@ -587,7 +588,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 logger.error("Message polling error: %s", e)
                 await asyncio.sleep(5)  # Back off on error
 
-    async def _handle_incoming_message(self, data: dict[bytes, bytes]) -> None:
+    async def _handle_incoming_message(self, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]
         """Handle incoming message from Redis stream.
 
         Args:
@@ -597,8 +598,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             # Check if this is a system message
             msg_type = data.get(b"type", b"").decode("utf-8")
             if msg_type == "system":
-                await self._handle_system_message(data)
-                return
+                return await self._handle_system_message(data)
+
+            request_id = data.get(b"request_id", b"").decode("utf-8")
 
             # Regular user message (session-specific)
             session_id = data.get(b"session_id", b"").decode("utf-8")
@@ -606,7 +608,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 "utf-8"
             )  # Field name stays "command" for protocol compatibility
 
-            if not session_id or not message_str:
+            if not message_str:
                 logger.warning("Invalid message data: %s", data)
                 return
 
@@ -617,36 +619,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             if not cmd_name:
                 logger.warning("Empty message received for session %s", session_id[:8])
                 return
-
-            # Handle create_session specially - generates NEW session_id and responds
-            if cmd_name == "create_session":
-                await self._create_session_from_redis(session_id, data, respond_with_session_id=True)
-                return
-
-            # Get or create session for non-create_session commands
-            session = await db.get_session(session_id)
-            if not session:
-                # Only create session if metadata indicates real session initialization
-                # Metadata is sent as separate Redis fields (title, project_dir), not JSON
-                title = data.get(b"title", b"").decode("utf-8")
-                project_dir = data.get(b"project_dir", b"").decode("utf-8")
-                logger.debug(
-                    "Session %s not found. Checking metadata for session creation: title=%s, project_dir=%s, all_keys=%s",
-                    session_id[:8],
-                    title,
-                    project_dir,
-                    [k.decode("utf-8") for k in data.keys()],
-                )
-                if title and project_dir:
-                    # Legacy AI-to-AI session initialization (has title + project_dir)
-                    # NOTE: This path is deprecated - new sessions use create_session command
-                    await self._create_session_from_redis(session_id, data)
-                    logger.info("Created session from Redis: %s (title: %s)", session_id[:8], title)
-                else:
-                    # Ephemeral query command (list_projects, etc.) - skip session creation
-                    logger.debug(
-                        "Skipping session creation for ephemeral command: %s (no title/project_dir)", session_id[:8]
-                    )
 
             # Emit event to daemon via client
             event_type: EventType = cmd_name  # type: ignore[assignment]
@@ -661,13 +633,40 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 payload = {"session_id": session_id, "args": args}
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
+            # For new_session, include request_id and AI-to-AI metadata
+            metadata_to_send: dict[str, object] = {"adapter_type": "redis"}
+
+            # Extract AI-to-AI session metadata if present
+            if b"initiator" in data:
+                metadata_to_send["initiator"] = data[b"initiator"].decode("utf-8")
+            if b"project_dir" in data:
+                metadata_to_send["project_dir"] = data[b"project_dir"].decode("utf-8")
+            if b"channel_metadata" in data:
+                try:
+                    metadata_to_send["channel_metadata"] = json.loads(data[b"channel_metadata"].decode("utf-8"))
+                except json.JSONDecodeError:
+                    logger.warning("Invalid channel_metadata JSON in message")
+
             logger.debug("About to call handle_event for event_type: %s", event_type)
-            await self.client.handle_event(
+            result = await self.client.handle_event(
                 event=event_type,
                 payload=payload,
-                metadata={"adapter_type": "redis"},
+                metadata=metadata_to_send,
             )
             logger.debug("handle_event completed for event_type: %s", event_type)
+
+            # Start output stream listener for new AI-to-AI sessions
+            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":
+                result_data = result.get("data")
+                if isinstance(result_data, dict):
+                    new_session_id = result_data.get("session_id")
+                    if new_session_id:
+                        self._start_output_stream_listener(str(new_session_id))
+                        logger.debug("Started output stream listener for session: %s", new_session_id)
+
+            # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
+            response_json = json.dumps(result)
+            await self.send_response(request_id, response_json)
 
         except Exception as e:
             logger.error("Failed to handle incoming message: %s", e)
@@ -706,84 +705,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             },
             metadata={"adapter_type": "redis"},
         )
-
-    async def _create_session_from_redis(
-        self, request_id: str, data: dict[bytes, bytes], respond_with_session_id: bool = False
-    ) -> None:
-        """Create session from incoming Redis command data.
-
-        Args:
-            request_id: Request ID (for create_session, this is just routing ID; otherwise actual session_id)
-            data: Command data from Redis
-            respond_with_session_id: If True, generates NEW session_id and sends response (create_session flow)
-        """
-        # Extract metadata from command
-        title = data.get(b"title", b"Unknown Session").decode("utf-8")
-        project_dir = data.get(b"project_dir", b"").decode("utf-8")
-        initiator = data.get(b"initiator", b"unknown").decode("utf-8")
-
-        # Extract channel_metadata sent by initiator (contains channel_ids for all adapters)
-        channel_metadata_bytes = data.get(b"channel_metadata", b"{}")
-        try:
-            channel_metadata = json.loads(channel_metadata_bytes.decode("utf-8"))
-        except json.JSONDecodeError:
-            logger.warning("Invalid channel_metadata JSON, using empty dict")
-            channel_metadata = {}
-
-        # For create_session: generate NEW session_id; otherwise use request_id
-        session_id = str(uuid.uuid4()) if respond_with_session_id else request_id
-        tmux_session_name = f"{self.computer_name}-ai-{session_id[:8]}"
-
-        # Create session with channel_ids from initiator
-        metadata = channel_metadata.copy()
-        metadata["target_computer"] = initiator
-        if project_dir:
-            metadata["project_dir"] = project_dir
-
-        await db.create_session(
-            session_id=session_id,
-            computer_name=self.computer_name,
-            tmux_session_name=tmux_session_name,
-            origin_adapter="redis",
-            title=title,
-            adapter_metadata=metadata,
-            description=f"AI-to-AI session from {initiator}",
-        )
-
-        if respond_with_session_id:
-            # create_session flow: Start Claude Code immediately before responding
-            logger.info(
-                "Created AI-to-AI session: local=%s for remote_request=%s from %s",
-                session_id[:8],
-                request_id[:8],
-                initiator,
-            )
-
-            # Start Claude Code in the session (/cd + /claude)
-            if project_dir:
-                await self.client.handle_event(
-                    event=TeleClaudeEvents.CD,
-                    payload={"session_id": session_id, "args": [project_dir]},
-                    metadata={"adapter_type": "redis"},
-                )
-                logger.debug("Sent /cd command for session %s", session_id[:8])
-
-            await self.client.handle_event(
-                event=TeleClaudeEvents.CLAUDE,
-                payload={"session_id": session_id, "args": []},
-                metadata={"adapter_type": "redis"},
-            )
-            logger.debug("Sent /claude command for session %s", session_id[:8])
-
-            # Start polling output stream for incoming messages from initiator
-            self._start_output_stream_listener(session_id)
-
-            # Respond with session_id
-            response_data = json.dumps({"session_id": session_id})
-            await self.send_response(request_id, response_data)
-        else:
-            # Legacy flow: session created with same ID
-            logger.info("Created session %s from Redis with channel_ids from initiator", session_id[:8])
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
@@ -1043,8 +964,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.debug("Sent response to stream %s: %s", output_stream, message_id_bytes)
         return message_id_bytes.decode("utf-8")
 
-    async def read_single_response(self, request_id: str, timeout: float = 3.0) -> str:
-        """Read single response from ephemeral request (non-streaming).
+    async def read_response(self, request_id: str, timeout: float = 3.0) -> str:
+        """Read response from ephemeral request (non-streaming).
 
         Used for one-shot request/response like list_projects, get_computer_info.
         Reads once from the Redis stream instead of continuous polling.

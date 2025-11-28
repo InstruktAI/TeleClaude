@@ -89,9 +89,9 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
         with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
             mock_send.return_value = None
 
-            # Mock read_response to return remote session_id
+            # Mock read_response to return envelope with remote session_id
             with patch.object(mcp_server.client, "read_response", new_callable=AsyncMock) as mock_read:
-                mock_read.return_value = '{"session_id": "remote-uuid-123"}'
+                mock_read.return_value = '{"status": "success", "data": {"session_id": "remote-uuid-123"}}'
 
                 result = await mcp_server.teleclaude__start_session(
                     computer="workstation", project_dir="/home/user/project"
@@ -108,7 +108,22 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 
                 # Verify mocks were called
                 mock_discover.assert_called_once()
-                mock_send.assert_called_once()  # /create_session command
+
+                # Should send 3 commands: /new_session, /cd, /claude
+                assert mock_send.call_count == 3, "Should send /new_session, /cd, and /claude commands"
+
+                # Verify /new_session call
+                assert mock_send.call_args_list[0][1]["command"] == "/new_session"
+                assert mock_send.call_args_list[0][1]["computer_name"] == "workstation"
+
+                # Verify /cd call
+                assert mock_send.call_args_list[1][1]["command"] == "/cd /home/user/project"
+                assert mock_send.call_args_list[1][1]["metadata"]["session_id"] == "remote-uuid-123"
+
+                # Verify /claude call
+                assert mock_send.call_args_list[2][1]["command"] == "/claude"
+                assert mock_send.call_args_list[2][1]["metadata"]["session_id"] == "remote-uuid-123"
+
                 mock_read.assert_called_once()  # Wait for response
 
 

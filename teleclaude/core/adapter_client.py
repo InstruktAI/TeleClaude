@@ -587,14 +587,23 @@ class AdapterClient:
                     except Exception as e:
                         logger.warning("Pre-handler failed for %s on %s: %s", session.origin_adapter, event, e)
 
-        # 5. EXECUTE: Dispatch to registered handler
+        # 5. EXECUTE: Dispatch to registered handler with try-catch wrapper
         logger.debug("handle_event called for event: %s, registered handlers: %s", event, list(self._handlers.keys()))
         handler = self._handlers.get(event)
         if handler:
-            logger.debug("Found handler for event: %s, calling it now", event)
-            handler_result = handler(event, context)  # New signature: (event, context)
-            result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
-            logger.debug("Handler completed for event: %s", event)
+            try:
+                logger.debug("Found handler for event: %s, calling it now", event)
+                handler_result = handler(event, context)  # New signature: (event, context)
+                result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
+                logger.debug("Handler completed for event: %s", event)
+
+                # Wrap success response in envelope
+                response: dict[str, object] = {"status": "success", "data": result}
+
+            except Exception as e:
+                logger.error("Handler failed for event %s: %s", event, e, exc_info=True)
+                response = {"status": "error", "error": str(e), "code": type(e).__name__}
+                result = None  # No result data on error
 
             # 6. POST: Call origin adapter's post-handler for UI state tracking
             if session and message_id:
@@ -640,10 +649,10 @@ class AdapterClient:
                             except Exception as e:
                                 logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
-            return result
+            return response
 
         logger.warning("No handler registered for event: %s", event)
-        return None
+        return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
 
     def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:
         """Format event as human-readable text for observer adapters.
@@ -863,7 +872,7 @@ class AdapterClient:
             TimeoutError: If no response received within timeout
         """
         transport = self._get_transport_adapter()
-        return await transport.read_single_response(request_id, timeout)
+        return await transport.read_response(request_id, timeout)
 
     async def stream_session_output(
         self,

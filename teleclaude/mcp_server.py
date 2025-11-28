@@ -605,24 +605,54 @@ class TeleClaudeMCPServer:
         short_project = get_short_project_name(project_dir)
         title = f"{self.computer_name} > {computer}[{short_project}] - AI Session"
 
-        # Send create_session command to remote - creates DB entry and returns remote session_id
+        # Send new_session command to remote - uses standardized handle_create_session
         await self.client.send_request(
             computer_name=computer,
             request_id=request_id,
-            command="/create_session",
+            command="/new_session",
             metadata={"title": title, "project_dir": project_dir},
         )
 
         # Wait for response with remote session_id
         try:
             response_data = await self.client.read_response(request_id, timeout=5.0)
-            response = json.loads(response_data.strip())
-            remote_session_id = response.get("session_id")
+            envelope = json.loads(response_data.strip())
+
+            # Handle error response
+            if envelope.get("status") == "error":
+                error_msg = envelope.get("error", "Unknown error")
+                return {"status": "error", "message": f"Remote session creation failed: {error_msg}"}
+
+            # Extract session_id from success response
+            data = envelope.get("data", {})
+            remote_session_id = data.get("session_id") if isinstance(data, dict) else None
 
             if not remote_session_id:
                 return {"status": "error", "message": "Remote did not return session_id"}
 
             logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
+
+            # Now send /cd command if project_dir provided
+            if project_dir:
+                cd_request_id = f"cd-{int(time.time() * 1000)}"
+                await self.client.send_request(
+                    computer_name=computer,
+                    request_id=cd_request_id,
+                    command=f"/cd {project_dir}",
+                    metadata={"session_id": remote_session_id},
+                )
+                logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
+
+                # Send /claude command to start Claude Code
+                claude_request_id = f"claude-{int(time.time() * 1000)}"
+                await self.client.send_request(
+                    computer_name=computer,
+                    request_id=claude_request_id,
+                    command="/claude",
+                    metadata={"session_id": remote_session_id},
+                )
+                logger.debug("Sent /claude command to remote session %s", remote_session_id[:8])
+
             return {"session_id": remote_session_id, "status": "success"}
 
         except TimeoutError:

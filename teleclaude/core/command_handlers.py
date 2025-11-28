@@ -6,7 +6,6 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
-import json
 import logging
 import os
 import shlex
@@ -145,13 +144,16 @@ async def handle_create_session(  # type: ignore[explicit-any]
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
-) -> None:
+) -> dict[str, str]:
     """Create a new terminal session.
 
     Args:
         context: Command context with adapter_type
         args: Command arguments (optional custom title)
         client: AdapterClient for channel operations
+
+    Returns:
+        Minimal session payload with session_id
     """
     # Get adapter_type from context
     adapter_type = context.get("adapter_type")
@@ -162,6 +164,12 @@ async def handle_create_session(  # type: ignore[explicit-any]
     working_dir = os.path.expanduser(config.computer.default_working_dir)
     terminal_size = "120x40"  # Default terminal size
 
+    # For AI-to-AI sessions, use initiator and project_dir from context
+    initiator = context.get("initiator")  # Remote computer that initiated this session
+    project_dir = context.get("project_dir")  # Project directory for AI-to-AI session
+    if project_dir:
+        working_dir = os.path.expanduser(project_dir)
+
     # Generate tmux session name
     session_suffix = str(uuid.uuid4())[:8]
     tmux_name = f"{computer_name.lower()}-session-{session_suffix}"
@@ -170,10 +178,12 @@ async def handle_create_session(  # type: ignore[explicit-any]
     short_project = get_short_project_name(working_dir)
 
     # Create topic first with custom title if provided
+    # For AI-to-AI sessions (initiator present), use initiator name in title
+    title_computer = initiator if initiator else computer_name
     if args and len(args) > 0:
-        base_title = f"${computer_name}[{short_project}] - {' '.join(args)}"
+        base_title = f"${title_computer}[{short_project}] - {' '.join(args)}"
     else:
-        base_title = f"${computer_name}[{short_project}] - New session"
+        base_title = f"${title_computer}[{short_project}] - New session"
 
     # Ensure title is unique (appends counter if needed)
     title = await ensure_unique_title(base_title)
@@ -212,9 +222,11 @@ You can now send commands to this session.
 """
         await client.send_message(session.session_id, welcome)
         logger.info("Created session: %s", session.session_id)
+        return {"session_id": session_id_new}
     else:
         await db.delete_session(session.session_id)
         logger.error("Failed to create tmux session")
+        raise RuntimeError("Failed to create tmux session")
 
 
 async def handle_list_sessions(  # type: ignore[explicit-any]
@@ -262,21 +274,18 @@ async def handle_list_sessions(  # type: ignore[explicit-any]
 async def handle_list_projects(  # type: ignore[explicit-any]
     context: dict[str, Any],
     client: "AdapterClient",
-) -> None:
-    """List trusted project directories as JSON response.
+) -> list[dict[str, str]]:
+    """List trusted project directories.
 
     Ephemeral request/response - no DB session required.
 
     Args:
         context: Command context with request_id (passed as session_id in Redis protocol)
-        client: AdapterClient for sending response
-    """
-    # Get request_id from context (passed as session_id in Redis protocol)
-    request_id = context.get("session_id")
-    if not request_id:
-        logger.error("No request_id in context for list_projects")
-        return
+        client: AdapterClient (unused - kept for signature compatibility)
 
+    Returns:
+        List of directory dicts with name, desc, location
+    """
     # Get all trusted dirs (includes default_working_dir merged in)
     all_trusted_dirs = config.computer.get_all_trusted_dirs()
 
@@ -294,28 +303,24 @@ async def handle_list_projects(  # type: ignore[explicit-any]
                 }
             )
 
-    # Send response directly to Redis stream (no DB session lookup)
-    await client.send_response(request_id=str(request_id), data=json.dumps(dirs_data))
+    return dirs_data
 
 
 async def handle_get_computer_info(  # type: ignore[explicit-any]
     context: dict[str, Any],
     client: "AdapterClient",
-) -> None:
-    """Return computer info as JSON response.
+) -> dict[str, str]:
+    """Return computer info.
 
     Ephemeral request/response - no DB session required.
 
     Args:
         context: Command context with request_id (passed as session_id in Redis protocol)
-        client: AdapterClient for sending response
-    """
-    # Get request_id from context (passed as session_id in Redis protocol)
-    request_id = context.get("session_id")
-    if not request_id:
-        logger.error("No request_id in context for get_computer_info")
-        return
+        client: AdapterClient (unused - kept for signature compatibility)
 
+    Returns:
+        Dict with user, role, host
+    """
     # Build info from config
     info_data = {
         "user": config.computer.user,
@@ -323,8 +328,7 @@ async def handle_get_computer_info(  # type: ignore[explicit-any]
         "host": config.computer.host,
     }
 
-    # Send response directly to Redis stream (no DB session lookup)
-    await client.send_response(request_id=str(request_id), data=json.dumps(info_data))
+    return info_data
 
 
 @with_session

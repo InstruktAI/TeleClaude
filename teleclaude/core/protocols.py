@@ -55,8 +55,8 @@ class RemoteExecutionProtocol(Protocol):
         """
         ...
 
-    async def read_single_response(self, request_id: str, timeout: float = 3.0) -> str:
-        """Read single response from ephemeral request (non-streaming).
+    async def read_response(self, request_id: str, timeout: float = 3.0) -> str:
+        """Read response from ephemeral request (non-streaming).
 
         Used for one-shot queries like list_projects, get_computer_info.
         Reads the response in one go instead of streaming.

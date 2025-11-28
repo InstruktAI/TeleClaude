@@ -140,7 +140,7 @@ class TeleClaudeDaemon:
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
 
-    async def _handle_command_event(self, event: str, context: dict[str, object]) -> None:
+    async def _handle_command_event(self, event: str, context: dict[str, object]) -> object:
         """Generic handler for all command events.
 
         All commands route to handle_command() with args from context.
@@ -148,11 +148,14 @@ class TeleClaudeDaemon:
         Args:
             event: Command event type (new_session, cd, kill, etc.)
             context: Unified context (all payload + metadata fields)
+
+        Returns:
+            Result from command handler
         """
         args_obj = context.get("args", [])
         # Type assertion: args from adapters are always list[str]
         args = list(args_obj) if isinstance(args_obj, list) else []
-        await self.handle_command(event, args, context)
+        return await self.handle_command(event, args, context)
 
     async def _handle_message(self, _event: str, context: dict[str, object]) -> None:
         """Handler for MESSAGE events - pure business logic (cleanup already done).
@@ -717,7 +720,7 @@ class TeleClaudeDaemon:
 
         logger.info("Daemon stopped")
 
-    async def handle_command(self, command: str, args: list[str], context: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # Adapter-specific context  # pylint: disable=too-many-branches
+    async def handle_command(self, command: str, args: list[str], context: dict[str, Any]) -> Any:  # type: ignore[explicit-any]  # Adapter-specific context  # pylint: disable=too-many-branches
         """Handle bot commands.
 
         Args:
@@ -730,23 +733,25 @@ class TeleClaudeDaemon:
         logger.info("Command received: %s %s", command, args)
 
         if command == TeleClaudeEvents.NEW_SESSION:
-            await command_handlers.handle_create_session(context, args, self.client)
+            return await command_handlers.handle_create_session(context, args, self.client)
         elif command == TeleClaudeEvents.LIST_SESSIONS:
-            await command_handlers.handle_list_sessions(context, self.client)
+            return await command_handlers.handle_list_sessions(context, self.client)
         elif command == TeleClaudeEvents.LIST_PROJECTS:
-            await command_handlers.handle_list_projects(context, self.client)
+            return await command_handlers.handle_list_projects(context, self.client)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
-            await command_handlers.handle_get_computer_info(context, self.client)
+            return await command_handlers.handle_get_computer_info(context, self.client)
         elif command == TeleClaudeEvents.CANCEL:
-            await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.CANCEL_2X:
-            await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output, double=True)
+            return await command_handlers.handle_cancel_command(
+                context, self.client, self._poll_and_send_output, double=True
+            )
         elif command == TeleClaudeEvents.KILL:
-            await command_handlers.handle_kill_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_kill_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.ESCAPE:
-            await command_handlers.handle_escape_command(context, args, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_escape_command(context, args, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.ESCAPE_2X:
-            await command_handlers.handle_escape_command(
+            return await command_handlers.handle_escape_command(
                 context,
                 args,
                 self.client,
@@ -754,43 +759,49 @@ class TeleClaudeDaemon:
                 double=True,
             )
         elif command == TeleClaudeEvents.CTRL:
-            await command_handlers.handle_ctrl_command(context, args, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_ctrl_command(context, args, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.TAB:
-            await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.SHIFT_TAB:
-            await command_handlers.handle_shift_tab_command(context, args, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_shift_tab_command(
+                context, args, self.client, self._poll_and_send_output
+            )
         elif command == TeleClaudeEvents.BACKSPACE:
-            await command_handlers.handle_backspace_command(context, args, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_backspace_command(
+                context, args, self.client, self._poll_and_send_output
+            )
         elif command == TeleClaudeEvents.ENTER:
-            await command_handlers.handle_enter_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_enter_command(context, self.client, self._poll_and_send_output)
         elif command == TeleClaudeEvents.KEY_UP:
-            await command_handlers.handle_arrow_key_command(
+            return await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "up"
             )
         elif command == TeleClaudeEvents.KEY_DOWN:
-            await command_handlers.handle_arrow_key_command(
+            return await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "down"
             )
         elif command == TeleClaudeEvents.KEY_LEFT:
-            await command_handlers.handle_arrow_key_command(
+            return await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "left"
             )
         elif command == TeleClaudeEvents.KEY_RIGHT:
-            await command_handlers.handle_arrow_key_command(
+            return await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "right"
             )
         elif command == "resize":
-            await command_handlers.handle_resize_session(context, args, self.client)
+            return await command_handlers.handle_resize_session(context, args, self.client)
         elif command == TeleClaudeEvents.RENAME:
-            await command_handlers.handle_rename_session(context, args, self.client)
+            return await command_handlers.handle_rename_session(context, args, self.client)
         elif command == TeleClaudeEvents.CD:
-            await command_handlers.handle_cd_session(context, args, self.client, self._execute_terminal_command)
+            return await command_handlers.handle_cd_session(context, args, self.client, self._execute_terminal_command)
         elif command == TeleClaudeEvents.CLAUDE:
-            await command_handlers.handle_claude_session(context, args, self._execute_terminal_command)
+            return await command_handlers.handle_claude_session(context, args, self._execute_terminal_command)
         elif command == TeleClaudeEvents.CLAUDE_RESUME:
-            await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
+            return await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
-            await command_handlers.handle_exit_session(context, self.client, self._get_output_file_path)
+            return await command_handlers.handle_exit_session(context, self.client, self._get_output_file_path)
+
+        return None
 
     async def handle_message(self, session_id: str, text: str, _context: dict) -> None:  # type: ignore[type-arg]
         """Handle incoming text messages (commands for terminal)."""
@@ -812,11 +823,6 @@ class TeleClaudeDaemon:
             if warning_msg_id:
                 await db.add_pending_deletion(session_id, warning_msg_id)
             return
-
-        # Strip leading // and replace with / (Telegram workaround - only at start of input)
-        if text.startswith("//"):
-            text = "/" + text[2:]
-            logger.debug("Stripped leading // from user input, result: %s", text[:50])
 
         # Parse terminal size (e.g., "80x24" -> cols=80, rows=24)
         cols, rows = 80, 24

@@ -9,7 +9,7 @@ from teleclaude.core import terminal_bridge
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(15)
+@pytest.mark.timeout(12)
 async def test_short_lived_command(daemon_with_mocked_telegram):
     """Test short-lived command execution flow.
 
@@ -58,7 +58,7 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(15)
+@pytest.mark.timeout(12)
 async def test_long_running_command(daemon_with_mocked_telegram):
     """Test long-running interactive command flow.
 

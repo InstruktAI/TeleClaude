@@ -23,18 +23,75 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
 
     # NOW import teleclaude modules (after env var is set)
+    from teleclaude import config as config_module
     from teleclaude.core import db as db_module
     from teleclaude.core import terminal_bridge
     from teleclaude.core.db import Db
     from teleclaude.daemon import TeleClaudeDaemon
+
+    # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
+    class MockDatabase:
+        def path(self):
+            return str(tmp_path / "test_teleclaude.db")
+
+    class MockComputer:
+        name = "TestComputer"
+        default_working_dir = "/tmp"
+        default_shell = "/bin/sh"
+        user = "testuser"
+        role = "test"
+        host = "test.local"
+        timezone = "UTC"
+        is_master = False
+        trusted_dirs = []
+
+        def get_all_trusted_dirs(self):
+            """Return empty list for tests."""
+            return []
+
+    class MockPolling:
+        idle_notification_seconds = 300
+
+    class MockMCP:
+        enabled = False
+        socket_path = "/tmp/test.sock"
+
+    class MockRedis:
+        enabled = True  # Enable Redis for E2E tests
+        url = "redis://localhost:6379"
+        password = None
+        max_connections = 10
+        socket_timeout = 5
+        message_stream_maxlen = 1000
+        output_stream_maxlen = 1000
+        output_stream_ttl = 300
+
+    class MockTelegram:
+        is_master = False
+        trusted_bots = []
+
+    test_config = type(
+        "Config",
+        (),
+        {
+            "database": MockDatabase(),
+            "computer": MockComputer(),
+            "polling": MockPolling(),
+            "mcp": MockMCP(),
+            "redis": MockRedis(),
+            "telegram": MockTelegram(),
+        },
+    )()
+
+    monkeypatch.setattr(config_module, "config", test_config)
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution
     db_module.db = Db(temp_db_path)
     await db_module.db.initialize()
 
-    # CRITICAL: Patch db singleton in ALL modules that imported it at module load time
-    # Without this, modules keep reference to old uninitialized db instance
+    # CRITICAL: Patch db and config singletons in ALL modules that imported them at module load time
+    # Without this, modules keep reference to old instances
     modules_to_patch = [
         "teleclaude.adapters.telegram_adapter",
         "teleclaude.core.adapter_client",
@@ -54,8 +111,89 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     for module_name in modules_to_patch:
         monkeypatch.setattr(f"{module_name}.db", db_module.db)
 
+    # Patch config only in modules that actually import it
+    config_modules = [
+        "teleclaude.core.adapter_client",
+        "teleclaude.core.command_handlers",
+        "teleclaude.core.db",
+        "teleclaude.core.output_poller",
+        "teleclaude.adapters.redis_adapter",
+        "teleclaude.adapters.telegram_adapter",
+        "teleclaude.adapters.ui_adapter",
+        "teleclaude.daemon",
+        "teleclaude.mcp_server",
+    ]
+
+    for module_name in config_modules:
+        monkeypatch.setattr(f"{module_name}.config", test_config)
+
     # Create daemon (config is loaded automatically from config.yml)
     daemon = TeleClaudeDaemon(str(base_dir / ".env"))
+
+    # CRITICAL: Mock Redis connection for E2E tests (prevent real network calls)
+    # Create a mock Redis client that simulates async Redis interface
+    class MockRedisClient:
+        """Mock Redis client for E2E testing - simulates streams and pub/sub."""
+
+        def __init__(self):
+            self.streams = {}  # {stream_name: [(msg_id, data)]}
+            self.data = {}  # {key: value}
+
+        async def xadd(self, stream_name, fields, maxlen=None, id="*"):
+            """Add message to stream."""
+            if stream_name not in self.streams:
+                self.streams[stream_name] = []
+            msg_id = f"{len(self.streams[stream_name])}-0"
+            self.streams[stream_name].append((msg_id, fields))
+            if maxlen and len(self.streams[stream_name]) > maxlen:
+                self.streams[stream_name] = self.streams[stream_name][-maxlen:]
+            return msg_id
+
+        async def xread(self, streams, count=None, block=None):
+            """Read from streams."""
+            result = []
+            for stream_name, last_id in streams.items():
+                if stream_name in self.streams:
+                    msgs = [(msg_id, data) for msg_id, data in self.streams[stream_name] if msg_id > last_id]
+                    if msgs:
+                        result.append([stream_name.encode(), msgs])
+            return result if result else None
+
+        async def set(self, key, value, ex=None):
+            """Set key-value."""
+            self.data[key] = value
+            return True
+
+        async def get(self, key):
+            """Get value."""
+            return self.data.get(key)
+
+        async def delete(self, *keys):
+            """Delete keys."""
+            count = sum(1 for k in keys if self.data.pop(k, None) is not None)
+            return count
+
+        async def exists(self, key):
+            """Check if key exists."""
+            return 1 if key in self.data else 0
+
+        async def close(self):
+            """Close connection."""
+            pass
+
+        async def ping(self):
+            """Health check."""
+            return True
+
+    # Mock Redis adapter connection and messaging methods
+    redis_adapter = daemon.client.adapters.get("redis")
+    if redis_adapter:
+        mock_redis_client = MockRedisClient()
+        monkeypatch.setattr(redis_adapter, "redis", mock_redis_client)
+        # Mock Redis adapter messaging methods (used by client.send_message for redis-originated sessions)
+        monkeypatch.setattr(redis_adapter, "send_message", AsyncMock(return_value="redis-msg-123"))
+        monkeypatch.setattr(redis_adapter, "edit_message", AsyncMock(return_value=True))
+        monkeypatch.setattr(redis_adapter, "delete_message", AsyncMock())
 
     # Add db property for test compatibility
     daemon.db = db_module.db
@@ -80,6 +218,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     daemon.mock_command_mode = "short"
     original_send_keys = terminal_bridge.send_keys
 
+    # Track output files for polling simulation
+    output_files_for_session = {}
+
     async def mock_send_keys(
         session_name: str,
         text: str,
@@ -88,46 +229,91 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         rows: int = 24,
         send_enter: bool = True,
     ):
-        """Mock send_keys to replace commands based on configured mode."""
-        if daemon.mock_command_mode == "passthrough":
-            # Passthrough mode - don't mock, send original text
-            return await original_send_keys(session_name, text, working_dir, cols, rows, send_enter)
-        elif daemon.mock_command_mode == "long":
-            # Long-running interactive process that waits for input
-            mock_command = "python3 -c \"import sys; print('Ready', flush=True); [print(f'Echo: {line.strip()}', flush=True) for line in sys.stdin]\""
-        else:
-            # Short-lived command (instant completion)
-            mock_command = "echo 'Command executed'"
+        """Mock send_keys to simulate command execution and output."""
+        import uuid
 
-        return await original_send_keys(session_name, mock_command, working_dir, cols, rows, send_enter)
+        # Initialize output buffer if needed
+        if session_name not in session_outputs:
+            session_outputs[session_name] = []
+
+        if daemon.mock_command_mode == "passthrough":
+            # Passthrough mode - simulate sending input to running process
+            # For long-running process, simulate echo behavior
+            if session_outputs[session_name] and "Ready" in session_outputs[session_name]:
+                # Process is running, append echo output
+                session_outputs[session_name].append(f"Echo: {text}")
+            return True, None
+        elif daemon.mock_command_mode == "long":
+            # Long-running interactive process - append "Ready" to output
+            session_outputs[session_name].append("Ready")
+            marker_id = f"marker-{uuid.uuid4().hex[:8]}"
+            return True, marker_id
+        else:
+            # Short-lived command - append command echo and simulated output
+            # Include the command itself so tests can match on it
+            session_outputs[session_name].append(f"$ {text}")
+            # For echo commands, simulate the output
+            if text.startswith("echo "):
+                # Extract text between quotes or just after echo
+                echo_text = text[5:].strip().strip("'\"")
+                session_outputs[session_name].append(echo_text)
+            else:
+                session_outputs[session_name].append("Command executed")
+
+            # Generate marker for completion detection
+            marker_id = f"marker-{uuid.uuid4().hex[:8]}"
+
+            # Append exit marker to session output (poller reads via capture_pane)
+            session_outputs[session_name].append(f"__EXIT__{marker_id}__0__")
+
+            # Write to output file if one exists for polling tests
+            # Tests that use polling will register their output file
+            if session_name in output_files_for_session:
+                output_file = output_files_for_session[session_name]
+                # Write command output + exit marker (format: __EXIT__{marker_id}__{exit_code}__)
+                with open(output_file, "w") as f:
+                    f.write("\n".join(session_outputs[session_name]))
+
+            return True, marker_id
+
+    # Allow tests to register output files for polling simulation
+    daemon.register_output_file = lambda session_name, output_file: output_files_for_session.update(
+        {session_name: output_file}
+    )
 
     monkeypatch.setattr(terminal_bridge, "send_keys", mock_send_keys)
 
-    # Clean up any leftover sessions from previous test runs
-    # ONLY clean up sessions that are in the test database (temp db)
-    old_sessions = await daemon.db.list_sessions()
-    for session in old_sessions:
-        # Only kill tmux sessions that start with 'test-' prefix
-        if session.tmux_session_name.startswith("test-"):
-            if await terminal_bridge.session_exists(session.tmux_session_name):
-                await terminal_bridge.kill_session(session.tmux_session_name)
-        await daemon.db.delete_session(session.session_id)
+    # Mock all tmux operations - no real tmux sessions created
+    created_sessions = set()
+    session_outputs: dict[str, list[str]] = {}  # Track output per session
 
-    # Don't actually call start() - it's mocked so calling it does nothing useful
-    # Tests can verify it was called if needed with: daemon.client.adapters["telegram"].start.assert_called_once()
+    async def mock_create_tmux(name: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: str = None):
+        """Mock create_tmux_session with same signature as real function."""
+        created_sessions.add(name)
+        session_outputs[name] = []  # Initialize empty output buffer
+        return True
+
+    async def mock_session_exists(session_name: str, log_missing: bool = True):
+        """Mock session_exists with same signature as real function."""
+        return session_name in created_sessions
+
+    async def mock_kill_session(name):
+        created_sessions.discard(name)
+        session_outputs.pop(name, None)  # Clean up output buffer
+        return True
+
+    async def mock_capture_pane(name):
+        # Return accumulated output for this session
+        if name not in session_outputs:
+            return ""
+        return "\n".join(session_outputs[name])
+
+    monkeypatch.setattr(terminal_bridge, "create_tmux_session", mock_create_tmux)
+    monkeypatch.setattr(terminal_bridge, "session_exists", mock_session_exists)
+    monkeypatch.setattr(terminal_bridge, "kill_session", mock_kill_session)
+    monkeypatch.setattr(terminal_bridge, "capture_pane", mock_capture_pane)
 
     yield daemon
 
-    # Cleanup all test sessions and tmux sessions
-    # ONLY clean up sessions that are in the test database
-    sessions = await daemon.db.list_sessions()
-    for session in sessions:
-        # Only kill tmux sessions that start with 'test-' prefix
-        if session.tmux_session_name.startswith("test-"):
-            if await terminal_bridge.session_exists(session.tmux_session_name):
-                await terminal_bridge.kill_session(session.tmux_session_name)
-        # Delete from test database
-        await daemon.db.delete_session(session.session_id)
-
-    # Don't call stop() - it's mocked and we never started the real adapter
+    # Close database connection (temp DB file will be auto-deleted by pytest)
     await daemon.db.close()

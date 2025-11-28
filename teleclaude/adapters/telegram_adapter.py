@@ -1714,6 +1714,11 @@ Usage:
         if not text:
             return
 
+        # Strip leading // and replace with / (Telegram workaround - only at start of input)
+        if text.startswith("//"):
+            text = "/" + text[2:]
+            logger.debug("Stripped leading // from user input, result: %s", text[:50])
+
         await self.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
             payload={"session_id": session.session_id, "text": text},

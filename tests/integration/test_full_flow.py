@@ -9,7 +9,7 @@ from teleclaude.core import terminal_bridge
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(15)  # Should complete within 15s (2 commands * 3.5s wait + overhead)
+@pytest.mark.timeout(12)
 async def test_message_execution_and_output_polling(daemon_with_mocked_telegram):
     """Test complete message flow: execute command, poll output, send to Telegram."""
     daemon = daemon_with_mocked_telegram
@@ -111,7 +111,7 @@ async def test_command_execution_via_terminal(daemon_with_mocked_telegram):
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(20)  # Multi-computer flow needs more time
+@pytest.mark.timeout(12)
 async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram, tmp_path):
     """Test polling + output capture flow with real tmux execution.
 
@@ -148,11 +148,19 @@ async def test_multi_computer_mcp_command_execution(daemon_with_mocked_telegram,
     # Create output file
     output_file = tmp_path / f"{session.session_id[:8]}.txt"
 
+    # Register output file for polling simulation (mock will write to it)
+    daemon.register_output_file(session.tmux_session_name, str(output_file))
+
     # Send command to tmux to get auto-generated marker_id
     command = "echo 'Multi-computer test output'"
     success, marker_id = await terminal_bridge.send_keys(session.tmux_session_name, command)
     assert success, "Failed to send command"
     assert marker_id is not None, "Should have marker_id for shell-ready command"
+
+    # Verify file was created by mock
+    assert output_file.exists(), f"Mock should have created output file at {output_file}"
+    content = output_file.read_text()
+    assert marker_id in content, f"Output file should contain marker {marker_id}, got: {content[:200]}"
 
     # Use REAL polling coordinator with daemon's adapter_client
     poll_task = asyncio.create_task(
