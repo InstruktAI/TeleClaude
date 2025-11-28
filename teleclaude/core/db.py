@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -257,8 +258,19 @@ class Db:
                 # Get last 2 components (e.g., "projects/teleclaude")
                 last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
 
-                # Update channel title: "{original_title}: {last_two}"
-                new_title = f"{old_session.title}: {last_two}"
+                # Parse old title and replace path portion in brackets
+                # Title format: $ComputerName[old/path] - Description
+                # We want: $ComputerName[new/path] - Description
+                title_pattern = r"^(\$\w+\[)[^\]]+(\].*)$"
+                match = re.match(title_pattern, old_session.title)
+
+                if match:
+                    # Replace path portion in brackets
+                    new_title = f"{match.group(1)}{last_two}{match.group(2)}"
+                else:
+                    # Fallback: title doesn't match expected format, append path
+                    new_title = f"{old_session.title}: {last_two}"
+
                 await self._client.update_channel_title(session_id, new_title)
                 logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 

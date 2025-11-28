@@ -223,6 +223,54 @@ class TestUpdateSession:
         updated = await test_db.get_session(session.session_id)
         assert updated.adapter_metadata == new_metadata
 
+    @pytest.mark.asyncio
+    async def test_update_working_directory_updates_title(self, test_db):
+        """Test that changing working_directory updates the title path portion."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Create mock client
+        mock_client = MagicMock()
+        mock_client.update_channel_title = AsyncMock(return_value=True)
+        test_db.set_client(mock_client)
+
+        # Create session with standard title format
+        session = await test_db.create_session(
+            "RasPi4",
+            "session-1",
+            "telegram",
+            "$RasPi4[apps/TeleClaude] - New session",
+            working_directory="/home/user/apps/TeleClaude",
+        )
+
+        # Change working directory
+        await test_db.update_session(session.session_id, working_directory="/home/user/apps/snuffz")
+
+        # Verify update_channel_title was called with correct new title
+        mock_client.update_channel_title.assert_called_once_with(
+            session.session_id, "$RasPi4[apps/snuffz] - New session"
+        )
+
+    @pytest.mark.asyncio
+    async def test_update_working_directory_fallback_for_non_standard_title(self, test_db):
+        """Test that non-standard titles get path appended instead of replaced."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # Create mock client
+        mock_client = MagicMock()
+        mock_client.update_channel_title = AsyncMock(return_value=True)
+        test_db.set_client(mock_client)
+
+        # Create session with non-standard title (doesn't match $Computer[path] pattern)
+        session = await test_db.create_session(
+            "RasPi4", "session-1", "telegram", "My Custom Title", working_directory="/home/user/apps/TeleClaude"
+        )
+
+        # Change working directory
+        await test_db.update_session(session.session_id, working_directory="/home/user/apps/snuffz")
+
+        # Verify update_channel_title was called with fallback format (appends path)
+        mock_client.update_channel_title.assert_called_once_with(session.session_id, "My Custom Title: apps/snuffz")
+
 
 class TestUpdateLastActivity:
     """Tests for update_last_activity method."""
