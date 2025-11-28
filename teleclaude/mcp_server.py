@@ -610,8 +610,13 @@ class TeleClaudeMCPServer:
             if not remote_session_id:
                 return {"status": "error", "message": "Remote did not return session_id"}
 
-            # Store remote_session_id in metadata
+            # Store remote_session_id and update output stream to point to remote session
             channel_metadata["remote_session_id"] = remote_session_id
+            # Update Redis metadata to use remote session's output stream (shared bidirectional stream)
+            if "redis" in channel_metadata and isinstance(channel_metadata["redis"], dict):
+                redis_meta = channel_metadata["redis"]
+                redis_meta["output_stream"] = f"output:{remote_session_id}"
+                redis_meta["channel_id"] = f"output:{remote_session_id}"
             await db.update_session(session_id=session_id, adapter_metadata=channel_metadata)
 
             logger.info("Session bridged: local=%s remote=%s", session_id[:8], remote_session_id[:8])
@@ -706,36 +711,16 @@ class TeleClaudeMCPServer:
             yield "[Error: Session is closed]"
             return
 
-        # Get metadata - assume target_computer and remote_session_id exist (contract)
+        # Get metadata for checkpoint tracking
         metadata = session.adapter_metadata or {}
-        target_computer = str(metadata["target_computer"])
-        project_dir = str(metadata["project_dir"])
-        remote_session_id = str(metadata["remote_session_id"])
 
-        # Initialize remote tmux session on first send_message call
-        if not metadata.get("remote_initialized"):
-            # Send /cd command using remote session_id
-            cd_cmd = f"/cd {project_dir}"
-            await self.client.send_request(computer_name=target_computer, request_id=remote_session_id, command=cd_cmd)
-
-            # Send /claude command using remote session_id
-            claude_cmd = "/claude"
-            await self.client.send_request(
-                computer_name=target_computer, request_id=remote_session_id, command=claude_cmd
-            )
-
-            # Mark as initialized
-            metadata["remote_initialized"] = True
-            await db.update_session(session_id=session_id, adapter_metadata=metadata)
-
-        # Wrap non-command messages with /message prefix
-        command = message if message.startswith("/") else f"/message {message}"
-
-        # Send message to remote Claude using remote session_id
+        # Send message to remote Claude via shared output stream
+        # The local session's output_stream points to the remote session's stream (set during start_session)
+        # The remote RedisAdapter polls this stream and triggers MESSAGE events locally
         try:
-            await self.client.send_request(computer_name=target_computer, request_id=remote_session_id, command=command)
+            await self.client.send_message(session_id, message)
         except Exception as e:
-            logger.error("Failed to send message to %s: %s", target_computer, e)
+            logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
             return
 

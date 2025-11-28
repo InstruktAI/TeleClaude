@@ -138,9 +138,9 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
         },
     )
 
-    # Mock send_request
-    with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = "sent"
+    # Mock send_message (new architecture uses send_message instead of send_request)
+    with patch.object(mcp_server.client, "send_message", new_callable=AsyncMock) as mock_send:
+        mock_send.return_value = "msg-id"
 
         # Mock stream_session_output
         async def mock_poll():
@@ -155,6 +155,9 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
             output = "".join(chunks)
             assert "Output line 1" in output
             assert "Output line 2" in output
+
+            # Verify send_message was called with session_id and message
+            mock_send.assert_called_once_with(session.session_id, "ls -la")
 
 
 @pytest.mark.integration

@@ -60,6 +60,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         self.redis: Optional[Redis] = None
         self._message_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
+        self._output_stream_listeners: dict[str, asyncio.Task[None]] = {}  # session_id -> listener task
         self._running = False
 
         # Extract Redis configuration from global config
@@ -134,6 +135,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 await self._heartbeat_task
             except asyncio.CancelledError:
                 pass
+
+        # Cancel all output stream listeners
+        for session_id, task in list(self._output_stream_listeners.items()):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._output_stream_listeners.clear()
 
         # Close Redis connection
         if self.redis:
@@ -741,13 +751,34 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         )
 
         if respond_with_session_id:
-            # create_session flow: respond with new session_id
+            # create_session flow: Start Claude Code immediately before responding
             logger.info(
                 "Created AI-to-AI session: local=%s for remote_request=%s from %s",
                 session_id[:8],
                 request_id[:8],
                 initiator,
             )
+
+            # Start Claude Code in the session (/cd + /claude)
+            if project_dir:
+                await self.client.handle_event(
+                    event=TeleClaudeEvents.CD,
+                    payload={"session_id": session_id, "args": [project_dir]},
+                    metadata={"adapter_type": "redis"},
+                )
+                logger.debug("Sent /cd command for session %s", session_id[:8])
+
+            await self.client.handle_event(
+                event=TeleClaudeEvents.CLAUDE,
+                payload={"session_id": session_id, "args": []},
+                metadata={"adapter_type": "redis"},
+            )
+            logger.debug("Sent /claude command for session %s", session_id[:8])
+
+            # Start polling output stream for incoming messages from initiator
+            self._start_output_stream_listener(session_id)
+
+            # Respond with session_id
             response_data = json.dumps({"session_id": session_id})
             await self.send_response(request_id, response_data)
         else:
@@ -790,6 +821,86 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         )
 
         logger.debug("Sent heartbeat: %s", key)
+
+    # === AI-to-AI Session Output Stream Listeners ===
+
+    def _start_output_stream_listener(self, session_id: str) -> None:
+        """Start background task to poll output stream for incoming messages from initiator.
+
+        Args:
+            session_id: Session ID to listen for
+        """
+        if session_id in self._output_stream_listeners:
+            logger.warning("Output stream listener already running for session %s", session_id[:8])
+            return
+
+        task = asyncio.create_task(self._poll_output_stream_for_messages(session_id))
+        self._output_stream_listeners[session_id] = task
+        logger.info("Started output stream listener for AI-to-AI session %s", session_id[:8])
+
+    async def _poll_output_stream_for_messages(self, session_id: str) -> None:
+        """Poll output stream for incoming messages from session initiator.
+
+        This enables bidirectional communication in AI-to-AI sessions where
+        the output stream is shared between initiator and remote.
+
+        Args:
+            session_id: Session ID to poll
+        """
+        if not self.redis:
+            return
+
+        output_stream = f"output:{session_id}"
+        last_id = b"$"  # Start from current position
+        logger.info("Starting output stream message polling for session %s", session_id[:8])
+
+        try:
+            while self._running:
+                # Check if session still exists
+                session = await db.get_session(session_id)
+                if not session or session.closed:
+                    logger.info("Session %s closed, stopping output stream listener", session_id[:8])
+                    break
+
+                # Read from output stream
+                messages = await self.redis.xread({output_stream.encode("utf-8"): last_id}, block=1000, count=5)
+
+                if not messages:
+                    continue
+
+                # Process incoming messages from initiator
+                for _stream_name, stream_messages in messages:
+                    for message_id, data in stream_messages:
+                        last_id = message_id
+
+                        # Check if this is a message FROM the initiator (not our own output)
+                        chunk_bytes: bytes = data.get(b"chunk", b"")
+                        chunk = chunk_bytes.decode("utf-8")
+
+                        if not chunk:
+                            continue
+
+                        # Skip exit markers and system messages
+                        if "__EXIT__" in chunk or chunk.startswith("[") or "⏳" in chunk:
+                            continue
+
+                        # This is a message from the initiator - trigger MESSAGE event
+                        logger.info("Received message from initiator for session %s: %s", session_id[:8], chunk[:50])
+                        await self.client.handle_event(
+                            event=TeleClaudeEvents.MESSAGE,
+                            payload={"session_id": session_id, "text": chunk.strip()},
+                            metadata={"adapter_type": "redis"},
+                        )
+
+        except asyncio.CancelledError:
+            logger.debug("Output stream listener cancelled for session %s", session_id[:8])
+        except Exception as e:
+            logger.error("Output stream listener error for session %s: %s", session_id[:8], e)
+        finally:
+            # Cleanup
+            if session_id in self._output_stream_listeners:
+                del self._output_stream_listeners[session_id]
+            logger.info("Stopped output stream listener for session %s", session_id[:8])
 
     # === Session Observation (Interest Window) ===
 
