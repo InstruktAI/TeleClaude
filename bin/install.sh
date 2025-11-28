@@ -289,7 +289,10 @@ setup_venv() {
 
     print_info "Installing Python dependencies..."
     "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" -q
-    print_success "Python dependencies installed"
+
+    print_info "Installing TeleClaude package..."
+    "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
+    print_success "Python dependencies and package installed"
 }
 
 # Setup configuration

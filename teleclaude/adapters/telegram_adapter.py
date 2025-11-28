@@ -1342,13 +1342,13 @@ Current size: {}
             return
 
         try:
-            # Execute restart script
+            # Execute restart script via Python module
             project_root = Path(__file__).parent.parent.parent
-            script_path = project_root / "teleclaude" / "restart_claude.py"
+            python_path = project_root / ".venv" / "bin" / "python"
 
             result = subprocess.run(
-                [str(script_path)],
-                env={**os.environ, "TELECLAUDE_SESSION_ID": claude_session_id},
+                [str(python_path), "-m", "teleclaude.restart_claude"],
+                env={**os.environ, "TELECLAUDE_SESSION_ID": session.session_id},
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -1358,7 +1358,13 @@ Current size: {}
             if result.returncode == 0:
                 await update.effective_message.reply_text("✅ Claude Code restarted successfully")
             else:
-                error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                # Combine stdout and stderr for complete error context
+                error_parts = []
+                if result.stdout and result.stdout.strip():
+                    error_parts.append(result.stdout.strip())
+                if result.stderr and result.stderr.strip():
+                    error_parts.append(result.stderr.strip())
+                error_msg = "\n".join(error_parts) if error_parts else f"Exit code: {result.returncode}"
                 await update.effective_message.reply_text(f"❌ Failed to restart:\n{error_msg}")
         except subprocess.TimeoutExpired:
             await update.effective_message.reply_text("⏱️ Restart script timed out")

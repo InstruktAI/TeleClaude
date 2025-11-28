@@ -123,6 +123,52 @@ class TestOutputPoller:
         result = poller._strip_claude_code_hooks(output)
         assert result == "command output\nclean output"
 
+    def test_strip_claude_code_hooks_real_world_user_prompt_with_system_reminder(self, poller):
+        """Test stripping real system-reminder content after user prompt (no opening tag)."""
+        # Real-world case: user prompt followed by system-reminder content without opening tag
+        output = (
+            "> what can you do for me? \n"
+            "    Am I required to make any code changes here? If so, those need to adhere to the coding directives \n"
+            "    (~/.claude/docs/development/coding-directives.md) and have passing tests. Lets write tests only at the last moment, \n"
+            "    after I wrote the code, ESPECIALLY in case I am refactoring, and fix ALL test issues so I won't disappoint the team \n"
+            "    as the build needs to pass! I surely have to remember not to add inline/dynamic imports, EVER! And, if the user \n"
+            "    asked me to keep my progress in a file they mentioned specifically, I must do so.\n"
+            "    </system-reminder>\n"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        # Should only keep the user prompt line
+        assert result == "> what can you do for me? \n"
+
+    def test_strip_claude_code_hooks_orphaned_closing_tag_multiline(self, poller):
+        """Test stripping orphaned closing tag with multiline indented content."""
+        output = (
+            "Some output\n"
+            "⎿ UserPromptSubmit hook succeeded: <system-reminder>\n"
+            "    Multiple lines of\n"
+            "    reminder content here\n"
+            "    with various indentation\n"
+            "    </system-reminder>\n"
+            "More clean output"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        assert result == "Some output\nMore clean output"
+
+    def test_strip_claude_code_hooks_mixed_hook_prefix_and_orphaned_tag(self, poller):
+        """Test stripping hook prefix followed by orphaned system-reminder content."""
+        output = (
+            "> user input here\n"
+            "⎿ UserPromptSubmit:Callback hook succeeded: Success\n"
+            "⎿ UserPromptSubmit hook succeeded: <system-reminder>\n"
+            "    Some reminder text that spans\n"
+            "    multiple lines with special chars @#$\n"
+            "    and continues here\n"
+            "    </system-reminder>\n"
+            "⎿ SessionStart hook succeeded: Done\n"
+        )
+        result = poller._strip_claude_code_hooks(output)
+        # Should keep only the user input
+        assert result == "> user input here\n"
+
 
 @pytest.mark.asyncio
 class TestOutputPollerPoll:

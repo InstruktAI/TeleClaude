@@ -40,7 +40,8 @@ install:
 	python3 -m venv .venv
 	. .venv/bin/activate && pip install -r requirements.txt
 	. .venv/bin/activate && pip install -r requirements-test.txt
-	@echo "✓ Dependencies installed"
+	. .venv/bin/activate && pip install -e .
+	@echo "✓ Dependencies and package installed"
 	@echo ""
 	@echo "Next step: Run 'make init' to set up the service (or 'make init ARGS=-y' for unattended mode)"
 
