@@ -309,16 +309,36 @@ graph LR
 - **Redis**: Serves session data from files via request/response
 - **Future adapters**: Follow same patterns
 
-**One coordinator path**: No special cases for AI sessions
+**One coordinator path**: Branch on command type, not session type
 ```python
 # Before: if is_ai_session: ... else: ...
-# After: (unified for all sessions)
+# After: if is_claude_command: (read from file) else: (read from tmux)
+session = await db.get_session(session_id)
+if _is_claude_command(session):
+    # Claude writes to claude_session_file
+    output = await get_session_data(session_id, since_timestamp)
+else:
+    # Bash writes to tmux stdout
+    output = await read_tmux_output(session_id)
+
+# Unified broadcast to all adapters
 await adapter_client.send_output_update(session_id, output, ...)
 ```
 
+**Key Architectural Insight**:
+> Distinction should be **COMMAND TYPE** (what's running: `claude` vs `bash`), NOT **SESSION TYPE** (who initiated: AI vs human).
+>
+> A session is just a tmux session. What matters is:
+> - **WHERE the command writes output** (file vs stdout)
+> - **HOW to poll that output source**
+
 **One source of truth**: Session files
-- Claude Code already stores everything
+- Claude Code already stores everything to `claude_session_file`
+- Bash commands write to tmux stdout
+- Poll the appropriate source based on command type
 - All adapters read from same source
 - No duplicate storage or streaming
 
-**Result**: 30% code reduction, zero special cases, easier to maintain.
+**UX Improvement**: Claude sessions now show **live output updates** in Telegram/UI! 🎉
+
+**Result**: 30% code reduction, zero special cases, better UX, easier to maintain.

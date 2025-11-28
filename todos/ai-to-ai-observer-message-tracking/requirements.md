@@ -19,9 +19,12 @@ This creates unnecessary complexity, duplication, and makes Redis adapter a spec
 - AI sessions create dual database entries (local tracking session + remote execution session)
 - Output streaming via Redis streams duplicates what Claude Code already stores in session files
 - Observers (Telegram) can't properly track message IDs due to chunked output pattern
+- Claude sessions don't show output updates in UI (Claude writes to file, not tmux stdout)
 - Code is harder to maintain, test, and reason about
 
 **Why Now**: We have an opportunity to massively simplify the architecture by leveraging what Claude Code already does (stores complete session to file) and making all adapters behave uniformly.
+
+**Key Insight**: The distinction should be **command type** (claude vs bash), NOT **session type** (AI vs human). A session is just a tmux session - what matters is what command runs inside it and where that command writes output.
 
 ## Goals
 
@@ -49,7 +52,7 @@ This creates unnecessary complexity, duplication, and makes Redis adapter a spec
 
 ### 1. Polling Coordinator Simplification
 
-**Before** (two code paths):
+**Before** (two code paths based on session type):
 ```python
 if is_ai_session:
     # AI mode: Send sequential chunks (no editing, no loss)
@@ -68,22 +71,46 @@ else:
     )
 ```
 
-**After** (one unified path):
+**After** (one unified path based on command type):
 ```python
-# ALL sessions use send_output_update - broadcasts to all adapters
+# Detect what command is running (not session type!)
+if is_claude_command(session_id):
+    # Claude mode: Poll claude_session_file (Claude writes to file, not stdout)
+    session_data = await get_session_data(session_id, since_timestamp=last_check)
+    output = session_data["messages"]
+    last_check = datetime.now(UTC).isoformat()
+else:
+    # Bash mode: Poll tmux output (bash writes to stdout)
+    output = await read_tmux_output(session_id)
+
+# Unified broadcast to ALL adapters (Telegram, Redis observers)
 await adapter_client.send_output_update(
-    event.session_id,
-    clean_output,
+    session_id,
+    output,
     event.started_at,
     event.last_changed_at,
 )
 ```
 
+**Key Insight**: Branch on **command type** (what's running: `claude` vs `bash`), NOT **session type** (who initiated: AI vs human).
+
+**Why This Works**:
+- Claude Code writes output to `claude_session_file` (markdown format)
+- Regular bash commands write to tmux stdout
+- Polling coordinator reads from appropriate source
+- All adapters receive same `send_output_update()` broadcast
+- Telegram/observers edit their tracked message IDs
+- Redis adapter does nothing (no send_output_update implementation)
+
+**UX Improvement**: Now Claude sessions show real-time output updates in UI as Claude thinks/responds!
+
 **Changes**:
-- Remove `_is_ai_to_ai_session()` function
-- Remove `_send_output_chunks_ai_mode()` function
-- Remove `if is_ai_session:` branching in `poll_and_send_output()`
-- All sessions treated identically by polling coordinator
+- Remove `_is_ai_to_ai_session()` function (no longer relevant)
+- Remove `_send_output_chunks_ai_mode()` function (streaming eliminated)
+- Add `is_claude_command()` function (detect /claude command)
+- Poll `claude_session_file` with timestamp for Claude sessions
+- Poll tmux output for bash sessions
+- Unified `send_output_update()` broadcast for both
 
 ### 2. Redis Adapter Refactoring
 

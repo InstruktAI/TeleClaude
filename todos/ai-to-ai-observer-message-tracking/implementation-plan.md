@@ -532,10 +532,48 @@ async def _send_output_chunks_ai_mode(
 
 ---
 
-### Task Group 3.3: Unify Output Handling
+### Task Group 3.3: Implement Command-Type Detection
 
 **Files**:
 - `teleclaude/core/polling_coordinator.py`
+
+**Add new function**:
+```python
+def _is_claude_command(session: Session) -> bool:
+    """Check if session is running Claude Code.
+
+    Detects if /claude command was executed in this session.
+    Claude writes output to claude_session_file, not tmux stdout.
+
+    Returns:
+        True if Claude is running, False for bash/vim/other commands
+    """
+    if not session or not session.adapter_metadata:
+        return False
+
+    # Check if /claude command was executed
+    # Can be set when /claude is sent, or detected from tmux pane content
+    return bool(session.adapter_metadata.get("is_claude_session"))
+```
+
+**Testing**:
+- Unit test for `_is_claude_command()`
+- Test with Claude session metadata
+- Test with non-Claude session
+
+**Acceptance Criteria**:
+- [ ] Function implemented
+- [ ] Returns True for Claude sessions
+- [ ] Returns False for bash sessions
+- [ ] Unit tests pass
+
+---
+
+### Task Group 3.4: Unify Output Handling (Command-Based)
+
+**Files**:
+- `teleclaude/core/polling_coordinator.py`
+- `teleclaude/adapters/base_adapter.py` (use existing `get_session_data()`)
 
 **Current code** (lines ~214-243):
 ```python
@@ -556,32 +594,63 @@ else:
     )
 ```
 
-**Replace with** (unified path):
+**Replace with** (command-type based branching):
 ```python
-# ALL sessions use send_output_update (broadcasts to all adapters)
+# Determine output source based on COMMAND TYPE, not session type
+session = await db.get_session(event.session_id)
+is_claude = _is_claude_command(session)
+
+if is_claude:
+    # Claude mode: Read from claude_session_file (Claude writes to file, not stdout)
+    # Use BaseAdapter.get_session_data() with timestamp filtering
+    session_data = await adapter_client.get_session_data(
+        event.session_id,
+        since_timestamp=event.last_poll_timestamp  # Track between polls
+    )
+    output = session_data.get("messages", "")
+
+    # Update timestamp for next poll
+    event.last_poll_timestamp = datetime.now(UTC).isoformat()
+else:
+    # Bash mode: Read from tmux output (bash/vim write to stdout)
+    output = clean_output  # From tmux capture
+
+# Unified broadcast to ALL adapters (Telegram edits message, Redis does nothing)
 await adapter_client.send_output_update(
     event.session_id,
-    clean_output,
+    output,
     event.started_at,
     event.last_changed_at,
 )
 ```
 
+**Key Changes**:
+1. Branch on **what command is running** (claude vs bash), NOT session type (AI vs human)
+2. Claude sessions: Poll `claude_session_file` with timestamp
+3. Bash sessions: Poll tmux stdout
+4. Both: Unified `send_output_update()` broadcast
+
+**UX Improvement**: Claude sessions now show real-time output in UI! 🎉
+
 **Also update in DirectoryChanged and ProcessExited handlers** (lines ~280-320):
-- Same pattern: remove `if is_ai_session:` branching
-- Use only `send_output_update()` for all events
+- Same pattern: check `is_claude_command()` to determine output source
+- Use unified `send_output_update()` for all events
 
 **Testing**:
 - Run full test suite: `make test`
-- Test local Telegram session (should still work)
-- Test AI-to-AI session (should work with new pattern)
+- Test Telegram bash session (should still work)
+- Test Telegram /claude session (now shows live output!)
+- Test AI-to-AI session (same unified pattern)
 - Test observer pattern (Telegram editing single message)
 
 **Acceptance Criteria**:
 - [ ] All `if is_ai_session:` checks removed from coordinator
+- [ ] Replaced with `if is_claude_command:` checks (command type, not session type)
+- [ ] Claude sessions poll `claude_session_file` with timestamp
+- [ ] Bash sessions poll tmux output
 - [ ] Only `send_output_update()` used for output events
 - [ ] All tests pass
-- [ ] Manual verification: Telegram sessions work
+- [ ] Manual verification: Telegram /claude shows live output
 - [ ] Manual verification: Observer edits single message
 
 ---
