@@ -11,6 +11,7 @@ EventType = Literal[
     "new_session",
     "create_session",
     "list_sessions",
+    "get_session_data",
     "list_projects",
     "get_computer_info",
     "cd",
@@ -53,6 +54,7 @@ class TeleClaudeEvents:
     NEW_SESSION: Literal["new_session"] = "new_session"
     CREATE_SESSION: Literal["create_session"] = "create_session"
     LIST_SESSIONS: Literal["list_sessions"] = "list_sessions"
+    GET_SESSION_DATA: Literal["get_session_data"] = "get_session_data"
 
     # Project management
     LIST_PROJECTS: Literal["list_projects"] = "list_projects"

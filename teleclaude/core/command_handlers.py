@@ -6,10 +6,12 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
+import json
 import logging
 import os
 import shlex
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
@@ -333,6 +335,90 @@ async def handle_get_computer_info(  # type: ignore[explicit-any]
 
     logger.debug("handle_get_computer_info() returning info for request_id=%s: %s", request_id, info_data)
     return info_data
+
+
+async def handle_get_session_data(  # type: ignore[explicit-any]
+    context: dict[str, Any],
+    args: list[str],
+    client: "AdapterClient",
+) -> dict[str, object]:
+    """Get session data from claude_session_file.
+
+    Reads the Claude Code session file (JSONL format) and returns messages.
+    Optionally filters by timestamp.
+
+    Args:
+        context: Command context with session_id in metadata
+        args: Optional timestamp filter (ISO 8601 UTC)
+        client: AdapterClient (unused - kept for signature compatibility)
+
+    Returns:
+        Dict with session data and messages
+    """
+    # Get session_id from context metadata
+    session_id_obj = context.get("session_id")
+    if not session_id_obj:
+        logger.error("No session_id in context for get_session_data")
+        return {"status": "error", "error": "No session_id provided"}
+
+    session_id = str(session_id_obj)
+
+    # Get session from database
+    session = await db.get_session(session_id)
+    if not session:
+        logger.error("Session %s not found", session_id[:8])
+        return {"status": "error", "error": "Session not found"}
+
+    # Get ux_state to get claude_session_file
+    ux_state = await db.get_ux_state(session_id)
+    if not ux_state or not ux_state.claude_session_file:
+        logger.error("No claude_session_file for session %s", session_id[:8])
+        return {"status": "error", "error": "Session file not found"}
+
+    claude_session_file = Path(ux_state.claude_session_file)
+    if not claude_session_file.exists():
+        logger.error("Claude session file does not exist: %s", claude_session_file)
+        return {"status": "error", "error": "Session file does not exist"}
+
+    # Parse optional timestamp filter from args
+    since_timestamp = args[0] if args else None
+    filter_datetime = None
+    if since_timestamp:
+        try:
+            filter_datetime = datetime.fromisoformat(since_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            logger.warning("Invalid timestamp format: %s", since_timestamp)
+
+    # Read and parse JSONL file
+    messages: list[dict[str, object]] = []
+    try:
+        with claude_session_file.open("r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                    # Filter by timestamp if provided
+                    if filter_datetime and "timestamp" in msg:
+                        msg_time = datetime.fromisoformat(str(msg["timestamp"]).replace("Z", "+00:00"))
+                        if msg_time < filter_datetime:
+                            continue
+                    messages.append(msg)
+                except json.JSONDecodeError as e:
+                    logger.warning("Failed to parse line in session file: %s", e)
+    except Exception as e:
+        logger.error("Failed to read session file %s: %s", claude_session_file, e)
+        return {"status": "error", "error": f"Failed to read session file: {e}"}
+
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "project_dir": session.working_directory,
+        "message_count": len(messages),
+        "messages": messages,
+        "created_at": session.created_at.isoformat(),
+        "last_activity": session.last_activity.isoformat(),
+    }
 
 
 @with_session

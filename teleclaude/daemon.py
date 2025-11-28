@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 COMMAND_EVENTS = {
     TeleClaudeEvents.NEW_SESSION,
     TeleClaudeEvents.LIST_SESSIONS,
+    TeleClaudeEvents.GET_SESSION_DATA,
     TeleClaudeEvents.LIST_PROJECTS,
     TeleClaudeEvents.GET_COMPUTER_INFO,
     TeleClaudeEvents.CD,
@@ -744,6 +745,8 @@ class TeleClaudeDaemon:
             return await command_handlers.handle_list_sessions(context, self.client)
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects(context, self.client)
+        elif command == TeleClaudeEvents.GET_SESSION_DATA:
+            return await command_handlers.handle_get_session_data(context, args, self.client)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
             logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
             logger.info("Calling handle_get_computer_info with context keys: %s", list(context.keys()))
