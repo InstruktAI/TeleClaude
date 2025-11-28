@@ -461,7 +461,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
                     # Skip self
                     if computer_name == self.computer_name:
+                        logger.debug("Skipping self: %s", computer_name)
                         continue
+
+                    logger.debug("Requesting computer_info from %s", computer_name)
 
                     # Request computer info via get_computer_info command
                     request_id = str(uuid.uuid4())
@@ -475,17 +478,19 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
                         # Unwrap envelope response
                         if envelope.get("status") == "error":
-                            logger.debug("Computer %s returned error: %s", computer_name, envelope.get("error"))
+                            logger.warning("Computer %s returned error: %s", computer_name, envelope.get("error"))
                             continue
 
                         # Extract data from success envelope
                         computer_info = envelope.get("data")
                         if not computer_info or not isinstance(computer_info, dict):
-                            logger.debug("Invalid response data from %s", computer_name)
+                            logger.warning("Invalid response data from %s: %s", computer_name, type(computer_info))
                             continue
 
+                        logger.debug("Received valid computer_info from %s", computer_name)
+
                     except (TimeoutError, Exception) as e:
-                        logger.debug("Failed to get info from %s: %s", computer_name, e)
+                        logger.warning("Failed to get info from %s: %s", computer_name, e)
                         continue  # Skip this peer if request fails
 
                     peers.append(
