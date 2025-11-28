@@ -180,42 +180,24 @@ graph TB
     style MCP fill:#FFE4B5
 ```
 
-### 5. Protocol-Based Capabilities (NEW)
+### 5. Unified Adapter Architecture
 
-**Not all adapters support cross-computer orchestration.** Use Python's Protocol pattern to declare transport capabilities.
+**All adapters use the same patterns - no special cases for AI-to-AI sessions.**
 
-```python
-# RemoteExecutionProtocol - only implemented by transport adapters
-class RemoteExecutionProtocol(Protocol):
-    """Cross-computer command orchestration."""
+**Core Principle:** Every adapter inherits from BaseAdapter and provides:
+- `send_message()` - Send message to origin adapter
+- `edit_message()` - Edit message (in-place updates)
+- `get_session_data()` - Read session data from `claude_session_file`
 
-    async def send_command_to_computer(
-        computer_name: str, session_id: str, command: str, metadata: dict
-    ) -> str: ...
+**No Streaming for AI Sessions:** MCP clients use request/response pattern:
+1. `teleclaude__start_session()` - Create session, returns session_id
+2. `teleclaude__send_message()` - Send command, returns acknowledgment
+3. `teleclaude__get_session_data()` - Pull current output (not streaming)
 
-    async def poll_output_stream(
-        session_id: str, timeout: float
-    ) -> AsyncIterator[str]: ...
-
-    async def discover_computers() -> List[str]: ...
-```
-
-**Who implements this:**
-
-- ✅ RedisAdapter (bi-directional transport)
-- ✅ PostgresAdapter (future, bi-directional transport)
-- ❌ TelegramAdapter (UI platform, not a transport)
-- ❌ SlackAdapter (UI platform, not a transport)
-
-**AdapterClient routes cross-computer operations** to adapters implementing RemoteExecutionProtocol:
-
-```python
-# AdapterClient provides unified interface
-await client.send_remote_command(computer, session_id, command)
-async for chunk in client.poll_remote_output(session_id):
-    yield chunk
-computers = await client.discover_remote_computers()
-```
+**Observer Pattern:** Telegram observers watch ALL sessions (human and AI-to-AI):
+- Single message per session (edited in-place for live updates)
+- Polling coordinator broadcasts to all adapters via `send_output_update()`
+- Same UX for all session types
 
 ---
 
@@ -261,12 +243,13 @@ computers = await client.discover_remote_computers()
 
 ### MCP Layer (`teleclaude/mcp_server.py`)
 
-**AI-to-AI communication via transport adapters**
+**AI-to-AI communication via unified adapter architecture**
 
-- Exposes MCP tools for Claude Code integration
+- Exposes MCP tools for Claude Code integration (`teleclaude__start_session`, `teleclaude__send_message`, `teleclaude__get_session_data`)
+- Uses request/response pattern (not streaming) - client pulls data via `get_session_data()`
 - Uses AdapterClient for cross-computer messaging (no direct adapter references)
-- AdapterClient routes to transport adapters implementing RemoteExecutionProtocol
-- Adapter-agnostic: works with Redis, Postgres, or any future transport adapter
+- All adapters use same patterns - no special cases for AI-to-AI sessions
+- Session data stored in `claude_session_file` (same source of truth for all interfaces)
 
 ### Main Daemon (`teleclaude/daemon.py`)
 
@@ -508,28 +491,27 @@ else:
 
 ---
 
-## Output Polling & Streaming
+## Output Polling & Updates
 
 ### Polling Behavior
 
-**Critical polling algorithm** (daemon.py `_poll_and_send_output`):
+**Unified polling for ALL sessions** (polling_coordinator.py `poll_and_send_output`):
 
 1. **Initial delay**: Wait 2 seconds before first poll
 2. **Poll interval**: Poll tmux output every 1 second
-3. **Hybrid editing mode** (UX optimization):
-   - **First 10 seconds**: Edit same message in-place (clean, live updates)
-   - **After 10 seconds**: Send NEW messages (preserves history)
-4. **Exit code detection** (PRIMARY stop condition):
+3. **Unified output handling**: ALL sessions use `send_output_update()` - no special cases
+4. **Observer pattern**: Telegram adapter receives updates via `send_output_update()`, edits single message
+5. **Exit code detection** (PRIMARY stop condition):
    - Append `; echo "__EXIT__$?__"` to every command
    - Parse exit code marker from output
    - Strip marker before showing to user
    - **ONLY condition that stops polling**
-5. **Idle notification** (informational only):
+6. **Idle notification** (informational only):
    - After 60s of no output change
    - Send ephemeral notification (auto-deleted when output resumes)
    - **Does NOT stop polling** - continues until exit code
-6. **Session death detection**: Stop if tmux session no longer exists
-7. **Max duration**: Stop after 600 polls (10 minutes)
+7. **Session death detection**: Stop if tmux session no longer exists
+8. **Max duration**: Stop after 600 polls (10 minutes)
 
 ### Output Message Format
 

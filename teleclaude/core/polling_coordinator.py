@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.core.models import Session
 from teleclaude.core.output_poller import (
     DirectoryChanged,
     IdleDetected,
@@ -113,51 +112,6 @@ async def restore_active_pollers(
     logger.info("Session restoration complete")
 
 
-def _is_ai_to_ai_session(session: Session) -> bool:
-    """Check if session is AI-to-AI by presence of target_computer.
-
-    Args:
-        session: Session object with adapter_metadata
-
-    Returns:
-        True if AI-to-AI session (has target_computer), False otherwise (Human-to-AI)
-    """
-    if not session or not session.adapter_metadata:
-        return False
-    # AI-to-AI sessions have target_computer in metadata
-    return bool(session.adapter_metadata.get("target_computer"))
-
-
-async def _send_output_chunks_ai_mode(
-    session_id: str,
-    adapter_client: "AdapterClient",
-    full_output: str,
-) -> None:
-    """Send output as sequential chunks for AI consumption.
-
-    No formatting - sends raw output chunks. Adapter handles platform-specific formatting.
-
-    Args:
-        session_id: Session ID
-        adapter_client: AdapterClient instance for message sending
-        full_output: Complete output to send
-    """
-    # Conservative chunk size (avoid Telegram message splitting)
-    chunk_size = 3750
-
-    # Split output into chunks
-    chunks = [full_output[i : i + chunk_size] for i in range(0, len(full_output), chunk_size)]
-
-    # Send each chunk as raw text - adapter handles formatting
-    for chunk in chunks:
-        await adapter_client.send_message(session_id, chunk)
-        # Small delay to preserve order (platform API constraint)
-        await asyncio.sleep(0.1)
-
-    # Mark completion (MCP streaming loop will detect and stop)
-    await adapter_client.send_message(session_id, "[Output Complete]")
-
-
 async def poll_and_send_output(
     session_id: str,
     tmux_session_name: str,
@@ -190,12 +144,8 @@ async def poll_and_send_output(
     # Mark as active BEFORE any await (prevents race conditions)
     await db.mark_polling(session_id)
 
-    # Get session to check type via metadata
-    session = await db.get_session(session_id)
-
     # Update ux_state to persist polling status in DB
     await db.update_ux_state(session_id, polling_active=True)
-    is_ai_session = _is_ai_to_ai_session(session)
 
     # Get output file
     output_file = get_output_file(session_id)
@@ -211,36 +161,21 @@ async def poll_and_send_output(
                 # Output is already clean (poller writes filtered output to file)
                 clean_output = event.output
 
-                if is_ai_session:
-                    # AI mode: Send sequential chunks (no editing, no loss)
-                    start_time = time.time()
-                    await _send_output_chunks_ai_mode(
-                        event.session_id,
-                        adapter_client,
-                        clean_output,
-                    )
-                    elapsed = time.time() - start_time
-                    logger.debug(
-                        "[COORDINATOR %s] AI chunks sent in %.2fs",
-                        session_id[:8],
-                        elapsed,
-                    )
-                else:
-                    # Human mode: Edit same message via AdapterClient
-                    start_time = time.time()
-                    logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
-                    await adapter_client.send_output_update(
-                        event.session_id,
-                        clean_output,
-                        event.started_at,
-                        event.last_changed_at,
-                    )
-                    elapsed = time.time() - start_time
-                    logger.debug(
-                        "[COORDINATOR %s] send_output_update completed in %.2fs",
-                        session_id[:8],
-                        elapsed,
-                    )
+                # Unified output handling - ALL sessions use send_output_update
+                start_time = time.time()
+                logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
+                await adapter_client.send_output_update(
+                    event.session_id,
+                    clean_output,
+                    event.started_at,
+                    event.last_changed_at,
+                )
+                elapsed = time.time() - start_time
+                logger.debug(
+                    "[COORDINATOR %s] send_output_update completed in %.2fs",
+                    session_id[:8],
+                    elapsed,
+                )
 
                 # Delete idle notification if one exists (output resumed)
                 ux_state = await db.get_ux_state(event.session_id)
@@ -285,60 +220,47 @@ async def poll_and_send_output(
                 # Process exited - output is already clean from file
                 clean_final_output = event.final_output
 
-                if is_ai_session:
-                    # AI mode: Send final chunks + completion marker
-                    await _send_output_chunks_ai_mode(
+                # Unified output handling - ALL sessions use send_output_update
+                if event.exit_code is not None:
+                    # Exit with code - send final message via AdapterClient
+                    await adapter_client.send_output_update(
                         event.session_id,
-                        adapter_client,
                         clean_final_output,
+                        event.started_at,  # Use actual start time from poller
+                        time.time(),
+                        is_final=True,
+                        exit_code=event.exit_code,
                     )
                     logger.info(
-                        "AI session polling stopped for %s (exit code: %s)",
+                        "Polling stopped for %s (exit code: %d), output file kept for downloads",
                         event.session_id[:8],
                         event.exit_code,
                     )
                 else:
-                    # Human mode: Send final message
-                    if event.exit_code is not None:
-                        # Exit with code - send final message via AdapterClient
-                        await adapter_client.send_output_update(
-                            event.session_id,
-                            clean_final_output,
-                            event.started_at,  # Use actual start time from poller
-                            time.time(),
-                            is_final=True,
-                            exit_code=event.exit_code,
-                        )
-                        logger.info(
-                            "Polling stopped for %s (exit code: %d), output file kept for downloads",
-                            event.session_id[:8],
-                            event.exit_code,
-                        )
+                    # Session died - check if it was user-closed before sending exit message
+                    session = await db.get_session(event.session_id)
+                    if session and session.closed:
+                        # Session was intentionally closed by user - don't send exit message
+                        logger.debug("Session %s was closed by user, skipping exit message", event.session_id[:8])
                     else:
-                        # Session died - check if it was user-closed before sending exit message
-                        session = await db.get_session(event.session_id)
-                        if session and session.closed:
-                            # Session was intentionally closed by user - don't send exit message
-                            logger.debug("Session %s was closed by user, skipping exit message", event.session_id[:8])
-                        else:
-                            # Unexpected death - send exit message via AdapterClient
-                            try:
-                                await adapter_client.send_exit_message(
-                                    event.session_id,
-                                    event.final_output,
-                                    "✅ Process exited",
-                                )
-                            except Exception as e:
-                                # Handle errors gracefully (e.g., message too long, topic closed)
-                                logger.warning("Failed to send exit message for %s: %s", event.session_id[:8], e)
-
-                        # Delete output file on session death
+                        # Unexpected death - send exit message via AdapterClient
                         try:
-                            if output_file.exists():
-                                output_file.unlink()
-                                logger.debug("Deleted output file for exited session %s", event.session_id[:8])
+                            await adapter_client.send_exit_message(
+                                event.session_id,
+                                event.final_output,
+                                "✅ Process exited",
+                            )
                         except Exception as e:
-                            logger.warning("Failed to delete output file: %s", e)
+                            # Handle errors gracefully (e.g., message too long, topic closed)
+                            logger.warning("Failed to send exit message for %s: %s", event.session_id[:8], e)
+
+                    # Delete output file on session death
+                    try:
+                        if output_file.exists():
+                            output_file.unlink()
+                            logger.debug("Deleted output file for exited session %s", event.session_id[:8])
+                    except Exception as e:
+                        logger.warning("Failed to delete output file: %s", e)
 
     finally:
         # Cleanup state
