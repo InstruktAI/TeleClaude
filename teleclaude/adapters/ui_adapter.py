@@ -135,6 +135,14 @@ class UiAdapter(BaseAdapter):
         adapter_data_obj = adapter_metadata.get(adapter_key, {})
         adapter_data: dict[str, object] = adapter_data_obj if isinstance(adapter_data_obj, dict) else {}
 
+        logger.debug(
+            "[OBSERVER] session=%s adapter=%s checking message_id (adapter_data=%s, ux_state=%s)",
+            session_id[:8],
+            adapter_key,
+            bool(adapter_data.get("output_message_id")),
+            bool(ux_state.output_message_id),
+        )
+
         # Prefer adapter-specific message_id, fallback to ux_state (for origin adapter)
         message_id_obj = adapter_data.get("output_message_id")
         current_message_id: Optional[str] = (
@@ -210,7 +218,12 @@ class UiAdapter(BaseAdapter):
             adapter_data_dict["output_message_id"] = new_id
             await db.update_session(session_id, adapter_metadata=adapter_metadata)
 
-            logger.debug("Stored message_id=%s for adapter=%s session=%s", new_id, adapter_key, session_id[:8])
+            logger.debug(
+                "[OBSERVER] Stored message_id=%s for adapter=%s session=%s (in adapter_metadata)",
+                new_id,
+                adapter_key,
+                session_id[:8],
+            )
         return new_id
 
     def format_message(self, terminal_output: str, status_line: str) -> str:
