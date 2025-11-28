@@ -819,7 +819,7 @@ class TeleClaudeMCPServer:
         request_id = f"{session_id}-data-{int(time.time() * 1000)}"
 
         # Build command with optional timestamp
-        command = f"/session_data {since_timestamp}" if since_timestamp else "/session_data"
+        command = f"/get_session_data {since_timestamp}" if since_timestamp else "/get_session_data"
 
         # Send request to remote computer
         await self.client.send_request(

@@ -270,13 +270,13 @@ class BaseAdapter(ABC):
                 "session_id": session_id,
             }
 
-    async def _handle_session_data(
+    async def _handle_get_session_data(
         self,
         args: str,
         session_id: str,
         metadata: Optional[dict[str, object]] = None,
     ) -> Optional[str]:
-        """Handle /session_data command.
+        """Handle /get_session_data command.
 
         Reads claude_session_file and returns content, optionally filtered by timestamp.
 
