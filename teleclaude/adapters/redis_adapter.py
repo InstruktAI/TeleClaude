@@ -731,7 +731,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
     async def _send_heartbeat(self) -> None:
         """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
+        logger.debug("_send_heartbeat called for %s", self.computer_name)
         if not self.redis:
+            logger.error("_send_heartbeat: self.redis is None")
             return
 
         key = f"computer:{self.computer_name}:heartbeat"
