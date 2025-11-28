@@ -251,8 +251,8 @@ class TestUpdateSession:
         )
 
     @pytest.mark.asyncio
-    async def test_update_working_directory_fallback_for_non_standard_title(self, test_db):
-        """Test that non-standard titles get path appended instead of replaced."""
+    async def test_update_working_directory_skips_non_standard_title(self, test_db):
+        """Test that non-standard titles are skipped (logged warning, no update)."""
         from unittest.mock import AsyncMock, MagicMock
 
         # Create mock client
@@ -268,8 +268,8 @@ class TestUpdateSession:
         # Change working directory
         await test_db.update_session(session.session_id, working_directory="/home/user/apps/snuffz")
 
-        # Verify update_channel_title was called with fallback format (appends path)
-        mock_client.update_channel_title.assert_called_once_with(session.session_id, "My Custom Title: apps/snuffz")
+        # Verify update_channel_title was NOT called (contract violation - skip update)
+        mock_client.update_channel_title.assert_not_called()
 
 
 class TestUpdateLastActivity:

@@ -264,13 +264,16 @@ class Db:
                 title_pattern = r"^(\$\w+\[)[^\]]+(\].*)$"
                 match = re.match(title_pattern, old_session.title)
 
-                if match:
-                    # Replace path portion in brackets
-                    new_title = f"{match.group(1)}{last_two}{match.group(2)}"
-                else:
-                    # Fallback: title doesn't match expected format, append path
-                    new_title = f"{old_session.title}: {last_two}"
+                if not match:
+                    logger.warning(
+                        "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
+                        session_id[:8],
+                        old_session.title,
+                    )
+                    return
 
+                # Replace path portion in brackets
+                new_title = f"{match.group(1)}{last_two}{match.group(2)}"
                 await self._client.update_channel_title(session_id, new_title)
                 logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
