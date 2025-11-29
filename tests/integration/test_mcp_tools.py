@@ -169,8 +169,8 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
         adapter_metadata={"channel_id": "12345"},
     )
 
-    # Mock send_message to capture notification
-    with patch.object(mcp_server.client, "send_message", new_callable=AsyncMock) as mock_send:
+    # Mock send_feedback to capture notification
+    with patch.object(mcp_server.client, "send_feedback", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = "msg123"
 
         # Send notification
@@ -183,7 +183,7 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
         assert result.startswith("OK:")
         assert "msg123" in result
 
-        # Verify send_message was called
+        # Verify send_feedback was called
         mock_send.assert_called_once_with(session.session_id, "Claude is ready for action!")
 
         # Verify notification_sent flag was set

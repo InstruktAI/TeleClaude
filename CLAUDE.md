@@ -305,24 +305,26 @@ docs/troubleshooting.md
 
 The wrapper automatically uses `.rsyncignore` to protect `config.yml`, `.env`, databases, and other local files.
 
+**Computer Registry:**
+- All remote computers must be defined in `config.yml` under `remote_computers`
+- Script ONLY accepts computer shorthand names from config (prevents mistakes)
+- Each computer has: `user`, `host`, `ip`, `teleclaude_path`
+- Example in `config.example.yml`
+
 **1. Make changes locally** (on development machine)
 
-**2. Sync to remote computers**:
+**2. Sync to remote computer** (use shorthand from config.yml):
 
 ```bash
-# Sync to raspi
-bin/rsync.sh raspi
+# Sync to target computer (shorthand from config.yml)
+bin/rsync.sh <computer-name>
 
 # Restart daemon on remote
-ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart'
+ssh -A user@hostname 'cd $HOME/apps/TeleClaude && make restart'
 
 # Monitor remote logs
-ssh -A morriz@raspberrypi.local 'tail -f /var/log/teleclaude.log'
+ssh -A user@hostname 'tail -f /var/log/teleclaude.log'
 ```
-
-**Available computers in wrapper:**
-- `raspi` → raspberrypi.local
-- `raspi4` → raspi4.local
 
 **3. Iterate quickly** - repeat steps 1-2 until feature works
 
@@ -337,18 +339,6 @@ make lint        # Verify code quality
 git add .
 git commit -m "feat(component): add feature description"
 git push
-```
-
-### Multi-Computer Development Pattern
-
-**For changes that need testing across multiple computers:**
-
-```bash
-# Sync to all targets using wrapper
-for computer in raspi raspi4; do
-  bin/rsync.sh $computer
-  ssh -A morriz@${computer}.local 'cd /home/morriz/apps/TeleClaude && make restart'
-done
 ```
 
 **NEVER use raw rsync commands** - they risk overwriting config.yml and .env!

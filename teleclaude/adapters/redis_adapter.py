@@ -658,6 +658,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 metadata_to_send["initiator"] = data[b"initiator"].decode("utf-8")
             if b"project_dir" in data:
                 metadata_to_send["project_dir"] = data[b"project_dir"].decode("utf-8")
+            if b"title" in data:
+                metadata_to_send["title"] = data[b"title"].decode("utf-8")
             if b"channel_metadata" in data:
                 try:
                     metadata_to_send["channel_metadata"] = json.loads(data[b"channel_metadata"].decode("utf-8"))

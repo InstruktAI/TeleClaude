@@ -61,7 +61,7 @@ async def handle_file(
     file_path: str,
     filename: str,
     context: dict[str, object],
-    send_feedback: Callable[[str, str, bool], Awaitable[Optional[str]]],
+    send_feedback: Callable[[str, str], Awaitable[Optional[str]]],
 ) -> None:
     """Handle file upload (adapter-agnostic utility).
 
@@ -88,7 +88,6 @@ async def handle_file(
         await send_feedback(
             session_id,
             f"📎 File upload requires an active process. File saved: {filename}",
-            False,
         )
         return
 
@@ -99,7 +98,6 @@ async def handle_file(
         await send_feedback(
             session_id,
             f"⚠️ File upload unavailable - output message not ready yet. File saved: {filename}",
-            False,
         )
         return
 
@@ -130,7 +128,6 @@ async def handle_file(
         await send_feedback(
             session_id,
             "❌ Failed to send file to terminal",
-            False,
         )
         return
 
@@ -143,13 +140,11 @@ async def handle_file(
         await send_feedback(
             session_id,
             f"📎 File uploaded: {filename} ({file_size_mb:.2f} MB)",
-            True,
         )
     else:
         await send_feedback(
             session_id,
             f"📎 File uploaded: {filename}",
-            True,
         )
 
     logger.info("File path sent to session %s, existing poll will capture output", session_id[:8])

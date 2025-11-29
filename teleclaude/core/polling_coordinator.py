@@ -202,11 +202,11 @@ async def poll_and_send_output(
                     )
                     continue
 
-                # Idle detected - send notification (broadcasts to all adapters)
+                # Idle detected - send feedback notification (UI only, not to tmux)
                 notification = (
                     f"⏸️ No output for {event.idle_seconds} seconds - " "process may be waiting or hung up, try cancel"
                 )
-                notification_id = await adapter_client.send_message(event.session_id, notification)
+                notification_id = await adapter_client.send_feedback(event.session_id, notification)
                 if notification_id:
                     # Persist to DB (survives daemon restart)
                     await db.update_ux_state(event.session_id, idle_notification_message_id=notification_id)

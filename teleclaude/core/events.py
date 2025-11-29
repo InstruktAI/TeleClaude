@@ -6,6 +6,8 @@ Provides type-safe event definitions for adapter-daemon communication.
 import shlex
 from typing import Literal, Optional
 
+from pydantic import BaseModel, Field
+
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
     "new_session",
@@ -37,8 +39,6 @@ EventType = Literal[
     "file",
     "session_closed",
     "session_reopened",
-    "session_deleted",
-    "working_dir_changed",
     "system_command",
 ]
 
@@ -96,8 +96,6 @@ class TeleClaudeEvents:
     # Session lifecycle events
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Session marked closed in DB
     SESSION_REOPENED: Literal["session_reopened"] = "session_reopened"  # Session reopened
-    SESSION_DELETED: Literal["session_deleted"] = "session_deleted"  # Session deleted from DB
-    WORKING_DIR_CHANGED: Literal["working_dir_changed"] = "working_dir_changed"  # Working directory updated
 
     # System commands
     SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
@@ -141,3 +139,58 @@ def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
     args = parts[1:] if len(parts) > 1 else []
 
     return cmd_name, args
+
+
+# Event context models (Pydantic for type safety)
+
+
+class BaseEventContext(BaseModel):
+    """Base event context - all events have session_id."""
+
+    session_id: str
+
+
+class CommandEventContext(BaseEventContext):
+    """Context for command events (new_session, list_sessions, etc.)."""
+
+    args: list[str] = Field(default_factory=list)
+    title: Optional[str] = None
+
+
+class MessageEventContext(BaseEventContext):
+    """Context for message events."""
+
+    text: str
+
+
+class VoiceEventContext(BaseEventContext):
+    """Context for voice message events."""
+
+    file_path: str
+
+
+class FileEventContext(BaseEventContext):
+    """Context for file upload events."""
+
+    file_path: str
+    filename: str
+
+
+class SessionLifecycleContext(BaseEventContext):
+    """Context for session lifecycle events (closed, reopened)."""
+
+    pass  # Only session_id needed
+
+
+class DeployArgs(BaseModel):
+    """Arguments for deploy system command."""
+
+    verify_health: bool = True  # Verify health after deployment
+
+
+class SystemCommandContext(BaseModel):
+    """Context for system commands (no session_id)."""
+
+    command: str
+    from_computer: str = "unknown"
+    args: DeployArgs = Field(default_factory=DeployArgs)

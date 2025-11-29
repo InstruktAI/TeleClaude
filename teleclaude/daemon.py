@@ -27,7 +27,16 @@ from teleclaude.core import (
 )
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
-from teleclaude.core.events import EventType, TeleClaudeEvents
+from teleclaude.core.events import (
+    DeployArgs,
+    EventType,
+    FileEventContext,
+    MessageEventContext,
+    SessionLifecycleContext,
+    SystemCommandContext,
+    TeleClaudeEvents,
+    VoiceEventContext,
+)
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
@@ -156,6 +165,14 @@ class TeleClaudeDaemon:
         args_obj = context.get("args", [])
         # Type assertion: args from adapters are always list[str]
         args = list(args_obj) if isinstance(args_obj, list) else []
+
+        # For new_session commands, extract title from context metadata
+        # and pass as args (handle_create_session expects title in args)
+        if event == TeleClaudeEvents.NEW_SESSION and "title" in context:
+            title_obj = context.get("title")
+            if isinstance(title_obj, str):
+                args = [title_obj]
+
         return await self.handle_command(event, args, context)
 
     async def _handle_message(self, _event: str, context: dict[str, object]) -> None:
@@ -165,22 +182,15 @@ class TeleClaudeDaemon:
             _event: Event type (always "message") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        session_id = context.get("session_id")
-        text = context.get("text")
-
-        if not session_id or not text:
-            logger.warning("MESSAGE event missing required fields: session_id=%s, text=%s", session_id, text)
-            return
+        ctx = MessageEventContext(**context)
 
         # Auto-reopen if closed
-        session = await db.get_session(str(session_id))
+        session = await db.get_session(ctx.session_id)
         if session and session.closed:
-            logger.info(
-                "Auto-reopening closed session %s", session_id[:8] if isinstance(session_id, str) else session_id
-            )
+            logger.info("Auto-reopening closed session %s", ctx.session_id[:8])
             await self._reopen_session(session)
 
-        await self.handle_message(str(session_id), str(text), context)
+        await self.handle_message(ctx.session_id, ctx.text, context)
 
     async def _handle_voice(self, _event: str, context: dict[str, object]) -> None:
         """Handler for VOICE events - pure business logic (cleanup already done).
@@ -189,30 +199,14 @@ class TeleClaudeDaemon:
             _event: Event type (always "voice") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        session_id = context.get("session_id")
-        audio_file_path = context.get("file_path")
-
-        if not session_id or not audio_file_path:
-            logger.warning(
-                "VOICE event missing required fields: session_id=%s, file_path=%s", session_id, audio_file_path
-            )
-            return
-
-        # Define send_feedback to properly track temporary messages for deletion
-        async def send_feedback(sid: str, msg: str, _append: bool) -> Optional[str]:
-            """Send feedback message and mark for deletion on next input."""
-            message_id = await self.client.send_message(sid, msg, metadata={"parse_mode": None})
-            if message_id:
-                # Mark feedback message for deletion when next input arrives
-                await db.add_pending_deletion(sid, message_id)
-            return message_id
+        ctx = VoiceEventContext(**context)
 
         # Handle voice message using utility function
         await voice_message_handler.handle_voice(
-            session_id=str(session_id),
-            audio_path=str(audio_file_path),
+            session_id=ctx.session_id,
+            audio_path=ctx.file_path,
             context=context,
-            send_feedback=send_feedback,
+            send_feedback=self._send_feedback_callback,
             get_output_file=self._get_output_file_path,
         )
 
@@ -223,23 +217,29 @@ class TeleClaudeDaemon:
             _event: Event type (always "session_closed") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        session_id = context.get("session_id")
-        if not session_id:
-            logger.warning("session_closed event missing session_id")
-            return
+        ctx = SessionLifecycleContext(**context)
 
-        session = await db.get_session(str(session_id))
+        session = await db.get_session(ctx.session_id)
         if not session:
-            logger.warning("Session %s not found for close event", session_id)
+            logger.warning("Session %s not found for close event", ctx.session_id[:8])
             return
 
-        logger.info("Handling session_closed for %s", session_id[:8] if isinstance(session_id, str) else session_id)
+        logger.info("Handling session_closed for %s", ctx.session_id[:8])
 
         # Kill tmux session (polling will stop automatically when session dies)
         await terminal_bridge.kill_session(session.tmux_session_name)
 
         # Mark closed in DB
-        await db.update_session(str(session_id), closed=True)
+        await db.update_session(ctx.session_id, closed=True)
+
+        # Delete output file
+        output_file = self._get_output_file_path(ctx.session_id)
+        if output_file.exists():
+            try:
+                output_file.unlink()
+                logger.debug("Deleted output file for closed session %s", ctx.session_id[:8])
+            except Exception as e:
+                logger.warning("Failed to delete output file for closed session %s: %s", ctx.session_id[:8], e)
 
     async def _handle_session_reopened(self, _event: str, context: dict[str, object]) -> None:
         """Handler for session_reopened events - user reopened topic.
@@ -248,17 +248,14 @@ class TeleClaudeDaemon:
             _event: Event type (always "session_reopened") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        session_id = context.get("session_id")
-        if not session_id:
-            logger.warning("session_reopened event missing session_id")
-            return
+        ctx = SessionLifecycleContext(**context)
 
-        session = await db.get_session(str(session_id))
+        session = await db.get_session(ctx.session_id)
         if not session:
-            logger.warning("Session %s not found for reopen event", session_id)
+            logger.warning("Session %s not found for reopen event", ctx.session_id[:8])
             return
 
-        logger.info("Handling session_reopened for %s", session_id[:8] if isinstance(session_id, str) else session_id)
+        logger.info("Handling session_reopened for %s", ctx.session_id[:8])
         await self._reopen_session(session)
 
     async def _reopen_session(self, session: Session) -> None:
@@ -283,24 +280,6 @@ class TeleClaudeDaemon:
         await db.update_session(session.session_id, closed=False)
         logger.info("Session %s reopened at %s", session.session_id[:8], session.working_directory)
 
-    async def _handle_session_deleted(self, _event: str, context: dict[str, object]) -> None:
-        """Handler for session_deleted events (placeholder - not currently emitted).
-
-        Args:
-            _event: Event type (always "session_deleted") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
-        """
-        logger.debug("session_deleted event received but not implemented: %s", context)
-
-    async def _handle_working_dir_changed(self, _event: str, context: dict[str, object]) -> None:
-        """Handler for working_dir_changed events (placeholder - not currently emitted).
-
-        Args:
-            _event: Event type (always "working_dir_changed") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
-        """
-        logger.debug("working_dir_changed event received but not implemented: %s", context)
-
     async def _handle_file(self, _event: str, context: dict[str, object]) -> None:
         """Handler for FILE events - pure business logic.
 
@@ -308,32 +287,14 @@ class TeleClaudeDaemon:
             _event: Event type (always "file") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        session_id = context.get("session_id")
-        file_path = context.get("file_path")
-        filename = context.get("filename")
-
-        if not session_id or not file_path or not filename:
-            logger.warning(
-                "FILE event missing required fields: session_id=%s, file_path=%s, filename=%s",
-                session_id,
-                file_path,
-                filename,
-            )
-            return
-
-        async def send_feedback(sid: str, msg: str, _append: bool) -> Optional[str]:
-            """Send feedback message and mark for deletion on next input."""
-            message_id = await self.client.send_message(sid, msg, metadata={"parse_mode": None})
-            if message_id:
-                await db.add_pending_deletion(sid, message_id)
-            return message_id
+        ctx = FileEventContext(**context)
 
         await handle_file(
-            session_id=str(session_id),
-            file_path=str(file_path),
-            filename=str(filename),
-            context=context,
-            send_feedback=send_feedback,
+            session_id=ctx.session_id,
+            file_path=ctx.file_path,
+            filename=ctx.filename,
+            context=context,  # handle_file still needs raw dict for now
+            send_feedback=self._send_feedback_callback,
         )
 
     async def _handle_system_command(self, _event: str, context: dict[str, object]) -> None:
@@ -345,26 +306,23 @@ class TeleClaudeDaemon:
             _event: Event type (always "system_command") - unused but required by event handler signature
             context: Unified context (all payload + metadata fields)
         """
-        command = context.get("command")
-        args = context.get("args", {})
-        from_computer = context.get("from_computer", "unknown")
+        ctx = SystemCommandContext(**context)
 
-        if not command:
-            logger.warning("SYSTEM_COMMAND event missing command")
-            return
+        logger.info("Handling system command '%s' from %s", ctx.command, ctx.from_computer)
 
-        logger.info("Handling system command '%s' from %s", command, from_computer)
-
-        if command == "deploy":
-            args_dict: dict[str, object] = args if isinstance(args, dict) else {}
-            await self._handle_deploy(args_dict)
-        elif command == "health_check":
+        if ctx.command == "deploy":
+            await self._handle_deploy(ctx.args)
+        elif ctx.command == "health_check":
             await self._handle_health_check()
         else:
-            logger.warning("Unknown system command: %s", command)
+            logger.warning("Unknown system command: %s", ctx.command)
 
-    async def _handle_deploy(self, _args: dict[str, object]) -> None:
-        """Execute deployment: git pull + restart daemon via service manager."""
+    async def _handle_deploy(self, args: DeployArgs) -> None:
+        """Execute deployment: git pull + restart daemon via service manager.
+
+        Args:
+            args: Deploy arguments (verify_health currently unused)
+        """
         # Get Redis adapter for status updates
         redis_adapter_base = self.client.adapters.get("redis")
         if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
@@ -481,6 +439,23 @@ class TeleClaudeDaemon:
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
         return get_output_file_path(session_id)
+
+    async def _send_feedback_callback(
+        self, sid: str, msg: str, metadata: Optional[dict[str, object]] = None
+    ) -> Optional[str]:
+        """Adapter callback for handlers that need send_feedback signature.
+
+        Wraps AdapterClient.send_feedback to match handler signature.
+
+        Args:
+            sid: Session ID
+            msg: Feedback message
+            metadata: Optional adapter-specific metadata
+
+        Returns:
+            message_id if sent, None otherwise
+        """
+        return await self.client.send_feedback(sid, msg, metadata)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -875,11 +850,17 @@ class TeleClaudeDaemon:
         logger.debug("Started polling for session %s with marker_id=%s", session_id[:8], marker_id)
 
     async def _periodic_cleanup(self) -> None:
-        """Periodically clean up inactive sessions (72h lifecycle)."""
+        """Periodically clean up inactive sessions (72h lifecycle) and orphaned tmux sessions."""
         while True:
             try:
                 await asyncio.sleep(3600)  # Run every hour
+
+                # Clean up sessions inactive for 72+ hours
                 await self._cleanup_inactive_sessions()
+
+                # Clean up orphaned sessions (tmux gone but DB says active)
+                await session_cleanup.cleanup_all_stale_sessions(self.client)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:

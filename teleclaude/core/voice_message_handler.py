@@ -159,7 +159,7 @@ async def handle_voice(
     session_id: str,
     audio_path: str,
     context: dict[str, object],
-    send_feedback: Callable[[str, str, bool], Awaitable[Optional[str]]],
+    send_feedback: Callable[[str, str, Optional[dict[str, object]]], Awaitable[Optional[str]]],
     get_output_file: Callable[[str], Path],
 ) -> None:
     """Handle voice message (adapter-agnostic utility).
@@ -191,7 +191,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "🎤 Voice input requires an active process (e.g., claude, vim)",
-            False,
+            None,
         )
         # Clean up temp file
         try:
@@ -213,7 +213,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "⚠️ Voice input unavailable - output message not ready yet (try again in 1-2 seconds)",
-            False,
+            None,
         )
         # Clean up temp file
         try:
@@ -227,7 +227,7 @@ async def handle_voice(
     msg_id = await send_feedback(
         session_id,
         "🎤 Transcribing...",
-        True,
+        None,
     )
     if msg_id is None:
         logger.info("Topic deleted for session %s, skipping transcription", session_id[:8])
@@ -254,7 +254,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "❌ Transcription failed. Please try again.",
-            True,
+            None,
         )
         return
 
@@ -271,7 +271,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "❌ Failed to send input to terminal",
-            False,
+            None,
         )
         return
 

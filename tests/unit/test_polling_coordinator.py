@@ -127,7 +127,7 @@ class TestPollAndSendOutput:
         db.set_idle_notification_message_id = AsyncMock()
 
         adapter = Mock()
-        adapter.send_message = AsyncMock(return_value="idle-msg-789")
+        adapter.send_feedback = AsyncMock(return_value="idle-msg-789")
         get_adapter_for_session = AsyncMock(return_value=adapter)
 
         output_file = Path("/tmp/output.txt")
@@ -329,7 +329,7 @@ class TestNotificationFlagCoordination:
 
         # Setup mocks
         adapter_client = AsyncMock()
-        adapter_client.send_message = AsyncMock(return_value="msg-123")
+        adapter_client.send_feedback = AsyncMock(return_value="msg-123")
 
         # Mock db with notification_sent=False
         mock_db = AsyncMock()
@@ -369,9 +369,9 @@ class TestNotificationFlagCoordination:
                 get_output_file=get_output_file,
             )
 
-            # VERIFY: Idle notification WAS sent (flag was not set)
-            adapter_client.send_message.assert_called_once()
-            call_args = adapter_client.send_message.call_args
+            # VERIFY: Idle notification WAS sent via send_feedback (UI only, not tmux)
+            adapter_client.send_feedback.assert_called_once()
+            call_args = adapter_client.send_feedback.call_args
             assert "No output for 60 seconds" in call_args[0][1]
 
             # VERIFY: get_notification_flag was checked

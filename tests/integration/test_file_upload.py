@@ -52,8 +52,8 @@ class TestFileUploadFlow:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_123"
 
         await session_manager.mark_polling(test_session.session_id)
@@ -90,7 +90,7 @@ class TestFileUploadFlow:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
             return "msg_123"
 
         await session_manager.mark_polling(test_session.session_id)
@@ -118,8 +118,8 @@ class TestFileUploadFlow:
         """Test file is rejected when no process running."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_123"
 
         await session_manager.set_polling_inactive(test_session.session_id)

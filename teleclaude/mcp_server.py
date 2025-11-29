@@ -167,10 +167,6 @@ class TeleClaudeMCPServer:
                                 "type": "string",
                                 "description": "Message or command to send to Claude Code",
                             },
-                            "interest_window_seconds": {
-                                "type": "number",
-                                "description": "Seconds to monitor output before detaching (default: 15)",
-                            },
                         },
                         "required": ["session_id", "message"],
                     },
@@ -390,13 +386,9 @@ class TeleClaudeMCPServer:
                 # Extract arguments explicitly
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 message = str(arguments.get("message", "")) if arguments else ""
-                interest_window_obj = arguments.get("interest_window_seconds", 15) if arguments else 15
-                interest_window = (
-                    float(interest_window_obj) if isinstance(interest_window_obj, (int, float, str)) else 15.0
-                )
                 # Collect all chunks from async generator
                 chunks: list[str] = []
-                async for chunk in self.teleclaude__send_message(session_id, message, interest_window):
+                async for chunk in self.teleclaude__send_message(session_id, message):
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
@@ -587,6 +579,7 @@ class TeleClaudeMCPServer:
         self,
         computer: str,
         project_dir: str,
+        title: Optional[str] = None,
     ) -> dict[str, object]:
         """Create remote session via request/response pattern.
 
@@ -602,6 +595,8 @@ class TeleClaudeMCPServer:
             computer: Target computer name (from teleclaude__list_computers)
             project_dir: Absolute path to project directory on remote computer
                 (from teleclaude__list_projects)
+            title: Optional custom title (use "TEST: {description}" for testing sessions)
+                If None, auto-generates based on initiator metadata
 
         Returns:
             dict with remote session_id and status
@@ -615,12 +610,16 @@ class TeleClaudeMCPServer:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
         # Send new_session command to remote - uses standardized handle_create_session
-        # Title will be auto-generated on remote based on initiator metadata
+        # Title: custom if provided, otherwise auto-generated on remote
         # Transport layer generates request_id from Redis message ID
+        metadata: dict[str, object] = {"project_dir": project_dir}
+        if title:
+            metadata["title"] = title
+
         message_id = await self.client.send_request(
             computer_name=computer,
             command="/new_session",
-            metadata={"project_dir": project_dir},
+            metadata=metadata,
         )
 
         # Wait for response with remote session_id
@@ -712,7 +711,7 @@ class TeleClaudeMCPServer:
         ]
 
     async def teleclaude__send_message(
-        self, session_id: str, message: str, interest_window_seconds: float = 15
+        self, session_id: str, message: str
     ) -> AsyncIterator[str]:
         """Send message to remote session via request/response pattern.
 
@@ -722,7 +721,6 @@ class TeleClaudeMCPServer:
         Args:
             session_id: Remote session ID (from teleclaude__start_session)
             message: Message/command to send to remote Claude Code
-            interest_window_seconds: Unused - kept for backwards compatibility
 
         Yields:
             str: Acknowledgment message
@@ -1064,13 +1062,16 @@ class TeleClaudeMCPServer:
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
-        # Send notification via AdapterClient
-        message_id = await self.client.send_message(session_id, message)
+        # Send notification as feedback (UI only, never to terminal)
+        # UI adapters: shows message + auto-deletes on next input
+        # Transport adapters (Redis): no-op, prevents typing into tmux
+        message_id = await self.client.send_feedback(session_id, message)
 
-        # Mark notification message for cleanup on next user input
-        await db.add_pending_deletion(session_id, message_id)
+        # Mark notification message for cleanup on next user input (if UI adapter returned message_id)
+        if message_id:
+            await db.add_pending_deletion(session_id, message_id)
 
         # Set notification_sent flag (prevents idle notifications)
         await db.set_notification_flag(session_id, True)
 
-        return f"OK: {message_id}"
+        return f"OK: {message_id}" if message_id else "OK: no-op (transport adapter)"

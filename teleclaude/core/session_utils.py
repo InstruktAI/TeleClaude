@@ -8,8 +8,8 @@ from pathlib import Path
 
 from teleclaude.core.db import db
 
-# Session output directory (workspace/{session_id}/output.txt)
-OUTPUT_DIR = Path("workspace")
+# Session output directory (tmux_sessions/{session_id}/output.txt)
+OUTPUT_DIR = Path("tmux_sessions")
 
 
 async def ensure_unique_title(base_title: str) -> str:
@@ -51,7 +51,7 @@ async def ensure_unique_title(base_title: str) -> str:
 def get_output_file_path(session_id: str) -> Path:
     """Get output file path for a session.
 
-    Creates session workspace directory if it doesn't exist.
+    Creates tmux_sessions directory if it doesn't exist.
     Output file stores RAW terminal output (with exit markers) for:
     1. Delta calculation (ignore old markers in scrollback)
     2. Download functionality (markers stripped on-the-fly)
@@ -61,8 +61,7 @@ def get_output_file_path(session_id: str) -> Path:
         session_id: Session identifier
 
     Returns:
-        Path to output file (workspace/{session_id}/output.txt)
+        Path to output file (tmux_sessions/{session_id}.txt)
     """
-    session_workspace = OUTPUT_DIR / session_id
-    session_workspace.mkdir(parents=True, exist_ok=True)
-    return session_workspace / "output.txt"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    return OUTPUT_DIR / f"{session_id}.txt"

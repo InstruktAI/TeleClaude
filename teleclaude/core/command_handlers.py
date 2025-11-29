@@ -6,12 +6,10 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
-import json
 import logging
 import os
 import shlex
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
@@ -20,6 +18,7 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.core.session_utils import ensure_unique_title
+from teleclaude.utils.claude_transcript import parse_claude_transcript
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -352,7 +351,8 @@ async def handle_get_session_data(  # type: ignore[explicit-any]
 ) -> dict[str, object]:
     """Get session data from claude_session_file.
 
-    Reads the Claude Code session file (JSONL format) and returns messages.
+    Reads the Claude Code session file (JSONL format) and parses to markdown.
+    Uses same parsing as download functionality for consistent formatting.
     Optionally filters by timestamp.
 
     Args:
@@ -361,8 +361,9 @@ async def handle_get_session_data(  # type: ignore[explicit-any]
         client: AdapterClient (unused - kept for signature compatibility)
 
     Returns:
-        Dict with session data and messages
+        Dict with session data and markdown-formatted messages
     """
+
     # Get session_id from context metadata
     session_id_obj = context.get("session_id")
     if not session_id_obj:
@@ -390,40 +391,25 @@ async def handle_get_session_data(  # type: ignore[explicit-any]
 
     # Parse optional timestamp filter from args
     since_timestamp = args[0] if args else None
-    filter_datetime = None
-    if since_timestamp:
-        try:
-            filter_datetime = datetime.fromisoformat(since_timestamp.replace("Z", "+00:00"))
-        except ValueError:
-            logger.warning("Invalid timestamp format: %s", since_timestamp)
 
-    # Read and parse JSONL file
-    messages: list[dict[str, object]] = []
+    # Parse Claude transcript to markdown (same as download functionality)
     try:
-        with claude_session_file.open("r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    msg = json.loads(line)
-                    # Filter by timestamp if provided
-                    if filter_datetime and "timestamp" in msg:
-                        msg_time = datetime.fromisoformat(str(msg["timestamp"]).replace("Z", "+00:00"))
-                        if msg_time < filter_datetime:
-                            continue
-                    messages.append(msg)
-                except json.JSONDecodeError as e:
-                    logger.warning("Failed to parse line in session file: %s", e)
+        markdown_content = parse_claude_transcript(str(claude_session_file), session.title)
+        logger.info("Parsed %d bytes of markdown for session %s", len(markdown_content), session_id[:8])
     except Exception as e:
-        logger.error("Failed to read session file %s: %s", claude_session_file, e)
-        return {"status": "error", "error": f"Failed to read session file: {e}"}
+        logger.error("Failed to parse session file %s: %s", claude_session_file, e)
+        return {"status": "error", "error": f"Failed to parse session file: {e}"}
+
+    # TODO: Implement timestamp filtering for markdown content
+    # For now, return full markdown (timestamp filtering would need to filter JSONL first)
+    if since_timestamp:
+        logger.warning("Timestamp filtering not yet implemented for markdown output")
 
     return {
         "status": "success",
         "session_id": session_id,
         "project_dir": session.working_directory,
-        "message_count": len(messages),
-        "messages": messages,
+        "messages": markdown_content,
         "created_at": session.created_at.isoformat(),
         "last_activity": session.last_activity.isoformat(),
     }

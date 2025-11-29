@@ -3,8 +3,6 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 if TYPE_CHECKING:
@@ -200,6 +198,32 @@ class BaseAdapter(ABC):
         """
         raise NotImplementedError("This adapter does not support general messages")
 
+    async def send_feedback(
+        self,
+        session_id: str,
+        message: str,
+        metadata: Optional[dict[str, object]] = None,
+    ) -> Optional[str]:
+        """Send feedback message to user (UI adapters only).
+
+        Feedback messages are temporary UI notifications that:
+        - Appear in UI platforms (Telegram, Slack, etc.)
+        - Do NOT appear in terminal/tmux output
+        - Auto-delete on next user input (UI adapters handle this)
+
+        Base implementation does nothing (for transport adapters like Redis).
+        UI adapters (UiAdapter subclasses) override to send feedback.
+
+        Args:
+            session_id: Session identifier
+            message: Feedback message text
+            metadata: Optional adapter-specific metadata
+
+        Returns:
+            message_id if sent (UI adapters), None if not a UI adapter
+        """
+        return None  # Default no-op for non-UI adapters (Redis, etc.)
+
     # ==================== Session Data Access ====================
 
     async def get_session_data(
@@ -209,66 +233,24 @@ class BaseAdapter(ABC):
     ) -> dict[str, object]:
         """Read session data from Claude Code session file.
 
-        This is a shared capability for ALL adapters to serve session data
-        from the standard claude_session_file location.
+        NOTE: This method is not currently used. The actual implementation
+        is in teleclaude.core.command_handlers.handle_get_session_data() which
+        is called via event routing when /get_session_data command is received.
+
+        Kept for interface compatibility but not the active code path.
 
         Args:
             session_id: Session identifier
             since_timestamp: Optional ISO 8601 UTC timestamp to filter messages since
 
         Returns:
-            Dict containing:
-            - "status": "success" or "error"
-            - "messages": Session content (markdown format)
-            - "session_id": Session identifier
-            - "error": Error message if status is "error"
+            Dict with error (not implemented via this path)
         """
-        # Get session file path
-        session_file = Path("storage") / session_id / "claude_session_file"
-
-        if not session_file.exists():
-            return {
-                "status": "error",
-                "error": f"Session file not found for session {session_id[:8]}",
-                "session_id": session_id,
-            }
-
-        # Read session file content
-        try:
-            content = session_file.read_text()
-        except Exception as e:
-            logger.error("Failed to read session file for %s: %s", session_id[:8], e)
-            return {
-                "status": "error",
-                "error": f"Failed to read session file: {str(e)}",
-                "session_id": session_id,
-            }
-
-        # If no timestamp filter, return all content
-        if not since_timestamp:
-            return {
-                "status": "success",
-                "messages": content,
-                "session_id": session_id,
-            }
-
-        # Parse timestamp and filter content
-        # TODO: Implement timestamp filtering logic
-        # For now, return all content with note
-        try:
-            datetime.fromisoformat(since_timestamp)
-            return {
-                "status": "success",
-                "messages": content,
-                "session_id": session_id,
-                "note": "Timestamp filtering not yet implemented",
-            }
-        except ValueError:
-            return {
-                "status": "error",
-                "error": f"Invalid timestamp format: {since_timestamp}",
-                "session_id": session_id,
-            }
+        return {
+            "status": "error",
+            "error": "get_session_data should be called via command_handlers, not directly",
+            "session_id": session_id,
+        }
 
     async def _handle_get_session_data(
         self,
@@ -288,9 +270,12 @@ class BaseAdapter(ABC):
         Returns:
             JSON response with session data
         """
+        logger.debug("_handle_get_session_data called with args=%s, metadata=%s", args, metadata)
+
         # Extract target session_id from metadata (not the command's session_id)
         target_session_id = metadata.get("session_id") if metadata else None
         if not target_session_id:
+            logger.warning("get_session_data: no session_id in metadata")
             return json.dumps(
                 {
                     "status": "error",
@@ -300,9 +285,11 @@ class BaseAdapter(ABC):
 
         # Parse timestamp from args
         since_timestamp = args.strip() if args else None
+        logger.debug("get_session_data: target_session=%s, since=%s", target_session_id[:8] if isinstance(target_session_id, str) else target_session_id, since_timestamp)
 
         # Get session data
         result = await self.get_session_data(str(target_session_id), since_timestamp)
+        logger.debug("get_session_data: result has %d messages", result.get("message_count", 0) if isinstance(result, dict) else 0)
 
         return json.dumps(result)
 

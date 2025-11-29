@@ -184,6 +184,57 @@ class AdapterClient:
 
         return origin_message_id
 
+    async def send_feedback(
+        self,
+        session_id: str,
+        message: str,
+        metadata: Optional[dict[str, object]] = None,
+    ) -> Optional[str]:
+        """Send feedback message via origin adapter (UI adapters only).
+
+        Feedback messages are temporary UI notifications that:
+        - Appear in UI platforms (Telegram, Slack, etc.)
+        - Do NOT appear in terminal/tmux output
+        - Auto-delete on next user input
+
+        Only UI adapters implement send_feedback (Telegram, Slack).
+        Transport adapters (Redis) return None (no-op).
+
+        Args:
+            session_id: Session identifier
+            message: Feedback message text
+            metadata: Optional adapter-specific metadata
+
+        Returns:
+            message_id if sent (UI adapter), None if not a UI adapter
+
+        Raises:
+            ValueError: If session or origin adapter not found
+        """
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        if not session.origin_adapter:
+            raise ValueError(f"Session {session_id} has no origin adapter configured")
+
+        # Get origin adapter
+        origin_adapter = self.adapters.get(session.origin_adapter)
+        if not origin_adapter:
+            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
+
+        # Call send_feedback on origin adapter
+        # UI adapters: sends feedback + marks for deletion
+        # Transport adapters: returns None (no-op)
+        message_id = await origin_adapter.send_feedback(session_id, message, metadata)
+
+        if message_id:
+            logger.debug("Sent feedback via %s for session %s", session.origin_adapter, session_id[:8])
+        else:
+            logger.debug("Origin adapter %s does not support feedback (transport adapter)", session.origin_adapter)
+
+        return message_id
+
     async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
         """Edit message in origin adapter.
 

@@ -336,6 +336,35 @@ class UiAdapter(BaseAdapter):
             if new_id:
                 await db.update_ux_state(session_id, output_message_id=new_id)
 
+    async def send_feedback(
+        self,
+        session_id: str,
+        message: str,
+        metadata: Optional[dict[str, object]] = None,
+    ) -> Optional[str]:
+        """Send feedback message and mark for deletion on next user input.
+
+        UI adapters override BaseAdapter's no-op to send temporary feedback messages
+        that automatically clean up when the user sends their next input.
+
+        Args:
+            session_id: Session identifier
+            message: Feedback message text
+            metadata: Optional adapter-specific metadata (defaults to plain text)
+
+        Returns:
+            message_id of sent feedback message
+        """
+        # Send feedback message (plain text by default)
+        message_id = await self.send_message(session_id, message, metadata=metadata or {"parse_mode": None})
+
+        if message_id:
+            # Mark feedback message for deletion when next input arrives
+            await db.add_pending_deletion(session_id, message_id)
+            logger.debug("Sent feedback message %s for session %s (marked for deletion)", message_id, session_id[:8])
+
+        return message_id
+
     async def _pre_handle_user_input(self, session_id: str) -> None:
         """Called before handling user input - cleanup temporary messages."""
         await self.cleanup_feedback_messages(session_id)
@@ -388,7 +417,7 @@ class UiAdapter(BaseAdapter):
             session_id=session_id,
             audio_path=audio_file_path,
             context=context,
-            send_feedback=lambda sid, msg, append: self.send_message(sid, msg),
+            send_feedback=self.send_feedback,
             get_output_file=self._get_output_file_path,
         )
 

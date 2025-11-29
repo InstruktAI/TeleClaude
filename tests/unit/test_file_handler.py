@@ -101,8 +101,8 @@ class TestHandleFile:
         """Test rejection when session doesn't exist."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_id"
 
         with patch("teleclaude.core.file_handler.db.get_session", return_value=None):
@@ -121,8 +121,8 @@ class TestHandleFile:
         """Test rejection when no process is active."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_id"
 
         with (
@@ -139,15 +139,14 @@ class TestHandleFile:
 
         assert len(sent_messages) == 1
         assert "requires an active process" in sent_messages[0][1]
-        assert sent_messages[0][2] is False
 
     @pytest.mark.asyncio
     async def test_rejects_when_no_output_message(self, mock_session):
         """Test rejection when output message not ready."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_id"
 
         mock_ux_state = MagicMock()
@@ -178,7 +177,7 @@ class TestHandleFile:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
             return "msg_id"
 
         with (
@@ -209,7 +208,7 @@ class TestHandleFile:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
             return "msg_id"
 
         with (
@@ -239,8 +238,8 @@ class TestHandleFile:
         async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_id"
 
         with (
@@ -262,7 +261,6 @@ class TestHandleFile:
         assert len(sent_messages) == 1
         assert "file.pdf" in sent_messages[0][1]
         assert "2.00 MB" in sent_messages[0][1]
-        assert sent_messages[0][2] is True
 
     @pytest.mark.asyncio
     async def test_handles_send_keys_failure(self, mock_session, mock_ux_state):
@@ -272,8 +270,8 @@ class TestHandleFile:
         async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
             return (False, None)
 
-        async def mock_send_feedback(sid: str, msg: str, append: bool) -> Optional[str]:
-            sent_messages.append((sid, msg, append))
+        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+            sent_messages.append((sid, msg))
             return "msg_id"
 
         with (
