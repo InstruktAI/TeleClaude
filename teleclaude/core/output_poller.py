@@ -150,10 +150,9 @@ class OutputPoller:
                     if output_file.exists():
                         try:
                             raw_output = output_file.read_text(encoding="utf-8")
-                            # Clean the output (strip ANSI, exit markers, and hook messages)
+                            # Clean the output (strip ANSI and exit markers)
                             final_output = strip_ansi_codes(raw_output)
                             final_output = strip_exit_markers(final_output)
-                            final_output = self._strip_claude_code_hooks(final_output)
                         except Exception as e:
                             logger.warning("Failed to read final output: %s", e)
 
@@ -177,9 +176,6 @@ class OutputPoller:
 
                 # Also create clean version (markers stripped) for UI
                 current_cleaned = strip_exit_markers(current_with_markers)
-
-                # Strip Claude Code hook messages (system-reminder tags, hook success messages)
-                current_cleaned = self._strip_claude_code_hooks(current_cleaned)
 
                 # Detect output changes (for idle tracking)
                 output_changed = current_cleaned != previous_output
@@ -321,70 +317,6 @@ class OutputPoller:
 
         finally:
             logger.debug("Polling ended for session %s", session_id[:8])
-
-    def _strip_claude_code_hooks(self, output: str) -> str:
-        """Strip Claude Code hook messages from output.
-
-        Removes:
-        1. Hook success prefix lines: ⎿ <hook_name> hook succeeded:
-        2. <system-reminder>...</system-reminder> blocks (can be multiline, NOT nested)
-        3. Orphaned closing tags with multiline content
-
-        Examples of patterns removed:
-        - "⎿ UserPromptSubmit hook succeeded: <system-reminder>\nsome\nmultiline\n.  content.</system-reminder>"
-        - "⎿  SessionStart:startup hook succeeded: ..."
-
-        Args:
-            output: Terminal output
-
-        Returns:
-            Output with Claude Code hook messages removed
-        """
-        original_length = len(output)
-
-        # Strip hook success prefix lines (⎿ ... hook succeeded: ...)
-        output = re.sub(r"⎿[^\n]*hook succeeded:[^\n]*\n?", "", output)
-
-        # Check if output contains system-reminder tags
-        has_system_reminder = "<system-reminder>" in output or "</system-reminder>" in output
-        if has_system_reminder:
-            logger.debug("Found system-reminder tags in output (length: %d)", original_length)
-
-        # Strip complete <system-reminder> blocks (with both opening and closing tags)
-        # Use [\s\S] instead of . to explicitly match ANY character including newlines
-        output = re.sub(r"<system-reminder>[\s\S]*?</system-reminder>\s*\n?", "", output)
-
-        # Handle orphaned closing tags with multiline content
-        # Pattern 1: After user prompt ("> "), remove everything until </system-reminder>
-        # Keeps the user prompt line, removes all following content until closing tag
-        before_orphan = output
-        output = re.sub(
-            r"(^> [^\n]*\n)(?:(?!^> )[\s\S])*?</system-reminder>\s*\n?",
-            r"\1",
-            output,
-            flags=re.MULTILINE,
-        )
-
-        # Pattern 2: Indented multiline blocks ending with </system-reminder>
-        # Removes indented content blocks (common for hook output)
-        output = re.sub(r"\n[ \t]+[\s\S]*?</system-reminder>\s*\n?", "\n", output)
-
-        # Pattern 3: Any remaining orphaned closing tags (single line fallback)
-        output = re.sub(r"[^\n]*</system-reminder>\s*\n?", "", output)
-
-        if output != before_orphan:
-            logger.debug("Removed orphaned </system-reminder> tag and associated content")
-
-        filtered_length = len(output)
-        if filtered_length < original_length:
-            logger.debug(
-                "Filtered Claude Code hooks: %d -> %d bytes (%d bytes removed)",
-                original_length,
-                filtered_length,
-                original_length - filtered_length,
-            )
-
-        return output
 
     def _extract_exit_code(self, output: str, marker_id: Optional[str]) -> Optional[int]:
         """Extract exit code from output using exact marker matching.

@@ -86,7 +86,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
             }
 
             # Call _handle_incoming_message (the real entry point for Redis messages)
-            await redis_adapter._handle_incoming_message(message_data)
+            await redis_adapter._handle_incoming_message(request_id, message_data)
 
             # Wait for async operations to complete
             await asyncio.sleep(0.5)
@@ -97,8 +97,8 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
     session = sessions[0]
     assert session.origin_adapter == "redis"
-    # Title format: $initiator[project] - custom title
-    assert session.title.startswith(f"${initiator_computer}[")
+    # Title format: $initiator > $computer[project] - custom title
+    assert session.title.startswith(f"${initiator_computer} > $")
     assert "Test AI-to-AI Session" in session.title
     # Description is optional, just verify session was created
 
@@ -176,7 +176,7 @@ async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram)
             b"channel_metadata": b"{}",
         }
 
-        await redis_adapter._handle_incoming_message(message_data)
+        await redis_adapter._handle_incoming_message(request_id, message_data)
 
         await asyncio.sleep(0.5)
 
@@ -249,7 +249,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
         b"channel_metadata": b"{}",
     }
 
-    await redis_adapter._handle_incoming_message(message_data)
+    await redis_adapter._handle_incoming_message(request_id, message_data)
 
     # Get created session
     sessions = await daemon.db.list_sessions()

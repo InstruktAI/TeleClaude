@@ -118,11 +118,11 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 
                 # Verify /cd call
                 assert mock_send.call_args_list[1][1]["command"] == "/cd /home/user/project"
-                assert mock_send.call_args_list[1][1]["metadata"]["session_id"] == "remote-uuid-123"
+                assert mock_send.call_args_list[1][1]["session_id"] == "remote-uuid-123"
 
                 # Verify /claude call
                 assert mock_send.call_args_list[2][1]["command"] == "/claude"
-                assert mock_send.call_args_list[2][1]["metadata"]["session_id"] == "remote-uuid-123"
+                assert mock_send.call_args_list[2][1]["session_id"] == "remote-uuid-123"
 
                 mock_read.assert_called_once()  # Wait for response
 

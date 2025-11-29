@@ -7,7 +7,6 @@ import os
 import re
 import time
 import types
-import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
@@ -20,7 +19,6 @@ from mcp.types import JSONRPCMessage, TextContent, Tool
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
-from teleclaude.core.command_handlers import get_short_project_name
 from teleclaude.core.db import db
 
 if TYPE_CHECKING:
@@ -555,17 +553,14 @@ class TeleClaudeMCPServer:
             logger.warning("Computer %s not online, skipping list_projects", computer)
             return []
 
-        # Generate session ID for this query
-        session_id = str(uuid.uuid4())
-        logger.debug("Sending list_projects request to %s with request_id=%s", computer, session_id[:8])
-
         # Send list_projects command via AdapterClient
-        await self.client.send_request(computer_name=computer, request_id=session_id, command="list_projects")
-        logger.debug("Request sent, reading response...")
+        # Transport layer generates request_id from Redis message ID
+        message_id = await self.client.send_request(computer_name=computer, command="list_projects")
+        logger.debug("Request sent with message_id=%s, reading response...", message_id[:15])
 
         # Read response from AdapterClient (one-shot, not streaming)
         try:
-            response_data = await self.client.read_response(session_id, timeout=3.0)
+            response_data = await self.client.read_response(message_id, timeout=3.0)
             envelope = json.loads(response_data.strip())
 
             # Handle error response
@@ -619,24 +614,18 @@ class TeleClaudeMCPServer:
         if not target_online:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
-        # Generate request ID for this operation
-        request_id = f"create-session-{int(time.time() * 1000)}"
-
-        # Build session title
-        short_project = get_short_project_name(project_dir)
-        title = f"{self.computer_name} > {computer}[{short_project}] - AI Session"
-
         # Send new_session command to remote - uses standardized handle_create_session
-        await self.client.send_request(
+        # Title will be auto-generated on remote based on initiator metadata
+        # Transport layer generates request_id from Redis message ID
+        message_id = await self.client.send_request(
             computer_name=computer,
-            request_id=request_id,
             command="/new_session",
-            metadata={"title": title, "project_dir": project_dir},
+            metadata={"project_dir": project_dir},
         )
 
         # Wait for response with remote session_id
         try:
-            response_data = await self.client.read_response(request_id, timeout=5.0)
+            response_data = await self.client.read_response(message_id, timeout=5.0)
             envelope = json.loads(response_data.strip())
 
             # Handle error response
@@ -655,22 +644,18 @@ class TeleClaudeMCPServer:
 
             # Now send /cd command if project_dir provided
             if project_dir:
-                cd_request_id = f"cd-{int(time.time() * 1000)}"
                 await self.client.send_request(
                     computer_name=computer,
-                    request_id=cd_request_id,
                     command=f"/cd {project_dir}",
-                    metadata={"session_id": remote_session_id},
+                    session_id=str(remote_session_id),
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
                 # Send /claude command to start Claude Code
-                claude_request_id = f"claude-{int(time.time() * 1000)}"
                 await self.client.send_request(
                     computer_name=computer,
-                    request_id=claude_request_id,
                     command="/claude",
-                    metadata={"session_id": remote_session_id},
+                    session_id=str(remote_session_id),
                 )
                 logger.debug("Sent /claude command to remote session %s", remote_session_id[:8])
 
@@ -742,16 +727,12 @@ class TeleClaudeMCPServer:
         Yields:
             str: Acknowledgment message
         """
-        # Generate request ID
-        request_id = f"send-{int(time.time() * 1000)}"
-
         # Send message to remote computer (session_id identifies both computer and session)
         try:
             await self.client.send_request(
                 computer_name="",  # Extracted from session_id by AdapterClient
-                request_id=request_id,
                 command=f"message {message}",  # Use 'message' command to trigger MESSAGE event
-                metadata={"session_id": session_id},
+                session_id=session_id,
             )
 
             yield f"Message sent to session {session_id[:8]}. Use teleclaude__get_session_data to check output."
@@ -778,23 +759,20 @@ class TeleClaudeMCPServer:
         Returns:
             Dict with session data, status, and messages
         """
-        # Generate unique request ID
-        request_id = f"{session_id}-data-{int(time.time() * 1000)}"
-
         # Build command with optional timestamp
         command = f"/get_session_data {since_timestamp}" if since_timestamp else "/get_session_data"
 
         # Send request to remote computer
-        await self.client.send_request(
+        # Transport layer generates request_id from Redis message ID
+        message_id = await self.client.send_request(
             computer_name=computer,
-            request_id=request_id,
             command=command,
-            metadata={"session_id": session_id},
+            session_id=session_id,
         )
 
         # Read response (remote reads claude_session_file)
         try:
-            response = await self.client.read_response(request_id, timeout=5.0)
+            response = await self.client.read_response(message_id, timeout=5.0)
             envelope = json.loads(response)
 
             # Handle error response

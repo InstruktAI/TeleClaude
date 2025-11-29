@@ -180,12 +180,20 @@ async def handle_create_session(  # type: ignore[explicit-any]
     short_project = get_short_project_name(working_dir)
 
     # Create topic first with custom title if provided
-    # For AI-to-AI sessions (initiator present), use initiator name in title
-    title_computer = initiator if initiator else computer_name
-    if args and len(args) > 0:
-        base_title = f"${title_computer}[{short_project}] - {' '.join(args)}"
+    # For AI-to-AI sessions (initiator present), use "initiator > computer[project]" format
+    # For human sessions, use "computer[project]" format
+    if initiator:
+        # AI-to-AI: "$MozBook > $RasPi[apps/TeleClaude] - New session"
+        if args and len(args) > 0:
+            base_title = f"${initiator} > ${computer_name}[{short_project}] - {' '.join(args)}"
+        else:
+            base_title = f"${initiator} > ${computer_name}[{short_project}] - New session"
     else:
-        base_title = f"${title_computer}[{short_project}] - New session"
+        # Human-initiated (Telegram): "$RasPi[apps/TeleClaude] - New session"
+        if args and len(args) > 0:
+            base_title = f"${computer_name}[{short_project}] - {' '.join(args)}"
+        else:
+            base_title = f"${computer_name}[{short_project}] - New session"
 
     # Ensure title is unique (appends counter if needed)
     title = await ensure_unique_title(base_title)

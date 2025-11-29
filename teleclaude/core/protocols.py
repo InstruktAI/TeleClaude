@@ -20,49 +20,51 @@ class RemoteExecutionProtocol(Protocol):
     async def send_request(
         self,
         computer_name: str,
-        request_id: str,
         command: str,
+        session_id: Optional[str] = None,
         metadata: Optional[Dict[str, object]] = None,
     ) -> str:
         """Send request to remote computer via transport layer.
 
+        Transport layer generates request_id from Redis for correlation.
+
         Args:
             computer_name: Target computer identifier
-            request_id: Correlation ID for request/response matching
             command: Command to send to remote computer
+            session_id: Optional TeleClaude session ID (for session commands)
             metadata: Optional metadata (title, project_dir for session creation)
 
         Returns:
-            Redis stream entry ID
+            Redis message ID (for response correlation via read_response)
 
         Raises:
             RuntimeError: If transport layer fails
         """
         ...
 
-    async def send_response(self, request_id: str, data: str) -> str:
+    async def send_response(self, message_id: str, data: str) -> str:
         """Send response for an ephemeral request.
 
         Args:
-            request_id: Correlation ID from the request
+            message_id: Stream entry ID from the original request
             data: Response data (typically JSON)
 
         Returns:
-            Stream entry ID
+            Stream entry ID of the response
 
         Raises:
             RuntimeError: If transport layer fails
         """
         ...
 
-    async def read_response(self, request_id: str, timeout: float = 3.0) -> str:
+    async def read_response(self, message_id: str, timeout: float = 3.0) -> str:
         """Read response from ephemeral request (non-streaming).
 
         Used for one-shot queries like list_projects, get_computer_info.
         Reads the response in one go instead of streaming.
 
         Args:
-            request_id: Request ID to read response from
+            message_id: Stream entry ID from the original request
             timeout: Maximum time to wait for response (seconds, default 3.0)
 
         Returns:

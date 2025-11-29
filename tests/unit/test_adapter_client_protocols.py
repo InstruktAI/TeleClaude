@@ -60,12 +60,12 @@ async def test_send_request_success(adapter_client_with_transport, mock_transpor
     """Test sending request to remote computer via transport adapter."""
     # Execute
     stream_id = await adapter_client_with_transport.send_request(
-        computer_name="comp1", request_id="req_123", command="ls -la", metadata={"key": "value"}
+        computer_name="comp1", command="ls -la", metadata={"key": "value"}
     )
 
     # Verify
     assert stream_id == "req_123"
-    mock_transport_adapter.send_request.assert_called_once_with("comp1", "req_123", "ls -la", {"key": "value"})
+    mock_transport_adapter.send_request.assert_called_once_with("comp1", "ls -la", None, {"key": "value"})
 
 
 @pytest.mark.asyncio
@@ -73,7 +73,7 @@ async def test_send_request_no_transport_fails(adapter_client_without_transport)
     """Test sending request fails when no transport adapter available."""
     with pytest.raises(RuntimeError, match="No transport adapter available"):
         await adapter_client_without_transport.send_request(
-            computer_name="comp1", request_id="req_123", command="ls -la"
+            computer_name="comp1", command="ls -la"
         )
 
 
@@ -146,8 +146,8 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
 async def test_send_response_success(adapter_client_with_transport, mock_transport_adapter):
     """Test sending response for ephemeral request."""
     # Execute
-    stream_id = await adapter_client_with_transport.send_response(request_id="req_123", data='{"status": "ok"}')
+    stream_id = await adapter_client_with_transport.send_response(message_id="msg_123", data='{"status": "ok"}')
 
     # Verify
     assert stream_id == "resp_123"
-    mock_transport_adapter.send_response.assert_called_once_with("req_123", '{"status": "ok"}')
+    mock_transport_adapter.send_response.assert_called_once_with("msg_123", '{"status": "ok"}')

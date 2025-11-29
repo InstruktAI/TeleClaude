@@ -36,76 +36,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - If you find multiple `.db` files, DELETE the extras immediately
 - Any code that creates a new database file is a CRITICAL BUG
 
-### Rule #2: PROPER TEST STRUCTURE ONLY
+### Rule #2: MCP CONNECTION POLICY
 
-**NEVER create ad-hoc test scripts or one-off testing files!**
+**CRITICAL**: MCP connection behavior depends on terminal context.
 
-- ❌ NO standalone test scripts (e.g., `test_something.py` in project root)
-- ❌ NO temporary test files for quick validation
-- ❌ NO `if __name__ == "__main__"` test runners outside of `tests/` directory
-- ✅ ONLY create tests in the proper `tests/unit/` or `tests/integration/` directories
-- ✅ ONLY use pytest framework with proper fixtures and markers
-- ✅ ALL tests must be runnable via `make test`, `make test-unit`, or `make test-e2e`
+**In tmux sessions:**
+- MCP connection automatically reconnects after `make restart`
+- You can continue testing MCP tools immediately
 
-### Rule #3: CODE ORGANIZATION
-
-**YOU WILL BE REVIEWED BY WORLD-CLASS ENGINEERS. FOLLOW THESE RULES WITHOUT EXCEPTION.**
-
-1. **File Size Limit: 500 lines maximum** - Extract code into separate modules if exceeded
-2. **Extract Utilities to Separate Files** - Utility functions NEVER belong in class files
-3. **Class Cohesion** - Classes should only contain methods related to their core responsibility
-4. **Module-Level Functions vs Class Methods** - If it's not using `self`, it doesn't belong in the class
-5. **Single Responsibility Principle** - Each module, class, and function does ONE thing
-
-**🚨 ANTI-PATTERN CHECKLIST - STOP if you're about to write:**
-
-- `thing.thing = ...` → Creating confusing double references (session_manager.session_manager, db.db)
-- `self.something_manager = ...` → Should be module-level import instead
-- Passing singletons as parameters → Use `from module import singleton` instead
-- Three+ lines to access a singleton → Should be one import line
-- `def __init__(self, x, y, z, a, b, c):` → Too many dependencies, use module-level imports
-
-**First-principles question:** "Would a junior dev understand this in 5 seconds?" If no, simplify.
-
-### Rule #4: IMPORT POLICY
-
-**ALL imports MUST be at the top of files** - `import-outside-toplevel` is enforced by pylint with `--fail-on` flag. NO exceptions.
-
-### Rule #5: TEST EXECUTION POLICY
-
-**NEVER manually wait for tests. Just run `make test`.**
-
-- ❌ NO `sleep` or manual waits for test results
-- ❌ NO `asyncio.sleep()` in tests (use deterministic sync)
-- ✅ Pytest handles timeouts (5s per test, configured in pyproject.toml)
-- ✅ Total test suite: <10 seconds (unit <1s, integration <5s)
-- ✅ If tests timeout, fix the test - don't wait longer
-
-### Rule #6: TEST CLEANUP POLICY
-
-**CRITICAL**: After running tests, you MUST clean up background bash processes:
-
-```bash
-# Check for any background bash shells you started
-/bashes
-
-# Kill each one using KillShell tool
-# Example: KillShell(shell_id="abc123")
-```
-
-**Why this matters:**
-
-- Background bash processes continue running after tests complete
-- They consume resources and may interfere with production daemon
-- Multiple abandoned processes accumulate over time
-
-**When to clean up:**
-
-- **ALWAYS** after running any tests (`make test`, `pytest`, etc.)
-- After debugging test failures
-- Before reporting completion to user
-
-**Note**: Test fixtures already clean up tmux sessions and database files automatically - you only need to clean up background bash processes you manually started.
+**In normal terminal sessions:**
+- MCP connection is PERMANENTLY LOST after `make restart`
+- Claude Code maintains old socket connection that cannot reconnect
+- You CANNOT do anything to fix this
+- You MUST ask the user to restart the Claude Code session
+- If MCP tools return empty/stale results after restart, ask user: "The MCP connection was lost during daemon restart. Please restart this Claude Code session to reconnect."
 
 ## Essential Development Workflow
 
@@ -357,15 +301,17 @@ docs/troubleshooting.md
 
 ### Rsync Development Workflow
 
+**CRITICAL: ALWAYS use `bin/rsync.sh` wrapper - NEVER raw rsync commands!**
+
+The wrapper automatically uses `.rsyncignore` to protect `config.yml`, `.env`, databases, and other local files.
+
 **1. Make changes locally** (on development machine)
 
-**2. Sync to remote computers** with rsync:
+**2. Sync to remote computers**:
 
 ```bash
-# Sync to a specific computer
-rsync -avz --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-  /Users/Morriz/Documents/Workspace/morriz/teleclaude/ \
-  morriz@raspberrypi.local:/home/morriz/apps/TeleClaude/
+# Sync to raspi
+bin/rsync.sh raspi
 
 # Restart daemon on remote
 ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart'
@@ -373,6 +319,10 @@ ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart
 # Monitor remote logs
 ssh -A morriz@raspberrypi.local 'tail -f /var/log/teleclaude.log'
 ```
+
+**Available computers in wrapper:**
+- `raspi` → raspberrypi.local
+- `raspi4` → raspi4.local
 
 **3. Iterate quickly** - repeat steps 1-2 until feature works
 
@@ -394,17 +344,14 @@ git push
 **For changes that need testing across multiple computers:**
 
 ```bash
-# Define target computers
-TARGETS="morriz@raspberrypi.local morriz@macbook.local"
-
-# Sync to all targets
-for target in $TARGETS; do
-  echo "Syncing to $target..."
-  rsync -avz --exclude='.git' --exclude='__pycache__' \
-    /path/to/teleclaude/ $target:/path/to/TeleClaude/
-  ssh -A $target 'cd /path/to/TeleClaude && make restart'
+# Sync to all targets using wrapper
+for computer in raspi raspi4; do
+  bin/rsync.sh $computer
+  ssh -A morriz@${computer}.local 'cd /home/morriz/apps/TeleClaude && make restart'
 done
 ```
+
+**NEVER use raw rsync commands** - they risk overwriting config.yml and .env!
 
 ### When to Commit
 

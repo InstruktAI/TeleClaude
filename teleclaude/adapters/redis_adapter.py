@@ -11,7 +11,6 @@ import logging
 import re
 import ssl
 import time
-import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
@@ -472,16 +471,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     logger.debug("Requesting computer_info from %s", computer_name)
 
                     # Request computer info via get_computer_info command
-                    request_id = str(uuid.uuid4())
-                    logger.debug(
-                        "Generated unique request_id=%s for get_computer_info from %s", request_id, computer_name
-                    )
+                    # Transport layer generates request_id from Redis message ID
                     computer_info = None
                     try:
-                        await self.send_request(computer_name, request_id, "get_computer_info")
+                        message_id = await self.send_request(computer_name, "get_computer_info")
+                        logger.debug("Sent get_computer_info to %s, message_id=%s", computer_name, message_id[:15])
 
                         # Wait for response (short timeout) - use read_response for one-shot query
-                        response_data = await self.client.read_response(request_id, timeout=30.0)
+                        response_data = await self.client.read_response(message_id, timeout=3.0)
                         envelope = json.loads(response_data.strip())
 
                         # Unwrap envelope response
@@ -599,8 +596,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         await self._set_last_processed_message_id(last_id_str)
                         logger.debug("Saved last_id %s before processing", last_id_str)
 
-                        # Process message (may call os._exit(0) for deploy)
-                        await self._handle_incoming_message(data)
+                        # Process message with Redis message_id for response correlation
+                        await self._handle_incoming_message(last_id_str, data)
 
             except asyncio.CancelledError:
                 break
@@ -608,10 +605,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 logger.error("Message polling error: %s", e)
                 await asyncio.sleep(5)  # Back off on error
 
-    async def _handle_incoming_message(self, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]
+    async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]
         """Handle incoming message from Redis stream.
 
         Args:
+            message_id: Redis stream entry ID (used for response correlation via output:{message_id})
             data: Message data dict from Redis stream
         """
         try:
@@ -620,10 +618,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             if msg_type == "system":
                 return await self._handle_system_message(data)
 
-            # For ephemeral requests (get_computer_info, list_projects), session_id IS the request_id
-            # For regular session commands, session_id is the actual session ID
+            # Extract session_id if present (for session commands)
+            # Empty for ephemeral requests (list_projects, get_computer_info)
             session_id = data.get(b"session_id", b"").decode("utf-8")
-            request_id = session_id  # Use session_id as request_id for response correlation
             message_str = data.get(b"command", b"").decode(
                 "utf-8"
             )  # Field name stays "command" for protocol compatibility
@@ -689,10 +686,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             # Result is always envelope: {"status": "success/error", "data": ..., "error": ...}
             response_json = json.dumps(result)
             logger.info(
-                ">>> About to send_response for request_id: %s, response length: %d", request_id[:8], len(response_json)
+                ">>> About to send_response for message_id: %s, response length: %d", message_id[:8], len(response_json)
             )
-            await self.send_response(request_id, response_json)
-            logger.info(">>> send_response completed for request_id: %s", request_id[:8])
+            await self.send_response(message_id, response_json)
+            logger.info(">>> send_response completed for message_id: %s", message_id[:8])
 
         except Exception as e:
             logger.error("Failed to handle incoming message: %s", e)
@@ -911,7 +908,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     # === Request/Response pattern for ephemeral queries (list_projects, etc.) ===
 
     async def send_request(
-        self, computer_name: str, request_id: str, command: str, metadata: Optional[dict[str, object]] = None
+        self, computer_name: str, command: str, session_id: Optional[str] = None, metadata: Optional[dict[str, object]] = None
     ) -> str:
         """Send request to remote computer's message stream.
 
@@ -919,12 +916,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         Args:
             computer_name: Target computer name
-            request_id: Correlation ID for request/response matching
             command: Command to send
+            session_id: Optional TeleClaude session ID (for session commands)
             metadata: Optional metadata (title, project_dir for session creation)
 
         Returns:
-            Redis stream entry ID
+            Redis stream entry ID (used for response correlation)
         """
         if not self.redis:
             raise RuntimeError("Redis not initialized")
@@ -932,13 +929,16 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         message_stream = f"messages:{computer_name}"
         metadata = metadata or {}
 
-        # Build message data (session_id field kept for protocol compatibility)
-        data = {
-            b"session_id": request_id.encode("utf-8"),
+        # Build message data
+        data: dict[bytes, bytes] = {
             b"command": command.encode("utf-8"),
             b"timestamp": str(time.time()).encode("utf-8"),
             b"initiator": self.computer_name.encode("utf-8"),
         }
+
+        # Add session_id if provided (for session commands)
+        if session_id:
+            data[b"session_id"] = session_id.encode("utf-8")
 
         # Add optional metadata
         if "title" in metadata:
@@ -951,68 +951,64 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             channel_metadata_str = json.dumps(metadata["channel_metadata"])
             data[b"channel_metadata"] = channel_metadata_str.encode("utf-8")
 
-        # Send to Redis stream
-        logger.debug(
-            "About to XADD to stream=%s, data keys=%s",
-            message_stream,
-            [k.decode("utf-8") for k in data],
-        )
-
+        # Send to Redis stream - XADD returns unique message_id
+        # This message_id is used for response correlation (receiver sends response to output:{message_id})
         message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
+        message_id = message_id_bytes.decode("utf-8")
 
-        logger.debug("XADD returned message_id=%s", message_id_bytes.decode("utf-8"))
-        logger.info("Sent request to %s: request_id=%s, command=%s", computer_name, request_id[:8], command[:50])
-        return message_id_bytes.decode("utf-8")
+        logger.debug("XADD returned message_id=%s", message_id)
+        logger.info("Sent request to %s: message_id=%s, command=%s", computer_name, message_id[:15], command[:50])
+        return message_id
 
-    async def send_response(self, request_id: str, data: str) -> str:
+    async def send_response(self, message_id: str, data: str) -> str:
         """Send response for an ephemeral request directly to Redis stream.
 
         Used by command handlers (list_projects, etc.) to respond without DB session.
 
         Args:
-            request_id: Correlation ID from the request
+            message_id: Redis stream entry ID from the original request
             data: Response data (typically JSON)
 
         Returns:
-            Redis stream entry ID
+            Redis stream entry ID of the response
         """
         if not self.redis:
             raise RuntimeError("Redis not initialized")
 
-        output_stream = f"output:{request_id}"
+        output_stream = f"output:{message_id}"
         logger.debug(
-            "send_response() sending to stream=%s for request_id=%s (data_length=%d)",
+            "send_response() sending to stream=%s for message_id=%s (data_length=%d)",
             output_stream,
-            request_id,
+            message_id,
             len(data),
         )
 
-        message_id_bytes: bytes = await self.redis.xadd(
+        response_id_bytes: bytes = await self.redis.xadd(
             output_stream,
             {
                 b"chunk": data.encode("utf-8"),
                 b"timestamp": str(time.time()).encode("utf-8"),
-                b"request_id": request_id.encode("utf-8"),
+                b"message_id": message_id.encode("utf-8"),
             },
             maxlen=self.output_stream_maxlen,
         )
 
         logger.debug(
-            "send_response() completed for request_id=%s, stream=%s, message_id=%s",
-            request_id,
+            "send_response() completed for message_id=%s, stream=%s, response_id=%s",
+            message_id,
             output_stream,
-            message_id_bytes,
+            response_id_bytes,
         )
-        return message_id_bytes.decode("utf-8")
+        return response_id_bytes.decode("utf-8")
 
-    async def read_response(self, request_id: str, timeout: float = 3.0) -> str:
+    async def read_response(self, message_id: str, timeout: float = 3.0) -> str:
         """Read response from ephemeral request (non-streaming).
 
         Used for one-shot request/response like list_projects, get_computer_info.
         Reads once from the Redis stream instead of continuous polling.
 
         Args:
-            request_id: Request ID to read response from
+            message_id: Redis stream entry ID from the original request
             timeout: Maximum time to wait for response (seconds, default 3.0)
 
         Returns:
@@ -1024,7 +1020,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if not self.redis:
             raise RuntimeError("Redis not initialized")
 
-        output_stream = f"output:{request_id}"
+        output_stream = f"output:{message_id}"
         start_time = time.time()
         logger.debug("read_response() waiting for response on stream=%s, timeout=%s", output_stream, timeout)
 
@@ -1035,33 +1031,33 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 elapsed = time.time() - start_time
                 if elapsed > timeout:
                     logger.warning(
-                        "read_response() timed out after %d polls (%.1fs) for request %s",
+                        "read_response() timed out after %d polls (%.1fs) for message %s",
                         poll_count,
                         elapsed,
-                        request_id[:8],
+                        message_id[:8],
                     )
-                    raise TimeoutError(f"No response received for request {request_id[:8]} within {timeout}s")
+                    raise TimeoutError(f"No response received for message {message_id[:8]} within {timeout}s")
 
                 # Read from stream (blocking with 100ms timeout)
                 poll_count += 1
                 logger.debug(
-                    "read_response() poll #%d for request %s (elapsed=%.1fs)", poll_count, request_id[:8], elapsed
+                    "read_response() poll #%d for message %s (elapsed=%.1fs)", poll_count, message_id[:8], elapsed
                 )
                 messages = await self.redis.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
 
                 if messages:
                     # Got response - extract and return
                     logger.debug(
-                        "read_response() received message for request %s after %d polls", request_id[:8], poll_count
+                        "read_response() received response for message %s after %d polls", message_id[:8], poll_count
                     )
                     for _stream_name, stream_messages in messages:
-                        for _message_id, data in stream_messages:
+                        for _entry_id, data in stream_messages:
                             chunk_bytes: bytes = data.get(b"chunk", b"")
                             chunk: str = chunk_bytes.decode("utf-8")
                             if chunk:
                                 logger.debug(
-                                    "read_response() returning response for request %s (length=%d)",
-                                    request_id[:8],
+                                    "read_response() returning response for message %s (length=%d)",
+                                    message_id[:8],
                                     len(chunk),
                                 )
                                 return chunk
@@ -1070,7 +1066,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 await asyncio.sleep(0.1)
 
         except asyncio.CancelledError:
-            logger.debug("read_single_response cancelled for request %s", request_id[:8])
+            logger.debug("read_response cancelled for message %s", message_id[:8])
             raise
 
     async def send_system_command(

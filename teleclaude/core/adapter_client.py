@@ -813,48 +813,50 @@ class AdapterClient:
     async def send_request(
         self,
         computer_name: str,
-        request_id: str,
         command: str,
+        session_id: Optional[str] = None,
         metadata: Optional[dict[str, object]] = None,
     ) -> str:
         """Send request to remote computer via transport adapter.
 
+        Transport layer generates request_id from Redis for correlation.
+
         Args:
             computer_name: Target computer identifier
-            request_id: Correlation ID for request/response matching
             command: Command to send to remote computer
+            session_id: Optional TeleClaude session ID (for session commands)
             metadata: Optional metadata (title, project_dir for session creation)
 
         Returns:
-            Redis stream entry ID
+            Redis message ID (for response correlation via read_response)
 
         Raises:
             RuntimeError: If no transport adapter available
         """
         transport = self._get_transport_adapter()
-        return await transport.send_request(computer_name, request_id, command, metadata)
+        return await transport.send_request(computer_name, command, session_id, metadata)
 
-    async def send_response(self, request_id: str, data: str) -> str:
+    async def send_response(self, message_id: str, data: str) -> str:
         """Send response for an ephemeral request.
 
         Used by command handlers (list_projects, etc.) to respond without DB session.
 
         Args:
-            request_id: Correlation ID from the request
+            message_id: Stream entry ID from the original request
             data: Response data (typically JSON)
 
         Returns:
-            Stream entry ID
+            Stream entry ID of the response
 
         Raises:
             RuntimeError: If no transport adapter available
         """
         transport = self._get_transport_adapter()
-        return await transport.send_response(request_id, data)
+        return await transport.send_response(message_id, data)
 
     async def read_response(
         self,
-        request_id: str,
+        message_id: str,
         timeout: float = 3.0,
     ) -> str:
         """Read single response from request (for ephemeral request/response).
@@ -863,7 +865,7 @@ class AdapterClient:
         Reads the response in one go instead of streaming.
 
         Args:
-            request_id: Request ID to read response from
+            message_id: Stream entry ID from the original request
             timeout: Maximum time to wait for response (seconds, default 3.0)
 
         Returns:
@@ -874,7 +876,7 @@ class AdapterClient:
             TimeoutError: If no response received within timeout
         """
         transport = self._get_transport_adapter()
-        return await transport.read_response(request_id, timeout)
+        return await transport.read_response(message_id, timeout)
 
     async def stream_session_output(
         self,

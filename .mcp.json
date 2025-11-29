@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "teleclaude": {
+      "command": "stdio",
+      "args": [],
+      "transport": "unix",
+      "socket": "/tmp/teleclaude.sock"
+    }
+  }
+}
