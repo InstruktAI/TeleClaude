@@ -13,12 +13,39 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-REMOTE=$1
+REMOTE_ARG=$1
 shift
 
 # Get project root (script is in bin/)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Resolve shorthand computer names (convenience shortcuts)
+# If REMOTE_ARG looks like a computer name (no @ or :), resolve it
+if [[ ! "$REMOTE_ARG" =~ [@:] ]]; then
+    # Convert to lowercase for case-insensitive matching
+    REMOTE_LOWER=$(echo "$REMOTE_ARG" | tr '[:upper:]' '[:lower:]')
+
+    # Convenience shortcuts for known computers
+    # These are NOT a source of truth - just shortcuts to avoid typing full paths
+    case "$REMOTE_LOWER" in
+        raspi)
+            REMOTE="morriz@raspberrypi.local:/home/morriz/apps/TeleClaude/"
+            ;;
+        raspi4)
+            REMOTE="morriz@raspi4.local:/home/morriz/apps/TeleClaude/"
+            ;;
+        *)
+            echo "Error: Unknown computer shortcut '$REMOTE_ARG'"
+            echo "Available shortcuts: raspi, raspi4"
+            echo "Or use full remote path: user@host:/path/"
+            exit 1
+            ;;
+    esac
+else
+    # Already a full remote path
+    REMOTE="$REMOTE_ARG"
+fi
 
 # Verify .rsyncignore exists
 RSYNCIGNORE="$PROJECT_ROOT/.rsyncignore"

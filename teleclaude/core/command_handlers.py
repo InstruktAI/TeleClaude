@@ -771,14 +771,10 @@ async def handle_enter_command(  # type: ignore[explicit-any]
         client: AdapterClient for message cleanup
         start_polling: Function to start polling for a session
     """
-    message_id_obj = context.get("message_id")
-    message_id = str(message_id_obj) if message_id_obj else None
-    success = await _execute_and_poll(
+    # Send ENTER key (TUI interaction, no polling)
+    success = await _execute_control_key(
         terminal_bridge.send_enter,
         session,
-        message_id,
-        client,
-        start_polling,
     )
 
     if success:
@@ -959,7 +955,7 @@ async def handle_cd_session(  # type: ignore[explicit-any]
     context: dict[str, Any],
     args: list[str],
     client: "AdapterClient",
-    execute_terminal_command: Callable[[str, str, Optional[str]], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Change directory in session or list trusted directories.
 
@@ -998,9 +994,9 @@ async def handle_cd_session(  # type: ignore[explicit-any]
         target_dir = os.path.expanduser(config.computer.default_working_dir)
     cd_command = f"cd {shlex.quote(target_dir)}"
 
-    # Execute command and start polling
+    # Execute command WITHOUT polling (cd is instant)
     message_id = str(context.get("message_id"))
-    success = await execute_terminal_command(session.session_id, cd_command, message_id)
+    success = await execute_terminal_command(session.session_id, cd_command, message_id, False)
 
     # Save working directory to DB if successful
     if success:
@@ -1054,7 +1050,7 @@ async def handle_claude_session(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],
     args: list[str],
-    execute_terminal_command: Callable[[str, str, Optional[str]], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Claude Code in session with optional arguments.
 
@@ -1071,16 +1067,16 @@ async def handle_claude_session(  # type: ignore[explicit-any]
     else:
         cmd = base_cmd
 
-    # Execute command and start polling
+    # Execute command WITH polling (claude is long-running)
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session.session_id, cmd, message_id)
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
 
 
 @with_session
 async def handle_claude_resume_session(  # type: ignore[explicit-any]
     session: Session,
     context: dict[str, Any],
-    execute_terminal_command: Callable[[str, str, Optional[str]], Awaitable[bool]],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Claude Code session using explicit session ID from metadata.
 
@@ -1104,6 +1100,6 @@ async def handle_claude_resume_session(  # type: ignore[explicit-any]
         logger.info("Starting fresh claude session with --continue")
         cmd = f"{claude_cmd} --continue"
 
-    # Execute command and start polling
+    # Execute command WITH polling (claude is long-running)
     message_id = str(context.get("message_id"))
-    await execute_terminal_command(session.session_id, cmd, message_id)
+    await execute_terminal_command(session.session_id, cmd, message_id, True)

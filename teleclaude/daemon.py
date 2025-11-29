@@ -574,6 +574,7 @@ class TeleClaudeDaemon:
         session_id: str,
         command: str,
         _message_id: Optional[str] = None,
+        start_polling: bool = True,
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
@@ -583,6 +584,7 @@ class TeleClaudeDaemon:
             session_id: Session ID
             command: Command to execute
             _message_id: Message ID to cleanup (optional) - currently unused
+            start_polling: Whether to start polling after command execution (default: True)
 
         Returns:
             True if successful, False otherwise
@@ -625,11 +627,12 @@ class TeleClaudeDaemon:
         # - POST handler tracks message_id for deletion
         # - PRE handler deletes on NEXT user input (better UX - failed commands stay visible)
 
-        # Always start polling, but only pass marker_id if exit marker was appended
-        # For interactive commands (append_exit_marker=False), polling runs indefinitely (marker_id=None)
-        await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id)
+        # Start polling only if requested by handler
+        # Handlers know whether their commands need polling (cd=instant, claude=long-running)
+        if start_polling:
+            await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id)
 
-        logger.info("Executed command in session %s: %s", session_id[:8], command)
+        logger.info("Executed command in session %s: %s (polling=%s)", session_id[:8], command, start_polling)
         return True
 
     async def start(self) -> None:
