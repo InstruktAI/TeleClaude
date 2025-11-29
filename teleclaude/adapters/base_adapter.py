@@ -1,6 +1,5 @@
 """Base adapter interface for TeleClaude messaging platforms."""
 
-import json
 import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, AsyncIterator, Optional
@@ -226,72 +225,6 @@ class BaseAdapter(ABC):
 
     # ==================== Session Data Access ====================
 
-    async def get_session_data(
-        self,
-        session_id: str,
-        since_timestamp: Optional[str] = None,
-    ) -> dict[str, object]:
-        """Read session data from Claude Code session file.
-
-        NOTE: This method is not currently used. The actual implementation
-        is in teleclaude.core.command_handlers.handle_get_session_data() which
-        is called via event routing when /get_session_data command is received.
-
-        Kept for interface compatibility but not the active code path.
-
-        Args:
-            session_id: Session identifier
-            since_timestamp: Optional ISO 8601 UTC timestamp to filter messages since
-
-        Returns:
-            Dict with error (not implemented via this path)
-        """
-        return {
-            "status": "error",
-            "error": "get_session_data should be called via command_handlers, not directly",
-            "session_id": session_id,
-        }
-
-    async def _handle_get_session_data(
-        self,
-        args: str,
-        session_id: str,
-        metadata: Optional[dict[str, object]] = None,
-    ) -> Optional[str]:
-        """Handle /get_session_data command.
-
-        Reads claude_session_file and returns content, optionally filtered by timestamp.
-
-        Args:
-            args: Timestamp in ISO 8601 UTC format (optional)
-            session_id: Session identifier (unused - reads from request)
-            metadata: Command metadata with "session_id" to read
-
-        Returns:
-            JSON response with session data
-        """
-        logger.debug("_handle_get_session_data called with args=%s, metadata=%s", args, metadata)
-
-        # Extract target session_id from metadata (not the command's session_id)
-        target_session_id = metadata.get("session_id") if metadata else None
-        if not target_session_id:
-            logger.warning("get_session_data: no session_id in metadata")
-            return json.dumps(
-                {
-                    "status": "error",
-                    "error": "session_id not provided in metadata",
-                }
-            )
-
-        # Parse timestamp from args
-        since_timestamp = args.strip() if args else None
-        logger.debug("get_session_data: target_session=%s, since=%s", target_session_id[:8] if isinstance(target_session_id, str) else target_session_id, since_timestamp)
-
-        # Get session data
-        result = await self.get_session_data(str(target_session_id), since_timestamp)
-        logger.debug("get_session_data: result has %d messages", result.get("message_count", 0) if isinstance(result, dict) else 0)
-
-        return json.dumps(result)
 
     # ==================== Peer Discovery ====================
 

@@ -81,26 +81,25 @@ def parse_claude_transcript(transcript_path: str, title: str) -> str:
                             lines.append(formatted_thinking)
 
                         elif block_type == "tool_use":
-                            # Tool call - one-line format with indented json
+                            # Tool call - single line with serialized JSON
                             tool_name = block.get("name", "unknown")
                             tool_input = block.get("input", {})
+                            serialized_input = json.dumps(tool_input)
                             lines.append("")
-                            lines.append(f"🔧 TOOL CALL: {tool_name}")
-                            lines.append("")
-                            for input_line in json.dumps(tool_input, indent=2).split("\n"):
-                                lines.append(f"    {input_line}")
+                            lines.append(f"🔧 **TOOL CALL:** {tool_name} {serialized_input}")
                             last_section = "tool_use"
 
                         elif block_type == "tool_result":
-                            # Tool response - one-line format with indented block
+                            # Tool response - blockquote expandable format
                             is_error = block.get("is_error", False)
                             status_emoji = "❌" if is_error else "✅"
                             content_data = block.get("content", "")
                             lines.append("")
-                            lines.append(f"{status_emoji} TOOL RESPONSE:")
+                            lines.append(f"{status_emoji} **TOOL RESPONSE:**")
                             lines.append("")
-                            for response_line in str(content_data).split("\n"):
-                                lines.append(f"    {response_line}")
+                            lines.append("<blockquote expandable>")
+                            lines.append(str(content_data))
+                            lines.append("</blockquote>")
                             last_section = "tool_result"
 
     except Exception as e:
