@@ -745,7 +745,7 @@ class TeleClaudeMCPServer:
             await self.client.send_request(
                 computer_name="",  # Extracted from session_id by AdapterClient
                 request_id=request_id,
-                command=f"/send {message}",
+                command=f"message {message}",  # Use 'message' command to trigger MESSAGE event
                 metadata={"session_id": session_id},
             )
 
