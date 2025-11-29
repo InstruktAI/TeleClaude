@@ -374,27 +374,12 @@ class TelegramAdapter(UiAdapter):
         parse_mode_obj = (metadata or {}).get("parse_mode", "Markdown")
         parse_mode = str(parse_mode_obj) if parse_mode_obj is not None else None
 
-        # Send message with error handling for deleted topics
+        # Send message with unified error handling
         try:
             message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)
             return str(message.message_id)
-        except BadRequest as e:
-            error_msg = str(e).lower()
-            if any(
-                phrase in error_msg for phrase in ["message thread not found", "thread not found", "topic not found"]
-            ):
-                logger.warning("Topic %s was deleted for session %s", topic_id, session_id[:8])
-                # Emit session closed event (topic was deleted)
-                await self.client.handle_event(
-                    event=TeleClaudeEvents.SESSION_CLOSED,
-                    payload={"session_id": session_id},
-                    metadata={"adapter_type": "telegram", "topic_id": topic_id, "reason": "deleted"},
-                )
-                return None
-            raise
-        except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
-            # Network/rate limit errors - already retried by decorator, still failed
-            logger.error("Failed to send message after retries: %s", e)
+        except Exception as e:
+            await self._handle_telegram_error(session_id, e, "send")
             return None
 
     @command_retry(max_retries=3)
@@ -409,6 +394,45 @@ class TelegramAdapter(UiAdapter):
             parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
+
+    async def _handle_telegram_error(self, session_id: str, error: Exception, operation: str) -> bool:
+        """Handle common Telegram API errors with unified logic.
+
+        Args:
+            session_id: Session ID for event emission
+            error: Exception that occurred
+            operation: Operation name for logging ("send" or "edit")
+
+        Returns:
+            True if error was handled and caller should return success,
+            False if error was handled and caller should return failure,
+            Raises exception if error should be propagated
+        """
+        if isinstance(error, BadRequest):
+            error_msg = str(error).lower()
+            if any(
+                phrase in error_msg for phrase in ["message thread not found", "thread not found", "topic not found"]
+            ):
+                logger.warning("Topic was deleted for session %s during %s", session_id[:8], operation)
+                # Emit session closed event (topic was deleted)
+                await self.client.handle_event(
+                    event=TeleClaudeEvents.SESSION_CLOSED,
+                    payload={"session_id": session_id},
+                    metadata={"adapter_type": "telegram", "reason": "deleted"},
+                )
+                return False
+            if "can't parse entities" in error_msg or "can't find end of" in error_msg:
+                # Parse error - transient issue with complex output, continue polling
+                logger.warning("Markdown parse error during %s message (continuing polling): %s", operation, error)
+                return True
+            # Other BadRequest - propagate
+            raise error
+        if isinstance(error, (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError)):
+            # Network/rate limit errors - already retried by decorator, still failed
+            logger.error("Failed to %s message after retries: %s", operation, error)
+            return False
+        # Unknown error - propagate
+        raise error
 
     async def edit_message(
         self, session_id: str, message_id: str, text: str, metadata: Optional[dict[str, object]] = None
@@ -450,32 +474,9 @@ class TelegramAdapter(UiAdapter):
             elapsed = time.time() - start_time
             logger.debug("[TELEGRAM %s] edit_message completed in %.2fs", session_id[:8], elapsed)
             return True
-        except BadRequest as e:
-            error_msg = str(e).lower()
-            if any(
-                phrase in error_msg for phrase in ["message thread not found", "thread not found", "topic not found"]
-            ):
-                logger.warning("Topic was deleted for session %s during edit", session_id[:8])
-                # Emit session closed event (topic was deleted)
-                await self.client.handle_event(
-                    event=TeleClaudeEvents.SESSION_CLOSED,
-                    payload={"session_id": session_id},
-                    metadata={"adapter_type": "telegram", "reason": "deleted"},
-                )
-                return False
-            if "can't parse entities" in error_msg or "can't find end of" in error_msg:
-                # Parse error - transient issue with complex output, continue polling
-                logger.warning("Markdown parse error editing message %s (continuing polling): %s", message_id, e)
-                return True
-            logger.error("Failed to edit message: %s", e)
-            return False
-        except (NetworkError, TimedOut, RetryAfter, ConnectionError, TimeoutError) as e:
-            # Network/rate limit errors - already retried by decorator, still failed
-            logger.error("Failed to edit message after retries: %s", e)
-            return False
         except Exception as e:
-            logger.error("Failed to edit message: %s", e)
-            return False
+            # Use unified error handler - returns True for parse errors (continue), False for failures
+            return await self._handle_telegram_error(session_id, e, "edit")
         finally:
             # Remove from pending edits regardless of outcome
             self._pending_edits.pop(message_id, None)
