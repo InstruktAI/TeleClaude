@@ -196,7 +196,7 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
 
 
 @pytest.mark.integration
-async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram, monkeypatch):
+async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
     """Test teleclaude__send_file sends file via AdapterClient to origin adapter."""
     daemon = daemon_with_mocked_telegram
 
@@ -209,17 +209,16 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram, mon
         adapter_metadata={"channel_id": "12345"},
     )
 
-    # Set TELECLAUDE_SESSION_ID in environment
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", session.session_id)
-
     # Create temporary test file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
         tmp.write("Test file content for MCP upload")
         test_file_path = tmp.name
 
     try:
-        # Call MCP tool without session_id (uses environment)
-        result = await mcp_server.teleclaude__send_file(file_path=test_file_path, caption="Test upload from Claude")
+        # Call MCP tool with explicit session_id
+        result = await mcp_server.teleclaude__send_file(
+            session_id=session.session_id, file_path=test_file_path, caption="Test upload from Claude"
+        )
 
         # Verify success message
         assert "File sent successfully" in result
@@ -242,18 +241,17 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram, mon
 
 
 @pytest.mark.integration
-async def test_teleclaude_send_file_invalid_session(mcp_server, monkeypatch):
+async def test_teleclaude_send_file_invalid_session(mcp_server):
     """Test teleclaude__send_file fails gracefully with invalid session_id."""
-    # Set invalid session_id in environment
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "nonexistent-session-id")
-
     # Create temporary test file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
         tmp.write("Test content")
         test_file_path = tmp.name
 
     try:
-        result = await mcp_server.teleclaude__send_file(file_path=test_file_path)
+        result = await mcp_server.teleclaude__send_file(
+            session_id="nonexistent-session-id", file_path=test_file_path
+        )
 
         # Verify error message (session not found)
         assert "Error:" in result
@@ -263,7 +261,7 @@ async def test_teleclaude_send_file_invalid_session(mcp_server, monkeypatch):
 
 
 @pytest.mark.integration
-async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_mocked_telegram, monkeypatch):
+async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_mocked_telegram):
     """Test teleclaude__send_file fails gracefully for missing files."""
     daemon = daemon_with_mocked_telegram
 
@@ -276,11 +274,10 @@ async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_moc
         adapter_metadata={"channel_id": "12345"},
     )
 
-    # Set session_id in environment
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", session.session_id)
-
     # Try to send non-existent file
-    result = await mcp_server.teleclaude__send_file(file_path="/tmp/nonexistent-file-12345.txt")
+    result = await mcp_server.teleclaude__send_file(
+        session_id=session.session_id, file_path="/tmp/nonexistent-file-12345.txt"
+    )
 
     # Verify error message
     assert "Error:" in result

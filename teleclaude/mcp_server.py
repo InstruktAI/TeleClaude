@@ -289,13 +289,17 @@ class TeleClaudeMCPServer:
                     name="teleclaude__send_file",
                     title="TeleClaude: Send File",
                     description=(
-                        "Send a file to the current TeleClaude session. "
+                        "Send a file to the specified TeleClaude session. "
                         "Use this to send files for download (logs, reports, screenshots, etc.). "
-                        "Automatically uses the current session from TELECLAUDE_SESSION_ID environment variable."
+                        "Get session_id from TELECLAUDE_SESSION_ID environment variable."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
+                            "session_id": {
+                                "type": "string",
+                                "description": "TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)",
+                            },
                             "file_path": {
                                 "type": "string",
                                 "description": "Absolute path to file to send",
@@ -305,7 +309,7 @@ class TeleClaudeMCPServer:
                                 "description": "Optional caption for the file",
                             },
                         },
-                        "required": ["file_path"],
+                        "required": ["session_id", "file_path"],
                     },
                 ),
                 Tool(
@@ -424,10 +428,11 @@ class TeleClaudeMCPServer:
                 deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
                 return [TextContent(type="text", text=json.dumps(deploy_result, default=str))]
             elif name == "teleclaude__send_file":
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
                 file_path = str(arguments.get("file_path", "")) if arguments else ""
                 caption_obj = arguments.get("caption") if arguments else None
                 caption = str(caption_obj) if caption_obj else None
-                result_text = await self.teleclaude__send_file(file_path, caption)
+                result_text = await self.teleclaude__send_file(session_id, file_path, caption)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__init_from_claude":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -1010,23 +1015,17 @@ class TeleClaudeMCPServer:
 
         return results
 
-    async def teleclaude__send_file(self, file_path: str, caption: str | None = None) -> str:
-        """Send file via current session's origin adapter.
-
-        Automatically uses TELECLAUDE_SESSION_ID from environment.
+    async def teleclaude__send_file(self, session_id: str, file_path: str, caption: str | None = None) -> str:
+        """Send file via session's origin adapter.
 
         Args:
+            session_id: TeleClaude session UUID
             file_path: Absolute path to file
             caption: Optional caption
 
         Returns:
             Success message or error
         """
-        # Get session_id from environment
-        session_id = os.getenv("TELECLAUDE_SESSION_ID")
-        if not session_id:
-            return "Error: TELECLAUDE_SESSION_ID not found in environment. This tool must be called from within a TeleClaude session."
-
         path = Path(file_path)
         if not path.exists():
             return f"Error: File not found: {file_path}"
