@@ -141,11 +141,16 @@ class TeleClaudeDaemon:
 
         # Initialize MCP server (if enabled)
         self.mcp_server: Optional[TeleClaudeMCPServer] = None
+        logger.debug("MCP enabled: %s", config.mcp.enabled)
         if config.mcp.enabled:
-            self.mcp_server = TeleClaudeMCPServer(
-                adapter_client=self.client,
-                terminal_bridge=terminal_bridge,
-            )
+            try:
+                self.mcp_server = TeleClaudeMCPServer(
+                    adapter_client=self.client,
+                    terminal_bridge=terminal_bridge,
+                )
+                logger.info("MCP server object created successfully")
+            except Exception as e:
+                logger.error("Failed to create MCP server: %s", e, exc_info=True)
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
@@ -650,9 +655,12 @@ class TeleClaudeDaemon:
                         logger.warning("Failed to parse deploy status: %s", e)
 
         # Start MCP server in background task (if enabled)
+        logger.debug("MCP server object exists: %s", self.mcp_server is not None)
         if self.mcp_server:
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
             logger.info("MCP server starting in background")
+        else:
+            logger.warning("MCP server not started - object is None")
 
         # Start periodic cleanup task (runs every hour)
         self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
