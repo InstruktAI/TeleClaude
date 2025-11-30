@@ -18,6 +18,7 @@ import os
 import sys
 
 from teleclaude.config import config
+from teleclaude.constants import DEFAULT_CLAUDE_COMMAND
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import Db
 from teleclaude.logging_config import setup_logging
@@ -71,14 +72,17 @@ async def main() -> None:
             await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
             await asyncio.sleep(3.0)  # Wait for Claude to fully exit (needs time to disconnect MCP, cleanup state)
 
+        # Get base command from config with fallback to constant
+        base_cmd = config.mcp.claude_command if hasattr(config.mcp, 'claude_command') else DEFAULT_CLAUDE_COMMAND
+
         # Build restart command using Claude session ID from database
         if claude_session_id:
             # Resume existing Claude session (database updated by SessionStart hook via MCP)
-            restart_cmd = f"claude --dangerously-skip-permissions --resume {claude_session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
+            restart_cmd = f"{base_cmd} --resume {claude_session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"
             logger.info("Resuming Claude session %s (from database)", claude_session_id[:8])
         else:
             # No existing session - start fresh (NEVER use --continue in multi-session environment!)
-            restart_cmd = "claude --dangerously-skip-permissions"
+            restart_cmd = base_cmd
             logger.info("Starting fresh Claude session (no session ID in database)")
 
         # Use terminal_bridge.send_keys() which handles both text and Enter

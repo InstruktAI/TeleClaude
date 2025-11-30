@@ -57,7 +57,7 @@ telegram:
 mcp:
   enabled: true
   socket_path: /tmp/teleclaude.sock
-  claude_command: claude --dangerously-skip-permissions
+  claude_command: claude --dangerously-skip-permissions --settings '{"forceLoginMethod": "claudeai"}'
 
 # Remote computers for rsync during development (AI-to-AI testing)
 # Only needed on development machines that sync to remote computers

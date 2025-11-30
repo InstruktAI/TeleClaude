@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from teleclaude.config import config
+from teleclaude.constants import DEFAULT_CLAUDE_COMMAND
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
@@ -1046,8 +1047,10 @@ async def handle_claude_session(  # type: ignore[explicit-any]
         args: Command arguments (passed to claude command)
         execute_terminal_command: Function to execute terminal command
     """
+    # Get base command from config with fallback to constant
+    base_cmd = config.mcp.claude_command if hasattr(config.mcp, 'claude_command') else DEFAULT_CLAUDE_COMMAND
+
     # Build command with args (properly quoted for shell)
-    base_cmd = "claude --dangerously-skip-permissions"
     if args:
         # Join args and wrap in double quotes for shell (escape any existing double quotes)
         joined_args = ' '.join(args).replace('"', '\\"')
@@ -1077,7 +1080,9 @@ async def handle_claude_resume_session(  # type: ignore[explicit-any]
     metadata = session.adapter_metadata or {}
     claude_session_id = metadata.get("claude_session_id")
     project_dir = metadata.get("project_dir") or await terminal_bridge.get_current_directory(session.tmux_session_name)
-    claude_cmd = "claude --dangerously-skip-permissions"
+
+    # Get base command from config with fallback to constant
+    claude_cmd = config.mcp.claude_command if hasattr(config.mcp, 'claude_command') else DEFAULT_CLAUDE_COMMAND
 
     # Build command
     if claude_session_id:
