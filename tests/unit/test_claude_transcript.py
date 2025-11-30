@@ -25,13 +25,13 @@ def test_parse_claude_transcript_with_title():
 
         # Verify user message
         assert "## 👤 User" in result
-        assert "**hello**" in result
+        assert "hello" in result
 
         # Verify assistant thinking (italic)
         assert "*User said hello*" in result
 
-        # Verify assistant text (bold)
-        assert "**Hi there**" in result
+        # Verify assistant text (no bold)
+        assert "Hi there" in result
 
         # Cleanup
         Path(f.name).unlink()
@@ -87,8 +87,8 @@ def test_parse_claude_transcript_grouping():
         assert result.count("## 👤 User") == 1
 
         # Both user messages should be present
-        assert "**User 1**" in result
-        assert "**User 2**" in result
+        assert "User 1" in result
+        assert "User 2" in result
 
         Path(f.name).unlink()
 

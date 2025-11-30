@@ -89,7 +89,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
             await redis_adapter._handle_incoming_message(request_id, message_data)
 
             # Wait for async operations to complete
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.01)
 
     # Verify session was created
     sessions = await daemon.db.list_sessions()
@@ -178,7 +178,7 @@ async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram)
 
         await redis_adapter._handle_incoming_message(request_id, message_data)
 
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.01)
 
     # Verify session was created
     sessions = await daemon.db.list_sessions()
@@ -257,7 +257,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     session = sessions[0]
 
     # Wait for commands to execute
-    await asyncio.sleep(2.0)
+    await asyncio.sleep(0.01)
 
     # Capture terminal output
     output = await terminal_bridge.capture_pane(session.tmux_session_name)

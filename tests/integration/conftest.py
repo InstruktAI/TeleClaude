@@ -185,6 +185,23 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             """Health check."""
             return True
 
+        async def keys(self, pattern):
+            """Get keys matching pattern."""
+            import re
+
+            # Convert Redis pattern to regex
+            if isinstance(pattern, bytes):
+                pattern = pattern.decode("utf-8")
+
+            # Redis pattern: * = any chars, ? = one char
+            # Convert to regex
+            regex_pattern = pattern.replace("*", ".*").replace("?", ".")
+            regex = re.compile(f"^{regex_pattern}$")
+
+            # Filter keys
+            matching = [k.encode("utf-8") if isinstance(k, str) else k for k in self.data.keys() if regex.match(str(k))]
+            return matching
+
     # Mock Redis adapter connection and messaging methods
     redis_adapter = daemon.client.adapters.get("redis")
     if redis_adapter:
@@ -209,6 +226,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         monkeypatch.setattr(telegram_adapter, "send_file", AsyncMock(return_value="file-msg-789"))
         monkeypatch.setattr(telegram_adapter, "create_channel", AsyncMock(return_value="12345"))
         monkeypatch.setattr(telegram_adapter, "update_channel_title", AsyncMock(return_value=True))
+        monkeypatch.setattr(telegram_adapter, "delete_channel", AsyncMock(return_value=True))
         monkeypatch.setattr(telegram_adapter, "send_general_message", AsyncMock(return_value="msg-456"))
 
     # CRITICAL: Mock terminal_bridge.send_keys to prevent actual command execution

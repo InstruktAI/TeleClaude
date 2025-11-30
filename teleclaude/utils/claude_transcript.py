@@ -54,7 +54,7 @@ def parse_claude_transcript(transcript_path: str, title: str) -> str:
                         lines.append("## 👤 User")
                         lines.append("")
                         last_section = "user"
-                    lines.append(f"**{content}**")
+                    lines.append(content)
                 elif isinstance(content, list):
                     # Assistant or user message with blocks
                     for block in content:
@@ -68,7 +68,7 @@ def parse_claude_transcript(transcript_path: str, title: str) -> str:
                                 lines.append("")
                                 last_section = "assistant"
                             text = block.get("text", "")
-                            lines.append(f"**{text}**")
+                            lines.append(text)
 
                         elif block_type == "thinking":
                             # Thinking block (only in assistant messages)

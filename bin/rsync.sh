@@ -55,11 +55,13 @@ fi
 echo "Syncing TeleClaude..."
 echo "  Source: $PROJECT_ROOT/"
 echo "  Remote: $REMOTE"
-echo "  Exclude file: $RSYNCIGNORE"
+echo "  Exclude files: .rsyncignore, .gitignore"
 echo ""
 
-# Execute rsync with MANDATORY exclude-from
-rsync -avz --exclude-from="$RSYNCIGNORE" "$@" "$PROJECT_ROOT/" "$REMOTE"
+# Execute rsync with MANDATORY exclude patterns:
+# - .rsyncignore (rsync-specific patterns)
+# - .gitignore (using filter syntax for proper gitignore semantics)
+rsync -avz --exclude-from="$RSYNCIGNORE" --filter=':- .gitignore' "$@" "$PROJECT_ROOT/" "$REMOTE"
 
 echo ""
 echo "✓ Sync complete"

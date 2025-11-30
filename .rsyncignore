@@ -1,60 +1,28 @@
 # Rsync exclude patterns for TeleClaude
 # Prevents overwriting local configuration when syncing between computers
+# NOTE: .gitignore is also used as exclude file, only add items NOT in .gitignore
 
-# Local configuration files (NEVER sync these)
-config.yml
-.env
+# Local configuration variants
 .env.*
 
-# Database files (unique per computer)
-*.db
+# Database variants (*.db is in .gitignore)
 *.db-shm
 *.db-wal
 
-# Git directory
+# Git directory (critical - never sync)
 .git/
 
-# Python virtual environment
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# Build artifacts
-*.egg-info/
-dist/
-build/
-
-# IDE files
+# IDE files (entire directory, .gitignore only has specific files)
 .vscode/
-.idea/
 
-# OS files
-.DS_Store
+# OS files (Windows)
 Thumbs.db
-
-# Log files
-*.log
 
 # Temporary files
 *.tmp
-*.swp
-*.swo
-*~
 
 # Upload directory (could contain sensitive user files)
 uploads/
-
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
-
-# Local development
-.history/
-trees/
 
 # Session data
 session-env/

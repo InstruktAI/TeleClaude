@@ -123,7 +123,7 @@ class TeleClaudeMCPServer:
                         "1) Call teleclaude__list_projects FIRST to discover available projects "
                         "2) Match and select the correct project from the results "
                         "3) Use the exact project path from list_projects in the project_dir parameter here. "
-                        "Returns session_id and streams initial response."
+                        "Returns session_id. Wait 10 seconds then use teleclaude__get_session_data to check progress."
                     ),
                     inputSchema={
                         "type": "object",
@@ -140,35 +140,52 @@ class TeleClaudeMCPServer:
                                     "Do NOT guess or construct paths - always use teleclaude__list_projects first."
                                 ),
                             },
+                            "title": {
+                                "type": "string",
+                                "description": (
+                                    "Session title describing the task (e.g., 'Debug auth flow', 'Review PR #123'). "
+                                    "Use 'TEST: {description}' prefix for testing sessions."
+                                ),
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": (
+                                    "The initial task or prompt to send to Claude Code "
+                                    "(e.g., 'Read README and summarize', 'Trace message flow from Telegram to session'). "
+                                    "Session starts immediately processing this message."
+                                ),
+                            },
                         },
-                        "required": ["computer", "project_dir"],
+                        "required": ["computer", "project_dir", "title", "message"],
                     },
                 ),
                 Tool(
                     name="teleclaude__send_message",
                     title="TeleClaude: Send Message",
                     description=(
-                        "Send message to an existing Claude Code session and stream initial output. "
-                        "**Interest Window Pattern**: Streams output for 15 seconds (configurable), then detaches. "
-                        "This allows you to peek at initial execution to verify the task started correctly. "
-                        "**IMPORTANT**: After this tool returns, you MUST call teleclaude__get_session_status "
-                        "repeatedly to monitor progress until task completes or you determine it's safe to let run. "
+                        "Send message to an existing Claude Code session. "
+                        "After calling this tool, wait a few seconds then use teleclaude__get_session_data "
+                        "to retrieve the session output and see the response. "
                         "Use teleclaude__list_sessions to find session_id or "
                         "teleclaude__start_session to create new one."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name (same as used in teleclaude__start_session)",
+                            },
                             "session_id": {
                                 "type": "string",
-                                "description": "Session ID from teleclaude__start_session or teleclaude__list_sessions",
+                                "description": "Session ID from teleclaude__start_session",
                             },
                             "message": {
                                 "type": "string",
                                 "description": "Message or command to send to Claude Code",
                             },
                         },
-                        "required": ["session_id", "message"],
+                        "required": ["computer", "session_id", "message"],
                     },
                 ),
                 Tool(
@@ -380,15 +397,18 @@ class TeleClaudeMCPServer:
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 project_dir_obj = arguments.get("project_dir") if arguments else None
                 project_dir = str(project_dir_obj) if project_dir_obj else None
-                result = await self.teleclaude__start_session(computer, project_dir)
+                title = str(arguments.get("title", "")) if arguments else ""
+                message = str(arguments.get("message", "")) if arguments else ""
+                result = await self.teleclaude__start_session(computer, project_dir, title, message)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
+                computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 message = str(arguments.get("message", "")) if arguments else ""
                 # Collect all chunks from async generator
                 chunks: list[str] = []
-                async for chunk in self.teleclaude__send_message(session_id, message):
+                async for chunk in self.teleclaude__send_message(computer, session_id, message):
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
@@ -579,7 +599,8 @@ class TeleClaudeMCPServer:
         self,
         computer: str,
         project_dir: str,
-        title: Optional[str] = None,
+        title: str,
+        message: str,
     ) -> dict[str, object]:
         """Create remote session via request/response pattern.
 
@@ -595,8 +616,8 @@ class TeleClaudeMCPServer:
             computer: Target computer name (from teleclaude__list_computers)
             project_dir: Absolute path to project directory on remote computer
                 (from teleclaude__list_projects)
-            title: Optional custom title (use "TEST: {description}" for testing sessions)
-                If None, auto-generates based on initiator metadata
+            title: Session title describing the task (use "TEST: {description}" for testing sessions)
+            message: Initial task or prompt to send to Claude Code
 
         Returns:
             dict with remote session_id and status
@@ -610,11 +631,8 @@ class TeleClaudeMCPServer:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
         # Send new_session command to remote - uses standardized handle_create_session
-        # Title: custom if provided, otherwise auto-generated on remote
         # Transport layer generates request_id from Redis message ID
-        metadata: dict[str, object] = {"project_dir": project_dir}
-        if title:
-            metadata["title"] = title
+        metadata: dict[str, object] = {"project_dir": project_dir, "title": title}
 
         message_id = await self.client.send_request(
             computer_name=computer,
@@ -650,13 +668,13 @@ class TeleClaudeMCPServer:
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
-                # Send /claude command to start Claude Code
-                await self.client.send_request(
-                    computer_name=computer,
-                    command="/claude",
-                    session_id=str(remote_session_id),
-                )
-                logger.debug("Sent /claude command to remote session %s", remote_session_id[:8])
+            # Send /claude command with message to start Claude Code
+            await self.client.send_request(
+                computer_name=computer,
+                command=f"/claude '{message}'",
+                session_id=str(remote_session_id),
+            )
+            logger.debug("Sent /claude command with message to remote session %s", remote_session_id[:8])
 
             return {"session_id": remote_session_id, "status": "success"}
 
@@ -711,7 +729,7 @@ class TeleClaudeMCPServer:
         ]
 
     async def teleclaude__send_message(
-        self, session_id: str, message: str
+        self, computer: str, session_id: str, message: str
     ) -> AsyncIterator[str]:
         """Send message to remote session via request/response pattern.
 
@@ -719,17 +737,17 @@ class TeleClaudeMCPServer:
         and returns acknowledgment. Use teleclaude__get_session_data to pull results.
 
         Args:
+            computer: Target computer name
             session_id: Remote session ID (from teleclaude__start_session)
             message: Message/command to send to remote Claude Code
 
         Yields:
             str: Acknowledgment message
         """
-        # Send message to remote computer (session_id identifies both computer and session)
         try:
             await self.client.send_request(
-                computer_name="",  # Extracted from session_id by AdapterClient
-                command=f"message {message}",  # Use 'message' command to trigger MESSAGE event
+                computer_name=computer,
+                command=f"message {message}",
                 session_id=session_id,
             )
 

@@ -640,12 +640,17 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             # Emit event to daemon via client
             event_type: EventType = cmd_name  # type: ignore[assignment]
 
-            # MESSAGE events use "text" in payload, commands use "args"
+            # MESSAGE and CLAUDE events use text in payload (keep message as single string)
+            # Other commands use args list
             payload: dict[str, object]
             if event_type == TeleClaudeEvents.MESSAGE:
                 # Join args back into single text string for MESSAGE events
                 payload = {"session_id": session_id, "text": " ".join(args) if args else ""}
                 logger.debug("Emitting MESSAGE event with text: %s", " ".join(args) if args else "(empty)")
+            elif event_type == TeleClaudeEvents.CLAUDE:
+                # Join args back into single string for /claude command (passed to handle_claude_session)
+                payload = {"session_id": session_id, "args": [" ".join(args)] if args else []}
+                logger.debug("Emitting CLAUDE event with args: %s", [" ".join(args)] if args else [])
             else:
                 payload = {"session_id": session_id, "args": args}
                 logger.debug("Emitting %s event with args: %s", event_type, args)

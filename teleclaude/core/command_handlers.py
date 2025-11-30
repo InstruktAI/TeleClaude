@@ -1046,10 +1046,12 @@ async def handle_claude_session(  # type: ignore[explicit-any]
         args: Command arguments (passed to claude command)
         execute_terminal_command: Function to execute terminal command
     """
-    # Build command with args
+    # Build command with args (properly quoted for shell)
     base_cmd = "claude --dangerously-skip-permissions"
     if args:
-        cmd = f"{base_cmd} {' '.join(args)}"
+        # Join args and wrap in double quotes for shell (escape any existing double quotes)
+        joined_args = ' '.join(args).replace('"', '\\"')
+        cmd = f'{base_cmd} "{joined_args}"'
     else:
         cmd = base_cmd
 

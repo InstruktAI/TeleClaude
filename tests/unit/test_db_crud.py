@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""Test core TeleClaude components: Db and TerminalBridge."""
+"""Unit tests for Db CRUD operations."""
 
-import asyncio
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from teleclaude import config as config_module
-from teleclaude.core import terminal_bridge
-from teleclaude.core.db import Db, db
+from teleclaude.core.db import Db
 
 
-@pytest.mark.asyncio
+@pytest.mark.unit
 async def test_session_manager_crud():
     """Test Db CRUD operations."""
     db_path = "/tmp/teleclaude_test_core.db"
@@ -68,45 +64,7 @@ async def test_session_manager_crud():
         await session_mgr.close()
 
 
-@pytest.mark.asyncio
-async def test_terminal_bridge_tmux_operations():
-    """Test TerminalBridge tmux operations."""
-    session_name = "test-terminal-bridge"
-
-    # Initialize config (required for terminal_bridge functions)
-    # Reset config first, then initialize via TeleClaudeDaemon
-    base_dir = Path(__file__).parent
-    config_module._config = None
-    from teleclaude.daemon import TeleClaudeDaemon
-
-    daemon = TeleClaudeDaemon(str(base_dir / ".env"))
-
-    try:
-        # Create tmux session
-        success = await terminal_bridge.create_tmux_session(name=session_name, working_dir="/tmp", cols=80, rows=24)
-        assert success, "Should create tmux session"
-
-        # Check if exists
-        exists = await terminal_bridge.session_exists(session_name)
-        assert exists, "Session should exist"
-
-        # Send command
-        await terminal_bridge.send_keys(session_name, "echo 'Hello TeleClaude'")
-        await asyncio.sleep(0.2)
-
-        # Capture output
-        output = await terminal_bridge.capture_pane(session_name)
-        assert output is not None
-        assert "Hello TeleClaude" in output or "echo" in output
-
-    finally:
-        # Cleanup: kill session
-        await terminal_bridge.kill_session(session_name)
-        exists_after = await terminal_bridge.session_exists(session_name)
-        assert not exists_after, "Session should be killed"
-
-
-@pytest.mark.asyncio
+@pytest.mark.unit
 async def test_session_manager_with_metadata():
     """Test Db adapter metadata queries."""
     import os

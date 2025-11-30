@@ -94,7 +94,10 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
                 mock_read.return_value = '{"status": "success", "data": {"session_id": "remote-uuid-123"}}'
 
                 result = await mcp_server.teleclaude__start_session(
-                    computer="workstation", project_dir="/home/user/project"
+                    computer="workstation",
+                    project_dir="/home/user/project",
+                    title="TEST: start session",
+                    message="ls -la",
                 )
 
                 # Verify result (ONLY remote session ID returned, no local session)
@@ -120,8 +123,8 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
                 assert mock_send.call_args_list[1][1]["command"] == "/cd /home/user/project"
                 assert mock_send.call_args_list[1][1]["session_id"] == "remote-uuid-123"
 
-                # Verify /claude call
-                assert mock_send.call_args_list[2][1]["command"] == "/claude"
+                # Verify /claude call with message
+                assert mock_send.call_args_list[2][1]["command"] == "/claude 'ls -la'"
                 assert mock_send.call_args_list[2][1]["session_id"] == "remote-uuid-123"
 
                 mock_read.assert_called_once()  # Wait for response
@@ -134,13 +137,16 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
 
     # Remote session ID (no local session needed)
     remote_session_id = "remote-uuid-123"
+    target_computer = "RasPi"
 
     # Mock send_request (new architecture uses request/response)
     with patch.object(mcp_server.client, "send_request", new_callable=AsyncMock) as mock_send:
         mock_send.return_value = None
 
         chunks = []
-        async for chunk in mcp_server.teleclaude__send_message(session_id=remote_session_id, message="ls -la"):
+        async for chunk in mcp_server.teleclaude__send_message(
+            computer=target_computer, session_id=remote_session_id, message="ls -la"
+        ):
             chunks.append(chunk)
 
         output = "".join(chunks)
