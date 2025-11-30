@@ -45,31 +45,7 @@ git push
 
 If push fails, stop and report the error to the user.
 
-## Step 4: Cache Deployment Targets (BEFORE Restart)
-
-**CRITICAL:** Get computer list and paths BEFORE restarting (MCP may disconnect during restart)
-
-1. Get list of computers: `teleclaude__list_computers()`
-2. For each computer, get teleclaude project path: `teleclaude__list_projects(computer)`
-3. Remember this information (computer host names and their teleclaude paths) for Step 6
-
-## Step 5: Restart Local TeleClaude & Claude Code
-
-Restart the local TeleClaude daemon and Claude Code session:
-
-```bash
-make restart
-```
-
-This ensures:
-
-- Local daemon runs latest code
-- Claude Code session reconnects MCP servers automatically
-- Work continues immediately with "continue" message
-
-Wait 5 seconds for services to stabilize before proceeding.
-
-## Step 6: Deploy to All Remote Machines
+## Step 5: Deploy to All Remote Machines
 
 **Try MCP deployment first (only works if mcp reconnected after restart):**
 
@@ -85,7 +61,7 @@ This will:
 
 **If MCP deployment unavailable after restart, fall back to SSH deployment:**
 
-Use the computer list and paths remembered from Step 4.
+Use the computer list and paths from `remote_computers` section in config.yml
 
 **For each computer**, run this SSH command with 10 second timeout:
 
@@ -93,15 +69,12 @@ Use the computer list and paths remembered from Step 4.
 ssh -A {user}@{host} 'cd <teleclaude-path> && git pull && make restart && sleep 5 && pgrep -f teleclaude.daemon'
 ```
 
-Replace `{user}` with the user field, `{host}` with the host field, and `<teleclaude-path>` with the path from Step 4.
-
 **CRITICAL:**
 
 - Use `-A` flag for SSH agent forwarding
 - Use timeout of 10000ms for each SSH command
-- Run commands sequentially (one computer at a time)
-- Wait 5 seconds after restart for daemon to stabilize
-- Check final status with `pgrep` after wait period
+- Run commands in parallel and observe output
+- Check status for slow computers with `make status` after giving it 5s extra
 
 Parse output from each computer to report deployment status (computer name, success/failure, new PID)
 
@@ -114,27 +87,11 @@ After deployment completes, report:
 - Deployment status for each machine (computer name, status, PID)
 - Any errors encountered
 
-## Important Notes
+# Important Notes
 
 - **Automatically commits changes** - If uncommitted changes exist, creates a commit first
 - Use this when you're ready to deploy changes to production (all machines)
 - For local-only commits without deployment, use `/commit-commands:commit` instead
-- If any step fails, stop and report the error (don't continue to next steps)
+- If you see any files that you rsynced blocking the git pull (BE SURE!), then `git checkout .` first and try again
+- If any other step fails, stop and report the error (don't continue to next steps)
 - Uses `git pull --rebase` to keep linear history (avoids merge commits)
-
-## Typical Workflow
-
-**In worktree** (feature development):
-
-```
-/commit-commands:commit  # per task (multiple times)
-/commit-commands:commit  # per task
-/commit-commands:commit  # per task
-```
-
-**After merging to main**:
-
-```
-git merge {feature-branch}  # brings all commits to main
-/deploy              # push + deploy everything
-```
