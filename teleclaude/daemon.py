@@ -40,7 +40,7 @@ from teleclaude.core.events import (
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import Session
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_utils import get_output_file_path
+from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -104,10 +104,6 @@ class TeleClaudeDaemon:
         # Note: terminal_bridge and db are functional modules (no instantiation)
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
         self.output_poller = OutputPoller()
-
-        # Output file directory (persistent files for download button)
-        self.output_dir = Path("workspace")
-        self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
@@ -212,7 +208,6 @@ class TeleClaudeDaemon:
             audio_path=ctx.file_path,
             context=context,
             send_feedback=self._send_feedback_callback,
-            get_output_file=self._get_output_file_path,
         )
 
     async def _handle_session_closed(self, _event: str, context: dict[str, object]) -> None:
@@ -443,7 +438,7 @@ class TeleClaudeDaemon:
 
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
-        return get_output_file_path(session_id)
+        return get_output_file(session_id)
 
     async def _send_feedback_callback(
         self, sid: str, msg: str, metadata: Optional[dict[str, object]] = None

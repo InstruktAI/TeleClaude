@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.session_utils import get_output_file_path
+from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils import (
     format_active_status_line,
@@ -418,7 +418,6 @@ class UiAdapter(BaseAdapter):
             audio_path=audio_file_path,
             context=context,
             send_feedback=self.send_feedback,
-            get_output_file=self._get_output_file_path,
         )
 
     # ==================== File Handling ====================
@@ -457,8 +456,8 @@ class UiAdapter(BaseAdapter):
             session_id: Session identifier
 
         Returns:
-            Path object pointing to local file (e.g., "workspace/abc123/output.txt")
+            Path object pointing to local file (e.g., "workspace/abc123/tmux.txt")
 
         NOTE: This is different from get_session_file() which creates download UI.
         """
-        return get_output_file_path(session_id)
+        return get_output_file(session_id)

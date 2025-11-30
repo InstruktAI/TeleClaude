@@ -160,7 +160,6 @@ async def handle_voice(
     audio_path: str,
     context: dict[str, object],
     send_feedback: Callable[[str, str, Optional[dict[str, object]]], Awaitable[Optional[str]]],
-    get_output_file: Callable[[str], Path],
 ) -> None:
     """Handle voice message (adapter-agnostic utility).
 
@@ -169,7 +168,6 @@ async def handle_voice(
         audio_path: Path to downloaded audio file
         context: Platform-specific context (adapter_type, user_id, duration, etc.)
         send_feedback: Async function to send user feedback (session_id, message, append_to_existing)
-        get_output_file: Function to get output file path
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
     logger.info("Session ID: %s", session_id[:8])
@@ -202,8 +200,6 @@ async def handle_voice(
         return
 
     # Voice message accepted - transcribe and send to active process
-    get_output_file(session_id)
-
     # Check if output message exists (polling may have just started)
     ux_state = await db.get_ux_state(session_id)
     current_message_id = ux_state.output_message_id

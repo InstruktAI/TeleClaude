@@ -41,6 +41,7 @@ from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import Session
+from teleclaude.core.session_utils import get_output_file, get_session_output_dir
 from teleclaude.core.ux_state import get_system_ux_state, update_system_ux_state
 from teleclaude.utils import command_retry, strip_ansi_codes, strip_exit_markers
 from teleclaude.utils.claude_transcript import parse_claude_transcript
@@ -1406,7 +1407,7 @@ Current size: {}
                     caption = "Claude Code session transcript"
                 else:
                     # Fall back to terminal output
-                    output_file = Path("workspace") / session_id / "output.txt"
+                    output_file = get_output_file(session_id)
 
                     if not output_file.exists():
                         await query.edit_message_text("Output file not found", parse_mode="Markdown")
@@ -1829,7 +1830,7 @@ Usage:
 
         # Determine subdirectory based on file type
         subdir = "photos" if file_type == "photo" else "files"
-        session_workspace = Path("workspace") / session.session_id / subdir
+        session_workspace = get_session_output_dir(session.session_id) / subdir
         session_workspace.mkdir(parents=True, exist_ok=True)
         file_path = session_workspace / file_name
 

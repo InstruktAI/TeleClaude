@@ -11,11 +11,12 @@ This can happen when:
 """
 
 import logging
+import shutil
 from typing import TYPE_CHECKING
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.core.session_utils import OUTPUT_DIR
+from teleclaude.core.session_utils import get_session_output_dir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -65,14 +66,14 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
     except Exception as e:
         logger.warning("Failed to delete channel for stale session %s: %s", session_id[:8], e)
 
-    # Clean up session output file if exists (tmux_sessions/{session_id}.txt)
-    output_file = OUTPUT_DIR / f"{session_id}.txt"
-    if output_file.exists():
+    # Clean up session workspace directory if exists (workspace/{session_id}/)
+    workspace_dir = get_session_output_dir(session_id)
+    if workspace_dir.exists():
         try:
-            output_file.unlink()
-            logger.debug("Deleted output file for stale session %s", session_id[:8])
+            shutil.rmtree(workspace_dir)
+            logger.debug("Deleted workspace directory for stale session %s", session_id[:8])
         except Exception as e:
-            logger.warning("Failed to delete output file for stale session %s: %s", session_id[:8], e)
+            logger.warning("Failed to delete workspace for stale session %s: %s", session_id[:8], e)
 
     logger.info("Cleaned up stale session %s", session_id[:8])
     return True

@@ -8,8 +8,8 @@ from pathlib import Path
 
 from teleclaude.core.db import db
 
-# Session output directory (tmux_sessions/{session_id}/output.txt)
-OUTPUT_DIR = Path("tmux_sessions")
+# Session workspace directory (workspace/{session_id}/)
+OUTPUT_DIR = Path("workspace")
 
 
 async def ensure_unique_title(base_title: str) -> str:
@@ -48,10 +48,29 @@ async def ensure_unique_title(base_title: str) -> str:
     return f"{base_title} ({counter})"
 
 
-def get_output_file_path(session_id: str) -> Path:
-    """Get output file path for a session.
+def get_session_output_dir(session_id: str) -> Path:
+    """Get workspace directory for a session.
 
-    Creates tmux_sessions directory if it doesn't exist.
+    Creates workspace/{session_id} directory if it doesn't exist.
+    This directory stores all session-related files:
+    - tmux.txt: Terminal output
+    - Subdirectories for file downloads, etc.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Path to session workspace directory (workspace/{session_id}/)
+    """
+    session_dir = OUTPUT_DIR / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return session_dir
+
+
+def get_output_file(session_id: str) -> Path:
+    """Get output file for a session, creating it if needed.
+
+    Creates workspace/{session_id} directory and tmux.txt file if they don't exist.
     Output file stores RAW terminal output (with exit markers) for:
     1. Delta calculation (ignore old markers in scrollback)
     2. Download functionality (markers stripped on-the-fly)
@@ -61,7 +80,8 @@ def get_output_file_path(session_id: str) -> Path:
         session_id: Session identifier
 
     Returns:
-        Path to output file (tmux_sessions/{session_id}.txt)
+        Path to output file (workspace/{session_id}/tmux.txt)
     """
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    return OUTPUT_DIR / f"{session_id}.txt"
+    output_file = get_session_output_dir(session_id) / "tmux.txt"
+    output_file.touch(exist_ok=True)
+    return output_file
