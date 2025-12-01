@@ -44,7 +44,7 @@ from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
-from teleclaude.core.session_utils import get_output_file, get_session_output_dir
+from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.core.ux_state import get_system_ux_state, update_system_ux_state
 from teleclaude.utils import command_retry
 from teleclaude.utils.claude_transcript import parse_claude_transcript
@@ -1218,29 +1218,14 @@ Current size: {current_size}
                 ux_state = await db.get_ux_state(session_id)
                 claude_session_file = ux_state.claude_session_file if ux_state else None
 
-                if claude_session_file:
-                    # Get session for metadata
-                    session = await db.get_session(session_id)
-                    # Convert Claude transcript to markdown
-                    markdown_content = parse_claude_transcript(claude_session_file, session.title)
-                    filename = f"claude-{session_id:8}.md"
-                    caption = "Claude Code session transcript"
-                else:
-                    # Fall back to terminal output
-                    output_file = get_output_file(session_id)
-
-                    if not output_file.exists():
-                        await query.edit_message_text("Output file not found", parse_mode="Markdown")
-                        return
-
-                    # Read RAW output (contains ANSI codes and exit markers)
-                    raw_output = output_file.read_text()
-
-                    # Strip ANSI codes and exit markers before sending
-                    markdown_content = strip_ansi_codes(raw_output)
-                    markdown_content = strip_exit_markers(markdown_content)
-                    filename = f"output_{session_id[:8]}.txt"
-                    caption = "Full terminal output"
+                # Get session for metadata
+                session = await db.get_session(session_id)
+                if not session:
+                    return
+                # Convert Claude transcript to markdown
+                markdown_content = parse_claude_transcript(claude_session_file, session.title)
+                filename = f"claude-{session_id:8}.md"
+                caption = "Claude Code session transcript"
 
                 # Create a temporary file to send
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as tmp:
