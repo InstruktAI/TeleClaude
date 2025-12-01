@@ -38,19 +38,26 @@ target-version = ["py311"]
 profile = "black"
 
 [tool.mypy]
-check_untyped_defs = true
-disable_error_code = ["import-untyped"]
-disallow_any_explicit = true  # Ban Any - must use type: ignore to allow
-disallow_any_generics = true
-disallow_untyped_defs = true
-exclude = ["^venv/", "^.venv/"]
-files = ["**/*.py"]
-follow_imports = "skip"
+# MAXIMUM STRICTNESS - No Any, no untyped dict/list, no isinstance abuse
 python_version = "3.11"
-strict_optional = false
-warn_redundant_casts = true
-warn_return_any = true  # Warn when functions return Any
-warn_unused_ignores = true
+files = ["**/*.py"]
+exclude = ["^venv/", "^.venv/"]
+follow_imports = "silent"  # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
+
+# Enable ALL strict mode flags
+strict = true
+
+# Additional strictness beyond --strict (ban ALL forms of Any)
+disallow_any_unimported = true  # Ban Any from missing imports
+disallow_any_expr = true  # Ban Any in expressions (catches isinstance abuse)
+disallow_any_decorated = true  # Ban Any from untyped decorators
+disallow_any_explicit = true  # Ban explicit Any annotation
+
+# Import handling
+disable_error_code = [
+  "import-untyped",  # Still allow importing untyped third-party libs
+  "func-returns-value",  # Allow functions that only return None (handlers, etc.)
+]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -62,43 +69,32 @@ disallow_untyped_defs = false  # Allow untyped defs in tests only
 enable = ["import-outside-toplevel"]
 fail-on = ["import-outside-toplevel"]
 disable = [
-  "missing-docstring",
-  "missing-module-docstring",
-  "duplicate-code",
-  # Code complexity - requires refactoring
-  "too-many-instance-attributes",
-  "too-many-locals",
-  "too-many-return-statements",
-  "too-many-branches",
-  "too-many-statements",
-  "too-many-arguments",
-  "too-many-positional-arguments",
-  "too-many-public-methods",
-  "too-many-lines",
-  "too-few-public-methods",
-  # Intentional patterns
-  "broad-exception-caught",  # Daemon robustness
-  "consider-using-with",  # Lock file handle must stay open
-  "attribute-defined-outside-init",  # Async init pattern
-  "protected-access",  # Internal framework use
-  "redefined-outer-name",  # Function param shadowing
-  "unused-argument",  # Handler signatures
-  "fixme",  # TODOs are tracked
-  "no-else-return",  # Early returns
-  "arguments-renamed",  # Override compatibility
-  "consider-using-f-string",  # Legacy formatting
-  "unreachable",  # Debug code
-  "ungrouped-imports",  # Import order
-  "unnecessary-ellipsis",  # Required in Protocol definitions
-  "global-statement",  # Module-level singletons
-  "too-many-nested-blocks",  # Complex async logic
-  "redefined-builtin",  # type parameter shadows builtin
-  "line-too-long",  # Documentation
-  "unspecified-encoding",  # Default UTF-8 is fine
-  "assignment-from-none",  # Optional return values
-  "unnecessary-pass",  # Empty ABC methods
-  "wrong-import-position",  # TYPE_CHECKING guards
-  "unused-variable",  # Work in progress
+  "missing-docstring",  # TODO: Consider re-enabling - add docs to complex functions
+  "missing-module-docstring",  # TODO: Consider re-enabling - add module-level docs
+  # Code complexity - heavy refactoring needed (TODO: Fix gradually as we touch these files)
+  "too-many-return-statements",  # TODO: Reasonable for validation, review case-by-case
+  "too-many-branches",  # TODO: Use dict-dispatch or strategy pattern for >12 branches (10 violations)
+  "too-many-statements",  # TODO: Extract functions when >50 statements (9 violations)
+  "too-many-public-methods",  # TODO: Split classes with >20 public methods (4 violations)
+  "too-many-lines",  # TODO: Split modules over 1000 lines (5 violations)
+  "too-many-nested-blocks",  # TODO: Extract functions to reduce nesting >5 levels (5 violations)
+  "too-few-public-methods",  # Acceptable - single-method classes are valid (callables, strategies)
+  # Intentional patterns (TODO: Review each periodically)
+  "broad-exception-caught",  # Daemon robustness - TODO: Ensure all catch blocks log properly
+  "consider-using-with",  # Lock file handle must stay open - TODO: Document each instance
+  "attribute-defined-outside-init",  # Async init pattern - TODO: Verify all use async setup()
+  "protected-access",  # Internal framework use - TODO: Document why needed, fragile on updates
+  "redefined-outer-name",  # Function param shadowing - TODO: Review for clarity
+  "no-else-return",  # Early returns - acceptable style
+  "arguments-renamed",  # Override compatibility - acceptable for interface implementations
+  "ungrouped-imports",  # Import order - handled by isort
+  "unnecessary-ellipsis",  # Required in Protocol definitions - acceptable
+  "global-statement",  # Module-level singletons - TODO: Consider dependency injection instead
+  "redefined-builtin",  # type parameter shadows builtin - acceptable in type-heavy code
+  "line-too-long",  # Documentation - Black handles code lines
+  "unspecified-encoding",  # Default UTF-8 is fine in Python 3.11+
+  "assignment-from-none",  # Optional return values - acceptable pattern
+  "wrong-import-position",  # TYPE_CHECKING guards - acceptable pattern
 ]
 
 [tool.pylint.'FORMAT']

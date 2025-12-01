@@ -10,6 +10,11 @@ import pytest
 
 from teleclaude.core import file_handler
 from teleclaude.core.db import Db
+from teleclaude.core.models import (
+    MessageMetadata,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
 
 
 @pytest.fixture
@@ -28,12 +33,14 @@ async def session_manager():
 
 @pytest.fixture
 async def test_session(session_manager):
-    """Create test session."""
+    """Create test session with proper adapter metadata including output_message_id."""
     session = await session_manager.create_session(
         computer_name="test-computer",
         tmux_session_name="tmux_test",
         origin_adapter="telegram",
-        adapter_metadata={"channel_id": "123"},
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(topic_id=12345, output_message_id="msg_out")
+        ),
         title="Test Session",
     )
     return session
@@ -52,13 +59,12 @@ class TestFileUploadFlow:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_123"
 
         await session_manager.mark_polling(test_session.session_id)
-        # Update UX state with output message
-        await session_manager.update_ux_state(test_session.session_id, output_message_id="msg_out")
+        # output_message_id is already set in adapter_metadata by the fixture
 
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
@@ -90,12 +96,11 @@ class TestFileUploadFlow:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             return "msg_123"
 
         await session_manager.mark_polling(test_session.session_id)
-        # Update UX state with output message
-        await session_manager.update_ux_state(test_session.session_id, output_message_id="msg_out")
+        # output_message_id is already set in adapter_metadata by the fixture
 
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
@@ -118,7 +123,7 @@ class TestFileUploadFlow:
         """Test file is rejected when no process running."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_123"
 

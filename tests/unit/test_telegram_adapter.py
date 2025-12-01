@@ -3,12 +3,13 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from telegram.error import RetryAfter
+from telegram.error import BadRequest, RetryAfter
 
 from teleclaude import config as config_module
 from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.config import TrustedDir
+from teleclaude.core.models import MessageMetadata
 
 
 @pytest.fixture
@@ -94,7 +95,8 @@ class TestMessaging:
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
-            result = await telegram_adapter.edit_message("session-123", "456", "new text")
+            metadata = MessageMetadata()
+            result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata)
 
             assert result is True
             telegram_adapter.app.bot.edit_message_text.assert_called_once()
@@ -134,6 +136,8 @@ class TestChannelManagement:
     @pytest.mark.asyncio
     async def test_create_channel_success(self, telegram_adapter):
         """Test creating a forum topic."""
+        from teleclaude.core.models import ChannelMetadata, Session
+
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
 
@@ -141,7 +145,15 @@ class TestChannelManagement:
         mock_topic.message_thread_id = 123
         telegram_adapter.app.bot.create_forum_topic = AsyncMock(return_value=mock_topic)
 
-        result = await telegram_adapter.create_channel("session-123", "Test Topic", {})
+        mock_session = Session(
+            session_id="session-123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            origin_adapter="telegram",
+            title="Test Topic",
+        )
+
+        result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
 
         assert result == "123"
         telegram_adapter.app.bot.create_forum_topic.assert_called_once()
@@ -155,19 +167,22 @@ class TestChannelManagement:
         telegram_adapter.app.bot = MagicMock()
         telegram_adapter.app.bot.delete_forum_topic = AsyncMock()
 
+        from teleclaude.core.models import (
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
+        )
+
         # Mock db.get_session to return a session with channel metadata
         mock_session = Session(
             session_id="123",
             computer_name="test",
             tmux_session_name="test-session",
             origin_adapter="telegram",
-            adapter_metadata={"channel_id": "456"},
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
             title="Test",
         )
 
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=mock_session)
-            result = await telegram_adapter.delete_channel("123")
+        result = await telegram_adapter.delete_channel(mock_session)
 
         assert result is True
         telegram_adapter.app.bot.delete_forum_topic.assert_called_once()
@@ -192,19 +207,17 @@ class TestRateLimitHandling:
         )
 
         telegram_adapter.app = MagicMock()
-        telegram_adapter.app.bot = MagicMock()
+        mock_bot = MagicMock()
+        telegram_adapter.app.bot = mock_bot
 
         # First call raises rate limit, second succeeds
-        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=[RetryAfter(retry_after=0.01), None])
+        mock_bot.edit_message_text = AsyncMock(side_effect=[RetryAfter(retry_after=0.01), None])
 
-        # Mock session_manager
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
-            mock_sm.get_session = AsyncMock(return_value=mock_session)
+        metadata = MessageMetadata()
+        result = await telegram_adapter.edit_message(mock_session, "789", "updated text", metadata)
 
-            result = await telegram_adapter.edit_message("session-123", "789", "updated text")
-
-            assert result is True
-            assert telegram_adapter.app.bot.edit_message_text.call_count == 2
+        assert result is True
+        assert mock_bot.edit_message_text.call_count == 2
 
     @pytest.mark.asyncio
     async def test_edit_message_rate_limit_retries_and_fails(self, telegram_adapter):
@@ -222,20 +235,18 @@ class TestRateLimitHandling:
         )
 
         telegram_adapter.app = MagicMock()
-        telegram_adapter.app.bot = MagicMock()
+        mock_bot = MagicMock()
+        telegram_adapter.app.bot = mock_bot
 
         # Always raises rate limit
-        telegram_adapter.app.bot.edit_message_text = AsyncMock(side_effect=RetryAfter(retry_after=0.01))
+        mock_bot.edit_message_text = AsyncMock(side_effect=RetryAfter(retry_after=0.01))
 
-        # Mock session_manager
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
-            mock_sm.get_session = AsyncMock(return_value=mock_session)
+        metadata = MessageMetadata()
+        result = await telegram_adapter.edit_message(mock_session, "789", "updated text", metadata)
 
-            result = await telegram_adapter.edit_message("session-123", "789", "updated text")
-
-            assert result is False
-            # Should attempt 3 times (initial + 2 retries)
-            assert telegram_adapter.app.bot.edit_message_text.call_count == 3
+        assert result is False
+        # Should attempt 3 times (initial + 2 retries)
+        assert mock_bot.edit_message_text.call_count == 3
 
 
 class TestPlatformParameters:
@@ -278,9 +289,78 @@ class TestReplyMarkup:
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
-            result = await telegram_adapter.edit_message(
-                "session-123", "456", "text", metadata={"reply_markup": markup}
-            )
+            metadata = MessageMetadata(reply_markup=markup)  # type: ignore[arg-type]  # reply_markup is InlineKeyboardMarkup, testing with dict
+            result = await telegram_adapter.edit_message(mock_session, "456", "text", metadata)
 
             assert result is True
             telegram_adapter.app.bot.edit_message_text.assert_called_once()
+
+
+class TestMessageNotModified:
+    """Tests for handling 'Message is not modified' Telegram error."""
+
+    @pytest.mark.asyncio
+    async def test_edit_message_not_modified_returns_true(self, telegram_adapter):
+        """Test that 'Message is not modified' error returns True (benign error).
+
+        When Telegram returns this error, it means the message exists but
+        the content is unchanged. This should NOT clear output_message_id.
+        """
+        from teleclaude.core.models import Session
+
+        mock_session = Session(
+            session_id="session-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            origin_adapter="telegram",
+            title="Test Session",
+            adapter_metadata={"channel_id": "123"},
+        )
+
+        telegram_adapter.app = MagicMock()
+        mock_bot = MagicMock()
+        telegram_adapter.app.bot = mock_bot
+
+        # Raise "Message is not modified" error
+        mock_bot.edit_message_text = AsyncMock(
+            side_effect=BadRequest("Message is not modified: specified new message content is equal to current")
+        )
+
+        metadata = MessageMetadata()
+        result = await telegram_adapter.edit_message(mock_session, "789", "same text", metadata)
+
+        # Should return True (message exists, just unchanged)
+        assert result is True
+        assert mock_bot.edit_message_text.call_count == 1  # No retry needed
+
+    @pytest.mark.asyncio
+    async def test_edit_message_not_found_returns_false(self, telegram_adapter):
+        """Test that 'Message to edit not found' error returns False (real error).
+
+        When Telegram returns this error, the message was deleted.
+        This should clear output_message_id so a new message is created.
+        """
+        from teleclaude.core.models import Session
+
+        mock_session = Session(
+            session_id="session-123",
+            computer_name="test",
+            tmux_session_name="test-tmux",
+            origin_adapter="telegram",
+            title="Test Session",
+            adapter_metadata={"channel_id": "123"},
+        )
+
+        telegram_adapter.app = MagicMock()
+        mock_bot = MagicMock()
+        telegram_adapter.app.bot = mock_bot
+
+        # Raise "Message to edit not found" error
+        mock_bot.edit_message_text = AsyncMock(side_effect=BadRequest("Message to edit not found"))
+
+        metadata = MessageMetadata()
+        result = await telegram_adapter.edit_message(mock_session, "789", "new text", metadata)
+
+        # Should return False (message was deleted)
+        assert result is False
+        assert mock_bot.edit_message_text.call_count == 1  # No retry for BadRequest

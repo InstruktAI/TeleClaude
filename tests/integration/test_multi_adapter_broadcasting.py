@@ -4,13 +4,14 @@ Tests UC-M1: Telegram User with Redis Observer
 """
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import Db
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
 
 
 class MockTelegramAdapter(BaseAdapter):
@@ -24,34 +25,34 @@ class MockTelegramAdapter(BaseAdapter):
         self.edit_message_calls = []
         self.delete_message_calls = []
 
-    async def send_message(self, session_id: str, text: str, metadata=None) -> str:
-        self.send_message_calls.append((session_id, text, metadata))
+    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+        self.send_message_calls.append((session, text, metadata))
         return "msg-123"
 
-    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
-        self.edit_message_calls.append((session_id, message_id, text))
+    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+        self.edit_message_calls.append((session, message_id, text, metadata))
         return True
 
     async def delete_message(self, session_id: str, message_id: str) -> bool:
         self.delete_message_calls.append((session_id, message_id))
         return True
 
-    async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         return "channel-123"
 
-    async def update_channel_title(self, session_id: str, title: str) -> bool:
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         return True
 
-    async def close_channel(self, session_id: str) -> bool:
+    async def close_channel(self, session: Session) -> bool:
         return True
 
-    async def reopen_channel(self, session_id: str) -> bool:
+    async def reopen_channel(self, session: Session) -> bool:
         return True
 
-    async def delete_channel(self, session_id: str) -> bool:
+    async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+    async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
         return "file-msg-123"
 
     async def start(self):
@@ -79,32 +80,32 @@ class MockRedisAdapter(BaseAdapter):
         super().__init__()
         self.send_message_calls = []
 
-    async def send_message(self, session_id: str, text: str, metadata=None) -> str:
-        self.send_message_calls.append((session_id, text, metadata))
+    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+        self.send_message_calls.append((session, text, metadata))
         return "redis-msg-123"
 
-    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
         return True
 
     async def delete_message(self, session_id: str, message_id: str) -> bool:
         return True
 
-    async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         return "redis-channel-123"
 
-    async def update_channel_title(self, session_id: str, title: str) -> bool:
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         return True
 
-    async def close_channel(self, session_id: str) -> bool:
+    async def close_channel(self, session: Session) -> bool:
         return True
 
-    async def reopen_channel(self, session_id: str) -> bool:
+    async def reopen_channel(self, session: Session) -> bool:
         return True
 
-    async def delete_channel(self, session_id: str) -> bool:
+    async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+    async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
         return "redis-file-msg-123"
 
     async def is_session_observed(self, session_id: str) -> bool:
@@ -162,11 +163,14 @@ async def test_origin_adapter_receives_output():
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Send message (should route to origin)
-                result = await adapter_client.send_message(session.session_id, "Test output")
+                metadata = MessageMetadata()
+                result = await adapter_client.send_message(session, "Test output", metadata)
 
                 # Verify send_message called on TelegramAdapter
                 assert len(telegram_adapter.send_message_calls) == 1
-                assert telegram_adapter.send_message_calls[0] == (session.session_id, "Test output", None)
+                call_session, call_text, call_metadata = telegram_adapter.send_message_calls[0]
+                assert call_session.session_id == session.session_id
+                assert call_text == "Test output"
 
                 # Verify message_id returned
                 assert result == "msg-123"
@@ -218,7 +222,8 @@ async def test_redis_observer_skipped_no_ui():
                 }
 
                 # Send message (origin: telegram, observer: redis)
-                await adapter_client.send_message(session.session_id, "Test output")
+                metadata = MessageMetadata()
+                await adapter_client.send_message(session, "Test output", metadata)
 
                 # Verify telegram (origin) received message
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -250,35 +255,38 @@ async def test_ui_observer_receives_broadcasts():
         """Mock Slack adapter (UI-enabled observer)."""
 
         def __init__(self):
-            super().__init__()
+            # Create mock client
+            mock_client = AsyncMock()
+            mock_client.on = AsyncMock()
+            super().__init__(mock_client)
             self.send_message_calls = []
 
-        async def send_message(self, session_id: str, text: str, metadata=None) -> str:
-            self.send_message_calls.append((session_id, text, metadata))
+        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+            self.send_message_calls.append((session, text, metadata))
             return "slack-msg-123"
 
-        async def edit_message(self, session_id: str, message_id: str, text: str, metadata=None) -> bool:
+        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
             return True
 
         async def delete_message(self, session_id: str, message_id: str) -> bool:
             return True
 
-        async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+        async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
             return "slack-channel-123"
 
-        async def update_channel_title(self, session_id: str, title: str) -> bool:
+        async def update_channel_title(self, session: Session, title: str) -> bool:
             return True
 
-        async def close_channel(self, session_id: str) -> bool:
+        async def close_channel(self, session: Session) -> bool:
             return True
 
-        async def reopen_channel(self, session_id: str) -> bool:
+        async def reopen_channel(self, session: Session) -> bool:
             return True
 
-        async def delete_channel(self, session_id: str) -> bool:
+        async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
             return "slack-file-msg-123"
 
         async def start(self):
@@ -326,14 +334,17 @@ async def test_ui_observer_receives_broadcasts():
                 }
 
                 # Send message
-                await adapter_client.send_message(session.session_id, "Test output")
+                metadata = MessageMetadata()
+                await adapter_client.send_message(session, "Test output", metadata)
 
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
 
                 # Verify slack (observer with has_ui=True) also called (best-effort)
                 assert len(slack_adapter.send_message_calls) == 1
-                assert slack_adapter.send_message_calls[0] == (session.session_id, "Test output", None)
+                call_session, call_text, call_metadata = slack_adapter.send_message_calls[0]
+                assert call_session.session_id == session.session_id
+                assert call_text == "Test output"
 
     finally:
         await test_db.close()
@@ -359,35 +370,38 @@ async def test_observer_failure_does_not_affect_origin():
         """Mock Slack adapter that always fails."""
 
         def __init__(self):
-            super().__init__()
+            # Create mock client
+            mock_client = AsyncMock()
+            mock_client.on = AsyncMock()
+            super().__init__(mock_client)
             self.send_message_calls = []
 
-        async def send_message(self, session_id: str, text: str, metadata=None) -> str:
-            self.send_message_calls.append((session_id, text, metadata))
+        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+            self.send_message_calls.append((session, text, metadata))
             raise Exception("Slack API error")
 
-        async def edit_message(self, session_id: str, message_id: str, text: str, metadata=None) -> bool:
+        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
             return True
 
         async def delete_message(self, session_id: str, message_id: str) -> bool:
             return True
 
-        async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+        async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
             return "slack-channel-123"
 
-        async def update_channel_title(self, session_id: str, title: str) -> bool:
+        async def update_channel_title(self, session: Session, title: str) -> bool:
             return True
 
-        async def close_channel(self, session_id: str) -> bool:
+        async def close_channel(self, session: Session) -> bool:
             return True
 
-        async def reopen_channel(self, session_id: str) -> bool:
+        async def reopen_channel(self, session: Session) -> bool:
             return True
 
-        async def delete_channel(self, session_id: str) -> bool:
+        async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
             return "slack-file-msg-123"
 
         async def start(self):
@@ -435,7 +449,8 @@ async def test_observer_failure_does_not_affect_origin():
                 }
 
                 # Send message (should succeed despite slack failure)
-                result = await adapter_client.send_message(session.session_id, "Test output")
+                metadata = MessageMetadata()
+                result = await adapter_client.send_message(session, "Test output", metadata)
 
                 # Verify telegram (origin) succeeded
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -469,31 +484,31 @@ async def test_origin_failure_raises_exception():
         def __init__(self):
             super().__init__()
 
-        async def send_message(self, session_id: str, text: str, metadata=None) -> str:
+        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
             raise Exception("Telegram API error")
 
-        async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
+        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
             return True
 
         async def delete_message(self, session_id: str, message_id: str) -> bool:
             return True
 
-        async def create_channel(self, session_id: str, title: str, metadata: dict) -> str:
+        async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
             return "channel-123"
 
-        async def update_channel_title(self, session_id: str, title: str) -> bool:
+        async def update_channel_title(self, session: Session, title: str) -> bool:
             return True
 
-        async def close_channel(self, session_id: str) -> bool:
+        async def close_channel(self, session: Session) -> bool:
             return True
 
-        async def reopen_channel(self, session_id: str) -> bool:
+        async def reopen_channel(self, session: Session) -> bool:
             return True
 
-        async def delete_channel(self, session_id: str) -> bool:
+        async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session_id: str, file_path: str, caption: str = "") -> str:
+        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
             return "file-msg-123"
 
         async def start(self):
@@ -537,8 +552,9 @@ async def test_origin_failure_raises_exception():
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Attempt to send message (should raise)
+                metadata = MessageMetadata()
                 with pytest.raises(Exception, match="Telegram API error"):
-                    await adapter_client.send_message(session.session_id, "Test output")
+                    await adapter_client.send_message(session, "Test output", metadata)
 
     finally:
         await test_db.close()

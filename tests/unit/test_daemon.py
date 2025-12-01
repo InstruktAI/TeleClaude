@@ -289,6 +289,8 @@ def test_all_events_have_handlers():
     # Check each event has a handler
     # Redis-only events (handled in Redis adapter, not daemon)
     REDIS_ONLY_EVENTS = {"create_session"}
+    # UI adapter events (handled in UI adapters like TelegramAdapter, not daemon)
+    UI_ADAPTER_EVENTS = {"session_updated", "claude_event"}
 
     missing_handlers = []
     for event in all_events:
@@ -298,6 +300,10 @@ def test_all_events_have_handlers():
 
         # Redis-only events handled in Redis adapter
         if event in REDIS_ONLY_EVENTS:
+            continue
+
+        # UI adapter events handled in UI adapters
+        if event in UI_ADAPTER_EVENTS:
             continue
 
         # Non-command events need specific handler method

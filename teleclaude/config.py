@@ -98,6 +98,7 @@ class PollingConfig:
 class MCPConfig:
     enabled: bool
     socket_path: str
+    claude_command: str | None = None
 
 
 @dataclass
@@ -253,6 +254,7 @@ def _build_config(raw: dict[str, object]) -> Config:
         mcp=MCPConfig(
             enabled=bool(mcp["enabled"]),  # type: ignore[index]
             socket_path=str(mcp["socket_path"]),  # type: ignore[index]
+            claude_command=str(mcp["claude_command"]) if mcp.get("claude_command") else None,  # type: ignore[union-attr]
         ),
         redis=RedisConfig(
             enabled=bool(redis["enabled"]),  # type: ignore[index]

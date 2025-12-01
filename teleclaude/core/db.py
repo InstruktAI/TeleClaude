@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -13,7 +14,8 @@ import aiosqlite
 from teleclaude.config import config
 
 from . import ux_state
-from .models import Session
+from .events import TeleClaudeEvents
+from .models import MessageMetadata, Session, SessionAdapterMetadata
 from .ux_state import SessionUXState
 
 if TYPE_CHECKING:
@@ -59,6 +61,20 @@ class Db:
         # 3. If no: mark as inactive
         # Resetting here would prevent automatic polling restoration.
 
+    @property
+    def conn(self) -> aiosqlite.Connection:
+        """Get database connection, asserting it's initialized.
+
+        Returns:
+            Active database connection
+
+        Raises:
+            RuntimeError: If database not initialized
+        """
+        if self._db is None:
+            raise RuntimeError("Database not initialized - call initialize() first")
+        return self._db
+
     def set_client(self, client: "AdapterClient") -> None:
         """Wire database to AdapterClient for event emission.
 
@@ -79,7 +95,7 @@ class Db:
         tmux_session_name: str,
         origin_adapter: str,
         title: str,
-        adapter_metadata: Optional[dict[str, object]] = None,
+        adapter_metadata: Optional[SessionAdapterMetadata] = None,
         terminal_size: str = "80x24",
         working_directory: str = "~",
         description: Optional[str] = None,
@@ -110,7 +126,7 @@ class Db:
             tmux_session_name=tmux_session_name,
             origin_adapter=origin_adapter,
             title=title or f"[{computer_name}] New session",
-            adapter_metadata=adapter_metadata,
+            adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
             closed=False,
             created_at=now,
             last_activity=now,
@@ -120,7 +136,7 @@ class Db:
         )
 
         data = session.to_dict()
-        await self._db.execute(
+        await self.conn.execute(
             """
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
@@ -143,7 +159,7 @@ class Db:
                 data["description"],
             ),
         )
-        await self._db.commit()
+        await self.conn.commit()
 
         return session
 
@@ -156,7 +172,7 @@ class Db:
         Returns:
             Session object or None if not found
         """
-        cursor = await self._db.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+        cursor = await self.conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
         row = await cursor.fetchone()
 
         if not row:
@@ -174,7 +190,7 @@ class Db:
         Returns:
             Session object or None if not found
         """
-        cursor = await self._db.execute(
+        cursor = await self.conn.execute(
             f"SELECT * FROM sessions WHERE json_extract(ux_state, '$.{field}') = ?",
             (value,),
         )
@@ -216,7 +232,7 @@ class Db:
 
         query += " ORDER BY last_activity DESC"
 
-        cursor = await self._db.execute(query, params)
+        cursor = await self.conn.execute(query, params)
         rows = await cursor.fetchall()
 
         return [Session.from_dict(dict(row)) for row in rows]
@@ -231,51 +247,31 @@ class Db:
         if not fields:
             return
 
-        # Get old session state for event emission
-        old_session = await self.get_session(session_id)
-
-        # Serialize adapter_metadata if it's a dict
-        if "adapter_metadata" in fields and isinstance(fields["adapter_metadata"], dict):
-            fields["adapter_metadata"] = json.dumps(fields["adapter_metadata"])
+        # Serialize adapter_metadata if it's a dict or dataclass
+        if "adapter_metadata" in fields:
+            metadata = fields["adapter_metadata"]
+            if isinstance(metadata, dict):
+                fields["adapter_metadata"] = json.dumps(metadata)
+            elif hasattr(metadata, "__dataclass_fields__"):  # Check if it's a dataclass
+                fields["adapter_metadata"] = json.dumps(asdict(metadata))
+            # else: assume it's already JSON string
 
         set_clause = ", ".join(f"{key} = ?" for key in fields)
         values = list(fields.values()) + [session_id]
 
-        await self._db.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
-        await self._db.commit()
+        await self.conn.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
+        await self.conn.commit()
 
-        # Update UI via AdapterClient
-        if old_session:
-            if (
-                self._client
-                and "working_directory" in fields
-                and fields["working_directory"] != old_session.working_directory
-            ):
-                # Working directory changed - update title with last 2 path components
-
-                new_path = str(fields["working_directory"])
-                path_parts = Path(new_path).parts
-                # Get last 2 components (e.g., "projects/teleclaude")
-                last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
-
-                # Parse old title and replace path portion in brackets
-                # Title format: $ComputerName[old/path] - Description
-                # We want: $ComputerName[new/path] - Description
-                title_pattern = r"^(\$\w+\[)[^\]]+(\].*)$"
-                match = re.match(title_pattern, old_session.title)
-
-                if not match:
-                    logger.warning(
-                        "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
-                        session_id[:8],
-                        old_session.title,
-                    )
-                    return
-
-                # Replace path portion in brackets
-                new_title = f"{match.group(1)}{last_two}{match.group(2)}"
-                await self._client.update_channel_title(session_id, new_title)
-                logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+        # Emit SESSION_UPDATED event (UI handlers will update channel titles)
+        # Only emit if client is set (tests and standalone tools don't set client)
+        if self._client:
+            # Trust contract: session exists (we just updated it in db)
+            session = await self.get_session(session_id)
+            await self._client.emit(
+                TeleClaudeEvents.SESSION_UPDATED,
+                {"session_id": session_id, "updated_fields": fields},
+                MessageMetadata(adapter_type=session.origin_adapter),
+            )
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -283,10 +279,10 @@ class Db:
         Args:
             session_id: Session ID
         """
-        await self._db.execute(
+        await self.conn.execute(
             "UPDATE sessions SET last_activity = ? WHERE session_id = ?", (datetime.now().isoformat(), session_id)
         )
-        await self._db.commit()
+        await self.conn.commit()
 
     # State management functions (DB-backed via ux_state)
 
@@ -437,8 +433,8 @@ class Db:
         # Get session before deleting for event emission
         _ = await self.get_session(session_id)
 
-        await self._db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
-        await self._db.commit()
+        await self.conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        await self.conn.commit()
         logger.debug("Deleted session %s from database", session_id[:8])
 
     async def count_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> int:
@@ -461,9 +457,10 @@ class Db:
             query += " AND closed = ?"
             params.append(1 if closed else 0)
 
-        cursor = await self._db.execute(query, params)
+        cursor = await self.conn.execute(query, params)
         row = await cursor.fetchone()
-        return row["count"] if row else 0
+        count: int = int(row["count"]) if row else 0  # type: ignore[misc]  # aiosqlite Row values are Any
+        return count
 
     async def get_sessions_by_adapter_metadata(
         self, adapter_type: str, metadata_key: str, metadata_value: object
@@ -478,12 +475,12 @@ class Db:
         Returns:
             List of matching sessions
         """
-        # SQLite JSON functions
-        cursor = await self._db.execute(
+        # SQLite JSON functions - adapter_metadata is nested: {adapter_type: {metadata_key: value}}
+        cursor = await self.conn.execute(
             f"""
             SELECT * FROM sessions
             WHERE origin_adapter = ?
-            AND json_extract(adapter_metadata, '$.{metadata_key}') = ?
+            AND json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
             """,
             (adapter_type, metadata_value),
         )
@@ -499,7 +496,7 @@ class Db:
         Returns:
             List of matching sessions
         """
-        cursor = await self._db.execute(
+        cursor = await self.conn.execute(
             """
             SELECT * FROM sessions
             WHERE title LIKE ?
@@ -526,7 +523,7 @@ class Db:
             query = "SELECT * FROM sessions WHERE closed = ? ORDER BY last_activity DESC"
             params = (1 if closed else 0,)
 
-        cursor = await self._db.execute(query, params)
+        cursor = await self.conn.execute(query, params)
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
@@ -539,7 +536,7 @@ class Db:
         Returns:
             List of sessions with active polling
         """
-        cursor = await self._db.execute("""
+        cursor = await self.conn.execute("""
             SELECT * FROM sessions
             WHERE closed = 0
             ORDER BY last_activity DESC
@@ -575,7 +572,7 @@ class Db:
         Returns:
             SessionUXState (with defaults if not found)
         """
-        return await ux_state.get_session_ux_state(self._db, session_id)
+        return await ux_state.get_session_ux_state(self.conn, session_id)
 
     async def update_ux_state(
         self,
@@ -602,7 +599,7 @@ class Db:
             claude_session_file: Path to native Claude Code session file (optional)
         """
         await ux_state.update_session_ux_state(
-            self._db,
+            self.conn,
             session_id,
             output_message_id=output_message_id,
             polling_active=polling_active,
@@ -655,9 +652,10 @@ class Db:
         Returns:
             Setting value or None if not found
         """
-        cursor = await self._db.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
+        cursor = await self.conn.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
         row = await cursor.fetchone()
-        return str(row[0]) if row else None
+        value: str = str(row[0]) if row else ""  # type: ignore[misc]  # aiosqlite Row values are Any
+        return value if row else None
 
     async def set_system_setting(self, key: str, value: str) -> None:
         """Set system setting value (upsert).
@@ -666,7 +664,7 @@ class Db:
             key: Setting key
             value: Setting value
         """
-        await self._db.execute(
+        await self.conn.execute(
             """
             INSERT INTO system_settings (key, value, updated_at)
             VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -676,7 +674,7 @@ class Db:
             """,
             (key, value),
         )
-        await self._db.commit()
+        await self.conn.commit()
 
 
 # Module-level singleton instance (initialized on first import)

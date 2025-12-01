@@ -1,13 +1,47 @@
 """Base adapter interface for TeleClaude messaging platforms."""
 
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from functools import wraps
+from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
+
+from teleclaude.core import db
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = logging.getLogger(__name__)
+
+
+def with_error_feedback(func: Callable) -> Callable:
+    """Decorator to send adapter-specific error feedback on exceptions.
+
+    Extracts session_id from first argument (str or Session.session_id) and
+    calls adapter's send_error_feedback method before re-raising.
+    """
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        session_id = None
+        if args:
+            first_arg = args[0]
+            if isinstance(first_arg, str):
+                session_id = first_arg
+            elif hasattr(first_arg, "session_id"):
+                session_id = first_arg.session_id
+
+        try:
+            return await func(self, *args, **kwargs)
+        except Exception as e:
+            if session_id and hasattr(self, "send_error_feedback"):
+                await self.send_error_feedback(session_id, str(e))
+            raise
+
+    return wrapper
 
 
 class BaseAdapter(ABC):
@@ -18,6 +52,48 @@ class BaseAdapter(ABC):
     """
 
     client: "AdapterClient"  # Set by subclasses in __init__
+    ADAPTER_KEY: str  # Subclasses must define this constant
+
+    def _metadata(self, **kwargs) -> MessageMetadata:
+        """Create MessageMetadata with adapter_type pre-set.
+
+        Args:
+            **kwargs: Additional metadata fields (message_thread_id, title, etc.)
+
+        Returns:
+            MessageMetadata with adapter_type set to this adapter's ADAPTER_KEY
+        """
+        return MessageMetadata(adapter_type=self.ADAPTER_KEY, **kwargs)
+
+    async def _get_session(self, session_id: str) -> "Session":  # type: ignore[name-defined]
+        """Get session from database, raise if not found.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Session object
+
+        Raises:
+            ValueError: If session not found
+        """
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+        return session
+
+    async def send_error_feedback(self, session_id: str, error_message: str) -> None:
+        """Send error feedback to user (adapter-specific).
+
+        Args:
+            session_id: Session that encountered error
+            error_message: Human-readable error description
+
+        Default no-op for non-interactive adapters.
+        UI adapters override to send feedback messages.
+        Redis adapter overrides to publish error envelopes.
+        """
+        pass  # Default: do nothing
 
     # ==================== Lifecycle Methods ====================
 
@@ -37,14 +113,14 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def create_channel(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         title: str,
-        metadata: dict[str, object],
+        metadata: ChannelMetadata,
     ) -> str:
         """Create channel/topic for session.
 
         Args:
-            session_id: Session ID
+            session: Session object
             title: Channel title
             metadata: {
                 "origin": bool,  # True if this adapter is origin
@@ -56,11 +132,11 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def update_channel_title(self, session_id: str, title: str) -> bool:
+    async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
         """Update channel/topic title.
 
         Args:
-            session_id: Session identifier
+            session: Session object
             title: New title
 
         Returns:
@@ -68,33 +144,33 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def close_channel(self, session_id: str) -> bool:
+    async def close_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Soft-close channel (can be reopened).
 
         Args:
-            session_id: Session identifier
+            session: Session object
 
         Returns:
             True if successful, False if channel doesn't exist
         """
 
     @abstractmethod
-    async def reopen_channel(self, session_id: str) -> bool:
+    async def reopen_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Reopen a closed channel.
 
         Args:
-            session_id: Session identifier
+            session: Session object
 
         Returns:
             True if successful, False if channel doesn't exist
         """
 
     @abstractmethod
-    async def delete_channel(self, session_id: str) -> bool:
+    async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Delete channel/topic (permanent, cannot be reopened).
 
         Args:
-            session_id: Session identifier
+            session: Session object
 
         Returns:
             True if successful, False otherwise
@@ -105,21 +181,16 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_message(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         text: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: MessageMetadata,
     ) -> str:
         """Send message to channel.
 
-        Used for:
-        - Terminal output
-        - User feedback (status, errors)
-        - System notifications
-
         Args:
-            session_id: Session identifier
+            session: Session object
             text: Message text
-            metadata: Optional adapter-specific metadata
+            metadata: Adapter-specific metadata
 
         Returns:
             message_id
@@ -128,18 +199,18 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def edit_message(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         message_id: str,
         text: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: MessageMetadata,
     ) -> bool:
         """Edit existing message (if platform supports).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message_id: Message ID from send_message()
             text: New message text
-            metadata: Optional platform-specific metadata (e.g., reply_markup for buttons)
+            metadata: Platform-specific metadata
 
         Returns:
             True if successful, False otherwise
@@ -148,13 +219,13 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def delete_message(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         message_id: str,
     ) -> bool:
         """Delete message (if platform supports).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message_id: Message ID to delete
 
         Returns:
@@ -164,24 +235,24 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_file(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         file_path: str,
+        metadata: MessageMetadata,
         caption: Optional[str] = None,
-        metadata: Optional[dict[str, object]] = None,
     ) -> str:
         """Send file to channel (if platform supports).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             file_path: Absolute path to file
+            metadata: Platform-specific metadata
             caption: Optional file caption/description
-            metadata: Optional platform-specific metadata
 
         Returns:
             message_id of sent file
         """
 
-    async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:
+    async def send_general_message(self, text: str, metadata: MessageMetadata) -> str:
         """Send message to general/default channel.
 
         Used for commands issued in general context (not tied to specific session).
@@ -199,9 +270,9 @@ class BaseAdapter(ABC):
 
     async def send_feedback(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         message: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: MessageMetadata,
     ) -> Optional[str]:
         """Send feedback message to user (UI adapters only).
 
@@ -214,9 +285,9 @@ class BaseAdapter(ABC):
         UI adapters (UiAdapter subclasses) override to send feedback.
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message: Feedback message text
-            metadata: Optional adapter-specific metadata
+            metadata: Adapter-specific metadata
 
         Returns:
             message_id if sent (UI adapters), None if not a UI adapter
@@ -225,11 +296,10 @@ class BaseAdapter(ABC):
 
     # ==================== Session Data Access ====================
 
-
     # ==================== Peer Discovery ====================
 
     @abstractmethod
-    async def discover_peers(self) -> list[dict[str, object]]:
+    async def discover_peers(self) -> list[PeerInfo]:
         """Discover online computers via this adapter's mechanism.
 
         Each adapter implements its own discovery mechanism:
@@ -237,11 +307,7 @@ class BaseAdapter(ABC):
         - RedisAdapter: Reads Redis heartbeat keys
 
         Returns:
-            List of dicts with:
-            - name: Computer name
-            - status: "online" or "offline"
-            - last_seen: datetime
-            - adapter_type: Which adapter discovered this
+            List of PeerInfo instances with peer computer information
         """
 
     # ==================== AI-to-AI Communication ====================
@@ -249,7 +315,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def poll_output_stream(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         """Poll for output chunks from remote session.
@@ -261,14 +327,13 @@ class BaseAdapter(ABC):
         - TelegramAdapter: Not applicable (no AI-to-AI support)
 
         Args:
-            session_id: Session identifier
+            session: Session object
             timeout: Maximum time to wait for output (seconds)
 
         Yields:
             Output chunks as they arrive
         """
         raise NotImplementedError("poll_mcp_messages must be implemented by subclass")
-        yield  # Make mypy happy about async generator type
 
     # ==================== Platform-Specific Parameters ====================
 
@@ -293,5 +358,3 @@ class BaseAdapter(ABC):
 
 class AdapterError(Exception):
     """Base exception for adapter errors."""
-
-    pass

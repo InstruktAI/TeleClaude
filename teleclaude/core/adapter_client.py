@@ -7,7 +7,7 @@ a clean, unified interface for the daemon and MCP server.
 import asyncio
 import logging
 import os
-from typing import AsyncIterator, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
@@ -15,7 +15,26 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import EventType, TeleClaudeEvents
+from teleclaude.core.events import (
+    COMMAND_EVENTS,
+    ClaudeEventContext,
+    CommandEventContext,
+    EventContext,
+    EventType,
+    FileEventContext,
+    MessageEventContext,
+    SessionLifecycleContext,
+    SessionUpdatedContext,
+    SystemCommandContext,
+    TeleClaudeEvents,
+    VoiceEventContext,
+)
+from teleclaude.core.models import (
+    ChannelMetadata,
+    MessageMetadata,
+    RedisAdapterMetadata,
+    TelegramAdapterMetadata,
+)
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 logger = logging.getLogger(__name__)
@@ -41,30 +60,8 @@ class AdapterClient:
         No daemon reference - uses observer pattern instead.
         Daemon subscribes to events via client.on(event, handler).
         """
-        self._handlers: dict[EventType, Callable[[EventType, dict[str, object]], object]] = {}
+        self._handlers: dict[EventType, Callable[[EventType, EventContext], Awaitable[object]]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
-
-    def _load_adapters(self) -> None:
-        """Load and initialize adapters from config."""
-        # config already imported
-
-        # Load Telegram adapter if configured (always loaded if bot token exists)
-        if os.getenv("TELEGRAM_BOT_TOKEN"):
-            telegram_adapter = TelegramAdapter(self)
-            self.adapters["telegram"] = telegram_adapter
-            logger.info("Loaded Telegram adapter")
-
-        # Load Redis adapter if configured (only instantiate when enabled)
-        if config.redis.enabled:
-            redis_adapter = RedisAdapter(self)
-            self.adapters["redis"] = redis_adapter
-            logger.info("Loaded Redis adapter")
-
-        # Validate at least one adapter is loaded
-        if not self.adapters:
-            raise ValueError("No adapters configured - check config.yml and .env")
-
-        logger.info("Loaded %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
 
     def register_adapter(self, adapter_type: str, adapter: BaseAdapter) -> None:
         """Manually register an adapter (for testing).
@@ -77,21 +74,38 @@ class AdapterClient:
         logger.info("Registered adapter: %s", adapter_type)
 
     async def start(self) -> None:
-        """Start all registered adapters."""
-        tasks = []
-        for adapter_type, adapter in self.adapters.items():
-            logger.info("Starting %s adapter...", adapter_type)
-            tasks.append(adapter.start())
+        """Start adapters and register ONLY successful ones.
 
-        # Start all adapters in parallel
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        INVARIANT: self.adapters contains ONLY successfully started adapters.
 
-        # Log any failures
-        for adapter_type, result in zip(self.adapters.keys(), results):
-            if isinstance(result, Exception):
-                logger.error("Failed to start %s adapter: %s", adapter_type, result)
-            else:
-                logger.info("%s adapter started", adapter_type)
+        This eliminates ALL defensive checks because:
+        - Adapter in registry → start() succeeded → internal state is valid
+        - Metadata exists → contract guarantees it's valid
+        - Trust the contract, let bugs fail fast
+
+        Raises:
+            Exception: If adapter start() fails (daemon crashes - this is intentional)
+            ValueError: If no adapters started
+        """
+        # Telegram adapter
+        if os.getenv("TELEGRAM_BOT_TOKEN"):
+            telegram = TelegramAdapter(self)
+            await telegram.start()  # Raises if fails → daemon crashes
+            self.adapters["telegram"] = telegram  # Register ONLY after success
+            logger.info("Started telegram adapter")
+
+        # Redis adapter
+        if config.redis.enabled:
+            redis = RedisAdapter(self)
+            await redis.start()  # Raises if fails → daemon crashes
+            self.adapters["redis"] = redis  # Register ONLY after success
+            logger.info("Started redis adapter")
+
+        # Validate at least one adapter started
+        if not self.adapters:
+            raise ValueError("No adapters started - check config.yml and .env")
+
+        logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
 
     async def stop(self) -> None:
         """Stop all registered adapters."""
@@ -110,238 +124,170 @@ class AdapterClient:
             else:
                 logger.info("%s adapter stopped", adapter_type)
 
-    async def send_message(self, session_id: str, text: str, metadata: Optional[dict[str, object]] = None) -> str:
-        """Send message to origin adapter and broadcast to UI observer adapters.
+    async def _broadcast_to_observers(
+        self,
+        session: "Session",  # type: ignore[name-defined]
+        operation: str,
+        task_factory: Callable[[UiAdapter], Awaitable[Any]],
+    ) -> None:
+        """Broadcast operation to all UI observers (best-effort).
 
-        Origin/Observer Pattern:
-        - Origin adapter: Interactive session (CRITICAL - failure throws exception)
-        - Observer adapters: Read-only UI sessions (OPTIONAL - failures logged)
+        Executes operation on all UI adapters except origin adapter.
+        Failures are logged as warnings but do not raise exceptions.
 
         Args:
-            session_id: Session identifier
-            text: Message text
-            metadata: Optional adapter-specific metadata
-
-        Returns:
-            message_id from origin adapter
-
-        Raises:
-            ValueError: If session or origin adapter not found
-            Exception: If origin adapter send fails (critical)
+            session: Session object (contains origin_adapter)
+            operation: Operation name for logging
+            task_factory: Function that takes adapter and returns awaitable
         """
-
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
-
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Send to origin adapter (CRITICAL - let exceptions propagate)
-        origin_message_id: str = await origin_adapter.send_message(session_id, text, metadata)
-        logger.debug("Sent message to origin adapter %s for session %s", session.origin_adapter, session_id[:8])
-
-        # Broadcast to observer adapters (OPTIONAL - catch exceptions)
         observer_tasks = []
         for adapter_type, adapter in self.adapters.items():
-            # Skip origin adapter (already sent)
             if adapter_type == session.origin_adapter:
                 continue
-
-            # UI adapters: always broadcast
             if isinstance(adapter, UiAdapter):
-                observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
-                continue
-
-            # Redis adapter: only broadcast if session is observed
-            if adapter_type == "redis":
-                is_observed = await adapter.is_session_observed(session_id)  # type: ignore[attr-defined]
-                if is_observed:
-                    observer_tasks.append((adapter_type, adapter.send_message(session_id, text, metadata)))
-                    logger.debug("Broadcasting to Redis (session %s is observed)", session_id[:8])
-                continue
+                observer_tasks.append((adapter_type, task_factory(adapter)))
 
         if observer_tasks:
-            # Execute observer sends in parallel
             results = await asyncio.gather(*[task for _, task in observer_tasks], return_exceptions=True)
 
-            # Log observer failures (non-critical)
             for (adapter_type, _), result in zip(observer_tasks, results):
                 if isinstance(result, Exception):
                     logger.warning(
-                        "Observer adapter %s failed to send message for session %s: %s",
+                        "Observer %s failed %s for session %s: %s",
                         adapter_type,
-                        session_id[:8],
+                        operation,
+                        session.session_id[:8],
                         result,
                     )
                 else:
-                    logger.debug("Sent message to observer adapter %s for session %s", adapter_type, session_id[:8])
+                    logger.debug(
+                        "Observer %s completed %s for session %s", adapter_type, operation, session.session_id[:8]
+                    )
+
+    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:  # type: ignore[name-defined]
+        """Send message to ALL UiAdapters (origin + observers).
+
+        Args:
+            session: Session object (daemon already fetched it)
+            text: Message text
+            metadata: Adapter-specific metadata
+
+        Returns:
+            message_id from origin adapter
+        """
+        origin_adapter = self.adapters[session.origin_adapter]
+
+        # Send to origin adapter (CRITICAL - let exceptions propagate)
+        origin_message_id: str = await origin_adapter.send_message(session, text, metadata)
+        logger.debug("Sent message to origin adapter %s for session %s", session.origin_adapter, session.session_id[:8])
+
+        # Broadcast to UI observers (best-effort)
+        await self._broadcast_to_observers(
+            session, "send_message", lambda adapter: adapter.send_message(session, text, metadata)
+        )
 
         return origin_message_id
 
     async def send_feedback(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         message: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: MessageMetadata,
     ) -> Optional[str]:
-        """Send feedback message via origin adapter (UI adapters only).
+        """Send feedback message via origin adapter ONLY (ephemeral UI notification).
 
-        Feedback messages are temporary UI notifications that:
-        - Appear in UI platforms (Telegram, Slack, etc.)
-        - Do NOT appear in terminal/tmux output
-        - Auto-delete on next user input
-
-        Only UI adapters implement send_feedback (Telegram, Slack).
-        Transport adapters (Redis) return None (no-op).
+        Feedback goes to origin adapter only - NOT broadcast to observers.
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message: Feedback message text
-            metadata: Optional adapter-specific metadata
+            metadata: Adapter-specific metadata
 
         Returns:
-            message_id if sent (UI adapter), None if not a UI adapter
-
-        Raises:
-            ValueError: If session or origin adapter not found
+            message_id if sent (UI adapter), None if transport adapter
         """
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
-
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Call send_feedback on origin adapter
-        # UI adapters: sends feedback + marks for deletion
-        # Transport adapters: returns None (no-op)
-        message_id = await origin_adapter.send_feedback(session_id, message, metadata)
+        origin_adapter = self.adapters[session.origin_adapter]
+        message_id = await origin_adapter.send_feedback(session, message, metadata)
 
         if message_id:
-            logger.debug("Sent feedback via %s for session %s", session.origin_adapter, session_id[:8])
-        else:
-            logger.debug("Origin adapter %s does not support feedback (transport adapter)", session.origin_adapter)
+            logger.debug("Sent feedback via %s for session %s", session.origin_adapter, session.session_id[:8])
 
         return message_id
 
-    async def edit_message(self, session_id: str, message_id: str, text: str) -> bool:
-        """Edit message in origin adapter.
+    async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:  # type: ignore[name-defined]
+        """Edit message in ALL UiAdapters (origin + observers).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message_id: Platform-specific message ID
             text: New message text
 
         Returns:
-            True if edit succeeded, False otherwise
-
-        Raises:
-            ValueError: If session or origin adapter not found
+            True if origin edit succeeded
         """
+        origin_adapter = self.adapters[session.origin_adapter]
 
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        # Edit in origin adapter (CRITICAL)
+        result: bool = await origin_adapter.edit_message(session, message_id, text, MessageMetadata())
 
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
+        # Broadcast edit to UI observers (best-effort)
+        await self._broadcast_to_observers(
+            session, "edit_message", lambda adapter: adapter.edit_message(session, message_id, text, MessageMetadata())
+        )
 
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Delegate to origin adapter
-        result: bool = await origin_adapter.edit_message(session_id, message_id, text)
         return result
 
-    async def delete_message(self, session_id: str, message_id: str) -> bool:
-        """Delete message in origin adapter.
+    async def delete_message(self, session: "Session", message_id: str) -> bool:  # type: ignore[name-defined]
+        """Delete message in ALL UiAdapters (origin + observers).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message_id: Platform-specific message ID
 
         Returns:
-            True if deletion succeeded, False otherwise
-
-        Raises:
-            ValueError: If session or origin adapter not found
+            True if origin deletion succeeded
         """
+        origin_adapter = self.adapters[session.origin_adapter]
 
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        # Delete in origin adapter (CRITICAL)
+        result = await origin_adapter.delete_message(session, message_id)
 
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
+        # Broadcast delete to UI observers (best-effort)
+        await self._broadcast_to_observers(
+            session, "delete_message", lambda adapter: adapter.delete_message(session, message_id)
+        )
 
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Delegate to origin adapter
-        result = await origin_adapter.delete_message(session_id, message_id)
         return bool(result)
 
     async def send_file(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         file_path: str,
         caption: Optional[str] = None,
     ) -> str:
-        """Send file to origin adapter only (no observer broadcasting).
-
-        Used by MCP tools to upload files to the session's UI adapter.
-        Unlike send_message(), files are NOT broadcast to observers -
-        they only go to the origin adapter where the session is interactive.
+        """Send file to origin adapter ONLY (not broadcast).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             file_path: Absolute path to file
             caption: Optional file caption/description
 
         Returns:
-            message_id from adapter
-
-        Raises:
-            ValueError: If session or origin adapter not found
+            message_id from origin adapter
         """
-
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
-
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Send file to origin adapter only (no broadcasting)
-        result: str = await origin_adapter.send_file(session_id, file_path, caption)
+        origin_adapter = self.adapters[session.origin_adapter]
+        result: str = await origin_adapter.send_file(session, file_path, MessageMetadata(), caption)
         logger.debug(
-            "Sent file %s to origin adapter %s for session %s", file_path, session.origin_adapter, session_id[:8]
+            "Sent file %s to origin adapter %s for session %s",
+            file_path,
+            session.origin_adapter,
+            session.session_id[:8],
         )
         return result
 
     async def send_output_update(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         output: str,
         started_at: float,
         last_output_changed_at: float,
@@ -354,7 +300,7 @@ class AdapterClient:
         handles truncation and formatting based on its platform limits.
 
         Args:
-            session_id: Session identifier
+            session: Session object
             output: Filtered terminal output (ANSI codes/markers already stripped)
             started_at: When process started (timestamp)
             last_output_changed_at: When output last changed (timestamp)
@@ -363,14 +309,7 @@ class AdapterClient:
 
         Returns:
             Message ID from first successful adapter, or None if all failed
-
-        Raises:
-            ValueError: If session not found
         """
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
         # Broadcast to ALL UI adapters
         tasks = []
         for adapter_type, adapter in self.adapters.items():
@@ -379,13 +318,13 @@ class AdapterClient:
                     (
                         adapter_type,
                         adapter.send_output_update(
-                            session_id, output, started_at, last_output_changed_at, is_final, exit_code
+                            session, output, started_at, last_output_changed_at, is_final, exit_code
                         ),
                     )
                 )
 
         if not tasks:
-            logger.warning("No UI adapters available for session %s", session_id[:8])
+            logger.warning("No UI adapters available for session %s", session.session_id[:8])
             return None
 
         # Execute all in parallel
@@ -398,18 +337,18 @@ class AdapterClient:
                 logger.warning(
                     "UI adapter %s failed send_output_update for session %s: %s",
                     adapter_type,
-                    session_id[:8],
+                    session.session_id[:8],
                     result,
                 )
             elif isinstance(result, str) and not first_success:
                 first_success = result
-                logger.debug("Sent output update via %s for session %s", adapter_type, session_id[:8])
+                logger.debug("Sent output update via %s for session %s", adapter_type, session.session_id[:8])
 
         return first_success
 
     async def send_exit_message(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         output: str,
         exit_text: str,
     ) -> None:
@@ -419,25 +358,20 @@ class AdapterClient:
         Only available for UI adapters (UiAdapter subclasses).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             output: Terminal output
             exit_text: Exit message text
 
         Raises:
-            ValueError: If session or origin adapter not found
+            ValueError: If origin adapter not found
             AttributeError: If origin adapter doesn't have send_exit_message (not a UiAdapter)
         """
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
 
         if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
+            raise ValueError(f"Session {session.session_id} has no origin adapter configured")
 
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
+        # Get origin adapter (trust invariant: adapter in registry = started successfully)
+        origin_adapter = self.adapters[session.origin_adapter]
 
         # Check if adapter is a UI adapter (type-safe check)
         if not isinstance(origin_adapter, UiAdapter):
@@ -447,98 +381,91 @@ class AdapterClient:
             )
 
         # Type checker now knows this is UiAdapter
-        await origin_adapter.send_exit_message(session_id, output, exit_text)
+        await origin_adapter.send_exit_message(session, output, exit_text)
 
-    async def update_channel_title(self, session_id: str, title: str) -> bool:
-        """Update channel title in origin adapter.
+    async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
+        """Broadcast channel title update to ALL adapters.
 
         Args:
-            session_id: Session identifier
+            session: Session object (caller already fetched it)
             title: New channel title
 
         Returns:
-            True if update succeeded, False otherwise
-
-        Raises:
-            ValueError: If session or origin adapter not found
+            True if origin update succeeded
         """
+        # Trust invariant: adapter in registry = started successfully
+        origin_adapter = self.adapters[session.origin_adapter]
 
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        # Update origin adapter (CRITICAL - let exceptions propagate)
+        result = await origin_adapter.update_channel_title(session, title)
 
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
+        # Broadcast to observer adapters (best-effort)
+        await self._broadcast_to_observers(
+            session, "update_channel_title", lambda adapter: adapter.update_channel_title(session, title)
+        )
 
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
+        return result
 
-        # Get channel_id from session metadata
-        if not session.adapter_metadata:
-            raise ValueError(f"Session {session_id} has no adapter_metadata")
-
-        channel_id = session.adapter_metadata.get("channel_id")
-        if not channel_id:
-            raise ValueError(f"Session {session_id} has no channel_id in adapter_metadata")
-
-        # Delegate to origin adapter with channel_id
-        result = await origin_adapter.update_channel_title(str(channel_id), title)
-        return bool(result)
-
-    async def delete_channel(self, session_id: str) -> bool:
-        """Delete channel in origin adapter.
+    async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+        """Broadcast channel deletion to ALL adapters.
 
         Args:
-            session_id: Session identifier
+            session: Session object (caller already fetched it)
 
         Returns:
-            True if deletion succeeded, False otherwise
-
-        Raises:
-            ValueError: If session or origin adapter not found
+            True if origin deletion succeeded
         """
+        # Trust invariant: adapter in registry = started successfully
+        origin_adapter = self.adapters[session.origin_adapter]
 
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
+        # Delete in origin adapter (CRITICAL)
+        result = await origin_adapter.delete_channel(session)
 
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session_id} has no origin adapter configured")
+        # Broadcast to observer adapters (best-effort)
+        await self._broadcast_to_observers(session, "delete_channel", lambda adapter: adapter.delete_channel(session))
 
-        # Get origin adapter
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter:
-            raise ValueError(f"Origin adapter {session.origin_adapter} not available")
-
-        # Delegate to origin adapter
-        result = await origin_adapter.delete_channel(session_id)
         return bool(result)
 
-    async def discover_peers(self) -> list[dict[str, object]]:
+    async def discover_peers(self) -> list[dict[str, Any]]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
         """Discover peers from all registered adapters.
 
         Aggregates peer lists from all adapters and deduplicates by name.
         First occurrence wins (primary adapter's data takes precedence).
 
         Returns:
-            List of peer dicts with:
+            List of peer dicts (converted from PeerInfo dataclass) with:
             - name: Computer name
             - status: "online" or "offline"
             - last_seen: datetime object
             - last_seen_ago: Human-readable string (e.g., "30s ago")
             - adapter_type: Which adapter discovered this peer
+            - user: Username (optional)
+            - host: Hostname (optional)
+            - ip: IP address (optional)
         """
         logger.debug("AdapterClient.discover_peers() called, adapters: %s", list(self.adapters.keys()))
-        all_peers = []
+        all_peers: list[dict[str, Any]] = []  # type: ignore[explicit-any]  # JSON/API data
 
         # Collect peers from all adapters
         for adapter_type, adapter in self.adapters.items():
             logger.debug("Calling discover_peers() on %s adapter", adapter_type)
             try:
-                peers = await adapter.discover_peers()
-                all_peers.extend(peers)
+                peers = await adapter.discover_peers()  # Returns list[PeerInfo]
+                # Convert PeerInfo dataclass to dict for backward compatibility
+                for peer_info in peers:
+                    peer_dict = {
+                        "name": peer_info.name,
+                        "status": peer_info.status,
+                        "last_seen": peer_info.last_seen,
+                        "adapter_type": peer_info.adapter_type,
+                    }
+                    if peer_info.user:
+                        peer_dict["user"] = peer_info.user
+                    if peer_info.host:
+                        peer_dict["host"] = peer_info.host
+                    if peer_info.ip:
+                        peer_dict["ip"] = peer_info.ip
+                    all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
             except Exception as e:
                 logger.error("Failed to discover peers from %s: %s", adapter_type, e)
@@ -555,24 +482,24 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    def on(self, event: EventType, handler: Callable[[EventType, dict[str, object]], object]) -> None:
+    def on(self, event: EventType, handler: Callable[[EventType, EventContext], Awaitable[object]]) -> None:
         """Subscribe to event (daemon registers handlers here).
 
         Args:
             event: Event type to subscribe to
-            handler: Async handler function(event, context) -> object
-                    NOTE: Signature changed to (event, context) - context contains all payload + metadata
+            handler: Async handler function(event, context) -> Awaitable[object]
+                    context is a typed dataclass (CommandEventContext, MessageEventContext, etc.)
         """
         self._handlers[event] = handler
         logger.debug("Registered handler for event: %s", event)
 
-    async def handle_event(
+    async def emit(
         self,
         event: EventType,
-        payload: dict[str, object],
-        metadata: dict[str, object],
+        payload: dict[str, Any],  # type: ignore[explicit-any]
+        metadata: MessageMetadata,
     ) -> object:
-        """Called by adapters - orchestrates UI cleanup and handler dispatch.
+        """Emit event with payload dict - builds typed context and calls handler.
 
         Coordination layer responsibilities:
         1. Convert platform IDs (topic_id, etc.) to session_id
@@ -598,13 +525,9 @@ class AdapterClient:
         """
 
         # 1. Session lookup by platform metadata
-        topic_id_obj = metadata.get("topic_id")
-        channel_id_obj = metadata.get("channel_id")
-        adapter_type_obj = metadata.get("adapter_type")
-
-        topic_id = str(topic_id_obj) if topic_id_obj else None
-        channel_id = str(channel_id_obj) if channel_id_obj else None
-        adapter_type = str(adapter_type_obj) if adapter_type_obj else None
+        channel_id = metadata.channel_id
+        topic_id = metadata.message_thread_id  # Telegram's topic ID
+        adapter_type = metadata.adapter_type
 
         if topic_id and adapter_type:
             sessions = await db.get_sessions_by_adapter_metadata(adapter_type, "topic_id", topic_id)
@@ -615,13 +538,65 @@ class AdapterClient:
             if sessions:
                 payload["session_id"] = sessions[0].session_id
 
-        # 2. Build unified context (all data in one place)
-        context: dict[str, object] = {
-            **payload,  # All payload data
-            **metadata,  # All metadata (overwrites if key collision)
-        }
-        session_id = context.get("session_id")
-        message_id = context.get("message_id")
+        # 2. Build typed context based on event type
+        session_id = payload.get("session_id")
+        message_id = payload.get("message_id")
+
+        # Build appropriate context type based on event - let dataclass handle defaults
+        if event == TeleClaudeEvents.CLAUDE_EVENT:
+            typed_context: ClaudeEventContext = ClaudeEventContext(
+                session_id=str(session_id),
+                event_type=payload.get("event_type"),
+                data=payload.get("data"),
+            )
+        elif event == TeleClaudeEvents.SESSION_UPDATED:
+            typed_context: SessionUpdatedContext = SessionUpdatedContext(
+                session_id=str(session_id),
+                updated_fields=payload.get("updated_fields"),
+            )
+        elif event in COMMAND_EVENTS:
+            # Command events (cd, kill, new_session, etc.)
+            typed_context: CommandEventContext = CommandEventContext(
+                session_id=str(session_id),
+                args=payload.get("args"),
+                adapter_type=metadata.adapter_type,
+                message_thread_id=metadata.message_thread_id,
+                title=metadata.title,
+                project_dir=metadata.project_dir,
+                channel_metadata=metadata.channel_metadata,
+            )
+        elif event == TeleClaudeEvents.MESSAGE:
+            typed_context: MessageEventContext = MessageEventContext(
+                session_id=str(session_id),
+                text=payload.get("text"),
+            )
+        elif event == TeleClaudeEvents.VOICE:
+            typed_context: VoiceEventContext = VoiceEventContext(
+                session_id=str(session_id),
+                file_path=payload.get("file_path"),
+            )
+        elif event == TeleClaudeEvents.FILE:
+            typed_context: FileEventContext = FileEventContext(
+                session_id=str(session_id),
+                file_path=payload.get("file_path"),
+                filename=payload.get("filename"),
+            )
+        elif event in (TeleClaudeEvents.SESSION_CLOSED, TeleClaudeEvents.SESSION_REOPENED):
+            typed_context: SessionLifecycleContext = SessionLifecycleContext(
+                session_id=str(session_id),
+            )
+        elif event == TeleClaudeEvents.SYSTEM_COMMAND:
+            typed_context: SystemCommandContext = SystemCommandContext(
+                command=payload.get("command"),
+                from_computer=payload.get("from_computer"),
+            )
+        else:
+            # Fallback for unknown events - should not happen with EventType literal
+            logger.warning("Unknown event type %s, using empty CommandEventContext", event)
+            typed_context: CommandEventContext = CommandEventContext(
+                session_id=str(session_id),
+                args=payload.get("args"),
+            )
 
         # 3. Get session for origin adapter access (needed for pre/post handlers and broadcasting)
         session = None
@@ -635,7 +610,7 @@ class AdapterClient:
                 pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
                 if pre_handler and callable(pre_handler):
                     try:
-                        await pre_handler(session.session_id)
+                        await pre_handler(session)
                         logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
                     except Exception as e:
                         logger.warning("Pre-handler failed for %s on %s: %s", session.origin_adapter, event, e)
@@ -646,8 +621,8 @@ class AdapterClient:
         if handler:
             try:
                 logger.debug("Found handler for event: %s, calling it now", event)
-                handler_result = handler(event, context)  # New signature: (event, context)
-                result = await handler_result  # type: ignore[misc]  # Handler is callable returning awaitable
+                handler_result = handler(event, typed_context)  # Pass typed context, not dict
+                result = await handler_result
                 logger.debug("Handler completed for event: %s", event)
 
                 # Wrap success response in envelope
@@ -665,7 +640,7 @@ class AdapterClient:
                     post_handler = getattr(origin_adapter, "_post_handle_user_input", None)
                     if post_handler and callable(post_handler):
                         try:
-                            await post_handler(session.session_id, str(message_id))
+                            await post_handler(session, str(message_id))
                             logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
                         except Exception as e:
                             logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
@@ -676,10 +651,10 @@ class AdapterClient:
                     if adapter_type != session.origin_adapter:
                         try:
                             if event == "session_closed":
-                                await adapter.close_channel(session.session_id)
+                                await adapter.close_channel(session)
                                 logger.debug("Closed channel in observer adapter: %s", adapter_type)
                             elif event == "session_reopened":
-                                await adapter.reopen_channel(session.session_id)
+                                await adapter.reopen_channel(session)
                                 logger.debug("Reopened channel in observer adapter: %s", adapter_type)
                         except Exception as e:
                             logger.warning("Failed to %s channel in observer %s: %s", event, adapter_type, e)
@@ -696,7 +671,7 @@ class AdapterClient:
                             try:
                                 # Send copy of user action (best-effort, failures logged)
                                 await adapter.send_message(
-                                    session_id=session.session_id, text=action_text, metadata={"is_observer_echo": True}
+                                    session_id=session.session_id, text=action_text, metadata=MessageMetadata()
                                 )
                                 logger.debug("Broadcasted %s to observer adapter: %s", event, adapter_type)
                             except Exception as e:
@@ -707,7 +682,7 @@ class AdapterClient:
         logger.warning("No handler registered for event: %s", event)
         return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
 
-    def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:
+    def _format_event_for_observers(self, event: EventType, payload: dict[str, Any]) -> Optional[str]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
         """Format event as human-readable text for observer adapters.
 
         Args:
@@ -751,7 +726,7 @@ class AdapterClient:
 
     async def create_channel(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         title: str,
         origin_adapter: str,
     ) -> str:
@@ -763,7 +738,7 @@ class AdapterClient:
         - Transport adapters (Redis): Create streams for AI-to-AI communication
 
         Args:
-            session_id: Session ID
+            session: Session object (caller already has it)
             title: Channel title
             origin_adapter: Name of origin adapter (interactive)
 
@@ -773,6 +748,8 @@ class AdapterClient:
         Raises:
             ValueError: If origin adapter not found or channel creation failed
         """
+        session_id = session.session_id
+
         tasks = []
         adapter_types = []
         for adapter_type, adapter in self.adapters.items():
@@ -780,12 +757,9 @@ class AdapterClient:
             adapter_types.append((adapter_type, is_origin))
             tasks.append(
                 adapter.create_channel(
-                    session_id=session_id,
-                    title=title,
-                    metadata={
-                        "origin": is_origin,
-                        "origin_adapter": origin_adapter,
-                    },
+                    session,
+                    title,
+                    metadata=ChannelMetadata(origin=is_origin),
                 )
             )
 
@@ -813,20 +787,25 @@ class AdapterClient:
         # Store ALL adapter channel_ids in session metadata (enables observer broadcasting)
         session = await db.get_session(session_id)
         if session:
-            metadata = session.adapter_metadata or {}
-            metadata["channel_id"] = origin_channel_id  # Backward compatibility
-
-            # Store each adapter's channel_id under namespaced key
+            # Store each adapter's channel_id in its namespace
             for adapter_type, channel_id in all_channel_ids.items():
-                if adapter_type not in metadata:
-                    metadata[adapter_type] = {}
-                adapter_meta = metadata[adapter_type]
-                if not isinstance(adapter_meta, dict):
-                    adapter_meta = {}
-                    metadata[adapter_type] = adapter_meta
-                adapter_meta["channel_id"] = channel_id
+                adapter_meta = getattr(session.adapter_metadata, adapter_type, None)
+                if not adapter_meta:
+                    if adapter_type == "telegram":
+                        adapter_meta = TelegramAdapterMetadata()
+                    elif adapter_type == "redis":
+                        adapter_meta = RedisAdapterMetadata()
+                    else:
+                        continue
+                    setattr(session.adapter_metadata, adapter_type, adapter_meta)
 
-            await db.update_session(session_id, adapter_metadata=metadata)
+                # Store channel_id - telegram uses topic_id, redis uses channel_id
+                if adapter_type == "telegram":
+                    adapter_meta.topic_id = int(channel_id)
+                elif adapter_type == "redis":
+                    adapter_meta.channel_id = channel_id
+
+            await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
             logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id[:8])
 
         return origin_channel_id
@@ -835,7 +814,7 @@ class AdapterClient:
         self,
         adapter_type: str,
         text: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: MessageMetadata,
     ) -> str:
         """Send message to general/default channel (not tied to specific session).
 
@@ -865,8 +844,8 @@ class AdapterClient:
         self,
         computer_name: str,
         command: str,
+        metadata: MessageMetadata,
         session_id: Optional[str] = None,
-        metadata: Optional[dict[str, object]] = None,
     ) -> str:
         """Send request to remote computer via transport adapter.
 
@@ -885,7 +864,7 @@ class AdapterClient:
             RuntimeError: If no transport adapter available
         """
         transport = self._get_transport_adapter()
-        return await transport.send_request(computer_name, command, session_id, metadata)
+        return await transport.send_request(computer_name, command, metadata, session_id)
 
     async def send_response(self, message_id: str, data: str) -> str:
         """Send response for an ephemeral request.

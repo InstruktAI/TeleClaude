@@ -67,10 +67,10 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
     result = await mcp_server.teleclaude__list_sessions()
     assert len(result) >= 2
 
-    # Verify session structure
+    # Verify session structure (fields returned by handle_list_sessions)
     for session in result:
         assert "session_id" in session
-        assert "target" in session
+        assert "origin_adapter" in session
         assert "title" in session
 
 
@@ -189,8 +189,11 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
         assert result.startswith("OK:")
         assert "msg123" in result
 
-        # Verify send_feedback was called
-        mock_send.assert_called_once_with(session.session_id, "Claude is ready for action!")
+        # Verify send_feedback was called with session object, message, and metadata
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        assert call_args.args[0].session_id == session.session_id  # Session object
+        assert call_args.args[1] == "Claude is ready for action!"  # Message
 
         # Verify notification_sent flag was set
         updated_session = await daemon.db.get_session(session.session_id)
@@ -235,11 +238,12 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
         telegram_adapter = daemon.client.adapters.get("telegram")
         telegram_adapter.send_file.assert_called_once()
 
-        # Verify call arguments (positional args: session_id, file_path, caption)
+        # Verify call arguments (positional args: session object, file_path, metadata, caption)
         call_args = telegram_adapter.send_file.call_args.args
-        assert call_args[0] == session.session_id
+        assert call_args[0].session_id == session.session_id  # Session object
         assert call_args[1] == test_file_path
-        assert call_args[2] == "Test upload from Claude"
+        # call_args[2] is MessageMetadata
+        assert call_args[3] == "Test upload from Claude"  # caption
 
     finally:
         # Cleanup test file
@@ -255,9 +259,7 @@ async def test_teleclaude_send_file_invalid_session(mcp_server):
         test_file_path = tmp.name
 
     try:
-        result = await mcp_server.teleclaude__send_file(
-            session_id="nonexistent-session-id", file_path=test_file_path
-        )
+        result = await mcp_server.teleclaude__send_file(session_id="nonexistent-session-id", file_path=test_file_path)
 
         # Verify error message (session not found)
         assert "Error:" in result

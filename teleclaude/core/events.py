@@ -4,9 +4,8 @@ Provides type-safe event definitions for adapter-daemon communication.
 """
 
 import shlex
+from dataclasses import dataclass, field
 from typing import Literal, Optional
-
-from pydantic import BaseModel, Field
 
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
@@ -40,7 +39,35 @@ EventType = Literal[
     "session_closed",
     "session_reopened",
     "system_command",
+    "claude_event",
+    "session_updated",
 ]
+
+UiCommands = {
+    "cd": "Change directory or list trusted directories",
+    "claude": "Start Claude Code in GOD mode",
+    "claude_restart": "Restart latest Claude Code session",
+    "claude_resume": "Resume last Claude Code session (GOD mode)",
+    "claude_plan": "Navigate to Claude Code plan mode",
+    "backspace": "Send BACKSPACE key (optional count)",
+    "cancel": "Send CTRL+C to interrupt current command",
+    "cancel2x": "Send CTRL+C twice (for stubborn programs)",
+    "ctrl": "Send CTRL+key (e.g., /ctrl d for CTRL+D)",
+    "enter": "Send ENTER key",
+    "escape": "Send ESC key (exit Vim insert mode, etc.)",
+    "escape2x": "Send ESC twice (for Claude Code, etc.)",
+    "help": "Show help message",
+    "key_down": "Send DOWN arrow key (optional repeat count)",
+    "key_left": "Send LEFT arrow key (optional repeat count)",
+    "key_right": "Send RIGHT arrow key (optional repeat count)",
+    "key_up": "Send UP arrow key (optional repeat count)",
+    "kill": "Force kill current process (SIGKILL)",
+    "new_session": "Create a new terminal session",
+    "rename": "Rename current session",
+    "resize": "Resize terminal window",
+    "shift_tab": "Send SHIFT+TAB key (optional count)",
+    "tab": "Send TAB key",
+}
 
 
 class TeleClaudeEvents:
@@ -100,6 +127,12 @@ class TeleClaudeEvents:
     # System commands
     SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
 
+    # Claude Code events (from hooks)
+    CLAUDE_EVENT: Literal["claude_event"] = "claude_event"  # Claude Code events (title change, etc.)
+
+    # Internal events
+    SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
+
 
 def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
     """Parse command string into event name and arguments.
@@ -141,56 +174,127 @@ def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
     return cmd_name, args
 
 
-# Event context models (Pydantic for type safety)
+# Event context models (dataclass for type safety)
 
 
-class BaseEventContext(BaseModel):
-    """Base event context - all events have session_id."""
+@dataclass
+class MessageEventContext:
+    """Context for message events."""
+
+    session_id: str
+    text: str = ""
+
+
+@dataclass
+class FileEventContext:
+    """Context for file upload events."""
+
+    session_id: str
+    file_path: str = ""
+    filename: str = ""
+
+
+@dataclass
+class VoiceEventContext:
+    """Context for voice message events."""
+
+    session_id: str
+    file_path: str = ""
+    duration: Optional[float] = None
+
+
+@dataclass
+class SessionLifecycleContext:
+    """Context for session lifecycle events (closed, reopened)."""
 
     session_id: str
 
 
-class CommandEventContext(BaseEventContext):
-    """Context for command events (new_session, list_sessions, etc.)."""
-
-    args: list[str] = Field(default_factory=list)
-    title: Optional[str] = None
-
-
-class MessageEventContext(BaseEventContext):
-    """Context for message events."""
-
-    text: str
-
-
-class VoiceEventContext(BaseEventContext):
-    """Context for voice message events."""
-
-    file_path: str
-
-
-class FileEventContext(BaseEventContext):
-    """Context for file upload events."""
-
-    file_path: str
-    filename: str
-
-
-class SessionLifecycleContext(BaseEventContext):
-    """Context for session lifecycle events (closed, reopened)."""
-
-    pass  # Only session_id needed
-
-
-class DeployArgs(BaseModel):
+@dataclass
+class DeployArgs:
     """Arguments for deploy system command."""
 
-    verify_health: bool = True  # Verify health after deployment
+    verify_health: bool = True
 
 
-class SystemCommandContext(BaseModel):
+@dataclass
+class SystemCommandContext:
     """Context for system commands (no session_id)."""
 
-    command: str
+    command: str = ""
     from_computer: str = "unknown"
-    args: DeployArgs = Field(default_factory=DeployArgs)
+    args: DeployArgs = field(default_factory=DeployArgs)
+
+
+@dataclass
+class CommandEventContext:
+    """Context for command events (new_session, cd, kill, etc.)."""
+
+    session_id: str
+    args: list[str] = field(default_factory=list)
+    # Metadata fields
+    adapter_type: Optional[str] = None
+    message_thread_id: Optional[int] = None
+    title: Optional[str] = None
+    project_dir: Optional[str] = None
+    channel_metadata: Optional[dict[str, object]] = None
+
+
+@dataclass
+class ClaudeEventContext:
+    """Context for Claude Code events (from hooks)."""
+
+    session_id: str
+    event_type: Optional[str] = None
+    data: Optional[dict[str, object]] = None
+
+
+@dataclass
+class SessionUpdatedContext:
+    """Context for session_updated events."""
+
+    session_id: str
+    updated_fields: Optional[dict[str, object]] = None
+
+
+# Union of all event context types (for adapter_client handler signatures)
+EventContext = (
+    CommandEventContext
+    | MessageEventContext
+    | VoiceEventContext
+    | FileEventContext
+    | SessionLifecycleContext
+    | SystemCommandContext
+    | ClaudeEventContext
+    | SessionUpdatedContext
+)
+
+# Command events that use CommandEventContext or specialized contexts
+# All events in this set route through _handle_command_event (except claude_event and session_updated which have their own contexts)
+COMMAND_EVENTS: set[EventType] = {
+    "new_session",
+    "list_sessions",
+    "get_session_data",
+    "list_projects",
+    "get_computer_info",
+    "cd",
+    "kill",
+    "cancel",
+    "cancel2x",
+    "escape",
+    "escape2x",
+    "ctrl",
+    "tab",
+    "shift_tab",
+    "backspace",
+    "enter",
+    "key_up",
+    "key_down",
+    "key_left",
+    "key_right",
+    "rename",
+    "claude",
+    "claude_resume",
+    "claude_event",
+    "session_updated",
+}

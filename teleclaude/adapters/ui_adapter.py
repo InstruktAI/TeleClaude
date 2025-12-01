@@ -6,25 +6,39 @@ UI adapters provide:
 - Message formatting and display
 """
 
+from __future__ import annotations
+
+import json
 import logging
+import re
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from zoneinfo import ZoneInfo
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.events import (
+    ClaudeEventContext,
+    SessionUpdatedContext,
+    TeleClaudeEvents,
+    UiCommands,
+)
+from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
+
+if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
+
 from teleclaude.utils import (
     format_active_status_line,
     format_completed_status_line,
     format_size,
     format_terminal_message,
-    strip_ansi_codes,
-    strip_exit_markers,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,56 +51,101 @@ class UiAdapter(BaseAdapter):
     Subclasses can override max_message_size and add platform-specific formatting.
     """
 
+    # Adapter key for metadata storage (subclasses MUST override)
+    ADAPTER_KEY: str = "unknown"
+
     # Platform message size limit (subclasses can override)
     # Default: 3900 chars (Telegram: 4096 limit - ~196 overhead)
     max_message_size: int = 3900
 
-    def _get_adapter_key(self) -> str:
-        """Get adapter key for metadata storage.
+    def __init__(self, client: "AdapterClient") -> None:
+        """Initialize UiAdapter and register event listeners.
 
-        Uses class name to determine adapter type at runtime.
+        Args:
+            client: AdapterClient instance
+        """
+        # Set client (BaseAdapter has no __init__, just requires this attribute)
+        self.client = client
+
+        # Register event listeners
+        # Type ignore: event system guarantees correct context type for each event
+        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)  # type: ignore[arg-type]
+        self.client.on(TeleClaudeEvents.CLAUDE_EVENT, self._handle_claude_event)  # type: ignore[arg-type]
+
+    # === Adapter Metadata Helpers ===
+
+    async def _get_output_message_id(self, session: "Session") -> Optional[str]:
+        """Get output_message_id from adapter namespace.
 
         Returns:
-            Adapter key string (e.g., "telegram", "redis")
+            message_id or None if not set
         """
-        class_name = self.__class__.__name__
-        if class_name == "TelegramAdapter":
-            return "telegram"
-        if class_name == "RedisAdapter":
-            return "redis"
-        return "unknown"
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if not metadata:
+            return None
+
+        return metadata.output_message_id
+
+    async def _store_output_message_id(self, session: "Session", message_id: str) -> None:
+        """Store output_message_id in adapter namespace."""
+        # Get or create adapter metadata
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if not metadata:
+            metadata = TelegramAdapterMetadata()
+            setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
+
+        # Store message_id (type narrowed by if-check above)
+        typed_metadata: TelegramAdapterMetadata = metadata
+        typed_metadata.output_message_id = message_id
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+    async def _clear_output_message_id(self, session: "Session") -> None:
+        """Clear output_message_id from adapter namespace."""
+        # Get or create adapter metadata
+        metadata: Optional[TelegramAdapterMetadata] = getattr(session.adapter_metadata, self.ADAPTER_KEY, None)
+        if not metadata:
+            metadata = TelegramAdapterMetadata()
+            setattr(session.adapter_metadata, self.ADAPTER_KEY, metadata)
+
+        # Clear message_id (type narrowed by if-check above)
+        typed_metadata: TelegramAdapterMetadata = metadata
+        typed_metadata.output_message_id = None
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+    async def _try_edit_output_message(self, session: "Session", text: str, metadata: MessageMetadata) -> bool:
+        """Try to edit existing output message, clear message_id if edit fails.
+
+        Returns:
+            True if edited successfully, False if no message_id or edit failed
+        """
+        message_id = await self._get_output_message_id(session)
+        if not message_id:
+            return False
+
+        success = await self.edit_message(session, message_id, text, metadata)
+
+        if not success:
+            # Edit failed - clear stale message_id
+            logger.warning("Failed to edit message %s, clearing stale message_id", message_id)
+            await self._clear_output_message_id(session)
+
+        return success
+
+    async def send_error_feedback(self, session_id: str, error_message: str) -> None:
+        """Send error as feedback message to user.
+
+        Args:
+            session_id: Session that encountered error
+            error_message: Human-readable error description
+        """
+        try:
+            session = await db.get_session(session_id)
+            if session:
+                await self.send_feedback(session, f"❌ {error_message}", self._metadata())
+        except Exception as e:
+            logger.error("Failed to send error feedback for session %s: %s", session_id, e)
 
     # === Command Registration ===
-
-    # Standard UI commands - subclasses implement handlers with _handle_{command} naming
-    COMMANDS = [
-        "new_session",
-        "list_sessions",
-        "list_projects",
-        "get_session_data",  # Get session data from claude_session_file (inherited from BaseAdapter)
-        "cancel",
-        "cancel2x",
-        "kill",
-        "escape",
-        "escape2x",
-        "ctrl",
-        "tab",
-        "shift_tab",
-        "backspace",
-        "claude_plan",
-        "enter",
-        "key_up",
-        "key_down",
-        "key_left",
-        "key_right",
-        "resize",
-        "rename",
-        "cd",
-        "claude",
-        "claude_resume",
-        "claude_restart",
-        "help",
-    ]
 
     def _get_command_handlers(self) -> list[tuple[str, object]]:
         """Get command handlers by convention: command_name → _handle_{command_name}.
@@ -94,10 +153,10 @@ class UiAdapter(BaseAdapter):
         Returns:
             List of (command_name, handler_method) tuples
         """
-        handlers = []
-        for command in self.COMMANDS:
+        handlers: list[tuple[str, object]] = []
+        for command, _ in UiCommands.items():
             handler_name = f"_handle_{command}"
-            handler = getattr(self, handler_name, None)
+            handler: object = getattr(self, handler_name, None)
             if handler:
                 handlers.append((command, handler))
             else:
@@ -108,7 +167,7 @@ class UiAdapter(BaseAdapter):
 
     async def send_output_update(
         self,
-        session_id: str,
+        session: "Session",  # type: ignore[name-defined]
         output: str,
         started_at: float,
         last_output_changed_at: float,
@@ -122,33 +181,7 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
-        session = await db.get_session(session_id)
-        if not session:
-            logger.warning("Session %s not found, cannot send output update", session_id[:8])
-            return None
-
-        ux_state = await db.get_ux_state(session_id)
-
-        # Check adapter_metadata for this adapter's message_id (for observers)
-        # Origin adapter uses ux_state.output_message_id, observers use adapter_metadata
-        adapter_metadata: dict[str, object] = session.adapter_metadata or {}
-        adapter_key = self._get_adapter_key()  # e.g., "telegram", "redis"
-        adapter_data_obj = adapter_metadata.get(adapter_key, {})
-        adapter_data: dict[str, object] = adapter_data_obj if isinstance(adapter_data_obj, dict) else {}
-
-        logger.debug(
-            "[OBSERVER] session=%s adapter=%s checking message_id (adapter_data=%s, ux_state=%s)",
-            session_id[:8],
-            adapter_key,
-            bool(adapter_data.get("output_message_id")),
-            bool(ux_state.output_message_id),
-        )
-
-        # Prefer adapter-specific message_id, fallback to ux_state (for origin adapter)
-        message_id_obj = adapter_data.get("output_message_id")
-        current_message_id: Optional[str] = (
-            message_id_obj if isinstance(message_id_obj, str) else None
-        ) or ux_state.output_message_id
+        ux_state = await db.get_ux_state(session.session_id)
 
         # Truncate to platform limit
         is_truncated = len(output) > self.max_message_size
@@ -185,46 +218,17 @@ class UiAdapter(BaseAdapter):
         display_output = self.format_message(terminal_output, status_line)
 
         # Platform-specific metadata (inline keyboards, etc.)
-        metadata = self._build_output_metadata(session_id, is_truncated, ux_state)
+        metadata = self._build_output_metadata(session, is_truncated, ux_state)
 
-        # Send or edit
-        if current_message_id:
-            success = await self.edit_message(
-                session_id, current_message_id, display_output, metadata if metadata else None
-            )
-            if success:
-                return current_message_id
-            # Edit failed - clear stale message_id and send new
-            logger.warning("Failed to edit message %s, clearing stale message_id and sending new", current_message_id)
-            # Clear from both locations
-            await db.update_ux_state(session_id, output_message_id=None)
-            if adapter_key in adapter_metadata and isinstance(adapter_metadata[adapter_key], dict):
-                adapter_data_dict = adapter_metadata[adapter_key]
-                if isinstance(adapter_data_dict, dict) and "output_message_id" in adapter_data_dict:
-                    adapter_data_dict["output_message_id"] = None
-                    await db.update_session(session_id, adapter_metadata=adapter_metadata)
+        # Try to edit existing message
+        if await self._try_edit_output_message(session, display_output, metadata):
+            # Edit succeeded, return existing message_id
+            return await self._get_output_message_id(session)
 
-        new_id = await self.send_message(session_id, display_output, metadata if metadata else None)
+        # Edit failed or no existing message - send new
+        new_id = await self.send_message(session, display_output, metadata)
         if new_id:
-            # Store in ux_state (for origin adapter) AND adapter_metadata (for all adapters)
-            await db.update_ux_state(session_id, output_message_id=new_id)
-
-            # Also store in adapter_metadata for this adapter type
-            if adapter_key not in adapter_metadata:
-                adapter_metadata[adapter_key] = {}
-            adapter_data_dict = adapter_metadata[adapter_key]
-            if not isinstance(adapter_data_dict, dict):
-                adapter_data_dict = {}
-                adapter_metadata[adapter_key] = adapter_data_dict
-            adapter_data_dict["output_message_id"] = new_id
-            await db.update_session(session_id, adapter_metadata=adapter_metadata)
-
-            logger.debug(
-                "[OBSERVER] Stored message_id=%s for adapter=%s session=%s (in adapter_metadata)",
-                new_id,
-                adapter_key,
-                session_id[:8],
-            )
+            await self._store_output_message_id(session, new_id)
         return new_id
 
     def format_message(self, terminal_output: str, status_line: str) -> str:
@@ -247,100 +251,39 @@ class UiAdapter(BaseAdapter):
         return "\n".join(message_parts)
 
     def _build_output_metadata(
-        self, session_id: str, is_truncated: bool, ux_state: object
-    ) -> Optional[dict[str, object]]:
+        self, session: "Session", is_truncated: bool, ux_state: object  # type: ignore[name-defined]
+    ) -> MessageMetadata:
         """Build platform-specific metadata for output messages.
 
         Override in subclasses to add inline keyboards, buttons, etc.
 
         Args:
-            session_id: Session identifier
+            session: Session object
             is_truncated: Whether output was truncated
             ux_state: Current UX state (for checking Claude session, etc.)
 
         Returns:
-            Platform-specific metadata dict, or None
+            Platform-specific MessageMetadata
         """
-        return None  # Default: no metadata
+        return MessageMetadata()  # Default: no extra metadata
 
-    async def send_status_message(
-        self,
-        session_id: str,
-        text: str,
-        append_to_existing: bool = False,
-        output_file_path: Optional[str] = None,
-    ) -> Optional[str]:
-        """Send immediate status message - default implementation."""
-        if append_to_existing:
-            # Append to existing output message
-            ux_state = await db.get_ux_state(session_id)
-            current_message_id = ux_state.output_message_id
-            logger.debug(
-                "send_status_message: session=%s, append=True, message_id=%s, output_file=%s",
-                session_id[:8],
-                current_message_id,
-                output_file_path,
-            )
-            if not current_message_id or not output_file_path:
-                logger.warning("Cannot append status - no message ID or output file for session %s", session_id[:8])
-                return None
-
-            output_file = Path(output_file_path)
-            raw_output = output_file.read_text(encoding="utf-8") if output_file.exists() else ""
-
-            # Strip ANSI codes and exit markers for display
-            current_output = strip_ansi_codes(raw_output)
-            current_output = strip_exit_markers(current_output)
-
-            # Format: terminal output in code block, status OUTSIDE the block
-            display_output = format_terminal_message(current_output, text)
-
-            # Edit existing message with status appended
-            success = await self.edit_message(session_id, current_message_id, display_output)
-
-            if not success:
-                # Edit failed - clear stale message_id and send new
-                logger.warning(
-                    "Failed to edit message %s, clearing stale message_id and sending new", current_message_id
-                )
-                await db.update_ux_state(session_id, output_message_id=None)
-            else:
-                logger.debug("Appended status '%s' to existing message for session %s", text, session_id[:8])
-                return current_message_id
-
-        # Send new ephemeral message
-        logger.debug("send_status_message: session=%s, append=False, sending new message: %s", session_id[:8], text)
-        message_id = await self.send_message(session_id, text)
-        return message_id
-
-    async def send_exit_message(self, session_id: str, output: str, exit_text: str) -> None:
+    async def send_exit_message(self, session: "Session", output: str, exit_text: str) -> None:
         """Send exit message when session dies - default implementation."""
-        ux_state = await db.get_ux_state(session_id)
-        current_message_id = ux_state.output_message_id
         final_output = format_terminal_message(output if output else "", exit_text)
-        metadata: dict[str, object] = {"raw_format": True}
+        metadata = MessageMetadata(raw_format=True)
 
-        if current_message_id:
-            success = await self.edit_message(session_id, current_message_id, final_output)
-            if not success:
-                # Edit failed - clear stale message_id and send new message
-                logger.warning(
-                    "Failed to edit message %s, clearing stale message_id and sending new", current_message_id
-                )
-                await db.update_ux_state(session_id, output_message_id=None)
-                new_id = await self.send_message(session_id, final_output, metadata)
-                if new_id:
-                    await db.update_ux_state(session_id, output_message_id=new_id)
-        else:
-            new_id = await self.send_message(session_id, final_output, metadata)
+        # Try to edit existing message, fallback to send new
+        if not await self._try_edit_output_message(session, final_output, metadata):
+            # send new
+            new_id = await self.send_message(session, final_output, metadata)
             if new_id:
-                await db.update_ux_state(session_id, output_message_id=new_id)
+                await self._store_output_message_id(session, new_id)
 
     async def send_feedback(
         self,
-        session_id: str,
+        session: "Session",
         message: str,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: MessageMetadata,
     ) -> Optional[str]:
         """Send feedback message and mark for deletion on next user input.
 
@@ -348,30 +291,32 @@ class UiAdapter(BaseAdapter):
         that automatically clean up when the user sends their next input.
 
         Args:
-            session_id: Session identifier
+            session: Session object
             message: Feedback message text
-            metadata: Optional adapter-specific metadata (defaults to plain text)
+            metadata: Adapter-specific metadata
 
         Returns:
             message_id of sent feedback message
         """
         # Send feedback message (plain text by default)
-        message_id = await self.send_message(session_id, message, metadata=metadata or {"parse_mode": None})
+        message_id = await self.send_message(session, message, metadata=metadata or MessageMetadata(parse_mode=""))
 
         if message_id:
             # Mark feedback message for deletion when next input arrives
-            await db.add_pending_deletion(session_id, message_id)
-            logger.debug("Sent feedback message %s for session %s (marked for deletion)", message_id, session_id[:8])
+            await db.add_pending_deletion(session.session_id, message_id)
+            logger.debug(
+                "Sent feedback message %s for session %s (marked for deletion)", message_id, session.session_id[:8]
+            )
 
         return message_id
 
-    async def _pre_handle_user_input(self, session_id: str) -> None:
+    async def _pre_handle_user_input(self, session: "Session") -> None:
         """Called before handling user input - cleanup temporary messages."""
-        await self.cleanup_feedback_messages(session_id)
+        await self.cleanup_feedback_messages(session)
 
-    async def cleanup_feedback_messages(self, session_id: str) -> None:
+    async def cleanup_feedback_messages(self, session: "Session") -> None:
         """Delete temporary feedback messages - default implementation."""
-        ux_state = await db.get_ux_state(session_id)
+        ux_state = await db.get_ux_state(session.session_id)
         pending_deletions = ux_state.pending_deletions or []
 
         if not pending_deletions:
@@ -379,13 +324,13 @@ class UiAdapter(BaseAdapter):
 
         for message_id in pending_deletions:
             try:
-                await self.delete_message(session_id, message_id)
-                logger.debug("Deleted feedback message %s for session %s", message_id, session_id[:8])
+                await self.delete_message(session, message_id)
+                logger.debug("Deleted feedback message %s for session %s", message_id, session.session_id[:8])
             except Exception as e:
                 logger.warning("Failed to delete message %s: %s", message_id, e)
 
         # Clear pending deletions
-        await db.update_ux_state(session_id, pending_deletions=[])
+        await db.update_ux_state(session.session_id, pending_deletions=[])
 
     # ==================== Voice Support ====================
 
@@ -461,3 +406,179 @@ class UiAdapter(BaseAdapter):
         NOTE: This is different from get_session_file() which creates download UI.
         """
         return get_output_file(session_id)
+
+    # ==================== Event Handlers ====================
+
+    async def _handle_session_updated(self, event: str, context: SessionUpdatedContext) -> None:
+        """Handle session_updated event - update channel title when working directory changes.
+
+        Args:
+            event: Event type
+            context: Typed session updated context
+        """
+        session_id = context.session_id
+        updated_fields = context.updated_fields or {}
+
+        # Get old session to check what changed
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        # Check if working_directory changed
+        if "working_directory" not in updated_fields:
+            return
+
+        # working_directory was updated - session is already updated in db
+        new_path = str(updated_fields["working_directory"])
+
+        # Extract last 2 path components
+        path_parts = Path(new_path).parts
+        last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
+
+        # Parse old title and replace path portion in brackets
+        # Title format: $ComputerName[old/path] - Description
+        # We want: $ComputerName[new/path] - Description
+        title_pattern = r"^(\$\w+\[)[^\]]+(\].*)$"
+        match = re.match(title_pattern, session.title)
+
+        if not match:
+            logger.warning(
+                "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
+                session_id[:8],
+                session.title,
+            )
+            return
+
+        # Replace path portion in brackets
+        new_title = f"{match.group(1)}{last_two}{match.group(2)}"
+
+        # Update via client to distribute to all adapters
+        await self.client.update_channel_title(session, new_title)
+        logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+
+    async def _handle_claude_event(self, event: str, context: ClaudeEventContext) -> None:
+        """Dispatch claude_event to appropriate handler based on event_type.
+
+        Args:
+            event: Event type
+            context: Typed Claude event context
+        """
+        if not context.event_type:
+            return
+
+        # Dispatch to specific handler
+        if context.event_type == "session_start":
+            await self._handle_claude_session_start(context)
+        elif context.event_type == "stop":
+            await self._handle_claude_stop(context)
+
+    async def _handle_claude_session_start(self, context: ClaudeEventContext) -> None:
+        """Handle session_start event - store claude_session_id and claude_session_file.
+
+        Args:
+            context: Typed Claude event context
+        """
+        if not context.data or not isinstance(context.data, dict):
+            return
+
+        claude_session_id = context.data.get("session_id")
+        claude_session_file = context.data.get("transcript_path")
+
+        if not claude_session_id or not claude_session_file:
+            return
+
+        await db.update_ux_state(
+            context.session_id,
+            claude_session_id=str(claude_session_id),
+            claude_session_file=str(claude_session_file),
+        )
+        logger.info(
+            "Stored Claude session data: teleclaude=%s, claude=%s",
+            context.session_id[:8],
+            str(claude_session_id)[:8],
+        )
+
+    async def _handle_claude_stop(self, context: ClaudeEventContext) -> None:
+        """Handle stop event - update channel title from Claude-generated title.
+
+        Args:
+            context: Typed Claude event context
+        """
+        session_id = context.session_id
+
+        # Get claude_session_file from ux_state
+        ux_state = await db.get_ux_state(session_id)
+        if not ux_state.claude_session_file:
+            logger.debug("No claude_session_file for session %s, skipping title update", session_id[:8])
+            return
+
+        # Parse session file for latest title
+        claude_title = await self._extract_claude_title(ux_state.claude_session_file)
+        if not claude_title:
+            logger.debug("No title found in claude_session_file for session %s", session_id[:8])
+            return
+
+        # Get and validate session
+        session = await self._get_session(session_id)
+
+        # Parse current title and replace description part
+        # Title format: $ComputerName[path] - OLD_DESCRIPTION
+        # We want: $ComputerName[path] - CLAUDE_TITLE
+        title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
+        match = re.match(title_pattern, session.title)
+
+        if not match:
+            logger.warning(
+                "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
+                session_id[:8],
+                session.title,
+            )
+            return
+
+        # Replace description portion
+        new_title = f"{match.group(1)}{claude_title}"
+
+        # Update via client to distribute to all adapters
+        await self.client.update_channel_title(session, new_title)
+        logger.info("Updated Claude title for session %s to: %s", session_id[:8], new_title)
+
+    async def _extract_claude_title(self, session_file_path: str) -> Optional[str]:
+        """Extract AI-generated title from Claude session file.
+
+        Args:
+            session_file_path: Path to Claude session .jsonl file
+
+        Returns:
+            Extracted title or None
+        """
+        session_file = Path(session_file_path).expanduser()
+        if not session_file.exists():
+            return None
+
+        try:
+            # Read file backwards to find most recent summary entry
+            with open(session_file, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            # Parse lines in reverse to find latest summary
+            for line in reversed(lines):
+                if not line.strip():
+                    continue
+                try:
+                    entry_obj: object = json.loads(line)  # JSON returns Any
+                    # Narrow type: entry should be dict
+                    if not isinstance(entry_obj, dict):
+                        continue
+                    entry: dict[str, object] = entry_obj
+                    entry_type: object = entry.get("type")
+                    if entry_type == "summary" and "title" in entry:
+                        title_obj: object = entry["title"]
+                        return str(title_obj) if title_obj is not None else None
+                except json.JSONDecodeError:
+                    continue
+
+            return None
+
+        except Exception as e:
+            logger.error("Failed to extract Claude title from %s: %s", session_file_path, e)
+            return None

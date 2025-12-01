@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.core import file_handler
-from teleclaude.core.models import Session
+from teleclaude.core.models import (
+    Session,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
 
 
 @pytest.fixture
@@ -19,7 +23,9 @@ def mock_session():
         computer_name="test-computer",
         tmux_session_name="tmux_test123",
         origin_adapter="telegram",
-        adapter_metadata={"channel_id": "456"},
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(topic_id=456, output_message_id="msg_123")
+        ),
         title="Test Session",
         closed=False,
     )
@@ -101,7 +107,7 @@ class TestHandleFile:
         """Test rejection when session doesn't exist."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -121,7 +127,7 @@ class TestHandleFile:
         """Test rejection when no process is active."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -141,21 +147,31 @@ class TestHandleFile:
         assert "requires an active process" in sent_messages[0][1]
 
     @pytest.mark.asyncio
-    async def test_rejects_when_no_output_message(self, mock_session):
+    async def test_rejects_when_no_output_message(self):
         """Test rejection when output message not ready."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
-        mock_ux_state = MagicMock()
-        mock_ux_state.output_message_id = None
+        # Create session WITHOUT output_message_id
+        session_no_output = Session(
+            session_id="test123",
+            computer_name="test-computer",
+            tmux_session_name="tmux_test123",
+            origin_adapter="telegram",
+            adapter_metadata=SessionAdapterMetadata(
+                telegram=TelegramAdapterMetadata(topic_id=456)  # No output_message_id
+            ),
+            title="Test Session",
+            closed=False,
+        )
 
         with (
-            patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
+            patch("teleclaude.core.file_handler.db.get_session", return_value=session_no_output),
             patch("teleclaude.core.file_handler.db.is_polling", return_value=True),
-            patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
+            patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
                 session_id="test123",
@@ -177,7 +193,7 @@ class TestHandleFile:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             return "msg_id"
 
         with (
@@ -208,7 +224,7 @@ class TestHandleFile:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             return "msg_id"
 
         with (
@@ -238,7 +254,7 @@ class TestHandleFile:
         async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
             return (True, "marker123")
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -270,7 +286,7 @@ class TestHandleFile:
         async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
             return (False, None)
 
-        async def mock_send_feedback(sid: str, msg: str) -> Optional[str]:
+        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 

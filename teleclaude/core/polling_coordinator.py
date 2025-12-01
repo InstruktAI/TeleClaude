@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.output_poller import (
     DirectoryChanged,
     IdleDetected,
@@ -22,7 +23,6 @@ from teleclaude.core.output_poller import (
 )
 from teleclaude.utils import (
     strip_ansi_codes,
-    strip_claude_code_hooks,
     strip_exit_markers,
 )
 
@@ -43,11 +43,9 @@ def _filter_for_ui(raw_output: str) -> str:
     Returns:
         Filtered output ready for UI display
     """
-    # Strip Claude Code hooks (thinking tags, system reminders)
-    filtered = strip_claude_code_hooks(raw_output)
 
     # Strip ANSI codes and exit markers
-    filtered = strip_ansi_codes(filtered)
+    filtered = strip_ansi_codes(raw_output)
     filtered = strip_exit_markers(filtered)
 
     # Collapse multiple consecutive newlines into single newline
@@ -161,11 +159,14 @@ async def poll_and_send_output(
                 # Output is already clean (poller writes filtered output to file)
                 clean_output = event.output
 
+                # Fetch session once for all operations
+                session = await db.get_session(event.session_id)
+
                 # Unified output handling - ALL sessions use send_output_update
                 start_time = time.time()
                 logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
                 await adapter_client.send_output_update(
-                    event.session_id,
+                    session,
                     clean_output,
                     event.started_at,
                     event.last_changed_at,
@@ -181,7 +182,7 @@ async def poll_and_send_output(
                 ux_state = await db.get_ux_state(event.session_id)
                 notification_id = ux_state.idle_notification_message_id
                 if notification_id:
-                    await adapter_client.delete_message(event.session_id, notification_id)
+                    await adapter_client.delete_message(session, notification_id)
                     await db.update_ux_state(event.session_id, idle_notification_message_id=None)
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
@@ -206,11 +207,15 @@ async def poll_and_send_output(
                 notification = (
                     f"⏸️ No output for {event.idle_seconds} seconds - " "process may be waiting or hung up, try cancel"
                 )
-                notification_id = await adapter_client.send_feedback(event.session_id, notification)
-                if notification_id:
-                    # Persist to DB (survives daemon restart)
-                    await db.update_ux_state(event.session_id, idle_notification_message_id=notification_id)
-                    logger.debug("Stored idle notification %s for session %s", notification_id, event.session_id[:8])
+                session = await db.get_session(event.session_id)
+                if session:
+                    notification_id = await adapter_client.send_feedback(session, notification, MessageMetadata())
+                    if notification_id:
+                        # Persist to DB (survives daemon restart)
+                        await db.update_ux_state(event.session_id, idle_notification_message_id=notification_id)
+                        logger.debug(
+                            "Stored idle notification %s for session %s", notification_id, event.session_id[:8]
+                        )
 
             elif isinstance(event, DirectoryChanged):
                 # Directory changed - update session (db dispatcher handles title update)
@@ -220,11 +225,14 @@ async def poll_and_send_output(
                 # Process exited - output is already clean from file
                 clean_final_output = event.final_output
 
+                # Fetch session once for all operations
+                session = await db.get_session(event.session_id)
+
                 # Unified output handling - ALL sessions use send_output_update
                 if event.exit_code is not None:
                     # Exit with code - send final message via AdapterClient
                     await adapter_client.send_output_update(
-                        event.session_id,
+                        session,
                         clean_final_output,
                         event.started_at,  # Use actual start time from poller
                         time.time(),
@@ -238,17 +246,16 @@ async def poll_and_send_output(
                     )
                 else:
                     # Session died - check if it was user-closed before sending exit message
-                    session = await db.get_session(event.session_id)
                     if session and session.closed:
                         # Session was intentionally closed by user - don't send exit message
                         logger.debug("Session %s was closed by user, skipping exit message", event.session_id[:8])
-                    else:
-                        # Unexpected death - send exit message via AdapterClient
+                    elif session:
+                        # Tmux session died unexpectedly - notify user
                         try:
                             await adapter_client.send_exit_message(
-                                event.session_id,
+                                session,
                                 event.final_output,
-                                "✅ Process exited",
+                                "⚠️ Session terminated abnormally",
                             )
                         except Exception as e:
                             # Handle errors gracefully (e.g., message too long, topic closed)

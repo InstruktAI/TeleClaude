@@ -8,14 +8,23 @@ import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import Db
+from teleclaude.core.models import (
+    MessageMetadata,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
 
 
 class MockUiAdapter(UiAdapter):
     """Concrete implementation of UiAdapter for testing."""
 
+    ADAPTER_KEY = "telegram"  # Use telegram key for testing (reuses existing metadata structure)
+
     def __init__(self):
-        super().__init__()
-        self.adapter_client = None  # Set directly
+        # Create mock client
+        mock_client = AsyncMock()
+        mock_client.on = AsyncMock()  # Mock event registration
+        super().__init__(mock_client)
         self._send_message_mock = AsyncMock(return_value="msg-123")
         self._edit_message_mock = AsyncMock(return_value=True)
         self._delete_message_mock = AsyncMock(return_value=True)
@@ -26,14 +35,14 @@ class MockUiAdapter(UiAdapter):
     async def stop(self):
         pass
 
-    async def send_message(self, session_id: str, text: str, metadata=None) -> str:
-        return await self._send_message_mock(session_id, text, metadata)
+    async def send_message(self, session: "Session", text: str, metadata=None) -> str:  # type: ignore[name-defined]
+        return await self._send_message_mock(session, text, metadata)
 
-    async def edit_message(self, session_id: str, message_id: str, text: str, metadata: Optional[dict] = None) -> bool:
-        return await self._edit_message_mock(session_id, message_id, text)
+    async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:  # type: ignore[name-defined]
+        return await self._edit_message_mock(session, message_id, text, metadata)
 
-    async def delete_message(self, session_id: str, message_id: str) -> bool:
-        return await self._delete_message_mock(session_id, message_id)
+    async def delete_message(self, session: "Session", message_id: str) -> bool:  # type: ignore[name-defined]
+        return await self._delete_message_mock(session, message_id)
 
     async def close_channel(self, session_id: str) -> bool:
         return True
@@ -94,7 +103,7 @@ class TestSendOutputUpdate:
         )
 
         result = await adapter.send_output_update(
-            session.session_id,
+            session,
             "test output",
             time.time(),
             time.time(),
@@ -113,10 +122,18 @@ class TestSendOutputUpdate:
             origin_adapter="telegram",
             title="Test Session",
         )
-        await test_db.update_ux_state(session.session_id, output_message_id="msg-456")
+
+        # Set output_message_id in adapter namespace
+        if not session.adapter_metadata:
+            session.adapter_metadata = SessionAdapterMetadata()
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-456")
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+        # Refresh session from DB
+        session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_output_update(
-            session.session_id,
+            session,
             "updated output",
             time.time(),
             time.time(),
@@ -136,10 +153,18 @@ class TestSendOutputUpdate:
             origin_adapter="telegram",
             title="Test Session",
         )
-        await test_db.update_ux_state(session.session_id, output_message_id="msg-stale")
+
+        # Set output_message_id in adapter namespace
+        if not session.adapter_metadata:
+            session.adapter_metadata = SessionAdapterMetadata()
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-stale")
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+        # Refresh session from DB
+        session = await test_db.get_session(session.session_id)
 
         result = await adapter.send_output_update(
-            session.session_id,
+            session,
             "output after edit fail",
             time.time(),
             time.time(),
@@ -149,9 +174,10 @@ class TestSendOutputUpdate:
         adapter._edit_message_mock.assert_called_once()
         adapter._send_message_mock.assert_called_once()
 
-        # Verify stale message_id was cleared
-        ux_state = await test_db.get_ux_state(session.session_id)
-        assert ux_state.output_message_id == "msg-123"
+        # Verify stale message_id was cleared and new one stored
+        session = await test_db.get_session(session.session_id)
+        assert session.adapter_metadata.telegram is not None
+        assert session.adapter_metadata.telegram.output_message_id == "msg-123"
 
     async def test_includes_exit_code_in_final_message(self, test_db):
         """Test final message includes exit code."""
@@ -165,7 +191,7 @@ class TestSendOutputUpdate:
 
         started_at = time.time() - 10  # 10 seconds ago
         await adapter.send_output_update(
-            session.session_id,
+            session,
             "command output",
             started_at,
             time.time(),
@@ -179,69 +205,6 @@ class TestSendOutputUpdate:
 
         assert "✅" in message_text or "0" in message_text
         assert "```" in message_text
-
-
-@pytest.mark.asyncio
-class TestSendStatusMessage:
-    """Test send_status_message method."""
-
-    async def test_sends_new_message_when_append_false(self, test_db):
-        """Test sending new status message."""
-        adapter = MockUiAdapter()
-
-        result = await adapter.send_status_message(
-            "test-session",
-            "Status message",
-            append_to_existing=False,
-        )
-
-        assert result == "msg-123"
-        adapter._send_message_mock.assert_called_once_with("test-session", "Status message", None)
-
-    async def test_appends_to_existing_output_message(self, test_db, tmp_path):
-        """Test appending status to existing output message."""
-        adapter = MockUiAdapter()
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test",
-            origin_adapter="telegram",
-            title="Test Session",
-        )
-        await test_db.update_ux_state(session.session_id, output_message_id="msg-existing")
-
-        output_file = tmp_path / "output.txt"
-        output_file.write_text("existing output")
-
-        result = await adapter.send_status_message(
-            session.session_id,
-            "🎤 Transcribing...",
-            append_to_existing=True,
-            output_file_path=str(output_file),
-        )
-
-        assert result == "msg-existing"
-        adapter._edit_message_mock.assert_called_once()
-        call_args = adapter._edit_message_mock.call_args
-        edited_text = call_args[0][2]
-
-        assert "existing output" in edited_text
-        assert "🎤 Transcribing..." in edited_text
-
-    async def test_append_returns_none_when_no_message_id(self, test_db, tmp_path):
-        """Test append returns None when no message_id exists."""
-        adapter = MockUiAdapter()
-        output_file = tmp_path / "output.txt"
-        output_file.write_text("some output")
-
-        result = await adapter.send_status_message(
-            "test-session",
-            "Status",
-            append_to_existing=True,
-            output_file_path=str(output_file),
-        )
-
-        assert result is None
-        adapter._edit_message_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -259,7 +222,7 @@ class TestSendExitMessage:
         )
 
         await adapter.send_exit_message(
-            session.session_id,
+            session,
             "final output",
             "✅ Process exited",
         )
@@ -280,10 +243,18 @@ class TestSendExitMessage:
             origin_adapter="telegram",
             title="Test Session",
         )
-        await test_db.update_ux_state(session.session_id, output_message_id="msg-existing")
+
+        # Set output_message_id in adapter namespace
+        if not session.adapter_metadata:
+            session.adapter_metadata = SessionAdapterMetadata()
+        session.adapter_metadata.telegram = TelegramAdapterMetadata(output_message_id="msg-existing")
+        await test_db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
+
+        # Refresh session from DB
+        session = await test_db.get_session(session.session_id)
 
         await adapter.send_exit_message(
-            session.session_id,
+            session,
             "final output",
             "✅ Process exited",
         )
@@ -310,7 +281,7 @@ class TestCleanupFeedbackMessages:
             pending_deletions=["msg-1", "msg-2", "msg-3"],
         )
 
-        await adapter.cleanup_feedback_messages(session.session_id)
+        await adapter.cleanup_feedback_messages(session)
 
         assert adapter._delete_message_mock.call_count == 3
         ux_state = await test_db.get_ux_state(session.session_id)
@@ -332,7 +303,7 @@ class TestCleanupFeedbackMessages:
         )
 
         # Should not raise
-        await adapter.cleanup_feedback_messages(session.session_id)
+        await adapter.cleanup_feedback_messages(session)
 
         ux_state = await test_db.get_ux_state(session.session_id)
         assert ux_state.pending_deletions == []

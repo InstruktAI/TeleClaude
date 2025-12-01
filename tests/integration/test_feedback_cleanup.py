@@ -1,8 +1,17 @@
 """Integration test for feedback message cleanup on user input."""
 
 import json
+from unittest.mock import patch
 
 import pytest
+
+from teleclaude.core import terminal_bridge
+from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.models import (
+    MessageMetadata,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
 
 
 @pytest.mark.integration
@@ -10,13 +19,13 @@ async def test_feedback_messages_cleaned_on_user_input(daemon_with_mocked_telegr
     """Test that feedback messages are deleted when user sends new input."""
     daemon = daemon_with_mocked_telegram
 
-    # Create session
+    # Create session with proper nested adapter_metadata for topic_id lookup
     session = await daemon.db.create_session(
         computer_name="testcomp",
         tmux_session_name="test-feedback-cleanup",
         origin_adapter="telegram",
         title="Test Feedback Cleanup",
-        adapter_metadata={"channel_id": "12345"},
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67890)),
     )
 
     # Simulate sending a feedback message (like "Transcribing...")
@@ -27,18 +36,27 @@ async def test_feedback_messages_cleaned_on_user_input(daemon_with_mocked_telegr
     # Verify feedback message is in pending_deletions
     ux_state = await daemon.db.get_ux_state(session.session_id)
     assert feedback_msg_id in ux_state.pending_deletions
-    initial_count = len(ux_state.pending_deletions)
 
     # Get telegram adapter to check delete_message calls
     telegram_adapter = daemon.client.adapters["telegram"]
     initial_delete_calls = telegram_adapter.delete_message.call_count
 
-    # Simulate user input (MESSAGE event) via AdapterClient
-    await daemon.client.handle_event(
-        event="message",
-        payload={"session_id": session.session_id, "text": "hello"},
-        metadata={"adapter_type": "telegram", "message_id": "user-msg-789"},
-    )
+    # Mock session_exists to return True (we're testing feedback cleanup, not tmux)
+    # This prevents the stale session cleanup from triggering
+    async def mock_session_exists(name: str, log_missing: bool = True) -> bool:
+        return True
+
+    with patch.object(terminal_bridge, "session_exists", mock_session_exists):
+        # Simulate user input (MESSAGE event) via AdapterClient.emit()
+        # NOTE: message_id is required in payload for pre-handler (cleanup) to run
+        await daemon.client.emit(
+            event=TeleClaudeEvents.MESSAGE,
+            payload={"text": "hello", "message_id": "user-msg-123"},
+            metadata=MessageMetadata(
+                adapter_type="telegram",
+                message_thread_id=67890,  # topic_id for session lookup
+            ),
+        )
 
     # Verify delete_message was called (feedback message should be deleted)
     assert (

@@ -1,6 +1,8 @@
 """Protocol definitions for adapter capabilities."""
 
-from typing import AsyncIterator, Dict, Optional, Protocol, runtime_checkable
+from typing import AsyncIterator, Optional, Protocol, runtime_checkable
+
+from teleclaude.core.models import MessageMetadata
 
 
 @runtime_checkable
@@ -21,8 +23,8 @@ class RemoteExecutionProtocol(Protocol):
         self,
         computer_name: str,
         command: str,
+        metadata: MessageMetadata,
         session_id: Optional[str] = None,
-        metadata: Optional[Dict[str, object]] = None,
     ) -> str:
         """Send request to remote computer via transport layer.
 
@@ -32,7 +34,7 @@ class RemoteExecutionProtocol(Protocol):
             computer_name: Target computer identifier
             command: Command to send to remote computer
             session_id: Optional TeleClaude session ID (for session commands)
-            metadata: Optional metadata (title, project_dir for session creation)
+            metadata: Metadata (title, project_dir for session creation)
 
         Returns:
             Redis message ID (for response correlation via read_response)

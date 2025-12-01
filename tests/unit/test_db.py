@@ -212,64 +212,20 @@ class TestUpdateSession:
 
     @pytest.mark.asyncio
     async def test_update_adapter_metadata(self, test_db):
-        """Test updating adapter_metadata dict."""
-        session = await test_db.create_session(
-            "PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123}
+        """Test updating adapter_metadata."""
+        from teleclaude.core.models import (
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
         )
 
-        new_metadata = {"topic_id": 456, "user_id": 789}
+        session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
+
+        new_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456))
         await test_db.update_session(session.session_id, adapter_metadata=new_metadata)
 
         updated = await test_db.get_session(session.session_id)
-        assert updated.adapter_metadata == new_metadata
-
-    @pytest.mark.asyncio
-    async def test_update_working_directory_updates_title(self, test_db):
-        """Test that changing working_directory updates the title path portion."""
-        from unittest.mock import AsyncMock, MagicMock
-
-        # Create mock client
-        mock_client = MagicMock()
-        mock_client.update_channel_title = AsyncMock(return_value=True)
-        test_db.set_client(mock_client)
-
-        # Create session with standard title format
-        session = await test_db.create_session(
-            "RasPi4",
-            "session-1",
-            "telegram",
-            "$RasPi4[apps/TeleClaude] - New session",
-            working_directory="/home/user/apps/TeleClaude",
-        )
-
-        # Change working directory
-        await test_db.update_session(session.session_id, working_directory="/home/user/apps/snuffz")
-
-        # Verify update_channel_title was called with correct new title
-        mock_client.update_channel_title.assert_called_once_with(
-            session.session_id, "$RasPi4[apps/snuffz] - New session"
-        )
-
-    @pytest.mark.asyncio
-    async def test_update_working_directory_skips_non_standard_title(self, test_db):
-        """Test that non-standard titles are skipped (logged warning, no update)."""
-        from unittest.mock import AsyncMock, MagicMock
-
-        # Create mock client
-        mock_client = MagicMock()
-        mock_client.update_channel_title = AsyncMock(return_value=True)
-        test_db.set_client(mock_client)
-
-        # Create session with non-standard title (doesn't match $Computer[path] pattern)
-        session = await test_db.create_session(
-            "RasPi4", "session-1", "telegram", "My Custom Title", working_directory="/home/user/apps/TeleClaude"
-        )
-
-        # Change working directory
-        await test_db.update_session(session.session_id, working_directory="/home/user/apps/snuffz")
-
-        # Verify update_channel_title was NOT called (contract violation - skip update)
-        mock_client.update_channel_title.assert_not_called()
+        assert updated.adapter_metadata.telegram is not None
+        assert updated.adapter_metadata.telegram.topic_id == 456
 
 
 class TestUpdateLastActivity:
@@ -364,11 +320,24 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata(self, test_db):
         """Test retrieving sessions by adapter metadata."""
+        from teleclaude.core.models import (
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
+        )
+
         s1 = await test_db.create_session(
-            "PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123}
+            "PC1",
+            "session-1",
+            "telegram",
+            "Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
         )
         s2 = await test_db.create_session(
-            "PC1", "session-2", "telegram", "Test Session", adapter_metadata={"topic_id": 456}
+            "PC1",
+            "session-2",
+            "telegram",
+            "Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
         )
 
         sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
@@ -379,7 +348,18 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata_no_match(self, test_db):
         """Test retrieving sessions with no metadata match."""
-        await test_db.create_session("PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123})
+        from teleclaude.core.models import (
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
+        )
+
+        await test_db.create_session(
+            "PC1",
+            "session-1",
+            "telegram",
+            "Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
 
         sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 999)
 
@@ -388,8 +368,25 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata_different_adapter(self, test_db):
         """Test retrieving sessions filters by adapter type."""
-        await test_db.create_session("PC1", "session-1", "telegram", "Test Session", adapter_metadata={"topic_id": 123})
-        await test_db.create_session("PC1", "session-2", "rest", "Test Session", adapter_metadata={"topic_id": 123})
+        from teleclaude.core.models import (
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
+        )
+
+        await test_db.create_session(
+            "PC1",
+            "session-1",
+            "telegram",
+            "Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+        await test_db.create_session(
+            "PC1",
+            "session-2",
+            "rest",
+            "Test Session",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
 
         sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
 

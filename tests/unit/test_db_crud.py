@@ -69,6 +69,8 @@ async def test_session_manager_with_metadata():
     """Test Db adapter metadata queries."""
     import os
 
+    from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
+
     db_path = "/tmp/teleclaude_test_metadata.db"
 
     # Clean up old database if exists
@@ -81,11 +83,12 @@ async def test_session_manager_with_metadata():
         await session_mgr.initialize()
 
         # Create session with metadata
+        metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="456"))
         session = await session_mgr.create_session(
             computer_name="TestMac",
             tmux_session_name="test-metadata",
             origin_adapter="telegram",
-            adapter_metadata={"topic_id": 123, "user_id": 456},
+            adapter_metadata=metadata,
             title="Metadata Test",
         )
 

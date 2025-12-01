@@ -6,6 +6,7 @@ import asyncio
 import pytest
 
 from teleclaude.core import terminal_bridge
+from teleclaude.core.models import MessageMetadata
 
 
 @pytest.mark.asyncio
@@ -25,16 +26,17 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
     # Create a test session
     context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
-    await daemon.handle_command("new_session", ["Short", "Test"], context)
+    await daemon.handle_command("new_session", ["Short", "Test"], context, MessageMetadata(adapter_type="telegram"))
 
     sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
     session = sessions[0]
 
-    # Reset mock to track only this test's calls
+    # Reset mocks to track only this test's calls
     telegram = daemon.client.adapters["telegram"]
     telegram.send_message.reset_mock()
     telegram.edit_message.reset_mock()
+    telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with short echo
     msg_context = {"user_id": 12345, "message_id": 2001}
@@ -48,12 +50,10 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     assert output is not None, "Should have terminal output"
     assert "Command executed" in output, f"Should see mocked command output, got: {output[:300]}"
 
-    # Verify output was sent to Telegram
-    total_calls = telegram.send_message.call_count + telegram.edit_message.call_count
-    assert total_calls >= 1, (
-        f"Should have sent output to Telegram. "
-        f"send_message calls: {telegram.send_message.call_count}, "
-        f"edit_message calls: {telegram.edit_message.call_count}"
+    # Verify output was sent to Telegram via send_output_update (used by polling coordinator)
+    assert telegram.send_output_update.call_count >= 1, (
+        f"Should have sent output to Telegram via send_output_update. "
+        f"send_output_update calls: {telegram.send_output_update.call_count}"
     )
 
 
@@ -75,16 +75,17 @@ async def test_long_running_command(daemon_with_mocked_telegram):
 
     # Create a test session
     context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
-    await daemon.handle_command("new_session", ["Long", "Test"], context)
+    await daemon.handle_command("new_session", ["Long", "Test"], context, MessageMetadata(adapter_type="telegram"))
 
     sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
     session = sessions[0]
 
-    # Reset mock to track only this test's calls
+    # Reset mocks to track only this test's calls
     telegram = daemon.client.adapters["telegram"]
     telegram.send_message.reset_mock()
     telegram.edit_message.reset_mock()
+    telegram.send_output_update.reset_mock()
 
     # Send any command - it will be mocked with long-running Python process
     msg_context = {"user_id": 12345, "message_id": 3001}
@@ -112,12 +113,10 @@ async def test_long_running_command(daemon_with_mocked_telegram):
         output = await terminal_bridge.capture_pane(session.tmux_session_name)
         assert "Echo: test message" in output, f"Should see response to input, got: {output[:500]}"
 
-        # Verify output was sent to Telegram
-        total_calls = telegram.send_message.call_count + telegram.edit_message.call_count
-        assert total_calls >= 1, (
-            f"Should have sent output to Telegram. "
-            f"send_message calls: {telegram.send_message.call_count}, "
-            f"edit_message calls: {telegram.edit_message.call_count}"
+        # Verify output was sent to Telegram via send_output_update (used by polling coordinator)
+        assert telegram.send_output_update.call_count >= 1, (
+            f"Should have sent output to Telegram via send_output_update. "
+            f"send_output_update calls: {telegram.send_output_update.call_count}"
         )
     finally:
         # CRITICAL: Reset mock mode to prevent subsequent tests from running real commands

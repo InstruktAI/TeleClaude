@@ -12,7 +12,7 @@ import pytest
 from teleclaude.core import terminal_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import Db, db
-from teleclaude.core.models import Session
+from teleclaude.core.models import MessageMetadata, Session
 
 
 @pytest.mark.integration
@@ -79,10 +79,10 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         await test_db.update_session(session.session_id, closed=True)
 
         # 5. Delete channel (mocked)
-        await adapter_client.delete_channel(session.session_id)
+        await adapter_client.delete_channel(session)
 
         # 6. Send confirmation message (mocked)
-        await adapter_client.send_message(session.session_id, "Session closed")
+        await adapter_client.send_message(session, "Session closed", MessageMetadata())
 
         # Verify tmux session killed (MOCKED)
         exists = await terminal_bridge.session_exists(tmux_session_name)

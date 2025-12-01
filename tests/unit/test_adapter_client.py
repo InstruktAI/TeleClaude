@@ -4,6 +4,8 @@ from datetime import datetime
 
 import pytest
 
+from teleclaude.core.models import PeerInfo
+
 
 @pytest.mark.asyncio
 async def test_adapter_client_register_adapter():
@@ -42,20 +44,18 @@ async def test_adapter_client_discover_peers_single_adapter():
     mock_client = Mock()
     mock_client.discover_peers = AsyncMock(
         return_value=[
-            {
-                "name": "macbook",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "10s ago",
-                "adapter_type": "telegram",
-            },
-            {
-                "name": "workstation",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "5s ago",
-                "adapter_type": "telegram",
-            },
+            PeerInfo(
+                name="macbook",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="telegram",
+            ),
+            PeerInfo(
+                name="workstation",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="telegram",
+            ),
         ]
     )
 
@@ -82,33 +82,30 @@ async def test_adapter_client_discover_peers_multiple_adapters():
     mock_telegram = Mock()
     mock_telegram.discover_peers = AsyncMock(
         return_value=[
-            {
-                "name": "macbook",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "10s ago",
-                "adapter_type": "telegram",
-            }
+            PeerInfo(
+                name="macbook",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="telegram",
+            )
         ]
     )
 
     mock_redis = Mock()
     mock_redis.discover_peers = AsyncMock(
         return_value=[
-            {
-                "name": "workstation",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "5s ago",
-                "adapter_type": "redis",
-            },
-            {
-                "name": "server",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "3s ago",
-                "adapter_type": "redis",
-            },
+            PeerInfo(
+                name="workstation",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="redis",
+            ),
+            PeerInfo(
+                name="server",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="redis",
+            ),
         ]
     )
 
@@ -134,36 +131,34 @@ async def test_adapter_client_deduplication():
     client = AdapterClient()
 
     # Create mock adapters with overlapping peers
+    now = datetime.now()
     mock_telegram = Mock()
     mock_telegram.discover_peers = AsyncMock(
         return_value=[
-            {
-                "name": "macbook",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "10s ago",
-                "adapter_type": "telegram",
-            }
+            PeerInfo(
+                name="macbook",
+                status="online",
+                last_seen=now,
+                adapter_type="telegram",
+            )
         ]
     )
 
     mock_redis = Mock()
     mock_redis.discover_peers = AsyncMock(
         return_value=[
-            {
-                "name": "macbook",  # Duplicate!
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "5s ago",
-                "adapter_type": "redis",
-            },
-            {
-                "name": "workstation",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "3s ago",
-                "adapter_type": "redis",
-            },
+            PeerInfo(
+                name="macbook",  # Duplicate!
+                status="online",
+                last_seen=now,
+                adapter_type="redis",
+            ),
+            PeerInfo(
+                name="workstation",
+                status="online",
+                last_seen=now,
+                adapter_type="redis",
+            ),
         ]
     )
 
@@ -178,7 +173,6 @@ async def test_adapter_client_deduplication():
     # First adapter (telegram) wins for "macbook"
     macbook_peer = next(p for p in peers if p["name"] == "macbook")
     assert macbook_peer["adapter_type"] == "telegram"
-    assert macbook_peer["last_seen_ago"] == "10s ago"
 
 
 @pytest.mark.asyncio
@@ -197,13 +191,12 @@ async def test_adapter_client_handles_adapter_errors():
     mock_working_adapter = Mock()
     mock_working_adapter.discover_peers = AsyncMock(
         return_value=[
-            {
-                "name": "workstation",
-                "status": "online",
-                "last_seen": datetime.now(),
-                "last_seen_ago": "5s ago",
-                "adapter_type": "redis",
-            }
+            PeerInfo(
+                name="workstation",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="redis",
+            )
         ]
     )
 

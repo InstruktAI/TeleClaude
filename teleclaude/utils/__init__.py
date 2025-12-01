@@ -263,30 +263,6 @@ def strip_ansi_codes(text: str) -> str:
     return ansi_pattern.sub("", text)
 
 
-def strip_claude_code_hooks(output: str) -> str:
-    """Strip Claude Code hook messages from output.
-
-    Removes lines starting with "  ⎿ " (2 spaces + box char + space)
-    and their continuation lines (indented with 4+ spaces).
-
-    Real examples from tmux capture:
-    - "  ⎿  Read 166 lines"
-    - "  ⎿  Updated file.py with 2 additions\n     and 4 removals"
-    - "  ⎿ UserPromptSubmit hook succeeded: <system-reminder>...\n    adhere to...\n    write tests..."
-    - "  ⎿  SessionStart:resume hook succeeded:"
-
-    Args:
-        output: Terminal output
-
-    Returns:
-        Output with Claude Code hook messages removed
-    """
-    # Pattern: Lines starting with "  ⎿ " and continuation lines (4+ spaces indentation)
-    output = re.sub(r"^  ⎿ .*(?:\n {4,}.*)*\n?", "", output, flags=re.MULTILINE)
-
-    return output
-
-
 def strip_exit_markers(text: str) -> str:
     """Strip exit code markers from text.
 
@@ -316,11 +292,15 @@ def strip_exit_markers(text: str) -> str:
     # Pattern 2: old format ; echo "__EXIT__$?__"
     text = re.sub(r';\s*\n?\s*echo\s+"__EXIT__\s*\$\?\s*__"', "", text)
 
-    # Pattern 3: echo at start of line (after line wrap) - new format
-    text = re.sub(r'^\s+echo\s+"__EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"\s*\n', "", text, flags=re.MULTILINE)
+    # Pattern 3: echo at start of line (with or without leading whitespace) - new format
+    text = re.sub(r'^\s*echo\s+"__EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"\s*\n?', "", text, flags=re.MULTILINE)
 
-    # Pattern 4: echo at start of line (after line wrap) - old format
-    text = re.sub(r'^\s+echo\s+"__EXIT__\s*\$\?\s*__"\s*\n', "", text, flags=re.MULTILINE)
+    # Pattern 4: echo at start of line (with or without leading whitespace) - old format
+    text = re.sub(r'^\s*echo\s+"__EXIT__\s*\$\?\s*__"\s*\n?', "", text, flags=re.MULTILINE)
+
+    # Pattern 5: multiline wrapped - newline INSIDE the echo string (e.g., ; echo "__\nEXIT__...")
+    text = re.sub(r';\s*echo\s+"__\s*\n\s*EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"', "", text)
+    text = re.sub(r';\s*echo\s+"__\s*\n\s*EXIT__\s*\$\?\s*__"', "", text)
 
     # Strip Claude Code hook success messages (including wrapped continuation lines)
     # Matches lines starting with "  ⎿ " and continuation lines indented with 5+ spaces

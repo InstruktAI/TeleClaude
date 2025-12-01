@@ -4,10 +4,7 @@ import asyncio
 import json
 import logging
 import os
-import re
-import time
 import types
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -19,7 +16,10 @@ from mcp.types import JSONRPCMessage, TextContent, Tool
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
+from teleclaude.core import command_handlers
 from teleclaude.core.db import db
+from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -100,16 +100,22 @@ class TeleClaudeMCPServer:
                     name="teleclaude__list_sessions",
                     title="TeleClaude: List Sessions",
                     description=(
-                        "List active AI-managed Claude Code sessions across all computers with rich metadata "
-                        "(project_dir, status, claude_session_id). "
-                        "Use to discover existing sessions before starting new ones."
+                        "List active sessions from local or remote computer(s). "
+                        "Defaults to local sessions only. Set computer=None to query ALL computers, "
+                        "or computer='name' to query a specific remote computer."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "computer": {
-                                "type": "string",
-                                "description": "Optional filter by target computer name",
+                                "type": ["string", "null"],
+                                "description": (
+                                    "Which computer(s) to query: "
+                                    "'local' (default) = this computer only, "
+                                    "None = all computers, "
+                                    "'name' = specific remote computer"
+                                ),
+                                "default": "local",
                             }
                         },
                     },
@@ -222,66 +228,6 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__get_session_status",
-                    title="TeleClaude: Get Session Status",
-                    description=(
-                        "**DEPRECATED**: Use teleclaude__get_session_data instead. "
-                        "Check session status and get accumulated output since last checkpoint. "
-                        "**Purpose**: Monitor delegated tasks running on remote computers. "
-                        "**When to use**: Call repeatedly after teleclaude__send_message until: "
-                        "(1) You see output indicating task completed successfully, "
-                        "(2) You see errors and need to intervene, or "
-                        "(3) You determine task is progressing well (polling_active=true) "
-                        "and safe to let run. "
-                        "**State field**: Shows 'polling_active' when command is running, "
-                        "'idle' when waiting for input. "
-                        "**Checkpoint System**: Only returns NEW output since last check (no replay). "
-                        "This models human delegation: peek → assess → intervene OR let run → check back later."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string",
-                                "description": "Session ID to check status for",
-                            },
-                        },
-                        "required": ["session_id"],
-                    },
-                ),
-                Tool(
-                    name="teleclaude__observe_session",
-                    title="TeleClaude: Observe Session",
-                    description=(
-                        "Watch real-time output from ANY session on any computer "
-                        "(local or AI-to-AI). "
-                        "**Use Cases**: Monitor another AI's work, observe human sessions, "
-                        "debug sessions, multi-device access. "
-                        "**How it works**: Signals observation interest via Redis "
-                        "→ target computer streams output → observer receives. "
-                        "**Interest Window Pattern**: Observes for specified duration, then detaches automatically. "
-                        "Works for both local Telegram sessions and AI-to-AI sessions."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "computer": {
-                                "type": "string",
-                                "description": "Target computer name (e.g., 'MozBook', 'RasPi')",
-                            },
-                            "session_id": {
-                                "type": "string",
-                                "description": "Session ID to observe",
-                            },
-                            "duration_seconds": {
-                                "type": "number",
-                                "description": "How long to watch (default: 30 seconds)",
-                            },
-                        },
-                        "required": ["computer", "session_id"],
-                    },
-                ),
-                Tool(
                     name="teleclaude__deploy_to_all_computers",
                     title="TeleClaude: Deploy to All Computers",
                     description=(
@@ -343,10 +289,10 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__init_from_claude",
-                    title="TeleClaude: Initialize from Claude",
+                    name="teleclaude__handle_claude_event",
+                    title="TeleClaude: Handle Claude Event",
                     description=(
-                        "Initializes TeleClaude session with Claude session data. "
+                        "Emit Claude Code events to registered listeners. "
                         "USED BY HOOKS, AND FOR INTERNAL USE ONLY, so do not call yourself."
                     ),
                     inputSchema={
@@ -354,18 +300,18 @@ class TeleClaudeMCPServer:
                         "properties": {
                             "session_id": {
                                 "type": "string",
-                                "description": "TeleClaude session UUID (not Claude Code session!)",
+                                "description": "TeleClaude session UUID",
                             },
-                            "claude_session_id": {
+                            "event_type": {
                                 "type": "string",
-                                "description": "ID of Claude session",
+                                "description": "Type of Claude event (e.g., 'stop', 'compact')",
                             },
-                            "claude_session_file": {
-                                "type": "string",
-                                "description": "Path to Claude session file",
+                            "data": {
+                                "type": "object",
+                                "description": "Event-specific data",
                             },
                         },
-                        "required": ["session_id", "claude_session_id", "claude_session_file"],
+                        "required": ["session_id", "event_type", "data"],
                     },
                 ),
             ]
@@ -388,17 +334,17 @@ class TeleClaudeMCPServer:
                 projects = await self.teleclaude__list_projects(computer)
                 return [TextContent(type="text", text=json.dumps(projects, default=str))]
             elif name == "teleclaude__list_sessions":
-                computer_obj = arguments.get("computer") if arguments else None
-                computer = str(computer_obj) if computer_obj else None
+                computer = arguments.get("computer", "local") if arguments else "local"
                 sessions = await self.teleclaude__list_sessions(computer)
                 return [TextContent(type="text", text=json.dumps(sessions, default=str))]
             elif name == "teleclaude__start_session":
-                # Extract arguments explicitly
-                computer = str(arguments.get("computer", "")) if arguments else ""
-                project_dir_obj = arguments.get("project_dir") if arguments else None
-                project_dir = str(project_dir_obj) if project_dir_obj else None
-                title = str(arguments.get("title", "")) if arguments else ""
-                message = str(arguments.get("message", "")) if arguments else ""
+                # All arguments required by MCP schema - no fallbacks needed
+                if not arguments:
+                    raise ValueError("Arguments required for teleclaude__start_session")
+                computer = str(arguments["computer"])
+                project_dir = str(arguments["project_dir"])
+                title = str(arguments["title"])
+                message = str(arguments["message"])
                 result = await self.teleclaude__start_session(computer, project_dir, title, message)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
@@ -419,20 +365,6 @@ class TeleClaudeMCPServer:
                 since_timestamp = str(since_timestamp_obj) if since_timestamp_obj else None
                 result = await self.teleclaude__get_session_data(computer, session_id, since_timestamp)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
-            elif name == "teleclaude__get_session_status":
-                session_id = str(arguments.get("session_id", "")) if arguments else ""
-                result = await self.teleclaude__get_session_status(session_id)
-                return [TextContent(type="text", text=json.dumps(result, default=str))]
-            elif name == "teleclaude__observe_session":
-                computer = str(arguments.get("computer", "")) if arguments else ""
-                session_id = str(arguments.get("session_id", "")) if arguments else ""
-                duration_seconds = 30
-                if arguments and "duration_seconds" in arguments:
-                    duration_obj = arguments["duration_seconds"]
-                    if isinstance(duration_obj, (int, float)):
-                        duration_seconds = int(duration_obj)
-                result = await self.teleclaude__observe_session(computer, session_id, duration_seconds)
-                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__deploy_to_all_computers":
                 # No arguments - always deploys to ALL computers
                 deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
@@ -444,15 +376,12 @@ class TeleClaudeMCPServer:
                 caption = str(caption_obj) if caption_obj else None
                 result_text = await self.teleclaude__send_file(session_id, file_path, caption)
                 return [TextContent(type="text", text=result_text)]
-            elif name == "teleclaude__init_from_claude":
+            elif name == "teleclaude__handle_claude_event":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
-                claude_session_id_obj = arguments.get("claude_session_id") if arguments else None
-                claude_session_id = str(claude_session_id_obj) if claude_session_id_obj else None
-                claude_session_file_obj = arguments.get("claude_session_file") if arguments else None
-                claude_session_file = str(claude_session_file_obj) if claude_session_file_obj else None
-                result_text = await self.teleclaude__init_from_claude(
-                    session_id, claude_session_id, claude_session_file
-                )
+                event_type = str(arguments.get("event_type", "")) if arguments else ""
+                data_obj = arguments.get("data") if arguments else None
+                data = dict(data_obj) if isinstance(data_obj, dict) else {}
+                result_text = await self.teleclaude__handle_claude_event(session_id, event_type, data)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__send_notification":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -544,7 +473,7 @@ class TeleClaudeMCPServer:
             List of online computers with their info (role, system_stats, sessions, etc.)
         """
         logger.debug("teleclaude__list_computers() called")
-        result = await self.client.discover_peers()
+        result: list[dict[str, object]] = await self.client.discover_peers()  # Adapter returns Any for backward compat
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))
         return result
 
@@ -567,7 +496,9 @@ class TeleClaudeMCPServer:
 
         # Send list_projects command via AdapterClient
         # Transport layer generates request_id from Redis message ID
-        message_id = await self.client.send_request(computer_name=computer, command="list_projects")
+        message_id = await self.client.send_request(
+            computer_name=computer, command="list_projects", metadata=MessageMetadata()
+        )
         logger.debug("Request sent with message_id=%s, reading response...", message_id[:15])
 
         # Read response from AdapterClient (one-shot, not streaming)
@@ -632,7 +563,7 @@ class TeleClaudeMCPServer:
 
         # Send new_session command to remote - uses standardized handle_create_session
         # Transport layer generates request_id from Redis message ID
-        metadata: dict[str, object] = {"project_dir": project_dir, "title": title}
+        metadata = MessageMetadata(project_dir=project_dir, title=title)
 
         message_id = await self.client.send_request(
             computer_name=computer,
@@ -664,6 +595,7 @@ class TeleClaudeMCPServer:
                 await self.client.send_request(
                     computer_name=computer,
                     command=f"/cd {project_dir}",
+                    metadata=MessageMetadata(),
                     session_id=str(remote_session_id),
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
@@ -672,6 +604,7 @@ class TeleClaudeMCPServer:
             await self.client.send_request(
                 computer_name=computer,
                 command=f"/claude '{message}'",
+                metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
             logger.debug("Sent /claude command with message to remote session %s", remote_session_id[:8])
@@ -684,53 +617,73 @@ class TeleClaudeMCPServer:
             logger.error("Failed to create remote session: %s", e)
             return {"status": "error", "message": f"Failed to create remote session: {str(e)}"}
 
-    async def teleclaude__list_sessions(self, computer: Optional[str] = None) -> list[dict[str, object]]:
-        """List sessions from LOCAL database only.
-
-        This tool queries the local database on THIS computer and returns sessions
-        (Human-to-AI via Telegram). It does NOT query remote computers - each computer
-        maintains its own session database.
-
-        NOTE: After unified architecture refactoring, MCP client mode creates NO local
-        sessions. Use teleclaude__get_session_data to query remote sessions instead.
+    async def teleclaude__list_sessions(self, computer: Optional[str] = "local") -> list[dict[str, object]]:
+        """List sessions from local or remote computer(s).
 
         Args:
-            computer: Unused - kept for backwards compatibility. Will be removed in future.
+            computer: Which computer(s) to query:
+                - "local" (default): Query local database only
+                - None: Query ALL computers via Redis
+                - "name": Query specific remote computer via Redis
 
         Returns:
             List of session dicts with fields:
-            - session_id: Unique session identifier
-            - origin_adapter: Adapter that initiated session (telegram)
-            - target: Always None (no AI-to-AI local sessions)
+            - session_id: Session identifier
+            - origin_adapter: Adapter that initiated session
             - title: Session title
-            - working_directory: Current working directory of the session
+            - working_directory: Current working directory
             - status: Session status (active/closed)
             - created_at: ISO timestamp
             - last_activity: ISO timestamp
-            - metadata: Full adapter_metadata dict
+            - computer: Computer name (only for remote queries)
         """
-        # Get all active sessions (closed=False)
-        sessions = await db.get_all_sessions(closed=False)
+        if computer == "local":
+            # Query local database directly
+            sessions_data = await command_handlers.handle_list_sessions()
+            return sessions_data
 
-        # Return all sessions (no AI-to-AI local sessions exist anymore)
-        return [
-            {
-                "session_id": session.session_id,
-                "origin_adapter": session.origin_adapter,
-                "target": None,  # No AI-to-AI local sessions
-                "title": session.title,
-                "working_directory": session.working_directory,
-                "status": "closed" if session.closed else "active",
-                "created_at": session.created_at.isoformat(),
-                "last_activity": session.last_activity.isoformat(),
-                "metadata": session.adapter_metadata or {},
-            }
-            for session in sessions
-        ]
+        # Query remote computer(s) via Redis
+        redis_adapter = self.client.adapters.get("redis")
+        if not redis_adapter:
+            logger.warning("Redis adapter not available - cannot query remote sessions")
+            return []
 
-    async def teleclaude__send_message(
-        self, computer: str, session_id: str, message: str
-    ) -> AsyncIterator[str]:
+        # Start with local sessions when querying all computers
+        all_sessions: list[dict[str, object]] = []
+        if computer is None:
+            # Include local sessions first
+            local_sessions = await command_handlers.handle_list_sessions()
+            for session in local_sessions:
+                session["computer"] = self.computer_name
+            all_sessions.extend(local_sessions)
+            # Then get all online remote computers
+            computers_to_query = await redis_adapter._get_online_computers()
+        else:
+            # Query specific remote computer only
+            computers_to_query = [computer]
+
+        # Aggregate sessions from all target computers
+        for computer_name in computers_to_query:
+            try:
+                # Send list_sessions request via Redis
+                message_id = await redis_adapter.send_request(computer_name, "list_sessions", MessageMetadata())
+
+                # Wait for response (short timeout)
+                response_data = await self.client.read_response(message_id, timeout=3.0)
+                sessions = json.loads(response_data.strip())
+
+                # Add computer_name to each session for aggregation
+                for session in sessions:
+                    session["computer"] = computer_name
+                all_sessions.extend(sessions)
+
+            except (TimeoutError, Exception) as e:
+                logger.warning("Failed to get sessions from %s: %s", computer_name, e)
+                continue
+
+        return all_sessions
+
+    async def teleclaude__send_message(self, computer: str, session_id: str, message: str) -> AsyncIterator[str]:
         """Send message to remote session via request/response pattern.
 
         Simplified design - no local session, no streaming. Just sends message to remote
@@ -749,6 +702,7 @@ class TeleClaudeMCPServer:
                 computer_name=computer,
                 command=f"message {message}",
                 session_id=session_id,
+                metadata=MessageMetadata(),
             )
 
             yield f"Message sent to session {session_id[:8]}. Use teleclaude__get_session_data to check output."
@@ -784,6 +738,7 @@ class TeleClaudeMCPServer:
             computer_name=computer,
             command=command,
             session_id=session_id,
+            metadata=MessageMetadata(),
         )
 
         # Read response (remote reads claude_session_file)
@@ -814,148 +769,6 @@ class TeleClaudeMCPServer:
                 "error": "Invalid JSON response from remote computer",
             }
 
-    async def teleclaude__get_session_status(self, session_id: str) -> dict[str, object]:
-        """Get session status and accumulated output since last checkpoint.
-
-        DEPRECATED: Use teleclaude__get_session_data instead.
-
-        Args:
-            session_id: Session ID to check status for
-
-        Returns:
-            dict with status, new_output, polling_active, runtime_seconds
-        """
-        # Get session from database
-        session = await db.get_session(session_id)
-        if not session:
-            return {"status": "error", "message": "Session not found"}
-
-        # Check if session was explicitly closed
-        if session.closed:
-            return {"status": "closed", "message": "Session has been closed"}
-
-        # Get target computer from session metadata
-        metadata = session.adapter_metadata or {}
-        target_computer_obj = metadata.get("target_computer")
-        if not target_computer_obj:
-            return {"status": "error", "message": "Session metadata missing target_computer"}
-
-        target_computer = str(target_computer_obj)
-
-        # Poll for new output with short timeout (2s - just check what's available)
-        new_output_chunks: list[str] = []
-        try:
-            async for chunk in self.client.stream_session_output(session_id, timeout=2.0):
-                new_output_chunks.append(chunk)
-        except asyncio.TimeoutError:
-            # No new output - that's fine
-            pass
-        except Exception as e:
-            logger.error("Error polling output for session %s: %s", session_id[:8], e)
-            return {"status": "error", "message": f"Failed to poll output: {str(e)}"}
-
-        new_output = "".join(new_output_chunks)
-
-        # Strip ALL exit markers from output (these are internal infrastructure)
-        # Pattern: __EXIT__<number>__ (e.g., __EXIT__0__)
-        new_output = re.sub(r"__EXIT__\d+__", "", new_output)
-
-        # Determine session state
-        # - For AI-to-AI sessions, Claude Code runs continuously
-        # - Session is "running" until explicitly closed
-        # - Check if there's recent activity via polling_active flag
-        ux_state = await db.get_ux_state(session_id)
-        polling_active = ux_state.polling_active if ux_state else False
-
-        status = "running"  # Session is alive unless marked closed
-        state_description = "polling_active" if polling_active else "idle"
-
-        # Calculate runtime (ensure both datetimes are timezone-aware)
-        now = datetime.now(UTC)
-        created_at = session.created_at.replace(tzinfo=UTC) if session.created_at.tzinfo is None else session.created_at
-        runtime_seconds = (now - created_at).total_seconds()
-
-        # Update checkpoint timestamp
-        metadata["last_checkpoint_time"] = datetime.now(UTC).isoformat()
-        await db.update_session(session_id=session_id, adapter_metadata=metadata, last_activity=datetime.now(UTC))
-
-        return {
-            "status": status,
-            "state": state_description,
-            "new_output": new_output,
-            "has_new_output": len(new_output.strip()) > 0,
-            "polling_active": polling_active,
-            "runtime_seconds": runtime_seconds,
-            "target_computer": target_computer,
-            "project_dir": metadata.get("project_dir"),
-        }
-
-    async def teleclaude__observe_session(
-        self,
-        computer: str,
-        session_id: str,
-        duration_seconds: int = 30,
-    ) -> dict[str, object]:
-        """Observe real-time output from any session on any computer.
-
-        Signals observation interest to target computer, then streams output
-        for the specified duration. Target computer will broadcast session
-        output to Redis only during the observation window.
-
-        Args:
-            computer: Target computer name
-            session_id: Session ID to observe
-            duration_seconds: How long to watch (default: 30s)
-
-        Returns:
-            Dict with status and streamed output
-        """
-        # Get Redis adapter
-        redis_adapter_base = self.client.adapters.get("redis")
-        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
-            return {"status": "error", "message": "Redis adapter not available"}
-
-        redis_adapter: RedisAdapter = redis_adapter_base
-
-        # Signal observation interest to target computer
-        try:
-            await redis_adapter.signal_observation(computer, session_id, duration_seconds)
-        except Exception as e:
-            logger.error("Failed to signal observation: %s", e)
-            return {"status": "error", "message": f"Failed to signal observation: {str(e)}"}
-
-        # Stream output for duration
-        output_chunks: list[str] = []
-        start_time = time.time()
-
-        try:
-            async for chunk in self.client.stream_session_output(session_id, timeout=float(duration_seconds)):
-                output_chunks.append(chunk)
-
-                # Stop if duration exceeded
-                if time.time() - start_time > duration_seconds:
-                    break
-        except asyncio.TimeoutError:
-            # No output during window - that's okay
-            pass
-        except Exception as e:
-            logger.error("Error polling output for observation: %s", e)
-            return {"status": "error", "message": f"Failed to poll output: {str(e)}"}
-
-        output = "".join(output_chunks)
-
-        # Strip exit markers
-        output = re.sub(r"__EXIT__\d+__", "", output)
-
-        return {
-            "status": "success",
-            "computer": computer,
-            "session_id": session_id,
-            "duration_seconds": duration_seconds,
-            "output": output if output.strip() else "[No output during observation window]",
-            "output_length": len(output),
-        }
-
     async def teleclaude__deploy_to_all_computers(self) -> dict[str, dict[str, object]]:
         """Deploy latest code to ALL remote computers via Redis.
 
@@ -974,7 +787,7 @@ class TeleClaudeMCPServer:
 
         # Discover ALL computers (excluding self)
         all_peers = await redis_adapter.discover_peers()
-        computers = [str(peer["name"]) for peer in all_peers if peer.get("name") != self.computer_name]
+        computers = [str(peer.name) for peer in all_peers if peer.name != self.computer_name]
 
         if not computers:
             return {"_message": {"status": "success", "message": "No remote computers to deploy to"}}
@@ -1027,10 +840,13 @@ class TeleClaudeMCPServer:
         if not path.is_file():
             return f"Error: Not a file: {file_path}"
 
+        # Get session
+        session = await db.get_session(session_id)
+        if not session:
+            return f"Error: Session {session_id} not found"
+
         try:
-            message_id = await self.client.send_file(
-                session_id=session_id, file_path=str(path.absolute()), caption=caption
-            )
+            message_id = await self.client.send_file(session=session, file_path=str(path.absolute()), caption=caption)
             return f"File sent successfully: {path.name} (message_id: {message_id})"
         except ValueError as e:
             logger.error("Failed to send file %s: %s", file_path, e)
@@ -1039,15 +855,13 @@ class TeleClaudeMCPServer:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"
 
-    async def teleclaude__init_from_claude(
-        self, session_id: str, claude_session_id: Optional[str] = None, claude_session_file: Optional[str] = None
-    ) -> str:
-        """Keep Claude Code status information for TeleClaude session (called by Claude Code hooks).
+    async def teleclaude__handle_claude_event(self, session_id: str, event_type: str, data: dict[str, object]) -> str:
+        """Emit Claude Code event to registered listeners (called by Claude Code hooks).
 
         Args:
-            session_id: TeleClaude session UUID (not Claude Code session!)
-            claude_session_id: Claude Code session ID
-            claude_session_file: Path to Claude session file
+            session_id: TeleClaude session UUID
+            event_type: Type of Claude event (e.g., "stop", "compact", "session_start")
+            data: Event-specific data
 
         Returns:
             Success message
@@ -1057,12 +871,14 @@ class TeleClaudeMCPServer:
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
-        # Store claude_session_file
-        if claude_session_file:
-            await db.update_ux_state(
-                session_id, claude_session_id=claude_session_id, claude_session_file=claude_session_file
-            )
+        # Emit event to registered listeners
+        await self.client.emit(
+            TeleClaudeEvents.CLAUDE_EVENT,
+            {"session_id": session_id, "event_type": event_type, "data": data},  # type: ignore[dict-item]
+            MessageMetadata(adapter_type="internal"),
+        )
 
+        logger.debug("Emitted Claude event: session=%s, type=%s", session_id[:8], event_type)
         return "OK"
 
     async def teleclaude__send_notification(self, session_id: str, message: str) -> str:
@@ -1083,7 +899,7 @@ class TeleClaudeMCPServer:
         # Send notification as feedback (UI only, never to terminal)
         # UI adapters: shows message + auto-deletes on next input
         # Transport adapters (Redis): no-op, prevents typing into tmux
-        message_id = await self.client.send_feedback(session_id, message)
+        message_id = await self.client.send_feedback(session, message, MessageMetadata())
 
         # Mark notification message for cleanup on next user input (if UI adapter returned message_id)
         if message_id:

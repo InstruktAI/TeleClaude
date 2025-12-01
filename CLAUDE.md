@@ -41,10 +41,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **CRITICAL**: MCP connection behavior depends on terminal context.
 
 **In tmux sessions:**
+
 - MCP connection automatically reconnects after `make restart`
 - You can continue testing MCP tools immediately
 
 **In normal terminal sessions:**
+
 - MCP connection is PERMANENTLY LOST after `make restart`
 - Claude Code maintains old socket connection that cannot reconnect
 - You CANNOT do anything to fix this
@@ -82,6 +84,7 @@ make status                  # Check daemon status and uptime
 **Two different restart mechanisms:**
 
 1. **Manual Restart** (`make restart`):
+
    - Runs `systemctl restart teleclaude`
    - Systemd sends SIGTERM → clean shutdown → starts fresh process
    - Used during development after code changes
@@ -306,10 +309,11 @@ docs/troubleshooting.md
 The wrapper automatically uses `.rsyncignore` to protect `config.yml`, `.env`, databases, and other local files.
 
 **Computer Registry:**
+
 - All remote computers must be defined in `config.yml` under `remote_computers`
 - Script ONLY accepts computer shorthand names from config (prevents mistakes)
 - Each computer has: `user`, `host`, `ip`, `teleclaude_path`
-- Example in `config.example.yml`
+- Example in `config.yml.sample`
 
 **1. Make changes locally** (on development machine)
 
@@ -329,12 +333,14 @@ ssh -A user@hostname 'tail -f /var/log/teleclaude.log'
 **3. Iterate quickly** - repeat steps 1-2 until feature works
 
 **4. Test thoroughly**:
+
 ```bash
 make test        # Run all tests
 make lint        # Verify code quality
 ```
 
 **5. Only then commit** - when code is complete, tested, and working:
+
 ```bash
 git add .
 git commit -m "feat(component): add feature description"
@@ -346,6 +352,7 @@ git push
 ### When to Commit
 
 ✅ **DO commit when:**
+
 - All tests pass (`make test`)
 - All lint checks pass (`make lint`)
 - Feature is complete and working
@@ -353,6 +360,7 @@ git push
 - Change represents one atomic, logical unit
 
 ❌ **DO NOT commit:**
+
 - Work-in-progress code
 - Broken or untested code
 - Debug statements or temporary changes

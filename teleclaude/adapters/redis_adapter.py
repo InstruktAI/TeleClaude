@@ -5,6 +5,8 @@ Redis Streams as the transport layer. It bypasses Telegram's bot-to-bot
 messaging restriction.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -20,6 +22,12 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
+from teleclaude.core.models import (
+    ChannelMetadata,
+    MessageMetadata,
+    PeerInfo,
+    RedisAdapterMetadata,
+)
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
@@ -57,7 +65,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         self.client = adapter_client
 
         # Get global config singleton
-        self.redis: Optional[Redis] = None
+        self.redis: Redis
         self._message_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._output_stream_listeners: dict[str, asyncio.Task[None]] = {}  # session_id -> listener task
@@ -93,7 +101,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             return
 
         # Create Redis client with TLS support
-        self.redis = Redis.from_url(
+        self.redis = Redis.from_url(  # type: ignore[misc]  # Redis library returns type[Redis] with Any
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
@@ -104,7 +112,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         # Test connection
         try:
-            await self.redis.ping()
+            await self.redis.ping()  # type: ignore[misc]  # Redis.ping() returns Awaitable[bool] | bool | Any
             logger.info("Redis connection successful")
         except Exception as e:
             logger.error("Failed to connect to Redis: %s", e)
@@ -141,7 +149,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 pass
 
         # Cancel all output stream listeners
-        for session_id, task in list(self._output_stream_listeners.items()):
+        for _, task in list(self._output_stream_listeners.items()):
             task.cancel()
             try:
                 await task
@@ -180,40 +188,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         except Exception as e:
             logger.error("Failed to persist last processed message ID: %s", e)
 
-    async def send_message(self, session_id: str, text: str, metadata: Optional[dict[str, object]] = None) -> str:
+    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:
         """Send message chunk to Redis output stream.
 
         Args:
-            session_id: Session ID
+            session: Session object
             text: Message text (output chunk)
             metadata: Optional metadata (ignored for Redis)
 
         Returns:
             Redis stream entry ID as message_id
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        # Get output stream name from session metadata (top-level channel_id)
-        session_metadata: dict[str, object] = session.adapter_metadata or {}
-        if isinstance(session_metadata, str):
-            session_metadata = json.loads(session_metadata)
-
-        # Use top-level channel_id (common interface for all adapters)
-        output_stream = session_metadata.get("channel_id")
-
-        if not output_stream:
-            # Create stream name if not exists
-            output_stream = f"output:{session_id}"
-            session_metadata["channel_id"] = output_stream
-            session_metadata["redis"] = {"output_stream": output_stream}
-
-            # Update session
-            await db.update_session(session_id, adapter_metadata=session_metadata)
+        # Trust contract: create_channel already set up metadata
+        output_stream = session.adapter_metadata.redis.channel_id
 
         # Send to Redis stream
         message_id_bytes: bytes = await self.redis.xadd(
@@ -221,7 +209,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             {
                 b"chunk": text.encode("utf-8"),
                 b"timestamp": str(time.time()).encode("utf-8"),
-                b"session_id": session_id.encode("utf-8"),
+                b"session_id": session.session_id.encode("utf-8"),
             },
             maxlen=self.output_stream_maxlen,
         )
@@ -229,13 +217,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.debug("Sent to Redis stream %s: %s", output_stream, message_id_bytes)
         return message_id_bytes.decode("utf-8")
 
-    async def edit_message(
-        self, session_id: str, message_id: str, text: str, metadata: Optional[dict[str, object]] = None
-    ) -> bool:
+    async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:
         """Redis streams don't support editing - send new message instead.
 
         Args:
-            session_id: Session ID
+            session: Session object
             message_id: Message ID (ignored)
             text: New text
             metadata: Optional metadata
@@ -243,34 +229,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             True (always succeeds by sending new message)
         """
-        await self.send_message(session_id, text, metadata)
+        await self.send_message(session, text, metadata)
         return True
 
-    async def delete_message(self, session_id: str, message_id: str) -> bool:
+    async def delete_message(self, session: "Session", message_id: str) -> bool:
         """Delete message from Redis stream.
 
         Args:
-            session_id: Session ID
+            session: Session object
             message_id: Redis stream entry ID
 
         Returns:
             True if successful
         """
-        if not self.redis:
-            return False
 
-        session = await db.get_session(session_id)
-        if not session:
-            return False
-
-        redis_metadata: dict[str, object] = session.adapter_metadata or {}
-        if isinstance(redis_metadata, str):
-            redis_metadata = json.loads(redis_metadata)
-
-        redis_meta_2: dict[str, object] = redis_metadata.get("redis", {})  # type: ignore[assignment]
-        output_stream = redis_meta_2.get("output_stream")
-        if not output_stream:
-            return False
+        # Trust contract: create_channel already set up metadata
+        output_stream = session.adapter_metadata.redis.output_stream
 
         try:
             await self.redis.xdel(output_stream, message_id)
@@ -279,20 +253,44 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
 
+    async def send_error_feedback(self, session_id: str, error_message: str) -> None:
+        """Send error envelope to Redis output stream.
+
+        Args:
+            session_id: Session that encountered error
+            error_message: Human-readable error description
+        """
+
+        try:
+            output_stream = f"output:{session_id}"
+            await self.redis.xadd(
+                output_stream,
+                {
+                    b"type": b"error",
+                    b"error": error_message.encode("utf-8"),
+                    b"timestamp": str(time.time()).encode("utf-8"),
+                    b"session_id": session_id.encode("utf-8"),
+                },
+                maxlen=self.output_stream_maxlen,
+            )
+            logger.debug("Sent error to Redis stream %s: %s", output_stream, error_message)
+        except Exception as e:
+            logger.error("Failed to send error feedback for session %s: %s", session_id, e)
+
     async def send_file(
         self,
-        session_id: str,
+        session: "Session",
         file_path: str,
+        metadata: MessageMetadata,
         caption: Optional[str] = None,
-        metadata: Optional[dict[str, object]] = None,
     ) -> str:
         """Send file - not supported by Redis adapter.
 
         Args:
-            session_id: Session ID
+            session: Session object
             file_path: Path to file
-            caption: Optional caption
             metadata: Optional metadata
+            caption: Optional caption
 
         Returns:
             Empty string (not supported)
@@ -300,7 +298,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.warning("send_file not supported by RedisAdapter")
         return ""
 
-    async def send_general_message(self, text: str, metadata: Optional[dict[str, object]] = None) -> str:
+    async def send_general_message(self, text: str, metadata: MessageMetadata) -> str:
         """Send general message (not implemented for Redis).
 
         Redis adapter is session-specific, no general channel.
@@ -315,65 +313,59 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.warning("send_general_message not supported by RedisAdapter")
         return ""
 
-    async def create_channel(self, session_id: str, title: str, metadata: Optional[dict[str, object]] = None) -> str:
+    async def create_channel(
+        self, session: "Session", title: str, metadata: ChannelMetadata  # type: ignore[name-defined]
+    ) -> str:
         """Create Redis streams for session.
 
         For AI-to-AI sessions (with target_computer): Creates command + output streams.
         For local sessions (no target_computer): Creates only output stream.
 
         Args:
-            session_id: Session ID
+            session: Session object
             title: Channel title
-            metadata: Optional metadata (may contain target_computer for AI-to-AI sessions)
+            metadata: Optional ChannelMetadata (may contain target_computer for AI-to-AI sessions)
 
         Returns:
             Output stream name as channel_id
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
-        target = metadata.get("target_computer") if metadata else None
-        output_stream = f"output:{session_id}"
+        output_stream = f"output:{session.session_id}"
 
-        # Store stream names in session metadata
-        session = await db.get_session(session_id)
-        if session:
-            redis_metadata = session.adapter_metadata or {}
-            if isinstance(redis_metadata, str):
-                redis_metadata = json.loads(redis_metadata)
+        # Get or create redis metadata in adapter namespace
+        redis_meta = session.adapter_metadata.redis
+        if not redis_meta:
+            redis_meta = RedisAdapterMetadata()
+            session.adapter_metadata.redis = redis_meta
 
-            redis_meta: dict[str, str] = {
-                "output_stream": output_stream,
-            }
+        redis_meta.channel_id = output_stream
+        redis_meta.output_stream = output_stream
 
-            # AI-to-AI session: include message stream
-            if target:
-                message_stream = f"messages:{target}"
-                redis_meta["message_stream"] = message_stream
-                logger.info(
-                    "Created Redis streams for AI-to-AI session %s: message=%s, output=%s",
-                    session_id[:8],
-                    message_stream,
-                    output_stream,
-                )
-            else:
-                # Local session: only output stream (for potential future use)
-                logger.debug(
-                    "Created Redis output stream for local session %s: %s (no message stream)",
-                    session_id[:8],
-                    output_stream,
-                )
+        # Store target computer from metadata if present
+        if metadata.target_computer:
+            redis_meta.target_computer = metadata.target_computer
+            logger.info(
+                "Created Redis streams for AI-to-AI session %s: target=%s, output=%s",
+                session.session_id[:8],
+                metadata.target_computer,
+                output_stream,
+            )
+        else:
+            logger.debug(
+                "Created Redis output stream for local session %s: %s (no target computer)",
+                session.session_id[:8],
+                output_stream,
+            )
 
-            redis_metadata["redis"] = redis_meta
-            await db.update_session(session_id, adapter_metadata=redis_metadata)
+        await db.update_session(session.session_id, adapter_metadata=session.adapter_metadata)
 
         return output_stream
 
-    async def update_channel_title(self, session_id: str, title: str) -> bool:
+    async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
         """Update channel title (no-op for Redis).
 
         Args:
-            session_id: Session identifier
+            session: Session object
             title: New title
 
         Returns:
@@ -381,87 +373,121 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         return True
 
-    async def close_channel(self, session_id: str) -> bool:
+    async def close_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """No-op: Redis has no persistent channels to close.
 
         Args:
-            session_id: Session identifier
+            session: Session object
 
         Returns:
             True (always succeeds)
         """
         return True
 
-    async def reopen_channel(self, session_id: str) -> bool:
+    async def reopen_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """No-op: Redis has no persistent channels to reopen.
 
         Args:
-            session_id: Session identifier
+            session: Session object
 
         Returns:
             True (always succeeds)
         """
         return True
 
-    async def delete_channel(self, session_id: str) -> bool:
+    async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Delete Redis stream.
 
         Args:
-            session_id: Session identifier
+            session: Session object
 
         Returns:
             True if successful
         """
-        if not self.redis:
-            return False
+
+        # Trust contract: create_channel already set up metadata
+        output_stream = session.adapter_metadata.redis.output_stream
 
         try:
-            await self.redis.delete(session_id)
+            await self.redis.delete(output_stream)
             return True
         except Exception as e:
-            logger.error("Failed to delete stream %s: %s", session_id, e)
+            logger.error("Failed to delete stream %s: %s", output_stream, e)
             return False
 
-    async def discover_peers(self) -> list[dict[str, object]]:
-        """Discover peers via Redis heartbeat keys.
+    async def _get_online_computers(self) -> list[str]:
+        """Get list of online computer names from Redis heartbeat keys.
+
+        Reusable helper for discovering online computers without enriching
+        with computer_info. Used by discover_peers() and session aggregation.
 
         Returns:
-            List of peer dicts with name, status, last_seen, etc.
+            List of computer names (excluding self)
         """
-        logger.info(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
-
-        if not self.redis:
-            logger.warning("discover_peers: self.redis is None, returning empty list")
-            return []
 
         try:
             # Find all heartbeat keys
-            keys = await self.redis.keys(b"computer:*:heartbeat")
-            logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)
+            keys: object = await self.redis.keys(b"computer:*:heartbeat")
+            logger.debug("Found %d heartbeat keys", len(keys))  # type: ignore[arg-type]
+
+            computers = []
+            for key in keys:  # type: ignore[misc, attr-defined]
+                # Get data
+                data_bytes: object = await self.redis.get(key)  # type: ignore[misc]
+                if data_bytes:
+                    # Redis returns bytes - decode to str for json.loads
+                    data_str: str = data_bytes.decode("utf-8")  # type: ignore[attr-defined]
+                    info_obj: object = json.loads(data_str)
+                    if not isinstance(info_obj, dict):
+                        continue
+                    info: dict[str, object] = info_obj
+
+                    computer_name: str = str(info["computer_name"])
+
+                    # Skip self
+                    if computer_name == self.computer_name:
+                        continue
+
+                    computers.append(computer_name)
+
+            return sorted(computers)
+
+        except Exception as e:
+            logger.error("Failed to get online computers: %s", e)
+            return []
+
+    async def discover_peers(self) -> list[PeerInfo]:
+        """Discover peers via Redis heartbeat keys.
+
+        Returns:
+            List of PeerInfo instances with peer computer information
+        """
+        logger.info(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
+
+        try:
+            # Find all heartbeat keys
+            keys: object = await self.redis.keys(b"computer:*:heartbeat")
+            logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)  # type: ignore[arg-type]
 
             peers = []
-            for key in keys:
+            for key in keys:  # type: ignore[misc, attr-defined]  # key is Any from Redis.keys() iteration, keys is object
                 # Get data
-                data = await self.redis.get(key)
-                if data:
-                    info = json.loads(data.decode("utf-8"))
+                data_bytes: object = await self.redis.get(key)  # type: ignore[misc]  # Redis.get() returns Any
+                if data_bytes:
+                    # Redis returns bytes - decode to str for json.loads
+                    data_str: str = data_bytes.decode("utf-8")  # type: ignore[attr-defined]  # Redis returns bytes
+                    info_obj: object = json.loads(data_str)
+                    if not isinstance(info_obj, dict):
+                        continue
+                    info: dict[str, object] = info_obj
 
-                    last_seen_str = info.get("last_seen", "")
+                    last_seen_str: object = info.get("last_seen", "")
                     try:
-                        last_seen_dt = datetime.fromisoformat(last_seen_str)
+                        last_seen_dt = datetime.fromisoformat(str(last_seen_str))
                     except (ValueError, TypeError):
                         last_seen_dt = datetime.now()
 
-                    # Calculate time ago
-                    age_seconds = (datetime.now() - last_seen_dt).total_seconds()
-                    if age_seconds < 60:
-                        last_seen_ago = f"{int(age_seconds)}s ago"
-                    elif age_seconds < 3600:
-                        last_seen_ago = f"{int(age_seconds / 60)}m ago"
-                    else:
-                        last_seen_ago = f"{int(age_seconds / 3600)}h ago"
-
-                    computer_name = info["computer_name"]
+                    computer_name: str = str(info["computer_name"])
 
                     # Skip self
                     if computer_name == self.computer_name:
@@ -474,16 +500,21 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     # Transport layer generates request_id from Redis message ID
                     computer_info = None
                     try:
-                        message_id = await self.send_request(computer_name, "get_computer_info")
+                        message_id = await self.send_request(computer_name, "get_computer_info", MessageMetadata())
                         logger.debug("Sent get_computer_info to %s, message_id=%s", computer_name, message_id[:15])
 
                         # Wait for response (short timeout) - use read_response for one-shot query
                         response_data = await self.client.read_response(message_id, timeout=3.0)
-                        envelope = json.loads(response_data.strip())
+                        envelope_obj: object = json.loads(response_data.strip())
+                        if not isinstance(envelope_obj, dict):
+                            continue
+                        envelope: dict[str, object] = envelope_obj
 
                         # Unwrap envelope response
-                        if envelope.get("status") == "error":
-                            logger.warning("Computer %s returned error: %s", computer_name, envelope.get("error"))
+                        status: object = envelope.get("status")
+                        if status == "error":
+                            error_msg: object = envelope.get("error")
+                            logger.warning("Computer %s returned error: %s", computer_name, error_msg)
                             continue
 
                         # Extract data from success envelope
@@ -498,20 +529,24 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         logger.warning("Failed to get info from %s: %s", computer_name, e)
                         continue  # Skip this peer if request fails
 
+                    # Extract peer info with type conversions
+                    user_val: object = computer_info.get("user")
+                    host_val: object = computer_info.get("host")
+                    ip_val: object = computer_info.get("ip")
+
                     peers.append(
-                        {
-                            "name": computer_name,
-                            "user": computer_info.get("user"),
-                            "role": computer_info.get("role"),
-                            "host": computer_info.get("host"),
-                            "status": "online",
-                            "last_seen": last_seen_dt,
-                            "last_seen_ago": last_seen_ago,
-                            "adapter_type": "redis",
-                        }
+                        PeerInfo(
+                            name=computer_name,
+                            status="online",
+                            last_seen=last_seen_dt,
+                            adapter_type="redis",
+                            user=str(user_val) if user_val else None,
+                            host=str(host_val) if host_val else None,
+                            ip=str(ip_val) if ip_val else None,
+                        )
                     )
 
-            return sorted(peers, key=lambda p: p["name"])
+            return sorted(peers, key=lambda p: p.name)  # type: ignore[misc]  # lambda inferred as Callable[[Any], Any]
 
         except Exception as e:
             logger.error("Failed to discover peers: %s", e)
@@ -535,8 +570,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
     async def _poll_redis_messages(self) -> None:
         """Background task: Poll messages:{computer_name} stream for incoming messages."""
-        if not self.redis:
-            return
 
         message_stream = f"messages:{self.computer_name}"
 
@@ -559,7 +592,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     last_id,
                 )
 
-                messages = await self.redis.xread(
+                messages: object = await self.redis.xread(
                     {message_stream.encode("utf-8"): last_id},
                     block=1000,  # Block for 1 second
                     count=5,
@@ -567,7 +600,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
                 logger.debug(
                     "XREAD returned %d stream(s) with messages",
-                    len(messages) if messages else 0,
+                    len(messages) if messages else 0,  # type: ignore[arg-type]  # messages is Any from Redis
                 )
 
                 if not messages:
@@ -575,29 +608,31 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     continue
 
                 # Process commands
-                for stream_name, stream_messages in messages:
+                for stream_name, stream_messages in messages:  # type: ignore[misc, attr-defined]  # stream_name/stream_messages are Any from Redis, messages is object
+                    # stream_name and stream_messages come from Redis xread() - types are Any
+                    stream_name_str: str = stream_name.decode("utf-8") if isinstance(stream_name, bytes) else str(stream_name)  # type: ignore[misc]  # stream_name is Any
                     logger.debug(
                         "Stream %s has %d message(s)",
-                        stream_name.decode("utf-8") if isinstance(stream_name, bytes) else stream_name,
-                        len(stream_messages),
+                        stream_name_str,
+                        len(stream_messages),  # type: ignore[misc]  # stream_messages is Any from Redis
                     )
 
-                    for message_id, data in stream_messages:
+                    for message_id, data in stream_messages:  # type: ignore[misc]  # message_id/data are Any from Redis
                         logger.debug(
                             "Processing message %s with data keys: %s",
-                            message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,
-                            [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],
+                            message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,  # type: ignore[misc]  # message_id is Any
+                            [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],  # type: ignore[misc]  # k is Any from data.keys()
                         )
 
                         # Persist last_id BEFORE processing to prevent re-processing on restart
                         # This is critical for deploy commands that call os._exit(0)
                         last_id = message_id
-                        last_id_str = last_id.decode("utf-8") if isinstance(last_id, bytes) else last_id
-                        await self._set_last_processed_message_id(last_id_str)
-                        logger.debug("Saved last_id %s before processing", last_id_str)
+                        msg_id_str: str = last_id.decode("utf-8") if isinstance(last_id, bytes) else str(last_id)  # type: ignore[misc]  # last_id is Any
+                        await self._set_last_processed_message_id(msg_id_str)
+                        logger.debug("Saved last_id %s before processing", msg_id_str)
 
                         # Process message with Redis message_id for response correlation
-                        await self._handle_incoming_message(last_id_str, data)
+                        await self._handle_incoming_message(msg_id_str, data)  # type: ignore[misc]  # data is Any from Redis
 
             except asyncio.CancelledError:
                 break
@@ -655,24 +690,23 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 payload = {"session_id": session_id, "args": args}
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
-            # For new_session, include request_id and AI-to-AI metadata
-            metadata_to_send: dict[str, object] = {"adapter_type": "redis"}
+            # Build MessageMetadata from message data
+            metadata_to_send = MessageMetadata()
 
-            # Extract AI-to-AI session metadata if present
-            if b"initiator" in data:
-                metadata_to_send["initiator"] = data[b"initiator"].decode("utf-8")
+            # Add session-level data to payload instead of metadata
             if b"project_dir" in data:
-                metadata_to_send["project_dir"] = data[b"project_dir"].decode("utf-8")
+                payload["project_dir"] = data[b"project_dir"].decode("utf-8")
             if b"title" in data:
-                metadata_to_send["title"] = data[b"title"].decode("utf-8")
+                payload["title"] = data[b"title"].decode("utf-8")
             if b"channel_metadata" in data:
                 try:
-                    metadata_to_send["channel_metadata"] = json.loads(data[b"channel_metadata"].decode("utf-8"))
+                    metadata_obj: object = json.loads(data[b"channel_metadata"].decode("utf-8"))
+                    payload["channel_metadata"] = metadata_obj
                 except json.JSONDecodeError:
                     logger.warning("Invalid channel_metadata JSON in message")
 
             logger.info(">>> About to call handle_event for event_type: %s", event_type)
-            result = await self.client.handle_event(
+            result = await self.client.emit(
                 event=event_type,
                 payload=payload,
                 metadata=metadata_to_send,
@@ -682,7 +716,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             )
 
             # Start output stream listener for new AI-to-AI sessions
-            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":
+            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":  # type: ignore[misc]  # result is Any | bool from emit()
                 result_data = result.get("data")
                 if isinstance(result_data, dict):
                     new_session_id = result_data.get("session_id")
@@ -718,29 +752,28 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             return
 
         # Parse args
+        args_obj: object
         try:
-            args = json.loads(args_json)
+            args_obj = json.loads(args_json)
         except json.JSONDecodeError:
-            args = {}
+            args_obj = {}
 
         logger.info("Received system command '%s' from %s", command, from_computer)
 
         # Emit SYSTEM_COMMAND event to daemon
-        await self.client.handle_event(
+        payload_dict: dict[str, object] = {
+            "command": command,
+            "args": args_obj,
+            "from_computer": from_computer,
+        }
+        await self.client.emit(
             event=TeleClaudeEvents.SYSTEM_COMMAND,
-            payload={
-                "command": command,
-                "args": args,
-                "from_computer": from_computer,
-            },
-            metadata={"adapter_type": "redis"},
+            payload=payload_dict,
+            metadata=MessageMetadata(),
         )
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""
-        if not self.redis:
-            logger.error("Heartbeat loop: self.redis is None, exiting")
-            return
 
         logger.info("Heartbeat loop started for computer: %s", self.computer_name)
         while self._running:
@@ -756,9 +789,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     async def _send_heartbeat(self) -> None:
         """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
         logger.debug("_send_heartbeat called for %s", self.computer_name)
-        if not self.redis:
-            logger.error("_send_heartbeat: self.redis is None")
-            return
 
         key = f"computer:{self.computer_name}:heartbeat"
 
@@ -802,8 +832,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Args:
             session_id: Session ID to poll
         """
-        if not self.redis:
-            return
 
         output_stream = f"output:{session_id}"
         last_id = b"$"  # Start from current position
@@ -824,12 +852,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     continue
 
                 # Process incoming messages from initiator
-                for _stream_name, stream_messages in messages:
-                    for message_id, data in stream_messages:
+                for _stream_name, stream_messages in messages:  # type: ignore[misc]  # messages is Any from Redis
+                    for message_id, data in stream_messages:  # type: ignore[misc]  # stream_messages is Any from Redis
                         last_id = message_id
 
                         # Check if this is a message FROM the initiator (not our own output)
-                        chunk_bytes: bytes = data.get(b"chunk", b"")
+                        chunk_bytes: bytes = data.get(b"chunk", b"")  # type: ignore[misc]  # data is Any from Redis
                         chunk = chunk_bytes.decode("utf-8")
 
                         if not chunk:
@@ -841,10 +869,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
                         # This is a message from the initiator - trigger MESSAGE event
                         logger.info("Received message from initiator for session %s: %s", session_id[:8], chunk[:50])
-                        await self.client.handle_event(
+                        message_payload: dict[str, object] = {"session_id": session_id, "text": chunk.strip()}
+                        await self.client.emit(
                             event=TeleClaudeEvents.MESSAGE,
-                            payload={"session_id": session_id, "text": chunk.strip()},
-                            metadata={"adapter_type": "redis"},
+                            payload=message_payload,
+                            metadata=MessageMetadata(),
                         )
 
         except asyncio.CancelledError:
@@ -875,16 +904,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             session_id: Session to observe
             duration_seconds: How long to observe (TTL for Redis key)
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         key = f"observation:{target_computer}:{session_id}"
-        data = json.dumps(
-            {
-                "observer": self.computer_name,
-                "started_at": time.time(),
-            }
-        )
+        observation_data: dict[str, object] = {
+            "observer": self.computer_name,
+            "started_at": time.time(),
+        }
+        data = json.dumps(observation_data)
 
         # Set key with TTL - auto-expires after duration
         await self.redis.setex(key, duration_seconds, data)
@@ -905,8 +931,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             True if someone is observing this session
         """
-        if not self.redis:
-            return False
 
         key = f"observation:{self.computer_name}:{session_id}"
         exists = await self.redis.exists(key)
@@ -915,7 +939,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
     # === Request/Response pattern for ephemeral queries (list_projects, etc.) ===
 
     async def send_request(
-        self, computer_name: str, command: str, session_id: Optional[str] = None, metadata: Optional[dict[str, object]] = None
+        self, computer_name: str, command: str, metadata: MessageMetadata, session_id: Optional[str] = None
     ) -> str:
         """Send request to remote computer's message stream.
 
@@ -930,11 +954,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             Redis stream entry ID (used for response correlation)
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         message_stream = f"messages:{computer_name}"
-        metadata = metadata or {}
 
         # Build message data
         data: dict[bytes, bytes] = {
@@ -947,20 +968,17 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if session_id:
             data[b"session_id"] = session_id.encode("utf-8")
 
-        # Add optional metadata
-        if "title" in metadata:
-            title_str = str(metadata["title"])
-            data[b"title"] = title_str.encode("utf-8")
-        if "project_dir" in metadata:
-            project_dir_str = str(metadata["project_dir"])
-            data[b"project_dir"] = project_dir_str.encode("utf-8")
-        if "channel_metadata" in metadata:
-            channel_metadata_str = json.dumps(metadata["channel_metadata"])
-            data[b"channel_metadata"] = channel_metadata_str.encode("utf-8")
+        # Add optional session creation metadata
+        if metadata.title:
+            data[b"title"] = metadata.title.encode("utf-8")
+        if metadata.project_dir:
+            data[b"project_dir"] = metadata.project_dir.encode("utf-8")
+        if metadata.channel_metadata:
+            data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})
-        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
+        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
         message_id = message_id_bytes.decode("utf-8")
 
         logger.debug("XADD returned message_id=%s", message_id)
@@ -979,8 +997,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             Redis stream entry ID of the response
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         output_stream = f"output:{message_id}"
         logger.debug(
@@ -1024,8 +1040,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Raises:
             TimeoutError: If no response received within timeout
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         output_stream = f"output:{message_id}"
         start_time = time.time()
@@ -1057,9 +1071,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     logger.debug(
                         "read_response() received response for message %s after %d polls", message_id[:8], poll_count
                     )
-                    for _stream_name, stream_messages in messages:
-                        for _entry_id, data in stream_messages:
-                            chunk_bytes: bytes = data.get(b"chunk", b"")
+                    for _stream_name, stream_messages in messages:  # type: ignore[misc]  # messages is Any from Redis
+                        for _entry_id, data in stream_messages:  # type: ignore[misc]  # stream_messages is Any from Redis
+                            chunk_bytes: bytes = data.get(b"chunk", b"")  # type: ignore[misc]  # data is Any from Redis
                             chunk: str = chunk_bytes.decode("utf-8")
                             if chunk:
                                 logger.debug(
@@ -1092,8 +1106,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             Redis stream entry ID
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         message_stream = f"messages:{computer_name}"
 
@@ -1111,7 +1123,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
-        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)
+        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
 
         logger.info("Sent system command to %s: %s", computer_name, command)
         return message_id_bytes.decode("utf-8")
@@ -1126,8 +1138,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Returns:
             Status dict with keys: status, timestamp, error (if failed)
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         status_key = f"system_status:{computer_name}:{command}"
         data = await self.redis.get(status_key)
@@ -1135,10 +1145,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         if not data:
             return {"status": "unknown"}
 
-        result: dict[str, object] = json.loads(data.decode("utf-8"))
+        result_obj: object = json.loads(data.decode("utf-8"))  # type: ignore[misc]  # json.loads returns Any
+        if not isinstance(result_obj, dict):
+            return {"status": "error", "error": "Invalid result format"}
+        result: dict[str, object] = result_obj
         return result
 
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # type: ignore[override, misc]  # mypy false positive with async generators
         """Poll output stream and yield chunks as they arrive.
 
         Used by MCP server to stream output from remote sessions.
@@ -1150,8 +1163,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         Yields:
             Output chunks as they arrive
         """
-        if not self.redis:
-            raise RuntimeError("Redis not initialized")
 
         output_stream = f"output:{session_id}"
         last_id = b"$"  # Start from current position (only read new chunks)
@@ -1194,20 +1205,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     idle_count = 0
 
                     # Process messages
-                    for _stream_name, stream_messages in messages:
-                        for message_id, data in stream_messages:
-                            chunk = data.get(b"chunk", b"").decode("utf-8")
+                    for _stream_name, stream_messages in messages:  # type: ignore[misc]  # messages is Any from Redis
+                        for message_id, data in stream_messages:  # type: ignore[misc]  # stream_messages is Any from Redis
+                            chunk = data.get(b"chunk", b"").decode("utf-8")  # type: ignore[misc]  # data is Any from Redis
 
-                            if not chunk:
+                            if not chunk:  # type: ignore[misc]  # chunk type inferred from decode
                                 continue
 
                             # Check for completion marker
-                            if "[Output Complete]" in chunk:
+                            if "[Output Complete]" in chunk:  # type: ignore[misc]  # chunk type inferred from decode
                                 logger.info("Received completion marker for session %s", session_id[:8])
                                 return
 
                             # Yield chunk content
-                            content = self._extract_chunk_content(chunk)
+                            content = self._extract_chunk_content(chunk)  # type: ignore[misc]  # chunk type inferred from decode
                             if content:
                                 yield content
                                 last_yield_time = time.time()

@@ -2,11 +2,8 @@
 
 import os
 
-import pytest
-
 from teleclaude.utils import (
     expand_env_vars,
-    strip_claude_code_hooks,
     strip_exit_markers,
 )
 
@@ -165,101 +162,20 @@ class TestStripExitMarkers:
         result = strip_exit_markers(output)
         assert result == "command output\n"
 
+    def test_strip_echo_no_leading_whitespace_new_format(self):
+        """Test stripping echo command at line start without leading whitespace (new hash format)."""
+        output = 'echo "__EXIT__275738bf__$?__"\nsome output'
+        result = strip_exit_markers(output)
+        assert result == "some output"
 
-class TestStripClaudeCodeHooks:
-    """Tests for strip_claude_code_hooks() function."""
+    def test_strip_echo_no_leading_whitespace_old_format(self):
+        """Test stripping echo command at line start without leading whitespace (old format)."""
+        output = 'echo "__EXIT__$?__"\nsome output'
+        result = strip_exit_markers(output)
+        assert result == "some output"
 
-    def test_strip_single_line_hook(self):
-        """Test stripping single-line hook (REAL example from tmux)."""
-        output = "  ⎿  Read 166 lines\nreal output here\n"
-        result = strip_claude_code_hooks(output)
-        assert result == "real output here\n"
-
-    def test_strip_hook_with_continuation_line(self):
-        """Test stripping hook with continuation (REAL example from tmux)."""
-        output = """  ⎿  Updated /Users/Morriz/Documents/Workspace/morriz/teleclaude/tests/unit/test_restart_claude.py with 2 additions
-     and 4 removals
-real output here
-"""
-        result = strip_claude_code_hooks(output)
-        assert result == "real output here\n"
-
-    def test_strip_hook_with_multiline_continuation(self):
-        """Test stripping hook with multiline continuation (4+ spaces indentation)."""
-        output = """  ⎿ UserPromptSubmit hook succeeded: reminder message here
-    continuation line 1
-    continuation line 2
-    continuation line 3
-real output here
-"""
-        result = strip_claude_code_hooks(output)
-        assert result == "real output here\n"
-
-    def test_strip_multiple_hook_messages(self):
-        """Test stripping multiple hooks (REAL example from tmux)."""
-        output = """  ⎿  SessionStart:resume hook succeeded:
-  ⎿  SessionStart:resume hook succeeded:
-  ⎿  SessionStart:resume hook succeeded:
-real output
-"""
-        result = strip_claude_code_hooks(output)
-        assert result == "real output\n"
-
-    def test_strip_hook_at_end_of_output(self):
-        """Test stripping hook message at end of output."""
-        output = "real output\n  ⎿  SessionStart:clear hook succeeded:\n"
-        result = strip_claude_code_hooks(output)
-        assert result == "real output\n"
-
-    def test_strip_hook_in_middle_of_output(self):
-        """Test stripping hook message in middle of output."""
-        output = "line 1\n  ⎿  MCP dialog dismissed\nline 2\n"
-        result = strip_claude_code_hooks(output)
-        assert result == "line 1\nline 2\n"
-
-    def test_preserve_normal_output_with_similar_patterns(self):
-        """Test that normal output with similar characters is preserved."""
-        output = "This is normal output with ⎿ symbol\nbut not a hook message\n"
-        result = strip_claude_code_hooks(output)
-        assert result == "This is normal output with ⎿ symbol\nbut not a hook message\n"
-
-    def test_strip_complex_real_world_example(self):
-        """Test stripping hooks in middle of command output."""
-        output = """➜  teleclaude git:(main) ✗ make test
-  ⎿ UserPromptSubmit hook succeeded: some hook message
-    with multiple continuation lines
-    that should all be removed
-
-pytest tests/
-============================= test session starts ==============================
-collected 42 items
-
-tests/unit/test_utils.py ......................................     [ 90%]
-tests/integration/test_e2e.py ....                                  [100%]
-
-============================== 42 passed in 2.34s ==============================
-"""
-        result = strip_claude_code_hooks(output)
-        expected = """➜  teleclaude git:(main) ✗ make test
-
-pytest tests/
-============================= test session starts ==============================
-collected 42 items
-
-tests/unit/test_utils.py ......................................     [ 90%]
-tests/integration/test_e2e.py ....                                  [100%]
-
-============================== 42 passed in 2.34s ==============================
-"""
-        assert result == expected
-
-    def test_empty_string(self):
-        """Test that empty string is handled correctly."""
-        result = strip_claude_code_hooks("")
-        assert result == ""
-
-    def test_no_hooks_in_output(self):
-        """Test that output without hooks is returned unchanged."""
-        output = "normal terminal output\nwith multiple lines\nno hooks here\n"
-        result = strip_claude_code_hooks(output)
-        assert result == output
+    def test_strip_echo_multiline_wrapped_new_format(self):
+        """Test stripping echo command when string is split across lines (new hash format)."""
+        output = 'claude --dangerously-skip-permissions; echo "__\nEXIT__8ef365b1__$?__"\nsome output'
+        result = strip_exit_markers(output)
+        assert result == "claude --dangerously-skip-permissions\nsome output"

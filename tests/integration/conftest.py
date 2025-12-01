@@ -215,9 +215,76 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     # Add db property for test compatibility
     daemon.db = db_module.db
 
-    # Mock all Telegram adapter methods (access via client.adapters["telegram"])
+    # Mock Telegram adapter - create mock if not registered (no TELEGRAM_BOT_TOKEN)
     telegram_adapter = daemon.client.adapters.get("telegram")
-    if telegram_adapter:
+    if not telegram_adapter:
+        # Create a mock telegram adapter that passes isinstance(adapter, UiAdapter)
+        # This is needed because AdapterClient.send_output_update() checks isinstance
+        from teleclaude.adapters.ui_adapter import UiAdapter
+
+        class MockTelegramAdapter(UiAdapter):
+            """Mock adapter that passes isinstance check for UiAdapter."""
+
+            def __init__(self) -> None:
+                pass  # Skip parent __init__ which requires client
+
+            # Stub all abstract methods - will be replaced by AsyncMock below
+            async def start(self) -> None:
+                pass
+
+            async def stop(self) -> None:
+                pass
+
+            async def send_message(self, session, text, metadata):  # type: ignore[override]
+                return "msg-123"
+
+            async def edit_message(self, session, message_id, text, metadata):  # type: ignore[override]
+                return True
+
+            async def delete_message(self, session, message_id):  # type: ignore[override]
+                pass
+
+            async def send_file(self, session, file_path, metadata, caption=None):  # type: ignore[override]
+                return "file-msg-789"
+
+            async def create_channel(self, session, title, metadata):  # type: ignore[override]
+                return "12345"
+
+            async def update_channel_title(self, session, title):  # type: ignore[override]
+                return True
+
+            async def delete_channel(self, session):  # type: ignore[override]
+                return True
+
+            async def close_channel(self, session):  # type: ignore[override]
+                return True
+
+            async def reopen_channel(self, session):  # type: ignore[override]
+                return True
+
+            async def discover_peers(self):  # type: ignore[override]
+                return []
+
+            async def poll_output_stream(self, session):  # type: ignore[override]
+                pass
+
+        telegram_adapter = MockTelegramAdapter()
+        # Replace methods with trackable AsyncMocks
+        telegram_adapter.start = AsyncMock()
+        telegram_adapter.stop = AsyncMock()
+        telegram_adapter.send_message = AsyncMock(return_value="msg-123")
+        telegram_adapter.edit_message = AsyncMock(return_value=True)
+        telegram_adapter.delete_message = AsyncMock()
+        telegram_adapter.send_file = AsyncMock(return_value="file-msg-789")
+        telegram_adapter.create_channel = AsyncMock(return_value="12345")
+        telegram_adapter.update_channel_title = AsyncMock(return_value=True)
+        telegram_adapter.delete_channel = AsyncMock(return_value=True)
+        telegram_adapter.send_general_message = AsyncMock(return_value="msg-456")
+        telegram_adapter.send_feedback = AsyncMock(return_value="feedback-123")
+        telegram_adapter.send_output_update = AsyncMock(return_value="output-msg-123")
+        telegram_adapter._cleanup_pending_deletions = AsyncMock()
+        daemon.client.adapters["telegram"] = telegram_adapter
+    else:
         monkeypatch.setattr(telegram_adapter, "start", AsyncMock())
         monkeypatch.setattr(telegram_adapter, "stop", AsyncMock())
         monkeypatch.setattr(telegram_adapter, "send_message", AsyncMock(return_value="msg-123"))

@@ -324,7 +324,7 @@ claude
 - teleclaude__list_computers - List all available TeleClaude computers
 - teleclaude__start_session - Start AI-to-AI session with remote computer
 - teleclaude__list_sessions - List active AI-to-AI sessions
-- teleclaude__send - Send message to remote computer and stream response
+- teleclaude__send_message - Send message to remote computer session and stream response
 ```
 
 ---

@@ -8,7 +8,7 @@ Provides standardized log format across all modules:
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 # Add TRACE level (below DEBUG)
@@ -65,8 +65,8 @@ class PathFormatter(logging.Formatter):
         self.use_colors = use_colors
 
     def formatTime(self, record: logging.LogRecord, datefmt: Optional[str] = None) -> str:
-        """Format time with milliseconds support."""
-        ct = datetime.fromtimestamp(record.created)
+        """Format time with milliseconds support in UTC."""
+        ct = datetime.fromtimestamp(record.created, tz=timezone.utc)
         if datefmt:
             # Remove .%f from format (strftime outputs 6-digit microseconds, we want 3-digit milliseconds)
             if ".%f" in datefmt:

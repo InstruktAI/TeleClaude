@@ -45,9 +45,9 @@ htmlcov/
 coverage/
 
 # Project-specific
-tmux_sessions/
 .history
 reports/
+workspace/
 
 # Backup files
 *.bak*

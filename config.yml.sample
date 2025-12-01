@@ -40,7 +40,8 @@ telegram:
 mcp:
     enabled: true  # Enable MCP server (Claude Code connects via socat)
     socket_path: /tmp/teleclaude.sock
-    claude_command: claude  # Command to start Claude Code (for /claude_resume)
+    claude_command: |
+      claude --dangerously-skip-permissions --settings '{"forceLoginMethod": "claudeai"}'
 
 # Redis Configuration (for AI-to-AI communication)
 redis:

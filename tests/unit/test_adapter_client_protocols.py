@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 
@@ -59,22 +60,22 @@ def adapter_client_without_transport(mock_ui_adapter):
 async def test_send_request_success(adapter_client_with_transport, mock_transport_adapter):
     """Test sending request to remote computer via transport adapter."""
     # Execute
+    metadata = MessageMetadata(adapter_type="redis")
     stream_id = await adapter_client_with_transport.send_request(
-        computer_name="comp1", command="ls -la", metadata={"key": "value"}
+        computer_name="comp1", command="ls -la", metadata=metadata
     )
 
     # Verify
     assert stream_id == "req_123"
-    mock_transport_adapter.send_request.assert_called_once_with("comp1", "ls -la", None, {"key": "value"})
+    mock_transport_adapter.send_request.assert_called_once_with("comp1", "ls -la", metadata, None)
 
 
 @pytest.mark.asyncio
 async def test_send_request_no_transport_fails(adapter_client_without_transport):
     """Test sending request fails when no transport adapter available."""
     with pytest.raises(RuntimeError, match="No transport adapter available"):
-        await adapter_client_without_transport.send_request(
-            computer_name="comp1", command="ls -la"
-        )
+        metadata = MessageMetadata(adapter_type="redis")
+        await adapter_client_without_transport.send_request(computer_name="comp1", command="ls -la", metadata=metadata)
 
 
 @pytest.mark.asyncio
@@ -134,7 +135,8 @@ async def test_mixed_adapters_only_transport_used_for_cross_computer():
     client.register_adapter("redis", transport)
 
     # Execute cross-computer operation
-    stream_id = await client.send_request("comp1", "req_123", "ls")
+    metadata = MessageMetadata(adapter_type="redis")
+    stream_id = await client.send_request("comp1", "ls", metadata)
 
     # Verify - only transport adapter used
     assert stream_id == "req_123"

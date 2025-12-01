@@ -73,7 +73,8 @@ async def main() -> None:
             await asyncio.sleep(3.0)  # Wait for Claude to fully exit (needs time to disconnect MCP, cleanup state)
 
         # Get base command from config with fallback to constant
-        base_cmd = config.mcp.claude_command if hasattr(config.mcp, 'claude_command') else DEFAULT_CLAUDE_COMMAND
+        # Strip whitespace to handle YAML literal blocks with trailing newlines
+        base_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
 
         # Build restart command using Claude session ID from database
         if claude_session_id:

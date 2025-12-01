@@ -2,7 +2,33 @@
 
 ## OPEN
 
+(none)
+
 ## CLOSED
+
+- [x] **edit_message Creates New Messages Instead of Editing** (FIXED 2025-12-01)
+
+  **Root Cause:** When Telegram returns "Message is not modified" error (content unchanged), `edit_message` returned `False`, causing `_try_edit_output_message` to clear `output_message_id`. Subsequent polls then created NEW messages instead of editing.
+
+  **Fix:** Modified `telegram_adapter.py` to treat "Message is not modified" as success (return `True`). This benign error means the message exists but content is unchanged - no need to clear `output_message_id`.
+
+  **Tests Added:** `test_edit_message_not_modified_returns_true` and `test_edit_message_not_found_returns_false` in `tests/unit/test_telegram_adapter.py`
+
+- [x] pending_deletions removal mechanism was broken (FIXED 2025-12-01)
+
+  Three issues fixed:
+
+  1. `message_id` was not passed in payload when emitting MESSAGE events from telegram_adapter.py
+  2. `post_handler(session.session_id, ...)` passed a string but `_post_handle_user_input` expected a Session object
+  3. Both pre/post handlers now receive correct types
+
+- [x] teleclaude\_\_list_sessions(None) returned empty (FIXED 2025-12-01)
+
+  When querying all computers (`computer=None`), the code only queried remote computers via Redis but never included local sessions. Fixed by adding local session query when `computer is None`.
+
+- [x] session_closed event didn't propagate to observer adapters (FIXED 2025-12-01)
+
+  In `adapter_client.py`, `close_channel(session.session_id)` and `reopen_channel(session.session_id)` passed a string instead of a Session object, causing method signature mismatch.
 
 - [x] .claude/hooks/notification.py hook does NOT send a notification to telegram
 

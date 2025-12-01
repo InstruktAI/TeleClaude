@@ -22,7 +22,7 @@ _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell
 
 
 async def create_tmux_session(
-    name: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: str = None
+    name: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: Optional[str] = None
 ) -> bool:
     """Create a new tmux session.
 

@@ -17,6 +17,8 @@ from openai import AsyncOpenAI
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
+from teleclaude.core.events import VoiceEventContext
+from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -158,22 +160,22 @@ async def transcribe_voice_with_retry(
 async def handle_voice(
     session_id: str,
     audio_path: str,
-    context: dict[str, object],
-    send_feedback: Callable[[str, str, Optional[dict[str, object]]], Awaitable[Optional[str]]],
+    context: VoiceEventContext,
+    send_feedback: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
 ) -> None:
     """Handle voice message (adapter-agnostic utility).
 
     Args:
         session_id: Session ID
         audio_path: Path to downloaded audio file
-        context: Platform-specific context (adapter_type, user_id, duration, etc.)
+        context: Typed voice event context
         send_feedback: Async function to send user feedback (session_id, message, append_to_existing)
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
     logger.info("Session ID: %s", session_id[:8])
     logger.info("Audio path: %s", audio_path)
     logger.info("Context: %s", context)
-    logger.info("Voice message for session %s, duration: %ss", session_id[:8], context.get("duration"))
+    logger.info("Voice message for session %s, duration: %ss", session_id[:8], context.duration)
 
     # Get session
     session = await db.get_session(session_id)
@@ -189,7 +191,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "🎤 Voice input requires an active process (e.g., claude, vim)",
-            None,
+            MessageMetadata(),
         )
         # Clean up temp file
         try:
@@ -201,15 +203,16 @@ async def handle_voice(
 
     # Voice message accepted - transcribe and send to active process
     # Check if output message exists (polling may have just started)
-    ux_state = await db.get_ux_state(session_id)
-    current_message_id = ux_state.output_message_id
+    # Get output_message_id from origin adapter's metadata
+    adapter_metadata = getattr(session.adapter_metadata, session.origin_adapter, None)
+    current_message_id = adapter_metadata.output_message_id if adapter_metadata else None
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
         # Send rejection message
         await send_feedback(
             session_id,
             "⚠️ Voice input unavailable - output message not ready yet (try again in 1-2 seconds)",
-            None,
+            MessageMetadata(),
         )
         # Clean up temp file
         try:
@@ -223,7 +226,7 @@ async def handle_voice(
     msg_id = await send_feedback(
         session_id,
         "🎤 Transcribing...",
-        None,
+        MessageMetadata(),
     )
     if msg_id is None:
         logger.info("Topic deleted for session %s, skipping transcription", session_id[:8])
@@ -250,7 +253,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "❌ Transcription failed. Please try again.",
-            None,
+            MessageMetadata(),
         )
         return
 
@@ -267,7 +270,7 @@ async def handle_voice(
         await send_feedback(
             session_id,
             "❌ Failed to send input to terminal",
-            None,
+            MessageMetadata(),
         )
         return
 

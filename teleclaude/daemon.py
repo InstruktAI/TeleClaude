@@ -11,7 +11,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional, TextIO, cast
+from typing import Optional, TextIO, cast
 
 from dotenv import load_dotenv
 
@@ -28,7 +28,10 @@ from teleclaude.core import (
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import db
 from teleclaude.core.events import (
+    COMMAND_EVENTS,
+    CommandEventContext,
     DeployArgs,
+    EventContext,
     EventType,
     FileEventContext,
     MessageEventContext,
@@ -38,7 +41,7 @@ from teleclaude.core.events import (
     VoiceEventContext,
 )
 from teleclaude.core.file_handler import handle_file
-from teleclaude.core.models import Session
+from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import init_voice_handler
@@ -50,34 +53,6 @@ DEFAULT_LOG_FILE = "/var/log/teleclaude.log"
 DEFAULT_LOG_LEVEL = "INFO"
 
 logger = logging.getLogger(__name__)
-
-# Command events that route to handle_command via generic handler
-# All events in this set use _handle_command_event → handle_command()
-COMMAND_EVENTS = {
-    TeleClaudeEvents.NEW_SESSION,
-    TeleClaudeEvents.LIST_SESSIONS,
-    TeleClaudeEvents.GET_SESSION_DATA,
-    TeleClaudeEvents.LIST_PROJECTS,
-    TeleClaudeEvents.GET_COMPUTER_INFO,
-    TeleClaudeEvents.CD,
-    TeleClaudeEvents.KILL,
-    TeleClaudeEvents.CANCEL,
-    TeleClaudeEvents.CANCEL_2X,
-    TeleClaudeEvents.ESCAPE,
-    TeleClaudeEvents.ESCAPE_2X,
-    TeleClaudeEvents.CTRL,
-    TeleClaudeEvents.TAB,
-    TeleClaudeEvents.SHIFT_TAB,
-    TeleClaudeEvents.BACKSPACE,
-    TeleClaudeEvents.ENTER,
-    TeleClaudeEvents.KEY_UP,
-    TeleClaudeEvents.KEY_DOWN,
-    TeleClaudeEvents.KEY_LEFT,
-    TeleClaudeEvents.KEY_RIGHT,
-    TeleClaudeEvents.RENAME,
-    TeleClaudeEvents.CLAUDE,
-    TeleClaudeEvents.CLAUDE_RESUME,
-}
 
 
 class DaemonLockError(Exception):
@@ -132,8 +107,7 @@ class TeleClaudeDaemon:
                 else:
                     logger.debug("No handler for event: %s (skipped)", event_value)
 
-        # Load adapters from config (creates TelegramAdapter, RedisAdapter, etc.)
-        self.client._load_adapters()
+        # Note: Adapters are loaded in client.start(), not here
 
         # Initialize MCP server (if enabled)
         self.mcp_server: Optional[TeleClaudeMCPServer] = None
@@ -151,73 +125,71 @@ class TeleClaudeDaemon:
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
 
-    async def _handle_command_event(self, event: str, context: dict[str, object]) -> object:
+    async def _handle_command_event(self, event: str, context: CommandEventContext) -> object:
         """Generic handler for all command events.
 
         All commands route to handle_command() with args from context.
 
         Args:
             event: Command event type (new_session, cd, kill, etc.)
-            context: Unified context (all payload + metadata fields)
+            context: Typed command event context
 
         Returns:
             Result from command handler
         """
-        args_obj = context.get("args", [])
-        # Type assertion: args from adapters are always list[str]
-        args = list(args_obj) if isinstance(args_obj, list) else []
+        # Extract args from typed context
+        args = context.args
 
-        # For new_session commands, extract title from context metadata
-        # and pass as args (handle_create_session expects title in args)
-        if event == TeleClaudeEvents.NEW_SESSION and "title" in context:
-            title_obj = context.get("title")
-            if isinstance(title_obj, str):
-                args = [title_obj]
+        # Extract metadata fields from context
+        metadata = MessageMetadata(
+            adapter_type=context.adapter_type,
+            message_thread_id=context.message_thread_id,
+            title=context.title,
+            project_dir=context.project_dir,
+            channel_metadata=context.channel_metadata,
+        )
 
-        return await self.handle_command(event, args, context)
+        return await self.handle_command(event, args, context, metadata)
 
-    async def _handle_message(self, _event: str, context: dict[str, object]) -> None:
+    async def _handle_message(self, _event: str, context: MessageEventContext) -> None:
         """Handler for MESSAGE events - pure business logic (cleanup already done).
 
         Args:
             _event: Event type (always "message") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
+            context: Message event context (Pydantic)
         """
-        ctx = MessageEventContext(**context)
-
         # Auto-reopen if closed
-        session = await db.get_session(ctx.session_id)
+        session = await db.get_session(context.session_id)
         if session and session.closed:
-            logger.info("Auto-reopening closed session %s", ctx.session_id[:8])
+            logger.info("Auto-reopening closed session %s", context.session_id[:8])
             await self._reopen_session(session)
 
-        await self.handle_message(ctx.session_id, ctx.text, context)
+        # Pass typed context directly
+        await self.handle_message(context.session_id, context.text, context)
 
-    async def _handle_voice(self, _event: str, context: dict[str, object]) -> None:
+    async def _handle_voice(self, _event: str, context: VoiceEventContext) -> None:
         """Handler for VOICE events - pure business logic (cleanup already done).
 
         Args:
             _event: Event type (always "voice") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
+            context: Voice event context (Pydantic)
         """
-        ctx = VoiceEventContext(**context)
-
         # Handle voice message using utility function
         await voice_message_handler.handle_voice(
-            session_id=ctx.session_id,
-            audio_path=ctx.file_path,
+            session_id=context.session_id,
+            audio_path=context.file_path,
             context=context,
             send_feedback=self._send_feedback_callback,
         )
 
-    async def _handle_session_closed(self, _event: str, context: dict[str, object]) -> None:
+    async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_closed events - user closed topic.
 
         Args:
             _event: Event type (always "session_closed") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
+            context: Session lifecycle context
         """
-        ctx = SessionLifecycleContext(**context)
+        ctx = context
 
         session = await db.get_session(ctx.session_id)
         if not session:
@@ -241,14 +213,14 @@ class TeleClaudeDaemon:
             except Exception as e:
                 logger.warning("Failed to delete output file for closed session %s: %s", ctx.session_id[:8], e)
 
-    async def _handle_session_reopened(self, _event: str, context: dict[str, object]) -> None:
+    async def _handle_session_reopened(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_reopened events - user reopened topic.
 
         Args:
             _event: Event type (always "session_reopened") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
+            context: Session lifecycle context
         """
-        ctx = SessionLifecycleContext(**context)
+        ctx = context
 
         session = await db.get_session(ctx.session_id)
         if not session:
@@ -280,33 +252,31 @@ class TeleClaudeDaemon:
         await db.update_session(session.session_id, closed=False)
         logger.info("Session %s reopened at %s", session.session_id[:8], session.working_directory)
 
-    async def _handle_file(self, _event: str, context: dict[str, object]) -> None:
+    async def _handle_file(self, _event: str, context: FileEventContext) -> None:
         """Handler for FILE events - pure business logic.
 
         Args:
             _event: Event type (always "file") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
+            context: File event context (Pydantic)
         """
-        ctx = FileEventContext(**context)
-
         await handle_file(
-            session_id=ctx.session_id,
-            file_path=ctx.file_path,
-            filename=ctx.filename,
-            context=context,  # handle_file still needs raw dict for now
+            session_id=context.session_id,
+            file_path=context.file_path,
+            filename=context.filename,
+            context=context,
             send_feedback=self._send_feedback_callback,
         )
 
-    async def _handle_system_command(self, _event: str, context: dict[str, object]) -> None:
+    async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
 
         System commands are daemon-level operations (deploy, restart, etc.)
 
         Args:
             _event: Event type (always "system_command") - unused but required by event handler signature
-            context: Unified context (all payload + metadata fields)
+            context: System command context
         """
-        ctx = SystemCommandContext(**context)
+        ctx = context
 
         logger.info("Handling system command '%s' from %s", ctx.command, ctx.from_computer)
 
@@ -455,7 +425,11 @@ class TeleClaudeDaemon:
         Returns:
             message_id if sent, None otherwise
         """
-        return await self.client.send_feedback(sid, msg, metadata)
+        session = await db.get_session(sid)
+        if not session:
+            logger.warning("Session %s not found for feedback", sid[:8])
+            return None
+        return await self.client.send_feedback(session, msg, metadata)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -589,7 +563,9 @@ class TeleClaudeDaemon:
         )
 
         if not success:
-            error_msg_id = await self.client.send_message(session_id, f"Failed to execute command: {command}")
+            error_msg_id = await self.client.send_message(
+                session, f"Failed to execute command: {command}", MessageMetadata()
+            )
             if error_msg_id:
                 await db.add_pending_deletion(session_id, error_msg_id)
             logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
@@ -702,13 +678,16 @@ class TeleClaudeDaemon:
 
         logger.info("Daemon stopped")
 
-    async def handle_command(self, command: str, args: list[str], context: dict[str, Any]) -> Any:  # type: ignore[explicit-any]  # Adapter-specific context  # pylint: disable=too-many-branches
+    async def handle_command(
+        self, command: str, args: list[str], context: EventContext, metadata: MessageMetadata
+    ) -> object:  # Handler return types vary  # pylint: disable=too-many-branches
         """Handle bot commands.
 
         Args:
             command: Event name from TeleClaudeEvents (e.g., "new_session", "list_projects")
             args: Command arguments
-            context: Platform-specific context
+            context: Command context (session_id, args)
+            metadata: Message metadata (adapter_type, message_thread_id, etc.)
 
         Note: Handlers decorated with @with_session have modified signatures (decorator injects session parameter).
         """
@@ -721,17 +700,17 @@ class TeleClaudeDaemon:
         )
 
         if command == TeleClaudeEvents.NEW_SESSION:
-            return await command_handlers.handle_create_session(context, args, self.client)
+            return await command_handlers.handle_create_session(context, args, metadata, self.client)
         elif command == TeleClaudeEvents.LIST_SESSIONS:
-            return await command_handlers.handle_list_sessions(context, self.client)
+            # LIST_SESSIONS is ephemeral command (MCP/Redis only) - return envelope directly
+            return await command_handlers.handle_list_sessions()
         elif command == TeleClaudeEvents.LIST_PROJECTS:
-            return await command_handlers.handle_list_projects(context, self.client)
+            return await command_handlers.handle_list_projects()
         elif command == TeleClaudeEvents.GET_SESSION_DATA:
-            return await command_handlers.handle_get_session_data(context, args, self.client)
+            return await command_handlers.handle_get_session_data(context, args)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
             logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
-            logger.info("Calling handle_get_computer_info with context keys: %s", list(context.keys()))
-            result = await command_handlers.handle_get_computer_info(context, self.client)
+            result = await command_handlers.handle_get_computer_info()
             logger.info("handle_get_computer_info returned: %s", result)
             return result
         elif command == TeleClaudeEvents.CANCEL:
@@ -797,7 +776,7 @@ class TeleClaudeDaemon:
 
         return None
 
-    async def handle_message(self, session_id: str, text: str, _context: dict) -> None:  # type: ignore[type-arg]
+    async def handle_message(self, session_id: str, text: str, _context: EventContext) -> None:
         """Handle incoming text messages (commands for terminal)."""
         logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
 
@@ -812,7 +791,9 @@ class TeleClaudeDaemon:
         if was_stale:
             logger.warning("Session %s was stale and has been cleaned up", session_id[:8])
             warning_msg_id = await self.client.send_message(
-                session_id, "⚠️ This session's terminal was closed externally and has been cleaned up."
+                session,
+                "⚠️ This session's terminal was closed externally and has been cleaned up.",
+                MessageMetadata(),
             )
             if warning_msg_id:
                 await db.add_pending_deletion(session_id, warning_msg_id)
@@ -839,7 +820,9 @@ class TeleClaudeDaemon:
 
         if not success:
             logger.error("Failed to send command to session %s", session_id[:8])
-            error_msg_id = await self.client.send_message(session_id, "Failed to send command to terminal")
+            error_msg_id = await self.client.send_message(
+                session_id, "Failed to send command to terminal", MessageMetadata()
+            )
             if error_msg_id:
                 await db.add_pending_deletion(session_id, error_msg_id)
             return
@@ -966,6 +949,8 @@ async def main() -> None:
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Received interrupt signal...")
+    except Exception as e:
+        logger.error("Daemon startup failed with exception: %s", e, exc_info=True)
     finally:
         try:
             await daemon.stop()

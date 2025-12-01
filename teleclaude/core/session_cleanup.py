@@ -61,7 +61,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
 
     # Delete channel/topic in all adapters (forces sync across devices)
     try:
-        await adapter_client.delete_channel(session_id)
+        await adapter_client.delete_channel(session)
         logger.info("Deleted channel for stale session %s", session_id[:8])
     except Exception as e:
         logger.warning("Failed to delete channel for stale session %s: %s", session_id[:8], e)
