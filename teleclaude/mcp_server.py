@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import types
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
@@ -509,27 +510,93 @@ class TeleClaudeMCPServer:
         title: str,
         message: str,
     ) -> dict[str, object]:
-        """Create remote session via request/response pattern.
+        """Create session on local or remote computer.
 
-        Client mode creates NO local session - only sends request to remote computer
-        which creates session in its own database and returns session_id.
-
-        This follows the unified adapter architecture where only ONE session exists
-        (on the remote computer), and the client pulls data on demand.
-
-        Design by contract: Assumes computer is online. Fails explicitly if offline.
+        For local computer: Creates session directly via handle_event.
+        For remote computers: Sends request via Redis transport.
 
         Args:
-            computer: Target computer name (from teleclaude__list_computers)
-            project_dir: Absolute path to project directory on remote computer
+            computer: Target computer name (from teleclaude__list_computers, or "local"/self.computer_name)
+            project_dir: Absolute path to project directory on target computer
                 (from teleclaude__list_projects)
             title: Session title describing the task (use "TEST: {description}" for testing sessions)
             message: Initial task or prompt to send to Claude Code
 
         Returns:
-            dict with remote session_id and status
+            dict with session_id and status
         """
+        # Check if this is a local session request
+        is_local = computer in ("local", self.computer_name)
 
+        if is_local:
+            return await self._start_local_session(project_dir, title, message)
+        else:
+            return await self._start_remote_session(computer, project_dir, title, message)
+
+    async def _start_local_session(
+        self,
+        project_dir: str,
+        title: str,
+        message: str,
+    ) -> dict[str, object]:
+        """Create session on local computer directly via handle_event.
+
+        Args:
+            project_dir: Absolute path to project directory
+            title: Session title
+            message: Initial prompt for Claude Code
+
+        Returns:
+            dict with session_id and status
+        """
+        # Emit NEW_SESSION event - daemon's handle_event will call handle_create_session
+        result: object = await self.client.handle_event(
+            TeleClaudeEvents.NEW_SESSION,
+            {"session_id": "", "args": [title], "project_dir": project_dir, "title": title},
+            MessageMetadata(adapter_type="redis", project_dir=project_dir, title=title),
+        )
+
+        # handle_event returns {"status": "success", "data": {"session_id": "..."}}
+        if not isinstance(result, dict) or result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
+            return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
+
+        data: object = result.get("data", {})
+        session_id: str | None = data.get("session_id") if isinstance(data, dict) else None
+
+        if not session_id:
+            return {"status": "error", "message": "Local session did not return session_id"}
+
+        logger.info("Local session created: %s", session_id[:8])
+
+        # Send /claude command with message to start Claude Code
+        await self.client.handle_event(
+            TeleClaudeEvents.CLAUDE,
+            {"session_id": session_id, "args": [message]},
+            MessageMetadata(adapter_type="redis"),
+        )
+        logger.debug("Sent /claude command with message to local session %s", session_id[:8])
+
+        return {"session_id": session_id, "status": "success"}
+
+    async def _start_remote_session(
+        self,
+        computer: str,
+        project_dir: str,
+        title: str,
+        message: str,
+    ) -> dict[str, object]:
+        """Create session on remote computer via Redis transport.
+
+        Args:
+            computer: Target computer name
+            project_dir: Absolute path to project directory on remote computer
+            title: Session title
+            message: Initial prompt for Claude Code
+
+        Returns:
+            dict with session_id and status
+        """
         # Validate computer is online - fail fast if not
         peers = await self.client.discover_peers()
         target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
@@ -577,9 +644,11 @@ class TeleClaudeMCPServer:
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
             # Send /claude command with message to start Claude Code
+            # Use shlex.quote for proper escaping (handles ', ", !, $, etc.)
+            quoted_message = shlex.quote(message)
             await self.client.send_request(
                 computer_name=computer,
-                command=f"/claude '{message}'",
+                command=f"/claude {quoted_message}",
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )

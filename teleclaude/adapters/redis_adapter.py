@@ -691,7 +691,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
             # Build MessageMetadata from message data
-            metadata_to_send = MessageMetadata()
+            # Messages received via Redis inherently have adapter_type="redis"
+            metadata_to_send = MessageMetadata(adapter_type="redis")
 
             # Add session-level data to payload instead of metadata
             if b"project_dir" in data:

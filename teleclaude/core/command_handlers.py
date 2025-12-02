@@ -927,9 +927,9 @@ async def handle_claude_session(
 
     # Build command with args (properly quoted for shell)
     if args:
-        # Join args and wrap in double quotes for shell (escape any existing double quotes)
-        joined_args = " ".join(args).replace('"', '\\"')
-        cmd = f'{base_cmd} "{joined_args}"'
+        # Use shlex.quote for proper shell escaping (handles !, $, ", ', etc.)
+        quoted_args = shlex.quote(" ".join(args))
+        cmd = f"{base_cmd} {quoted_args}"
     else:
         cmd = base_cmd
 

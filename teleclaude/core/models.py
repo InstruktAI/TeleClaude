@@ -263,7 +263,25 @@ class Session:
         if "closed" in data and isinstance(data["closed"], int):
             data["closed"] = bool(data["closed"])
 
-        return cls(**data)  # type: ignore[arg-type]  # DB deserialization
+        # Filter to only Session's known fields (handles schema evolution/deprecated columns)
+        known_fields = {
+            "session_id",
+            "computer_name",
+            "tmux_session_name",
+            "origin_adapter",
+            "title",
+            "adapter_metadata",
+            "closed",
+            "created_at",
+            "last_activity",
+            "terminal_size",
+            "working_directory",
+            "description",
+            "ux_state",
+        }
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+
+        return cls(**filtered_data)  # type: ignore[arg-type]  # DB deserialization
 
 
 @dataclass
