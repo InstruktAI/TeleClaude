@@ -426,7 +426,11 @@ class UiAdapter(BaseAdapter):
     # ==================== Event Handlers ====================
 
     async def _handle_session_updated(self, event: str, context: SessionUpdatedContext) -> None:
-        """Handle session_updated event - update channel title when working directory changes.
+        """Handle session_updated event - update channel title when fields change.
+
+        Handles:
+        - title: Direct title update (from summary) → sync to Telegram
+        - working_directory: Path change → update path portion in title
 
         Args:
             event: Event type
@@ -435,10 +439,17 @@ class UiAdapter(BaseAdapter):
         session_id = context.session_id
         updated_fields = context.updated_fields or {}
 
-        # Get old session to check what changed
+        # Get session (already updated in DB)
         session = await db.get_session(session_id)
         if not session:
             return
+
+        # Handle direct title update (from summary)
+        if "title" in updated_fields:
+            new_title = str(updated_fields["title"])
+            await self.client.update_channel_title(session, new_title)
+            logger.info("Synced title to Telegram for session %s: %s", session_id[:8], new_title)
+            return  # Title already includes everything, skip working_directory handling
 
         # Check if working_directory changed
         if "working_directory" not in updated_fields:
@@ -605,7 +616,7 @@ class UiAdapter(BaseAdapter):
             await self.send_feedback(session, str(summary), MessageMetadata(), persistent=False)
             logger.debug("Sent summary for session %s: %s", session_id[:8], str(summary)[:50])
 
-        # Update channel title if provided
+        # Update session title in DB if provided (triggers SESSION_UPDATED event)
         if title:
             # Parse current title and replace description part
             title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
@@ -613,8 +624,9 @@ class UiAdapter(BaseAdapter):
 
             if match:
                 new_title = f"{match.group(1)}{title}"
-                await self.client.update_channel_title(session, new_title)
-                logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+                # Update DB - this triggers SESSION_UPDATED which calls update_channel_title
+                await db.update_session(session_id, title=new_title)
+                logger.info("Updated session title in DB for %s: %s", session_id[:8], new_title)
             else:
                 logger.warning(
                     "Session %s title doesn't match expected format: %s. Skipping title update.",

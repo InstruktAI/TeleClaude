@@ -268,6 +268,18 @@ except Exception:
 restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
+    # Capture TeleClaude session ID BEFORE killing (only works in tmux sessions)
+    # NOTE: Auto-restart only works for TeleClaude tmux sessions.
+    # For local terminals, user must manually restart Claude after daemon restart.
+    SAVED_SESSION_ID=""
+
+    if [ -n "$TMUX" ]; then
+        TMUX_SESSION=$(tmux display-message -p '#S' 2>/dev/null)
+        if [ -n "$TMUX_SESSION" ]; then
+            SAVED_SESSION_ID=$(tmux show-environment -t "$TMUX_SESSION" TELECLAUDE_SESSION_ID 2>/dev/null | cut -d= -f2-)
+        fi
+    fi
+
     OLD_PID=""
     if [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE")
@@ -294,20 +306,14 @@ restart_daemon() {
         EXIT_CODE=1
     fi
 
-    # Spawn background subprocess to restart Claude after 3 seconds
-    # Use nohup and redirect to /dev/null to fully detach
-    (
-        sleep 3
-
-        # Get TELECLAUDE_SESSION_ID from tmux session environment
-        TMUX_SESSION=$(tmux display-message -p '#S' 2>/dev/null)
-        if [ -n "$TMUX_SESSION" ]; then
-            TELECLAUDE_SESSION_ID=$(tmux show-environment -t "$TMUX_SESSION" TELECLAUDE_SESSION_ID 2>/dev/null | cut -d= -f2-)
-            export TELECLAUDE_SESSION_ID
-        fi
-
-        cd "$PROJECT_ROOT" && "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude >/dev/null 2>&1
-    ) </dev/null >/dev/null 2>&1 & disown
+    # Restart Claude to reconnect MCP (only works for TeleClaude tmux sessions)
+    if [ -n "$TMUX" ] && [ -n "$SAVED_SESSION_ID" ]; then
+        (
+            sleep 1
+            export TELECLAUDE_SESSION_ID="$SAVED_SESSION_ID"
+            cd "$PROJECT_ROOT" && "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude >/dev/null 2>&1
+        ) </dev/null >/dev/null 2>&1 & disown
+    fi
 
     # Return immediately with collected exit code
     return $EXIT_CODE

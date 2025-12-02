@@ -1397,12 +1397,7 @@ Current size: {current_size}
             # Return to original heartbeat view with all buttons
             # Short code: ccancel = claude cancel
             bot_username = args[0] if args else ""
-            keyboard = [
-                [InlineKeyboardButton(text="🚀 Session", callback_data=f"ss:{bot_username}")],
-                [InlineKeyboardButton(text="🤖 Claude", callback_data=f"csel:{bot_username}")],
-                [InlineKeyboardButton(text="🔄 Claude Resume", callback_data=f"crsel:{bot_username}")],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            reply_markup = self._build_heartbeat_keyboard(bot_username)
             text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             await query.edit_message_text(text, reply_markup=reply_markup)
 
@@ -1463,6 +1458,23 @@ Current size: {current_size}
             except Exception as e:
                 logger.error("Heartbeat failed: %s", e)
 
+    def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
+        """Build the standard heartbeat keyboard with session and Claude buttons.
+
+        Using short callback codes to stay under Telegram's 64-byte limit:
+        - ss = start session
+        - csel = claude select (new session)
+        - crsel = claude resume select
+        """
+        keyboard = [
+            [InlineKeyboardButton(text="🚀 Terminal Session", callback_data=f"ss:{bot_username}")],
+            [
+                InlineKeyboardButton(text="🤖 New Claude", callback_data=f"csel:{bot_username}"),
+                InlineKeyboardButton(text="🔄 Resume Claude", callback_data=f"crsel:{bot_username}"),
+            ],
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
     async def _send_heartbeat(self) -> None:
         """Send or edit [REGISTRY] heartbeat message in General topic."""
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -1471,17 +1483,7 @@ Current size: {current_size}
         bot_info = await self.bot.get_me()
         bot_username = bot_info.username
 
-        # Create buttons for quick session start and Claude modes
-        # Using short callback codes to stay under Telegram's 64-byte limit:
-        # ss = start session, csel = claude select, crsel = claude resume select
-        keyboard = [
-            [InlineKeyboardButton(text="🚀 Session", callback_data=f"ss:{bot_username}")],
-            [
-                InlineKeyboardButton(text="🤖 Claude", callback_data=f"csel:{bot_username}"),
-                InlineKeyboardButton(text="🔄 Resume", callback_data=f"crsel:{bot_username}"),
-            ],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = self._build_heartbeat_keyboard(bot_username)
 
         if self.registry_message_id is None:
             # First time - post new message to General topic (thread_id=None) with button

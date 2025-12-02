@@ -2,6 +2,9 @@
 #
 # This is the ONLY place that communicates with TeleClaude.
 # All Claude Code events flow through here via teleclaude__handle_claude_event.
+#
+# NOTE: This hook only processes events for TeleClaude sessions (TELECLAUDE_SESSION_ID set).
+# For local terminal sessions, events are ignored.
 import json
 import os
 import random
@@ -47,8 +50,13 @@ def send_event(teleclaude_session_id: str, event_type: str, data: dict) -> None:
     log(f"Sent {event_type} event to daemon")
 
 
-def handle_notification(teleclaude_session_id: str) -> None:
-    """Handle notification event - generate message and send via event."""
+def handle_notification(teleclaude_session_id: str, message: str | None) -> None:
+    """Handle notification event - generate message and send via event.
+    Skip for 'Claude is waiting for your input', because that gets sent after 60s and we already sent a summary."""
+    if message == "Claude is waiting for your input":
+        log("Skipping notification for 'Claude is waiting for your input'")
+        return
+
     engineer_name = os.getenv("ENGINEER_NAME", "").strip()
     log(f"Engineer name: {engineer_name or '(not set)'}")
 
@@ -127,7 +135,11 @@ def handle_stop(teleclaude_session_id: str, transcript_path: str, original_data:
 
 
 def main() -> None:
-    """Forward Claude Code events to TeleClaude daemon via MCP."""
+    """Forward Claude Code events to TeleClaude daemon via MCP.
+
+    Only processes events for TeleClaude sessions (TELECLAUDE_SESSION_ID set).
+    Events from local terminal sessions are ignored.
+    """
     try:
         log("=== Hook triggered ===")
 
@@ -137,9 +149,11 @@ def main() -> None:
 
         # Get TeleClaude session ID from environment (set by tmux)
         teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
+
         if not teleclaude_session_id:
-            log("TELECLAUDE_SESSION_ID not found in environment")
-            log("This hook is intended to be run from within a TeleClaude terminal session")
+            # Local terminal session - ignore events
+            log("No TELECLAUDE_SESSION_ID, ignoring event (local terminal session)")
+            log("=== Hook finished (local) ===\n")
             sys.exit(0)
 
         # Extract event type from hook data
@@ -152,11 +166,12 @@ def main() -> None:
             event_type = event_type.lower()
             if event_type == "sessionstart":
                 event_type = "session_start"
+
         log(f"Event type: {event_type}, TeleClaude session: {teleclaude_session_id[:8]}")
 
         # Route to appropriate handler
         if event_type == "notification":
-            handle_notification(teleclaude_session_id)
+            handle_notification(teleclaude_session_id, data.get("message", None))
         elif event_type == "stop":
             transcript_path = data.get("transcript_path", "")
             handle_stop(teleclaude_session_id, transcript_path, data)
