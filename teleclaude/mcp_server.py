@@ -19,7 +19,7 @@ from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
-from teleclaude.core.events import TeleClaudeEvents
+from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
@@ -49,6 +49,17 @@ class TeleClaudeMCPServer:
 
         # Setup MCP tool handlers
         self._setup_tools()
+
+    def _is_local_computer(self, computer: str) -> bool:
+        """Check if the target computer refers to the local machine.
+
+        Args:
+            computer: Target computer name (or "local"/self.computer_name)
+
+        Returns:
+            True if computer refers to local machine
+        """
+        return computer in ("local", self.computer_name)
 
     def _setup_tools(self) -> None:
         """Register MCP tools with the server."""
@@ -457,6 +468,26 @@ class TeleClaudeMCPServer:
     async def teleclaude__list_projects(self, computer: str) -> list[dict[str, str]]:
         """List available projects on target computer with metadata.
 
+        For local computer: Reads trusted_dirs from config directly.
+        For remote computers: Sends request via Redis transport.
+
+        Args:
+            computer: Target computer name (or "local"/self.computer_name)
+
+        Returns:
+            List of dicts with keys: name, desc, location
+        """
+        if self._is_local_computer(computer):
+            return await self._list_local_projects()
+        return await self._list_remote_projects(computer)
+
+    async def _list_local_projects(self) -> list[dict[str, str]]:
+        """List projects from local config directly."""
+        return await command_handlers.handle_list_projects()
+
+    async def _list_remote_projects(self, computer: str) -> list[dict[str, str]]:
+        """List projects from remote computer via Redis.
+
         Args:
             computer: Target computer name
 
@@ -472,7 +503,6 @@ class TeleClaudeMCPServer:
             return []
 
         # Send list_projects command via AdapterClient
-        # Transport layer generates request_id from Redis message ID
         message_id = await self.client.send_request(
             computer_name=computer, command="list_projects", metadata=MessageMetadata()
         )
@@ -525,13 +555,9 @@ class TeleClaudeMCPServer:
         Returns:
             dict with session_id and status
         """
-        # Check if this is a local session request
-        is_local = computer in ("local", self.computer_name)
-
-        if is_local:
+        if self._is_local_computer(computer):
             return await self._start_local_session(project_dir, title, message)
-        else:
-            return await self._start_remote_session(computer, project_dir, title, message)
+        return await self._start_remote_session(computer, project_dir, title, message)
 
     async def _start_local_session(
         self,
@@ -665,10 +691,14 @@ class TeleClaudeMCPServer:
     async def teleclaude__list_sessions(self, computer: Optional[str] = "local") -> list[dict[str, object]]:
         """List sessions from local or remote computer(s).
 
+        For local computer: Queries local database directly.
+        For remote computers: Sends request via Redis transport.
+        For None: Aggregates sessions from ALL computers.
+
         Args:
             computer: Which computer(s) to query:
-                - "local" (default): Query local database only
-                - None: Query ALL computers via Redis
+                - "local" or self.computer_name: Query local database only
+                - None: Query ALL computers (local + remotes)
                 - "name": Query specific remote computer via Redis
 
         Returns:
@@ -680,75 +710,112 @@ class TeleClaudeMCPServer:
             - status: Session status (active/closed)
             - created_at: ISO timestamp
             - last_activity: ISO timestamp
-            - computer: Computer name (only for remote queries)
+            - computer: Computer name (included for all queries)
         """
-        if computer == "local":
-            # Query local database directly
-            sessions_data = await command_handlers.handle_list_sessions()
-            return sessions_data
+        # None means query ALL computers
+        if computer is None:
+            return await self._list_all_sessions()
 
-        # Query remote computer(s) via Redis
+        # Local computer (handles both "local" and actual computer name)
+        if self._is_local_computer(computer):
+            return await self._list_local_sessions()
+
+        # Specific remote computer
+        return await self._list_remote_sessions(computer)
+
+    async def _list_local_sessions(self) -> list[dict[str, object]]:
+        """List sessions from local database directly."""
+        sessions = await command_handlers.handle_list_sessions()
+        # Add computer name for consistency
+        for session in sessions:
+            session["computer"] = self.computer_name
+        return sessions
+
+    async def _list_remote_sessions(self, computer: str) -> list[dict[str, object]]:
+        """List sessions from a specific remote computer via Redis.
+
+        Args:
+            computer: Target remote computer name
+
+        Returns:
+            List of session dicts with computer field added
+        """
         redis_adapter = self.client.adapters.get("redis")
         if not redis_adapter:
             logger.warning("Redis adapter not available - cannot query remote sessions")
             return []
 
-        # Start with local sessions when querying all computers
+        try:
+            message_id = await redis_adapter.send_request(computer, "list_sessions", MessageMetadata())
+            response_data = await self.client.read_response(message_id, timeout=3.0)
+            sessions = json.loads(response_data.strip())
+
+            # Add computer name to each session
+            for session in sessions:
+                session["computer"] = computer
+            return sessions
+
+        except (TimeoutError, Exception) as e:
+            logger.warning("Failed to get sessions from %s: %s", computer, e)
+            return []
+
+    async def _list_all_sessions(self) -> list[dict[str, object]]:
+        """List sessions from ALL computers (local + all remotes).
+
+        Returns:
+            Aggregated list of sessions from all online computers
+        """
         all_sessions: list[dict[str, object]] = []
-        if computer is None:
-            # Include local sessions first
-            local_sessions = await command_handlers.handle_list_sessions()
-            for session in local_sessions:
-                session["computer"] = self.computer_name
-            all_sessions.extend(local_sessions)
-            # Then get all online remote computers
-            computers_to_query = await redis_adapter._get_online_computers()
-        else:
-            # Query specific remote computer only
-            computers_to_query = [computer]
 
-        # Aggregate sessions from all target computers
+        # Start with local sessions
+        local_sessions = await self._list_local_sessions()
+        all_sessions.extend(local_sessions)
+
+        # Get all online remote computers
+        redis_adapter = self.client.adapters.get("redis")
+        if not redis_adapter:
+            logger.warning("Redis adapter not available - returning local sessions only")
+            return all_sessions
+
+        computers_to_query = await redis_adapter._get_online_computers()
+
+        # Query each remote computer
         for computer_name in computers_to_query:
-            try:
-                # Send list_sessions request via Redis
-                message_id = await redis_adapter.send_request(computer_name, "list_sessions", MessageMetadata())
-
-                # Wait for response (short timeout)
-                response_data = await self.client.read_response(message_id, timeout=3.0)
-                sessions = json.loads(response_data.strip())
-
-                # Add computer_name to each session for aggregation
-                for session in sessions:
-                    session["computer"] = computer_name
-                all_sessions.extend(sessions)
-
-            except (TimeoutError, Exception) as e:
-                logger.warning("Failed to get sessions from %s: %s", computer_name, e)
-                continue
+            remote_sessions = await self._list_remote_sessions(computer_name)
+            all_sessions.extend(remote_sessions)
 
         return all_sessions
 
     async def teleclaude__send_message(self, computer: str, session_id: str, message: str) -> AsyncIterator[str]:
-        """Send message to remote session via request/response pattern.
+        """Send message to session via request/response pattern.
 
-        Simplified design - no local session, no streaming. Just sends message to remote
-        and returns acknowledgment. Use teleclaude__get_session_data to pull results.
+        For local computer: Sends message directly via handle_event.
+        For remote computers: Sends via Redis transport.
 
         Args:
-            computer: Target computer name
-            session_id: Remote session ID (from teleclaude__start_session)
-            message: Message/command to send to remote Claude Code
+            computer: Target computer name (or "local"/self.computer_name)
+            session_id: Session ID (from teleclaude__start_session)
+            message: Message/command to send to Claude Code
 
         Yields:
             str: Acknowledgment message
         """
         try:
-            await self.client.send_request(
-                computer_name=computer,
-                command=f"message {message}",
-                session_id=session_id,
-                metadata=MessageMetadata(),
-            )
+            if self._is_local_computer(computer):
+                # Local session - send directly via handle_event
+                await self.client.handle_event(
+                    TeleClaudeEvents.MESSAGE,
+                    {"session_id": session_id, "args": [], "text": message},
+                    MessageMetadata(adapter_type="mcp"),
+                )
+            else:
+                # Remote session - send via Redis transport
+                await self.client.send_request(
+                    computer_name=computer,
+                    command=f"message {message}",
+                    session_id=session_id,
+                    metadata=MessageMetadata(),
+                )
 
             yield f"Message sent to session {session_id[:8]}. Use teleclaude__get_session_data to check output."
 
@@ -762,9 +829,51 @@ class TeleClaudeMCPServer:
         session_id: str,
         since_timestamp: Optional[str] = None,
     ) -> dict[str, object]:
-        """Get session data from remote computer.
+        """Get session data from local or remote computer.
 
-        Pulls accumulated session data from claude_session_file on remote computer.
+        For local computer: Reads claude_session_file directly.
+        For remote computers: Sends request via Redis transport.
+
+        Args:
+            computer: Target computer name (or "local"/self.computer_name)
+            session_id: Session ID on target computer
+            since_timestamp: Optional ISO 8601 UTC timestamp
+
+        Returns:
+            Dict with session data, status, and messages
+        """
+        if self._is_local_computer(computer):
+            return await self._get_local_session_data(session_id, since_timestamp)
+        return await self._get_remote_session_data(computer, session_id, since_timestamp)
+
+    async def _get_local_session_data(
+        self,
+        session_id: str,
+        since_timestamp: Optional[str] = None,
+    ) -> dict[str, object]:
+        """Get session data from local computer directly.
+
+        Args:
+            session_id: Session ID
+            since_timestamp: Optional ISO 8601 UTC timestamp
+
+        Returns:
+            Dict with session data, status, and messages
+        """
+        # Create context for the handler
+        args = [since_timestamp] if since_timestamp else []
+        context = CommandEventContext(session_id=session_id, args=args)
+
+        # Call handler directly
+        return await command_handlers.handle_get_session_data(context, args)
+
+    async def _get_remote_session_data(
+        self,
+        computer: str,
+        session_id: str,
+        since_timestamp: Optional[str] = None,
+    ) -> dict[str, object]:
+        """Get session data from remote computer via Redis.
 
         Args:
             computer: Target computer name
