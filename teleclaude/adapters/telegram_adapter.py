@@ -671,6 +671,23 @@ class TelegramAdapter(UiAdapter):
         """
         return event_name.replace("_", "-")
 
+    def _build_project_keyboard(self, callback_prefix: str) -> InlineKeyboardMarkup:
+        """Build inline keyboard for project selection.
+
+        Uses index-based callbacks to stay under Telegram's 64-byte limit.
+
+        Args:
+            callback_prefix: Prefix for callback_data (e.g., "cd", "c", "cr")
+
+        Returns:
+            InlineKeyboardMarkup with buttons for each trusted directory
+        """
+        keyboard = []
+        for idx, trusted_dir in enumerate(self.trusted_dirs):
+            button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
+            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"{callback_prefix}:{idx}")])
+        return InlineKeyboardMarkup(keyboard)
+
     async def _get_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from current topic.
 
@@ -1093,14 +1110,7 @@ Current size: {current_size}
             return
 
         # No args - show trusted directories as buttons (includes TC WORKDIR from get_all_trusted_dirs)
-        # Create inline keyboard with directory buttons showing name + desc
-        keyboard = []
-        for trusted_dir in self.trusted_dirs:
-            # Format button text: "name - desc" or just "name" if no desc
-            button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
-            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"cd:{trusted_dir.path}")])
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = self._build_project_keyboard("cd")
         message = update.effective_message
         if message:
             await message.reply_text("**Select a directory:**", reply_markup=reply_markup, parse_mode="Markdown")
@@ -1251,8 +1261,9 @@ Current size: {current_size}
                 logger.error("Failed to send output file: %s", e)
                 await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")
 
-        elif action == "start_session_here":
+        elif action == "ss":
             # Handle quick session start from heartbeat button
+            # Short code: ss = start session
             if not query.from_user:
                 return
 
@@ -1285,7 +1296,17 @@ Current size: {current_size}
                 return
 
             session = sessions[0]
-            dir_path = args[0] if args else ""
+
+            # Get project by index (callbacks are now index-based for 64-byte limit)
+            try:
+                project_idx = int(args[0]) if args else -1
+                if project_idx < 0 or project_idx >= len(self.trusted_dirs):
+                    await query.answer("❌ Invalid directory", show_alert=True)
+                    return
+                dir_path = self.trusted_dirs[project_idx].path
+            except (ValueError, IndexError):
+                await query.answer("❌ Invalid directory selection", show_alert=True)
+                return
 
             # Emit cd command
             await self.client.handle_event(
@@ -1300,8 +1321,9 @@ Current size: {current_size}
             # Update the message to show what was selected
             await query.edit_message_text(f"Changing directory to: `{dir_path}`", parse_mode="Markdown")
 
-        elif action in ("claude_select_project", "claude_resume_select_project"):
+        elif action in ("csel", "crsel"):
             # Show project selection for Claude/Claude Resume
+            # Short codes: csel = claude select, crsel = claude resume select
             if not query.from_user or not query.message:
                 return
 
@@ -1311,50 +1333,40 @@ Current size: {current_size}
                 return
 
             # Determine which Claude mode (new or resume)
-            claude_mode = "claude" if action == "claude_select_project" else "claude_resume"
+            # Use short callback prefix: c = claude, cr = claude resume
+            callback_prefix = "c" if action == "csel" else "cr"
 
-            # Build keyboard with trusted directories
-            keyboard = []
-            for trusted_dir in self.trusted_dirs:
-                button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
-                keyboard.append(
-                    [
-                        InlineKeyboardButton(
-                            text=button_text, callback_data=f"start_with_{claude_mode}:{trusted_dir.path}"
-                        )
-                    ]
-                )
+            # Build keyboard with trusted directories using helper
+            reply_markup = self._build_project_keyboard(callback_prefix)
 
             # Add cancel button to return to original view
             bot_info = await self.bot.get_me()
-            keyboard.append(
-                [InlineKeyboardButton(text="❌ Cancel", callback_data=f"cancel_project_select:{bot_info.username}")]
-            )
+            keyboard = list(reply_markup.inline_keyboard)
+            keyboard.append([InlineKeyboardButton(text="❌ Cancel", callback_data=f"ccancel:{bot_info.username}")])
 
             reply_markup = InlineKeyboardMarkup(keyboard)
-            mode_label = "Claude" if claude_mode == "claude" else "Claude Resume"
+            mode_label = "Claude" if action == "csel" else "Claude Resume"
             await query.edit_message_text(
                 f"**Select project for {mode_label}:**", reply_markup=reply_markup, parse_mode="Markdown"
             )
 
-        elif action == "cancel_project_select":
+        elif action == "ccancel":
             # Return to original heartbeat view with all buttons
+            # Short code: ccancel = claude cancel
             bot_username = args[0] if args else ""
             keyboard = [
-                [InlineKeyboardButton(text="🚀 Session", callback_data=f"start_session_here:{bot_username}")],
-                [InlineKeyboardButton(text="🤖 Claude", callback_data=f"claude_select_project:{bot_username}")],
-                [
-                    InlineKeyboardButton(
-                        text="🔄 Claude Resume", callback_data=f"claude_resume_select_project:{bot_username}"
-                    )
-                ],
+                [InlineKeyboardButton(text="🚀 Session", callback_data=f"ss:{bot_username}")],
+                [InlineKeyboardButton(text="🤖 Claude", callback_data=f"csel:{bot_username}")],
+                [InlineKeyboardButton(text="🔄 Claude Resume", callback_data=f"crsel:{bot_username}")],
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             await query.edit_message_text(text, reply_markup=reply_markup)
 
-        elif action in ("start_with_claude", "start_with_claude_resume"):
+        elif action in ("c", "cr"):
             # Create session in selected project and start Claude
+            # Short codes: c = claude, cr = claude resume
+            # Callback format: c:INDEX or cr:INDEX where INDEX is into trusted_dirs
             if not query.from_user:
                 return
 
@@ -1363,18 +1375,24 @@ Current size: {current_size}
                 await query.answer("❌ Not authorized", show_alert=True)
                 return
 
-            project_path = args[0] if args else ""
-            if not project_path:
-                await query.answer("❌ No project selected", show_alert=True)
+            # Get project by index
+            try:
+                project_idx = int(args[0]) if args else -1
+                if project_idx < 0 or project_idx >= len(self.trusted_dirs):
+                    await query.answer("❌ Invalid project", show_alert=True)
+                    return
+                project_path = self.trusted_dirs[project_idx].path
+            except (ValueError, IndexError):
+                await query.answer("❌ Invalid project selection", show_alert=True)
                 return
 
             # Acknowledge immediately
-            mode_label = "Claude" if action == "start_with_claude" else "Claude Resume"
+            mode_label = "Claude" if action == "c" else "Claude Resume"
             await query.answer(f"Creating session with {mode_label}...", show_alert=False)
 
             # Emit NEW_SESSION event with project_dir and auto_command in metadata
             # This creates session AND starts Claude in one flow
-            claude_event = TeleClaudeEvents.CLAUDE if action == "start_with_claude" else TeleClaudeEvents.CLAUDE_RESUME
+            claude_event = TeleClaudeEvents.CLAUDE if action == "c" else TeleClaudeEvents.CLAUDE_RESUME
             await self.client.handle_event(
                 event=TeleClaudeEvents.NEW_SESSION,
                 payload={
@@ -1461,14 +1479,12 @@ Current size: {current_size}
         bot_username = bot_info.username
 
         # Create buttons for quick session start and Claude modes
+        # Using short callback codes to stay under Telegram's 64-byte limit:
+        # ss = start session, csel = claude select, crsel = claude resume select
         keyboard = [
-            [InlineKeyboardButton(text="🚀 Session", callback_data=f"start_session_here:{bot_username}")],
-            [InlineKeyboardButton(text="🤖 Claude", callback_data=f"claude_select_project:{bot_username}")],
-            [
-                InlineKeyboardButton(
-                    text="🔄 Claude Resume", callback_data=f"claude_resume_select_project:{bot_username}"
-                )
-            ],
+            [InlineKeyboardButton(text="🚀 Session", callback_data=f"ss:{bot_username}")],
+            [InlineKeyboardButton(text="🤖 Claude", callback_data=f"csel:{bot_username}")],
+            [InlineKeyboardButton(text="🔄 Claude Resume", callback_data=f"crsel:{bot_username}")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
