@@ -700,7 +700,19 @@ class TeleClaudeDaemon:
         )
 
         if command == TeleClaudeEvents.NEW_SESSION:
-            return await command_handlers.handle_create_session(context, args, metadata, self.client)
+            result = await command_handlers.handle_create_session(context, args, metadata, self.client)
+
+            # Handle auto_command if specified (e.g., start Claude after session creation)
+            if metadata.auto_command and result.get("session_id"):
+                session_id = result["session_id"]
+                auto_context = CommandEventContext(session_id=session_id, args=[])
+
+                if metadata.auto_command == TeleClaudeEvents.CLAUDE:
+                    await command_handlers.handle_claude_session(auto_context, [], self._execute_terminal_command)
+                elif metadata.auto_command == TeleClaudeEvents.CLAUDE_RESUME:
+                    await command_handlers.handle_claude_resume_session(auto_context, self._execute_terminal_command)
+
+            return result
         elif command == TeleClaudeEvents.LIST_SESSIONS:
             # LIST_SESSIONS is ephemeral command (MCP/Redis only) - return envelope directly
             return await command_handlers.handle_list_sessions()

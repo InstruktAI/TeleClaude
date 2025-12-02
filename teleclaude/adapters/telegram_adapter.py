@@ -718,7 +718,7 @@ class TelegramAdapter(UiAdapter):
         logger.debug("User authorized, emitting command with args: %s", context.args)
 
         # Emit command event to daemon
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.NEW_SESSION,
             payload={
                 "command": self._event_to_command("new_session"),
@@ -738,7 +738,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.CANCEL,
             payload={
                 "command": self._event_to_command("cancel"),
@@ -759,7 +759,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.CANCEL_2X,
             payload={
                 "command": self._event_to_command("cancel2x"),
@@ -780,7 +780,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.KILL,
             payload={
                 "command": self._event_to_command("kill"),
@@ -801,7 +801,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.ESCAPE,
             payload={
                 "command": self._event_to_command("escape"),
@@ -821,7 +821,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.ESCAPE_2X,
             payload={
                 "command": self._event_to_command("escape2x"),
@@ -842,7 +842,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.CTRL,
             payload={
                 "command": self._event_to_command("ctrl"),
@@ -862,7 +862,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.TAB,
             payload={
                 "command": self._event_to_command("tab"),
@@ -882,7 +882,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.SHIFT_TAB,
             payload={
                 "command": self._event_to_command("shift_tab"),
@@ -902,7 +902,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.BACKSPACE,
             payload={
                 "command": self._event_to_command("backspace"),
@@ -927,7 +927,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.ENTER,
             payload={
                 "command": self._event_to_command("enter"),
@@ -947,7 +947,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.KEY_UP,
             payload={
                 "command": self._event_to_command("key_up"),
@@ -967,7 +967,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.KEY_DOWN,
             payload={
                 "command": self._event_to_command("key_down"),
@@ -987,7 +987,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.KEY_LEFT,
             payload={
                 "command": self._event_to_command("key_left"),
@@ -1007,7 +1007,7 @@ class TelegramAdapter(UiAdapter):
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.KEY_RIGHT,
             payload={
                 "command": self._event_to_command("key_right"),
@@ -1062,7 +1062,7 @@ Current size: {current_size}
                 await message.reply_text("Usage: /rename <new name>")
             return
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.RENAME,
             payload={
                 "command": self._event_to_command("rename"),
@@ -1081,7 +1081,7 @@ Current size: {current_size}
 
         # If args provided, change to that directory
         if context.args:
-            await self.client.emit(
+            await self.client.handle_event(
                 event=TeleClaudeEvents.CD,
                 payload={
                     "command": self._event_to_command("cd"),
@@ -1115,7 +1115,7 @@ Current size: {current_size}
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.CLAUDE,
             payload={
                 "command": self._event_to_command("claude"),
@@ -1135,7 +1135,7 @@ Current size: {current_size}
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.CLAUDE_RESUME,
             payload={
                 "command": self._event_to_command("claude_resume"),
@@ -1262,7 +1262,7 @@ Current size: {current_size}
                 return
 
             # Emit NEW_SESSION event directly (no visible command message)
-            await self.client.emit(
+            await self.client.handle_event(
                 event=TeleClaudeEvents.NEW_SESSION,
                 payload={
                     "args": [],
@@ -1288,7 +1288,7 @@ Current size: {current_size}
             dir_path = args[0] if args else ""
 
             # Emit cd command
-            await self.client.emit(
+            await self.client.handle_event(
                 event=TeleClaudeEvents.CD,
                 payload={
                     "args": [dir_path],
@@ -1300,10 +1300,99 @@ Current size: {current_size}
             # Update the message to show what was selected
             await query.edit_message_text(f"Changing directory to: `{dir_path}`", parse_mode="Markdown")
 
+        elif action in ("claude_select_project", "claude_resume_select_project"):
+            # Show project selection for Claude/Claude Resume
+            if not query.from_user or not query.message:
+                return
+
+            # Check if authorized
+            if query.from_user.id not in self.user_whitelist:
+                await query.answer("❌ Not authorized", show_alert=True)
+                return
+
+            # Determine which Claude mode (new or resume)
+            claude_mode = "claude" if action == "claude_select_project" else "claude_resume"
+
+            # Build keyboard with trusted directories
+            keyboard = []
+            for trusted_dir in self.trusted_dirs:
+                button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
+                keyboard.append(
+                    [
+                        InlineKeyboardButton(
+                            text=button_text, callback_data=f"start_with_{claude_mode}:{trusted_dir.path}"
+                        )
+                    ]
+                )
+
+            # Add cancel button to return to original view
+            bot_info = await self.bot.get_me()
+            keyboard.append(
+                [InlineKeyboardButton(text="❌ Cancel", callback_data=f"cancel_project_select:{bot_info.username}")]
+            )
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            mode_label = "Claude" if claude_mode == "claude" else "Claude Resume"
+            await query.edit_message_text(
+                f"**Select project for {mode_label}:**", reply_markup=reply_markup, parse_mode="Markdown"
+            )
+
+        elif action == "cancel_project_select":
+            # Return to original heartbeat view with all buttons
+            bot_username = args[0] if args else ""
+            keyboard = [
+                [InlineKeyboardButton(text="🚀 Session", callback_data=f"start_session_here:{bot_username}")],
+                [InlineKeyboardButton(text="🤖 Claude", callback_data=f"claude_select_project:{bot_username}")],
+                [
+                    InlineKeyboardButton(
+                        text="🔄 Claude Resume", callback_data=f"claude_resume_select_project:{bot_username}"
+                    )
+                ],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            await query.edit_message_text(text, reply_markup=reply_markup)
+
+        elif action in ("start_with_claude", "start_with_claude_resume"):
+            # Create session in selected project and start Claude
+            if not query.from_user:
+                return
+
+            # Check if authorized
+            if query.from_user.id not in self.user_whitelist:
+                await query.answer("❌ Not authorized", show_alert=True)
+                return
+
+            project_path = args[0] if args else ""
+            if not project_path:
+                await query.answer("❌ No project selected", show_alert=True)
+                return
+
+            # Acknowledge immediately
+            mode_label = "Claude" if action == "start_with_claude" else "Claude Resume"
+            await query.answer(f"Creating session with {mode_label}...", show_alert=False)
+
+            # Emit NEW_SESSION event with project_dir and auto_command in metadata
+            # This creates session AND starts Claude in one flow
+            claude_event = TeleClaudeEvents.CLAUDE if action == "start_with_claude" else TeleClaudeEvents.CLAUDE_RESUME
+            await self.client.handle_event(
+                event=TeleClaudeEvents.NEW_SESSION,
+                payload={
+                    "args": [],
+                },
+                metadata=self._metadata(project_dir=project_path, auto_command=claude_event),
+            )
+
     # ==================== Peer Discovery Methods ====================
 
     async def _heartbeat_loop(self) -> None:
         """Send heartbeat every N seconds to General topic."""
+        # Clean up stale registry messages before first heartbeat
+        try:
+            await self._cleanup_stale_registry_messages()
+        except Exception as e:
+            logger.warning("Failed to cleanup stale registry messages: %s", e)
+
         # Send initial heartbeat
         try:
             await self._send_heartbeat()
@@ -1319,6 +1408,50 @@ Current size: {current_size}
             except Exception as e:
                 logger.error("Heartbeat failed: %s", e)
 
+    async def _cleanup_stale_registry_messages(self) -> None:
+        """Delete ALL [REGISTRY] messages from this bot in General topic.
+
+        Called before first heartbeat to clean up orphaned messages from previous
+        daemon sessions (e.g., when DB was wiped but messages persist in Telegram).
+        Deletes all registry messages from THIS bot - fresh start on each daemon boot.
+        """
+        bot_info = await self.bot.get_me()
+        bot_id = bot_info.id
+
+        # Get cached messages from General topic
+        cached_messages = self._topic_message_cache.get(None, [])
+
+        deleted_count = 0
+        for msg in cached_messages:
+            # Skip if not from this bot
+            if not msg.from_user or msg.from_user.id != bot_id:
+                continue
+
+            # Skip if not a registry message
+            if not msg.text or not msg.text.startswith("[REGISTRY]"):
+                continue
+
+            # Delete the stale message
+            try:
+                await self.bot.delete_message(chat_id=self.supergroup_id, message_id=msg.message_id)
+                deleted_count += 1
+                logger.debug("Deleted stale registry message: %s", msg.message_id)
+            except Exception as e:
+                logger.warning("Failed to delete stale registry message %s: %s", msg.message_id, e)
+
+        if deleted_count > 0:
+            logger.info("Cleaned up %d stale registry message(s)", deleted_count)
+
+        # Clear registry_message_id to force posting a fresh message
+        self.registry_message_id = None
+
+        # Remove deleted messages from cache
+        self._topic_message_cache[None] = [
+            m
+            for m in cached_messages
+            if not (m.from_user and m.from_user.id == bot_id and m.text and m.text.startswith("[REGISTRY]"))
+        ]
+
     async def _send_heartbeat(self) -> None:
         """Send or edit [REGISTRY] heartbeat message in General topic."""
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -1327,8 +1460,16 @@ Current size: {current_size}
         bot_info = await self.bot.get_me()
         bot_username = bot_info.username
 
-        # Create button for quick session start (only needs to be set once, persists through edits)
-        keyboard = [[InlineKeyboardButton(text="🚀 Start Session", callback_data=f"start_session_here:{bot_username}")]]
+        # Create buttons for quick session start and Claude modes
+        keyboard = [
+            [InlineKeyboardButton(text="🚀 Session", callback_data=f"start_session_here:{bot_username}")],
+            [InlineKeyboardButton(text="🤖 Claude", callback_data=f"claude_select_project:{bot_username}")],
+            [
+                InlineKeyboardButton(
+                    text="🔄 Claude Resume", callback_data=f"claude_resume_select_project:{bot_username}"
+                )
+            ],
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if self.registry_message_id is None:
@@ -1516,7 +1657,7 @@ Usage:
             text = "/" + text[2:]
             logger.debug("Stripped leading // from user input, result: %s", text[:50])
 
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
             payload={
                 "session_id": session.session_id,
@@ -1579,7 +1720,7 @@ Usage:
                 logger.warning("Failed to delete voice message %s: %s", update.message.message_id, e)
 
             # Emit voice event to daemon
-            await self.client.emit(
+            await self.client.handle_event(
                 event=TeleClaudeEvents.VOICE,
                 payload={"session_id": session.session_id, "file_path": str(temp_file_path)},
                 metadata=self._metadata(),
@@ -1631,7 +1772,7 @@ Usage:
             logger.info("Downloaded %s to: %s", file_type, file_path)
 
             # Emit file event to daemon (with optional caption)
-            await self.client.emit(
+            await self.client.handle_event(
                 event=TeleClaudeEvents.FILE,
                 payload={
                     "session_id": session.session_id,
@@ -1673,7 +1814,7 @@ Usage:
         logger.info("Topic %s closed by user, closing session %s", topic_id, session.session_id[:8])
 
         # Emit session_closed event to daemon for cleanup
-        await self.client.emit(
+        await self.client.handle_event(
             event="session_closed",
             payload={"session_id": session.session_id},
             metadata=self._metadata(),
@@ -1697,7 +1838,7 @@ Usage:
         logger.info("Topic %s reopened by user, reopening session %s", topic_id, session.session_id[:8])
 
         # Emit session_reopened event to daemon
-        await self.client.emit(
+        await self.client.handle_event(
             event="session_reopened",
             payload={"session_id": session.session_id},
             metadata=self._metadata(),

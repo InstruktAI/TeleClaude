@@ -184,6 +184,9 @@ class MessageMetadata:
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
 
+    # Auto-command to run after session creation (e.g., "claude", "claude_resume")
+    auto_command: Optional[str] = None
+
 
 @dataclass
 class Session:
