@@ -246,7 +246,10 @@ class UiAdapter(BaseAdapter):
         """
         message_parts = []
         if terminal_output:
-            message_parts.append(f"```\n{terminal_output}\n```")
+            # Escape internal ``` markers to prevent nested code blocks breaking markdown
+            # Use zero-width space (\u200b) to break the sequence
+            sanitized = terminal_output.replace("```", "`\u200b``")
+            message_parts.append(f"```\n{sanitized}\n```")
         message_parts.append(status_line)
         return "\n".join(message_parts)
 
@@ -542,6 +545,9 @@ class UiAdapter(BaseAdapter):
     async def _handle_title_update(self, context: ClaudeEventContext) -> None:
         """Handle title_update event - update channel title from AI-generated title.
 
+        Only updates if the current title still has the default "New session" description.
+        This ensures we only set the title once and don't overwrite user customizations.
+
         Args:
             context: Typed Claude event context with title in data
         """
@@ -554,6 +560,15 @@ class UiAdapter(BaseAdapter):
 
         # Get and validate session
         session = await self._get_session(session_id)
+
+        # Only update if title still has default "New session" or "New session (N)" description
+        if not re.search(r"New session( \(\d+\))?$", session.title):
+            logger.debug(
+                "Session %s already has custom title, skipping update: %s",
+                session_id[:8],
+                session.title,
+            )
+            return
 
         # Parse current title and replace description part
         # Title format: $ComputerName[path] - OLD_DESCRIPTION
@@ -617,7 +632,8 @@ class UiAdapter(BaseAdapter):
             logger.debug("Sent summary for session %s: %s", session_id[:8], str(summary)[:50])
 
         # Update session title in DB if provided (triggers SESSION_UPDATED event)
-        if title:
+        # Only update if title still has default "New session" or "New session (N)" description
+        if title and re.search(r"New session( \(\d+\))?$", session.title):
             # Parse current title and replace description part
             title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
             match = re.match(title_pattern, session.title)
@@ -633,6 +649,12 @@ class UiAdapter(BaseAdapter):
                     session_id[:8],
                     session.title,
                 )
+        elif title:
+            logger.debug(
+                "Session %s already has custom title, skipping update: %s",
+                session_id[:8],
+                session.title,
+            )
 
     async def _extract_claude_title(self, session_file_path: str) -> Optional[str]:
         """Extract AI-generated title from Claude session file.

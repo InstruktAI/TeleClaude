@@ -307,3 +307,42 @@ class TestCleanupFeedbackMessages:
 
         ux_state = await test_db.get_ux_state(session.session_id)
         assert ux_state.pending_feedback_deletions == []
+
+
+class TestFormatMessage:
+    """Test format_message method and markdown sanitization."""
+
+    def test_sanitizes_internal_code_blocks(self):
+        """Test that internal ``` markers are escaped to prevent nested code blocks."""
+        adapter = MockUiAdapter()
+        output_with_code = "Here is code:\n```python\nprint('hello')\n```\nEnd"
+
+        result = adapter.format_message(output_with_code, "status line")
+
+        # Should have outer code block markers
+        assert result.startswith("```\n")
+        # Internal ``` should be escaped with zero-width space
+        assert "`\u200b``python" in result
+        assert "`\u200b``\n" in result  # Closing marker also escaped
+
+    def test_handles_multiple_code_blocks(self):
+        """Test multiple internal code blocks are all escaped."""
+        adapter = MockUiAdapter()
+        output = "```js\ncode1\n```\ntext\n```py\ncode2\n```"
+
+        result = adapter.format_message(output, "status")
+
+        # Count escaped markers (should be 4 - two opening, two closing)
+        assert result.count("`\u200b``") == 4
+        # Should only have 2 real ``` markers (outer wrapper)
+        assert result.count("```") == 2
+
+    def test_preserves_output_without_code_blocks(self):
+        """Test normal output without ``` is unchanged."""
+        adapter = MockUiAdapter()
+        output = "Simple terminal output\nNo code blocks here"
+
+        result = adapter.format_message(output, "status line")
+
+        assert "```\nSimple terminal output\nNo code blocks here\n```" in result
+        assert "status line" in result
