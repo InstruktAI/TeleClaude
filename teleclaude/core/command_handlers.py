@@ -21,7 +21,10 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
 from teleclaude.core.models import MessageMetadata, Session
-from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
+from teleclaude.core.session_cleanup import (
+    TMUX_SESSION_PREFIX,
+    cleanup_session_resources,
+)
 from teleclaude.core.session_utils import ensure_unique_title
 from teleclaude.utils.claude_transcript import parse_claude_transcript
 
@@ -208,10 +211,12 @@ You can now send commands to this session.
         await client.send_feedback(session, welcome, MessageMetadata())
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id}
-    else:
-        await db.delete_session(session.session_id)
-        logger.error("Failed to create tmux session")
-        raise RuntimeError("Failed to create tmux session")
+
+    # Tmux creation failed - clean up DB and channels
+    await cleanup_session_resources(session, client)
+    await db.delete_session(session.session_id)
+    logger.error("Failed to create tmux session")
+    raise RuntimeError("Failed to create tmux session")
 
 
 async def handle_list_sessions() -> list[dict[str, object]]:
@@ -894,16 +899,14 @@ async def handle_exit_session(
     session: Session,
     context: EventContext,
     client: "AdapterClient",
-    get_output_file: Callable[[str], Path],
 ) -> None:
-    """Exit session - kill tmux session and delete topic.
+    """Exit session - kill tmux, delete DB record, clean up resources.
 
     Args:
+        session: Session object (injected by @with_session)
         context: Command context with session_id
         client: AdapterClient for channel operations
-        get_output_file: Function to get output file path
     """
-
     # Kill tmux session
     success = await terminal_bridge.kill_session(session.tmux_session_name)
     if success:
@@ -915,19 +918,8 @@ async def handle_exit_session(
     await db.delete_session(session.session_id)
     logger.info("Deleted session %s from database", session.session_id[:8])
 
-    # Delete persistent output file
-    try:
-        output_file = get_output_file(session.session_id)
-        if output_file.exists():
-            output_file.unlink()
-            logger.debug("Deleted output file for closed session %s", session.session_id[:8])
-    except Exception as e:
-        logger.warning("Failed to delete output file: %s", e)
-
-    # Delete channel/topic via AdapterClient (looks up session internally)
-    success = await client.delete_channel(session)
-    if success:
-        logger.info("Deleted channel for session %s", session.session_id[:8])
+    # Clean up channels and workspace (shared logic)
+    await cleanup_session_resources(session, client)
 
 
 @with_session

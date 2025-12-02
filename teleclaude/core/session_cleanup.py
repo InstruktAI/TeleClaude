@@ -20,11 +20,41 @@ from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
 
 logger = logging.getLogger(__name__)
 
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
+
+
+async def cleanup_session_resources(session: "Session", adapter_client: "AdapterClient") -> None:
+    """Clean up session resources: channels and workspace directory.
+
+    Shared cleanup logic used by both explicit exit and stale session cleanup.
+    Does NOT modify DB state - caller handles that.
+
+    Args:
+        session: Session object (must be fetched before DB deletion)
+        adapter_client: AdapterClient for deleting channels
+    """
+    session_id = session.session_id
+
+    # Delete channel/topic in all adapters (broadcasts to observers)
+    try:
+        await adapter_client.delete_channel(session)
+        logger.info("Deleted channels for session %s", session_id[:8])
+    except Exception as e:
+        logger.warning("Failed to delete channels for session %s: %s", session_id[:8], e)
+
+    # Clean up entire workspace directory (workspace/{session_id}/)
+    workspace_dir = get_session_output_dir(session_id)
+    if workspace_dir.exists():
+        try:
+            shutil.rmtree(workspace_dir)
+            logger.debug("Deleted workspace directory for session %s", session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to delete workspace for session %s: %s", session_id[:8], e)
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:
@@ -62,21 +92,8 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
     # Mark as closed in database
     await db.update_session(session_id, closed=True)
 
-    # Delete channel/topic in all adapters (forces sync across devices)
-    try:
-        await adapter_client.delete_channel(session)
-        logger.info("Deleted channel for stale session %s", session_id[:8])
-    except Exception as e:
-        logger.warning("Failed to delete channel for stale session %s: %s", session_id[:8], e)
-
-    # Clean up session workspace directory if exists (workspace/{session_id}/)
-    workspace_dir = get_session_output_dir(session_id)
-    if workspace_dir.exists():
-        try:
-            shutil.rmtree(workspace_dir)
-            logger.debug("Deleted workspace directory for stale session %s", session_id[:8])
-        except Exception as e:
-            logger.warning("Failed to delete workspace for stale session %s: %s", session_id[:8], e)
+    # Clean up channels and workspace (shared logic)
+    await cleanup_session_resources(session, adapter_client)
 
     logger.info("Cleaned up stale session %s", session_id[:8])
     return True

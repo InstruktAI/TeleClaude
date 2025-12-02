@@ -783,7 +783,7 @@ class TeleClaudeDaemon:
         elif command == TeleClaudeEvents.CLAUDE_RESUME:
             return await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
-            return await command_handlers.handle_exit_session(context, self.client, self._get_output_file_path)
+            return await command_handlers.handle_exit_session(context, self.client)
 
         return None
 
