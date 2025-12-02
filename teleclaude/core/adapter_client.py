@@ -193,6 +193,7 @@ class AdapterClient:
         session: "Session",  # type: ignore[name-defined]
         message: str,
         metadata: MessageMetadata,
+        persistent: bool = False,
     ) -> Optional[str]:
         """Send feedback message via origin adapter ONLY (ephemeral UI notification).
 
@@ -202,12 +203,13 @@ class AdapterClient:
             session: Session object
             message: Feedback message text
             metadata: Adapter-specific metadata
+            persistent: If True, message won't be cleaned up on next feedback
 
         Returns:
             message_id if sent (UI adapter), None if transport adapter
         """
         origin_adapter = self.adapters[session.origin_adapter]
-        message_id = await origin_adapter.send_feedback(session, message, metadata)
+        message_id = await origin_adapter.send_feedback(session, message, metadata, persistent=persistent)
 
         if message_id:
             logger.debug("Sent feedback via %s for session %s", session.origin_adapter, session.session_id[:8])

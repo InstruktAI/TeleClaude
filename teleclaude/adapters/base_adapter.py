@@ -273,6 +273,7 @@ class BaseAdapter(ABC):
         session: "Session",  # type: ignore[name-defined]
         message: str,
         metadata: MessageMetadata,
+        persistent: bool = False,
     ) -> Optional[str]:
         """Send feedback message to user (UI adapters only).
 
@@ -288,6 +289,7 @@ class BaseAdapter(ABC):
             session: Session object
             message: Feedback message text
             metadata: Adapter-specific metadata
+            persistent: If True, message won't be cleaned up on next feedback
 
         Returns:
             message_id if sent (UI adapters), None if not a UI adapter

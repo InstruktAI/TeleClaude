@@ -387,6 +387,27 @@ class TelegramAdapter(UiAdapter):
             reply_markup=reply_markup,
         )
 
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _send_document_with_retry(
+        self,
+        chat_id: int,
+        message_thread_id: int,
+        file_path: str,
+        filename: str,
+        caption: Optional[str] = None,
+    ) -> Message:
+        """Internal method with retry logic for sending documents."""
+        with open(file_path, "rb") as f:
+            return await self.bot.send_document(
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                document=f,
+                filename=filename,
+                caption=caption,
+                write_timeout=15.0,
+                read_timeout=15.0,
+            )
+
     async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:  # type: ignore[name-defined]
         """Edit an existing message with automatic retry on rate limits and network errors.
 
@@ -483,10 +504,14 @@ class TelegramAdapter(UiAdapter):
         Called by AdapterClient BEFORE processing new user input.
         Cleans up UI state from previous interaction (pending messages, idle notifications).
 
+        Note: Feedback messages (pending_feedback_deletions) are NOT cleaned here.
+        They get cleaned up when new feedback arrives via send_feedback(persistent=False).
+        This allows download messages to persist until summary arrives.
+
         Args:
             session: Session object
         """
-        # Delete pending messages from previous interaction
+        # Delete pending user input messages from previous interaction
         pending = await db.get_pending_deletions(session.session_id)
         if pending:
             for msg_id in pending:
@@ -761,6 +786,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("cancel"),
                 "args": [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -782,6 +808,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("cancel2x"),
                 "args": [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -803,6 +830,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("kill"),
                 "args": [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -824,6 +852,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("escape"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -844,6 +873,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("escape2x"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -865,6 +895,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("ctrl"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -885,6 +916,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("tab"),
                 "args": [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -905,6 +937,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("shift_tab"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -925,6 +958,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("backspace"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -950,6 +984,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("enter"),
                 "args": [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -970,6 +1005,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("key_up"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -990,6 +1026,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("key_down"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -1010,6 +1047,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("key_left"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -1030,6 +1068,7 @@ class TelegramAdapter(UiAdapter):
                 "command": self._event_to_command("key_right"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -1232,6 +1271,10 @@ Current size: {current_size}
                 session = await db.get_session(session_id)
                 if not session:
                     return
+
+                # Clean up previous feedback messages (notifications, etc.) before sending download
+                await self.cleanup_feedback_messages(session)
+
                 # Convert Claude transcript to markdown
                 markdown_content = parse_claude_transcript(claude_session_file, session.title)
                 filename = f"claude-{session_id:8}.md"
@@ -1243,20 +1286,20 @@ Current size: {current_size}
                     tmp_path = tmp.name
 
                 try:
-                    # Send as document
-                    with open(tmp_path, "rb") as f:
-                        await self.bot.send_document(
-                            chat_id=query.message.chat_id,
-                            message_thread_id=query.message.message_thread_id,
-                            document=f,
-                            filename=filename,
-                            caption=caption,
-                        )
+                    # Send as document with retry logic (artifact - not tracked for deletion)
+                    doc_message = await self._send_document_with_retry(
+                        chat_id=query.message.chat_id,
+                        message_thread_id=query.message.message_thread_id,
+                        file_path=tmp_path,
+                        filename=filename,
+                        caption=caption,
+                    )
                 finally:
                     # Clean up temp file
                     Path(tmp_path).unlink()
 
-                await query.edit_message_text("✅ Full output sent as file", parse_mode="Markdown")
+                # Track download message for cleanup when next feedback arrives
+                await db.add_pending_feedback_deletion(session_id, str(doc_message.message_id))
             except Exception as e:
                 logger.error("Failed to send output file: %s", e)
                 await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")

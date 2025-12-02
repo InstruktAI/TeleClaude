@@ -161,7 +161,7 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__send_notification sends notification and sets flag."""
+    """Test notification event via teleclaude__handle_claude_event sends feedback and sets flag."""
     import json
 
     daemon = daemon_with_mocked_telegram
@@ -175,33 +175,23 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
         adapter_metadata={"channel_id": "12345"},
     )
 
-    # Mock send_feedback to capture notification
-    with patch.object(mcp_server.client, "send_feedback", new_callable=AsyncMock) as mock_send:
-        mock_send.return_value = "msg123"
+    # Send notification via claude_event (the new way - bridge sends events)
+    result = await mcp_server.teleclaude__handle_claude_event(
+        session_id=session.session_id,
+        event_type="notification",
+        data={"message": "Claude is ready for action!"},
+    )
 
-        # Send notification
-        result = await mcp_server.teleclaude__send_notification(
-            session_id=session.session_id,
-            message="Claude is ready for action!",
-        )
+    # Verify result
+    assert result == "OK"
 
-        # Verify result
-        assert result.startswith("OK:")
-        assert "msg123" in result
+    # Verify notification_sent flag was set
+    updated_session = await daemon.db.get_session(session.session_id)
+    ux_state = json.loads(updated_session.ux_state) if updated_session.ux_state else {}
+    assert ux_state.get("notification_sent") is True
 
-        # Verify send_feedback was called with session object, message, and metadata
-        mock_send.assert_called_once()
-        call_args = mock_send.call_args
-        assert call_args.args[0].session_id == session.session_id  # Session object
-        assert call_args.args[1] == "Claude is ready for action!"  # Message
-
-        # Verify notification_sent flag was set
-        updated_session = await daemon.db.get_session(session.session_id)
-        ux_state = json.loads(updated_session.ux_state) if updated_session.ux_state else {}
-        assert ux_state.get("notification_sent") is True
-
-        # Verify notification message was marked for cleanup
-        assert "msg123" in ux_state.get("pending_deletions", [])
+    # Note: send_feedback is called internally by _handle_notification in ui_adapter.
+    # See test_ui_adapter.py for detailed feedback cleanup behavior tests.
 
 
 @pytest.mark.integration

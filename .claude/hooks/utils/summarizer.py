@@ -3,142 +3,105 @@
 # requires-python = ">=3.11"
 # dependencies = ["anthropic", "openai"]
 # ///
-"""Background summarizer - generates AI summary and sends to MCP socket."""
+"""Pure summarizer utility - generates summary and title from transcript.
 
+Input: transcript_path as argv[1]
+Output: JSON to stdout {"summary": "...", "title": "..."}
+
+This utility knows NOTHING about TeleClaude, MCP, or messaging.
+It's a pure text-in/JSON-out processor.
+"""
+
+import json
 import os
 import sys
-import traceback
-from datetime import datetime
 from pathlib import Path
 
-# Add parent directory to sys.path for imports when run as script
-sys.path.insert(0, str(Path(__file__).parent))
-
 from anthropic import Anthropic
-from mcp_send import mcp_send
 from openai import OpenAI
 
-LOG_FILE = Path.cwd() / ".claude" / "hooks" / "logs" / "summarizer.log"
 
+def generate_summary_and_title(transcript: str) -> tuple[str, str | None]:
+    """Generate summary and title using Claude API (with OpenAI fallback).
 
-def log(message: str) -> None:
-    """Write log message to file."""
-    try:
-        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_FILE, "a") as f:
-            timestamp = datetime.now().isoformat()
-            f.write(f"[{timestamp}] {message}\n")
-    except:
-        pass
+    Returns:
+        Tuple of (summary_message, title) where title may be None if extraction fails.
+    """
+    prompt = f"""Analyze this Claude Code session and provide:
+1. A 1-2 sentence summary of what was accomplished (focus on main outcome/deliverable)
+2. A short title (max 50 chars) describing the work done
 
-
-def generate_summary(transcript: str) -> str:
-    """Generate summary using Claude API (with OpenAI fallback)."""
-    log("Generating summary...")
-    # Try Anthropic second
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    if anthropic_key:
-        try:
-            log("Trying Anthropic API...")
-            client = Anthropic(api_key=anthropic_key)
-
-            response = client.messages.create(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=150,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            f"""You are the dev. Summarize what you accomplished in this Claude Code session in 1-2 sentences. Focus on the main outcome/deliverable.
+Format your response EXACTLY as:
+SUMMARY: <your summary>
+TITLE: <short title>
 
 Transcript:
 {transcript[:8000]}"""
-                        ),
-                    }
-                ],
+
+    # Try Anthropic first
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if anthropic_key:
+        try:
+            client = Anthropic(api_key=anthropic_key)
+            response = client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
             )
-
-            summary_text = response.content[0].text
-            log(f"Anthropic summary generated: {summary_text[:100]}...")
-            return f"Work complete! {summary_text}"
-
-        except Exception as e:
-            log(f"Anthropic API failed: {str(e)}")
+            return _parse_response(response.content[0].text)
+        except Exception:
+            pass  # Fall through to OpenAI
 
     # Try OpenAI as fallback
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
-            log("Trying OpenAI API...")
             client = OpenAI(api_key=openai_key)
-
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
-                max_tokens=150,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": (
-                            f"""Summarize what was accomplished in this Claude Code session in 1-2 sentences. Focus on the main outcome/deliverable.
-
-Transcript:
-{transcript[:8000]}"""
-                        ),
-                    }
-                ],
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
             )
+            return _parse_response(response.choices[0].message.content or "")
+        except Exception:
+            pass  # Fall through to default
 
-            summary_text = response.choices[0].message.content
-            log(f"OpenAI summary generated: {summary_text[:100]}...")
-            return f"Work complete! {summary_text}"
-
-        except Exception as e:
-            log(f"OpenAI API failed: {str(e)}")
-
-    log("No API key available, using default message")
-    return "Work complete!"
+    return "Work complete!", None
 
 
-def main() -> None:
-    """Generate summary and send via MCP socket."""
-    try:
-        log("=== Summarizer started ===")
-        log(f"Args: {sys.argv}")
+def _parse_response(text: str) -> tuple[str, str | None]:
+    """Parse LLM response into summary and title."""
+    summary = "Work complete!"
+    title = None
 
-        if len(sys.argv) != 4:
-            log(f"Invalid args count: {len(sys.argv)}")
-            sys.exit(1)
+    for line in text.strip().split("\n"):
+        if line.startswith("SUMMARY:"):
+            summary = f"Work complete! {line[8:].strip()}"
+        elif line.startswith("TITLE:"):
+            title = line[6:].strip()[:50]  # Max 50 chars
 
-        teleclaude_session_id = sys.argv[1]
-        session_id = sys.argv[2]
-        transcript_path = sys.argv[3]
+    return summary, title
 
-        log(f"Session ID: {session_id}")
-        log(f"TeleClaude Session ID: {teleclaude_session_id}")
-        log(f"Transcript path: {transcript_path}")
 
-        # Read transcript
-        transcript = Path(transcript_path).read_text()
-        log(f"Transcript length: {len(transcript)} chars")
+def main() -> int:
+    """Read transcript, generate summary/title, output JSON to stdout."""
+    if len(sys.argv) != 2:
+        print(json.dumps({"error": f"Usage: {sys.argv[0]} <transcript_path>"}))
+        return 1
 
-        # Generate summary using Claude API
-        summary = generate_summary(transcript)
-        log(f"Final summary: {summary}")
+    transcript_path = sys.argv[1]
 
-        mcp_send(
-            "teleclaude__send_notification",
-            {
-                "session_id": teleclaude_session_id,
-                "message": summary,
-            },
-        )
+    if not Path(transcript_path).exists():
+        print(json.dumps({"error": f"Transcript not found: {transcript_path}"}))
+        return 1
 
-    except Exception as e:
-        log(f"ERROR: {str(e)}")
-        log(f"Traceback: {traceback.format_exc()}")
+    transcript = Path(transcript_path).read_text()
+    summary, title = generate_summary_and_title(transcript)
 
-    log("=== Summarizer finished ===\n")
+    # Output JSON to stdout - the ONLY output contract
+    print(json.dumps({"summary": summary, "title": title}))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -270,25 +270,6 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__send_notification",
-                    title="TeleClaude: Send Notification",
-                    description=("Send notification to a TeleClaude session when asked."),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string",
-                                "description": "TeleClaude session UUID (not Claude Code session!)",
-                            },
-                            "message": {
-                                "type": "string",
-                                "description": "Notification message to send",
-                            },
-                        },
-                        "required": ["session_id", "message"],
-                    },
-                ),
-                Tool(
                     name="teleclaude__handle_claude_event",
                     title="TeleClaude: Handle Claude Event",
                     description=(
@@ -382,11 +363,6 @@ class TeleClaudeMCPServer:
                 data_obj = arguments.get("data") if arguments else None
                 data = dict(data_obj) if isinstance(data_obj, dict) else {}
                 result_text = await self.teleclaude__handle_claude_event(session_id, event_type, data)
-                return [TextContent(type="text", text=result_text)]
-            elif name == "teleclaude__send_notification":
-                session_id = str(arguments.get("session_id", "")) if arguments else ""
-                message = str(arguments.get("message", "")) if arguments else ""
-                result_text = await self.teleclaude__send_notification(session_id, message)
                 return [TextContent(type="text", text=result_text)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
@@ -880,32 +856,3 @@ class TeleClaudeMCPServer:
 
         logger.debug("Emitted Claude event: session=%s, type=%s", session_id[:8], event_type)
         return "OK"
-
-    async def teleclaude__send_notification(self, session_id: str, message: str) -> str:
-        """Send notification to a session.
-
-        Args:
-            session_id: TeleClaude session UUID (not Claude Code session!)
-            message: Notification message to send
-
-        Returns:
-            Success message with message_id
-        """
-        # Verify session exists
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"TeleClaude session {session_id} not found")
-
-        # Send notification as feedback (UI only, never to terminal)
-        # UI adapters: shows message + auto-deletes on next input
-        # Transport adapters (Redis): no-op, prevents typing into tmux
-        message_id = await self.client.send_feedback(session, message, MessageMetadata())
-
-        # Mark notification message for cleanup on next user input (if UI adapter returned message_id)
-        if message_id:
-            await db.add_pending_deletion(session_id, message_id)
-
-        # Set notification_sent flag (prevents idle notifications)
-        await db.set_notification_flag(session_id, True)
-
-        return f"OK: {message_id}" if message_id else "OK: no-op (transport adapter)"

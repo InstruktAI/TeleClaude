@@ -278,14 +278,14 @@ class TestCleanupFeedbackMessages:
         )
         await test_db.update_ux_state(
             session.session_id,
-            pending_deletions=["msg-1", "msg-2", "msg-3"],
+            pending_feedback_deletions=["msg-1", "msg-2", "msg-3"],
         )
 
         await adapter.cleanup_feedback_messages(session)
 
         assert adapter._delete_message_mock.call_count == 3
         ux_state = await test_db.get_ux_state(session.session_id)
-        assert ux_state.pending_deletions == []
+        assert ux_state.pending_feedback_deletions == []
 
     async def test_handles_delete_failures_gracefully(self, test_db):
         """Test handling delete failures without raising."""
@@ -299,11 +299,11 @@ class TestCleanupFeedbackMessages:
         )
         await test_db.update_ux_state(
             session.session_id,
-            pending_deletions=["msg-1"],
+            pending_feedback_deletions=["msg-1"],
         )
 
         # Should not raise
         await adapter.cleanup_feedback_messages(session)
 
         ux_state = await test_db.get_ux_state(session.session_id)
-        assert ux_state.pending_deletions == []
+        assert ux_state.pending_feedback_deletions == []

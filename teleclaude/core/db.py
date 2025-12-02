@@ -423,6 +423,44 @@ class Db:
 
         await self.update_ux_state(session_id, pending_deletions=[])
 
+    async def get_pending_feedback_deletions(self, session_id: str) -> list[str]:
+        """Get list of pending feedback deletion message IDs for session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of feedback message IDs to delete (empty list if none)
+        """
+        ux_state_data = await self.get_ux_state(session_id)
+        return ux_state_data.pending_feedback_deletions
+
+    async def add_pending_feedback_deletion(self, session_id: str, message_id: str) -> None:
+        """Add message ID to pending feedback deletions for session.
+
+        Feedback messages are tracked separately from user input messages.
+        They are cleaned up before sending new feedback.
+
+        Args:
+            session_id: Session identifier
+            message_id: Feedback message ID to delete later
+        """
+        current = await self.get_pending_feedback_deletions(session_id)
+        current.append(message_id)
+
+        await self.update_ux_state(session_id, pending_feedback_deletions=current)
+
+    async def clear_pending_feedback_deletions(self, session_id: str) -> None:
+        """Clear all pending feedback deletions for session.
+
+        Should be called after deleting all pending feedback messages.
+
+        Args:
+            session_id: Session identifier
+        """
+
+        await self.update_ux_state(session_id, pending_feedback_deletions=[])
+
     async def delete_session(self, session_id: str) -> None:
         """Delete session and handle event.
 
@@ -581,6 +619,7 @@ class Db:
         polling_active: bool | object = ux_state._UNSET,
         idle_notification_message_id: Optional[str] | object = ux_state._UNSET,
         pending_deletions: list[str] | object = ux_state._UNSET,
+        pending_feedback_deletions: list[str] | object = ux_state._UNSET,
         notification_sent: bool | object = ux_state._UNSET,
         claude_session_id: Optional[str] | object = ux_state._UNSET,
         claude_session_file: Optional[str] | object = ux_state._UNSET,
@@ -592,7 +631,8 @@ class Db:
             output_message_id: Output message ID (optional)
             polling_active: Whether polling is active (optional)
             idle_notification_message_id: Idle notification message ID (optional)
-            pending_deletions: List of message IDs pending deletion (optional)
+            pending_deletions: List of user input message IDs pending deletion (optional)
+            pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
             notification_sent: Whether Claude Code notification was sent (optional)
             claude_session_id: Claude Code session ID (optional)
             claude_session_file: Path to native Claude Code session file (optional)
@@ -604,6 +644,7 @@ class Db:
             polling_active=polling_active,
             idle_notification_message_id=idle_notification_message_id,
             pending_deletions=pending_deletions,
+            pending_feedback_deletions=pending_feedback_deletions,
             notification_sent=notification_sent,
             claude_session_id=claude_session_id,
             claude_session_file=claude_session_file,

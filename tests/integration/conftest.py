@@ -93,6 +93,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     # CRITICAL: Patch db and config singletons in ALL modules that imported them at module load time
     # Without this, modules keep reference to old instances
     modules_to_patch = [
+        "teleclaude.adapters.base_adapter",
         "teleclaude.adapters.telegram_adapter",
         "teleclaude.core.adapter_client",
         "teleclaude.adapters.redis_adapter",
@@ -221,12 +222,14 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         # Create a mock telegram adapter that passes isinstance(adapter, UiAdapter)
         # This is needed because AdapterClient.send_output_update() checks isinstance
         from teleclaude.adapters.ui_adapter import UiAdapter
+        from teleclaude.core.adapter_client import AdapterClient
 
         class MockTelegramAdapter(UiAdapter):
             """Mock adapter that passes isinstance check for UiAdapter."""
 
-            def __init__(self) -> None:
-                pass  # Skip parent __init__ which requires client
+            def __init__(self, client: AdapterClient) -> None:
+                # Call parent init to register event handlers (like _handle_claude_event)
+                super().__init__(client)
 
             # Stub all abstract methods - will be replaced by AsyncMock below
             async def start(self) -> None:
@@ -268,7 +271,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             async def poll_output_stream(self, session):  # type: ignore[override]
                 pass
 
-        telegram_adapter = MockTelegramAdapter()
+        telegram_adapter = MockTelegramAdapter(daemon.client)
         # Replace methods with trackable AsyncMocks
         telegram_adapter.start = AsyncMock()
         telegram_adapter.stop = AsyncMock()

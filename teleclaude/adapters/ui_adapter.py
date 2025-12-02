@@ -284,53 +284,69 @@ class UiAdapter(BaseAdapter):
         session: "Session",
         message: str,
         metadata: MessageMetadata,
+        persistent: bool = False,
     ) -> Optional[str]:
-        """Send feedback message and mark for deletion on next user input.
+        """Send feedback message, optionally cleaning up previous feedback first.
 
-        UI adapters override BaseAdapter's no-op to send temporary feedback messages
-        that automatically clean up when the user sends their next input.
+        UI adapters override BaseAdapter's no-op to send temporary feedback messages.
 
         Args:
             session: Session object
             message: Feedback message text
             metadata: Adapter-specific metadata
+            persistent: If True, skip cleanup (don't delete previous feedback).
+                       Message is STILL added to pending_feedback_deletions for future cleanup.
 
         Returns:
             message_id of sent feedback message
         """
+        # Only cleanup previous feedback if not persistent
+        # Notifications (persistent=True) don't trigger cleanup but still get added to deletion list
+        # Summary (persistent=False) cleans up notifications, then adds itself
+        if not persistent:
+            await self.cleanup_feedback_messages(session)
+
         # Send feedback message (plain text by default)
         message_id = await self.send_message(session, message, metadata=metadata or MessageMetadata(parse_mode=""))
 
         if message_id:
-            # Mark feedback message for deletion when next input arrives
-            await db.add_pending_deletion(session.session_id, message_id)
+            # Always add to pending_feedback_deletions (even persistent messages)
+            # This ensures next non-persistent feedback will clean them up
+            await db.add_pending_feedback_deletion(session.session_id, message_id)
             logger.debug(
-                "Sent feedback message %s for session %s (marked for deletion)", message_id, session.session_id[:8]
+                "Sent feedback message %s for session %s (marked for feedback deletion)",
+                message_id,
+                session.session_id[:8],
             )
 
         return message_id
 
     async def _pre_handle_user_input(self, session: "Session") -> None:
-        """Called before handling user input - cleanup temporary messages."""
-        await self.cleanup_feedback_messages(session)
+        """Called before handling user input - cleanup user input messages only.
+
+        Note: Feedback messages (pending_feedback_deletions) are cleaned up in send_feedback,
+        not here. This ensures download messages stay until the next feedback (like summary).
+        """
+        # User input messages (pending_deletions) cleaned via event handler, not here
+        pass
 
     async def cleanup_feedback_messages(self, session: "Session") -> None:
         """Delete temporary feedback messages - default implementation."""
         ux_state = await db.get_ux_state(session.session_id)
-        pending_deletions = ux_state.pending_deletions or []
+        pending_feedback = ux_state.pending_feedback_deletions or []
 
-        if not pending_deletions:
+        if not pending_feedback:
             return
 
-        for message_id in pending_deletions:
+        for message_id in pending_feedback:
             try:
                 await self.delete_message(session, message_id)
                 logger.debug("Deleted feedback message %s for session %s", message_id, session.session_id[:8])
             except Exception as e:
                 logger.warning("Failed to delete message %s: %s", message_id, e)
 
-        # Clear pending deletions
-        await db.update_ux_state(session.session_id, pending_deletions=[])
+        # Clear pending feedback deletions
+        await db.update_ux_state(session.session_id, pending_feedback_deletions=[])
 
     # ==================== Voice Support ====================
 
@@ -471,6 +487,12 @@ class UiAdapter(BaseAdapter):
             await self._handle_claude_session_start(context)
         elif context.event_type == "stop":
             await self._handle_claude_stop(context)
+        elif context.event_type == "notification":
+            await self._handle_notification(context)
+        elif context.event_type == "summary":
+            await self._handle_summary(context)
+        elif context.event_type == "title_update":
+            await self._handle_title_update(context)
 
     async def _handle_claude_session_start(self, context: ClaudeEventContext) -> None:
         """Handle session_start event - store claude_session_id and claude_session_file.
@@ -497,23 +519,26 @@ class UiAdapter(BaseAdapter):
         )
 
     async def _handle_claude_stop(self, context: ClaudeEventContext) -> None:
-        """Handle stop event - update channel title from Claude-generated title.
+        """Handle stop event - Claude Code session stopped.
+
+        Note: Title update and summary notification come via separate 'summary' event.
 
         Args:
             context: Typed Claude event context
         """
+        logger.debug("Claude stop event for session %s", context.session_id[:8])
+
+    async def _handle_title_update(self, context: ClaudeEventContext) -> None:
+        """Handle title_update event - update channel title from AI-generated title.
+
+        Args:
+            context: Typed Claude event context with title in data
+        """
         session_id = context.session_id
+        title = context.data.get("title")
 
-        # Get claude_session_file from ux_state
-        ux_state = await db.get_ux_state(session_id)
-        if not ux_state.claude_session_file:
-            logger.debug("No claude_session_file for session %s, skipping title update", session_id[:8])
-            return
-
-        # Parse session file for latest title
-        claude_title = await self._extract_claude_title(ux_state.claude_session_file)
-        if not claude_title:
-            logger.debug("No title found in claude_session_file for session %s", session_id[:8])
+        if not title:
+            logger.debug("No title in title_update event for session %s", session_id[:8])
             return
 
         # Get and validate session
@@ -521,24 +546,81 @@ class UiAdapter(BaseAdapter):
 
         # Parse current title and replace description part
         # Title format: $ComputerName[path] - OLD_DESCRIPTION
-        # We want: $ComputerName[path] - CLAUDE_TITLE
+        # We want: $ComputerName[path] - NEW_TITLE
         title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
         match = re.match(title_pattern, session.title)
 
         if not match:
             logger.warning(
-                "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
+                "Session %s title doesn't match expected format: %s. Skipping title update.",
                 session_id[:8],
                 session.title,
             )
             return
 
         # Replace description portion
-        new_title = f"{match.group(1)}{claude_title}"
+        new_title = f"{match.group(1)}{title}"
 
         # Update via client to distribute to all adapters
         await self.client.update_channel_title(session, new_title)
-        logger.info("Updated Claude title for session %s to: %s", session_id[:8], new_title)
+        logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+
+    async def _handle_notification(self, context: ClaudeEventContext) -> None:
+        """Handle notification event - send feedback message (persistent, no cleanup).
+
+        Args:
+            context: Typed Claude event context with message in data
+        """
+        session_id = context.session_id
+        message = context.data.get("message")
+
+        if not message:
+            logger.debug("No message in notification event for session %s", session_id[:8])
+            return
+
+        session = await self._get_session(session_id)
+
+        # Send as persistent feedback (doesn't cleanup previous, but gets added to deletion list)
+        await self.send_feedback(session, str(message), MessageMetadata(), persistent=True)
+
+        # Set notification_sent flag (prevents duplicate idle notifications)
+        await db.set_notification_flag(session_id, True)
+
+        logger.debug("Sent notification for session %s: %s", session_id[:8], str(message)[:50])
+
+    async def _handle_summary(self, context: ClaudeEventContext) -> None:
+        """Handle summary event - send summary notification and update title.
+
+        Args:
+            context: Typed Claude event context with summary and title in data
+        """
+        session_id = context.session_id
+        summary = context.data.get("summary")
+        title = context.data.get("title")
+
+        session = await self._get_session(session_id)
+
+        # Send summary as non-persistent feedback (cleans up previous notifications)
+        if summary:
+            await self.send_feedback(session, str(summary), MessageMetadata(), persistent=False)
+            logger.debug("Sent summary for session %s: %s", session_id[:8], str(summary)[:50])
+
+        # Update channel title if provided
+        if title:
+            # Parse current title and replace description part
+            title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
+            match = re.match(title_pattern, session.title)
+
+            if match:
+                new_title = f"{match.group(1)}{title}"
+                await self.client.update_channel_title(session, new_title)
+                logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+            else:
+                logger.warning(
+                    "Session %s title doesn't match expected format: %s. Skipping title update.",
+                    session_id[:8],
+                    session.title,
+                )
 
     async def _extract_claude_title(self, session_file_path: str) -> Optional[str]:
         """Extract AI-generated title from Claude session file.

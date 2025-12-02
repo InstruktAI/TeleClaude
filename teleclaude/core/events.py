@@ -270,8 +270,9 @@ EventContext = (
     | SessionUpdatedContext
 )
 
-# Command events that use CommandEventContext or specialized contexts
-# All events in this set route through _handle_command_event (except claude_event and session_updated which have their own contexts)
+# Command events that use CommandEventContext and route through _handle_command_event
+# Note: claude_event and session_updated are NOT included - they have their own contexts
+# and handlers in ui_adapter.py
 COMMAND_EVENTS: set[EventType] = {
     "new_session",
     "list_sessions",
@@ -296,6 +297,4 @@ COMMAND_EVENTS: set[EventType] = {
     "rename",
     "claude",
     "claude_resume",
-    "claude_event",
-    "session_updated",
 }

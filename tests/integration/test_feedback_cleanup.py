@@ -1,4 +1,4 @@
-"""Integration test for feedback message cleanup on user input."""
+"""Integration test for feedback message cleanup on new feedback."""
 
 from unittest.mock import patch
 
@@ -14,8 +14,12 @@ from teleclaude.core.models import (
 
 
 @pytest.mark.integration
-async def test_feedback_messages_cleaned_on_user_input(daemon_with_mocked_telegram):
-    """Test that feedback messages are deleted when user sends new input."""
+async def test_feedback_messages_cleaned_on_new_feedback(daemon_with_mocked_telegram):
+    """Test that feedback messages are deleted when new feedback is sent.
+
+    Feedback cleanup happens in send_feedback, NOT on user input.
+    This ensures download messages stay until the next feedback (like summary).
+    """
     daemon = daemon_with_mocked_telegram
 
     # Create session with proper nested adapter_metadata for topic_id lookup
@@ -27,43 +31,100 @@ async def test_feedback_messages_cleaned_on_user_input(daemon_with_mocked_telegr
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67890)),
     )
 
-    # Simulate sending a feedback message (like "Transcribing...")
-    # This would normally be done by daemon code, so we simulate it
-    feedback_msg_id = "feedback-msg-456"
-    await daemon.db.add_pending_deletion(session.session_id, feedback_msg_id)
+    # Simulate a previous feedback message (like download message)
+    old_feedback_msg_id = "old-feedback-456"
+    await daemon.db.add_pending_feedback_deletion(session.session_id, old_feedback_msg_id)
 
-    # Verify feedback message is in pending_deletions
+    # Verify old feedback message is tracked
     ux_state = await daemon.db.get_ux_state(session.session_id)
-    assert feedback_msg_id in ux_state.pending_deletions
+    assert old_feedback_msg_id in ux_state.pending_feedback_deletions
 
     # Get telegram adapter to check delete_message calls
     telegram_adapter = daemon.client.adapters["telegram"]
     initial_delete_calls = telegram_adapter.delete_message.call_count
 
-    # Mock session_exists to return True (we're testing feedback cleanup, not tmux)
-    # This prevents the stale session cleanup from triggering
+    # Restore real send_feedback so cleanup logic runs
+    # (the fixture mocks it which bypasses UiAdapter.send_feedback's cleanup)
+    from teleclaude.adapters.ui_adapter import UiAdapter
+
+    original_send_feedback = UiAdapter.send_feedback
+
+    async def real_send_feedback(self, sess, msg, meta, persistent=False):
+        return await original_send_feedback(self, sess, msg, meta, persistent)
+
+    telegram_adapter.send_feedback = lambda s, m, meta, persistent=False: real_send_feedback(
+        telegram_adapter, s, m, meta, persistent
+    )
+
+    # Send new feedback (like summary) - this should cleanup old feedback
+    await daemon.client.send_feedback(session, "New summary message", MessageMetadata())
+
+    # Verify delete_message was called for old feedback
+    assert (
+        telegram_adapter.delete_message.call_count > initial_delete_calls
+    ), "delete_message should have been called to clean up old feedback"
+
+    # Verify our old feedback message was deleted
+    delete_calls = [call[0] for call in telegram_adapter.delete_message.call_args_list]
+    assert any(
+        old_feedback_msg_id in str(call) for call in delete_calls
+    ), f"Old feedback message {old_feedback_msg_id} should have been deleted"
+
+
+@pytest.mark.integration
+async def test_feedback_messages_not_cleaned_on_user_input(daemon_with_mocked_telegram):
+    """Test that feedback messages are NOT deleted on user input.
+
+    Download messages should stay until the next feedback arrives,
+    not disappear when user sends input.
+    """
+    daemon = daemon_with_mocked_telegram
+
+    # Create session
+    session = await daemon.db.create_session(
+        computer_name="testcomp",
+        tmux_session_name="test-feedback-no-cleanup",
+        origin_adapter="telegram",
+        title="Test No Cleanup On Input",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67891)),
+    )
+
+    # Add a feedback message (like download message)
+    feedback_msg_id = "download-msg-789"
+    await daemon.db.add_pending_feedback_deletion(session.session_id, feedback_msg_id)
+
+    # Verify it's tracked
+    ux_state = await daemon.db.get_ux_state(session.session_id)
+    assert feedback_msg_id in ux_state.pending_feedback_deletions
+
+    # Get telegram adapter
+    telegram_adapter = daemon.client.adapters["telegram"]
+    initial_delete_calls = telegram_adapter.delete_message.call_count
+
+    # Mock session_exists to return True
     async def mock_session_exists(name: str, log_missing: bool = True) -> bool:
         return True
 
     with patch.object(terminal_bridge, "session_exists", mock_session_exists):
-        # Simulate user input (MESSAGE event) via AdapterClient.handle_event()
-        # NOTE: message_id is required in payload for pre-handler (cleanup) to run
+        # Simulate user input
         await daemon.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
             payload={"text": "hello", "message_id": "user-msg-123"},
             metadata=MessageMetadata(
                 adapter_type="telegram",
-                message_thread_id=67890,  # topic_id for session lookup
+                message_thread_id=67891,
             ),
         )
 
-    # Verify delete_message was called (feedback message should be deleted)
-    assert (
-        telegram_adapter.delete_message.call_count > initial_delete_calls
-    ), "delete_message should have been called to clean up feedback message"
+    # Verify delete_message was NOT called for feedback
+    # (only user input messages should be cleaned, not feedback)
+    feedback_delete_calls = [
+        call
+        for call in telegram_adapter.delete_message.call_args_list[initial_delete_calls:]
+        if feedback_msg_id in str(call)
+    ]
+    assert len(feedback_delete_calls) == 0, "Feedback message should NOT be deleted on user input"
 
-    # Verify our feedback message was deleted (check call args)
-    delete_calls = [call[0] for call in telegram_adapter.delete_message.call_args_list]
-    assert any(
-        feedback_msg_id in str(call) for call in delete_calls
-    ), f"Feedback message {feedback_msg_id} should have been deleted"
+    # Verify feedback is still in pending_feedback_deletions
+    ux_state = await daemon.db.get_ux_state(session.session_id)
+    assert feedback_msg_id in ux_state.pending_feedback_deletions, "Feedback should still be tracked"

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def command_retry(
-    max_retries: int = 3, max_timeout: float = 30.0
+    max_retries: int = 3, max_timeout: float = 5.0
 ) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """Decorator for retrying adapter commands with exponential backoff and max timeout.
 
@@ -38,6 +38,7 @@ def command_retry(
         @wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             start_time = time.time()
+            excluded_wait_time = 0.0  # Rate-limit wait time doesn't count against timeout
             last_exception = None
 
             for attempt in range(max_retries):
@@ -45,9 +46,10 @@ def command_retry(
                     return await func(*args, **kwargs)
 
                 except Exception as e:
-                    elapsed_time = time.time() - start_time
+                    # Elapsed operation time (excludes rate-limit waits)
+                    elapsed_time = time.time() - start_time - excluded_wait_time
 
-                    # Check if max timeout exceeded
+                    # Check if max timeout exceeded (only counting operation time)
                     if elapsed_time >= max_timeout:
                         logger.error(
                             "Max timeout (%.1fs) exceeded after %d attempts (elapsed: %.1fs)",
@@ -61,18 +63,11 @@ def command_retry(
                     if hasattr(e, "retry_after"):
                         if attempt < max_retries - 1:
                             retry_after = getattr(e, "retry_after")
-                            # Check if retry would exceed max timeout
-                            if elapsed_time + retry_after >= max_timeout:
-                                logger.error(
-                                    "Rate limit retry (%.1fs) would exceed max timeout (%.1fs), failing",
-                                    retry_after,
-                                    max_timeout,
-                                )
-                                raise
                             logger.warning(
                                 "Rate limited, retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries
                             )
                             await asyncio.sleep(retry_after)
+                            excluded_wait_time += retry_after  # Don't count wait against timeout
                             last_exception = e
                         else:
                             logger.error("Rate limit exceeded after %d attempts", max_retries)
@@ -81,15 +76,7 @@ def command_retry(
                     # Check for network errors
                     elif type(e).__name__ in ("NetworkError", "TimedOut", "ConnectionError", "TimeoutError"):
                         if attempt < max_retries - 1:
-                            delay = 2**attempt  # 1s, 2s, 4s, 8s, 16s
-                            # Check if retry would exceed max timeout
-                            if elapsed_time + delay >= max_timeout:
-                                logger.error(
-                                    "Network retry (%.1fs) would exceed max timeout (%.1fs), failing",
-                                    delay,
-                                    max_timeout,
-                                )
-                                raise
+                            delay = 2**attempt  # 1s, 2s, 4s
                             logger.warning(
                                 "Network error (%s), retrying in %ds (attempt %d/%d)",
                                 type(e).__name__,
