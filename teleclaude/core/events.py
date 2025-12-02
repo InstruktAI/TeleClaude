@@ -238,6 +238,7 @@ class CommandEventContext:
     title: Optional[str] = None
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
+    auto_command: Optional[str] = None  # For chaining commands (e.g., start Claude after session creation)
 
 
 @dataclass
@@ -245,8 +246,8 @@ class ClaudeEventContext:
     """Context for Claude Code events (from hooks)."""
 
     session_id: str
+    data: dict[str, object]
     event_type: Optional[str] = None
-    data: Optional[dict[str, object]] = None
 
 
 @dataclass
@@ -254,7 +255,7 @@ class SessionUpdatedContext:
     """Context for session_updated events."""
 
     session_id: str
-    updated_fields: Optional[dict[str, object]] = None
+    updated_fields: dict[str, object]
 
 
 # Union of all event context types (for adapter_client handler signatures)

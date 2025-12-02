@@ -147,6 +147,7 @@ class TeleClaudeDaemon:
             title=context.title,
             project_dir=context.project_dir,
             channel_metadata=context.channel_metadata,
+            auto_command=context.auto_command,
         )
 
         return await self.handle_command(event, args, context, metadata)

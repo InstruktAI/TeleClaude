@@ -1023,9 +1023,10 @@ async def handle_claude_resume_session(
         execute_terminal_command: Function to execute terminal command
     """
     # Check if session has stored Claude session ID and project_dir
+    # Use getattr with default since not all adapter metadata types have these fields
     origin_meta = getattr(session.adapter_metadata, session.origin_adapter, None)
-    claude_session_id = origin_meta.claude_session_id if origin_meta else None
-    project_dir = (origin_meta.project_dir if origin_meta else None) or await terminal_bridge.get_current_directory(
+    claude_session_id = getattr(origin_meta, "claude_session_id", None) if origin_meta else None
+    project_dir = getattr(origin_meta, "project_dir", None) or await terminal_bridge.get_current_directory(
         session.tmux_session_name
     )
 

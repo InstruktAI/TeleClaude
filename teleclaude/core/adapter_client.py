@@ -493,27 +493,21 @@ class AdapterClient:
         self._handlers[event] = handler
         logger.debug("Registered handler for event: %s", event)
 
-    async def emit(
+    async def handle_event(
         self,
         event: EventType,
         payload: dict[str, Any],  # type: ignore[explicit-any]
         metadata: MessageMetadata,
     ) -> object:
-        """Emit event with payload dict - builds typed context and calls handler.
+        """Handle incoming event by dispatching to registered handler.
 
-        Coordination layer responsibilities:
-        1. Convert platform IDs (topic_id, etc.) to session_id
-        2. Build unified context dict (payload + metadata merged)
-        3. Get session for origin adapter access
-        4. [USER INPUT ONLY] Call origin adapter's pre-handler (UI cleanup)
-        5. Dispatch to registered handler (daemon business logic)
-        6. [USER INPUT ONLY] Call origin adapter's post-handler (UI state tracking)
-        7. Broadcast user actions to observer adapters
-
-        UI cleanup delegation (separation of concerns):
-        - AdapterClient: Pure coordinator (no UI operations)
-        - UI adapters: Own their UI cleanup logic (message deletion, etc.)
-        - Transport adapters: No pre/post handlers (not UiAdapter instances)
+        Pure coordinator - delegates all concerns to private methods:
+        1. Resolve session_id from platform metadata
+        2. Build typed context for the event
+        3. Call pre-handler (UI cleanup)
+        4. Dispatch to registered handler
+        5. Call post-handler (UI state tracking)
+        6. Broadcast to observer adapters
 
         Args:
             event: Type-checked event name (from EventType literal)
@@ -521,12 +515,48 @@ class AdapterClient:
             metadata: Event metadata (adapter_type, topic_id, user_id, etc.)
 
         Returns:
-            Result from handler
+            Result envelope: {"status": "success", "data": ...} or {"status": "error", ...}
         """
+        # 1. Resolve session_id from platform metadata (mutates payload)
+        await self._resolve_session_id(payload, metadata)
 
-        # 1. Session lookup by platform metadata
+        # 2. Build typed context
+        session_id = payload.get("session_id")
+        context = self._build_context(event, payload, metadata)
+
+        # 3. Get session for adapter operations
+        session = await db.get_session(str(session_id)) if session_id else None
+
+        # 4. Pre-handler (UI cleanup before processing)
+        message_id = payload.get("message_id")
+        if session and message_id:
+            await self._call_pre_handler(session, event)
+
+        # 5. Dispatch to registered handler
+        response = await self._dispatch(event, context)
+
+        # 6. Post-handler (UI state tracking after processing)
+        if session and message_id:
+            await self._call_post_handler(session, event, str(message_id))
+
+        # 7. Broadcast to observers (lifecycle events and user actions)
+        if session:
+            await self._broadcast_lifecycle(session, event)
+            await self._broadcast_action(session, event, payload)
+
+        return response
+
+    async def _resolve_session_id(
+        self,
+        payload: dict[str, Any],  # type: ignore[explicit-any]
+        metadata: MessageMetadata,
+    ) -> None:
+        """Resolve session_id from platform metadata (topic_id or channel_id).
+
+        Mutates payload in-place to add session_id if found.
+        """
+        topic_id = metadata.message_thread_id
         channel_id = metadata.channel_id
-        topic_id = metadata.message_thread_id  # Telegram's topic ID
         adapter_type = metadata.adapter_type
 
         if topic_id and adapter_type:
@@ -538,149 +568,162 @@ class AdapterClient:
             if sessions:
                 payload["session_id"] = sessions[0].session_id
 
-        # 2. Build typed context based on event type
-        session_id = payload.get("session_id")
-        message_id = payload.get("message_id")
+    def _build_context(
+        self,
+        event: EventType,
+        payload: dict[str, Any],  # type: ignore[explicit-any]
+        metadata: MessageMetadata,
+    ) -> EventContext:
+        """Build typed context dataclass based on event type."""
+        session_id = str(payload.get("session_id"))
 
-        # Build appropriate context type based on event - let dataclass handle defaults
-        if event == TeleClaudeEvents.CLAUDE_EVENT:
-            typed_context: ClaudeEventContext = ClaudeEventContext(
-                session_id=str(session_id),
+        context_builders: dict[str, Callable[[], EventContext]] = {
+            TeleClaudeEvents.CLAUDE_EVENT: lambda: ClaudeEventContext(
+                session_id=session_id,
                 event_type=payload.get("event_type"),
                 data=payload.get("data"),
-            )
-        elif event == TeleClaudeEvents.SESSION_UPDATED:
-            typed_context: SessionUpdatedContext = SessionUpdatedContext(
-                session_id=str(session_id),
+            ),
+            TeleClaudeEvents.SESSION_UPDATED: lambda: SessionUpdatedContext(
+                session_id=session_id,
                 updated_fields=payload.get("updated_fields"),
-            )
-        elif event in COMMAND_EVENTS:
-            # Command events (cd, kill, new_session, etc.)
-            typed_context: CommandEventContext = CommandEventContext(
-                session_id=str(session_id),
+            ),
+            TeleClaudeEvents.MESSAGE: lambda: MessageEventContext(
+                session_id=session_id,
+                text=payload.get("text"),
+            ),
+            TeleClaudeEvents.VOICE: lambda: VoiceEventContext(
+                session_id=session_id,
+                file_path=payload.get("file_path"),
+            ),
+            TeleClaudeEvents.FILE: lambda: FileEventContext(
+                session_id=session_id,
+                file_path=payload.get("file_path"),
+                filename=payload.get("filename"),
+            ),
+            TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=session_id),
+            TeleClaudeEvents.SESSION_REOPENED: lambda: SessionLifecycleContext(session_id=session_id),
+            TeleClaudeEvents.SYSTEM_COMMAND: lambda: SystemCommandContext(
+                command=payload.get("command"),
+                from_computer=payload.get("from_computer"),
+            ),
+        }
+
+        # Check specific event first
+        if event in context_builders:
+            return context_builders[event]()
+
+        # Command events share the same context type
+        if event in COMMAND_EVENTS:
+            return CommandEventContext(
+                session_id=session_id,
                 args=payload.get("args"),
                 adapter_type=metadata.adapter_type,
                 message_thread_id=metadata.message_thread_id,
                 title=metadata.title,
                 project_dir=metadata.project_dir,
                 channel_metadata=metadata.channel_metadata,
-            )
-        elif event == TeleClaudeEvents.MESSAGE:
-            typed_context: MessageEventContext = MessageEventContext(
-                session_id=str(session_id),
-                text=payload.get("text"),
-            )
-        elif event == TeleClaudeEvents.VOICE:
-            typed_context: VoiceEventContext = VoiceEventContext(
-                session_id=str(session_id),
-                file_path=payload.get("file_path"),
-            )
-        elif event == TeleClaudeEvents.FILE:
-            typed_context: FileEventContext = FileEventContext(
-                session_id=str(session_id),
-                file_path=payload.get("file_path"),
-                filename=payload.get("filename"),
-            )
-        elif event in (TeleClaudeEvents.SESSION_CLOSED, TeleClaudeEvents.SESSION_REOPENED):
-            typed_context: SessionLifecycleContext = SessionLifecycleContext(
-                session_id=str(session_id),
-            )
-        elif event == TeleClaudeEvents.SYSTEM_COMMAND:
-            typed_context: SystemCommandContext = SystemCommandContext(
-                command=payload.get("command"),
-                from_computer=payload.get("from_computer"),
-            )
-        else:
-            # Fallback for unknown events - should not happen with EventType literal
-            logger.warning("Unknown event type %s, using empty CommandEventContext", event)
-            typed_context: CommandEventContext = CommandEventContext(
-                session_id=str(session_id),
-                args=payload.get("args"),
+                auto_command=metadata.auto_command,
             )
 
-        # 3. Get session for origin adapter access (needed for pre/post handlers and broadcasting)
-        session = None
-        if session_id:
-            session = await db.get_session(str(session_id))
+        # Fallback - should not happen with EventType literal
+        logger.warning("Unknown event type %s, using empty CommandEventContext", event)
+        return CommandEventContext(session_id=session_id, args=payload.get("args"))
 
-        # 4. PRE: Call origin adapter's pre-handler for UI cleanup
-        if session and message_id:
-            origin_adapter = self.adapters.get(session.origin_adapter)
-            if origin_adapter and isinstance(origin_adapter, UiAdapter):
-                pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
-                if pre_handler and callable(pre_handler):
-                    try:
-                        await pre_handler(session)
-                        logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
-                    except Exception as e:
-                        logger.warning("Pre-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+    async def _call_pre_handler(self, session: "Session", event: EventType) -> None:  # type: ignore[name-defined]
+        """Call origin adapter's pre-handler for UI cleanup."""
+        origin_adapter = self.adapters.get(session.origin_adapter)
+        if not origin_adapter or not isinstance(origin_adapter, UiAdapter):
+            return
 
-        # 5. EXECUTE: Dispatch to registered handler with try-catch wrapper
-        logger.debug("handle_event called for event: %s, registered handlers: %s", event, list(self._handlers.keys()))
+        pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
+        if not pre_handler or not callable(pre_handler):
+            return
+
+        try:
+            await pre_handler(session)
+            logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
+        except Exception as e:
+            logger.warning("Pre-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+
+    async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:
+        """Dispatch event to registered handler."""
+        logger.debug("Dispatching event: %s, handlers: %s", event, list(self._handlers.keys()))
+
         handler = self._handlers.get(event)
-        if handler:
+        if not handler:
+            logger.warning("No handler registered for event: %s", event)
+            return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
+
+        try:
+            logger.debug("Calling handler for event: %s", event)
+            result = await handler(event, context)
+            logger.debug("Handler completed for event: %s", event)
+            return {"status": "success", "data": result}
+        except Exception as e:
+            logger.error("Handler failed for event %s: %s", event, e, exc_info=True)
+            return {"status": "error", "error": str(e), "code": type(e).__name__}
+
+    async def _call_post_handler(self, session: "Session", event: EventType, message_id: str) -> None:  # type: ignore[name-defined]
+        """Call origin adapter's post-handler for UI state tracking."""
+        origin_adapter = self.adapters.get(session.origin_adapter)
+        if not origin_adapter or not isinstance(origin_adapter, UiAdapter):
+            return
+
+        post_handler = getattr(origin_adapter, "_post_handle_user_input", None)
+        if not post_handler or not callable(post_handler):
+            return
+
+        try:
+            await post_handler(session, message_id)
+            logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
+        except Exception as e:
+            logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+
+    async def _broadcast_lifecycle(self, session: "Session", event: EventType) -> None:  # type: ignore[name-defined]
+        """Broadcast session lifecycle events (close/reopen) to observer adapters."""
+        if event not in (TeleClaudeEvents.SESSION_CLOSED, TeleClaudeEvents.SESSION_REOPENED):
+            return
+
+        for adapter_type, adapter in self.adapters.items():
+            if adapter_type == session.origin_adapter:
+                continue
+
             try:
-                logger.debug("Found handler for event: %s, calling it now", event)
-                handler_result = handler(event, typed_context)  # Pass typed context, not dict
-                result = await handler_result
-                logger.debug("Handler completed for event: %s", event)
-
-                # Wrap success response in envelope
-                response: dict[str, object] = {"status": "success", "data": result}
-
+                if event == TeleClaudeEvents.SESSION_CLOSED:
+                    await adapter.close_channel(session)
+                    logger.debug("Closed channel in observer adapter: %s", adapter_type)
+                else:
+                    await adapter.reopen_channel(session)
+                    logger.debug("Reopened channel in observer adapter: %s", adapter_type)
             except Exception as e:
-                logger.error("Handler failed for event %s: %s", event, e, exc_info=True)
-                response = {"status": "error", "error": str(e), "code": type(e).__name__}
-                result = None  # No result data on error
+                logger.warning("Failed to %s channel in observer %s: %s", event, adapter_type, e)
 
-            # 6. POST: Call origin adapter's post-handler for UI state tracking
-            if session and message_id:
-                origin_adapter = self.adapters.get(session.origin_adapter)
-                if origin_adapter and isinstance(origin_adapter, UiAdapter):
-                    post_handler = getattr(origin_adapter, "_post_handle_user_input", None)
-                    if post_handler and callable(post_handler):
-                        try:
-                            await post_handler(session, str(message_id))
-                            logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
-                        except Exception as e:
-                            logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+    async def _broadcast_action(
+        self,
+        session: "Session",  # type: ignore[name-defined]
+        event: EventType,
+        payload: dict[str, Any],  # type: ignore[explicit-any]
+    ) -> None:
+        """Broadcast user actions to UI observer adapters."""
+        action_text = self._format_event_for_observers(event, payload)
+        if not action_text:
+            return
 
-            # 7. Broadcast session lifecycle events to observer adapters (channel close/reopen)
-            if session and event in ("session_closed", "session_reopened"):
-                for adapter_type, adapter in self.adapters.items():
-                    if adapter_type != session.origin_adapter:
-                        try:
-                            if event == "session_closed":
-                                await adapter.close_channel(session)
-                                logger.debug("Closed channel in observer adapter: %s", adapter_type)
-                            elif event == "session_reopened":
-                                await adapter.reopen_channel(session)
-                                logger.debug("Reopened channel in observer adapter: %s", adapter_type)
-                        except Exception as e:
-                            logger.warning("Failed to %s channel in observer %s: %s", event, adapter_type, e)
+        for adapter_type, adapter in self.adapters.items():
+            if adapter_type == session.origin_adapter:
+                continue
+            if not isinstance(adapter, UiAdapter):
+                continue
 
-            # 8. Broadcast ALL user actions to UI observer adapters (not just MESSAGE)
-            if session:
-                # Format event as human-readable action
-                action_text = self._format_event_for_observers(event, payload)
-
-                if action_text:
-                    # Broadcast to UI observer adapters (not origin)
-                    for adapter_type, adapter in self.adapters.items():
-                        if adapter_type != session.origin_adapter and isinstance(adapter, UiAdapter):
-                            try:
-                                # Send copy of user action (best-effort, failures logged)
-                                await adapter.send_message(
-                                    session_id=session.session_id, text=action_text, metadata=MessageMetadata()
-                                )
-                                logger.debug("Broadcasted %s to observer adapter: %s", event, adapter_type)
-                            except Exception as e:
-                                logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
-
-            return response
-
-        logger.warning("No handler registered for event: %s", event)
-        return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
+            try:
+                await adapter.send_message(
+                    session_id=session.session_id,
+                    text=action_text,
+                    metadata=MessageMetadata(),
+                )
+                logger.debug("Broadcasted %s to observer adapter: %s", event, adapter_type)
+            except Exception as e:
+                logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
     def _format_event_for_observers(self, event: EventType, payload: dict[str, Any]) -> Optional[str]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
         """Format event as human-readable text for observer adapters.
