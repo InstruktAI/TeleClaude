@@ -850,6 +850,9 @@ class TeleClaudeDaemon:
                 # Clean up orphan tmux sessions (tmux exists but no DB entry)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
 
+                # Clean up orphan workspace directories (workspace exists but no DB entry)
+                await session_cleanup.cleanup_orphan_workspaces()
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
