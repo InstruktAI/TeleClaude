@@ -535,44 +535,6 @@ async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
         return ""
 
 
-async def resize_session(session_name: str, cols: int, rows: int) -> bool:
-    """Resize a tmux session.
-
-    Args:
-        session_name: Session name
-        cols: New column count
-        rows: New row count
-
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        # Set environment variables for terminal size (no output needed)
-        p1 = await asyncio.create_subprocess_exec(
-            "tmux", "set-environment", "-t", session_name, "COLUMNS", str(cols), stderr=asyncio.subprocess.PIPE
-        )
-        await p1.wait()
-        p2 = await asyncio.create_subprocess_exec(
-            "tmux", "set-environment", "-t", session_name, "LINES", str(rows), stderr=asyncio.subprocess.PIPE
-        )
-        await p2.wait()
-
-        # Resize the window
-        cmd = ["tmux", "resize-window", "-t", session_name, "-x", str(cols), "-y", str(rows)]
-        result = await asyncio.create_subprocess_exec(*cmd, stderr=asyncio.subprocess.PIPE)
-        await result.wait()
-
-        if result.returncode != 0:
-            stderr = await result.stderr.read() if result.stderr else b""
-            logger.error("Failed to resize tmux session %s: %s", session_name, stderr.decode())
-
-        return result.returncode == 0
-
-    except Exception as e:
-        logger.error("Error resizing session %s: %s", session_name, e)
-        return False
-
-
 async def kill_session(session_name: str) -> bool:
     """Kill a tmux session.
 

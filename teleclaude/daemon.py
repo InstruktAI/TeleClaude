@@ -774,8 +774,6 @@ class TeleClaudeDaemon:
             return await command_handlers.handle_arrow_key_command(
                 context, args, self.client, self._poll_and_send_output, "right"
             )
-        elif command == "resize":
-            return await command_handlers.handle_resize_session(context, args, self.client)
         elif command == TeleClaudeEvents.RENAME:
             return await command_handlers.handle_rename_session(context, args, self.client)
         elif command == TeleClaudeEvents.CD:

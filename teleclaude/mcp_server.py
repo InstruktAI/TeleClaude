@@ -872,7 +872,7 @@ class TeleClaudeMCPServer:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
         # Emit event to registered listeners
-        await self.client.emit(
+        await self.client.handle_event(
             TeleClaudeEvents.CLAUDE_EVENT,
             {"session_id": session_id, "event_type": event_type, "data": data},  # type: ignore[dict-item]
             MessageMetadata(adapter_type="internal"),

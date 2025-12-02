@@ -706,7 +706,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     logger.warning("Invalid channel_metadata JSON in message")
 
             logger.info(">>> About to call handle_event for event_type: %s", event_type)
-            result = await self.client.emit(
+            result = await self.client.handle_event(
                 event=event_type,
                 payload=payload,
                 metadata=metadata_to_send,
@@ -716,7 +716,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             )
 
             # Start output stream listener for new AI-to-AI sessions
-            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":  # type: ignore[misc]  # result is Any | bool from emit()
+            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":  # type: ignore[misc]  # result is Any | bool from handle_event()
                 result_data = result.get("data")
                 if isinstance(result_data, dict):
                     new_session_id = result_data.get("session_id")
@@ -766,7 +766,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             "args": args_obj,
             "from_computer": from_computer,
         }
-        await self.client.emit(
+        await self.client.handle_event(
             event=TeleClaudeEvents.SYSTEM_COMMAND,
             payload=payload_dict,
             metadata=MessageMetadata(),
@@ -870,7 +870,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                         # This is a message from the initiator - trigger MESSAGE event
                         logger.info("Received message from initiator for session %s: %s", session_id[:8], chunk[:50])
                         message_payload: dict[str, object] = {"session_id": session_id, "text": chunk.strip()}
-                        await self.client.emit(
+                        await self.client.handle_event(
                             event=TeleClaudeEvents.MESSAGE,
                             payload=message_payload,
                             metadata=MessageMetadata(),

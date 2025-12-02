@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 import uuid
 from dataclasses import asdict
 from datetime import datetime
@@ -79,7 +78,7 @@ class Db:
         """Wire database to AdapterClient for event emission.
 
         Args:
-            client: AdapterClient instance to emit events through
+            client: AdapterClient instance to handle events through
         """
         self._client = client
         logger.info("Database wired to AdapterClient for event emission")
@@ -238,7 +237,7 @@ class Db:
         return [Session.from_dict(dict(row)) for row in rows]
 
     async def update_session(self, session_id: str, **fields: object) -> None:
-        """Update session fields and emit events.
+        """Update session fields and handle events.
 
         Args:
             session_id: Session ID
@@ -263,11 +262,11 @@ class Db:
         await self.conn.commit()
 
         # Emit SESSION_UPDATED event (UI handlers will update channel titles)
-        # Only emit if client is set (tests and standalone tools don't set client)
+        # Only handle if client is set (tests and standalone tools don't set client)
         if self._client:
             # Trust contract: session exists (we just updated it in db)
             session = await self.get_session(session_id)
-            await self._client.emit(
+            await self._client.handle_event(
                 TeleClaudeEvents.SESSION_UPDATED,
                 {"session_id": session_id, "updated_fields": fields},
                 MessageMetadata(adapter_type=session.origin_adapter),
@@ -425,7 +424,7 @@ class Db:
         await self.update_ux_state(session_id, pending_deletions=[])
 
     async def delete_session(self, session_id: str) -> None:
-        """Delete session and emit event.
+        """Delete session and handle event.
 
         Args:
             session_id: Session ID

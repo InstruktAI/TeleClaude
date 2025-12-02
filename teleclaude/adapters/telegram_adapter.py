@@ -1405,12 +1405,6 @@ Current size: {current_size}
 
     async def _heartbeat_loop(self) -> None:
         """Send heartbeat every N seconds to General topic."""
-        # Clean up stale registry messages before first heartbeat
-        try:
-            await self._cleanup_stale_registry_messages()
-        except Exception as e:
-            logger.warning("Failed to cleanup stale registry messages: %s", e)
-
         # Send initial heartbeat
         try:
             await self._send_heartbeat()
@@ -1426,50 +1420,6 @@ Current size: {current_size}
             except Exception as e:
                 logger.error("Heartbeat failed: %s", e)
 
-    async def _cleanup_stale_registry_messages(self) -> None:
-        """Delete ALL [REGISTRY] messages from this bot in General topic.
-
-        Called before first heartbeat to clean up orphaned messages from previous
-        daemon sessions (e.g., when DB was wiped but messages persist in Telegram).
-        Deletes all registry messages from THIS bot - fresh start on each daemon boot.
-        """
-        bot_info = await self.bot.get_me()
-        bot_id = bot_info.id
-
-        # Get cached messages from General topic
-        cached_messages = self._topic_message_cache.get(None, [])
-
-        deleted_count = 0
-        for msg in cached_messages:
-            # Skip if not from this bot
-            if not msg.from_user or msg.from_user.id != bot_id:
-                continue
-
-            # Skip if not a registry message
-            if not msg.text or not msg.text.startswith("[REGISTRY]"):
-                continue
-
-            # Delete the stale message
-            try:
-                await self.bot.delete_message(chat_id=self.supergroup_id, message_id=msg.message_id)
-                deleted_count += 1
-                logger.debug("Deleted stale registry message: %s", msg.message_id)
-            except Exception as e:
-                logger.warning("Failed to delete stale registry message %s: %s", msg.message_id, e)
-
-        if deleted_count > 0:
-            logger.info("Cleaned up %d stale registry message(s)", deleted_count)
-
-        # Clear registry_message_id to force posting a fresh message
-        self.registry_message_id = None
-
-        # Remove deleted messages from cache
-        self._topic_message_cache[None] = [
-            m
-            for m in cached_messages
-            if not (m.from_user and m.from_user.id == bot_id and m.text and m.text.startswith("[REGISTRY]"))
-        ]
-
     async def _send_heartbeat(self) -> None:
         """Send or edit [REGISTRY] heartbeat message in General topic."""
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -1483,8 +1433,10 @@ Current size: {current_size}
         # ss = start session, csel = claude select, crsel = claude resume select
         keyboard = [
             [InlineKeyboardButton(text="🚀 Session", callback_data=f"ss:{bot_username}")],
-            [InlineKeyboardButton(text="🤖 Claude", callback_data=f"csel:{bot_username}")],
-            [InlineKeyboardButton(text="🔄 Claude Resume", callback_data=f"crsel:{bot_username}")],
+            [
+                InlineKeyboardButton(text="🤖 Claude", callback_data=f"csel:{bot_username}"),
+                InlineKeyboardButton(text="🔄 Resume", callback_data=f"crsel:{bot_username}"),
+            ],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 

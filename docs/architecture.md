@@ -54,8 +54,8 @@ TeleClaude is a multi-platform terminal bridge daemon enabling remote terminal a
 ```mermaid
 graph TB
     subgraph "Event Flow"
-        TG[TelegramAdapter] -->|emit event| AC[AdapterClient]
-        RD[RedisAdapter] -->|emit event| AC
+        TG[TelegramAdapter] -->|handle event| AC[AdapterClient]
+        RD[RedisAdapter] -->|handle event| AC
         AC -->|notify subscribers| D[Daemon]
         D -->|response via| AC
         AC -->|broadcast to| TG
@@ -74,7 +74,7 @@ self.client = AdapterClient()  # ✅ NO daemon parameter
 self.client.on(TeleClaudeEvents.MESSAGE, self._handle_message)
 self.client.on(TeleClaudeEvents.NEW_SESSION, self._handle_new_session)
 
-# Adapters emit events
+# Adapters handle events
 await self.client.handle_event(
     event=TeleClaudeEvents.MESSAGE,
     payload={"session_id": sid, "text": text},
@@ -185,16 +185,19 @@ graph TB
 **All adapters use the same patterns - no special cases for AI-to-AI sessions.**
 
 **Core Principle:** Every adapter inherits from BaseAdapter and provides:
+
 - `send_message()` - Send message to origin adapter
 - `edit_message()` - Edit message (in-place updates)
 - `get_session_data()` - Read session data from `claude_session_file`
 
 **No Streaming for AI Sessions:** MCP clients use request/response pattern:
+
 1. `teleclaude__start_session()` - Create session, returns session_id
 2. `teleclaude__send_message()` - Send command, returns acknowledgment
 3. `teleclaude__get_session_data()` - Pull current output (not streaming)
 
 **Observer Pattern:** Telegram observers watch ALL sessions (human and AI-to-AI):
+
 - Single message per session (edited in-place for live updates)
 - Polling coordinator broadcasts to all adapters via `send_output_update()`
 - Same UX for all session types
@@ -786,7 +789,7 @@ Generated from `config/ai.instrukt.teleclaude.daemon.plist.template`:
 3. **Observer Pattern** - Daemon subscribes to events, no AdapterClient → Daemon reference
 4. **Module-Level Singleton** - db accessed via import
 5. **Origin/Observer Broadcasting** - One interactive adapter, others read-only
-6. **Event-Driven** - Adapters emit events, daemon reacts
+6. **Event-Driven** - Adapters handle events, daemon reacts
 7. **Separation of Concerns** - Message broadcasting vs cross-computer orchestration
 8. **Fail Fast** - No defensive programming, let errors propagate
 9. **Explicit Over Implicit** - Config is explicit, no magic defaults

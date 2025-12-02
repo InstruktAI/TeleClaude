@@ -56,7 +56,6 @@ def mock_daemon():
         mock_tb.capture_pane = AsyncMock(return_value="")
         mock_tb.kill_session = AsyncMock(return_value=True)
         mock_tb.list_sessions = AsyncMock(return_value=[])
-        mock_tb.resize_session = AsyncMock(return_value=True)
 
         # Make terminal_bridge accessible as daemon.terminal for tests
         daemon.terminal = mock_tb

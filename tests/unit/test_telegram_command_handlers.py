@@ -1,6 +1,6 @@
 """Unit tests for Telegram adapter command handlers.
 
-These tests verify that command handlers correctly emit events with proper payloads.
+These tests verify that command handlers correctly handle events with proper payloads.
 This is the CRITICAL test layer that would have caught the "missing command field" bug.
 
 NOTE: These tests are currently obsolete after the event system refactoring.
@@ -137,7 +137,7 @@ class TestNewSessionCommand:
 
         await telegram_adapter._handle_new_session(update, context)
 
-        # Should NOT emit event
+        # Should NOT handle event
         mock_adapter_client.handle_event.assert_not_called()
 
     @pytest.mark.asyncio

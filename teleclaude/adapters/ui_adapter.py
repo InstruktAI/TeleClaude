@@ -478,8 +478,6 @@ class UiAdapter(BaseAdapter):
         Args:
             context: Typed Claude event context
         """
-        if not context.data or not isinstance(context.data, dict):
-            return
 
         claude_session_id = context.data.get("session_id")
         claude_session_file = context.data.get("transcript_path")

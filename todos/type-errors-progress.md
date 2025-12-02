@@ -1,6 +1,7 @@
 # Type Errors Progress
 
 ## Completed
+
 - ✅ teleclaude/utils/claude_transcript.py - Added TypedDict classes for transcript structure (1129→1076 errors)
 - ✅ Removed `output_message_id` from SessionUXState (moved to adapter_metadata)
 - ✅ Removed `output_message_id` from db.update_ux_state() signature
@@ -22,13 +23,14 @@
 - ✅ Removed unnecessary pass statements
 - ✅ Converted .format() to f-string in telegram_adapter.py
 - ✅ Removed deprecated tool handlers from mcp_server.py (get_session_status, observe_session)
-- ✅ Removed backwards compatibility parameter from teleclaude__list_sessions
+- ✅ Removed backwards compatibility parameter from teleclaude\_\_list_sessions
 - ✅ Added `duration` field to VoiceEventContext (fixed .get() usage)
 - ✅ Updated ui_adapter to build typed VoiceEventContext before calling handle_voice
 - ✅ Added proper telegram library types (CallbackContext, ExtBot, JobQueue) to telegram_adapter
 - ✅ Created TelegramApp type alias with justified type: ignore for library's dict[Any, Any] types
 
 ## Current State
+
 telegram_adapter.py: **144 errors** (down from 348, -204 errors, -58.6%)
 command_handlers.py: **67 errors** (down from 122, -55 errors, -45.1%)
 db.py: **0 errors** ✅ (down from 4, -4 errors, -100%!)
@@ -38,17 +40,19 @@ Pylint rating: **9.79/10**
 
 Recent progress (session 7 - UI Adapter & Redis Adapter Type Fixes):
 **UI Adapter:**
+
 - Removed dead code: deleted unused `_process_voice_input()` method (voice handling moved to daemon)
 - Removed unused imports: VoiceEventContext and handle_voice (no longer needed)
 - Fixed metadata type annotations: added `Optional[TelegramAdapterMetadata]` to getattr calls (lines 110, 134)
 - Fixed type narrowing: introduced `typed_metadata: TelegramAdapterMetadata` to avoid None errors (2 locations)
 - Fixed handler list type annotation: `handlers: list[tuple[str, object]]` and `handler: object`
 - Fixed JSON parsing: added isinstance check and explicit type annotations for json.loads() Any return
-- Fixed event handler signatures: added type:ignore for specialized handlers (_handle_session_updated, _handle_claude_event)
+- Fixed event handler signatures: added type:ignore for specialized handlers (\_handle_session_updated, \_handle_claude_event)
 - Pattern: For json.loads(), assign to `object`, check isinstance(dict), then narrow to `dict[str, object]`
 - **ui_adapter.py now has 0 errors!** ✅ (was 28, -100%)
 
 **Redis Adapter (partial session 7):**
+
 - Fixed Redis library type issues: added type:ignore[misc] for Redis.from_url() and Redis.ping() (unavoidable library Any)
 - Fixed JSON parsing from Redis bytes: `data_bytes.decode("utf-8")` → `json.loads()` with isinstance check
 - Fixed heartbeat discovery: added type:ignore[misc] for Redis.keys() iteration (key is Any)
@@ -65,6 +69,7 @@ Recent progress (session 7 - UI Adapter & Redis Adapter Type Fixes):
 
 Recent progress (session 8 - Redis Adapter Completion):
 **Redis Adapter (completed):**
+
 - Fixed type:ignore error codes: added attr-defined for object iteration (lines 442, 582)
 - Removed variable redefinition: renamed last_id_str → msg_id_str (line 601)
 - Fixed unused type:ignore comments: removed unnecessary error codes from 10+ locations
@@ -82,6 +87,7 @@ Recent progress (session 8 - Redis Adapter Completion):
 
 Previous progress (session 6 - Command Handlers & DB Type Fixes):
 **Command Handlers:**
+
 - Fixed EventContext `.get()` usage: changed to `getattr()` with type annotations (4 locations)
 - Fixed explicit-any errors: added `# type: ignore[explicit-any]` to decorator signatures
 - Changed `*terminal_args: Any` to `*terminal_args: object` in helper functions
@@ -90,6 +96,7 @@ Previous progress (session 6 - Command Handlers & DB Type Fixes):
 - Reduced command_handlers.py from 122 → 67 errors (-55, -45.1%)
 
 **DB:**
+
 - Fixed adapter_metadata parameter type: `Optional[dict[str, object]]` → `Optional[SessionAdapterMetadata]`
 - Added SessionAdapterMetadata import to db.py
 - Fixed Session construction: use `adapter_metadata or SessionAdapterMetadata()` for default
@@ -98,6 +105,7 @@ Previous progress (session 6 - Command Handlers & DB Type Fixes):
 - **db.py now has 0 errors!** ✅ (was 4, -100%)
 
 Previous progress (session 5 - None Checks):
+
 - Fixed all 14 union-attr errors by adding None checks before attribute access
 - User: 6 checks (update.effective_user), Message: 5 checks (update.effective_message)
 - Session: 1 check (db.get_session), Exception: 1 check (context.error)
@@ -107,6 +115,7 @@ Previous progress (session 5 - None Checks):
 - Overall progress from start: 348 → 144 errors (-204, -58.6%)
 
 Previous progress (session 4 - Property Pattern):
+
 - Implemented `@property def bot(self) -> ExtBot[None]` to encapsulate self.app.bot access
 - Property handles None check once, eliminating all redundant assertions
 - Replaced all 16 instances of `self.app.bot` with `self.bot` throughout file
@@ -114,6 +123,7 @@ Previous progress (session 4 - Property Pattern):
 - Reduced telegram_adapter.py from 240 → 175 errors (-65, -27.0%)
 
 Previous progress (session 3 - Voice Context & Telegram Types):
+
 - Verified python-telegram-bot and aiosqlite have built-in types (PEP 561 compliant, no stub packages needed)
 - Fixed VoiceEventContext: added `duration` field, changed `.get()` to attribute access
 - Updated ui_adapter to build typed VoiceEventContext before calling handle_voice
@@ -123,12 +133,14 @@ Previous progress (session 3 - Voice Context & Telegram Types):
 - Reduced telegram_adapter.py from 348 → 240 errors (-108, -31.0%)
 
 Previous progress (session 2):
+
 - Added `conn` property to db.py with proper Connection type (eliminates 95 errors!)
 - Replaced all `self._db.` with `self.conn.` throughout db.py
-- Fixed ux_state function calls to use self.conn instead of self._db
+- Fixed ux_state function calls to use self.conn instead of self.\_db
 - Removed unused type: ignore comment in models.py
 
 Previous session progress:
+
 - Split AdapterMetadata into TelegramAdapterMetadata and RedisAdapterMetadata
 - Telegram uses `topic_id: Optional[int]`, Redis uses `channel_id: Optional[str]`
 - Fixed all `.get()` calls on SessionAdapterMetadata to use attribute access
@@ -140,6 +152,7 @@ Previous session progress:
 - Removed backwards compatibility parameters
 
 Top error files (current session):
+
 1. teleclaude/adapters/telegram_adapter.py - **144 errors** (was 348, -204, -58.6%)
    - Remaining: 0 union-attr ✅, ~144 library misc errors (from dict[Any, Any])
 2. teleclaude/mcp_server.py - ~188 errors (MCP protocol types)
@@ -151,6 +164,7 @@ Top error files (current session):
 7. ✅ teleclaude/adapters/ui_adapter.py - **0 errors** (was 28 → 0, -100%! COMPLETE!)
 
 ## Remaining Work
+
 1. teleclaude/adapters/telegram_adapter.py - **144 errors** (0 union-attr ✅, ~144 misc)
    - ~144 unavoidable library "misc" errors from dict[Any, Any] (python-telegram-bot design)
    - Consider adding # type: ignore[misc] to suppress these library-specific errors
@@ -163,6 +177,7 @@ Top error files (current session):
 7. ✅ teleclaude/adapters/ui_adapter.py - **0 errors** (COMPLETE!)
 
 ## Next Steps
+
 1. telegram_adapter.py: Consider adding # type: ignore[misc] for library errors (only if truly unavoidable)
 2. Fix mcp_server.py MCP protocol types
 3. Fix command_handlers.py remaining errors

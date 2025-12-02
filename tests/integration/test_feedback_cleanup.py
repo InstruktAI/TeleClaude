@@ -1,6 +1,5 @@
 """Integration test for feedback message cleanup on user input."""
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -47,9 +46,9 @@ async def test_feedback_messages_cleaned_on_user_input(daemon_with_mocked_telegr
         return True
 
     with patch.object(terminal_bridge, "session_exists", mock_session_exists):
-        # Simulate user input (MESSAGE event) via AdapterClient.emit()
+        # Simulate user input (MESSAGE event) via AdapterClient.handle_event()
         # NOTE: message_id is required in payload for pre-handler (cleanup) to run
-        await daemon.client.emit(
+        await daemon.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
             payload={"text": "hello", "message_id": "user-msg-123"},
             metadata=MessageMetadata(
