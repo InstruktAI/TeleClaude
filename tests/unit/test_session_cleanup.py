@@ -25,7 +25,7 @@ async def test_cleanup_orphan_workspaces_removes_orphans(tmp_path: Path):
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
-        patch("teleclaude.core.session_utils.OUTPUT_DIR", tmp_path),
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
     ):
         mock_db.return_value = mock_sessions
 
@@ -56,7 +56,7 @@ async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
-        patch("teleclaude.core.session_utils.OUTPUT_DIR", tmp_path),
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
     ):
         mock_db.return_value = [mock_session]
 
@@ -72,7 +72,7 @@ async def test_cleanup_orphan_workspaces_handles_missing_directory():
     """Test that cleanup_orphan_workspaces handles missing workspace directory."""
     nonexistent_path = Path("/nonexistent/workspace/path")
 
-    with patch("teleclaude.core.session_utils.OUTPUT_DIR", nonexistent_path):
+    with patch("teleclaude.core.session_cleanup.OUTPUT_DIR", nonexistent_path):
         removed = await cleanup_orphan_workspaces()
 
     assert removed == 0

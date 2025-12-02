@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -172,8 +172,6 @@ async def cleanup_orphan_workspaces() -> int:
     Returns:
         Number of orphan workspace directories removed
     """
-    from teleclaude.core.session_utils import OUTPUT_DIR
-
     if not OUTPUT_DIR.exists():
         logger.debug("Workspace directory does not exist")
         return 0

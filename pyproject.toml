@@ -97,6 +97,9 @@ disable = [
   "wrong-import-position",  # TYPE_CHECKING guards - acceptable pattern
 ]
 
+[tool.pylint.'SIMILARITIES']
+min-similarity-lines = 10  # Flag duplicate blocks of 10+ lines
+
 [tool.pylint.'FORMAT']
 max-line-length = 120
 

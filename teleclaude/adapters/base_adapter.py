@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
 
-from teleclaude.core import db
+from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
 
 if TYPE_CHECKING:
