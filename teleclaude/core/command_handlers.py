@@ -19,6 +19,7 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
 from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.session_utils import ensure_unique_title
 from teleclaude.utils.claude_transcript import parse_claude_transcript
 
@@ -138,9 +139,9 @@ async def handle_create_session(
     if project_dir:
         working_dir = os.path.expanduser(project_dir)
 
-    # Generate tmux session name
-    session_suffix = str(uuid.uuid4())[:8]
-    tmux_name = f"{computer_name.lower()}-session-{session_suffix}"
+    # Generate tmux session name with prefix for TeleClaude ownership
+    session_id = str(uuid.uuid4())
+    tmux_name = f"{TMUX_SESSION_PREFIX}{session_id[:8]}"
 
     # Get short project name for title
     short_project = get_short_project_name(working_dir)
@@ -170,7 +171,7 @@ async def handle_create_session(
     title = await ensure_unique_title(base_title)
 
     # Create session in database first (need session_id for create_channel)
-    session_id = str(uuid.uuid4())
+    # session_id was generated earlier for tmux naming
     session = await db.create_session(
         computer_name=computer_name,
         tmux_session_name=tmux_name,

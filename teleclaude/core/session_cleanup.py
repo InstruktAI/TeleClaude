@@ -1,13 +1,13 @@
-"""Session cleanup utilities for handling stale sessions.
+"""Session cleanup utilities for handling stale and orphan sessions.
 
-A session is considered stale when:
-- It exists in the database as active (closed=False)
-- But its tmux session no longer exists
+Stale session: exists in DB as active, but tmux session is gone.
+Orphan tmux session: tmux session exists with tc_ prefix, but no DB entry.
 
 This can happen when:
 - User manually closes Telegram topic
 - tmux session is killed externally
 - Daemon crashes without proper cleanup
+- DB is cleared but tmux sessions remain
 """
 
 import logging
@@ -22,6 +22,9 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
+
+# TeleClaude tmux session prefix - used to identify owned sessions
+TMUX_SESSION_PREFIX = "tc_"
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:
@@ -111,3 +114,48 @@ async def cleanup_all_stale_sessions(adapter_client: "AdapterClient") -> int:
         logger.debug("No stale sessions found")
 
     return cleaned_count
+
+
+async def cleanup_orphan_tmux_sessions() -> int:
+    """Kill TeleClaude tmux sessions that have no corresponding DB entry.
+
+    Orphan sessions can occur when:
+    - Database is cleared but tmux sessions remain
+    - Session creation fails after tmux is created but before DB insert
+    - Manual intervention leaves tmux sessions behind
+
+    Only kills sessions with the tc_ prefix (TeleClaude-owned).
+
+    Returns:
+        Number of orphan tmux sessions killed
+    """
+    tmux_sessions = await terminal_bridge.list_tmux_sessions()
+    if not tmux_sessions:
+        logger.debug("No tmux sessions found")
+        return 0
+
+    # Filter to only TeleClaude-owned sessions
+    tc_sessions = [s for s in tmux_sessions if s.startswith(TMUX_SESSION_PREFIX)]
+    if not tc_sessions:
+        logger.debug("No TeleClaude tmux sessions found")
+        return 0
+
+    # Get all known tmux session names from DB
+    all_sessions = await db.get_all_sessions()
+    known_tmux_names = {s.tmux_session_name for s in all_sessions}
+
+    killed_count = 0
+    for tmux_name in tc_sessions:
+        if tmux_name not in known_tmux_names:
+            logger.warning("Found orphan tmux session: %s (not in DB), killing", tmux_name)
+            success = await terminal_bridge.kill_session(tmux_name)
+            if success:
+                killed_count += 1
+                logger.info("Killed orphan tmux session: %s", tmux_name)
+            else:
+                logger.error("Failed to kill orphan tmux session: %s", tmux_name)
+
+    if killed_count > 0:
+        logger.info("Killed %d orphan tmux sessions", killed_count)
+
+    return killed_count

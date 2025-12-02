@@ -233,9 +233,24 @@ class Session:
                 if adapter_data is None:
                     continue  # Skip None metadata
                 if adapter_key == "telegram":
-                    metadata_dict[adapter_key] = TelegramAdapterMetadata(**adapter_data)
+                    # Filter to only known fields (handles schema evolution)
+                    known_fields = {"topic_id", "output_message_id"}
+                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}
+                    metadata_dict[adapter_key] = TelegramAdapterMetadata(**filtered)
                 elif adapter_key == "redis":
-                    metadata_dict[adapter_key] = RedisAdapterMetadata(**adapter_data)
+                    # Filter to only known fields (handles schema evolution)
+                    known_fields = {
+                        "channel_id",
+                        "output_stream",
+                        "target_computer",
+                        "claude_session_id",
+                        "project_dir",
+                        "last_checkpoint_time",
+                        "title",
+                        "channel_metadata",
+                    }
+                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}
+                    metadata_dict[adapter_key] = RedisAdapterMetadata(**filtered)
             data["adapter_metadata"] = SessionAdapterMetadata(**metadata_dict)
         elif "adapter_metadata" not in data:
             # Ensure adapter_metadata always exists

@@ -847,6 +847,9 @@ class TeleClaudeDaemon:
                 # Clean up orphaned sessions (tmux gone but DB says active)
                 await session_cleanup.cleanup_all_stale_sessions(self.client)
 
+                # Clean up orphan tmux sessions (tmux exists but no DB entry)
+                await session_cleanup.cleanup_orphan_tmux_sessions()
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
