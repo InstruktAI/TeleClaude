@@ -108,6 +108,8 @@ class PeerInfo:
     user: Optional[str] = None
     host: Optional[str] = None
     ip: Optional[str] = None
+    role: Optional[str] = None
+    system_stats: Optional[dict[str, object]] = None  # memory, disk, cpu stats
 
 
 @dataclass

@@ -28,7 +28,7 @@ from telegram import (
     Message,
     Update,
 )
-from telegram.error import BadRequest, NetworkError, RetryAfter, TimedOut
+from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -546,6 +546,7 @@ class TelegramAdapter(UiAdapter):
         await db.add_pending_deletion(session.session_id, message_id)
         logger.debug("Tracked message %s for deletion on next input", message_id)
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def send_file(
         self,
         session: "Session",
@@ -567,6 +568,7 @@ class TelegramAdapter(UiAdapter):
 
         return str(message.message_id)
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def send_general_message(self, text: str, metadata: MessageMetadata) -> str:
         """Send message to Telegram supergroup general topic."""
         self._ensure_started()
@@ -579,6 +581,7 @@ class TelegramAdapter(UiAdapter):
         )
         return str(result.message_id)
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def create_channel(
         self, session: "Session", title: str, metadata: ChannelMetadata  # type: ignore[name-defined]
     ) -> str:
@@ -593,6 +596,7 @@ class TelegramAdapter(UiAdapter):
 
         return str(topic_id)
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
         """Update topic title."""
         self._ensure_started()
@@ -603,10 +607,13 @@ class TelegramAdapter(UiAdapter):
         try:
             await self.bot.edit_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id, name=title)
             return True
-        except Exception as e:
+        except (RetryAfter, NetworkError, TimedOut):
+            raise  # Let decorator handle retry
+        except TelegramError as e:
             logger.error("Failed to update topic title: %s", e)
             return False
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def close_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Soft-close forum topic (can be reopened)."""
         self._ensure_started()
@@ -618,13 +625,13 @@ class TelegramAdapter(UiAdapter):
             await self.bot.close_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
             logger.info("Closed topic %s for session %s", topic_id, session.session_id[:8])
             return True
-        except BadRequest as e:
+        except (RetryAfter, NetworkError, TimedOut):
+            raise  # Let decorator handle retry
+        except TelegramError as e:
             logger.warning("Failed to close topic %s: %s", topic_id, e)
             return False
-        except Exception as e:
-            logger.error("Failed to close topic %s: %s", topic_id, e)
-            return False
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def reopen_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Reopen a closed forum topic."""
         self._ensure_started()
@@ -636,13 +643,13 @@ class TelegramAdapter(UiAdapter):
             await self.bot.reopen_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
             logger.info("Reopened topic %s for session %s", topic_id, session.session_id[:8])
             return True
-        except BadRequest as e:
+        except (RetryAfter, NetworkError, TimedOut):
+            raise  # Let decorator handle retry
+        except TelegramError as e:
             logger.warning("Failed to reopen topic %s: %s", topic_id, e)
             return False
-        except Exception as e:
-            logger.error("Failed to reopen topic %s: %s", topic_id, e)
-            return False
 
+    @command_retry(max_retries=3, max_timeout=60.0)
     async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
         """Delete forum topic (permanent)."""
         self._ensure_started()
@@ -654,11 +661,10 @@ class TelegramAdapter(UiAdapter):
             await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
             logger.info("Deleted topic %s for session %s", topic_id, session.session_id[:8])
             return True
-        except BadRequest as e:
+        except (RetryAfter, NetworkError, TimedOut):
+            raise  # Let decorator handle retry
+        except TelegramError as e:
             logger.warning("Failed to delete topic %s: %s", topic_id, e)
-            return False
-        except Exception as e:
-            logger.error("Failed to delete topic %s: %s", topic_id, e)
             return False
 
     # ==================== Platform-Specific Parameters ====================

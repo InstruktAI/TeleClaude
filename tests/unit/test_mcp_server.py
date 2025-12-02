@@ -1,104 +1,263 @@
 """Unit tests for MCP server tools."""
 
+import json
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_list_computers_returns_online_computers():
-    """Test that list_computers returns online computers from heartbeat.
+@pytest.fixture
+def mock_mcp_server():
+    """Create MCP server with mocked dependencies."""
+    from teleclaude.mcp_server import TeleClaudeMCPServer
 
-    TODO: Test computer listing:
-    - Mock redis_adapter.discover_peers
-    - Verify returned format
-    - Verify filtering (online only)
-    """
+    mock_client = MagicMock()
+    mock_client.discover_peers = AsyncMock(return_value=[])
+    mock_client.handle_event = AsyncMock(return_value={"status": "success", "data": {}})
 
+    mock_terminal_bridge = MagicMock()
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_list_sessions_formats_sessions():
-    """Test that list_sessions formats session data for MCP.
+    with patch("teleclaude.mcp_server.config") as mock_config:
+        mock_config.computer.name = "TestComputer"
+        mock_config.mcp.socket_path = "/tmp/test.sock"
+        server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
 
-    TODO: Test session listing:
-    - Mock db.list_sessions
-    - Verify JSON format
-    - Verify required fields present
-    """
+    return server
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_start_session_creates_session():
-    """Test that start_session creates a new session.
+@pytest.mark.asyncio
+async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_server):
+    """Test that list_computers returns online computers from heartbeat."""
+    server = mock_mcp_server
 
-    TODO: Test session creation:
-    - Mock command_handlers.handle_create_session
-    - Verify session_id returned
-    - Verify metadata passed correctly
-    """
+    # Mock handle_get_computer_info for local computer
+    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+        mock_handlers.handle_get_computer_info = AsyncMock(
+            return_value={
+                "user": "testuser",
+                "host": "localhost",
+                "role": "development",
+                "system_stats": {"memory": {"percent_used": 50.0}},
+            }
+        )
 
+        # Mock discover_peers to return remote peers
+        server.client.discover_peers = AsyncMock(
+            return_value=[{"name": "RemotePC", "status": "online", "user": "remoteuser", "host": "remote.local"}]
+        )
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_send_message_forwards_to_handler():
-    """Test that send_message forwards to command handler.
+        result = await server.teleclaude__list_computers()
 
-    TODO: Test message forwarding:
-    - Mock command_handlers.handle_message
-    - Verify message sent to correct session
-    - Verify error handling (session not found)
-    """
-
-
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_send_notification_sends_to_session():
-    """Test that send_notification sends notification message.
-
-    TODO: Test notification:
-    - Mock adapter_client.send_message
-    - Verify notification format
-    - Test with invalid session_id
-    """
-
-
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_send_file_handles_upload():
-    """Test that send_file uploads file to session.
-
-    TODO: Test file upload:
-    - Mock file_handler.handle_file
-    - Verify file path validation
-    - Test with non-existent file
-    - Test with no active process
-    """
+        assert len(result) == 2
+        # First is local computer
+        assert result[0]["name"] == "TestComputer"
+        assert result[0]["status"] == "local"
+        # Second is remote
+        assert result[1]["name"] == "RemotePC"
+        assert result[1]["status"] == "online"
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_get_session_data_formats_transcript():
-    """Test that get_session_data returns formatted transcript.
+@pytest.mark.asyncio
+async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
+    """Test that list_sessions formats session data for MCP."""
+    server = mock_mcp_server
 
-    TODO: Test data retrieval:
-    - Mock output file reading
-    - Mock db.get_session
-    - Verify transcript formatting
-    - Verify metadata included
-    """
+    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+        mock_handlers.handle_list_sessions = AsyncMock(
+            return_value=[
+                {
+                    "session_id": "test-session-123",
+                    "origin_adapter": "telegram",
+                    "title": "Test Session",
+                    "status": "active",
+                }
+            ]
+        )
+
+        result = await server.teleclaude__list_sessions(computer="local")
+
+        assert len(result) == 1
+        assert result[0]["session_id"] == "test-session-123"
+        assert result[0]["origin_adapter"] == "telegram"
+        assert result[0]["computer"] == "TestComputer"
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_teleclaude_download_session_strips_markers():
-    """Test that download_session strips exit markers from output.
+@pytest.mark.asyncio
+async def test_teleclaude_start_session_creates_session(mock_mcp_server):
+    """Test that start_session creates a new session."""
+    server = mock_mcp_server
 
-    TODO: Test download:
-    - Create sample output with markers
-    - Verify markers removed
-    - Verify clean transcript returned
-    """
+    # Mock handle_event to return success with session_id
+    server.client.handle_event = AsyncMock(
+        return_value={"status": "success", "data": {"session_id": "new-session-456"}}
+    )
+
+    result = await server.teleclaude__start_session(
+        computer="local",
+        project_dir="/home/user/project",
+        title="Test Session",
+        message="Hello Claude",
+    )
+
+    assert result["status"] == "success"
+    assert result["session_id"] == "new-session-456"
+
+    # Verify handle_event was called for both NEW_SESSION and CLAUDE
+    assert server.client.handle_event.call_count == 2
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
-async def test_mcp_tools_handle_invalid_session_id():
-    """Test that MCP tools handle invalid session_id gracefully.
+@pytest.mark.asyncio
+async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
+    """Test that send_message forwards to command handler."""
+    server = mock_mcp_server
 
-    TODO: Test error handling:
-    - Test each tool with non-existent session_id
-    - Verify error messages
-    - Verify no crashes
-    """
+    server.client.handle_event = AsyncMock(return_value=None)
+
+    chunks = []
+    async for chunk in server.teleclaude__send_message(
+        computer="local", session_id="test-session-123", message="ls -la"
+    ):
+        chunks.append(chunk)
+
+    result = "".join(chunks)
+    assert "Message sent" in result
+    assert "test-ses" in result  # First 8 chars of session_id
+
+    # Verify handle_event was called
+    server.client.handle_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_handle_claude_event_sends_to_session(mock_mcp_server):
+    """Test that handle_claude_event sends event to session."""
+    server = mock_mcp_server
+
+    # Mock db.get_session to return valid session
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-123"
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        server.client.handle_event = AsyncMock(return_value=None)
+
+        result = await server.teleclaude__handle_claude_event(
+            session_id="test-session-123",
+            event_type="notification",
+            data={"message": "Test notification"},
+        )
+
+        assert result == "OK"
+        server.client.handle_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_send_file_handles_upload(mock_mcp_server):
+    """Test that send_file uploads file to session."""
+    import tempfile
+
+    server = mock_mcp_server
+
+    # Create temp file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("Test content")
+        test_file = f.name
+
+    try:
+        # Mock db.get_session
+        mock_session = MagicMock()
+        mock_session.session_id = "test-session-123"
+
+        with patch("teleclaude.mcp_server.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=mock_session)
+            server.client.send_file = AsyncMock(return_value="file-msg-123")
+
+            result = await server.teleclaude__send_file(
+                session_id="test-session-123",
+                file_path=test_file,
+                caption="Test caption",
+            )
+
+            assert "File sent successfully" in result
+            assert "file-msg-123" in result
+            server.client.send_file.assert_called_once()
+    finally:
+        Path(test_file).unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
+    """Test that get_session_data returns formatted transcript."""
+    server = mock_mcp_server
+
+    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+        mock_handlers.handle_get_session_data = AsyncMock(
+            return_value={
+                "status": "success",
+                "session_id": "test-session-123",
+                "messages": [{"type": "user", "text": "Hello"}],
+            }
+        )
+
+        result = await server.teleclaude__get_session_data(
+            computer="local",
+            session_id="test-session-123",
+        )
+
+        assert result["status"] == "success"
+        assert result["session_id"] == "test-session-123"
+        assert len(result["messages"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_send_file_validates_file_path(mock_mcp_server):
+    """Test that send_file validates file exists."""
+    server = mock_mcp_server
+
+    result = await server.teleclaude__send_file(
+        session_id="test-session-123",
+        file_path="/nonexistent/file.txt",
+    )
+
+    assert "Error:" in result
+    assert "File not found" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
+    """Test that MCP tools handle invalid session_id gracefully."""
+    server = mock_mcp_server
+
+    # Test send_file with invalid session
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=None)
+
+        # Create temp file for the test
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("Test")
+            test_file = f.name
+
+        try:
+            result = await server.teleclaude__send_file(
+                session_id="nonexistent-session",
+                file_path=test_file,
+            )
+
+            assert "Error:" in result
+            assert "not found" in result
+        finally:
+            Path(test_file).unlink(missing_ok=True)
+
+    # Test handle_claude_event with invalid session
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=None)
+
+        with pytest.raises(ValueError, match="not found"):
+            await server.teleclaude__handle_claude_event(
+                session_id="nonexistent-session",
+                event_type="notification",
+                data={},
+            )

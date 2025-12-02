@@ -1,74 +1,74 @@
 """Unit tests for event system."""
 
-import pytest
 
-
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_with_simple_command():
-    """Test that parse_command_string handles simple command.
+    """Test that parse_command_string handles simple command."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test parsing:
-    - Input: "new_session"
-    - Verify returns ("new_session", [])
-    """
+    cmd, args = parse_command_string("new_session")
+
+    assert cmd == "new_session"
+    assert args == []
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_with_arguments():
-    """Test that parse_command_string extracts arguments.
+    """Test that parse_command_string extracts arguments."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test arguments:
-    - Input: "cd /home/user"
-    - Verify returns ("cd", ["/home/user"])
-    """
+    cmd, args = parse_command_string("cd /home/user")
+
+    assert cmd == "cd"
+    assert args == ["/home/user"]
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_strips_leading_slash():
-    """Test that parse_command_string removes leading slash.
+    """Test that parse_command_string removes leading slash."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test slash removal:
-    - Input: "/cd /path"
-    - Verify returns ("cd", ["/path"])
-    """
+    cmd, args = parse_command_string("/cd /path")
+
+    assert cmd == "cd"
+    assert args == ["/path"]
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_handles_quoted_arguments():
-    """Test that parse_command_string preserves quoted strings.
+    """Test that parse_command_string preserves quoted strings."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test quotes:
-    - Input: "/claude -m 'Hello world'"
-    - Verify returns ("claude", ["-m", "Hello world"])
-    """
+    cmd, args = parse_command_string("/claude -m 'Hello world'")
+
+    assert cmd == "claude"
+    assert args == ["-m", "Hello world"]
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_handles_empty_string():
-    """Test that parse_command_string handles empty input.
+    """Test that parse_command_string handles empty input."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test edge case:
-    - Input: ""
-    - Verify returns (None, [])
-    """
+    cmd, args = parse_command_string("")
+
+    assert cmd is None
+    assert args == []
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_handles_whitespace_only():
-    """Test that parse_command_string handles whitespace.
+    """Test that parse_command_string handles whitespace."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test edge case:
-    - Input: "   "
-    - Verify returns (None, [])
-    """
+    cmd, args = parse_command_string("   ")
+
+    assert cmd is None
+    assert args == []
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
 def test_parse_command_string_handles_invalid_quotes():
-    """Test that parse_command_string handles malformed quotes.
+    """Test that parse_command_string handles malformed quotes."""
+    from teleclaude.core.events import parse_command_string
 
-    TODO: Test error handling:
-    - Input: "/cmd 'unclosed quote"
-    - Verify fallback to simple split
-    - Verify no crash
-    """
+    # Unclosed quote - should fall back to simple split
+    cmd, args = parse_command_string("/cmd 'unclosed quote")
+
+    # Should not crash, falls back to simple split
+    assert cmd == "cmd"
+    # Simple split keeps the quote characters
+    assert "'unclosed" in args

@@ -1,65 +1,108 @@
 """Unit tests for session utility functions."""
 
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
+@pytest.mark.asyncio
 async def test_ensure_unique_title_returns_base_when_unique():
-    """Test that ensure_unique_title returns base title when unique.
+    """Test that ensure_unique_title returns base title when unique."""
+    from teleclaude.core.session_utils import ensure_unique_title
 
-    TODO: Test uniqueness:
-    - Mock db.list_sessions to return no matching titles
-    - Verify base title returned as-is
-    """
+    # Mock db.list_sessions to return no sessions
+    with patch("teleclaude.core.session_utils.db") as mock_db:
+        mock_db.list_sessions = AsyncMock(return_value=[])
+
+        result = await ensure_unique_title("My Unique Title")
+
+        assert result == "My Unique Title"
+        mock_db.list_sessions.assert_called_once_with(closed=False)
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
+@pytest.mark.asyncio
 async def test_ensure_unique_title_appends_counter_on_collision():
-    """Test that ensure_unique_title appends (2) on collision.
+    """Test that ensure_unique_title appends (2) on collision."""
+    from teleclaude.core.session_utils import ensure_unique_title
 
-    TODO: Test counter:
-    - Mock db.list_sessions to return session with same title
-    - Verify " (2)" appended
-    """
+    # Create mock session with matching title
+    mock_session = MagicMock()
+    mock_session.title = "Duplicate Title"
+
+    with patch("teleclaude.core.session_utils.db") as mock_db:
+        mock_db.list_sessions = AsyncMock(return_value=[mock_session])
+
+        result = await ensure_unique_title("Duplicate Title")
+
+        assert result == "Duplicate Title (2)"
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
+@pytest.mark.asyncio
 async def test_ensure_unique_title_increments_counter():
-    """Test that ensure_unique_title increments counter for multiple collisions.
+    """Test that ensure_unique_title increments counter for multiple collisions."""
+    from teleclaude.core.session_utils import ensure_unique_title
 
-    TODO: Test incrementing:
-    - Mock existing titles: "Foo", "Foo (2)", "Foo (3)"
-    - Request "Foo"
-    - Verify returns "Foo (4)"
-    """
+    # Create mock sessions with title and numbered versions
+    mock_sessions = []
+    for title in ["Foo", "Foo (2)", "Foo (3)"]:
+        mock_session = MagicMock()
+        mock_session.title = title
+        mock_sessions.append(mock_session)
+
+    with patch("teleclaude.core.session_utils.db") as mock_db:
+        mock_db.list_sessions = AsyncMock(return_value=mock_sessions)
+
+        result = await ensure_unique_title("Foo")
+
+        # Should skip (2) and (3), return (4)
+        assert result == "Foo (4)"
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
+@pytest.mark.asyncio
 async def test_ensure_unique_title_handles_empty_sessions():
-    """Test that ensure_unique_title handles empty session list.
+    """Test that ensure_unique_title handles empty session list."""
+    from teleclaude.core.session_utils import ensure_unique_title
 
-    TODO: Test edge case:
-    - Mock db.list_sessions to return []
-    - Verify base title returned
-    """
+    with patch("teleclaude.core.session_utils.db") as mock_db:
+        mock_db.list_sessions = AsyncMock(return_value=[])
 
+        result = await ensure_unique_title("Empty List Title")
 
-@pytest.mark.skip(reason="TODO: Implement test")
-def test_get_output_file_path_returns_correct_path():
-    """Test that get_output_file_path returns correct path format.
-
-    TODO: Test path generation:
-    - Verify path format: tmux_sessions/{session_id}.txt
-    - Verify directory created if doesn't exist
-    """
+        assert result == "Empty List Title"
 
 
-@pytest.mark.skip(reason="TODO: Implement test")
-def test_get_output_file_path_creates_directory():
-    """Test that get_output_file_path creates tmux_sessions directory.
+def test_get_output_file_returns_correct_path():
+    """Test that get_output_file returns correct path format."""
+    from teleclaude.core import session_utils
 
-    TODO: Test directory creation:
-    - Remove tmux_sessions dir if exists
-    - Call function
-    - Verify directory created
-    """
+    # Use temporary directory to avoid affecting real workspace
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Patch OUTPUT_DIR to use temp directory
+        with patch.object(session_utils, "OUTPUT_DIR", Path(tmpdir)):
+            result = session_utils.get_output_file("test-session-123")
+
+            # Verify path format: {tmpdir}/test-session-123/tmux.txt
+            assert result == Path(tmpdir) / "test-session-123" / "tmux.txt"
+            assert result.exists()
+
+
+def test_get_output_file_creates_directory():
+    """Test that get_output_file creates workspace directory."""
+    from teleclaude.core import session_utils
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_dir = Path(tmpdir) / "workspace"
+        # Directory should NOT exist yet
+        assert not output_dir.exists()
+
+        with patch.object(session_utils, "OUTPUT_DIR", output_dir):
+            result = session_utils.get_output_file("new-session-456")
+
+            # Verify directory was created
+            assert output_dir.exists()
+            assert (output_dir / "new-session-456").is_dir()
+            # Verify file was created
+            assert result.exists()
+            assert result.name == "tmux.txt"

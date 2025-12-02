@@ -428,11 +428,14 @@ class AdapterClient:
 
         return bool(result)
 
-    async def discover_peers(self) -> list[dict[str, Any]]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
+    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, Any]]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
         """Discover peers from all registered adapters.
 
         Aggregates peer lists from all adapters and deduplicates by name.
         First occurrence wins (primary adapter's data takes precedence).
+
+        Args:
+            redis_enabled: Whether Redis is enabled. Defaults to config.redis.enabled.
 
         Returns:
             List of peer dicts (converted from PeerInfo dataclass) with:
@@ -446,6 +449,15 @@ class AdapterClient:
             - ip: IP address (optional)
         """
         logger.debug("AdapterClient.discover_peers() called, adapters: %s", list(self.adapters.keys()))
+
+        # Determine Redis enabled state - explicit param takes precedence over config
+        is_redis_enabled = redis_enabled if redis_enabled is not None else config.redis.enabled
+
+        # Early return if Redis is disabled - no peer discovery without Redis
+        if not is_redis_enabled:
+            logger.debug("Redis disabled, skipping peer discovery")
+            return []
+
         all_peers: list[dict[str, Any]] = []  # type: ignore[explicit-any]  # JSON/API data
 
         # Collect peers from all adapters
@@ -467,6 +479,10 @@ class AdapterClient:
                         peer_dict["host"] = peer_info.host
                     if peer_info.ip:
                         peer_dict["ip"] = peer_info.ip
+                    if peer_info.role:
+                        peer_dict["role"] = peer_info.role
+                    if peer_info.system_stats:
+                        peer_dict["system_stats"] = peer_info.system_stats
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
             except Exception as e:

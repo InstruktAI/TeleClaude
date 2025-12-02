@@ -561,5 +561,124 @@ async def test_origin_failure_raises_exception():
         Path(db_path).unlink(missing_ok=True)
 
 
+@pytest.mark.integration
+async def test_discover_peers_respects_redis_enabled_flag():
+    """Test discover_peers() respects redis_enabled config flag.
+
+    When Redis is disabled, discover_peers() should return empty list
+    without querying adapters - local operations still work.
+
+    Verifies:
+    1. redis_enabled=False returns empty list without calling adapters
+    2. redis_enabled=True queries adapters and returns peers
+    3. Local session creation works regardless of redis_enabled
+    """
+    from datetime import datetime
+
+    from teleclaude.core.models import PeerInfo
+
+    # Create mock Redis adapter that would return peers if called
+    class MockRedisAdapterWithPeers(BaseAdapter):
+        """Mock Redis adapter that returns peers."""
+
+        has_ui = False
+
+        def __init__(self):
+            super().__init__()
+            self.discover_peers_called = False
+
+        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+            return "redis-msg-123"
+
+        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+            return True
+
+        async def delete_message(self, session_id: str, message_id: str) -> bool:
+            return True
+
+        async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
+            return "redis-channel-123"
+
+        async def update_channel_title(self, session: Session, title: str) -> bool:
+            return True
+
+        async def close_channel(self, session: Session) -> bool:
+            return True
+
+        async def reopen_channel(self, session: Session) -> bool:
+            return True
+
+        async def delete_channel(self, session: Session) -> bool:
+            return True
+
+        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+            return "redis-file-msg-123"
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+        async def discover_peers(self):
+            """Return mock peers - tracks if called."""
+            self.discover_peers_called = True
+            return [
+                PeerInfo(
+                    name="RemotePC",
+                    status="online",
+                    last_seen=datetime.now(),
+                    adapter_type="redis",
+                    user="testuser",
+                    host="remote.local",
+                )
+            ]
+
+        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+            if False:
+                yield
+            return
+
+    # Setup test database
+    db_path = "/tmp/test_redis_enabled_flag.db"
+    Path(db_path).unlink(missing_ok=True)
+
+    test_db = Db(db_path)
+    await test_db.initialize()
+
+    try:
+        with patch("teleclaude.core.db.db", test_db):
+            with patch("teleclaude.core.adapter_client.db", test_db):
+                # Create adapter client with mock Redis adapter
+                redis_adapter = MockRedisAdapterWithPeers()
+                adapter_client = AdapterClient()
+                adapter_client.adapters = {"redis": redis_adapter}
+
+                # Test 1: redis_enabled=False - should return empty without calling adapter
+                peers = await adapter_client.discover_peers(redis_enabled=False)
+                assert peers == [], "Should return empty list when Redis disabled"
+                assert not redis_adapter.discover_peers_called, "Should NOT call adapter when Redis disabled"
+
+                # Test 2: redis_enabled=True - should query adapter and return peers
+                peers = await adapter_client.discover_peers(redis_enabled=True)
+                assert len(peers) == 1, "Should return peers when Redis enabled"
+                assert peers[0]["name"] == "RemotePC"
+                assert redis_adapter.discover_peers_called, "Should call adapter when Redis enabled"
+
+                # Test 3: Local session creation works regardless (isolation test)
+                session = await test_db.create_session(
+                    computer_name="LocalPC",
+                    tmux_session_name="local-session",
+                    origin_adapter="telegram",
+                    title="Local Session Test",
+                )
+                assert session is not None, "Local session creation should work"
+                assert session.computer_name == "LocalPC"
+
+    finally:
+        await test_db.close()
+        Path(db_path).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

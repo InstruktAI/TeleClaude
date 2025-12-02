@@ -6,6 +6,7 @@ import logging
 import os
 import shlex
 import types
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -455,13 +456,32 @@ class TeleClaudeMCPServer:
             logger.info("MCP client disconnected")
 
     async def teleclaude__list_computers(self) -> list[dict[str, object]]:
-        """List available computers.
+        """List available computers including local and remote.
 
         Returns:
-            List of online computers with their info (role, system_stats, sessions, etc.)
+            List of computers with their info (role, system_stats, etc.)
+            Local computer is always first in the list.
         """
         logger.debug("teleclaude__list_computers() called")
-        result: list[dict[str, object]] = await self.client.discover_peers()  # Adapter returns Any for backward compat
+
+        # Get local computer info
+        local_info = await command_handlers.handle_get_computer_info()
+        local_computer: dict[str, object] = {
+            "name": self.computer_name,
+            "status": "local",
+            "last_seen": datetime.now(),
+            "adapter_type": "local",
+            "user": local_info.get("user"),
+            "host": local_info.get("host"),
+            "role": local_info.get("role"),
+            "system_stats": local_info.get("system_stats"),
+        }
+
+        # Get remote peers
+        remote_peers: list[dict[str, object]] = await self.client.discover_peers()
+
+        # Combine: local first, then remotes
+        result = [local_computer] + remote_peers
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))
         return result
 

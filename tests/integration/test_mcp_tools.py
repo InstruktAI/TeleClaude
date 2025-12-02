@@ -25,8 +25,8 @@ async def mcp_server(daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_teleclaude_list_computers(mcp_server):
-    """Test teleclaude__list_computers returns discovered peers."""
-    # Mock discover_peers to return test data
+    """Test teleclaude__list_computers returns local computer + discovered peers."""
+    # Mock discover_peers to return test data (remote peers)
     with patch.object(mcp_server.client, "discover_peers", new_callable=AsyncMock) as mock_discover:
         mock_discover.return_value = [
             {"name": "testcomp", "status": "online", "bot_username": "@teleclaude_testcomp_bot"},
@@ -36,9 +36,17 @@ async def test_teleclaude_list_computers(mcp_server):
         result = await mcp_server.teleclaude__list_computers()
 
         assert isinstance(result, list)
-        assert len(result) == 2
-        assert result[0]["name"] == "testcomp"
-        assert result[1]["name"] == "workstation"
+        # Expect 3: local computer + 2 remote peers
+        assert len(result) == 3
+
+        # First is local computer (from config mock: "TestComputer")
+        assert result[0]["name"] == "TestComputer"
+        assert result[0]["status"] == "local"
+        assert result[0]["adapter_type"] == "local"
+
+        # Remote peers follow
+        assert result[1]["name"] == "testcomp"
+        assert result[2]["name"] == "workstation"
 
 
 @pytest.mark.integration

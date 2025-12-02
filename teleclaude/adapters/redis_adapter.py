@@ -533,6 +533,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                     user_val: object = computer_info.get("user")
                     host_val: object = computer_info.get("host")
                     ip_val: object = computer_info.get("ip")
+                    role_val: object = computer_info.get("role")
+                    system_stats_val: object = computer_info.get("system_stats")
+
+                    # Ensure system_stats is a dict or None
+                    system_stats: dict[str, object] | None = None
+                    if isinstance(system_stats_val, dict):
+                        system_stats = system_stats_val
 
                     peers.append(
                         PeerInfo(
@@ -543,6 +550,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                             user=str(user_val) if user_val else None,
                             host=str(host_val) if host_val else None,
                             ip=str(ip_val) if ip_val else None,
+                            role=str(role_val) if role_val else None,
+                            system_stats=system_stats,
                         )
                     )
 

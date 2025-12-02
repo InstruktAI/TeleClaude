@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
+import psutil
+
 from teleclaude.config import config
 from teleclaude.constants import DEFAULT_CLAUDE_COMMAND
 from teleclaude.core import terminal_bridge
@@ -266,13 +268,13 @@ async def handle_list_projects() -> list[dict[str, str]]:
     return dirs_data
 
 
-async def handle_get_computer_info() -> dict[str, str]:
-    """Return computer info.
+async def handle_get_computer_info() -> dict[str, object]:
+    """Return computer info including system stats.
 
     Ephemeral request/response - no DB session required.
 
     Returns:
-        Dict with user, role, host
+        Dict with user, role, host, and system_stats (memory, disk, cpu)
     """
     logger.debug("handle_get_computer_info() called")
 
@@ -280,10 +282,32 @@ async def handle_get_computer_info() -> dict[str, str]:
     if not config.computer.user or not config.computer.role or not config.computer.host:
         raise ValueError("Computer configuration is incomplete - user, role, and host are required")
 
-    info_data: dict[str, str] = {
+    # Gather system stats
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+
+    system_stats: dict[str, object] = {
+        "memory": {
+            "total_gb": round(memory.total / (1024**3), 1),
+            "available_gb": round(memory.available / (1024**3), 1),
+            "percent_used": memory.percent,
+        },
+        "disk": {
+            "total_gb": round(disk.total / (1024**3), 1),
+            "free_gb": round(disk.free / (1024**3), 1),
+            "percent_used": disk.percent,
+        },
+        "cpu": {
+            "percent_used": cpu_percent,
+        },
+    }
+
+    info_data: dict[str, object] = {
         "user": config.computer.user,
         "role": config.computer.role,
         "host": config.computer.host,
+        "system_stats": system_stats,
     }
 
     logger.debug("handle_get_computer_info() returning info: %s", info_data)

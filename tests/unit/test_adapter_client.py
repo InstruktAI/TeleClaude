@@ -62,8 +62,8 @@ async def test_adapter_client_discover_peers_single_adapter():
     # Register adapter
     client.register_adapter("telegram", mock_client)
 
-    # Test discovery
-    peers = await client.discover_peers()
+    # Test discovery (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 2
     assert "macbook" in [p["name"] for p in peers]
     assert "workstation" in [p["name"] for p in peers]
@@ -113,8 +113,8 @@ async def test_adapter_client_discover_peers_multiple_adapters():
     client.register_adapter("telegram", mock_telegram)
     client.register_adapter("redis", mock_redis)
 
-    # Test aggregation
-    peers = await client.discover_peers()
+    # Test aggregation (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 3
     assert "macbook" in [p["name"] for p in peers]
     assert "workstation" in [p["name"] for p in peers]
@@ -166,8 +166,8 @@ async def test_adapter_client_deduplication():
     client.register_adapter("telegram", mock_telegram)
     client.register_adapter("redis", mock_redis)
 
-    # Test deduplication
-    peers = await client.discover_peers()
+    # Test deduplication (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 2  # Not 3 - macbook deduplicated
 
     # First adapter (telegram) wins for "macbook"
@@ -204,8 +204,8 @@ async def test_adapter_client_handles_adapter_errors():
     client.register_adapter("telegram", mock_failing_adapter)
     client.register_adapter("redis", mock_working_adapter)
 
-    # Test that discovery continues despite failure
-    peers = await client.discover_peers()
+    # Test that discovery continues despite failure (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 1
     assert peers[0]["name"] == "workstation"
 
@@ -225,8 +225,8 @@ async def test_adapter_client_empty_peers():
 
     client.register_adapter("telegram", mock_client)
 
-    # Test empty result
-    peers = await client.discover_peers()
+    # Test empty result (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 0
     assert peers == []
 
@@ -238,7 +238,81 @@ async def test_adapter_client_no_adapters():
 
     client = AdapterClient()
 
-    # Test discovery with no adapters
-    peers = await client.discover_peers()
+    # Test discovery with no adapters (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 0
     assert peers == []
+
+
+@pytest.mark.asyncio
+async def test_adapter_client_system_stats_passthrough():
+    """Test that system_stats are passed through from PeerInfo to dict."""
+    from unittest.mock import AsyncMock, Mock
+
+    from teleclaude.core.adapter_client import AdapterClient
+
+    client = AdapterClient()
+
+    # Create mock adapter with system_stats
+    mock_adapter = Mock()
+    mock_adapter.discover_peers = AsyncMock(
+        return_value=[
+            PeerInfo(
+                name="server",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="redis",
+                user="testuser",
+                host="server.local",
+                role="development",
+                system_stats={
+                    "memory": {"total_gb": 16.0, "available_gb": 8.0, "percent_used": 50.0},
+                    "disk": {"total_gb": 500.0, "free_gb": 250.0, "percent_used": 50.0},
+                    "cpu": {"percent_used": 25.0},
+                },
+            )
+        ]
+    )
+
+    client.register_adapter("redis", mock_adapter)
+
+    # Test that system_stats are passed through (explicitly enable Redis for test)
+    peers = await client.discover_peers(redis_enabled=True)
+    assert len(peers) == 1
+    assert peers[0]["name"] == "server"
+    assert peers[0]["role"] == "development"
+    assert "system_stats" in peers[0]
+    assert peers[0]["system_stats"]["memory"]["total_gb"] == 16.0
+    assert peers[0]["system_stats"]["cpu"]["percent_used"] == 25.0
+
+
+@pytest.mark.asyncio
+async def test_adapter_client_discover_peers_redis_disabled():
+    """Test that discover_peers returns empty list when Redis is disabled."""
+    from unittest.mock import AsyncMock, Mock
+
+    from teleclaude.core.adapter_client import AdapterClient
+
+    client = AdapterClient()
+
+    # Create mock adapter that would return peers
+    mock_adapter = Mock()
+    mock_adapter.discover_peers = AsyncMock(
+        return_value=[
+            PeerInfo(
+                name="should-not-appear",
+                status="online",
+                last_seen=datetime.now(),
+                adapter_type="redis",
+            )
+        ]
+    )
+
+    client.register_adapter("redis", mock_adapter)
+
+    # Test with Redis disabled - should return empty list without calling adapter
+    peers = await client.discover_peers(redis_enabled=False)
+    assert len(peers) == 0
+    assert peers == []
+    # Adapter should NOT have been called
+    mock_adapter.discover_peers.assert_not_called()
