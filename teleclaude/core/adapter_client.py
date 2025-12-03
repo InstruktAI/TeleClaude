@@ -547,6 +547,12 @@ class AdapterClient:
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = payload.get("message_id")
+        logger.debug(
+            "Pre-handler check: session=%s, message_id=%s, event=%s",
+            session.session_id[:8] if session else None,
+            message_id,
+            event,
+        )
         if session and message_id:
             await self._call_pre_handler(session, event)
 

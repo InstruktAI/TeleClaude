@@ -518,6 +518,7 @@ class TelegramAdapter(UiAdapter):
         Args:
             session: Session object
         """
+        logger.info("PRE-HANDLER CALLED for session %s", session.session_id[:8])
         # Delete pending user input messages from previous interaction
         pending = await db.get_pending_deletions(session.session_id)
         if pending:
@@ -1093,11 +1094,17 @@ class TelegramAdapter(UiAdapter):
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         # Get size argument
         size_arg = context.args[0] if context.args else None
 
         if not size_arg:
-            # Show available presets
+            # Track command message for deletion and show available presets
+            await self._pre_handle_user_input(session)
+            await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
             current_size = session.terminal_size or "80x24"
             presets_text = f"""
 **Terminal Size Presets:**
@@ -1109,9 +1116,7 @@ class TelegramAdapter(UiAdapter):
 
 Current size: {current_size}
             """
-            message = update.effective_message
-            if message:
-                await message.reply_text(presets_text, parse_mode="Markdown")
+            await self.send_feedback(session, presets_text, MessageMetadata(parse_mode="Markdown"))
             return
 
         # resize is adapter-specific - handled internally, no daemon event needed
@@ -1124,11 +1129,16 @@ Current size: {current_size}
             logger.warning("_handle_rename: No session found")
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         # Check if name argument provided
         if not context.args:
-            message = update.effective_message
-            if message:
-                await message.reply_text("Usage: /rename <new name>")
+            # Track command message for deletion
+            await self._pre_handle_user_input(session)
+            await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
+            await self.send_feedback(session, "Usage: /rename <new name>", MessageMetadata())
             return
 
         await self.client.handle_event(
@@ -1137,6 +1147,7 @@ Current size: {current_size}
                 "command": self._event_to_command("rename"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -1148,6 +1159,10 @@ Current size: {current_size}
         if not session:
             return
 
+        # After successful session fetch, effective_user and effective_message are guaranteed non-None
+        assert update.effective_user is not None
+        assert update.effective_message is not None
+
         # If args provided, change to that directory
         if context.args:
             await self.client.handle_event(
@@ -1156,16 +1171,19 @@ Current size: {current_size}
                     "command": self._event_to_command("cd"),
                     "args": context.args or [],
                     "session_id": session.session_id,
+                    "message_id": str(update.effective_message.message_id),
                 },
                 metadata=self._metadata(),
             )
             return
 
-        # No args - show trusted directories as buttons (includes TC WORKDIR from get_all_trusted_dirs)
+        # No args - show trusted directories as buttons (track command message for deletion)
+        await self._pre_handle_user_input(session)
+        await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
         reply_markup = self._build_project_keyboard("cd")
-        message = update.effective_message
-        if message:
-            await message.reply_text("**Select a directory:**", reply_markup=reply_markup, parse_mode="Markdown")
+        await self.send_feedback(
+            session, "**Select a directory:**", MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown")
+        )
 
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude command - start Claude Code with optional flags."""
@@ -1183,6 +1201,7 @@ Current size: {current_size}
                 "command": self._event_to_command("claude"),
                 "args": context.args or [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -1203,6 +1222,7 @@ Current size: {current_size}
                 "command": self._event_to_command("claude_resume"),
                 "args": [],
                 "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
@@ -1217,12 +1237,16 @@ Current size: {current_size}
         assert update.effective_user is not None
         assert update.effective_message is not None
 
+        # Track user's command message for deletion (cleanup old pending first)
+        await self._pre_handle_user_input(session)
+        await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
+
         # Get Claude session ID from ux_state
         ux_state = await db.get_ux_state(session.session_id)
         claude_session_id = ux_state.claude_session_id
 
         if not claude_session_id:
-            await update.effective_message.reply_text("❌ No Claude Code session found in this topic")
+            await self.send_feedback(session, "❌ No Claude Code session found in this topic", MessageMetadata())
             return
 
         try:
@@ -1240,7 +1264,7 @@ Current size: {current_size}
             )
 
             if result.returncode == 0:
-                await update.effective_message.reply_text("✅ Claude Code restarted successfully")
+                await self.send_feedback(session, "✅ Claude Code restarted successfully", MessageMetadata())
             else:
                 # Combine stdout and stderr for complete error context
                 error_parts = []
@@ -1249,11 +1273,11 @@ Current size: {current_size}
                 if result.stderr and result.stderr.strip():
                     error_parts.append(result.stderr.strip())
                 error_msg = "\n".join(error_parts) if error_parts else f"Exit code: {result.returncode}"
-                await update.effective_message.reply_text(f"❌ Failed to restart:\n{error_msg}")
+                await self.send_feedback(session, f"❌ Failed to restart:\n{error_msg}", MessageMetadata())
         except subprocess.TimeoutExpired:
-            await update.effective_message.reply_text("⏱️ Restart script timed out")
+            await self.send_feedback(session, "⏱️ Restart script timed out", MessageMetadata())
         except Exception as e:
-            await update.effective_message.reply_text(f"❌ Error: {str(e)}")
+            await self.send_feedback(session, f"❌ Error: {str(e)}", MessageMetadata())
 
     async def _handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle button clicks from inline keyboards."""
@@ -1692,7 +1716,20 @@ Usage:
                     logger.warning("MCP queue full for topic %s", topic_id)
 
         session = await self._get_session_from_topic(update)
-        if not session or not update.effective_message or not update.effective_user:
+        if not session:
+            logger.warning(
+                "Session lookup failed for message in topic %s (user: %s, text: %s)",
+                update.effective_message.message_thread_id if update.effective_message else None,
+                update.effective_user.id if update.effective_user else None,
+                (
+                    update.effective_message.text[:50]
+                    if update.effective_message and update.effective_message.text
+                    else None
+                ),
+            )
+            return
+        if not update.effective_message or not update.effective_user:
+            logger.warning("Missing effective_message or effective_user in update")
             return
 
         text = update.effective_message.text
@@ -1786,7 +1823,7 @@ Usage:
         except Exception as e:
             error_msg = str(e) if str(e).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
-            await message.reply_text(f"❌ Failed to download voice message: {error_msg}")
+            await self.send_feedback(session, f"❌ Failed to download voice message: {error_msg}", MessageMetadata())
 
     async def _handle_file_attachment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle file attachments (documents, photos) in topics - both new and edited messages."""
