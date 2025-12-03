@@ -366,13 +366,18 @@ class TestGetSessionsByAdapterMetadata:
         assert len(sessions) == 0
 
     @pytest.mark.asyncio
-    async def test_get_by_metadata_different_adapter(self, test_db):
-        """Test retrieving sessions filters by adapter type."""
+    async def test_get_by_metadata_finds_all_with_metadata(self, test_db):
+        """Test retrieving sessions finds ALL sessions with the metadata, regardless of origin_adapter.
+
+        This is crucial for observer adapters: when Telegram is an observer for a Redis-initiated
+        session, we need to find the session by telegram.topic_id even though origin_adapter='redis'.
+        """
         from teleclaude.core.models import (
             SessionAdapterMetadata,
             TelegramAdapterMetadata,
         )
 
+        # Create session with telegram as origin
         await test_db.create_session(
             "PC1",
             "session-1",
@@ -380,18 +385,51 @@ class TestGetSessionsByAdapterMetadata:
             "Test Session",
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
         )
+        # Create session with different origin but SAME telegram metadata (observer pattern)
         await test_db.create_session(
             "PC1",
             "session-2",
-            "rest",
+            "redis",
             "Test Session",
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
         )
 
         sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
 
+        # Should find BOTH sessions - origin_adapter doesn't matter, only metadata presence
+        assert len(sessions) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_by_metadata_excludes_sessions_without_metadata(self, test_db):
+        """Test that sessions without the specified adapter metadata are NOT returned."""
+        from teleclaude.core.models import (
+            RedisAdapterMetadata,
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
+        )
+
+        # Create session WITH telegram metadata
+        await test_db.create_session(
+            "PC1",
+            "session-1",
+            "telegram",
+            "Has Telegram",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
+        )
+        # Create session WITHOUT telegram metadata (only redis)
+        await test_db.create_session(
+            "PC1",
+            "session-2",
+            "redis",
+            "No Telegram",
+            adapter_metadata=SessionAdapterMetadata(redis=RedisAdapterMetadata(channel_id="test")),
+        )
+
+        sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
+
+        # Should only find the session that HAS telegram metadata
         assert len(sessions) == 1
-        assert sessions[0].origin_adapter == "telegram"
+        assert sessions[0].title == "Has Telegram"
 
 
 class TestDbAdapterClientIntegration:

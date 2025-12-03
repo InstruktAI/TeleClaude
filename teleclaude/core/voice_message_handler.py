@@ -258,11 +258,12 @@ async def handle_voice(
         return
 
     # Send transcribed text as input to the running process
-    # Automatic detection: if process running, no marker
-    logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], transcribed_text)
+    # Prefix with HUMAN: to distinguish from AI messages
+    prefixed_text = f"HUMAN: {transcribed_text}"
+    logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], prefixed_text)
     success, _ = await terminal_bridge.send_keys(
         session.tmux_session_name,
-        transcribed_text,
+        prefixed_text,
     )
 
     if not success:

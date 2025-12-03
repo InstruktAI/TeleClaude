@@ -22,6 +22,7 @@ from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.session_listeners import register_listener
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -184,8 +185,10 @@ class TeleClaudeMCPServer:
                     description=(
                         "Send message to an existing Claude Code session with AI-to-AI protocol. "
                         "Messages are automatically prefixed with sender identification (AI[computer:session_id]) "
-                        "so the receiving AI knows to reply back. After calling this tool, wait a few seconds "
-                        "then use teleclaude__get_session_data to retrieve the response. "
+                        "so the receiving AI knows to reply back. "
+                        "**ASYNC/FIRE-AND-FORGET**: Do NOT wait for a response after sending. "
+                        "Offload the work and be available immediately for other tasks. "
+                        "The receiving AI will call you back via this same tool when done. "
                         "**IMPORTANT**: Also use this tool to REPLY when you receive a message prefixed with "
                         "'AI[computer:session_id] |' - extract the computer and session_id from the prefix "
                         "and send your response back. This enables two-way AI collaboration."
@@ -625,6 +628,20 @@ class TeleClaudeMCPServer:
         caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
         prefixed_message = f"AI[local:{caller_session_id}] | {message}"
 
+        # Register listener so we get notified when target session stops
+        if caller_session_id != "unknown":
+            try:
+                caller_session = await db.get_session(caller_session_id)
+                if caller_session:
+                    register_listener(
+                        target_session_id=session_id,
+                        caller_session_id=caller_session_id,
+                        caller_tmux_session=caller_session.tmux_session_name,
+                    )
+            except RuntimeError:
+                # Database not initialized (e.g., in tests)
+                pass
+
         # Send /claude command with prefixed message to start Claude Code
         await self.client.handle_event(
             TeleClaudeEvents.CLAUDE,
@@ -703,6 +720,21 @@ class TeleClaudeMCPServer:
             # This allows the receiving AI to reply back to the caller
             caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
             prefixed_message = f"AI[{self.computer_name}:{caller_session_id}] | {message}"
+
+            # Register listener so we get notified when target session stops
+            # Note: For remote sessions, the Stop event comes via Redis transport
+            if caller_session_id != "unknown":
+                try:
+                    caller_session = await db.get_session(caller_session_id)
+                    if caller_session:
+                        register_listener(
+                            target_session_id=str(remote_session_id),
+                            caller_session_id=caller_session_id,
+                            caller_tmux_session=caller_session.tmux_session_name,
+                        )
+                except RuntimeError:
+                    # Database not initialized (e.g., in tests)
+                    pass
 
             # Send /claude command with prefixed message to start Claude Code
             # Use shlex.quote for proper escaping (handles ', ", !, $, etc.)

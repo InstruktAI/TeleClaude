@@ -27,7 +27,9 @@ from teleclaude.core.events import (
     UiCommands,
 )
 from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
+from teleclaude.core.session_listeners import pop_listeners
 from teleclaude.core.session_utils import get_output_file
+from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import handle_voice
 
 if TYPE_CHECKING:
@@ -144,6 +146,22 @@ class UiAdapter(BaseAdapter):
                 await self.send_feedback(session, f"❌ {error_message}", self._metadata())
         except Exception as e:
             logger.error("Failed to send error feedback for session %s: %s", session_id, e)
+
+    # === User Input Formatting ===
+
+    def format_user_input(self, text: str) -> str:
+        """Format incoming user input with HUMAN: prefix.
+
+        This distinguishes human messages from AI messages (which use AI[computer:session_id] prefix).
+        All UI adapters should call this when processing user text input before sending to daemon.
+
+        Args:
+            text: Raw user input text
+
+        Returns:
+            Prefixed text: "HUMAN: {text}"
+        """
+        return f"HUMAN: {text}"
 
     # === Command Registration ===
 
@@ -535,12 +553,18 @@ class UiAdapter(BaseAdapter):
     async def _handle_claude_stop(self, context: ClaudeEventContext) -> None:
         """Handle stop event - Claude Code session stopped.
 
+        Checks for registered listeners and notifies callers via tmux injection.
+        Listeners are one-shot (removed after firing).
+
         Note: Title update and summary notification come via separate 'summary' event.
 
         Args:
             context: Typed Claude event context
         """
         logger.debug("Claude stop event for session %s", context.session_id[:8])
+
+        # Check for listener and notify caller
+        await self._notify_session_listener(context.session_id)
 
     async def _handle_title_update(self, context: ClaudeEventContext) -> None:
         """Handle title_update event - update channel title from AI-generated title.
@@ -696,3 +720,47 @@ class UiAdapter(BaseAdapter):
         except Exception as e:
             logger.error("Failed to extract Claude title from %s: %s", session_file_path, e)
             return None
+
+    async def _notify_session_listener(self, target_session_id: str) -> None:
+        """Notify all callers waiting for a target session to stop.
+
+        Pops all listeners (one-shot), then injects a message into each caller's
+        tmux session to notify them the target has finished.
+
+        Args:
+            target_session_id: The session that just stopped
+        """
+        listeners = pop_listeners(target_session_id)
+        if not listeners:
+            return
+
+        # Get target session info for the notification
+        target_session = await db.get_session(target_session_id)
+        target_title = target_session.title if target_session else "Unknown"
+
+        for listener in listeners:
+            # Build notification message
+            notification = (
+                f"Session {target_session_id[:8]} ({target_title}) has finished. "
+                f"Use teleclaude__get_session_data(computer='local', session_id='{target_session_id}') to inspect."
+            )
+
+            # Inject into caller's tmux session
+            success, error = await send_keys(
+                session_name=listener.caller_tmux_session,
+                text=notification,
+                send_enter=True,
+            )
+
+            if success:
+                logger.info(
+                    "Notified caller %s about target %s completion",
+                    listener.caller_session_id[:8],
+                    target_session_id[:8],
+                )
+            else:
+                logger.warning(
+                    "Failed to notify caller %s: %s",
+                    listener.caller_session_id[:8],
+                    error,
+                )

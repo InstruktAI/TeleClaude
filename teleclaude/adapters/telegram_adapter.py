@@ -279,8 +279,15 @@ class TelegramAdapter(UiAdapter):
         # Handle callback queries from inline keyboards
         self.app.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
-        # Handle voice messages in topics
-        self.app.add_handler(MessageHandler(filters.VOICE, self._handle_voice_message))
+        # Handle voice messages in topics - both new and edited
+        self.app.add_handler(
+            MessageHandler(
+                filters.VOICE
+                & filters.ChatType.SUPERGROUP
+                & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
+                self._handle_voice_message,
+            )
+        )
 
         # Handle file attachments (documents, photos, etc.) in topics - both new and edited
         self.app.add_handler(
@@ -1676,34 +1683,41 @@ Usage:
             text = "/" + text[2:]
             logger.debug("Stripped leading // from user input, result: %s", text[:50])
 
+        # Format with HUMAN: prefix (from UIAdapter base class)
+        formatted_text = self.format_user_input(text)
+
         await self.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
             payload={
                 "session_id": session.session_id,
-                "text": text,
+                "text": formatted_text,
                 "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
         )
 
     async def _handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle voice messages in topics."""
-        if not update.message or not update.effective_user:
+        """Handle voice messages in topics - both new and edited messages."""
+        # Handle both regular messages and edited messages
+        message = update.effective_message
+        if not message or not update.effective_user:
             return
 
         logger.info("=== VOICE MESSAGE HANDLER CALLED ===")
-        logger.info("Message ID: %s", update.message.message_id)
+        logger.info("Message ID: %s (edited: %s)", message.message_id, update.edited_message is not None)
         logger.info("User: %s", update.effective_user.id)
-        logger.info("Thread ID: %s", update.message.message_thread_id)
+        logger.info("Thread ID: %s", message.message_thread_id)
 
         # Check if we've already processed this message
-        message_id = update.message.message_id
-        if message_id in self._processed_voice_messages:
-            logger.debug("Skipping duplicate voice message: %s", message_id)
+        # For edited messages, use a different key to allow reprocessing
+        is_edited = update.edited_message is not None
+        dedup_key = f"{message.message_id}:{'edited' if is_edited else 'new'}"
+        if dedup_key in self._processed_voice_messages:
+            logger.debug("Skipping duplicate voice message: %s", dedup_key)
             return
 
         # Mark as processed
-        self._processed_voice_messages.add(message_id)
+        self._processed_voice_messages.add(dedup_key)
 
         # Limit set size to prevent memory growth (keep last 1000 message IDs)
         if len(self._processed_voice_messages) > 1000:
@@ -1712,11 +1726,11 @@ Usage:
 
         session = await self._get_session_from_topic(update)
         if not session:
-            logger.warning("No session found for voice message in thread %s", update.message.message_thread_id)
+            logger.warning("No session found for voice message in thread %s", message.message_thread_id)
             return
 
         # Download voice file to temp location
-        voice = update.message.voice
+        voice = message.voice
         if not voice:
             return
         voice_file = await voice.get_file()
@@ -1724,7 +1738,7 @@ Usage:
         # Create temp file with .ogg extension (Telegram uses ogg/opus format)
         temp_dir = Path(tempfile.gettempdir()) / "teleclaude_voice"
         temp_dir.mkdir(exist_ok=True)
-        temp_file_path = temp_dir / f"voice_{update.message.message_id}.ogg"
+        temp_file_path = temp_dir / f"voice_{message.message_id}.ogg"
 
         try:
             # Download the file
@@ -1733,10 +1747,10 @@ Usage:
 
             # Delete the voice message from Telegram (keep UI clean)
             try:
-                await update.message.delete()
-                logger.debug("Deleted voice message %s from Telegram", update.message.message_id)
+                await message.delete()
+                logger.debug("Deleted voice message %s from Telegram", message.message_id)
             except Exception as e:
-                logger.warning("Failed to delete voice message %s: %s", update.message.message_id, e)
+                logger.warning("Failed to delete voice message %s: %s", message.message_id, e)
 
             # Emit voice event to daemon
             await self.client.handle_event(
@@ -1747,7 +1761,7 @@ Usage:
         except Exception as e:
             error_msg = str(e) if str(e).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
-            await update.message.reply_text(f"❌ Failed to download voice message: {error_msg}")
+            await message.reply_text(f"❌ Failed to download voice message: {error_msg}")
 
     async def _handle_file_attachment(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle file attachments (documents, photos) in topics - both new and edited messages."""

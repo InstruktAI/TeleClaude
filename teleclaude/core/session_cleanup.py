@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
+from teleclaude.core.session_listeners import cleanup_caller_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ TMUX_SESSION_PREFIX = "tc_"
 
 
 async def cleanup_session_resources(session: "Session", adapter_client: "AdapterClient") -> None:
-    """Clean up session resources: channels and workspace directory.
+    """Clean up session resources: channels, listeners, and workspace directory.
 
     Shared cleanup logic used by both explicit exit and stale session cleanup.
     Does NOT modify DB state - caller handles that.
@@ -39,6 +40,9 @@ async def cleanup_session_resources(session: "Session", adapter_client: "Adapter
         adapter_client: AdapterClient for deleting channels
     """
     session_id = session.session_id
+
+    # Clean up any listeners this session registered (as a caller waiting for other sessions)
+    cleanup_caller_listeners(session_id)
 
     # Delete channel/topic in all adapters (broadcasts to observers)
     try:

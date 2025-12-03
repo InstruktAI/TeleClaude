@@ -504,8 +504,12 @@ class Db:
     ) -> list[Session]:
         """Get sessions by adapter metadata field.
 
+        Finds sessions that HAVE the specified adapter metadata, regardless of
+        which adapter was the origin. This enables observer adapters to find
+        sessions they're observing even when another adapter was the initiator.
+
         Args:
-            adapter_type: Adapter type
+            adapter_type: Adapter type whose metadata to search
             metadata_key: JSON key to search in adapter_metadata
             metadata_value: Value to match
 
@@ -513,13 +517,14 @@ class Db:
             List of matching sessions
         """
         # SQLite JSON functions - adapter_metadata is nested: {adapter_type: {metadata_key: value}}
+        # NOTE: We do NOT filter by origin_adapter - observer adapters need to find
+        # sessions where they have metadata even if they weren't the initiator
         cursor = await self.conn.execute(
             f"""
             SELECT * FROM sessions
-            WHERE origin_adapter = ?
-            AND json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
+            WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
             """,
-            (adapter_type, metadata_value),
+            (metadata_value,),
         )
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
