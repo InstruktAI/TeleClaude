@@ -210,25 +210,32 @@ graph TB
 
 **Business logic and domain models**
 
-- `models.py` - Data classes (Session, Recording) with origin_adapter field
-- `db.py` - Session persistence, module-level singleton
-- `terminal_bridge.py` - tmux interaction (create, send keys, capture output)
 - `adapter_client.py` - **Central hub for ALL adapter operations**
-- `protocols.py` - Protocol definitions (RemoteExecutionProtocol)
 - `command_handlers.py` - Command routing logic (uses AdapterClient)
-- `message_handler.py` - User message handling (uses AdapterClient)
-- `terminal_executor.py` - Terminal command execution (uses AdapterClient)
+- `computer_registry.py` - Multi-computer discovery via heartbeat
+- `db.py` - Session persistence, module-level singleton
+- `events.py` - Event type definitions (MESSAGE, NEW_SESSION, UiCommands, etc.)
+- `file_handler.py` - File upload handling
+- `models.py` - Data classes (Session, Recording) with origin_adapter field
+- `output_poller.py` - tmux output polling
+- `polling_coordinator.py` - Coordinates output polling and broadcasting
+- `protocols.py` - Protocol definitions (RemoteExecutionProtocol)
 - `schema.sql` - Database schema with session table
-- `events.py` - Event type definitions (MESSAGE, NEW_SESSION, etc.)
+- `session_cleanup.py` - Session lifecycle cleanup
+- `session_listeners.py` - PUB-SUB listeners for cross-computer events
+- `session_utils.py` - Session utility functions
+- `terminal_bridge.py` - tmux interaction (create, send keys, capture output)
+- `ux_state.py` - UX state management (idle notifications, etc.)
+- `voice_message_handler.py` - Voice transcription with Whisper
 
 ### Adapter Layer (`teleclaude/adapters/`)
 
 **Platform-specific transport implementations**
 
 - `base_adapter.py` - Abstract interface with `has_ui` flag
-- `protocols.py` - Capability protocols (RemoteExecutionProtocol)
 - `telegram_adapter.py` - Telegram Bot API (has_ui=True, UI platform)
 - `redis_adapter.py` - Redis Streams (has_ui=False, transport + RemoteExecutionProtocol)
+- `ui_adapter.py` - Shared UI adapter base class (common Telegram/future UI patterns)
 
 **Adapter Responsibilities:**
 
@@ -762,16 +769,18 @@ Generated from `config/ai.instrukt.teleclaude.daemon.plist.template`:
 ### Core Code
 
 - `teleclaude/daemon.py` - Main entry point, event subscribers
+- `teleclaude/mcp_server.py` - MCP tools for AI-to-AI communication
 - `teleclaude/core/adapter_client.py` - **Central hub** for ALL adapter ops
 - `teleclaude/core/db.py` - Module-level singleton
 - `teleclaude/core/terminal_bridge.py` - tmux wrapper
 - `teleclaude/core/command_handlers.py` - Command routing
-- `teleclaude/core/message_handler.py` - User message handling
-- `teleclaude/core/events.py` - Event type definitions
+- `teleclaude/core/polling_coordinator.py` - Output polling and broadcasting
+- `teleclaude/core/events.py` - Event type definitions and UiCommands
 
 ### Adapters
 
 - `teleclaude/adapters/base_adapter.py` - Abstract interface
+- `teleclaude/adapters/ui_adapter.py` - Shared UI adapter base class
 - `teleclaude/adapters/telegram_adapter.py` - Telegram implementation
 - `teleclaude/adapters/redis_adapter.py` - Redis implementation
 

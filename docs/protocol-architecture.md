@@ -24,30 +24,39 @@ This separation enables clean architecture where:
 Transport adapters implement this protocol to enable AI-to-AI communication:
 
 ```python
-from typing import Protocol, AsyncIterator, List, Optional, Dict, runtime_checkable
+from typing import Protocol, AsyncIterator, Optional, runtime_checkable
+from teleclaude.core.models import MessageMetadata
 
 @runtime_checkable
 class RemoteExecutionProtocol(Protocol):
-    """Protocol for adapters that can orchestrate commands on remote computers."""
+    """Protocol for adapters supporting request/response pattern.
 
-    async def send_command_to_computer(
+    Two communication patterns:
+    - Request/Response: For ephemeral queries (list_projects, etc.)
+    - Message: For real session communication (requires DB session)
+    """
+
+    async def send_request(
         self,
         computer_name: str,
-        session_id: str,
         command: str,
-        metadata: Optional[Dict[str, object]] = None,
+        metadata: MessageMetadata,
+        session_id: Optional[str] = None,
     ) -> str:
-        """Send command to remote computer. Returns request_id."""
+        """Send request to remote computer. Returns message_id for correlation."""
+
+    async def send_response(self, message_id: str, data: str) -> str:
+        """Send response for an ephemeral request."""
+
+    async def read_response(self, message_id: str, timeout: float = 3.0) -> str:
+        """Read response from ephemeral request (non-streaming)."""
 
     def poll_output_stream(
         self,
-        session_id: str,
+        request_id: str,
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
-        """Stream output from remote session."""
-
-    async def discover_computers(self) -> List[str]:
-        """Discover available remote computers."""
+        """Stream response for a request."""
 ```
 
 ### Who Implements This Protocol?
@@ -88,17 +97,25 @@ await adapter_client.send_message(session_id, "Terminal output here")
 Executes commands on remote computers via transport adapters.
 
 ```python
-# Used by: MCP Server
-await adapter_client.send_remote_command(computer_name, session_id, command)
-async for chunk in adapter_client.poll_remote_output(session_id):
+# Used by: MCP Server, Command Handlers
+# Send request to remote computer
+message_id = await adapter_client.send_request(computer_name, command, metadata, session_id)
+
+# Read single response (ephemeral requests)
+response = await adapter_client.read_response(message_id, timeout=3.0)
+
+# Or stream session output (continuous streaming)
+async for chunk in adapter_client.stream_session_output(session_id):
     yield chunk
-computers = await adapter_client.discover_remote_computers()
+
+# Send response to ephemeral request
+await adapter_client.send_response(message_id, json_data)
 ```
 
 **Behavior:**
 - Routes to **first adapter implementing RemoteExecutionProtocol**
 - Raises `RuntimeError` if no transport adapter available
-- Aggregates results from multiple transport adapters (discover_computers)
+- Two patterns: request/response (ephemeral) vs streaming (session output)
 
 ---
 
@@ -115,9 +132,8 @@ class TeleClaudeMCPServer:
 
     async def list_projects(self, computer: str):
         # ❌ Bypasses AdapterClient
-        await self.redis_adapter.send_command_to_computer(...)
-        async for chunk in self.redis_adapter.poll_output_stream(...):
-            yield chunk
+        await self.redis_adapter.send_request(...)
+        response = await self.redis_adapter.read_response(...)
 ```
 
 ### After Refactoring ✅
@@ -129,9 +145,9 @@ class TeleClaudeMCPServer:
 
     async def list_projects(self, computer: str):
         # ✅ Uses AdapterClient (adapter-agnostic)
-        await self.client.send_remote_command(computer, session_id, "list_projects")
-        async for chunk in self.client.poll_remote_output(session_id):
-            yield chunk
+        message_id = await self.client.send_request(computer, "list_projects", metadata)
+        response = await self.client.read_response(message_id)
+        return json.loads(response)
 ```
 
 **Benefits:**
@@ -150,6 +166,7 @@ To add a new transport adapter (e.g., PostgreSQL):
 
 ```python
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.core.models import MessageMetadata
 from teleclaude.adapters.base_adapter import BaseAdapter
 
 class PostgresAdapter(BaseAdapter, RemoteExecutionProtocol):
@@ -157,18 +174,22 @@ class PostgresAdapter(BaseAdapter, RemoteExecutionProtocol):
 
     has_ui = False  # Pure transport, no UI
 
-    async def send_command_to_computer(
-        self, computer_name: str, session_id: str, command: str, metadata=None
+    async def send_request(
+        self, computer_name: str, command: str, metadata: MessageMetadata, session_id: str = None
     ) -> str:
-        """Send command via NOTIFY."""
+        """Send request via NOTIFY. Returns message_id."""
         # Implementation...
 
-    def poll_output_stream(self, session_id: str, timeout: float) -> AsyncIterator[str]:
-        """Stream output via LISTEN."""
+    async def send_response(self, message_id: str, data: str) -> str:
+        """Send response for ephemeral request."""
         # Implementation...
 
-    async def discover_computers(self) -> List[str]:
-        """Discover computers via heartbeat table."""
+    async def read_response(self, message_id: str, timeout: float = 3.0) -> str:
+        """Read response via LISTEN."""
+        # Implementation...
+
+    def poll_output_stream(self, request_id: str, timeout: float) -> AsyncIterator[str]:
+        """Stream response via LISTEN."""
         # Implementation...
 ```
 

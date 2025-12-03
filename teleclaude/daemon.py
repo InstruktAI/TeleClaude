@@ -2,6 +2,7 @@
 
 import asyncio
 import atexit
+import base64
 import fcntl
 import json
 import logging
@@ -435,7 +436,7 @@ class TeleClaudeDaemon:
             _event: Event type (always "stop_notification")
             context: Session command context - session_id is in args[0], not context.session_id
         """
-        # The session_id is passed as command argument: "/stop_notification {session_id}"
+        # The session_id is passed as command argument: "/stop_notification {session_id} {computer} [title_b64]"
         # It's in args, not context.session_id (which is empty for forwarded commands)
         if not context.args:
             logger.warning("stop_notification received without session_id argument")
@@ -443,7 +444,20 @@ class TeleClaudeDaemon:
         target_session_id = context.args[0]
         # Second arg is optional source computer name (for actionable notifications)
         source_computer = context.args[1] if len(context.args) > 1 else "remote"
-        logger.info("Received stop_notification for remote session %s from %s", target_session_id[:8], source_computer)
+        # Third arg is optional base64-encoded title from summarizer
+        title: str | None = None
+        if len(context.args) > 2:
+            try:
+                title = base64.b64decode(context.args[2]).decode()
+            except Exception:
+                pass  # Invalid base64, ignore
+
+        logger.info(
+            "Received stop_notification for remote session %s from %s (title: %s)",
+            target_session_id[:8],
+            source_computer,
+            title[:30] if title else "none",
+        )
 
         # Pop and notify listeners (same logic as _notify_session_listener in ui_adapter)
         listeners = pop_listeners(target_session_id)
@@ -453,8 +467,10 @@ class TeleClaudeDaemon:
 
         for listener in listeners:
             # Build actionable notification message with exact command to run
+            # Include title if available for richer context
+            title_part = f' "{title}"' if title else ""
             notification = (
-                f"Session {target_session_id[:8]} on {source_computer} has finished. "
+                f"Session {target_session_id[:8]} on {source_computer}{title_part} has finished. "
                 f"Retrieve results: teleclaude__get_session_data("
                 f'computer="{source_computer}", session_id="{target_session_id}")'
             )

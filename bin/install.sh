@@ -643,15 +643,16 @@ setup_mcp_config() {
     local existing
     existing=$(cat "$claude_config" 2>/dev/null || echo '{}')
 
-    # Read MCP template
+    # Read MCP template and substitute INSTALL_DIR placeholder
     local mcp_config
-    mcp_config=$(cat "$mcp_template")
+    mcp_config=$(sed "s|{{INSTALL_DIR}}|$INSTALL_DIR|g" "$mcp_template")
 
     # Merge teleclaude into mcpServers
     echo "$existing" | jq --argjson mcp "$mcp_config" \
         '.mcpServers.teleclaude = $mcp.mcpServers.teleclaude' > "$claude_config"
 
     print_success "MCP server added to: $claude_config"
+    print_info "Using mcp-wrapper.py at: $INSTALL_DIR/bin/mcp-wrapper.py"
 }
 
 # Main installation flow

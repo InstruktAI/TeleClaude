@@ -2,8 +2,8 @@
   "mcpServers": {
     "teleclaude": {
       "type": "stdio",
-      "command": "socat",
-      "args": ["-", "UNIX-CONNECT:/tmp/teleclaude.sock"]
+      "command": "python3",
+      "args": ["{{INSTALL_DIR}}/bin/mcp-wrapper.py"]
     }
   }
 }

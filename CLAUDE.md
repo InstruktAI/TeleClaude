@@ -255,76 +255,50 @@ commands = [
 
 **DO NOT remove trailing spaces from BotCommand definitions** - this is intentional, not a bug!
 
+### UX Message Deletion System
+
+**CRITICAL UX PATTERN for clean Telegram interface:**
+
+The UI should never have message clutter. At any time, only ONE of each message type should be visible:
+
+| Message Type | Tracking Mechanism | Cleanup Trigger |
+|--------------|-------------------|-----------------|
+| User input messages | `pending_deletions` (db) | Pre-handler on next user input |
+| Feedback messages (summaries, errors) | `pending_feedback_deletions` (db) | `send_feedback(persistent=False)` |
+| Idle notifications | `idle_notification_message_id` (db) | Pre-handler on next user input |
+| File artifacts (from Claude) | **NOT tracked** | **NEVER deleted** |
+
+**How it works:**
+
+1. **Pre-handler** (`_pre_handle_user_input`): Runs BEFORE processing any user message - deletes old `pending_deletions` and idle notifications
+2. **Post-handler** (`_call_post_handler`): Runs AFTER processing - adds current `message_id` to `pending_deletions`
+3. **`send_feedback()`**: Deletes old feedback messages, sends new one, tracks it for future deletion
+
+**When adding new handlers:**
+
+- If handler calls `handle_event()` with `message_id` in payload → automatic pre/post handling
+- If handler bypasses `handle_event()` (e.g., shows help text directly):
+  ```python
+  await self._pre_handle_user_input(session)  # Delete old messages
+  await db.add_pending_deletion(session.session_id, str(message.message_id))  # Track this one
+  await self.send_feedback(session, "response", MessageMetadata())  # Use send_feedback, NOT reply_text
+  ```
+
+**NEVER use `reply_text()` for responses** - it bypasses tracking and messages accumulate forever!
+
 ## Code Standards
 
-### Implementation Rules
-
-**Type Hints:**
-
-- All functions must have type hints (enforced by mypy)
-- Use `Optional[T]` for nullable types
-- Use `List[T]`, `Dict[K, V]` from `typing` (Python 3.11)
-
-**Async/Await:**
-
-- All I/O operations are async (database, network, subprocess)
-- Use `asyncio.create_subprocess_exec()` for shell commands
-- Use `aiosqlite` for database operations
-- Proper cleanup with `async with` or explicit `close()`
-
-**Configuration:**
-
-- Environment variables in `.env` for secrets (tokens, API keys, user IDs)
-- YAML config (`config.yml`) for settings (computer name, paths, terminal sizes)
-- Environment variable expansion in config: `${VAR}` syntax
-- Config loaded once at daemon start (no hot reload in MVP)
-
-**Error Handling:**
-
-- Use `try/except` for recoverable errors (network, API failures)
-- Log errors with `logger.error()` including context
-- Return success boolean for operations that can fail
-- Retry once for transient failures (Telegram API, Whisper)
-
-### Style
-
-As seen in [pyproject.toml](pyproject.toml):
-
-**Black + isort:**
-
-- Line length: 120 characters
-- Black profile for isort
-- Run `make format` before committing
-
-**Pylint:**
-
-- Disabled checks: `invalid-name`, `missing-docstring`, `too-few-public-methods`, `too-many-arguments`, `unused-argument`
-- ENFORCED check: `import-outside-toplevel` (C0415) with `--fail-on` flag
-- All other warnings should be addressed
-
-**Naming Conventions:**
-
-- Classes: `PascalCase` (e.g., `SessionManager`, `TelegramAdapter`)
-- Functions/methods: `snake_case` (e.g., `create_session`, `send_keys`)
-- Private methods: `_snake_case` (e.g., `_acquire_lock`, `_emit_message`)
-- Constants: `UPPER_SNAKE_CASE` (e.g., `MAX_SESSIONS`)
-- Async functions: Same as sync, rely on `async def` keyword
-- Module-level utility functions: `snake_case` without underscore prefix
-
-**Docstrings:**
-
-- Use triple quotes for all docstrings
-- Function docstrings: brief description + Args + Returns
-- Class docstrings: brief description of purpose
-- Module docstrings: one-line overview of module purpose
+See global directives (automatically loaded for all projects):
+- `~/.claude/docs/development/coding-directives.md`
+- `~/.claude/docs/development/testing-directives.md`
 
 ## Technical Architecture
 
-docs/architecture.md
+See [docs/architecture.md](docs/architecture.md)
 
 ## Troubleshooting
 
-docs/troubleshooting.md
+See [docs/troubleshooting.md](docs/troubleshooting.md)
 
 - ALWAYS USE `make restart` to RESTART the daemon!
 
@@ -385,32 +359,6 @@ git push
 ```
 
 **NEVER use raw rsync commands** - they risk overwriting config.yml and .env!
-
-### When to Commit
-
-✅ **DO commit when:**
-
-- All tests pass (`make test`)
-- All lint checks pass (`make lint`)
-- Feature is complete and working
-- Code has been tested on target environments
-- Change represents one atomic, logical unit
-
-❌ **DO NOT commit:**
-
-- Work-in-progress code
-- Broken or untested code
-- Debug statements or temporary changes
-- "Just to save my work" (use git stash or rsync instead)
-
-### Git Philosophy
-
-**Unix thinking: Each commit does one thing completely and well.**
-
-- Commits are atomic units of working software
-- Git is version control, not a backup tool
-- History should tell a story of deliberate, complete changes
-- Every commit in main branch should be deployable
 
 ---
 

@@ -11,7 +11,7 @@
 
 **IMPORTANT**: Tasks within each group CAN be executed in parallel. Groups must be executed sequentially.
 
-### Group 1: Database Schema Update
+### Group 1: Database Schema Update ✅ COMPLETED
 
 _These tasks must run sequentially_
 
@@ -19,37 +19,39 @@ _These tasks must run sequentially_
 - [x] **SEQUENTIAL** Revise Session dataclass: change to `claude_model: Optional[str] = None` (`teleclaude/core/models.py:210`)
 - [x] **SEQUENTIAL** Update `Session.from_dict()` to handle `claude_model` in known_fields (no type conversion needed for TEXT)
 
-### Group 2: MCP Tool Enhancement
+**Commit**: `863c657` - feat(database): add claude_model field for AI-driven model selection
+
+### Group 2: MCP Tool Enhancement ✅ COMPLETED
 
 _These tasks can run in parallel_
 
-- [ ] **PARALLEL** Add `model` parameter to `teleclaude__start_session` MCP tool schema (`teleclaude/mcp_server.py:163-195`)
-- [ ] **PARALLEL** Update tool description to document model parameter usage
-- [ ] **PARALLEL** Pass `model` parameter through to session creation in `teleclaude__start_session` implementation (`teleclaude/mcp_server.py:618-650`)
+- [x] **PARALLEL** Add `model` parameter to `teleclaude__start_session` MCP tool schema (`teleclaude/mcp_server.py:163-195`)
+- [x] **PARALLEL** Update tool description to document model parameter usage
+- [x] **PARALLEL** Pass `model` parameter through to session creation in `teleclaude__start_session` implementation (`teleclaude/mcp_server.py:618-650`)
 
-### Group 3: Session Creation - Store Model Choice
+### Group 3: Session Creation - Store Model Choice ✅ COMPLETED
 
 _These tasks must run sequentially_
 
-- [ ] **SEQUENTIAL** Update `handle_create_session` to accept optional `claude_model` parameter (`teleclaude/core/command_handlers.py:117-216`)
-- [ ] **SEQUENTIAL** Pass `claude_model` to `db.create_session()` call (line 192-200)
-- [ ] **SEQUENTIAL** Update `db.create_session()` signature to accept `claude_model` parameter (`teleclaude/core/db.py`)
+- [x] **SEQUENTIAL** Update `handle_create_session` to accept optional `claude_model` parameter (`teleclaude/core/command_handlers.py:117-216`)
+- [x] **SEQUENTIAL** Pass `claude_model` to `db.create_session()` call (line 192-200)
+- [x] **SEQUENTIAL** Update `db.create_session()` signature to accept `claude_model` parameter (`teleclaude/core/db.py`)
 
-### Group 4: Claude Command - Use Stored Model
-
-_These tasks can run in parallel_
-
-- [ ] **PARALLEL** Modify `handle_start_claude` to prepend `--model={model}` when `session.claude_model` is set (`teleclaude/core/command_handlers.py:945-973`)
-- [ ] **PARALLEL** Modify `restart_teleclaude_session` to prepend `--model={model}` when session has `claude_model` (`teleclaude/restart_claude.py:62-72`)
-
-### Group 5: Testing - Unit Tests
+### Group 4: Claude Command - Use Stored Model ✅ COMPLETED
 
 _These tasks can run in parallel_
 
-- [ ] **PARALLEL** Write unit test for MCP tool with model parameter in `tests/unit/test_mcp_server.py`
-- [ ] **PARALLEL** Write unit test for session creation with claude_model in `tests/unit/test_command_handlers.py`
-- [ ] **PARALLEL** Write unit test for /claude with model flag in `tests/unit/test_command_handlers.py`
-- [ ] **PARALLEL** Write unit test for restart with model flag in `tests/unit/test_restart_claude.py`
+- [x] **PARALLEL** Modify `handle_claude_session` to prepend `--model={model}` when `session.claude_model` is set (`teleclaude/core/command_handlers.py:948-976`)
+- [x] **PARALLEL** Modify `restart_teleclaude_session` to prepend `--model={model}` when session has `claude_model` (`teleclaude/restart_claude.py:62-72`)
+
+### Group 5: Testing - Unit Tests ✅ COMPLETED
+
+_These tasks can run in parallel_
+
+- [x] **PARALLEL** Write unit test for MCP tool with model parameter in `tests/unit/test_mcp_server.py`
+- [x] **PARALLEL** Write unit test for session creation with claude_model in `tests/unit/test_command_handlers.py`
+- [x] **PARALLEL** Write unit test for /claude with model flag in `tests/unit/test_command_handlers.py`
+- [x] **PARALLEL** Write unit test for restart with model flag in `tests/unit/test_restart_claude.py`
 
 ### Group 6: Testing - Integration Tests
 

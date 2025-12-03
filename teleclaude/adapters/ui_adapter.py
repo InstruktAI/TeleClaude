@@ -8,6 +8,7 @@ UI adapters provide:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -515,14 +516,13 @@ class UiAdapter(BaseAdapter):
             return
 
         # Dispatch to specific handler
+        # Note: "stop" event now contains title/summary from bridge hook (single enriched event)
         if context.event_type == "session_start":
             await self._handle_claude_session_start(context)
         elif context.event_type == "stop":
             await self._handle_claude_stop(context)
         elif context.event_type == "notification":
             await self._handle_notification(context)
-        elif context.event_type == "summary":
-            await self._handle_summary(context)
         elif context.event_type == "title_update":
             await self._handle_title_update(context)
 
@@ -559,27 +559,83 @@ class UiAdapter(BaseAdapter):
         )
 
     async def _handle_claude_stop(self, context: ClaudeEventContext) -> None:
-        """Handle stop event - Claude Code session stopped.
+        """Handle stop event - Claude Code session stopped (enriched with title/summary).
 
-        Checks for registered listeners and notifies callers via tmux injection.
-        Listeners are one-shot (removed after firing).
+        This is the SINGLE event that handles everything:
+        1. Notify local listeners (AI-to-AI on same computer)
+        2. Forward to remote initiator (AI-to-AI across computers)
+        3. Send summary feedback to Telegram
+        4. Update session title in DB
 
-        For remote-initiated sessions (AI-to-AI), forwards the stop event to the
-        initiator's computer so their listener can fire.
-
-        Note: Title update and summary notification come via separate 'summary' event.
+        The bridge hook runs the summarizer BEFORE sending this event, so all data
+        (title, summary) is already included in context.data.
 
         Args:
-            context: Typed Claude event context
+            context: Typed Claude event context with optional title/summary
         """
-        logger.debug("Claude stop event for session %s", context.session_id[:8])
+        session_id = context.session_id
+        title = str(context.data.get("title", "")) if context.data.get("title") else None
+        summary = str(context.data.get("summary", "")) if context.data.get("summary") else None
 
-        # Check for local listeners and notify callers
-        await self._notify_session_listener(context.session_id)
+        logger.debug(
+            "Claude stop event for session %s (title: %s, summary: %s)",
+            session_id[:8],
+            title[:20] if title else "none",
+            summary[:20] if summary else "none",
+        )
 
-        # For remote-initiated sessions, forward stop event to the initiator's computer
-        # This allows the caller's listener to fire even though we're on a different machine
-        await self._forward_stop_to_initiator(context.session_id)
+        # 1. Check for local listeners and notify callers
+        await self._notify_session_listener(session_id)
+
+        # 2. For remote-initiated sessions, forward stop event to the initiator's computer
+        await self._forward_stop_to_initiator(session_id, title=title)
+
+        # 3. Send summary as non-persistent feedback to Telegram (if available)
+        if summary:
+            session = await self._get_session(session_id)
+            await self.send_feedback(session, summary, MessageMetadata(), persistent=False)
+            logger.debug("Sent summary for session %s: %s", session_id[:8], summary[:50])
+
+        # 4. Update session title in DB if provided
+        if title:
+            await self._update_session_title(session_id, title)
+
+    async def _update_session_title(self, session_id: str, title: str) -> None:
+        """Update session title in DB from AI-generated title.
+
+        Only updates if the current title still has the default "New session" description.
+        This ensures we only set the title once and don't overwrite user customizations.
+
+        Args:
+            session_id: Session to update
+            title: New title from summarizer
+        """
+        session = await self._get_session(session_id)
+
+        # Only update if title still has default "New session" or "New session (N)" description
+        if not re.search(r"New session( \(\d+\))?$", session.title):
+            logger.debug(
+                "Session %s already has custom title, skipping update: %s",
+                session_id[:8],
+                session.title,
+            )
+            return
+
+        # Parse current title and replace description part
+        title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
+        match = re.match(title_pattern, session.title)
+
+        if match:
+            new_title = f"{match.group(1)}{title}"
+            # Update DB - this triggers SESSION_UPDATED which calls update_channel_title
+            await db.update_session(session_id, title=new_title)
+            logger.info("Updated session title in DB for %s: %s", session_id[:8], new_title)
+        else:
+            logger.warning(
+                "Session %s title doesn't match expected format: %s. Skipping title update.",
+                session_id[:8],
+                session.title,
+            )
 
     async def _handle_title_update(self, context: ClaudeEventContext) -> None:
         """Handle title_update event - update channel title from AI-generated title.
@@ -652,48 +708,6 @@ class UiAdapter(BaseAdapter):
         await db.set_notification_flag(session_id, True)
 
         logger.debug("Sent notification for session %s: %s", session_id[:8], str(message)[:50])
-
-    async def _handle_summary(self, context: ClaudeEventContext) -> None:
-        """Handle summary event - send summary notification and update title.
-
-        Args:
-            context: Typed Claude event context with summary and title in data
-        """
-        session_id = context.session_id
-        summary = context.data.get("summary")
-        title = context.data.get("title")
-
-        session = await self._get_session(session_id)
-
-        # Send summary as non-persistent feedback (cleans up previous notifications)
-        if summary:
-            await self.send_feedback(session, str(summary), MessageMetadata(), persistent=False)
-            logger.debug("Sent summary for session %s: %s", session_id[:8], str(summary)[:50])
-
-        # Update session title in DB if provided (triggers SESSION_UPDATED event)
-        # Only update if title still has default "New session" or "New session (N)" description
-        if title and re.search(r"New session( \(\d+\))?$", session.title):
-            # Parse current title and replace description part
-            title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
-            match = re.match(title_pattern, session.title)
-
-            if match:
-                new_title = f"{match.group(1)}{title}"
-                # Update DB - this triggers SESSION_UPDATED which calls update_channel_title
-                await db.update_session(session_id, title=new_title)
-                logger.info("Updated session title in DB for %s: %s", session_id[:8], new_title)
-            else:
-                logger.warning(
-                    "Session %s title doesn't match expected format: %s. Skipping title update.",
-                    session_id[:8],
-                    session.title,
-                )
-        elif title:
-            logger.debug(
-                "Session %s already has custom title, skipping update: %s",
-                session_id[:8],
-                session.title,
-            )
 
     async def _extract_claude_title(self, session_file_path: str) -> Optional[str]:
         """Extract AI-generated title from Claude session file.
@@ -780,7 +794,7 @@ class UiAdapter(BaseAdapter):
                     error,
                 )
 
-    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+    async def _forward_stop_to_initiator(self, session_id: str, *, title: str | None = None) -> None:
         """Forward stop event to the initiator's computer for remote-initiated sessions.
 
         For AI-to-AI sessions started via teleclaude__start_session, the session's
@@ -789,6 +803,7 @@ class UiAdapter(BaseAdapter):
 
         Args:
             session_id: The session that just stopped
+            title: Optional title from summarizer to include in notification
         """
         session = await db.get_session(session_id)
         if not session:
@@ -812,11 +827,17 @@ class UiAdapter(BaseAdapter):
         )
 
         # Send stop_notification command to initiator's computer
-        # The command includes the session_id and source computer so the initiator can fire their listener
+        # The command includes the session_id, source computer, and optional title
+        # Title is base64-encoded to safely pass through command parsing (may contain spaces)
+        title_arg = ""
+        if title:
+            title_b64 = base64.b64encode(title.encode()).decode()
+            title_arg = f" {title_b64}"
+
         try:
             await self.client.send_request(
                 computer_name=initiator_computer,
-                command=f"/stop_notification {session_id} {config.computer.name}",
+                command=f"/stop_notification {session_id} {config.computer.name}{title_arg}",
                 metadata=MessageMetadata(),
             )
         except Exception as e:

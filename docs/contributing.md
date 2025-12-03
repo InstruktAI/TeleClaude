@@ -89,7 +89,16 @@ When adding a new command to the Telegram bot, you MUST follow ALL these steps:
 
 5. **Implement daemon handler** in `daemon.py`
 
-6. **Update help text** in `_handle_help()` method
+6. **Add to UiCommands** in `teleclaude/core/events.py`:
+
+   ```python
+   UiCommands = {
+       # ... existing commands
+       "command_name": "Description of what this command does",
+   }
+   ```
+
+   ⚠️ **NOTE**: Help text is dynamically generated from `UiCommands` - no need to edit `_handle_help()`!
 
 ### Using Inline Keyboards for User Selections
 
@@ -213,40 +222,15 @@ To add features that use configuration values (like `trusted_dirs`):
 
 ## Code Standards
 
-### Type Safety
+See global directives (automatically loaded for all projects):
+- `~/.claude/docs/development/coding-directives.md`
+- `~/.claude/docs/development/testing-directives.md`
 
-- All functions must have type hints (enforced by mypy)
-- Use `Optional[T]` for nullable types
-- Use `List[T]`, `Dict[K, V]` from `typing` (Python 3.11)
-
-### Async/Await
-
-- All I/O operations are async (database, network, subprocess)
-- Use `asyncio.create_subprocess_exec()` for shell commands
-- Use `aiosqlite` for database operations
-- Proper cleanup with `async with` or explicit `close()`
-
-### Error Handling
-
-- Use `try/except` for recoverable errors (network, API failures)
-- Log errors with `logger.error()` including context
-- Return success boolean for operations that can fail
-- Retry once for transient failures (Telegram API, Whisper)
-
-### Testing
-
-Before reporting completion of ANY code change:
-
-1. Add proper test case in `tests/unit/` or `tests/integration/`
-2. Run `make test` to verify tests pass
-3. Only report "Done" after automated tests pass
-4. ❌ **NEVER rely on manual inspection** - write automated tests instead
-
-### Linting and Formatting
+### Quick Reference
 
 - Run `make format` before committing (isort + black)
 - Run `make lint` to check for issues (pylint + mypy)
-- Address all warnings (except disabled checks in pyproject.toml)
+- Run `make test` to verify tests pass
 
 ---
 

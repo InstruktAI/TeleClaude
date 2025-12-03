@@ -1642,35 +1642,25 @@ Current size: {current_size}
                 self._topic_message_cache[topic_id].pop(0)
 
     async def _handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /help command."""
+        """Handle /help command - dynamically generates from UiCommands."""
         user = update.effective_user
         if not user or user.id not in self.user_whitelist:
             return
 
-        help_text = """TeleClaude Bot Commands:
+        # Build command list from UiCommands (sorted alphabetically)
+        cmd_lines = [f"/{cmd} - {desc}" for cmd, desc in sorted(UiCommands.items())]
+        commands_text = "\n".join(cmd_lines)
 
-/new_session [title] - Create a new terminal session
-/cancel - Send CTRL+C to interrupt current command
-/cancel2x - Send CTRL+C twice (for Claude Code, etc.)
-/escape - Send ESC key (exit Vim insert mode, etc.)
-/escape2x - Send ESC twice (for nested Vim, etc.)
-/ctrl <key> - Send CTRL+key (e.g., /ctrl d for CTRL+D, /ctrl z for CTRL+Z)
-/resize <size> - Resize terminal (shows presets if no size)
-/rename <name> - Rename current session
-/cd [path] - List trusted directories or change to specified path
-/claude - Start Claude Code (cc)
-/help - Show this help message
+        help_text = f"""TeleClaude Bot Commands:
+
+{commands_text}
 
 Usage:
 1. Use /new_session to create a terminal session
 2. Send text messages in the session topic to execute commands
 3. Use /cancel to interrupt a running command
-4. Use /cancel2x for stubborn programs (Claude Code)
-5. Use /escape to exit insert mode in Vim
-6. Use /resize to change terminal size
-7. Use /rename to rename the session
-8. Use /claude to start Claude Code
-9. View output in real-time
+4. Use /claude to start Claude Code
+5. View output in real-time
         """
 
         message = update.effective_message

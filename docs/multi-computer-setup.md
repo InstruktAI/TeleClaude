@@ -321,10 +321,14 @@ claude
 > What MCP tools are available?
 
 # You should see:
-- teleclaude__list_computers - List all available TeleClaude computers
-- teleclaude__start_session - Start AI-to-AI session with remote computer
+- teleclaude__list_computers - List all online TeleClaude computers
+- teleclaude__list_projects - List available project directories on a computer
 - teleclaude__list_sessions - List active AI-to-AI sessions
-- teleclaude__send_message - Send message to remote computer session and stream response
+- teleclaude__start_session - Start AI-to-AI session with remote computer
+- teleclaude__send_message - Send message to a session
+- teleclaude__get_session_data - Get session transcript data
+- teleclaude__deploy_to_all_computers - Deploy latest code to all computers
+- teleclaude__send_file - Send a file to a session
 ```
 
 ---
@@ -356,7 +360,7 @@ claude
 2. Macbook's MCP server creates Telegram topic: `$macbook > $workstation - Check disk usage`
 3. Macbook sends `/claude_resume` to wake Claude Code on workstation
 4. Workstation's daemon sees message, starts Claude Code in tmux
-5. Macbook calls `teleclaude__send(session_id, "df -h")`
+5. Macbook calls `teleclaude__send_message(session_id, "df -h")`
 6. Workstation executes command, streams output back via Telegram
 7. Macbook's MCP server yields chunks to Claude Code
 8. Claude Code displays the disk usage from workstation
@@ -450,7 +454,7 @@ In your supergroup, you'll see:
 
 ### Streaming Timeout
 
-**Problem**: `teleclaude__send` times out waiting for response.
+**Problem**: `teleclaude__send_message` times out waiting for response.
 
 **Solutions**:
 
