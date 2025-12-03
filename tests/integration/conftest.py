@@ -375,7 +375,14 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     created_sessions = set()
     session_outputs: dict[str, list[str]] = {}  # Track output per session
 
-    async def mock_create_tmux(name: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: str = None):
+    async def mock_create_tmux(
+        name: str,
+        working_dir: str,
+        cols: int = 80,
+        rows: int = 24,
+        session_id: str = None,
+        env_vars: dict = None,
+    ):
         """Mock create_tmux_session with same signature as real function."""
         created_sessions.add(name)
         session_outputs[name] = []  # Initialize empty output buffer

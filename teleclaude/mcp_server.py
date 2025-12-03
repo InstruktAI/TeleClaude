@@ -63,6 +63,31 @@ class TeleClaudeMCPServer:
         """
         return computer in ("local", self.computer_name)
 
+    async def _maybe_register_listener(self, target_session_id: str) -> None:
+        """Register caller as listener for target session's stop event if possible.
+
+        Called on any contact with a session (start, send_message, get_session_data)
+        so observers who tap in later also receive stop notifications.
+
+        Args:
+            target_session_id: The session to listen to
+        """
+        caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID")
+        if not caller_session_id:
+            return
+
+        try:
+            caller_session = await db.get_session(caller_session_id)
+            if caller_session:
+                register_listener(
+                    target_session_id=target_session_id,
+                    caller_session_id=caller_session_id,
+                    caller_tmux_session=caller_session.tmux_session_name,
+                )
+        except RuntimeError:
+            # Database not initialized (e.g., in tests)
+            pass
+
     def _setup_tools(self) -> None:
         """Register MCP tools with the server."""
 
@@ -222,7 +247,7 @@ class TeleClaudeMCPServer:
                     description=(
                         "Retrieve session data from a remote computer's Claude Code session. "
                         "Reads from the claude_session_file which contains complete session history. "
-                        "Optionally filter by timestamp to get only recent messages. "
+                        "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
                         "**Use this to check on delegated work** after teleclaude__send_message. "
                         "**Replaces**: teleclaude__get_session_status (use this instead for new code)"
                     ),
@@ -243,6 +268,21 @@ class TeleClaudeMCPServer:
                                     "Optional ISO 8601 UTC timestamp. "
                                     "Returns only messages since this time. "
                                     "Example: '2025-11-28T10:30:00Z'"
+                                ),
+                            },
+                            "until_timestamp": {
+                                "type": "string",
+                                "description": (
+                                    "Optional ISO 8601 UTC timestamp. "
+                                    "Returns only messages until this time. "
+                                    "Use with since_timestamp to get a time window."
+                                ),
+                            },
+                            "tail_chars": {
+                                "type": "integer",
+                                "description": (
+                                    "Max characters to return from end of transcript. "
+                                    "Default: 5000. Set to 0 for unlimited (full transcript)."
                                 ),
                             },
                         },
@@ -350,9 +390,7 @@ class TeleClaudeMCPServer:
                 message = str(arguments["message"])
                 # Optional: caller_session_id for completion notifications
                 caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
-                result = await self.teleclaude__start_session(
-                    computer, project_dir, title, message, caller_session_id
-                )
+                result = await self.teleclaude__start_session(computer, project_dir, title, message, caller_session_id)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
@@ -370,7 +408,13 @@ class TeleClaudeMCPServer:
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 since_timestamp_obj = arguments.get("since_timestamp") if arguments else None
                 since_timestamp = str(since_timestamp_obj) if since_timestamp_obj else None
-                result = await self.teleclaude__get_session_data(computer, session_id, since_timestamp)
+                until_timestamp_obj = arguments.get("until_timestamp") if arguments else None
+                until_timestamp = str(until_timestamp_obj) if until_timestamp_obj else None
+                tail_chars_obj = arguments.get("tail_chars") if arguments else None
+                tail_chars = int(tail_chars_obj) if tail_chars_obj is not None else 5000
+                result = await self.teleclaude__get_session_data(
+                    computer, session_id, since_timestamp, until_timestamp, tail_chars
+                )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__deploy_to_all_computers":
                 # No arguments - always deploys to ALL computers
@@ -639,18 +683,7 @@ class TeleClaudeMCPServer:
         prefixed_message = f"AI[local:{effective_caller_id}] | {message}"
 
         # Register listener so we get notified when target session stops
-        if effective_caller_id != "unknown":
-            try:
-                caller_session = await db.get_session(effective_caller_id)
-                if caller_session:
-                    register_listener(
-                        target_session_id=session_id,
-                        caller_session_id=effective_caller_id,
-                        caller_tmux_session=caller_session.tmux_session_name,
-                    )
-            except RuntimeError:
-                # Database not initialized (e.g., in tests)
-                pass
+        await self._maybe_register_listener(session_id)
 
         # Send /claude command with prefixed message to start Claude Code
         await self.client.handle_event(
@@ -906,6 +939,9 @@ class TeleClaudeMCPServer:
             str: Acknowledgment message with reply instructions
         """
         try:
+            # Register as listener so we get notified when target session stops
+            await self._maybe_register_listener(session_id)
+
             # Get caller's session_id from environment (set by TeleClaude when spawning Claude Code)
             caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
@@ -947,6 +983,8 @@ class TeleClaudeMCPServer:
         computer: str,
         session_id: str,
         since_timestamp: Optional[str] = None,
+        until_timestamp: Optional[str] = None,
+        tail_chars: int = 5000,
     ) -> dict[str, object]:
         """Get session data from local or remote computer.
 
@@ -956,54 +994,71 @@ class TeleClaudeMCPServer:
         Args:
             computer: Target computer name (or "local"/self.computer_name)
             session_id: Session ID on target computer
-            since_timestamp: Optional ISO 8601 UTC timestamp
+            since_timestamp: Optional ISO 8601 UTC start filter
+            until_timestamp: Optional ISO 8601 UTC end filter
+            tail_chars: Max chars to return (default 5000, 0 for unlimited)
 
         Returns:
             Dict with session data, status, and messages
         """
+        # Register as listener so we get notified when target session stops
+        await self._maybe_register_listener(session_id)
+
         if self._is_local_computer(computer):
-            return await self._get_local_session_data(session_id, since_timestamp)
-        return await self._get_remote_session_data(computer, session_id, since_timestamp)
+            return await self._get_local_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
+        return await self._get_remote_session_data(computer, session_id, since_timestamp, until_timestamp, tail_chars)
 
     async def _get_local_session_data(
         self,
         session_id: str,
         since_timestamp: Optional[str] = None,
+        until_timestamp: Optional[str] = None,
+        tail_chars: int = 5000,
     ) -> dict[str, object]:
         """Get session data from local computer directly.
 
         Args:
             session_id: Session ID
-            since_timestamp: Optional ISO 8601 UTC timestamp
+            since_timestamp: Optional ISO 8601 UTC start filter
+            until_timestamp: Optional ISO 8601 UTC end filter
+            tail_chars: Max chars to return (default 5000, 0 for unlimited)
 
         Returns:
             Dict with session data, status, and messages
         """
         # Create context for the handler
-        args = [since_timestamp] if since_timestamp else []
-        context = CommandEventContext(session_id=session_id, args=args)
+        context = CommandEventContext(session_id=session_id, args=[])
 
-        # Call handler directly
-        return await command_handlers.handle_get_session_data(context, args)
+        # Call handler directly with all params
+        return await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
 
     async def _get_remote_session_data(
         self,
         computer: str,
         session_id: str,
         since_timestamp: Optional[str] = None,
+        until_timestamp: Optional[str] = None,
+        tail_chars: int = 5000,
     ) -> dict[str, object]:
         """Get session data from remote computer via Redis.
 
         Args:
             computer: Target computer name
             session_id: Session ID on remote computer
-            since_timestamp: Optional ISO 8601 UTC timestamp
+            since_timestamp: Optional ISO 8601 UTC start filter
+            until_timestamp: Optional ISO 8601 UTC end filter
+            tail_chars: Max chars to return (default 5000, 0 for unlimited)
 
         Returns:
             Dict with session data, status, and messages
         """
-        # Build command with optional timestamp
-        command = f"/get_session_data {since_timestamp}" if since_timestamp else "/get_session_data"
+        # Build command with optional params (space-separated for parsing)
+        # Format: /get_session_data [since_timestamp] [until_timestamp] [tail_chars]
+        params = []
+        params.append(since_timestamp or "")
+        params.append(until_timestamp or "")
+        params.append(str(tail_chars))
+        command = f"/get_session_data {' '.join(params)}"
 
         # Send request to remote computer
         # Transport layer generates request_id from Redis message ID

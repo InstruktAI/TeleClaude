@@ -1679,12 +1679,16 @@ Usage:
             return
 
         # Strip leading // and replace with / (Telegram workaround - only at start of input)
+        # Double slash bypasses Telegram command detection AND skips HUMAN: prefix
+        # so the raw command goes directly to Claude Code
+        skip_human_prefix = False
         if text.startswith("//"):
             text = "/" + text[2:]
-            logger.debug("Stripped leading // from user input, result: %s", text[:50])
+            skip_human_prefix = True
+            logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
 
-        # Format with HUMAN: prefix (from UIAdapter base class)
-        formatted_text = self.format_user_input(text)
+        # Format with HUMAN: prefix unless bypassed via // prefix
+        formatted_text = text if skip_human_prefix else self.format_user_input(text)
 
         await self.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,

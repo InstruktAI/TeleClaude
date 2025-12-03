@@ -337,17 +337,21 @@ async def handle_get_computer_info() -> dict[str, object]:
 
 async def handle_get_session_data(
     context: EventContext,
-    args: list[str],
+    since_timestamp: Optional[str] = None,
+    until_timestamp: Optional[str] = None,
+    tail_chars: int = 5000,
 ) -> dict[str, object]:
     """Get session data from claude_session_file.
 
     Reads the Claude Code session file (JSONL format) and parses to markdown.
     Uses same parsing as download functionality for consistent formatting.
-    Optionally filters by timestamp.
+    Supports timestamp filtering and character limit.
 
     Args:
         context: Command context with session_id
-        args: Optional timestamp filter (ISO 8601 UTC)
+        since_timestamp: Optional ISO 8601 UTC start filter
+        until_timestamp: Optional ISO 8601 UTC end filter
+        tail_chars: Max chars to return (default 5000, 0 for unlimited)
 
     Returns:
         Dict with session data and markdown-formatted messages
@@ -377,21 +381,19 @@ async def handle_get_session_data(
         logger.error("Claude session file does not exist: %s", claude_session_file)
         return {"status": "error", "error": "Session file does not exist"}
 
-    # Parse optional timestamp filter from args
-    since_timestamp = args[0] if args else None
-
-    # Parse Claude transcript to markdown (same as download functionality)
+    # Parse Claude transcript to markdown with filtering
     try:
-        markdown_content = parse_claude_transcript(str(claude_session_file), session.title)
+        markdown_content = parse_claude_transcript(
+            str(claude_session_file),
+            session.title,
+            since_timestamp=since_timestamp,
+            until_timestamp=until_timestamp,
+            tail_chars=tail_chars,
+        )
         logger.info("Parsed %d bytes of markdown for session %s", len(markdown_content), session_id[:8])
     except Exception as e:
         logger.error("Failed to parse session file %s: %s", claude_session_file, e)
         return {"status": "error", "error": f"Failed to parse session file: {e}"}
-
-    # TODO: Implement timestamp filtering for markdown content
-    # For now, return full markdown (timestamp filtering would need to filter JSONL first)
-    if since_timestamp:
-        logger.warning("Timestamp filtering not yet implemented for markdown output")
 
     return {
         "status": "success",

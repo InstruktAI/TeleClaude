@@ -805,7 +805,11 @@ class TeleClaudeDaemon:
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects()
         elif command == TeleClaudeEvents.GET_SESSION_DATA:
-            return await command_handlers.handle_get_session_data(context, args)
+            # Parse args: [since_timestamp, until_timestamp, tail_chars]
+            since_timestamp = args[0] if len(args) > 0 and args[0] else None
+            until_timestamp = args[1] if len(args) > 1 and args[1] else None
+            tail_chars = int(args[2]) if len(args) > 2 and args[2] else 5000
+            return await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
             logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
             result = await command_handlers.handle_get_computer_info()
