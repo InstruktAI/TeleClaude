@@ -53,6 +53,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - You MUST ask the user to restart the Claude Code session
 - If MCP tools return empty/stale results after restart, ask user: "The MCP connection was lost during daemon restart. Please restart this Claude Code session to reconnect."
 
+### Rule #3: AI-TO-AI COLLABORATION PROTOCOL
+
+**CRITICAL**: Messages from other AIs are prefixed with sender identification. You MUST reply back.
+
+**Message Format:**
+
+```
+AI[computer:session_id] | message content here
+```
+
+- `computer` - The sender's computer name (where to send your reply)
+- `session_id` - The sender's session ID (which session to reply to)
+- `|` - Separator between header and message
+- `message` - The actual request/content
+
+**When you receive a message starting with `AI[...]`:**
+
+1. **Recognize it's from another AI**, not a human
+2. **Parse the header** to extract `computer` and `session_id`
+3. **Complete the requested task**
+4. **ALWAYS reply back** using `teleclaude__send_message(computer, session_id, your_response)`
+
+**Example:**
+
+You receive:
+```
+AI[RasPi:abc123-def456] | Please run the test suite and summarize failures
+```
+
+After completing the task, you MUST reply:
+```python
+teleclaude__send_message(
+    computer="RasPi",
+    session_id="abc123-def456",
+    message="All 42 tests passed. No failures detected."
+)
+```
+
+**Why this matters:**
+
+- The calling AI is waiting for your response
+- Without a reply, they're left polling `get_session_data` indefinitely
+- Two-way communication enables true AI collaboration
+- You become peers that can delegate work to each other
+
+**NEVER ignore an AI[...] prefixed message without replying!**
+
 ## Essential Development Workflow
 
 ### Normal Development Cycle

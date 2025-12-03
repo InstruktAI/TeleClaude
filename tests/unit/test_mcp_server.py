@@ -130,6 +130,35 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
 
 
 @pytest.mark.asyncio
+async def test_teleclaude_send_message_adds_ai_prefix(mock_mcp_server):
+    """Test that send_message adds AI-to-AI protocol prefix with sender info."""
+    server = mock_mcp_server
+
+    server.client.handle_event = AsyncMock(return_value=None)
+
+    # Set caller's session_id in environment
+    with patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "caller-session-abc"}):
+        chunks = []
+        async for chunk in server.teleclaude__send_message(
+            computer="local", session_id="target-session-123", message="run tests"
+        ):
+            chunks.append(chunk)
+
+    # Verify handle_event was called with prefixed message
+    server.client.handle_event.assert_called_once()
+    call_args = server.client.handle_event.call_args
+
+    # Extract the event_data from the call
+    event_data = call_args[0][1]  # Second positional arg is event_data
+    message_text = event_data["text"]
+
+    # Verify AI prefix format: AI[computer:session_id] | message
+    assert message_text.startswith("AI[TestComputer:caller-session-abc]")
+    assert " | " in message_text
+    assert "run tests" in message_text
+
+
+@pytest.mark.asyncio
 async def test_teleclaude_handle_claude_event_sends_to_session(mock_mcp_server):
     """Test that handle_claude_event sends event to session."""
     server = mock_mcp_server

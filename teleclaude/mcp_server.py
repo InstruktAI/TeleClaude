@@ -182,11 +182,13 @@ class TeleClaudeMCPServer:
                     name="teleclaude__send_message",
                     title="TeleClaude: Send Message",
                     description=(
-                        "Send message to an existing Claude Code session. "
-                        "After calling this tool, wait a few seconds then use teleclaude__get_session_data "
-                        "to retrieve the session output and see the response. "
-                        "Use teleclaude__list_sessions to find session_id or "
-                        "teleclaude__start_session to create new one."
+                        "Send message to an existing Claude Code session with AI-to-AI protocol. "
+                        "Messages are automatically prefixed with sender identification (AI[computer:session_id]) "
+                        "so the receiving AI knows to reply back. After calling this tool, wait a few seconds "
+                        "then use teleclaude__get_session_data to retrieve the response. "
+                        "**IMPORTANT**: Also use this tool to REPLY when you receive a message prefixed with "
+                        "'AI[computer:session_id] |' - extract the computer and session_id from the prefix "
+                        "and send your response back. This enables two-way AI collaboration."
                     ),
                     inputSchema={
                         "type": "object",
@@ -807,37 +809,51 @@ class TeleClaudeMCPServer:
         return all_sessions
 
     async def teleclaude__send_message(self, computer: str, session_id: str, message: str) -> AsyncIterator[str]:
-        """Send message to session via request/response pattern.
+        """Send message to session with AI-to-AI protocol prefix.
+
+        Automatically prefixes messages with sender identification so receiving AI
+        can reply back. Format: AI[sender_computer:sender_session] | message
 
         For local computer: Sends message directly via handle_event.
         For remote computers: Sends via Redis transport.
 
         Args:
             computer: Target computer name (or "local"/self.computer_name)
-            session_id: Session ID (from teleclaude__start_session)
+            session_id: Target session ID (from teleclaude__start_session)
             message: Message/command to send to Claude Code
 
         Yields:
-            str: Acknowledgment message
+            str: Acknowledgment message with reply instructions
         """
         try:
+            # Get caller's session_id from environment (set by TeleClaude when spawning Claude Code)
+            caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+
+            # Build AI-to-AI protocol prefix
+            # Format: AI[computer:session_id] | message
+            prefixed_message = f"AI[{self.computer_name}:{caller_session_id}] | {message}"
+
             if self._is_local_computer(computer):
                 # Local session - send directly via handle_event
                 await self.client.handle_event(
                     TeleClaudeEvents.MESSAGE,
-                    {"session_id": session_id, "args": [], "text": message},
+                    {"session_id": session_id, "args": [], "text": prefixed_message},
                     MessageMetadata(adapter_type="mcp"),
                 )
             else:
                 # Remote session - send via Redis transport
                 await self.client.send_request(
                     computer_name=computer,
-                    command=f"message {message}",
+                    command=f"message {prefixed_message}",
                     session_id=session_id,
                     metadata=MessageMetadata(),
                 )
 
-            yield f"Message sent to session {session_id[:8]}. Use teleclaude__get_session_data to check output."
+            yield (
+                f"Message sent to session {session_id[:8]} on {computer}. "
+                f"The receiving AI will see your sender info and can reply back. "
+                f"Use teleclaude__get_session_data to check for responses."
+            )
 
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
