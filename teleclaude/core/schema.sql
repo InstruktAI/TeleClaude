@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     working_directory TEXT DEFAULT '~',
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
     ux_state TEXT,  -- JSON blob: {output_message_id, idle_notification_message_id, polling_active, claude_session_file, ...}
+    initiated_by_ai BOOLEAN DEFAULT 0,  -- 0 = human-initiated (Opus), 1 = AI-initiated (Sonnet)
     UNIQUE(computer_name, tmux_session_name)
 );
 

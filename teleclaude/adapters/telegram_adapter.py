@@ -290,10 +290,10 @@ class TelegramAdapter(UiAdapter):
         )
 
         # Handle file attachments (documents, photos, etc.) in topics - both new and edited
+        # NOTE: Do NOT add filters.ChatType.SUPERGROUP - it doesn't match forum topic messages (Telegram quirk)
         self.app.add_handler(
             MessageHandler(
                 (filters.Document.ALL | filters.PHOTO)
-                & filters.ChatType.SUPERGROUP
                 & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
                 self._handle_file_attachment,
             )

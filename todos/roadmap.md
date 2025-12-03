@@ -5,97 +5,26 @@
 
 ---
 
-## Critical Issues
+## AI Model Usage
 
-### [ ] Observer Adapter Input Delivery
+We hit model API rate limits frequently, causing delays and failures. To mitigate this, we plan to implement dynamic model selection based on availability and cost.
 
-**Problem**: When user sends message in Telegram to an AI-started session, input is NOT delivered to tmux terminal.
+For now we will follow the following paradigm:
 
-**Root Cause**: Session started via Redis adapter (initiator), Telegram registered as observer. Message routing doesn't reach terminal for observer adapters.
+1. human talks to Claude Opus
+2. the AI acts as master to AI sessions it spawns, so those can just get the Sonnet model.
 
-**Files**: `telegram_adapter.py`, `adapter_client.py`, `terminal_bridge.py`
+This way we already have some spread over models, helping against rate limiting.
 
----
+So settle for CLaude Code sessions to be started with the `--model` flag, but ONLY when initiated from an AI via `teleclaude__start_session`.
 
-### [ ] AI-to-AI MCP Tools Availability
+So we need to append the `--model=sonnet` part at the right place in the command line args.
 
-**Problem**: Most projects don't have TeleClaude MCP tools configured, so receiving AIs can't reply via protocol.
+Another thing we have to get right is in restart_claude.py to detect wether its an AI session so its appends it there as well. Maybe we have to keep a special field in the session DB for that: `initiated_by_ai: bool`. Yes, that is imperative.
 
-**Solution**: Configure TeleClaude MCP at user level (`~/.claude/settings.json`) for global availability.
+### [>] add --model flag to AI calls
 
----
-
-## Architecture Simplification
-
-### [ ] Remove AI Session Branching in Polling Coordinator
-
-**Goal**: Replace `if is_ai_session:` branching with unified `send_output_update()` for ALL sessions.
-
-**Changes**:
-- Remove `_is_ai_to_ai_session()` function
-- Remove `_send_output_chunks_ai_mode()` function
-- Single code path for all session types
-
-**Benefit**: 30% reduction in polling coordinator complexity.
-
----
-
-### [ ] Architecture Cleanup
-
-- Remove deprecated `teleclaude__get_session_status` MCP tool
-- Update docs/architecture.md
-- Remove unused Redis streaming configuration
-
----
-
-## UX Improvements
-
-### [ ] Live Claude Output Updates in Telegram
-
-**Goal**: Poll `claude_session_file` instead of tmux for Claude sessions to show real-time output.
-
-**Prerequisites**: Unified adapter architecture stable.
-
----
-
-### [ ] Timestamp Filtering for Session Data
-
-**Location**: `teleclaude/core/command_handlers.py:375`
-
-Filter session file content by timestamp to return only recent messages.
-
----
-
-## Technical Debt
-
-### [ ] Orphan Session Cleanup Automation
-
-Automate cleanup of orphan tmux sessions and database entries on startup and periodically.
-
----
-
-### [ ] Test Coverage Expansion
-
-**Status**: 79 test stubs created across 9 modules (see `todos/missing-tests.md`).
-
-Priority order:
-1. `test_command_handlers.py` (16 tests)
-2. `test_mcp_server.py` (9 tests)
-3. `test_redis_adapter.py` (6 tests)
-
----
-
-## Feature Requests
-
-### [ ] Interactive next-requirements Command
-
-Make the command aid in establishing requirements interactively until user is satisfied.
-
----
-
-### [ ] New Dev Project from Scaffolding
-
-Create feature to start new projects from example scaffolding (tooling only, not source code).
+Create `todos/ai-model-selector.md` with full specification, message format, example flows.
 
 ---
 
@@ -104,14 +33,3 @@ Create feature to start new projects from example scaffolding (tooling only, not
 ### [ ] AI-to-AI Protocol Documentation
 
 Create `docs/ai-to-ai-protocol.md` with full specification, message format, example flows.
-
----
-
-## Priority Order
-
-1. **CRITICAL**: Observer Adapter Input Delivery
-2. **CRITICAL**: AI-to-AI MCP Tools Availability
-3. **HIGH**: Remove AI Session Branching
-4. **MEDIUM**: Live Claude Output Updates
-5. **MEDIUM**: Test Coverage Expansion
-6. **LOW**: Feature Requests & Documentation

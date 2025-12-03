@@ -207,6 +207,7 @@ class Session:
     working_directory: str = "~"
     description: Optional[str] = None
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
+    initiated_by_ai: bool = False  # True if session was created via AI-to-AI (uses Sonnet model)
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
@@ -265,6 +266,10 @@ class Session:
         if "closed" in data and isinstance(data["closed"], int):
             data["closed"] = bool(data["closed"])
 
+        # Convert initiated_by_ai from SQLite integer (0/1) to Python bool
+        if "initiated_by_ai" in data and isinstance(data["initiated_by_ai"], int):
+            data["initiated_by_ai"] = bool(data["initiated_by_ai"])
+
         # Filter to only Session's known fields (handles schema evolution/deprecated columns)
         known_fields = {
             "session_id",
@@ -280,6 +285,7 @@ class Session:
             "working_directory",
             "description",
             "ux_state",
+            "initiated_by_ai",
         }
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
 
