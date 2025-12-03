@@ -90,6 +90,19 @@ In that case, use `teleclaude__send_message` to report progress, then continue y
 - No manual callback needed - just complete your task
 - For long work, periodic status updates help the caller know you're still working
 
+**Session lifecycle management tools:**
+
+When orchestrating multiple AI workers, the master AI can manage session lifecycles:
+
+- `teleclaude__stop_notifications(computer, session_id)` - Stop receiving events from a session without ending it. Use when you're done monitoring a completed worker.
+- `teleclaude__end_session(computer, session_id)` - Gracefully terminate a session (kills tmux, marks closed, cleans up resources). Use when a worker has filled its context or needs replacement.
+
+**Context exhaustion pattern:**
+1. Monitor worker's context usage via `get_session_data`
+2. When worker nears capacity, ask it to document findings
+3. Call `end_session` to terminate gracefully
+4. Start fresh session for continued work
+
 ## Essential Development Workflow
 
 ### Normal Development Cycle

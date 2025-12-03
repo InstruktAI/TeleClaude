@@ -327,6 +327,8 @@ claude
 - teleclaude__start_session - Start AI-to-AI session with remote computer
 - teleclaude__send_message - Send message to a session
 - teleclaude__get_session_data - Get session transcript data
+- teleclaude__stop_notifications - Unsubscribe from session events without ending it
+- teleclaude__end_session - Gracefully terminate a session
 - teleclaude__deploy_to_all_computers - Deploy latest code to all computers
 - teleclaude__send_file - Send a file to a session
 ```

@@ -255,7 +255,17 @@ graph TB
 
 **AI-to-AI communication via unified adapter architecture**
 
-- Exposes MCP tools for Claude Code integration (`teleclaude__start_session`, `teleclaude__send_message`, `teleclaude__get_session_data`)
+- Exposes MCP tools for Claude Code integration:
+  - `teleclaude__list_computers` - List online computers
+  - `teleclaude__list_projects` - List project directories
+  - `teleclaude__list_sessions` - List active sessions
+  - `teleclaude__start_session` - Start AI-to-AI session
+  - `teleclaude__send_message` - Send message to session
+  - `teleclaude__get_session_data` - Get session transcript
+  - `teleclaude__stop_notifications` - Unsubscribe from session events
+  - `teleclaude__end_session` - Gracefully terminate session
+  - `teleclaude__deploy_to_all_computers` - Deploy code everywhere
+  - `teleclaude__send_file` - Send file to session
 - Uses request/response pattern (not streaming) - client pulls data via `get_session_data()`
 - Uses AdapterClient for cross-computer messaging (no direct adapter references)
 - All adapters use same patterns - no special cases for AI-to-AI sessions

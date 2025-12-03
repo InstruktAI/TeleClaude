@@ -335,9 +335,15 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claud
 **Available MCP Tools:**
 
 - `teleclaude__list_computers` - List all online computers in the network
-- `teleclaude__start_session` - Start AI-to-AI session with remote computer
+- `teleclaude__list_projects` - List available project directories on a computer
 - `teleclaude__list_sessions` - List active AI-to-AI sessions
-- `teleclaude__send` - Send command to remote computer and stream response
+- `teleclaude__start_session` - Start AI-to-AI session with remote computer
+- `teleclaude__send_message` - Send message to a session
+- `teleclaude__get_session_data` - Get session transcript data
+- `teleclaude__stop_notifications` - Unsubscribe from session events without ending it
+- `teleclaude__end_session` - Gracefully terminate a session
+- `teleclaude__deploy_to_all_computers` - Deploy latest code to all computers
+- `teleclaude__send_file` - Send a file to a session
 
 **Example Usage:**
 
