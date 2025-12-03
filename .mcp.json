@@ -1,10 +1,8 @@
 {
   "mcpServers": {
     "teleclaude": {
-      "command": "stdio",
-      "args": [],
-      "transport": "unix",
-      "socket": "/tmp/teleclaude.sock"
+      "command": "python3",
+      "args": ["bin/mcp-wrapper.py"]
     }
   }
 }

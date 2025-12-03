@@ -200,14 +200,6 @@ class TeleClaudeMCPServer:
                                     "Session starts immediately processing this message."
                                 ),
                             },
-                            "caller_session_id": {
-                                "type": "string",
-                                "description": (
-                                    "Optional: Caller's TeleClaude session ID for automatic completion notification. "
-                                    "Pass your TELECLAUDE_SESSION_ID env var so you receive a tmux notification when "
-                                    "the target session stops. If not provided, no notification is sent."
-                                ),
-                            },
                         },
                         "required": ["computer", "project_dir", "title", "message"],
                     },
@@ -236,14 +228,6 @@ class TeleClaudeMCPServer:
                             "message": {
                                 "type": "string",
                                 "description": "Message or command to send to Claude Code",
-                            },
-                            "caller_session_id": {
-                                "type": "string",
-                                "description": (
-                                    "Optional: Caller's TeleClaude session ID for AI-to-AI message prefix. "
-                                    "Pass your TELECLAUDE_SESSION_ID env var so the receiving AI knows who sent the message. "
-                                    "If not provided, prefix shows 'unknown'."
-                                ),
                             },
                         },
                         "required": ["computer", "session_id", "message"],
@@ -291,14 +275,6 @@ class TeleClaudeMCPServer:
                                 "description": (
                                     "Max characters to return from end of transcript. "
                                     "Default: 5000. Set to 0 for unlimited (full transcript)."
-                                ),
-                            },
-                            "caller_session_id": {
-                                "type": "string",
-                                "description": (
-                                    "Optional: Caller's TeleClaude session ID for automatic completion notification. "
-                                    "Pass your TELECLAUDE_SESSION_ID env var so you receive a tmux notification when "
-                                    "the target session stops. If not provided, no notification is sent."
                                 ),
                             },
                         },
@@ -377,8 +353,20 @@ class TeleClaudeMCPServer:
 
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent]:
-            """Handle tool calls."""
-            logger.debug("MCP call_tool() invoked: name=%s, arguments=%s", name, arguments)
+            """Handle tool calls.
+
+            Context variables (injected by mcp-wrapper.py from tmux env):
+            - caller_session_id: The calling session's ID for notifications/prefixes
+
+            These are extracted once here and passed to handlers that need them,
+            keeping context handling centralized.
+            """
+            # Extract context (injected by wrapper) - handlers don't need to parse this
+            caller_session_id = str(arguments.pop("caller_session_id")) if arguments.get("caller_session_id") else None
+
+            logger.debug(
+                "MCP call_tool() invoked: name=%s, arguments=%s, caller=%s", name, arguments, caller_session_id
+            )
             if name == "teleclaude__list_computers":
                 # Extract optional filter (currently unused by implementation)
                 # computer_names_obj = arguments.get("computer_names") if arguments else None
@@ -404,8 +392,7 @@ class TeleClaudeMCPServer:
                 project_dir = str(arguments["project_dir"])
                 title = str(arguments["title"])
                 message = str(arguments["message"])
-                # Optional: caller_session_id for completion notifications
-                caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
+                # caller_session_id extracted at top of call_tool for completion notifications
                 result = await self.teleclaude__start_session(computer, project_dir, title, message, caller_session_id)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
@@ -413,8 +400,7 @@ class TeleClaudeMCPServer:
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 message = str(arguments.get("message", "")) if arguments else ""
-                # Optional: caller_session_id for AI-to-AI message prefix
-                caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
+                # caller_session_id extracted at top of call_tool for AI-to-AI message prefix
                 # Collect all chunks from async generator
                 chunks: list[str] = []
                 async for chunk in self.teleclaude__send_message(computer, session_id, message, caller_session_id):
@@ -430,8 +416,7 @@ class TeleClaudeMCPServer:
                 until_timestamp = str(until_timestamp_obj) if until_timestamp_obj else None
                 tail_chars_obj = arguments.get("tail_chars") if arguments else None
                 tail_chars = int(tail_chars_obj) if tail_chars_obj is not None else 5000
-                # Optional: caller_session_id for stop notifications (observer pattern)
-                caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
+                # caller_session_id extracted at top of call_tool for stop notifications (observer pattern)
                 result = await self.teleclaude__get_session_data(
                     computer, session_id, since_timestamp, until_timestamp, tail_chars, caller_session_id
                 )
@@ -703,7 +688,9 @@ class TeleClaudeMCPServer:
         prefixed_message = f"AI[local:{effective_caller_id}] | {message}"
 
         # Register listener so we get notified when target session stops
-        await self._maybe_register_listener(session_id, effective_caller_id if effective_caller_id != "unknown" else None)
+        await self._maybe_register_listener(
+            session_id, effective_caller_id if effective_caller_id != "unknown" else None
+        )
 
         # Send /claude command with prefixed message to start Claude Code
         await self.client.handle_event(
@@ -970,7 +957,9 @@ class TeleClaudeMCPServer:
             effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
             # Register as listener so we get notified when target session stops
-            await self._maybe_register_listener(session_id, effective_caller_id if effective_caller_id != "unknown" else None)
+            await self._maybe_register_listener(
+                session_id, effective_caller_id if effective_caller_id != "unknown" else None
+            )
 
             # Build AI-to-AI protocol prefix
             # Use "local" for local targets, actual computer name for remote
