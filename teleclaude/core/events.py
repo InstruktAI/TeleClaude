@@ -243,6 +243,7 @@ class CommandEventContext:
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
     auto_command: Optional[str] = None  # For chaining commands (e.g., start Claude after session creation)
+    claude_model: Optional[str] = None  # Claude model for AI-initiated sessions ('opus', 'sonnet', 'haiku')
 
 
 @dataclass

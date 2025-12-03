@@ -100,6 +100,7 @@ class Db:
         working_directory: str = "~",
         description: Optional[str] = None,
         session_id: Optional[str] = None,
+        claude_model: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
@@ -113,6 +114,7 @@ class Db:
             working_directory: Initial working directory
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
+            claude_model: Optional Claude model ('opus', 'sonnet', 'haiku') for AI-initiated sessions
 
         Returns:
             Created Session object
@@ -133,6 +135,7 @@ class Db:
             terminal_size=terminal_size,
             working_directory=working_directory,
             description=description,
+            claude_model=claude_model,
         )
 
         data = session.to_dict()
@@ -141,8 +144,8 @@ class Db:
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, closed, created_at,
-                last_activity, terminal_size, working_directory, description
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_activity, terminal_size, working_directory, description, claude_model
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -157,6 +160,7 @@ class Db:
                 data["terminal_size"],
                 data["working_directory"],
                 data["description"],
+                data["claude_model"],
             ),
         )
         await self.conn.commit()

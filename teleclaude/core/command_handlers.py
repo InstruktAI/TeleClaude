@@ -187,6 +187,9 @@ async def handle_create_session(
     if voice:
         await db.assign_voice(session_id, voice)
 
+    # Extract claude_model from metadata if present (AI-initiated sessions)
+    claude_model = metadata.claude_model if metadata else None
+
     # Create session in database first (need session_id for create_channel)
     # session_id was generated earlier for tmux naming
     session = await db.create_session(
@@ -197,6 +200,7 @@ async def handle_create_session(
         terminal_size=terminal_size,
         working_directory=working_dir,
         session_id=session_id,
+        claude_model=claude_model,
     )
 
     # Create channel via client (session object passed, adapter_metadata updated in DB)
@@ -1000,6 +1004,10 @@ async def handle_claude_session(
     # Get base command from config with fallback to constant
     # Strip whitespace to handle YAML literal blocks with trailing newlines
     base_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
+
+    # Prepend --model flag if session has claude_model set (AI-initiated sessions)
+    if session.claude_model:
+        base_cmd = f"{base_cmd} --model={session.claude_model}"
 
     # Build command with args (properly quoted for shell)
     if args:

@@ -647,6 +647,7 @@ class AdapterClient:
                 project_dir=metadata.project_dir,
                 channel_metadata=metadata.channel_metadata,
                 auto_command=metadata.auto_command,
+                claude_model=metadata.claude_model,
             )
 
         # Fallback - should not happen with EventType literal

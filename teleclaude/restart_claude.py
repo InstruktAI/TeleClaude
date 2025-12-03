@@ -62,6 +62,10 @@ async def restart_teleclaude_session(teleclaude_session_id: str) -> None:
         # Get base command from config with fallback to constant
         base_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
 
+        # Prepend --model flag if session has claude_model set (AI-initiated sessions)
+        if session.claude_model:
+            base_cmd = f"{base_cmd} --model={session.claude_model}"
+
         # Build restart command using Claude session ID from database
         if claude_session_id:
             restart_cmd = f"{base_cmd} --resume {claude_session_id} 'you were just restarted - continue if you were in the middle of something or stay silent.'"

@@ -185,6 +185,7 @@ class MessageMetadata:
     title: Optional[str] = None
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
+    claude_model: Optional[str] = None
 
     # Auto-command to run after session creation (e.g., "claude", "claude_resume")
     auto_command: Optional[str] = None
