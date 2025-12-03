@@ -237,6 +237,14 @@ class TeleClaudeMCPServer:
                                 "type": "string",
                                 "description": "Message or command to send to Claude Code",
                             },
+                            "caller_session_id": {
+                                "type": "string",
+                                "description": (
+                                    "Optional: Caller's TeleClaude session ID for AI-to-AI message prefix. "
+                                    "Pass your TELECLAUDE_SESSION_ID env var so the receiving AI knows who sent the message. "
+                                    "If not provided, prefix shows 'unknown'."
+                                ),
+                            },
                         },
                         "required": ["computer", "session_id", "message"],
                     },
@@ -921,7 +929,13 @@ class TeleClaudeMCPServer:
 
         return all_sessions
 
-    async def teleclaude__send_message(self, computer: str, session_id: str, message: str) -> AsyncIterator[str]:
+    async def teleclaude__send_message(
+        self,
+        computer: str,
+        session_id: str,
+        message: str,
+        caller_session_id: str | None = None,
+    ) -> AsyncIterator[str]:
         """Send message to session with AI-to-AI protocol prefix.
 
         Automatically prefixes messages with sender identification so receiving AI
@@ -934,6 +948,7 @@ class TeleClaudeMCPServer:
             computer: Target computer name (or "local"/self.computer_name)
             session_id: Target session ID (from teleclaude__start_session)
             message: Message/command to send to Claude Code
+            caller_session_id: Optional caller's session ID for message prefix
 
         Yields:
             str: Acknowledgment message with reply instructions
@@ -942,15 +957,15 @@ class TeleClaudeMCPServer:
             # Register as listener so we get notified when target session stops
             await self._maybe_register_listener(session_id)
 
-            # Get caller's session_id from environment (set by TeleClaude when spawning Claude Code)
-            caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+            # Get caller's session_id - prefer parameter, fall back to env var (for backwards compatibility)
+            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
             # Build AI-to-AI protocol prefix
             # Use "local" for local targets, actual computer name for remote
             # Format: AI[computer:session_id] | message
             is_local = self._is_local_computer(computer)
             sender_computer = "local" if is_local else self.computer_name
-            prefixed_message = f"AI[{sender_computer}:{caller_session_id}] | {message}"
+            prefixed_message = f"AI[{sender_computer}:{effective_caller_id}] | {message}"
 
             if is_local:
                 # Local session - send directly via handle_event
