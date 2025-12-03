@@ -109,6 +109,8 @@ async def test_handle_new_session_validates_working_dir():
         patch.object(command_handlers, "db") as mock_db,
         patch.object(command_handlers, "terminal_bridge") as mock_tb,
         patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
     ):
         mock_config.computer.name = "TestComputer"
         mock_config.computer.default_working_dir = "/home/user"

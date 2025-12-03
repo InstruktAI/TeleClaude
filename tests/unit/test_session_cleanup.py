@@ -96,6 +96,8 @@ async def test_cleanup_stale_session_detects_missing_tmux():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock) as mock_update,
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
         patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
     ):
@@ -163,6 +165,8 @@ async def test_cleanup_stale_session_marks_as_closed():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock) as mock_update,
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
         patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
     ):
@@ -189,6 +193,8 @@ async def test_cleanup_stale_session_deletes_channel():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
         patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
     ):
@@ -220,6 +226,8 @@ async def test_cleanup_stale_session_deletes_output_file(tmp_path: Path):
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
         patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
     ):
@@ -246,6 +254,8 @@ async def test_cleanup_stale_session_handles_channel_deletion_failure():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock) as mock_update,
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
         patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
     ):
@@ -285,6 +295,8 @@ async def test_cleanup_all_stale_sessions_processes_all():
         patch("teleclaude.core.session_cleanup.db.get_active_sessions", new_callable=AsyncMock) as mock_get_active,
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", side_effect=mock_session_exists),
         patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
     ):

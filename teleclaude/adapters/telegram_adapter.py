@@ -280,11 +280,11 @@ class TelegramAdapter(UiAdapter):
         self.app.add_handler(CallbackQueryHandler(self._handle_callback_query))
 
         # Handle voice messages in topics - both new and edited
+        # NOTE: Do NOT add filters.ChatType.SUPERGROUP - it doesn't match forum topic messages (Telegram quirk)
+        # Authorization is handled inside _handle_voice_message via _get_session_from_topic
         self.app.add_handler(
             MessageHandler(
-                filters.VOICE
-                & filters.ChatType.SUPERGROUP
-                & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
+                filters.VOICE & (filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE),
                 self._handle_voice_message,
             )
         )
@@ -1329,7 +1329,7 @@ Current size: {current_size}
                 return
 
             # Emit NEW_SESSION event directly (no visible command message)
-            await self.client.handle_event(
+            result = await self.client.handle_event(
                 event=TeleClaudeEvents.NEW_SESSION,
                 payload={
                     "args": [],
@@ -1339,6 +1339,27 @@ Current size: {current_size}
 
             # Acknowledge the button click
             await query.answer("Creating session...", show_alert=False)
+
+            # Send confirmation message in General topic with link to new session
+            if result.get("status") == "success":
+                session_id = result.get("data", {}).get("session_id")
+                if session_id:
+                    session = await db.get_session(session_id)
+                    if session and session.adapter_metadata and session.adapter_metadata.telegram:
+                        topic_id = session.adapter_metadata.telegram.topic_id
+                        # Build deep link to the topic
+                        # supergroup_id is negative, strip the -100 prefix for the link
+                        chat_id_str = str(self.supergroup_id)
+                        if chat_id_str.startswith("-100"):
+                            chat_id_for_link = chat_id_str[4:]
+                        else:
+                            chat_id_for_link = chat_id_str.lstrip("-")
+                        topic_url = f"https://t.me/c/{chat_id_for_link}/{topic_id}"
+                        await self.bot.send_message(
+                            chat_id=self.supergroup_id,
+                            text=f"✅ Created: {session.title}",
+                            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Open Session", url=topic_url)]]),
+                        )
 
         elif action == "cd":
             # Find session from the message's thread

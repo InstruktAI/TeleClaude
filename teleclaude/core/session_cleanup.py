@@ -30,7 +30,7 @@ TMUX_SESSION_PREFIX = "tc_"
 
 
 async def cleanup_session_resources(session: "Session", adapter_client: "AdapterClient") -> None:
-    """Clean up session resources: channels, listeners, and workspace directory.
+    """Clean up session resources: channels, listeners, pending deletions, and workspace directory.
 
     Shared cleanup logic used by both explicit exit and stale session cleanup.
     Does NOT modify DB state - caller handles that.
@@ -43,6 +43,11 @@ async def cleanup_session_resources(session: "Session", adapter_client: "Adapter
 
     # Clean up any listeners this session registered (as a caller waiting for other sessions)
     cleanup_caller_listeners(session_id)
+
+    # Clear pending deletions - messages that would have been deleted on next user input
+    # These are no longer relevant since the session is ending
+    await db.clear_pending_deletions(session_id)
+    await db.update_ux_state(session_id, pending_feedback_deletions=[])
 
     # Delete channel/topic in all adapters (broadcasts to observers)
     try:

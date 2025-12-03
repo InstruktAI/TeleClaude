@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from utils.mcp_send import mcp_send  # noqa: E402
 
 LOG_FILE = Path.cwd() / ".claude" / "hooks" / "logs" / "teleclaude_bridge.log"
+# State file tracks last processed transcript mtime per session to dedupe Stop events
+STATE_FILE = Path.cwd() / ".claude" / "hooks" / "logs" / "bridge_state.json"
 
 NOTIFICATION_MESSAGES = [
     "Your agent needs your input",
@@ -39,6 +41,65 @@ def log(message: str) -> None:
             f.write(f"[{timestamp}] {message}\n")
     except Exception:  # noqa: S110
         pass
+
+
+def load_state() -> dict:
+    """Load bridge state from file."""
+    try:
+        if STATE_FILE.exists():
+            return json.loads(STATE_FILE.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def save_state(state: dict) -> None:
+    """Save bridge state to file."""
+    try:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps(state))
+    except Exception:
+        pass
+
+
+def should_skip_summary(transcript_path: str) -> bool:
+    """Check if this Stop event should be skipped (transcript unchanged since last summary).
+
+    Claude Code fires multiple Stop events even when Claude hasn't done any new work.
+    This causes duplicate "Work complete!" messages to pile up in Telegram.
+
+    We track the transcript file's mtime and skip if unchanged since last summary.
+    Key is the transcript path itself (not TeleClaude session ID) because:
+    - Same Claude Code session = same transcript file
+    - TeleClaude session IDs change on restart but transcript stays the same
+    """
+    if not transcript_path:
+        return False
+
+    try:
+        transcript = Path(transcript_path)
+        if not transcript.exists():
+            return False
+
+        current_mtime = transcript.stat().st_mtime
+
+        state = load_state()
+        # Use transcript path as key - this is what actually tracks if work changed
+        last_mtime = state.get(transcript_path, {}).get("last_summary_mtime")
+
+        if last_mtime is not None and current_mtime == last_mtime:
+            log(f"Skipping duplicate summary - transcript unchanged (mtime={current_mtime})")
+            return True
+
+        # Update state with current mtime
+        state[transcript_path] = {"last_summary_mtime": current_mtime}
+        save_state(state)
+
+        return False
+
+    except Exception as e:
+        log(f"Error checking transcript mtime: {e}")
+        return False
 
 
 def send_event(teleclaude_session_id: str, event_type: str, data: dict) -> None:
@@ -114,12 +175,22 @@ def run_summarizer(transcript_path: str) -> dict:
 
 
 def handle_stop(teleclaude_session_id: str, transcript_path: str, original_data: dict) -> None:
-    """Handle stop event - run summarizer and send summary event."""
-    # First forward the original stop event
+    """Handle stop event - run summarizer and send summary event.
+
+    Deduplicates Stop events by tracking transcript file mtime.
+    Claude Code fires multiple Stop events even when no new work was done,
+    which would cause duplicate "Work complete!" messages in Telegram.
+    """
+    # First forward the original stop event (always - for listener notifications)
     send_event(teleclaude_session_id, "stop", original_data)
 
     if not transcript_path:
         log("No transcript path, skipping summarizer")
+        return
+
+    # Check if transcript has changed since last summary
+    if should_skip_summary(transcript_path):
+        log("Skipping summary - transcript unchanged since last summary")
         return
 
     # Run summarizer and get result
