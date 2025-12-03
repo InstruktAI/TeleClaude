@@ -175,6 +175,14 @@ class TeleClaudeMCPServer:
                                     "Session starts immediately processing this message."
                                 ),
                             },
+                            "caller_session_id": {
+                                "type": "string",
+                                "description": (
+                                    "Optional: Caller's TeleClaude session ID for automatic completion notification. "
+                                    "Pass your TELECLAUDE_SESSION_ID env var so you receive a tmux notification when "
+                                    "the target session stops. If not provided, no notification is sent."
+                                ),
+                            },
                         },
                         "required": ["computer", "project_dir", "title", "message"],
                     },
@@ -340,7 +348,11 @@ class TeleClaudeMCPServer:
                 project_dir = str(arguments["project_dir"])
                 title = str(arguments["title"])
                 message = str(arguments["message"])
-                result = await self.teleclaude__start_session(computer, project_dir, title, message)
+                # Optional: caller_session_id for completion notifications
+                caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
+                result = await self.teleclaude__start_session(
+                    computer, project_dir, title, message, caller_session_id
+                )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
@@ -560,6 +572,7 @@ class TeleClaudeMCPServer:
         project_dir: str,
         title: str,
         message: str,
+        caller_session_id: str | None = None,
     ) -> dict[str, object]:
         """Create session on local or remote computer.
 
@@ -572,19 +585,21 @@ class TeleClaudeMCPServer:
                 (from teleclaude__list_projects)
             title: Session title describing the task (use "TEST: {description}" for testing sessions)
             message: Initial task or prompt to send to Claude Code
+            caller_session_id: Optional caller's session ID for completion notifications
 
         Returns:
             dict with session_id and status
         """
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message)
-        return await self._start_remote_session(computer, project_dir, title, message)
+            return await self._start_local_session(project_dir, title, message, caller_session_id)
+        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id)
 
     async def _start_local_session(
         self,
         project_dir: str,
         title: str,
         message: str,
+        caller_session_id: str | None = None,
     ) -> dict[str, object]:
         """Create session on local computer directly via handle_event.
 
@@ -592,6 +607,7 @@ class TeleClaudeMCPServer:
             project_dir: Absolute path to project directory
             title: Session title
             message: Initial prompt for Claude Code
+            caller_session_id: Optional caller's session ID for completion notifications
 
         Returns:
             dict with session_id and status
@@ -618,17 +634,18 @@ class TeleClaudeMCPServer:
 
         # Build AI-to-AI protocol prefix for the initial message
         # Use "local" since this is a local session - receiving AI can reply with computer="local"
-        caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-        prefixed_message = f"AI[local:{caller_session_id}] | {message}"
+        # Use parameter if provided, otherwise fall back to env var (for backwards compatibility)
+        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+        prefixed_message = f"AI[local:{effective_caller_id}] | {message}"
 
         # Register listener so we get notified when target session stops
-        if caller_session_id != "unknown":
+        if effective_caller_id != "unknown":
             try:
-                caller_session = await db.get_session(caller_session_id)
+                caller_session = await db.get_session(effective_caller_id)
                 if caller_session:
                     register_listener(
                         target_session_id=session_id,
-                        caller_session_id=caller_session_id,
+                        caller_session_id=effective_caller_id,
                         caller_tmux_session=caller_session.tmux_session_name,
                     )
             except RuntimeError:
@@ -651,6 +668,7 @@ class TeleClaudeMCPServer:
         project_dir: str,
         title: str,
         message: str,
+        caller_session_id: str | None = None,
     ) -> dict[str, object]:
         """Create session on remote computer via Redis transport.
 
@@ -659,6 +677,7 @@ class TeleClaudeMCPServer:
             project_dir: Absolute path to project directory on remote computer
             title: Session title
             message: Initial prompt for Claude Code
+            caller_session_id: Optional caller's session ID for completion notifications
 
         Returns:
             dict with session_id and status
@@ -711,23 +730,46 @@ class TeleClaudeMCPServer:
 
             # Build AI-to-AI protocol prefix for the initial message
             # This allows the receiving AI to reply back to the caller
-            caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-            prefixed_message = f"AI[{self.computer_name}:{caller_session_id}] | {message}"
+            # Use parameter if provided, otherwise fall back to env var (for backwards compatibility)
+            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+            prefixed_message = f"AI[{self.computer_name}:{effective_caller_id}] | {message}"
 
             # Register listener so we get notified when target session stops
             # Note: For remote sessions, the Stop event comes via Redis transport
-            if caller_session_id != "unknown":
+            logger.debug(
+                "Attempting listener registration: caller=%s, target=%s",
+                effective_caller_id[:8] if effective_caller_id != "unknown" else "unknown",
+                str(remote_session_id)[:8],
+            )
+            if effective_caller_id != "unknown":
                 try:
-                    caller_session = await db.get_session(caller_session_id)
+                    caller_session = await db.get_session(effective_caller_id)
+                    logger.debug(
+                        "Database lookup for caller %s: found=%s",
+                        effective_caller_id[:8],
+                        caller_session is not None,
+                    )
                     if caller_session:
                         register_listener(
                             target_session_id=str(remote_session_id),
-                            caller_session_id=caller_session_id,
+                            caller_session_id=effective_caller_id,
                             caller_tmux_session=caller_session.tmux_session_name,
                         )
-                except RuntimeError:
-                    # Database not initialized (e.g., in tests)
-                    pass
+                        logger.info(
+                            "Listener registered: caller=%s -> target=%s (tmux=%s)",
+                            effective_caller_id[:8],
+                            str(remote_session_id)[:8],
+                            caller_session.tmux_session_name,
+                        )
+                    else:
+                        logger.warning(
+                            "Cannot register listener: caller session %s not found in database",
+                            effective_caller_id[:8],
+                        )
+                except RuntimeError as e:
+                    logger.warning("Database not initialized for listener registration: %s", e)
+            else:
+                logger.debug("Skipping listener registration: no caller_session_id")
 
             # Send /claude command with prefixed message to start Claude Code
             # Use shlex.quote for proper escaping (handles ', ", !, $, etc.)
