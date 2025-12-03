@@ -441,7 +441,9 @@ class TeleClaudeDaemon:
             logger.warning("stop_notification received without session_id argument")
             return
         target_session_id = context.args[0]
-        logger.info("Received stop_notification for remote session %s", target_session_id[:8])
+        # Second arg is optional source computer name (for actionable notifications)
+        source_computer = context.args[1] if len(context.args) > 1 else "remote"
+        logger.info("Received stop_notification for remote session %s from %s", target_session_id[:8], source_computer)
 
         # Pop and notify listeners (same logic as _notify_session_listener in ui_adapter)
         listeners = pop_listeners(target_session_id)
@@ -450,10 +452,11 @@ class TeleClaudeDaemon:
             return
 
         for listener in listeners:
-            # Build notification message
+            # Build actionable notification message with exact command to run
             notification = (
-                f"Remote session {target_session_id[:8]} has finished. "
-                f"Use teleclaude__get_session_data to inspect results."
+                f"Session {target_session_id[:8]} on {source_computer} has finished. "
+                f"Retrieve results: teleclaude__get_session_data("
+                f'computer="{source_computer}", session_id="{target_session_id}")'
             )
 
             # Inject into caller's tmux session

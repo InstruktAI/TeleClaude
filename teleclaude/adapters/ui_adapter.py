@@ -812,11 +812,11 @@ class UiAdapter(BaseAdapter):
         )
 
         # Send stop_notification command to initiator's computer
-        # The command includes the session_id so the initiator can fire their listener
+        # The command includes the session_id and source computer so the initiator can fire their listener
         try:
             await self.client.send_request(
                 computer_name=initiator_computer,
-                command=f"/stop_notification {session_id}",
+                command=f"/stop_notification {session_id} {config.computer.name}",
                 metadata=MessageMetadata(),
             )
         except Exception as e:
