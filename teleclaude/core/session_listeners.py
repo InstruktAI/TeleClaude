@@ -77,6 +77,53 @@ def register_listener(
     return True
 
 
+def unregister_listener(target_session_id: str, caller_session_id: str) -> bool:
+    """Unregister a specific listener for a target session.
+
+    Removes the listener registered by a specific caller for a specific target.
+    This allows an AI to stop receiving notifications from a session without ending it.
+
+    Args:
+        target_session_id: The session to stop listening to
+        caller_session_id: The session that wants to unsubscribe
+
+    Returns:
+        True if listener was found and removed, False if no such listener exists
+    """
+    if target_session_id not in _listeners:
+        logger.debug(
+            "No listeners for target %s",
+            target_session_id[:8],
+        )
+        return False
+
+    # Find and remove the specific caller's listener
+    original_len = len(_listeners[target_session_id])
+    _listeners[target_session_id] = [
+        l for l in _listeners[target_session_id] if l.caller_session_id != caller_session_id
+    ]
+
+    # Check if we actually removed one
+    if len(_listeners[target_session_id]) == original_len:
+        logger.debug(
+            "No listener found for caller=%s -> target=%s",
+            caller_session_id[:8],
+            target_session_id[:8],
+        )
+        return False
+
+    # Clean up empty target list
+    if not _listeners[target_session_id]:
+        del _listeners[target_session_id]
+
+    logger.info(
+        "Unregistered listener: caller=%s -> target=%s",
+        caller_session_id[:8],
+        target_session_id[:8],
+    )
+    return True
+
+
 def get_listeners(target_session_id: str) -> list[SessionListener]:
     """Get all listeners for a target session."""
     return _listeners.get(target_session_id, []).copy()

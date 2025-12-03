@@ -13,6 +13,7 @@ from teleclaude.core.session_listeners import (
     get_stale_targets,
     pop_listeners,
     register_listener,
+    unregister_listener,
 )
 
 
@@ -275,3 +276,59 @@ class TestGetStaleTargets:
 
         stale = get_stale_targets(max_age_minutes=10)
         assert stale == ["target-123"]
+
+
+class TestUnregisterListener:
+    """Tests for unregister_listener function."""
+
+    def test_unregister_existing_listener(self):
+        """Should unregister an existing listener and return True."""
+        register_listener("target-123", "caller-456", "tc_caller")
+        assert count_listeners() == 1
+
+        result = unregister_listener("target-123", "caller-456")
+
+        assert result is True
+        assert count_listeners() == 0
+
+    def test_unregister_nonexistent_target_returns_false(self):
+        """Should return False if target doesn't exist."""
+        result = unregister_listener("nonexistent-target", "caller-456")
+
+        assert result is False
+
+    def test_unregister_nonexistent_caller_returns_false(self):
+        """Should return False if caller not listening to target."""
+        register_listener("target-123", "caller-A", "tc_callerA")
+
+        result = unregister_listener("target-123", "caller-B")
+
+        assert result is False
+        assert count_listeners() == 1  # Original listener still there
+
+    def test_unregister_specific_caller_leaves_others(self):
+        """Should only remove the specific caller's listener."""
+        register_listener("target-123", "caller-A", "tc_callerA")
+        register_listener("target-123", "caller-B", "tc_callerB")
+        assert count_listeners() == 2
+
+        result = unregister_listener("target-123", "caller-A")
+
+        assert result is True
+        assert count_listeners() == 1
+
+        # Verify caller-B's listener still exists
+        listeners = get_listeners("target-123")
+        assert len(listeners) == 1
+        assert listeners[0].caller_session_id == "caller-B"
+
+    def test_unregister_cleans_up_empty_target_list(self):
+        """Should remove empty target list from internal storage."""
+        register_listener("target-123", "caller-456", "tc_caller")
+
+        unregister_listener("target-123", "caller-456")
+
+        # Verify internal storage cleaned up
+        from teleclaude.core import session_listeners
+
+        assert "target-123" not in session_listeners._listeners

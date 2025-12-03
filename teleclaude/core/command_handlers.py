@@ -940,6 +940,48 @@ async def handle_exit_session(
     await cleanup_session_resources(session, client)
 
 
+async def handle_end_session(
+    session_id: str,
+    client: "AdapterClient",
+) -> dict[str, object]:
+    """End a session - graceful termination for MCP tool.
+
+    Similar to handle_exit_session but designed for MCP tool calls.
+    Kills tmux, marks session closed, cleans up resources.
+
+    Args:
+        session_id: Session identifier
+        client: AdapterClient for channel operations
+
+    Returns:
+        dict with status and message
+    """
+    # Get session from DB
+    session = await db.get_session(session_id)
+    if not session:
+        return {"status": "error", "message": f"Session {session_id[:8]} not found"}
+
+    if session.closed:
+        return {"status": "error", "message": f"Session {session_id[:8]} already closed"}
+
+    # Kill tmux session
+    success = await terminal_bridge.kill_session(session.tmux_session_name)
+    if success:
+        logger.info("Killed tmux session %s", session.tmux_session_name)
+    else:
+        logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
+        return {"status": "error", "message": f"Failed to kill tmux session {session.tmux_session_name}"}
+
+    # Mark as closed in database
+    await db.update_session(session_id, closed=True)
+    logger.info("Marked session %s as closed", session_id[:8])
+
+    # Clean up channels and workspace (shared logic)
+    await cleanup_session_resources(session, client)
+
+    return {"status": "success", "message": f"Session {session_id[:8]} ended successfully"}
+
+
 @with_session
 async def handle_claude_session(
     session: Session,

@@ -22,7 +22,7 @@ from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.session_listeners import register_listener
+from teleclaude.core.session_listeners import register_listener, unregister_listener
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -324,6 +324,55 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
+                    name="teleclaude__stop_notifications",
+                    title="TeleClaude: Stop Notifications",
+                    description=(
+                        "Unsubscribe from a session's stop/notification events without ending it. "
+                        "Removes the caller's listener for the target session. "
+                        "The target session continues running, but the caller no longer receives events from it. "
+                        "Use this when a master AI no longer needs to monitor a specific worker session."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name. Use 'local' for sessions on this computer.",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session ID to stop receiving notifications from",
+                            },
+                        },
+                        "required": ["computer", "session_id"],
+                    },
+                ),
+                Tool(
+                    name="teleclaude__end_session",
+                    title="TeleClaude: End Session",
+                    description=(
+                        "Gracefully end a Claude Code session (local or remote). "
+                        "Kills the tmux session, marks it closed in database, and cleans up all resources "
+                        "(listeners, workspace directories, channels). "
+                        "Use this when a master AI wants to terminate a worker session that has completed its work "
+                        "or needs to be replaced (e.g., due to context exhaustion)."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name. Use 'local' for sessions on this computer.",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": "Session ID to end",
+                            },
+                        },
+                        "required": ["computer", "session_id"],
+                    },
+                ),
+                Tool(
                     name="teleclaude__handle_claude_event",
                     title="TeleClaude: Handle Claude Event",
                     description=(
@@ -432,6 +481,17 @@ class TeleClaudeMCPServer:
                 caption = str(caption_obj) if caption_obj else None
                 result_text = await self.teleclaude__send_file(session_id, file_path, caption)
                 return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__stop_notifications":
+                computer = str(arguments.get("computer", "")) if arguments else ""
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                # caller_session_id extracted at top of call_tool for listener unregistration
+                result = await self.teleclaude__stop_notifications(computer, session_id, caller_session_id)
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
+            elif name == "teleclaude__end_session":
+                computer = str(arguments.get("computer", "")) if arguments else ""
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                result = await self.teleclaude__end_session(computer, session_id)
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__handle_claude_event":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 event_type = str(arguments.get("event_type", "")) if arguments else ""
@@ -1201,6 +1261,107 @@ class TeleClaudeMCPServer:
         except Exception as e:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"
+
+    async def teleclaude__stop_notifications(
+        self,
+        computer: str,
+        session_id: str,
+        caller_session_id: str | None = None,
+    ) -> dict[str, object]:
+        """Stop receiving notifications from a session without ending it.
+
+        Unregisters the caller's listener for the target session.
+        Target session continues running, but caller no longer receives stop/notification events.
+
+        Args:
+            computer: Target computer name (or "local"/self.computer_name)
+            session_id: Session to stop monitoring
+            caller_session_id: Optional caller's session ID for listener removal
+
+        Returns:
+            dict with status and message
+        """
+        if not caller_session_id:
+            return {"status": "error", "message": "caller_session_id required"}
+
+        if self._is_local_computer(computer):
+            # Local - unregister listener directly
+            success = unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"Stopped notifications from session {session_id[:8]}",
+                }
+            return {
+                "status": "error",
+                "message": f"No listener found for session {session_id[:8]}",
+            }
+
+        # Remote - send stop_notifications command via Redis
+        try:
+            message_id = await self.client.send_request(
+                computer_name=computer,
+                command=f"stop_notifications {session_id} {caller_session_id}",
+                metadata=MessageMetadata(),
+            )
+
+            # Read response
+            response_data = await self.client.read_response(message_id, timeout=3.0)
+            envelope = json.loads(response_data.strip())
+
+            if envelope.get("status") == "error":
+                error_msg = envelope.get("error", "Unknown error")
+                return {"status": "error", "message": f"Remote error: {error_msg}"}
+
+            return envelope.get("data", {"status": "success"})
+
+        except TimeoutError:
+            return {"status": "error", "message": "Timeout waiting for response"}
+        except Exception as e:
+            logger.error("Failed to stop notifications: %s", e)
+            return {"status": "error", "message": f"Failed to stop notifications: {str(e)}"}
+
+    async def teleclaude__end_session(
+        self,
+        computer: str,
+        session_id: str,
+    ) -> dict[str, object]:
+        """End a session gracefully (kill tmux, mark closed, clean up resources).
+
+        Args:
+            computer: Target computer name (or "local"/self.computer_name)
+            session_id: Session to end
+
+        Returns:
+            dict with status and message
+        """
+        if self._is_local_computer(computer):
+            # Local - call handle_end_session directly
+            return await command_handlers.handle_end_session(session_id, self.client)
+
+        # Remote - send end_session command via Redis
+        try:
+            message_id = await self.client.send_request(
+                computer_name=computer,
+                command=f"end_session {session_id}",
+                metadata=MessageMetadata(),
+            )
+
+            # Read response
+            response_data = await self.client.read_response(message_id, timeout=5.0)
+            envelope = json.loads(response_data.strip())
+
+            if envelope.get("status") == "error":
+                error_msg = envelope.get("error", "Unknown error")
+                return {"status": "error", "message": f"Remote error: {error_msg}"}
+
+            return envelope.get("data", {"status": "success"})
+
+        except TimeoutError:
+            return {"status": "error", "message": "Timeout waiting for response"}
+        except Exception as e:
+            logger.error("Failed to end session: %s", e)
+            return {"status": "error", "message": f"Failed to end session: {str(e)}"}
 
     async def teleclaude__handle_claude_event(self, session_id: str, event_type: str, data: dict[str, object]) -> str:
         """Emit Claude Code event to registered listeners (called by Claude Code hooks).
