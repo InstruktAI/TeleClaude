@@ -183,29 +183,22 @@ class TeleClaudeMCPServer:
                     name="teleclaude__send_message",
                     title="TeleClaude: Send Message",
                     description=(
-                        "Send message to an existing Claude Code session with AI-to-AI protocol. "
-                        "Messages are automatically prefixed with sender identification (AI[computer:session_id]) "
-                        "so the receiving AI knows to reply back. "
-                        "**ASYNC/FIRE-AND-FORGET**: Do NOT wait for a response after sending. "
-                        "Offload the work and be available immediately for other tasks. "
-                        "The receiving AI will call you back via this same tool when done. "
-                        "**IMPORTANT**: Also use this tool to REPLY when you receive a message prefixed with "
-                        "'AI[computer:session_id] |' - extract the computer and session_id from the prefix "
-                        "and send your response back. This enables two-way AI collaboration."
+                        "Send message to an existing Claude Code session. "
+                        "Use teleclaude__list_sessions to find session IDs. "
+                        "Messages are automatically prefixed with your session ID for AI-to-AI communication."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "computer": {
                                 "type": "string",
-                                "description": (
-                                    "Target computer name (same as used in teleclaude__start_session). "
-                                    "Use 'local' when replying to messages prefixed with AI[local:...]"
-                                ),
+                                "description": "Target computer name. Use 'local' for sessions on this computer.",
                             },
                             "session_id": {
                                 "type": "string",
-                                "description": "Session ID from teleclaude__start_session",
+                                "description": (
+                                    "Target session ID (from teleclaude__list_sessions or teleclaude__start_session)"
+                                ),
                             },
                             "message": {
                                 "type": "string",

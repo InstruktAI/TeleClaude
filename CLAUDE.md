@@ -55,7 +55,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Rule #3: AI-TO-AI COLLABORATION PROTOCOL
 
-**CRITICAL**: Messages from other AIs are prefixed with sender identification. You MUST reply back.
+**CRITICAL**: Messages from other AIs are prefixed with sender identification.
 
 **Message Format:**
 
@@ -64,39 +64,31 @@ AI[computer:session_id] | message content here
 ```
 
 - `computer` - Either `"local"` (same computer) or a remote computer name
-- `session_id` - The sender's session UUID (which session to reply to)
+- `session_id` - The sender's session UUID (for reference)
 - `|` - Separator between header and message
 - `message` - The actual request/content
 
 **When you receive a message starting with `AI[...]`:**
 
 1. **Recognize it's from another AI**, not a human
-2. **Parse the header** to extract `computer` and `session_id`
-3. **Complete the requested task**
-4. **ALWAYS reply back** using `teleclaude__send_message(computer, session_id, your_response)`
+2. **Complete the requested task**
+3. **Just finish your work** - the caller is notified automatically when you stop
 
-**Examples:**
+**Automatic completion notification:**
 
-Local session (same computer):
-```
-AI[local:9002de6d-6c2e-4622-858c-afd66420c534] | Please analyze this code
-```
-Reply with: `teleclaude__send_message(computer="local", session_id="9002de6d-...", message="...")`
+The calling AI gets notified automatically when your session stops (via PUB-SUB listeners).
+You do NOT need to explicitly call `send_message` to report completion.
 
-Remote session (different computer):
-```
-AI[RasPi:abc123-def456-...] | Please run the test suite
-```
-Reply with: `teleclaude__send_message(computer="RasPi", session_id="abc123-...", message="...")`
+**Health checks for long-running work:**
+
+If you're working for more than 10 minutes, you may receive a health check message asking for status.
+In that case, use `teleclaude__send_message` to report progress, then continue your work.
 
 **Why this matters:**
 
-- The calling AI is waiting for your response
-- Without a reply, they're left polling `get_session_data` indefinitely
-- Two-way communication enables true AI collaboration
-- You become peers that can delegate work to each other
-
-**NEVER ignore an AI[...] prefixed message without replying!**
+- The calling AI is automatically notified when you finish
+- No manual callback needed - just complete your task
+- For long work, periodic status updates help the caller know you're still working
 
 ## Essential Development Workflow
 

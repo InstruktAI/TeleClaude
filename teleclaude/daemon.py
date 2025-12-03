@@ -23,6 +23,7 @@ from teleclaude.core import (
     command_handlers,
     polling_coordinator,
     session_cleanup,
+    session_listeners,
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
@@ -638,6 +639,10 @@ class TeleClaudeDaemon:
         self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
+        # Start listener health check task (runs every minute)
+        self.health_check_task = asyncio.create_task(self._periodic_listener_health_check())
+        logger.info("Listener health check task started (10min threshold)")
+
         # Restore polling for sessions that were active before restart
         await polling_coordinator.restore_active_pollers(
             adapter_client=self.client,
@@ -668,6 +673,15 @@ class TeleClaudeDaemon:
             except asyncio.CancelledError:
                 pass
             logger.info("Periodic cleanup task stopped")
+
+        # Stop listener health check task
+        if hasattr(self, "health_check_task"):
+            self.health_check_task.cancel()
+            try:
+                await self.health_check_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Listener health check task stopped")
 
         # Stop all adapters
         for adapter_name, adapter in self.client.adapters.items():
@@ -901,6 +915,67 @@ class TeleClaudeDaemon:
 
         except Exception as e:
             logger.error("Error cleaning up inactive sessions: %s", e)
+
+    async def _periodic_listener_health_check(self) -> None:
+        """Periodically check for long-running sessions with waiting listeners.
+
+        Every minute, checks if any listeners have been waiting >10 minutes.
+        If so, injects a health check message into the target session asking for status.
+        The listener is NOT removed - that only happens when the session actually stops.
+        """
+        while True:
+            try:
+                await asyncio.sleep(60)  # Run every minute
+
+                # Get targets with stale listeners (resets their timestamps)
+                stale_targets = session_listeners.get_stale_targets(max_age_minutes=10)
+
+                for target_session_id in stale_targets:
+                    await self._send_health_check(target_session_id)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in listener health check: %s", e)
+
+    async def _send_health_check(self, target_session_id: str) -> None:
+        """Inject a health check message into a target session.
+
+        Includes the caller's session ID so the target AI can report back.
+
+        Args:
+            target_session_id: The session to send the health check to
+        """
+        session = await db.get_session(target_session_id)
+        if not session or session.closed:
+            logger.debug("Target session %s not found or closed", target_session_id[:8])
+            return
+
+        # Get first caller's session ID for the response instruction
+        listeners = session_listeners.get_listeners(target_session_id)
+        if not listeners:
+            logger.debug("No listeners for target %s, skipping health check", target_session_id[:8])
+            return
+
+        caller_session_id = listeners[0].caller_session_id
+
+        health_check_message = (
+            f"Health check: A caller (session {caller_session_id[:8]}) is waiting for this session. "
+            f"If you're still working, report status with "
+            f"teleclaude__send_message(computer='local', session_id='{caller_session_id}', message='...'), "
+            f"then continue your work."
+        )
+
+        success, error = await terminal_bridge.send_keys(
+            session_name=session.tmux_session_name,
+            text=health_check_message,
+            send_enter=True,
+        )
+
+        if success:
+            logger.info("Sent health check to session %s", target_session_id[:8])
+        else:
+            logger.warning("Failed to send health check to session %s: %s", target_session_id[:8], error)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None

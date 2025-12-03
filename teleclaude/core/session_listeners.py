@@ -10,7 +10,7 @@ Only one listener per caller-target pair is allowed (deduped by caller, not by t
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -158,3 +158,36 @@ def get_listeners_for_caller(caller_session_id: str) -> list[SessionListener]:
 def count_listeners() -> int:
     """Get total number of active listeners."""
     return sum(len(listeners) for listeners in _listeners.values())
+
+
+def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
+    """Get target session IDs with listeners older than max_age_minutes.
+
+    Returns unique target session IDs where at least one listener has been
+    waiting longer than the threshold. Used for periodic health checks.
+
+    After returning, the listener's registered_at is reset to prevent
+    repeated health checks every minute.
+
+    Args:
+        max_age_minutes: Maximum age in minutes before a listener is considered stale
+
+    Returns:
+        List of target session IDs that need health checks
+    """
+    now = datetime.now()
+    threshold = now - timedelta(minutes=max_age_minutes)
+    stale_targets: list[str] = []
+
+    for target_id, listeners in _listeners.items():
+        for listener in listeners:
+            if listener.registered_at < threshold:
+                stale_targets.append(target_id)
+                # Reset timestamp to prevent repeated checks every minute
+                listener.registered_at = now
+                break  # Only need one stale listener per target
+
+    if stale_targets:
+        logger.info("Found %d stale target(s) for health check", len(stale_targets))
+
+    return stale_targets

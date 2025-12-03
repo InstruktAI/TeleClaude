@@ -1,5 +1,7 @@
 """Unit tests for session_listeners module."""
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from teleclaude.core.session_listeners import (
@@ -8,6 +10,7 @@ from teleclaude.core.session_listeners import (
     get_all_listeners,
     get_listeners,
     get_listeners_for_caller,
+    get_stale_targets,
     pop_listeners,
     register_listener,
 )
@@ -197,3 +200,78 @@ class TestListenerDataIntegrity:
 
         # Original should be unaffected
         assert count_listeners() == 2
+
+
+class TestGetStaleTargets:
+    """Tests for get_stale_targets function (health check support)."""
+
+    def test_fresh_listeners_not_stale(self):
+        """Should not return targets with fresh listeners."""
+        register_listener("target-123", "caller-456", "tc_caller")
+
+        stale = get_stale_targets(max_age_minutes=10)
+        assert stale == []
+
+    def test_old_listeners_are_stale(self):
+        """Should return targets with old listeners."""
+        register_listener("target-123", "caller-456", "tc_caller")
+
+        # Manually age the listener
+        from teleclaude.core import session_listeners
+
+        listeners = session_listeners._listeners["target-123"]
+        listeners[0].registered_at = datetime.now() - timedelta(minutes=15)
+
+        stale = get_stale_targets(max_age_minutes=10)
+        assert stale == ["target-123"]
+
+    def test_stale_check_resets_timestamp(self):
+        """Should reset timestamp after finding stale target."""
+        register_listener("target-123", "caller-456", "tc_caller")
+
+        # Manually age the listener
+        from teleclaude.core import session_listeners
+
+        listeners = session_listeners._listeners["target-123"]
+        old_time = datetime.now() - timedelta(minutes=15)
+        listeners[0].registered_at = old_time
+
+        # First call finds it stale
+        stale = get_stale_targets(max_age_minutes=10)
+        assert stale == ["target-123"]
+
+        # Timestamp was reset, so second call finds nothing
+        stale = get_stale_targets(max_age_minutes=10)
+        assert stale == []
+
+    def test_multiple_stale_targets(self):
+        """Should return all stale targets."""
+        register_listener("target-A", "caller-1", "tc_caller1")
+        register_listener("target-B", "caller-2", "tc_caller2")
+        register_listener("target-C", "caller-3", "tc_caller3")
+
+        # Age some listeners
+        from teleclaude.core import session_listeners
+
+        old_time = datetime.now() - timedelta(minutes=15)
+        session_listeners._listeners["target-A"][0].registered_at = old_time
+        session_listeners._listeners["target-C"][0].registered_at = old_time
+        # target-B stays fresh
+
+        stale = get_stale_targets(max_age_minutes=10)
+        assert sorted(stale) == ["target-A", "target-C"]
+
+    def test_only_one_stale_listener_needed_per_target(self):
+        """Should return target if at least one listener is stale."""
+        register_listener("target-123", "caller-A", "tc_callerA")
+        register_listener("target-123", "caller-B", "tc_callerB")
+
+        # Age only one listener
+        from teleclaude.core import session_listeners
+
+        old_time = datetime.now() - timedelta(minutes=15)
+        session_listeners._listeners["target-123"][0].registered_at = old_time
+        # Second listener stays fresh
+
+        stale = get_stale_targets(max_age_minutes=10)
+        assert stale == ["target-123"]
