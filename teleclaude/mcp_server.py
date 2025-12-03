@@ -293,6 +293,14 @@ class TeleClaudeMCPServer:
                                     "Default: 5000. Set to 0 for unlimited (full transcript)."
                                 ),
                             },
+                            "caller_session_id": {
+                                "type": "string",
+                                "description": (
+                                    "Optional: Caller's TeleClaude session ID for automatic completion notification. "
+                                    "Pass your TELECLAUDE_SESSION_ID env var so you receive a tmux notification when "
+                                    "the target session stops. If not provided, no notification is sent."
+                                ),
+                            },
                         },
                         "required": ["computer", "session_id"],
                     },
@@ -1000,6 +1008,7 @@ class TeleClaudeMCPServer:
         since_timestamp: Optional[str] = None,
         until_timestamp: Optional[str] = None,
         tail_chars: int = 5000,
+        caller_session_id: Optional[str] = None,
     ) -> dict[str, object]:
         """Get session data from local or remote computer.
 
@@ -1012,10 +1021,15 @@ class TeleClaudeMCPServer:
             since_timestamp: Optional ISO 8601 UTC start filter
             until_timestamp: Optional ISO 8601 UTC end filter
             tail_chars: Max chars to return (default 5000, 0 for unlimited)
+            caller_session_id: Optional caller's session ID for stop notifications
 
         Returns:
             Dict with session data, status, and messages
         """
+        # Register as listener so caller gets notified when target session stops
+        # Enables "master orchestrator" pattern - check multiple sessions, get notified when any stops
+        await self._maybe_register_listener(session_id, caller_session_id)
+
         if self._is_local_computer(computer):
             return await self._get_local_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
         return await self._get_remote_session_data(computer, session_id, since_timestamp, until_timestamp, tail_chars)
