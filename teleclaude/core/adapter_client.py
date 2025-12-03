@@ -546,17 +546,15 @@ class AdapterClient:
         session = await db.get_session(str(session_id)) if session_id else None
 
         # 4. Pre-handler (UI cleanup before processing)
-        # Only cleanup on MESSAGE events (actual user text input), not keyboard shortcuts
         message_id = payload.get("message_id")
-        if session and message_id and event == "message":
+        if session and message_id:
             await self._call_pre_handler(session, event)
 
         # 5. Dispatch to registered handler
         response = await self._dispatch(event, context)
 
         # 6. Post-handler (UI state tracking after processing)
-        # Only track MESSAGE events for deletion, not keyboard shortcuts
-        if session and message_id and event == "message":
+        if session and message_id:
             await self._call_post_handler(session, event, str(message_id))
 
         # 7. Broadcast to observers (lifecycle events and user actions)
