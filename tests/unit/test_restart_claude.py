@@ -173,3 +173,64 @@ class TestRestartClaude:
             # Cleanup env var
             if "TELECLAUDE_SESSION_ID" in os.environ:
                 del os.environ["TELECLAUDE_SESSION_ID"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_restart_prepends_model_flag_when_set(self):
+        """Test that restart includes --model flag when session has claude_model."""
+        # Set env var
+        os.environ["TELECLAUDE_SESSION_ID"] = "model-test-session"
+
+        # Create session with claude_model set
+        mock_session_with_model = Session(
+            session_id="model-test-session",
+            computer_name="TestPC",
+            tmux_session_name="test-tmux-model",
+            origin_adapter="redis",
+            title="Sonnet Session",
+            adapter_metadata={},
+            closed=False,
+            terminal_size="120x40",
+            working_directory="/home/test",
+            ux_state='{"claude_session_id": "model-session-789"}',
+            claude_model="sonnet",
+        )
+
+        try:
+            # Mock db
+            mock_db_instance = AsyncMock()
+            mock_db_instance.initialize = AsyncMock()
+            mock_db_instance.get_session = AsyncMock(return_value=mock_session_with_model)
+            mock_db_instance.close = AsyncMock()
+
+            # Mock terminal_bridge
+            mock_send_keys = AsyncMock(return_value=(True, "marker456"))
+            mock_send_signal = AsyncMock(return_value=True)
+            mock_sleep = AsyncMock()
+
+            with (
+                patch("teleclaude.restart_claude.Db") as mock_db_class,
+                patch("teleclaude.restart_claude.terminal_bridge.send_keys", mock_send_keys),
+                patch("teleclaude.restart_claude.terminal_bridge.send_signal", mock_send_signal),
+                patch("teleclaude.restart_claude.asyncio.sleep", mock_sleep),
+                patch("teleclaude.restart_claude.config") as mock_config,
+            ):
+                mock_db_class.return_value = mock_db_instance
+                mock_config.mcp.claude_command = "claude"
+
+                # Run main
+                await main()
+
+                # Verify terminal_bridge.send_keys was called with --model=sonnet
+                mock_send_keys.assert_called_once()
+                call_kwargs = mock_send_keys.call_args.kwargs
+                command = call_kwargs["text"]
+
+                # Should include --model=sonnet before --resume
+                assert "claude --model=sonnet" in command
+                assert "--resume model-session-789" in command
+
+        finally:
+            # Cleanup env var
+            if "TELECLAUDE_SESSION_ID" in os.environ:
+                del os.environ["TELECLAUDE_SESSION_ID"]

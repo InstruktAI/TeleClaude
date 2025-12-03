@@ -438,3 +438,102 @@ async def test_handle_ctrl_requires_key_argument():
     mock_client.send_message.assert_called_once()
     call_args = mock_client.send_message.call_args[0]
     assert "Usage" in call_args[1]
+
+
+@pytest.mark.asyncio
+async def test_handle_create_session_stores_claude_model():
+    """Test that handle_create_session stores claude_model from metadata."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+    from teleclaude.core.models import MessageMetadata
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_metadata = MessageMetadata(adapter_type="redis", claude_model="sonnet")
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_feedback = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session.session_id = "ai-session-456"
+    mock_session.tmux_session_name = "tc_ai-sessi"
+
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "terminal_bridge") as mock_tb,
+        patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+    ):
+        mock_config.computer.name = "TestComputer"
+        mock_config.computer.default_working_dir = "/home/user"
+        mock_db.create_session = AsyncMock(return_value=mock_session)
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.assign_voice = AsyncMock()
+        mock_tb.create_tmux_session = AsyncMock(return_value=True)
+        mock_unique.return_value = "$TestComputer[user] - AI Session"
+
+        await command_handlers.handle_create_session(
+            mock_context, ["AI", "Session"], mock_metadata, mock_client
+        )
+
+    # Verify db.create_session was called with claude_model="sonnet"
+    mock_db.create_session.assert_called_once()
+    call_kwargs = mock_db.create_session.call_args[1]
+    assert call_kwargs["claude_model"] == "sonnet"
+
+
+@pytest.mark.asyncio
+async def test_handle_claude_session_prepends_model_flag():
+    """Test that handle_claude_session prepends --model flag when session has claude_model."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    # Create mock session with claude_model set
+    mock_session = MagicMock()
+    mock_session.session_id = "model-session-789"
+    mock_session.claude_model = "haiku"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_context.message_id = "msg-123"
+    mock_execute = AsyncMock()
+
+    with patch.object(command_handlers, "config") as mock_config:
+        mock_config.mcp.claude_command = "claude"
+
+        await command_handlers.handle_claude_session.__wrapped__(
+            mock_session, mock_context, [], mock_execute
+        )
+
+    # Verify execute_terminal_command was called with --model=haiku prepended
+    mock_execute.assert_called_once()
+    call_args = mock_execute.call_args[0]
+    command = call_args[1]  # Second arg is the command
+    assert command == "claude --model=haiku"
+
+
+@pytest.mark.asyncio
+async def test_handle_claude_session_no_model_flag_when_not_set():
+    """Test that handle_claude_session does not add --model flag when claude_model is None."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    # Create mock session without claude_model
+    mock_session = MagicMock()
+    mock_session.session_id = "regular-session-123"
+    mock_session.claude_model = None
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_context.message_id = "msg-456"
+    mock_execute = AsyncMock()
+
+    with patch.object(command_handlers, "config") as mock_config:
+        mock_config.mcp.claude_command = "claude"
+
+        await command_handlers.handle_claude_session.__wrapped__(
+            mock_session, mock_context, [], mock_execute
+        )
+
+    # Verify execute_terminal_command was called without --model flag
+    mock_execute.assert_called_once()
+    call_args = mock_execute.call_args[0]
+    command = call_args[1]
+    assert command == "claude"

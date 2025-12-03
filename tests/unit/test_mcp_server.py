@@ -291,3 +291,33 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
                 event_type="notification",
                 data={},
             )
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_start_session_with_model_parameter(mock_mcp_server):
+    """Test that start_session accepts and passes model parameter through metadata."""
+    server = mock_mcp_server
+
+    # Mock handle_event to return success with session_id
+    server.client.handle_event = AsyncMock(
+        return_value={"status": "success", "data": {"session_id": "model-test-789"}}
+    )
+
+    result = await server.teleclaude__start_session(
+        computer="local",
+        project_dir="/home/user/project",
+        title="Sonnet Session",
+        message="Test with sonnet",
+        model="sonnet",
+    )
+
+    assert result["status"] == "success"
+    assert result["session_id"] == "model-test-789"
+
+    # Verify handle_event was called with MessageMetadata containing claude_model
+    assert server.client.handle_event.call_count == 2  # NEW_SESSION + CLAUDE
+
+    # Check first call (NEW_SESSION) has metadata with claude_model
+    first_call = server.client.handle_event.call_args_list[0]
+    metadata = first_call[0][2]  # Third positional arg is MessageMetadata
+    assert metadata.claude_model == "sonnet"
