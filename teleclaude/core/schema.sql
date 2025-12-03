@@ -17,6 +17,24 @@ CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE(computer_name, tmux_session_name)
 );
 
+-- Voice assignments for TTS (persists across tmux session restarts)
+-- Two-phase storage:
+-- 1. At tmux creation: store keyed by teleclaude_session_id (our session_id)
+-- 2. When Claude session_start event arrives: copy to record keyed by claude_session_id
+-- On session reopen, lookup by claude_session_id first (from ux_state), then assign new if not found.
+-- Records expire after 7 days (cleaned up by daemon.cleanup_stale_voice_assignments)
+CREATE TABLE IF NOT EXISTS voice_assignments (
+    id TEXT PRIMARY KEY,  -- Either teleclaude_session_id or claude_session_id
+    voice_name TEXT NOT NULL,
+    elevenlabs_id TEXT DEFAULT '',
+    macos_voice TEXT DEFAULT '',
+    openai_voice TEXT DEFAULT '',
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for TTL cleanup queries
+CREATE INDEX IF NOT EXISTS idx_voice_assignments_assigned_at ON voice_assignments(assigned_at);
+
 -- Key-value store for system settings
 CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,

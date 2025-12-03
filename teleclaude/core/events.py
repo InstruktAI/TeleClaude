@@ -130,6 +130,9 @@ class TeleClaudeEvents:
     # Claude Code events (from hooks)
     CLAUDE_EVENT: Literal["claude_event"] = "claude_event"  # Claude Code events (title change, etc.)
 
+    # Cross-computer notifications
+    STOP_NOTIFICATION: Literal["stop_notification"] = "stop_notification"  # Forwarded stop event from remote
+
     # Internal events
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
 

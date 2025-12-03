@@ -109,8 +109,8 @@ class TestSessionCloseReopen:
         """Test that _reopen_session creates tmux at saved working_dir."""
         from unittest.mock import AsyncMock, Mock, patch
 
-        from teleclaude import config as config_module
         from teleclaude.core.models import Session
+        from teleclaude.core.ux_state import SessionUXState
         from teleclaude.daemon import TeleClaudeDaemon
 
         # Create daemon instance without full initialization
@@ -120,10 +120,12 @@ class TestSessionCloseReopen:
         with (
             patch("teleclaude.daemon.terminal_bridge") as mock_tb,
             patch("teleclaude.daemon.db") as mock_db,
-            patch("teleclaude.daemon.config") as mock_config,  # Patch where it's imported
+            patch("teleclaude.daemon.config") as mock_config,
         ):
             mock_tb.create_tmux_session = AsyncMock()
             mock_db.update_session = AsyncMock()
+            mock_db.get_ux_state = AsyncMock(return_value=SessionUXState())  # No claude_session_id
+            mock_db.get_voice = AsyncMock(return_value=None)  # No voice stored
 
             # Mock config.computer.default_shell (must set up the mock chain properly)
             mock_computer = Mock()
@@ -145,13 +147,14 @@ class TestSessionCloseReopen:
             # Execute
             await daemon._reopen_session(session)
 
-            # Verify: tmux created at saved directory
+            # Verify: tmux created at saved directory (env_vars=None when no voice found)
             mock_tb.create_tmux_session.assert_called_once_with(
                 name="test-tmux-123",
                 working_dir="/home/user/project",
                 cols=120,
                 rows=40,
                 session_id="test-123",
+                env_vars=None,
             )
 
             # Verify: marked active

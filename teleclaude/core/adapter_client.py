@@ -790,6 +790,7 @@ class AdapterClient:
         session: "Session",  # type: ignore[name-defined]
         title: str,
         origin_adapter: str,
+        target_computer: Optional[str] = None,
     ) -> str:
         """Create channels in ALL adapters for new session.
 
@@ -802,6 +803,7 @@ class AdapterClient:
             session: Session object (caller already has it)
             title: Channel title
             origin_adapter: Name of origin adapter (interactive)
+            target_computer: Initiator computer name for AI-to-AI sessions (for stop event forwarding)
 
         Returns:
             channel_id from origin adapter (for backward compatibility)
@@ -820,7 +822,7 @@ class AdapterClient:
                 adapter.create_channel(
                     session,
                     title,
-                    metadata=ChannelMetadata(origin=is_origin),
+                    metadata=ChannelMetadata(origin=is_origin, target_computer=target_computer),
                 )
             )
 

@@ -699,21 +699,37 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 payload = {"session_id": session_id, "args": args}
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
+            # Build channel_metadata dict from message data
+            # This includes any existing channel_metadata AND the initiator computer
+            channel_metadata: dict[str, object] = {}
+            if b"channel_metadata" in data:
+                try:
+                    parsed = json.loads(data[b"channel_metadata"].decode("utf-8"))
+                    if isinstance(parsed, dict):
+                        channel_metadata = parsed
+                except json.JSONDecodeError:
+                    logger.warning("Invalid channel_metadata JSON in message")
+
+            # Extract initiator computer name and add to channel_metadata
+            # This enables forwarding stop events back to the caller's computer
+            if b"initiator" in data:
+                initiator = data[b"initiator"].decode("utf-8")
+                channel_metadata["target_computer"] = initiator
+                logger.info("Set initiator/target_computer in channel_metadata: %s", initiator)
+
             # Build MessageMetadata from message data
             # Messages received via Redis inherently have adapter_type="redis"
-            metadata_to_send = MessageMetadata(adapter_type="redis")
+            # channel_metadata must be on metadata (not payload) for handler to receive it
+            metadata_to_send = MessageMetadata(
+                adapter_type="redis",
+                channel_metadata=channel_metadata if channel_metadata else None,
+            )
 
-            # Add session-level data to payload instead of metadata
+            # Add session-level data to payload
             if b"project_dir" in data:
                 payload["project_dir"] = data[b"project_dir"].decode("utf-8")
             if b"title" in data:
                 payload["title"] = data[b"title"].decode("utf-8")
-            if b"channel_metadata" in data:
-                try:
-                    metadata_obj: object = json.loads(data[b"channel_metadata"].decode("utf-8"))
-                    payload["channel_metadata"] = metadata_obj
-                except json.JSONDecodeError:
-                    logger.warning("Invalid channel_metadata JSON in message")
 
             logger.info(">>> About to call handle_event for event_type: %s", event_type)
             result = await self.client.handle_event(

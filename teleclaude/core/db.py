@@ -16,6 +16,7 @@ from . import ux_state
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata
 from .ux_state import SessionUXState
+from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -720,6 +721,76 @@ class Db:
             (key, value),
         )
         await self.conn.commit()
+
+    # Voice assignment methods
+
+    async def assign_voice(self, voice_id: str, voice: VoiceConfig) -> None:
+        """Assign a voice keyed by ID (either teleclaude_session_id or claude_session_id).
+
+        Args:
+            voice_id: Either teleclaude session ID or Claude Code session ID
+            voice: VoiceConfig to assign
+        """
+        await self.conn.execute(
+            """
+            INSERT INTO voice_assignments (id, voice_name, elevenlabs_id, macos_voice, openai_voice)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                voice_name = excluded.voice_name,
+                elevenlabs_id = excluded.elevenlabs_id,
+                macos_voice = excluded.macos_voice,
+                openai_voice = excluded.openai_voice,
+                assigned_at = CURRENT_TIMESTAMP
+            """,
+            (voice_id, voice.name, voice.elevenlabs_id, voice.macos_voice, voice.openai_voice),
+        )
+        await self.conn.commit()
+        logger.debug("Assigned voice '%s' to %s", voice.name, voice_id[:8])
+
+    async def get_voice(self, voice_id: str) -> Optional[VoiceConfig]:
+        """Get voice assignment by ID.
+
+        Args:
+            voice_id: Either teleclaude session ID or Claude Code session ID
+
+        Returns:
+            VoiceConfig or None if no voice assigned
+        """
+        cursor = await self.conn.execute(
+            "SELECT voice_name, elevenlabs_id, macos_voice, openai_voice FROM voice_assignments WHERE id = ?",
+            (voice_id,),
+        )
+        row = await cursor.fetchone()
+
+        if not row:
+            return None
+
+        return VoiceConfig(
+            name=row["voice_name"],
+            elevenlabs_id=row["elevenlabs_id"] or "",
+            macos_voice=row["macos_voice"] or "",
+            openai_voice=row["openai_voice"] or "",
+        )
+
+    async def cleanup_stale_voice_assignments(self, max_age_days: int = 7) -> int:
+        """Delete voice assignments older than max_age_days.
+
+        Args:
+            max_age_days: Maximum age in days before cleanup (default: 7)
+
+        Returns:
+            Number of records deleted
+        """
+        cursor = await self.conn.execute(
+            """DELETE FROM voice_assignments
+            WHERE assigned_at < datetime('now', ? || ' days')""",
+            (f"-{max_age_days}",),
+        )
+        await self.conn.commit()
+        deleted = cursor.rowcount
+        if deleted > 0:
+            logger.info("Cleaned up %d stale voice assignments (older than %d days)", deleted, max_age_days)
+        return deleted
 
 
 # Module-level singleton instance (initialized on first import)

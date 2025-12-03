@@ -75,6 +75,7 @@ async def test_handle_new_session_creates_session():
         mock_config.computer.default_working_dir = "/home/user"
         mock_db.create_session = AsyncMock(return_value=mock_session)
         mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.assign_voice = AsyncMock()  # Voice assignment
         mock_tb.create_tmux_session = AsyncMock(return_value=True)
         mock_unique.return_value = "$TestComputer[user] - Test Title"
 
@@ -114,6 +115,7 @@ async def test_handle_new_session_validates_working_dir():
         mock_db.create_session = AsyncMock(return_value=mock_session)
         mock_db.get_session = AsyncMock(return_value=mock_session)
         mock_db.delete_session = AsyncMock()
+        mock_db.assign_voice = AsyncMock()  # Voice assignment
         mock_tb.create_tmux_session = AsyncMock(return_value=False)  # Fail
         mock_unique.return_value = "Test Title"
 

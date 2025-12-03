@@ -22,7 +22,12 @@ _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell
 
 
 async def create_tmux_session(
-    name: str, working_dir: str, cols: int = 80, rows: int = 24, session_id: Optional[str] = None
+    name: str,
+    working_dir: str,
+    cols: int = 80,
+    rows: int = 24,
+    session_id: Optional[str] = None,
+    env_vars: Optional[Dict[str, str]] = None,
 ) -> bool:
     """Create a new tmux session.
 
@@ -35,6 +40,7 @@ async def create_tmux_session(
         cols: Terminal columns
         rows: Terminal rows
         session_id: TeleClaude session ID (injected as TELECLAUDE_SESSION_ID env var)
+        env_vars: Additional environment variables to inject (e.g., TTS voice config)
 
     Returns:
         True if successful, False otherwise
@@ -61,6 +67,11 @@ async def create_tmux_session(
         # Inject TeleClaude session ID as env var (for Claude Code hook integration)
         if session_id:
             cmd.extend(["-e", f"TELECLAUDE_SESSION_ID={session_id}"])
+
+        # Inject additional environment variables (e.g., TTS voice configuration)
+        if env_vars:
+            for var_name, var_value in env_vars.items():
+                cmd.extend(["-e", f"{var_name}={var_value}"])
 
         # Don't capture stdout/stderr - let tmux create its own PTY
         # Using PIPE can leak file descriptors to child processes in tmux

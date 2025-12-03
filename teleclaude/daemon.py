@@ -24,6 +24,7 @@ from teleclaude.core import (
     polling_coordinator,
     session_cleanup,
     session_listeners,
+    voice_assignment,
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
@@ -42,9 +43,11 @@ from teleclaude.core.events import (
     VoiceEventContext,
 )
 from teleclaude.core.file_handler import handle_file
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
 from teleclaude.core.output_poller import OutputPoller
+from teleclaude.core.session_listeners import pop_listeners
 from teleclaude.core.session_utils import get_output_file
+from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -243,12 +246,26 @@ class TeleClaudeDaemon:
             except (ValueError, AttributeError):
                 pass
 
+        # Restore voice env vars from DB if available
+        # Lookup by claude_session_id first (persists across tmux restarts), then by session_id
+        voice_env_vars = None
+        ux_state = await db.get_ux_state(session.session_id)
+        voice = None
+        if ux_state.claude_session_id:
+            voice = await db.get_voice(ux_state.claude_session_id)
+        if not voice:
+            voice = await db.get_voice(session.session_id)
+        if voice:
+            voice_env_vars = voice_assignment.get_voice_env_vars(voice)
+            logger.debug("Restored voice '%s' for session %s", voice.name, session.session_id[:8])
+
         await terminal_bridge.create_tmux_session(
             name=session.tmux_session_name,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
             session_id=session.session_id,
+            env_vars=voice_env_vars,
         )
 
         await db.update_session(session.session_id, closed=False)
@@ -407,6 +424,57 @@ class TeleClaudeDaemon:
     async def _handle_health_check(self) -> None:
         """Handle health check system command."""
         logger.info("Health check requested")
+
+    async def _handle_stop_notification(self, _event: str, context: SessionCommandContext) -> None:
+        """Handle stop_notification event - forwarded stop event from remote computer.
+
+        When a remote session (AI-to-AI) stops, the target computer forwards the stop
+        event to the initiator's computer so the listener can fire.
+
+        Args:
+            _event: Event type (always "stop_notification")
+            context: Session command context - session_id is in args[0], not context.session_id
+        """
+        # The session_id is passed as command argument: "/stop_notification {session_id}"
+        # It's in args, not context.session_id (which is empty for forwarded commands)
+        if not context.args:
+            logger.warning("stop_notification received without session_id argument")
+            return
+        target_session_id = context.args[0]
+        logger.info("Received stop_notification for remote session %s", target_session_id[:8])
+
+        # Pop and notify listeners (same logic as _notify_session_listener in ui_adapter)
+        listeners = pop_listeners(target_session_id)
+        if not listeners:
+            logger.debug("No listeners for remote session %s", target_session_id[:8])
+            return
+
+        for listener in listeners:
+            # Build notification message
+            notification = (
+                f"Remote session {target_session_id[:8]} has finished. "
+                f"Use teleclaude__get_session_data to inspect results."
+            )
+
+            # Inject into caller's tmux session
+            success, error = await send_keys(
+                session_name=listener.caller_tmux_session,
+                text=notification,
+                send_enter=True,
+            )
+
+            if success:
+                logger.info(
+                    "Notified caller %s about remote session %s completion",
+                    listener.caller_session_id[:8],
+                    target_session_id[:8],
+                )
+            else:
+                logger.warning(
+                    "Failed to notify caller %s: %s",
+                    listener.caller_session_id[:8],
+                    error,
+                )
 
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
@@ -877,6 +945,9 @@ class TeleClaudeDaemon:
 
                 # Clean up orphan workspace directories (workspace exists but no DB entry)
                 await session_cleanup.cleanup_orphan_workspaces()
+
+                # Clean up stale voice assignments (7 day TTL)
+                await db.cleanup_stale_voice_assignments()
 
             except asyncio.CancelledError:
                 break

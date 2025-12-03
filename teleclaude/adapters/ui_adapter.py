@@ -527,7 +527,7 @@ class UiAdapter(BaseAdapter):
             await self._handle_title_update(context)
 
     async def _handle_claude_session_start(self, context: ClaudeEventContext) -> None:
-        """Handle session_start event - store claude_session_id and claude_session_file.
+        """Handle session_start event - store claude_session_id, claude_session_file, and copy voice.
 
         Args:
             context: Typed Claude event context
@@ -544,6 +544,14 @@ class UiAdapter(BaseAdapter):
             claude_session_id=str(claude_session_id),
             claude_session_file=str(claude_session_file),
         )
+
+        # Copy voice assignment from teleclaude session_id to claude_session_id
+        # This allows voice to persist even if tmux session is destroyed and recreated
+        voice = await db.get_voice(context.session_id)
+        if voice:
+            await db.assign_voice(str(claude_session_id), voice)
+            logger.debug("Copied voice '%s' to claude_session_id %s", voice.name, str(claude_session_id)[:8])
+
         logger.info(
             "Stored Claude session data: teleclaude=%s, claude=%s",
             context.session_id[:8],
@@ -556,6 +564,9 @@ class UiAdapter(BaseAdapter):
         Checks for registered listeners and notifies callers via tmux injection.
         Listeners are one-shot (removed after firing).
 
+        For remote-initiated sessions (AI-to-AI), forwards the stop event to the
+        initiator's computer so their listener can fire.
+
         Note: Title update and summary notification come via separate 'summary' event.
 
         Args:
@@ -563,8 +574,12 @@ class UiAdapter(BaseAdapter):
         """
         logger.debug("Claude stop event for session %s", context.session_id[:8])
 
-        # Check for listener and notify caller
+        # Check for local listeners and notify callers
         await self._notify_session_listener(context.session_id)
+
+        # For remote-initiated sessions, forward stop event to the initiator's computer
+        # This allows the caller's listener to fire even though we're on a different machine
+        await self._forward_stop_to_initiator(context.session_id)
 
     async def _handle_title_update(self, context: ClaudeEventContext) -> None:
         """Handle title_update event - update channel title from AI-generated title.
@@ -764,3 +779,45 @@ class UiAdapter(BaseAdapter):
                     listener.caller_session_id[:8],
                     error,
                 )
+
+    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+        """Forward stop event to the initiator's computer for remote-initiated sessions.
+
+        For AI-to-AI sessions started via teleclaude__start_session, the session's
+        adapter_metadata.redis.target_computer contains the initiator's computer name.
+        We forward the stop event to that computer so their listener can fire.
+
+        Args:
+            session_id: The session that just stopped
+        """
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        # Check if this was a remote-initiated session
+        redis_meta = session.adapter_metadata.redis
+        if not redis_meta or not redis_meta.target_computer:
+            return
+
+        initiator_computer = redis_meta.target_computer
+
+        # Don't forward to self (in case of misconfiguration)
+        if initiator_computer == config.computer.name:
+            return
+
+        logger.info(
+            "Forwarding stop event to initiator %s for session %s",
+            initiator_computer,
+            session_id[:8],
+        )
+
+        # Send stop_notification command to initiator's computer
+        # The command includes the session_id so the initiator can fire their listener
+        try:
+            await self.client.send_request(
+                computer_name=initiator_computer,
+                command=f"/stop_notification {session_id}",
+                metadata=MessageMetadata(),
+            )
+        except Exception as e:
+            logger.warning("Failed to forward stop to %s: %s", initiator_computer, e)

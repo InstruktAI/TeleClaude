@@ -26,6 +26,7 @@ from teleclaude.core.session_cleanup import (
     cleanup_session_resources,
 )
 from teleclaude.core.session_utils import ensure_unique_title
+from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.utils.claude_transcript import parse_claude_transcript
 
 if TYPE_CHECKING:
@@ -130,6 +131,11 @@ async def handle_create_session(
     Returns:
         Minimal session payload with session_id
     """
+    logger.info(
+        "handle_create_session: adapter_type=%s, channel_metadata=%s",
+        metadata.adapter_type,
+        metadata.channel_metadata,
+    )
     # Get adapter_type from metadata
     adapter_type = metadata.adapter_type
     if not adapter_type:
@@ -175,6 +181,12 @@ async def handle_create_session(
     # Ensure title is unique (appends counter if needed)
     title = await ensure_unique_title(base_title)
 
+    # Assign random voice for TTS
+    # Voice is stored keyed by session_id now, then copied to claude_session_id key on session_start event
+    voice = get_random_voice()
+    if voice:
+        await db.assign_voice(session_id, voice)
+
     # Create session in database first (need session_id for create_channel)
     # session_id was generated earlier for tmux naming
     session = await db.create_session(
@@ -188,15 +200,19 @@ async def handle_create_session(
     )
 
     # Create channel via client (session object passed, adapter_metadata updated in DB)
-    await client.create_channel(session=session, title=title, origin_adapter=str(adapter_type))
+    # Pass initiator (target_computer) for AI-to-AI sessions so stop events can be forwarded
+    await client.create_channel(
+        session=session, title=title, origin_adapter=str(adapter_type), target_computer=initiator
+    )
 
     # Re-fetch session to get updated adapter_metadata (set by create_channel)
     session = await db.get_session(session_id)
 
-    # Create actual tmux session
+    # Create actual tmux session with voice env vars
     cols, rows = map(int, terminal_size.split("x"))
+    voice_env_vars = get_voice_env_vars(voice) if voice else None
     success = await terminal_bridge.create_tmux_session(
-        name=tmux_name, working_dir=working_dir, cols=cols, rows=rows, session_id=session_id
+        name=tmux_name, working_dir=working_dir, cols=cols, rows=rows, session_id=session_id, env_vars=voice_env_vars
     )
 
     if success:
