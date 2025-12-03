@@ -208,6 +208,7 @@ class Session:
     description: Optional[str] = None
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI (uses Sonnet model)
+    claude_model: Optional[str] = None  # Claude Code model (e.g., 'sonnet', 'opus'). None = default
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
@@ -286,6 +287,7 @@ class Session:
             "description",
             "ux_state",
             "initiated_by_ai",
+            "claude_model",
         }
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
 
