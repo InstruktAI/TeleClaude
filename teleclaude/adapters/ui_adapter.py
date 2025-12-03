@@ -584,8 +584,8 @@ class UiAdapter(BaseAdapter):
             summary[:20] if summary else "none",
         )
 
-        # 1. Check for local listeners and notify callers
-        await self._notify_session_listener(session_id)
+        # 1. Check for local listeners and notify callers (pass title for notification)
+        await self._notify_session_listener(session_id, title=title)
 
         # 2. For remote-initiated sessions, forward stop event to the initiator's computer
         await self._forward_stop_to_initiator(session_id, title=title)
@@ -750,7 +750,7 @@ class UiAdapter(BaseAdapter):
             logger.error("Failed to extract Claude title from %s: %s", session_file_path, e)
             return None
 
-    async def _notify_session_listener(self, target_session_id: str) -> None:
+    async def _notify_session_listener(self, target_session_id: str, *, title: str | None = None) -> None:
         """Notify all callers waiting for a target session to stop.
 
         Pops all listeners (one-shot), then injects a message into each caller's
@@ -758,19 +758,22 @@ class UiAdapter(BaseAdapter):
 
         Args:
             target_session_id: The session that just stopped
+            title: Optional AI-generated title from summarizer (preferred over DB title)
         """
         listeners = pop_listeners(target_session_id)
         if not listeners:
             return
 
         # Get target session info for the notification
+        # Prefer AI-generated title from stop event over DB title (which may not be updated yet)
         target_session = await db.get_session(target_session_id)
-        target_title = target_session.title if target_session else "Unknown"
+        display_title = title or (target_session.title if target_session else "Unknown")
 
         for listener in listeners:
-            # Build notification message
+            # Build notification message with title in quotes for clarity
+            title_part = f' "{display_title}"' if title else f" ({display_title})"
             notification = (
-                f"Session {target_session_id[:8]} ({target_title}) has finished. "
+                f"Session {target_session_id[:8]}{title_part} has finished. "
                 f"Use teleclaude__get_session_data(computer='local', session_id='{target_session_id}') to inspect."
             )
 
