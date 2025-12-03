@@ -268,18 +268,6 @@ except Exception:
 restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
-    # Capture TeleClaude session ID BEFORE killing (only works in tmux sessions)
-    # NOTE: Auto-restart only works for TeleClaude tmux sessions.
-    # For local terminals, user must manually restart Claude after daemon restart.
-    SAVED_SESSION_ID=""
-
-    if [ -n "$TMUX" ]; then
-        TMUX_SESSION=$(tmux display-message -p '#S' 2>/dev/null)
-        if [ -n "$TMUX_SESSION" ]; then
-            SAVED_SESSION_ID=$(tmux show-environment -t "$TMUX_SESSION" TELECLAUDE_SESSION_ID 2>/dev/null | cut -d= -f2-)
-        fi
-    fi
-
     OLD_PID=""
     if [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE")
@@ -306,14 +294,24 @@ restart_daemon() {
         EXIT_CODE=1
     fi
 
-    # Restart Claude to reconnect MCP (only works for TeleClaude tmux sessions)
-    if [ -n "$TMUX" ] && [ -n "$SAVED_SESSION_ID" ]; then
-        (
-            sleep 1
-            export TELECLAUDE_SESSION_ID="$SAVED_SESSION_ID"
-            cd "$PROJECT_ROOT" && "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude >/dev/null 2>&1
-        ) </dev/null >/dev/null 2>&1 & disown
-    fi
+    # Restart Claude in ALL TeleClaude tmux sessions (not just current)
+    # Each tc_* session has TELECLAUDE_SESSION_ID env var set at creation
+    # restart_claude.py looks up claude_session_id from database and resumes
+    (
+        sleep 1
+        cd "$PROJECT_ROOT"
+
+        # Get all tc_* tmux sessions and restart Claude in each
+        for TMUX_SESSION in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^tc_'); do
+            SESSION_ID=$(tmux show-environment -t "$TMUX_SESSION" TELECLAUDE_SESSION_ID 2>/dev/null | cut -d= -f2-)
+            if [ -n "$SESSION_ID" ]; then
+                log_info "Restarting Claude in $TMUX_SESSION..."
+                TELECLAUDE_SESSION_ID="$SESSION_ID" "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude &
+                sleep 0.5  # Small delay between restarts to avoid overwhelming tmux
+            fi
+        done
+        wait  # Wait for all background restarts to complete
+    ) </dev/null >/dev/null 2>&1 & disown
 
     # Return immediately with collected exit code
     return $EXIT_CODE
