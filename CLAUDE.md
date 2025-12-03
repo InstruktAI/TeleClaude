@@ -63,8 +63,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 AI[computer:session_id] | message content here
 ```
 
-- `computer` - The sender's computer name (where to send your reply)
-- `session_id` - The sender's session ID (which session to reply to)
+- `computer` - Either `"local"` (same computer) or a remote computer name
+- `session_id` - The sender's session UUID (which session to reply to)
 - `|` - Separator between header and message
 - `message` - The actual request/content
 
@@ -75,21 +75,19 @@ AI[computer:session_id] | message content here
 3. **Complete the requested task**
 4. **ALWAYS reply back** using `teleclaude__send_message(computer, session_id, your_response)`
 
-**Example:**
+**Examples:**
 
-You receive:
+Local session (same computer):
 ```
-AI[RasPi:abc123-def456] | Please run the test suite and summarize failures
+AI[local:9002de6d-6c2e-4622-858c-afd66420c534] | Please analyze this code
 ```
+Reply with: `teleclaude__send_message(computer="local", session_id="9002de6d-...", message="...")`
 
-After completing the task, you MUST reply:
-```python
-teleclaude__send_message(
-    computer="RasPi",
-    session_id="abc123-def456",
-    message="All 42 tests passed. No failures detected."
-)
+Remote session (different computer):
 ```
+AI[RasPi:abc123-def456-...] | Please run the test suite
+```
+Reply with: `teleclaude__send_message(computer="RasPi", session_id="abc123-...", message="...")`
 
 **Why this matters:**
 

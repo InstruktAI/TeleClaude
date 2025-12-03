@@ -152,8 +152,9 @@ async def test_teleclaude_send_message_adds_ai_prefix(mock_mcp_server):
     event_data = call_args[0][1]  # Second positional arg is event_data
     message_text = event_data["text"]
 
-    # Verify AI prefix format: AI[computer:session_id] | message
-    assert message_text.startswith("AI[TestComputer:caller-session-abc]")
+    # Verify AI prefix format: AI[local:session_id] | message
+    # Uses "local" for local targets (not computer name) for clarity
+    assert message_text.startswith("AI[local:caller-session-abc]")
     assert " | " in message_text
     assert "run tests" in message_text
 

@@ -195,7 +195,10 @@ class TeleClaudeMCPServer:
                         "properties": {
                             "computer": {
                                 "type": "string",
-                                "description": "Target computer name (same as used in teleclaude__start_session)",
+                                "description": (
+                                    "Target computer name (same as used in teleclaude__start_session). "
+                                    "Use 'local' when replying to messages prefixed with AI[local:...]"
+                                ),
                             },
                             "session_id": {
                                 "type": "string",
@@ -617,10 +620,15 @@ class TeleClaudeMCPServer:
 
         logger.info("Local session created: %s", session_id[:8])
 
-        # Send /claude command with message to start Claude Code
+        # Build AI-to-AI protocol prefix for the initial message
+        # Use "local" since this is a local session - receiving AI can reply with computer="local"
+        caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+        prefixed_message = f"AI[local:{caller_session_id}] | {message}"
+
+        # Send /claude command with prefixed message to start Claude Code
         await self.client.handle_event(
             TeleClaudeEvents.CLAUDE,
-            {"session_id": session_id, "args": [message]},
+            {"session_id": session_id, "args": [prefixed_message]},
             MessageMetadata(adapter_type="redis"),
         )
         logger.debug("Sent /claude command with message to local session %s", session_id[:8])
@@ -691,9 +699,14 @@ class TeleClaudeMCPServer:
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
-            # Send /claude command with message to start Claude Code
+            # Build AI-to-AI protocol prefix for the initial message
+            # This allows the receiving AI to reply back to the caller
+            caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+            prefixed_message = f"AI[{self.computer_name}:{caller_session_id}] | {message}"
+
+            # Send /claude command with prefixed message to start Claude Code
             # Use shlex.quote for proper escaping (handles ', ", !, $, etc.)
-            quoted_message = shlex.quote(message)
+            quoted_message = shlex.quote(prefixed_message)
             await self.client.send_request(
                 computer_name=computer,
                 command=f"/claude {quoted_message}",
@@ -830,10 +843,13 @@ class TeleClaudeMCPServer:
             caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
             # Build AI-to-AI protocol prefix
+            # Use "local" for local targets, actual computer name for remote
             # Format: AI[computer:session_id] | message
-            prefixed_message = f"AI[{self.computer_name}:{caller_session_id}] | {message}"
+            is_local = self._is_local_computer(computer)
+            sender_computer = "local" if is_local else self.computer_name
+            prefixed_message = f"AI[{sender_computer}:{caller_session_id}] | {message}"
 
-            if self._is_local_computer(computer):
+            if is_local:
                 # Local session - send directly via handle_event
                 await self.client.handle_event(
                     TeleClaudeEvents.MESSAGE,
