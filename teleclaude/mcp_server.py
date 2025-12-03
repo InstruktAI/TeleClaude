@@ -413,9 +413,11 @@ class TeleClaudeMCPServer:
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 message = str(arguments.get("message", "")) if arguments else ""
+                # Optional: caller_session_id for AI-to-AI message prefix
+                caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
                 # Collect all chunks from async generator
                 chunks: list[str] = []
-                async for chunk in self.teleclaude__send_message(computer, session_id, message):
+                async for chunk in self.teleclaude__send_message(computer, session_id, message, caller_session_id):
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
@@ -428,8 +430,10 @@ class TeleClaudeMCPServer:
                 until_timestamp = str(until_timestamp_obj) if until_timestamp_obj else None
                 tail_chars_obj = arguments.get("tail_chars") if arguments else None
                 tail_chars = int(tail_chars_obj) if tail_chars_obj is not None else 5000
+                # Optional: caller_session_id for stop notifications (observer pattern)
+                caller_session_id = str(arguments["caller_session_id"]) if arguments.get("caller_session_id") else None
                 result = await self.teleclaude__get_session_data(
-                    computer, session_id, since_timestamp, until_timestamp, tail_chars
+                    computer, session_id, since_timestamp, until_timestamp, tail_chars, caller_session_id
                 )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__deploy_to_all_computers":
