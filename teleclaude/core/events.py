@@ -132,6 +132,7 @@ class TeleClaudeEvents:
 
     # Cross-computer notifications
     STOP_NOTIFICATION: Literal["stop_notification"] = "stop_notification"  # Forwarded stop event from remote
+    INPUT_NOTIFICATION: Literal["input_notification"] = "input_notification"  # Forwarded input request from remote
 
     # Internal events
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB

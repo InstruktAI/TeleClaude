@@ -28,7 +28,7 @@ from teleclaude.core.events import (
     UiCommands,
 )
 from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
-from teleclaude.core.session_listeners import pop_listeners
+from teleclaude.core.session_listeners import get_listeners
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import handle_voice
@@ -687,27 +687,40 @@ class UiAdapter(BaseAdapter):
         logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
     async def _handle_notification(self, context: ClaudeEventContext) -> None:
-        """Handle notification event - send feedback message (persistent, no cleanup).
+        """Handle notification event - notify listeners and send feedback to Telegram.
+
+        When Claude asks a question (AskUserQuestion) or needs input, we:
+        1. Forward the question to any registered listeners (calling AIs)
+        2. Forward to remote initiator for cross-computer AI-to-AI sessions
+        3. Send friendly feedback message to Telegram
 
         Args:
-            context: Typed Claude event context with message in data
+            context: Typed Claude event context with message and original_message in data
         """
         session_id = context.session_id
-        message = context.data.get("message")
+        friendly_message = context.data.get("message")
+        original_message = context.data.get("original_message")
 
-        if not message:
+        if not friendly_message:
             logger.debug("No message in notification event for session %s", session_id[:8])
             return
 
-        session = await self._get_session(session_id)
+        # 1. Notify local listeners with the ORIGINAL message (the actual question)
+        if original_message:
+            await self._forward_notification_to_listeners(session_id, str(original_message))
 
-        # Send as persistent feedback (doesn't cleanup previous, but gets added to deletion list)
-        await self.send_feedback(session, str(message), MessageMetadata(), persistent=True)
+        # 2. Forward to remote initiator for cross-computer sessions
+        if original_message:
+            await self._forward_notification_to_initiator(session_id, str(original_message))
+
+        # 3. Send friendly feedback to Telegram
+        session = await self._get_session(session_id)
+        await self.send_feedback(session, str(friendly_message), MessageMetadata(), persistent=True)
 
         # Set notification_sent flag (prevents duplicate idle notifications)
         await db.set_notification_flag(session_id, True)
 
-        logger.debug("Sent notification for session %s: %s", session_id[:8], str(message)[:50])
+        logger.debug("Sent notification for session %s: %s", session_id[:8], str(friendly_message)[:50])
 
     async def _extract_claude_title(self, session_file_path: str) -> Optional[str]:
         """Extract AI-generated title from Claude session file.
@@ -751,16 +764,16 @@ class UiAdapter(BaseAdapter):
             return None
 
     async def _notify_session_listener(self, target_session_id: str, *, title: str | None = None) -> None:
-        """Notify all callers waiting for a target session to stop.
+        """Notify all callers that a target session's Claude finished its turn.
 
-        Pops all listeners (one-shot), then injects a message into each caller's
-        tmux session to notify them the target has finished.
+        Uses get_listeners (not pop) because listeners stay active until session closes.
+        "Stop" means Claude finished its turn, not that the session ended.
 
         Args:
-            target_session_id: The session that just stopped
+            target_session_id: The session whose Claude finished its turn
             title: Optional AI-generated title from summarizer (preferred over DB title)
         """
-        listeners = pop_listeners(target_session_id)
+        listeners = get_listeners(target_session_id)
         if not listeners:
             return
 
@@ -773,7 +786,7 @@ class UiAdapter(BaseAdapter):
             # Build notification message with title in quotes for clarity
             title_part = f' "{display_title}"' if title else f" ({display_title})"
             notification = (
-                f"Session {target_session_id[:8]}{title_part} has finished. "
+                f"Session {target_session_id[:8]}{title_part} finished its turn. "
                 f"Use teleclaude__get_session_data(computer='local', session_id='{target_session_id}') to inspect."
             )
 
@@ -845,3 +858,90 @@ class UiAdapter(BaseAdapter):
             )
         except Exception as e:
             logger.warning("Failed to forward stop to %s: %s", initiator_computer, e)
+
+    async def _forward_notification_to_listeners(self, target_session_id: str, message: str) -> None:
+        """Forward a notification (question/input request) to all registered listeners.
+
+        Unlike stop events, notifications don't remove listeners - the session is still active
+        and asking a question. Listeners stay registered until the session actually stops.
+
+        Args:
+            target_session_id: The session that's asking the question
+            message: The original notification message (question content)
+        """
+        listeners = get_listeners(target_session_id)
+        if not listeners:
+            return
+
+        for listener in listeners:
+            # Build notification message that lets the calling AI know it needs to respond
+            notification = (
+                f"Session {target_session_id[:8]} needs input: {message} "
+                f"Use teleclaude__send_message(computer='local', session_id='{target_session_id}', "
+                f"message='your response') to respond."
+            )
+
+            # Inject into caller's tmux session
+            success, error = await send_keys(
+                session_name=listener.caller_tmux_session,
+                text=notification,
+                send_enter=True,
+            )
+
+            if success:
+                logger.info(
+                    "Forwarded notification from %s to listener %s",
+                    target_session_id[:8],
+                    listener.caller_session_id[:8],
+                )
+            else:
+                logger.warning(
+                    "Failed to forward notification to listener %s: %s",
+                    listener.caller_session_id[:8],
+                    error,
+                )
+
+    async def _forward_notification_to_initiator(self, session_id: str, message: str) -> None:
+        """Forward notification event to the initiator's computer for remote-initiated sessions.
+
+        For AI-to-AI sessions started via teleclaude__start_session, the session's
+        adapter_metadata.redis.target_computer contains the initiator's computer name.
+        We forward the notification so the initiator can respond to questions.
+
+        Args:
+            session_id: The session asking the question
+            message: The original notification message (question content)
+        """
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        # Check if this was a remote-initiated session
+        redis_meta = session.adapter_metadata.redis
+        if not redis_meta or not redis_meta.target_computer:
+            return
+
+        initiator_computer = redis_meta.target_computer
+
+        # Don't forward to self (in case of misconfiguration)
+        if initiator_computer == config.computer.name:
+            return
+
+        logger.info(
+            "Forwarding notification to initiator %s for session %s",
+            initiator_computer,
+            session_id[:8],
+        )
+
+        # Send input_notification command to initiator's computer
+        # Message is base64-encoded to safely pass through command parsing (may contain spaces)
+        message_b64 = base64.b64encode(message.encode()).decode()
+
+        try:
+            await self.client.send_request(
+                computer_name=initiator_computer,
+                command=f"/input_notification {session_id} {config.computer.name} {message_b64}",
+                metadata=MessageMetadata(),
+            )
+        except Exception as e:
+            logger.warning("Failed to forward notification to %s: %s", initiator_computer, e)

@@ -24,7 +24,6 @@ from teleclaude.core import (
     command_handlers,
     polling_coordinator,
     session_cleanup,
-    session_listeners,
     voice_assignment,
     voice_message_handler,
 )
@@ -46,7 +45,11 @@ from teleclaude.core.events import (
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_listeners import pop_listeners
+from teleclaude.core.session_listeners import (
+    cleanup_caller_listeners,
+    get_listeners,
+    pop_listeners,
+)
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
@@ -209,6 +212,25 @@ class TeleClaudeDaemon:
 
         # Mark closed in DB
         await db.update_session(ctx.session_id, closed=True)
+
+        # Clean up session listeners:
+        # 1. Remove listeners where this session was the target (nobody listening to it anymore)
+        target_listeners = pop_listeners(ctx.session_id)
+        if target_listeners:
+            logger.debug(
+                "Cleaned up %d listener(s) for closed target session %s",
+                len(target_listeners),
+                ctx.session_id[:8],
+            )
+
+        # 2. Remove listeners where this session was the caller (can't receive notifications anymore)
+        caller_count = cleanup_caller_listeners(ctx.session_id)
+        if caller_count:
+            logger.debug(
+                "Cleaned up %d listener(s) registered by closed caller session %s",
+                caller_count,
+                ctx.session_id[:8],
+            )
 
         # Delete output file
         output_file = self._get_output_file_path(ctx.session_id)
@@ -459,18 +481,20 @@ class TeleClaudeDaemon:
             title[:30] if title else "none",
         )
 
-        # Pop and notify listeners (same logic as _notify_session_listener in ui_adapter)
-        listeners = pop_listeners(target_session_id)
+        # Get listeners (don't pop - session is still active, Claude just finished its turn)
+        # Listeners are only removed when session is closed (in _handle_session_closed)
+        listeners = get_listeners(target_session_id)
         if not listeners:
             logger.debug("No listeners for remote session %s", target_session_id[:8])
             return
 
         for listener in listeners:
             # Build actionable notification message with exact command to run
+            # Note: "Stop" means Claude finished its turn, not that the session ended
             # Include title if available for richer context
             title_part = f' "{title}"' if title else ""
             notification = (
-                f"Session {target_session_id[:8]} on {source_computer}{title_part} has finished. "
+                f"Session {target_session_id[:8]} on {source_computer}{title_part} finished its turn. "
                 f"Retrieve results: teleclaude__get_session_data("
                 f'computer="{source_computer}", session_id="{target_session_id}")'
             )
@@ -491,6 +515,76 @@ class TeleClaudeDaemon:
             else:
                 logger.warning(
                     "Failed to notify caller %s: %s",
+                    listener.caller_session_id[:8],
+                    error,
+                )
+
+    async def _handle_input_notification(self, _event: str, context: SessionCommandContext) -> None:
+        """Handle input_notification event - forwarded input request from remote computer.
+
+        When a remote session (AI-to-AI) asks a question via AskUserQuestion or similar,
+        the target computer forwards the notification so the caller can respond.
+
+        Unlike stop_notification, this does NOT pop listeners - the session is still
+        active and waiting for a response.
+
+        Args:
+            _event: Event type (always "input_notification")
+            context: Session command context - session_id is in args[0], not context.session_id
+        """
+        # Command format: "/input_notification {session_id} {computer} {message_b64}"
+        if len(context.args) < 3:
+            logger.warning("input_notification received with insufficient arguments: %s", context.args)
+            return
+
+        target_session_id = context.args[0]
+        source_computer = context.args[1]
+
+        # Decode base64 message
+        try:
+            message = base64.b64decode(context.args[2]).decode()
+        except Exception as e:
+            logger.warning("Failed to decode input_notification message: %s", e)
+            return
+
+        logger.info(
+            "Received input_notification for remote session %s from %s: %s",
+            target_session_id[:8],
+            source_computer,
+            message[:50],
+        )
+
+        # Get listeners (don't pop - session is still active)
+        listeners = get_listeners(target_session_id)
+        if not listeners:
+            logger.debug("No listeners for remote session %s", target_session_id[:8])
+            return
+
+        for listener in listeners:
+            # Build actionable notification message with exact command to respond
+            notification = (
+                f"Session {target_session_id[:8]} on {source_computer} needs input: {message} "
+                f"Use teleclaude__send_message("
+                f'computer="{source_computer}", session_id="{target_session_id}", '
+                f'message="your response") to respond.'
+            )
+
+            # Inject into caller's tmux session
+            success, error = await send_keys(
+                session_name=listener.caller_tmux_session,
+                text=notification,
+                send_enter=True,
+            )
+
+            if success:
+                logger.info(
+                    "Forwarded input request from %s to listener %s",
+                    target_session_id[:8],
+                    listener.caller_session_id[:8],
+                )
+            else:
+                logger.warning(
+                    "Failed to forward input request to listener %s: %s",
                     listener.caller_session_id[:8],
                     error,
                 )
@@ -726,10 +820,6 @@ class TeleClaudeDaemon:
         self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
-        # Start listener health check task (runs every minute)
-        self.health_check_task = asyncio.create_task(self._periodic_listener_health_check())
-        logger.info("Listener health check task started (10min threshold)")
-
         # Restore polling for sessions that were active before restart
         await polling_coordinator.restore_active_pollers(
             adapter_client=self.client,
@@ -760,15 +850,6 @@ class TeleClaudeDaemon:
             except asyncio.CancelledError:
                 pass
             logger.info("Periodic cleanup task stopped")
-
-        # Stop listener health check task
-        if hasattr(self, "health_check_task"):
-            self.health_check_task.cancel()
-            try:
-                await self.health_check_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("Listener health check task stopped")
 
         # Stop all adapters
         for adapter_name, adapter in self.client.adapters.items():
@@ -1009,67 +1090,6 @@ class TeleClaudeDaemon:
 
         except Exception as e:
             logger.error("Error cleaning up inactive sessions: %s", e)
-
-    async def _periodic_listener_health_check(self) -> None:
-        """Periodically check for long-running sessions with waiting listeners.
-
-        Every minute, checks if any listeners have been waiting >10 minutes.
-        If so, injects a health check message into the target session asking for status.
-        The listener is NOT removed - that only happens when the session actually stops.
-        """
-        while True:
-            try:
-                await asyncio.sleep(60)  # Run every minute
-
-                # Get targets with stale listeners (resets their timestamps)
-                stale_targets = session_listeners.get_stale_targets(max_age_minutes=10)
-
-                for target_session_id in stale_targets:
-                    await self._send_health_check(target_session_id)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Error in listener health check: %s", e)
-
-    async def _send_health_check(self, target_session_id: str) -> None:
-        """Inject a health check message into a target session.
-
-        Includes the caller's session ID so the target AI can report back.
-
-        Args:
-            target_session_id: The session to send the health check to
-        """
-        session = await db.get_session(target_session_id)
-        if not session or session.closed:
-            logger.debug("Target session %s not found or closed", target_session_id[:8])
-            return
-
-        # Get first caller's session ID for the response instruction
-        listeners = session_listeners.get_listeners(target_session_id)
-        if not listeners:
-            logger.debug("No listeners for target %s, skipping health check", target_session_id[:8])
-            return
-
-        caller_session_id = listeners[0].caller_session_id
-
-        health_check_message = (
-            f"Health check: A caller (session {caller_session_id[:8]}) is waiting for this session. "
-            f"If you're still working, report status with "
-            f"teleclaude__send_message(computer='local', session_id='{caller_session_id}', message='...'), "
-            f"then continue your work."
-        )
-
-        success, error = await terminal_bridge.send_keys(
-            session_name=session.tmux_session_name,
-            text=health_check_message,
-            send_enter=True,
-        )
-
-        if success:
-            logger.info("Sent health check to session %s", target_session_id[:8])
-        else:
-            logger.warning("Failed to send health check to session %s: %s", target_session_id[:8], error)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None
