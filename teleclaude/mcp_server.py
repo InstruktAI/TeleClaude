@@ -63,7 +63,7 @@ class TeleClaudeMCPServer:
         """
         return computer in ("local", self.computer_name)
 
-    async def _maybe_register_listener(self, target_session_id: str) -> None:
+    async def _maybe_register_listener(self, target_session_id: str, caller_session_id: str | None = None) -> None:
         """Register caller as listener for target session's stop event if possible.
 
         Called on any contact with a session (start, send_message, get_session_data)
@@ -71,8 +71,8 @@ class TeleClaudeMCPServer:
 
         Args:
             target_session_id: The session to listen to
+            caller_session_id: The caller's session ID (required for listener registration)
         """
-        caller_session_id = os.environ.get("TELECLAUDE_SESSION_ID")
         if not caller_session_id:
             return
 
@@ -691,7 +691,7 @@ class TeleClaudeMCPServer:
         prefixed_message = f"AI[local:{effective_caller_id}] | {message}"
 
         # Register listener so we get notified when target session stops
-        await self._maybe_register_listener(session_id)
+        await self._maybe_register_listener(session_id, effective_caller_id if effective_caller_id != "unknown" else None)
 
         # Send /claude command with prefixed message to start Claude Code
         await self.client.handle_event(
@@ -954,11 +954,11 @@ class TeleClaudeMCPServer:
             str: Acknowledgment message with reply instructions
         """
         try:
-            # Register as listener so we get notified when target session stops
-            await self._maybe_register_listener(session_id)
-
             # Get caller's session_id - prefer parameter, fall back to env var (for backwards compatibility)
             effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+
+            # Register as listener so we get notified when target session stops
+            await self._maybe_register_listener(session_id, effective_caller_id if effective_caller_id != "unknown" else None)
 
             # Build AI-to-AI protocol prefix
             # Use "local" for local targets, actual computer name for remote
@@ -1016,9 +1016,6 @@ class TeleClaudeMCPServer:
         Returns:
             Dict with session data, status, and messages
         """
-        # Register as listener so we get notified when target session stops
-        await self._maybe_register_listener(session_id)
-
         if self._is_local_computer(computer):
             return await self._get_local_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
         return await self._get_remote_session_data(computer, session_id, since_timestamp, until_timestamp, tail_chars)
