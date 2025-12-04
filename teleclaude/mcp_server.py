@@ -251,7 +251,13 @@ class TeleClaudeMCPServer:
                         "Reads from the claude_session_file which contains complete session history. "
                         "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
                         "**Use this to check on delegated work** after teleclaude__send_message. "
-                        "**Replaces**: teleclaude__get_session_status (use this instead for new code)"
+                        "**Replaces**: teleclaude__get_session_status (use this instead for new code). "
+                        "**Supervising Worker AI Sessions:** When managing/monitoring another AI session, "
+                        "use `tail_chars=0` to see the FULL decision trail - not just recent output. "
+                        "You need to observe: what choices the AI made and why, whether it followed the proper workflow, "
+                        "if it took shortcuts or blamed external factors, the reasoning behind implementation decisions. "
+                        "The tail only shows recent activity. Full transcript reveals the decision-making process "
+                        "throughout the entire session."
                     ),
                     inputSchema={
                         "type": "object",
