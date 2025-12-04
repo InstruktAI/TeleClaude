@@ -55,6 +55,7 @@ from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.restart_claude import revive_claude_in_session
 
 # Logging defaults (can be overridden via environment variables)
 DEFAULT_LOG_FILE = "/var/log/teleclaude.log"
@@ -827,6 +828,10 @@ class TeleClaudeDaemon:
             get_output_file=self._get_output_file_path,
         )
 
+        # Revive Claude Code in all active sessions (after laptop restart or daemon start)
+        # This runs in background to not block daemon startup
+        asyncio.create_task(self._revive_all_claude_sessions())
+
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
 
     async def stop(self) -> None:
@@ -1090,6 +1095,53 @@ class TeleClaudeDaemon:
 
         except Exception as e:
             logger.error("Error cleaning up inactive sessions: %s", e)
+
+    async def _revive_all_claude_sessions(self) -> None:
+        """Revive Claude Code in all active sessions after daemon start.
+
+        On laptop restart or daemon start, tmux sessions may survive but Claude Code
+        processes inside them are dead. This method iterates through all non-closed
+        sessions with existing tmux sessions and restarts Claude Code in each.
+
+        Runs in background to not block daemon startup.
+        """
+        try:
+            # Small delay to ensure all services are fully ready
+            await asyncio.sleep(2.0)
+
+            sessions = await db.list_sessions()
+            active_sessions = [s for s in sessions if not s.closed]
+
+            if not active_sessions:
+                logger.debug("No active sessions to revive")
+                return
+
+            logger.info("Checking %d active sessions for Claude revival...", len(active_sessions))
+
+            revived_count = 0
+            for session in active_sessions:
+                # Check if tmux session actually exists
+                tmux_exists = await terminal_bridge.session_exists(session.tmux_session_name)
+
+                if not tmux_exists:
+                    logger.debug("Tmux session %s doesn't exist, skipping", session.tmux_session_name)
+                    continue
+
+                # Revive Claude in this session
+                success = await revive_claude_in_session(session)
+                if success:
+                    revived_count += 1
+
+                # Small delay between revivals to avoid overwhelming tmux
+                await asyncio.sleep(0.5)
+
+            if revived_count > 0:
+                logger.info("Revived Claude Code in %d session(s)", revived_count)
+            else:
+                logger.debug("No sessions needed Claude revival")
+
+        except Exception as e:
+            logger.error("Error reviving Claude sessions: %s", e, exc_info=True)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None

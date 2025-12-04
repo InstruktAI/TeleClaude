@@ -10,6 +10,7 @@ import pytest
 
 from teleclaude.core import file_handler
 from teleclaude.core.db import Db
+from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import (
     MessageMetadata,
     SessionAdapterMetadata,
@@ -75,13 +76,20 @@ class TestFileUploadFlow:
                 session_id=test_session.session_id,
                 file_path="/tmp/document.pdf",
                 filename="document.pdf",
-                context={"file_size": 5242880, "upload_type": "document"},
+                context=FileEventContext(
+                    session_id=test_session.session_id,
+                    file_path="/tmp/document.pdf",
+                    filename="document.pdf",
+                    file_size=5242880,
+                ),
                 send_feedback=mock_send_feedback,
             )
 
         assert len(sent_keys) == 1
         assert sent_keys[0][0] == "tmux_test"
-        assert sent_keys[0][1] == "@/tmp/document.pdf"
+        # Path is resolved to absolute path (on macOS /tmp -> /private/tmp)
+        assert sent_keys[0][1].startswith("@")
+        assert "document.pdf" in sent_keys[0][1]
 
         assert len(sent_messages) == 1
         assert "document.pdf" in sent_messages[0][1]
@@ -111,12 +119,19 @@ class TestFileUploadFlow:
                 session_id=test_session.session_id,
                 file_path="/tmp/image.jpg",
                 filename="image.jpg",
-                context={"file_size": 1048576, "upload_type": "photo"},
+                context=FileEventContext(
+                    session_id=test_session.session_id,
+                    file_path="/tmp/image.jpg",
+                    filename="image.jpg",
+                    file_size=1048576,
+                ),
                 send_feedback=mock_send_feedback,
             )
 
         assert len(sent_keys) == 1
-        assert sent_keys[0][1] == "/tmp/image.jpg"
+        # Path is resolved to absolute path (on macOS /tmp -> /private/tmp)
+        assert "image.jpg" in sent_keys[0][1]
+        assert not sent_keys[0][1].startswith("@")  # No @ prefix for non-Claude
 
     @pytest.mark.asyncio
     async def test_rejection_when_no_process_active(self, session_manager, test_session):
@@ -134,7 +149,11 @@ class TestFileUploadFlow:
                 session_id=test_session.session_id,
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={},
+                context=FileEventContext(
+                    session_id=test_session.session_id,
+                    file_path="/tmp/file.pdf",
+                    filename="file.pdf",
+                ),
                 send_feedback=mock_send_feedback,
             )
 
