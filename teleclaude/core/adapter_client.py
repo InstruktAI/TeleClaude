@@ -623,6 +623,8 @@ class AdapterClient:
                 session_id=session_id,
                 file_path=payload.get("file_path"),
                 filename=payload.get("filename"),
+                caption=payload.get("caption"),
+                file_size=payload.get("file_size", 0),
             ),
             TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=session_id),
             TeleClaudeEvents.SESSION_REOPENED: lambda: SessionLifecycleContext(session_id=session_id),

@@ -196,6 +196,8 @@ class FileEventContext:
     session_id: str
     file_path: str = ""
     filename: str = ""
+    caption: Optional[str] = None
+    file_size: int = 0
 
 
 @dataclass

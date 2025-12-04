@@ -117,10 +117,9 @@ async def handle_file(
         logger.info("Generic process detected - sending plain path: %s", input_text)
 
     # Append caption text if present
-    caption = context.get("caption")
-    if caption and isinstance(caption, str) and caption.strip():
-        input_text = f"{input_text} {caption.strip()}"
-        logger.info("Appending caption to file input: %s", caption.strip()[:50])
+    if context.caption and context.caption.strip():
+        input_text = f"{input_text} {context.caption.strip()}"
+        logger.info("Appending caption to file input: %s", context.caption.strip()[:50])
 
     # Automatic detection: if process running, no marker
     success, _ = await terminal_bridge.send_keys(
@@ -140,9 +139,8 @@ async def handle_file(
     await db.update_last_activity(session_id)
 
     # Send feedback with plain text (no Markdown parsing)
-    file_size = context.get("file_size", 0)
-    if isinstance(file_size, (int, float)):
-        file_size_mb = file_size / 1_048_576
+    if context.file_size > 0:
+        file_size_mb = context.file_size / 1_048_576
         await send_feedback(
             session_id,
             f"📎 File uploaded: {filename} ({file_size_mb:.2f} MB)",

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.core import file_handler
+from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import (
     Session,
     SessionAdapterMetadata,
@@ -116,7 +117,7 @@ class TestHandleFile:
                 session_id="nonexistent",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={},
+                context=FileEventContext(session_id="nonexistent", file_path="/tmp/file.pdf", filename="file.pdf"),
                 send_feedback=mock_send_feedback,
             )
 
@@ -139,7 +140,7 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={},
+                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf"),
                 send_feedback=mock_send_feedback,
             )
 
@@ -177,7 +178,7 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={},
+                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf"),
                 send_feedback=mock_send_feedback,
             )
 
@@ -208,7 +209,7 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={"file_size": 1024},
+                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024),
                 send_feedback=mock_send_feedback,
             )
 
@@ -239,7 +240,7 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={"file_size": 1024},
+                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024),
                 send_feedback=mock_send_feedback,
             )
 
@@ -270,7 +271,7 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={"file_size": 2097152},
+                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=2097152),
                 send_feedback=mock_send_feedback,
             )
 
@@ -301,7 +302,7 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context={},
+                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf"),
                 send_feedback=mock_send_feedback,
             )
 
