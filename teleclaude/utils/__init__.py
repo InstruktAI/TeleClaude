@@ -64,13 +64,17 @@ def command_retry(
                         if attempt < max_retries - 1:
                             retry_after = getattr(e, "retry_after")  # type: ignore[misc]
                             logger.warning(
-                                "Rate limited, retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries  # type: ignore[misc]
+                                "%s: Rate limited, retrying in %ss (attempt %d/%d)",
+                                func.__name__,
+                                retry_after,  # type: ignore[misc]
+                                attempt + 1,
+                                max_retries,
                             )
                             await asyncio.sleep(retry_after)  # type: ignore[misc]
                             excluded_wait_time += retry_after  # type: ignore[misc]  # Don't count wait against timeout
                             last_exception = e
                         else:
-                            logger.error("Rate limit exceeded after %d attempts", max_retries)
+                            logger.error("%s: Rate limit exceeded after %d attempts", func.__name__, max_retries)
                             raise
 
                     # Check for network errors
