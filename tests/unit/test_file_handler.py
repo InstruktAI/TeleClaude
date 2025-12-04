@@ -214,7 +214,9 @@ class TestHandleFile:
             )
 
         assert len(sent_keys) == 1
-        assert sent_keys[0][1] == "@/tmp/file.pdf"
+        # Path.resolve() converts to absolute path (e.g., /tmp -> /private/tmp on macOS)
+        expected_path = str(Path("/tmp/file.pdf").resolve())
+        assert sent_keys[0][1] == f"@{expected_path}"
 
     @pytest.mark.asyncio
     async def test_sends_plain_path_for_other_process(self, mock_session, mock_ux_state):
@@ -245,7 +247,9 @@ class TestHandleFile:
             )
 
         assert len(sent_keys) == 1
-        assert sent_keys[0][1] == "/tmp/file.pdf"
+        # Path.resolve() converts to absolute path (e.g., /tmp -> /private/tmp on macOS)
+        expected_path = str(Path("/tmp/file.pdf").resolve())
+        assert sent_keys[0][1] == expected_path
 
     @pytest.mark.asyncio
     async def test_sends_confirmation_with_file_size(self, mock_session, mock_ux_state):

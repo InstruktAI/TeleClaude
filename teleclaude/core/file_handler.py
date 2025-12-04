@@ -10,6 +10,7 @@ Extracted as adapter-agnostic utility following voice_message_handler.py pattern
 
 import logging
 import re
+from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 from teleclaude.core import terminal_bridge
@@ -108,12 +109,13 @@ async def handle_file(
 
     is_claude_running = await is_claude_code_running(session.tmux_session_name)
 
-    # Build input text with file path
+    # Build input text with absolute file path (remote AIs need full path)
+    absolute_path = Path(file_path).resolve()
     if is_claude_running:
-        input_text = f"@{file_path}"
+        input_text = f"@{absolute_path}"
         logger.info("Claude Code detected - sending file with @ prefix: %s", input_text)
     else:
-        input_text = file_path
+        input_text = str(absolute_path)
         logger.info("Generic process detected - sending plain path: %s", input_text)
 
     # Append caption text if present
