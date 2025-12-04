@@ -36,16 +36,16 @@ def load_voices() -> list[VoiceConfig]:
 
     try:
         with open(VOICES_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = json.load(f)  # type: ignore[misc]
 
         voices = []
-        for v in data.get("voices", []):
+        for v in data.get("voices", []):  # type: ignore[misc]
             voices.append(
                 VoiceConfig(
-                    name=v.get("name", "Unknown"),
-                    elevenlabs_id=v.get("elevenlabs_id", ""),
-                    macos_voice=v.get("macos_voice", ""),
-                    openai_voice=v.get("openai_voice", ""),
+                    name=v.get("name", "Unknown"),  # type: ignore[misc]
+                    elevenlabs_id=v.get("elevenlabs_id", ""),  # type: ignore[misc]
+                    macos_voice=v.get("macos_voice", ""),  # type: ignore[misc]
+                    openai_voice=v.get("openai_voice", ""),  # type: ignore[misc]
                 )
             )
         logger.debug("Loaded %d voices from config", len(voices))

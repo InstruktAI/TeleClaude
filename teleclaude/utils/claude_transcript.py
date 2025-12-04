@@ -29,16 +29,10 @@ def parse_claude_transcript(
     if not path.exists():
         return f"Transcript file not found: {transcript_path}"
 
-    # Parse timestamp filters
     since_dt = _parse_timestamp(since_timestamp) if since_timestamp else None
     until_dt = _parse_timestamp(until_timestamp) if until_timestamp else None
 
-    lines: list[str] = []
-
-    # Add title from session
-    lines.append(f"# {title}")
-    lines.append("")
-
+    lines: list[str] = [f"# {title}", ""]
     last_section: Optional[str] = None
 
     try:
@@ -46,106 +40,169 @@ def parse_claude_transcript(
             for line in f:
                 if not line.strip():
                     continue
-                entry = json.loads(line)
 
-                # Skip summary entries
-                if entry.get("type") == "summary":
+                entry = json.loads(line)  # type: ignore[misc]
+
+                if _should_skip_entry(entry, since_dt, until_dt):  # type: ignore[misc]
                     continue
 
-                # Get timestamp from entry
-                entry_timestamp = entry.get("timestamp")
-                entry_dt = _parse_timestamp(entry_timestamp) if entry_timestamp else None
-
-                # Apply timestamp filters
-                if since_dt and entry_dt and entry_dt < since_dt:
-                    continue
-                if until_dt and entry_dt and entry_dt > until_dt:
-                    continue
-
-                # Format timestamp for display (compact: HH:MM:SS or full if different day)
-                time_prefix = _format_timestamp_prefix(entry_dt) if entry_dt else ""
-
-                # Extract message content (nested in 'message' field for Claude Code transcripts)
-                message = entry.get("message", {})
-                role = message.get("role")
-                content = message.get("content", [])
-
-                # Skip if no role
-                if not role:
-                    continue
-
-                # Process content blocks - separate tool_use/tool_result from text
-                if isinstance(content, str):
-                    # User message (string content)
-                    # Only add header if role changed OR we have a timestamp (individual entry)
-                    if last_section != "user" or time_prefix:
-                        lines.append("")
-                        lines.append(f"## {time_prefix}👤 User")
-                        lines.append("")
-                        last_section = "user"
-                    lines.append(content)
-                elif isinstance(content, list):
-                    # Assistant or user message with blocks
-                    for block in content:
-                        block_type = block.get("type")
-
-                        if block_type == "text":
-                            # Text from assistant
-                            if role == "assistant" and last_section != "assistant":
-                                lines.append("")
-                                lines.append(f"## {time_prefix}🤖 Assistant")
-                                lines.append("")
-                                last_section = "assistant"
-                            text = block.get("text", "")
-                            lines.append(text)
-
-                        elif block_type == "thinking":
-                            # Thinking block (only in assistant messages)
-                            if last_section != "assistant":
-                                lines.append("")
-                                lines.append(f"## {time_prefix}🤖 Assistant")
-                                lines.append("")
-                                last_section = "assistant"
-                            formatted_thinking = _format_thinking(block.get("thinking", ""))
-                            lines.append(formatted_thinking)
-
-                        elif block_type == "tool_use":
-                            # Tool call - single line with serialized JSON
-                            tool_name = block.get("name", "unknown")
-                            tool_input = block.get("input", {})
-                            serialized_input = json.dumps(tool_input)
-                            lines.append("")
-                            lines.append(f"{time_prefix}🔧 **TOOL CALL:** {tool_name} {serialized_input}")
-                            last_section = "tool_use"
-
-                        elif block_type == "tool_result":
-                            # Tool response - blockquote expandable format
-                            is_error = block.get("is_error", False)
-                            status_emoji = "❌" if is_error else "✅"
-                            content_data = block.get("content", "")
-                            lines.append("")
-                            lines.append(f"{time_prefix}{status_emoji} **TOOL RESPONSE:**")
-                            lines.append("")
-                            lines.append("<blockquote expandable>")
-                            lines.append(str(content_data))
-                            lines.append("</blockquote>")
-                            last_section = "tool_result"
+                last_section = _process_entry(entry, lines, last_section)  # type: ignore[misc]
 
     except Exception as e:
         return f"Error parsing transcript: {e}"
 
     result = "\n".join(lines)
+    return _apply_tail_limit(result, tail_chars)
 
-    # Apply tail_chars limit (from end of content)
-    if tail_chars > 0 and len(result) > tail_chars:
-        # Find a good break point (start of a section header)
+
+def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], until_dt: Optional[datetime]) -> bool:
+    """Check if entry should be skipped based on type and timestamp filters."""
+    if entry.get("type") == "summary":
+        return True
+
+    entry_timestamp = entry.get("timestamp")
+    if isinstance(entry_timestamp, str):
+        entry_dt = _parse_timestamp(entry_timestamp)
+        if since_dt and entry_dt and entry_dt < since_dt:
+            return True
+        if until_dt and entry_dt and entry_dt > until_dt:
+            return True
+
+    return False
+
+
+def _process_entry(entry: dict[str, object], lines: list[str], last_section: Optional[str]) -> Optional[str]:
+    """Process a transcript entry and append formatted content to lines."""
+    entry_timestamp = entry.get("timestamp")
+    entry_dt = None
+    if isinstance(entry_timestamp, str):
+        entry_dt = _parse_timestamp(entry_timestamp)
+    time_prefix = _format_timestamp_prefix(entry_dt) if entry_dt else ""
+
+    message = entry.get("message", {})
+    if not isinstance(message, dict):
+        return last_section
+
+    role = message.get("role")
+    content: object = message.get("content", [])
+
+    if not role or not isinstance(role, str):
+        return last_section
+
+    if isinstance(content, str):
+        return _process_string_content(content, time_prefix, lines, last_section)
+
+    if isinstance(content, list):
+        return _process_list_content(content, role, time_prefix, lines, last_section)
+
+    return last_section
+
+
+def _process_string_content(content: str, time_prefix: str, lines: list[str], last_section: Optional[str]) -> str:
+    """Process string content (user message)."""
+    if last_section != "user" or time_prefix:
+        lines.append("")
+        lines.append(f"## {time_prefix}👤 User")
+        lines.append("")
+    lines.append(content)
+    return "user"
+
+
+def _process_list_content(
+    content: list[object],
+    role: str,
+    time_prefix: str,
+    lines: list[str],
+    last_section: Optional[str],
+) -> Optional[str]:
+    """Process list of content blocks."""
+    current_section = last_section
+
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+
+        block_type = block.get("type")
+        if not isinstance(block_type, str):
+            continue
+
+        if block_type == "text":
+            current_section = _process_text_block(block, role, time_prefix, lines, current_section)
+        elif block_type == "thinking":
+            current_section = _process_thinking_block(block, time_prefix, lines, current_section)
+        elif block_type == "tool_use":
+            current_section = _process_tool_use_block(block, time_prefix, lines)
+        elif block_type == "tool_result":
+            current_section = _process_tool_result_block(block, time_prefix, lines)
+
+    return current_section
+
+
+def _process_text_block(
+    block: dict[str, object],
+    role: str,
+    time_prefix: str,
+    lines: list[str],
+    last_section: Optional[str],
+) -> Optional[str]:
+    """Process text block from assistant."""
+    if role == "assistant" and last_section != "assistant":
+        lines.append("")
+        lines.append(f"## {time_prefix}🤖 Assistant")
+        lines.append("")
+    text = block.get("text", "")
+    lines.append(str(text))
+    return "assistant" if role == "assistant" else last_section
+
+
+def _process_thinking_block(
+    block: dict[str, object], time_prefix: str, lines: list[str], last_section: Optional[str]
+) -> str:
+    """Process thinking block."""
+    if last_section != "assistant":
+        lines.append("")
+        lines.append(f"## {time_prefix}🤖 Assistant")
+        lines.append("")
+    thinking = block.get("thinking", "")
+    formatted_thinking = _format_thinking(str(thinking))
+    lines.append(formatted_thinking)
+    return "assistant"
+
+
+def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:
+    """Process tool use block."""
+    tool_name = block.get("name", "unknown")
+    tool_input = block.get("input", {})
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+    serialized_input = json.dumps(tool_input)
+    lines.append("")
+    lines.append(f"{time_prefix}🔧 **TOOL CALL:** {tool_name} {serialized_input}")
+    return "tool_use"
+
+
+def _process_tool_result_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:
+    """Process tool result block."""
+    is_error = block.get("is_error", False)
+    status_emoji = "❌" if is_error else "✅"
+    content_data = block.get("content", "")
+    lines.append("")
+    lines.append(f"{time_prefix}{status_emoji} **TOOL RESPONSE:**")
+    lines.append("")
+    lines.append("<blockquote expandable>")
+    lines.append(str(content_data))
+    lines.append("</blockquote>")
+    return "tool_result"
+
+
+def _apply_tail_limit(result: str, tail_chars: int) -> str:
+    """Apply tail_chars limit to result."""
+    if 0 < tail_chars < len(result):
         truncated = result[-tail_chars:]
-        # Try to find a section header to start cleanly
         header_pos = truncated.find("\n## ")
-        if header_pos != -1 and header_pos < 500:  # Only if within first 500 chars
-            truncated = truncated[header_pos + 1 :]  # Skip the leading newline
-        result = f"[...truncated, showing last {tail_chars} chars...]\n\n{truncated}"
-
+        if 0 <= header_pos < 500:
+            truncated = truncated[header_pos + 1 :]
+        return f"[...truncated, showing last {tail_chars} chars...]\n\n{truncated}"
     return result
 
 

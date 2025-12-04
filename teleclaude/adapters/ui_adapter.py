@@ -71,7 +71,6 @@ class UiAdapter(BaseAdapter):
         self.client = client
 
         # Register event listeners
-        # Type ignore: event system guarantees correct context type for each event
         self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)  # type: ignore[arg-type]
         self.client.on(TeleClaudeEvents.CLAUDE_EVENT, self._handle_claude_event)  # type: ignore[arg-type]
 
@@ -184,9 +183,9 @@ class UiAdapter(BaseAdapter):
 
     # === Output Message Management (Default Implementations) ===
 
-    async def send_output_update(
+    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         output: str,
         started_at: float,
         last_output_changed_at: float,
@@ -272,9 +271,7 @@ class UiAdapter(BaseAdapter):
         message_parts.append(status_line)
         return "\n".join(message_parts)
 
-    def _build_output_metadata(
-        self, session: "Session", is_truncated: bool, ux_state: object  # type: ignore[name-defined]
-    ) -> MessageMetadata:
+    def _build_output_metadata(self, _session: "Session", _is_truncated: bool, _ux_state: object) -> MessageMetadata:
         """Build platform-specific metadata for output messages.
 
         Override in subclasses to add inline keyboards, buttons, etc.
@@ -343,14 +340,13 @@ class UiAdapter(BaseAdapter):
 
         return message_id
 
-    async def _pre_handle_user_input(self, session: "Session") -> None:
+    async def _pre_handle_user_input(self, _session: "Session") -> None:
         """Called before handling user input - cleanup user input messages only.
 
         Note: Feedback messages (pending_feedback_deletions) are cleaned up in send_feedback,
         not here. This ensures download messages stay until the next feedback (like summary).
         """
         # User input messages (pending_deletions) cleaned via event handler, not here
-        pass
 
     async def cleanup_feedback_messages(self, session: "Session") -> None:
         """Delete temporary feedback messages - default implementation."""
@@ -399,15 +395,15 @@ class UiAdapter(BaseAdapter):
         await handle_voice(
             session_id=session_id,
             audio_path=audio_file_path,
-            context=context,
-            send_feedback=self.send_feedback,
+            context=context,  # type: ignore[arg-type]
+            send_feedback=self.send_feedback,  # type: ignore[arg-type]
         )
 
     # ==================== File Handling ====================
 
     async def get_session_file(
         self,
-        session_id: str,
+        _session_id: str,
     ) -> Optional[str]:
         """Provide platform-specific download UI for session output.
 
@@ -447,7 +443,7 @@ class UiAdapter(BaseAdapter):
 
     # ==================== Event Handlers ====================
 
-    async def _handle_session_updated(self, event: str, context: SessionUpdatedContext) -> None:
+    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Handle session_updated event - update channel title when fields change.
 
         Handles:
@@ -505,7 +501,7 @@ class UiAdapter(BaseAdapter):
         await self.client.update_channel_title(session, new_title)
         logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
-    async def _handle_claude_event(self, event: str, context: ClaudeEventContext) -> None:
+    async def _handle_claude_event(self, _event: str, context: ClaudeEventContext) -> None:
         """Dispatch claude_event to appropriate handler based on event_type.
 
         Args:

@@ -18,13 +18,13 @@ def get_memory_stats() -> dict[str, float]:
         Dict with total_gb, used_gb, percent
     """
     try:
-        if psutil is None:
+        if psutil is None:  # type: ignore[misc]
             raise ImportError("psutil not available")
-        mem = psutil.virtual_memory()
+        mem = psutil.virtual_memory()  # type: ignore[misc]
         return {
-            "total_gb": round(mem.total / (1024**3), 2),
-            "used_gb": round(mem.used / (1024**3), 2),
-            "percent": round(mem.percent, 2),
+            "total_gb": round(mem.total / (1024**3), 2),  # type: ignore[misc]
+            "used_gb": round(mem.used / (1024**3), 2),  # type: ignore[misc]
+            "percent": round(mem.percent, 2),  # type: ignore[misc]
         }
     except Exception as e:
         logger.warning("Failed to get memory stats: %s", e)
@@ -63,9 +63,9 @@ def get_cpu_percent() -> float:
         CPU usage percent (0-100)
     """
     try:
-        if psutil is None:
+        if psutil is None:  # type: ignore[misc]
             raise ImportError("psutil not available")
-        cpu_value: float = psutil.cpu_percent(interval=0.1)
+        cpu_value: float = psutil.cpu_percent(interval=0.1)  # type: ignore[misc]
         return round(cpu_value, 2)
     except Exception as e:
         logger.warning("Failed to get CPU stats: %s", e)

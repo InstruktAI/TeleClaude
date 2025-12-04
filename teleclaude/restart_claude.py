@@ -43,11 +43,14 @@ async def revive_claude_in_session(session: Session) -> bool:
     logger.info("Reviving Claude in session %s (tmux: %s)", session.session_id[:8], session.tmux_session_name)
 
     # Extract Claude Code session ID from ux_state (updated by SessionStart hook via MCP)
-    claude_session_id = None
+    claude_session_id: str | None = None
     if session.ux_state:
         try:
-            ux_state = json.loads(session.ux_state)
-            claude_session_id = ux_state.get("claude_session_id")
+            ux_state_raw: object = json.loads(session.ux_state)
+            if isinstance(ux_state_raw, dict):
+                claude_session_id_val: object = ux_state_raw.get("claude_session_id")
+                if claude_session_id_val:
+                    claude_session_id = str(claude_session_id_val)
         except (json.JSONDecodeError, AttributeError) as e:
             logger.warning("Failed to parse ux_state for session %s: %s", session.session_id[:8], e)
 
@@ -114,11 +117,14 @@ async def restart_teleclaude_session(teleclaude_session_id: str) -> None:
 
         # Use shared revival logic (but with longer wait time for standalone script)
         # Extract Claude Code session ID from ux_state (updated by SessionStart hook via MCP)
-        claude_session_id = None
+        claude_session_id: str | None = None
         if session.ux_state:
             try:
-                ux_state = json.loads(session.ux_state)
-                claude_session_id = ux_state.get("claude_session_id")
+                ux_state_raw: object = json.loads(session.ux_state)
+                if isinstance(ux_state_raw, dict):
+                    claude_session_id_val: object = ux_state_raw.get("claude_session_id")
+                    if claude_session_id_val:
+                        claude_session_id = str(claude_session_id_val)
             except (json.JSONDecodeError, AttributeError) as e:
                 logger.warning("Failed to parse ux_state: %s", e)
 

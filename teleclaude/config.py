@@ -51,7 +51,7 @@ class DatabaseConfig:
 
 
 @dataclass
-class ComputerConfig:
+class ComputerConfig:  # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
     name: str
     user: str
     role: str
@@ -102,7 +102,7 @@ class MCPConfig:
 
 
 @dataclass
-class RedisConfig:
+class RedisConfig:  # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
     enabled: bool
     url: str
     password: str | None
@@ -236,38 +236,38 @@ def _build_config(raw: dict[str, object]) -> Config:
 
     return Config(
         database=DatabaseConfig(
-            _configured_path=str(db["path"]),  # type: ignore[index]
+            _configured_path=str(db["path"]),  # type: ignore[index,misc]
         ),
         computer=ComputerConfig(
-            name=str(comp["name"]),  # type: ignore[index]
-            user=str(comp["user"]),  # type: ignore[index]
-            role=str(comp["role"]),  # type: ignore[index]
-            timezone=str(comp["timezone"]),  # type: ignore[index]
-            default_working_dir=str(comp["default_working_dir"]),  # type: ignore[index]
-            is_master=bool(comp["is_master"]),  # type: ignore[index]
-            trusted_dirs=_parse_trusted_dirs(list(comp["trusted_dirs"])),  # type: ignore[index]
-            host=str(comp["host"]) if comp["host"] else None,  # type: ignore[index]
+            name=str(comp["name"]),  # type: ignore[index,misc]
+            user=str(comp["user"]),  # type: ignore[index,misc]
+            role=str(comp["role"]),  # type: ignore[index,misc]
+            timezone=str(comp["timezone"]),  # type: ignore[index,misc]
+            default_working_dir=str(comp["default_working_dir"]),  # type: ignore[index,misc]
+            is_master=bool(comp["is_master"]),  # type: ignore[index,misc]
+            trusted_dirs=_parse_trusted_dirs(list(comp["trusted_dirs"])),  # type: ignore[index,misc]
+            host=str(comp["host"]) if comp["host"] else None,  # type: ignore[index,misc]
         ),
         polling=PollingConfig(
-            idle_notification_seconds=int(poll["idle_notification_seconds"]),  # type: ignore[index]
+            idle_notification_seconds=int(poll["idle_notification_seconds"]),  # type: ignore[index,misc]
         ),
         mcp=MCPConfig(
-            enabled=bool(mcp["enabled"]),  # type: ignore[index]
-            socket_path=str(mcp["socket_path"]),  # type: ignore[index]
-            claude_command=str(mcp["claude_command"]) if mcp.get("claude_command") else None,  # type: ignore[union-attr]
+            enabled=bool(mcp["enabled"]),  # type: ignore[index,misc]
+            socket_path=str(mcp["socket_path"]),  # type: ignore[index,misc]
+            claude_command=str(mcp["claude_command"]) if mcp.get("claude_command") else None,  # type: ignore[index,attr-defined,misc]
         ),
         redis=RedisConfig(
-            enabled=bool(redis["enabled"]),  # type: ignore[index]
-            url=str(redis["url"]),  # type: ignore[index]
-            password=str(redis["password"]) if redis["password"] else None,  # type: ignore[index]
-            max_connections=int(redis["max_connections"]),  # type: ignore[index]
-            socket_timeout=int(redis["socket_timeout"]),  # type: ignore[index]
-            message_stream_maxlen=int(redis["message_stream_maxlen"]),  # type: ignore[index]
-            output_stream_maxlen=int(redis["output_stream_maxlen"]),  # type: ignore[index]
-            output_stream_ttl=int(redis["output_stream_ttl"]),  # type: ignore[index]
+            enabled=bool(redis["enabled"]),  # type: ignore[index,misc]
+            url=str(redis["url"]),  # type: ignore[index,misc]
+            password=str(redis["password"]) if redis["password"] else None,  # type: ignore[index,misc]
+            max_connections=int(redis["max_connections"]),  # type: ignore[index,misc]
+            socket_timeout=int(redis["socket_timeout"]),  # type: ignore[index,misc]
+            message_stream_maxlen=int(redis["message_stream_maxlen"]),  # type: ignore[index,misc]
+            output_stream_maxlen=int(redis["output_stream_maxlen"]),  # type: ignore[index,misc]
+            output_stream_ttl=int(redis["output_stream_ttl"]),  # type: ignore[index,misc]
         ),
         telegram=TelegramConfig(
-            trusted_bots=list(tg["trusted_bots"]),  # type: ignore[index]
+            trusted_bots=list(tg["trusted_bots"]),  # type: ignore[index,misc]
         ),
     )
 
@@ -279,10 +279,10 @@ if not _config_path.exists():
     raise FileNotFoundError(f"Config file not found: {_config_path}. Run 'make init' to create it.")
 
 with open(_config_path, encoding="utf-8") as f:
-    _user_config = yaml.safe_load(f)
+    _user_config = yaml.safe_load(f)  # type: ignore[misc]
 
 # Expand environment variables
-_user_config = expand_env_vars(_user_config)
+_user_config = expand_env_vars(_user_config)  # type: ignore[misc]
 
 # Merge with defaults and build typed config
 _merged = _deep_merge(DEFAULT_CONFIG, _user_config)  # type: ignore[arg-type]

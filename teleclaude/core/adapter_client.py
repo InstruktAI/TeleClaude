@@ -7,7 +7,7 @@ a clean, unified interface for the daemon and MCP server.
 import asyncio
 import logging
 import os
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional, cast
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
@@ -36,6 +36,9 @@ from teleclaude.core.models import (
     TelegramAdapterMetadata,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import Session
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +129,9 @@ class AdapterClient:
 
     async def _broadcast_to_observers(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         operation: str,
-        task_factory: Callable[[UiAdapter], Awaitable[Any]],
+        task_factory: Callable[[UiAdapter], Awaitable[object]],
     ) -> None:
         """Broadcast operation to all UI observers (best-effort).
 
@@ -140,7 +143,7 @@ class AdapterClient:
             operation: Operation name for logging
             task_factory: Function that takes adapter and returns awaitable
         """
-        observer_tasks = []
+        observer_tasks: list[tuple[str, Awaitable[object]]] = []
         for adapter_type, adapter in self.adapters.items():
             if adapter_type == session.origin_adapter:
                 continue
@@ -164,7 +167,7 @@ class AdapterClient:
                         "Observer %s completed %s for session %s", adapter_type, operation, session.session_id[:8]
                     )
 
-    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:  # type: ignore[name-defined]
+    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:
         """Send message to ALL UiAdapters (origin + observers).
 
         Args:
@@ -190,7 +193,7 @@ class AdapterClient:
 
     async def send_feedback(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         message: str,
         metadata: MessageMetadata,
         persistent: bool = False,
@@ -209,14 +212,14 @@ class AdapterClient:
             message_id if sent (UI adapter), None if transport adapter
         """
         origin_adapter = self.adapters[session.origin_adapter]
-        message_id = await origin_adapter.send_feedback(session, message, metadata, persistent=persistent)
+        message_id = await origin_adapter.send_feedback(session, message, metadata, persistent)
 
         if message_id:
             logger.debug("Sent feedback via %s for session %s", session.origin_adapter, session.session_id[:8])
 
         return message_id
 
-    async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:  # type: ignore[name-defined]
+    async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in ALL UiAdapters (origin + observers).
 
         Args:
@@ -239,7 +242,7 @@ class AdapterClient:
 
         return result
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:  # type: ignore[name-defined]
+    async def delete_message(self, session: "Session", message_id: str) -> bool:
         """Delete message in ALL UiAdapters (origin + observers).
 
         Args:
@@ -263,7 +266,7 @@ class AdapterClient:
 
     async def send_file(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         file_path: str,
         caption: Optional[str] = None,
     ) -> str:
@@ -287,9 +290,9 @@ class AdapterClient:
         )
         return result
 
-    async def send_output_update(
+    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         output: str,
         started_at: float,
         last_output_changed_at: float,
@@ -350,7 +353,7 @@ class AdapterClient:
 
     async def send_exit_message(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         output: str,
         exit_text: str,
     ) -> None:
@@ -385,7 +388,7 @@ class AdapterClient:
         # Type checker now knows this is UiAdapter
         await origin_adapter.send_exit_message(session, output, exit_text)
 
-    async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
+    async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Broadcast channel title update to ALL adapters.
 
         Args:
@@ -408,7 +411,7 @@ class AdapterClient:
 
         return result
 
-    async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def delete_channel(self, session: "Session") -> bool:
         """Broadcast channel deletion to ALL adapters.
 
         Args:
@@ -428,7 +431,7 @@ class AdapterClient:
 
         return bool(result)
 
-    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, Any]]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
+    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:
         """Discover peers from all registered adapters.
 
         Aggregates peer lists from all adapters and deduplicates by name.
@@ -458,7 +461,7 @@ class AdapterClient:
             logger.debug("Redis disabled, skipping peer discovery")
             return []
 
-        all_peers: list[dict[str, Any]] = []  # type: ignore[explicit-any]  # JSON/API data
+        all_peers: list[dict[str, object]] = []
 
         # Collect peers from all adapters
         for adapter_type, adapter in self.adapters.items():
@@ -467,7 +470,7 @@ class AdapterClient:
                 peers = await adapter.discover_peers()  # Returns list[PeerInfo]
                 # Convert PeerInfo dataclass to dict for backward compatibility
                 for peer_info in peers:
-                    peer_dict = {
+                    peer_dict: dict[str, object] = {
                         "name": peer_info.name,
                         "status": peer_info.status,
                         "last_seen": peer_info.last_seen,
@@ -489,10 +492,10 @@ class AdapterClient:
                 logger.error("Failed to discover peers from %s: %s", adapter_type, e)
 
         # Deduplicate by name (keep first occurrence = primary adapter wins)
-        seen = set()
-        unique_peers = []
+        seen: set[str] = set()
+        unique_peers: list[dict[str, object]] = []
         for peer in all_peers:
-            peer_name = peer.get("name")
+            peer_name = cast(str, peer.get("name"))
             if peer_name and peer_name not in seen:
                 seen.add(peer_name)
                 unique_peers.append(peer)
@@ -514,7 +517,7 @@ class AdapterClient:
     async def handle_event(
         self,
         event: EventType,
-        payload: dict[str, Any],  # type: ignore[explicit-any]
+        payload: dict[str, object],
         metadata: MessageMetadata,
     ) -> object:
         """Handle incoming event by dispatching to registered handler.
@@ -539,14 +542,14 @@ class AdapterClient:
         await self._resolve_session_id(payload, metadata)
 
         # 2. Build typed context
-        session_id = payload.get("session_id")
+        session_id = cast(str | None, payload.get("session_id"))
         context = self._build_context(event, payload, metadata)
 
         # 3. Get session for adapter operations
         session = await db.get_session(str(session_id)) if session_id else None
 
         # 4. Pre-handler (UI cleanup before processing)
-        message_id = payload.get("message_id")
+        message_id = cast(str | None, payload.get("message_id"))
         logger.debug(
             "Pre-handler check: session=%s, message_id=%s, event=%s",
             session.session_id[:8] if session else None,
@@ -572,7 +575,7 @@ class AdapterClient:
 
     async def _resolve_session_id(
         self,
-        payload: dict[str, Any],  # type: ignore[explicit-any]
+        payload: dict[str, object],
         metadata: MessageMetadata,
     ) -> None:
         """Resolve session_id from platform metadata (topic_id or channel_id).
@@ -595,7 +598,7 @@ class AdapterClient:
     def _build_context(
         self,
         event: EventType,
-        payload: dict[str, Any],  # type: ignore[explicit-any]
+        payload: dict[str, object],
         metadata: MessageMetadata,
     ) -> EventContext:
         """Build typed context dataclass based on event type."""
@@ -604,33 +607,33 @@ class AdapterClient:
         context_builders: dict[str, Callable[[], EventContext]] = {
             TeleClaudeEvents.CLAUDE_EVENT: lambda: ClaudeEventContext(
                 session_id=session_id,
-                event_type=payload.get("event_type"),
-                data=payload.get("data"),
+                event_type=cast(str, payload.get("event_type")),
+                data=cast(dict[str, object], payload.get("data", {})),
             ),
             TeleClaudeEvents.SESSION_UPDATED: lambda: SessionUpdatedContext(
                 session_id=session_id,
-                updated_fields=payload.get("updated_fields"),
+                updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),
             ),
             TeleClaudeEvents.MESSAGE: lambda: MessageEventContext(
                 session_id=session_id,
-                text=payload.get("text"),
+                text=cast(str, payload.get("text", "")),
             ),
             TeleClaudeEvents.VOICE: lambda: VoiceEventContext(
                 session_id=session_id,
-                file_path=payload.get("file_path"),
+                file_path=cast(str, payload.get("file_path", "")),
             ),
             TeleClaudeEvents.FILE: lambda: FileEventContext(
                 session_id=session_id,
-                file_path=payload.get("file_path"),
-                filename=payload.get("filename"),
-                caption=payload.get("caption"),
-                file_size=payload.get("file_size", 0),
+                file_path=cast(str, payload.get("file_path", "")),
+                filename=cast(str, payload.get("filename", "")),
+                caption=cast(str | None, payload.get("caption")),
+                file_size=cast(int, payload.get("file_size", 0)),
             ),
             TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=session_id),
             TeleClaudeEvents.SESSION_REOPENED: lambda: SessionLifecycleContext(session_id=session_id),
             TeleClaudeEvents.SYSTEM_COMMAND: lambda: SystemCommandContext(
-                command=payload.get("command"),
-                from_computer=payload.get("from_computer"),
+                command=cast(str, payload.get("command", "")),
+                from_computer=cast(str, payload.get("from_computer", "")),
             ),
         }
 
@@ -642,7 +645,7 @@ class AdapterClient:
         if event in COMMAND_EVENTS:
             return CommandEventContext(
                 session_id=session_id,
-                args=payload.get("args"),
+                args=cast(list[str], payload.get("args", [])),
                 adapter_type=metadata.adapter_type,
                 message_thread_id=metadata.message_thread_id,
                 title=metadata.title,
@@ -654,15 +657,17 @@ class AdapterClient:
 
         # Fallback - should not happen with EventType literal
         logger.warning("Unknown event type %s, using empty CommandEventContext", event)
-        return CommandEventContext(session_id=session_id, args=payload.get("args"))
+        return CommandEventContext(session_id=session_id, args=cast(list[str], payload.get("args", [])))
 
-    async def _call_pre_handler(self, session: "Session", event: EventType) -> None:  # type: ignore[name-defined]
+    async def _call_pre_handler(self, session: "Session", event: EventType) -> None:
         """Call origin adapter's pre-handler for UI cleanup."""
         origin_adapter = self.adapters.get(session.origin_adapter)
         if not origin_adapter or not isinstance(origin_adapter, UiAdapter):
             return
 
-        pre_handler = getattr(origin_adapter, "_pre_handle_user_input", None)
+        pre_handler = cast(
+            Callable[[object], Awaitable[None]] | None, getattr(origin_adapter, "_pre_handle_user_input", None)
+        )
         if not pre_handler or not callable(pre_handler):
             return
 
@@ -690,13 +695,15 @@ class AdapterClient:
             logger.error("Handler failed for event %s: %s", event, e, exc_info=True)
             return {"status": "error", "error": str(e), "code": type(e).__name__}
 
-    async def _call_post_handler(self, session: "Session", event: EventType, message_id: str) -> None:  # type: ignore[name-defined]
+    async def _call_post_handler(self, session: "Session", event: EventType, message_id: str) -> None:
         """Call origin adapter's post-handler for UI state tracking."""
         origin_adapter = self.adapters.get(session.origin_adapter)
         if not origin_adapter or not isinstance(origin_adapter, UiAdapter):
             return
 
-        post_handler = getattr(origin_adapter, "_post_handle_user_input", None)
+        post_handler = cast(
+            Callable[[object, str], Awaitable[None]] | None, getattr(origin_adapter, "_post_handle_user_input", None)
+        )
         if not post_handler or not callable(post_handler):
             return
 
@@ -706,7 +713,7 @@ class AdapterClient:
         except Exception as e:
             logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
 
-    async def _broadcast_lifecycle(self, session: "Session", event: EventType) -> None:  # type: ignore[name-defined]
+    async def _broadcast_lifecycle(self, session: "Session", event: EventType) -> None:
         """Broadcast session lifecycle events (close/reopen) to observer adapters."""
         if event not in (TeleClaudeEvents.SESSION_CLOSED, TeleClaudeEvents.SESSION_REOPENED):
             return
@@ -727,9 +734,9 @@ class AdapterClient:
 
     async def _broadcast_action(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         event: EventType,
-        payload: dict[str, Any],  # type: ignore[explicit-any]
+        payload: dict[str, object],
     ) -> None:
         """Broadcast user actions to UI observer adapters."""
         action_text = self._format_event_for_observers(event, payload)
@@ -744,7 +751,7 @@ class AdapterClient:
 
             try:
                 await adapter.send_message(
-                    session_id=session.session_id,
+                    session=session,
                     text=action_text,
                     metadata=MessageMetadata(),
                 )
@@ -752,7 +759,7 @@ class AdapterClient:
             except Exception as e:
                 logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
-    def _format_event_for_observers(self, event: EventType, payload: dict[str, Any]) -> Optional[str]:  # type: ignore[explicit-any]  # JSON/API data with dynamic structure
+    def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:
         """Format event as human-readable text for observer adapters.
 
         Args:
@@ -763,7 +770,7 @@ class AdapterClient:
             Formatted text or None if event should not be broadcast
         """
         if event == TeleClaudeEvents.MESSAGE:
-            text_obj = payload.get("text")
+            text_obj = cast(str | None, payload.get("text"))
             return f"→ {str(text_obj)}" if text_obj else None
 
         if event == TeleClaudeEvents.CANCEL:
@@ -776,8 +783,8 @@ class AdapterClient:
             return "→ [SIGKILL]"
 
         elif event == TeleClaudeEvents.CTRL:
-            args_obj = payload.get("args", [])
-            args = args_obj if isinstance(args_obj, list) else []
+            args_obj: object = payload.get("args", [])
+            args: list[object] = args_obj if isinstance(args_obj, list) else []  # type: ignore[misc]
             key = str(args[0]) if args else "?"
             return f"→ [Ctrl+{key}]"
 
@@ -788,15 +795,15 @@ class AdapterClient:
             return "→ [ESC] [ESC]"
 
         elif event == TeleClaudeEvents.NEW_SESSION:
-            title = payload.get("title", "Untitled")
+            title = cast(str, payload.get("title", "Untitled"))
             return f"→ [Created session: {title}]"
 
         # Don't broadcast internal coordination events
         return None
 
-    async def create_channel(
+    async def create_channel(  # pylint: disable=too-many-locals
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         title: str,
         origin_adapter: str,
         target_computer: Optional[str] = None,
@@ -857,11 +864,11 @@ class AdapterClient:
             raise ValueError(f"Origin adapter {origin_adapter} not found or did not return channel_id")
 
         # Store ALL adapter channel_ids in session metadata (enables observer broadcasting)
-        session = await db.get_session(session_id)
-        if session:
+        updated_session = await db.get_session(session_id)
+        if updated_session:
             # Store each adapter's channel_id in its namespace
             for adapter_type, channel_id in all_channel_ids.items():
-                adapter_meta = getattr(session.adapter_metadata, adapter_type, None)
+                adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
                 if not adapter_meta:
                     if adapter_type == "telegram":
                         adapter_meta = TelegramAdapterMetadata()
@@ -869,15 +876,15 @@ class AdapterClient:
                         adapter_meta = RedisAdapterMetadata()
                     else:
                         continue
-                    setattr(session.adapter_metadata, adapter_type, adapter_meta)
+                    setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
 
                 # Store channel_id - telegram uses topic_id, redis uses channel_id
-                if adapter_type == "telegram":
+                if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
                     adapter_meta.topic_id = int(channel_id)
-                elif adapter_type == "redis":
+                elif adapter_type == "redis" and isinstance(adapter_meta, RedisAdapterMetadata):
                     adapter_meta.channel_id = channel_id
 
-            await db.update_session(session_id, adapter_metadata=session.adapter_metadata)
+            await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
             logger.debug("Stored channel_ids for all adapters in session %s metadata", session_id[:8])
 
         return origin_channel_id

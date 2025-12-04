@@ -110,7 +110,7 @@ async def restore_active_pollers(
     logger.info("Session restoration complete")
 
 
-async def poll_and_send_output(
+async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     session_id: str,
     tmux_session_name: str,
     output_poller: OutputPoller,
@@ -166,7 +166,7 @@ async def poll_and_send_output(
                 start_time = time.time()
                 logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
                 await adapter_client.send_output_update(
-                    session,
+                    session,  # type: ignore[arg-type]
                     clean_output,
                     event.started_at,
                     event.last_changed_at,
@@ -182,7 +182,7 @@ async def poll_and_send_output(
                 ux_state = await db.get_ux_state(event.session_id)
                 notification_id = ux_state.idle_notification_message_id
                 if notification_id:
-                    await adapter_client.delete_message(session, notification_id)
+                    await adapter_client.delete_message(session, notification_id)  # type: ignore[arg-type]
                     await db.update_ux_state(event.session_id, idle_notification_message_id=None)
                     logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
 
@@ -232,7 +232,7 @@ async def poll_and_send_output(
                 if event.exit_code is not None:
                     # Exit with code - send final message via AdapterClient
                     await adapter_client.send_output_update(
-                        session,
+                        session,  # type: ignore[arg-type]
                         clean_final_output,
                         event.started_at,  # Use actual start time from poller
                         time.time(),

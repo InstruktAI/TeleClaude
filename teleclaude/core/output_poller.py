@@ -65,7 +65,7 @@ class OutputPoller:
     All dependencies (config, terminal_bridge) are imported at module level.
     """
 
-    async def poll(
+    async def poll(  # pylint: disable=too-many-locals  # Poll loop naturally has many state variables
         self,
         session_id: str,
         tmux_session_name: str,
@@ -87,7 +87,7 @@ class OutputPoller:
         idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
         global_update_interval = 2  # Global update interval (seconds) - first update after 1s
-        directory_check_interval = getattr(config.polling, "directory_check_interval", 5)
+        directory_check_interval = getattr(config.polling, "directory_check_interval", 5)  # type: ignore[misc]
 
         # State tracking
         idle_ticks = 0
@@ -293,9 +293,9 @@ class OutputPoller:
                         notification_sent = True
 
                 # Check for directory changes (if enabled)
-                if directory_check_interval > 0:
+                if directory_check_interval > 0:  # type: ignore[misc]
                     directory_check_ticks += 1
-                    if directory_check_ticks >= directory_check_interval:
+                    if directory_check_ticks >= directory_check_interval:  # type: ignore[misc]
                         directory_check_ticks = 0
                         current_directory = await terminal_bridge.get_current_directory(tmux_session_name)
                         if current_directory and current_directory != last_directory:

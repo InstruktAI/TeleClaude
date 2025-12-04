@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
 
 
-async def create_tmux_session(
+async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Tmux session creation requires multiple parameters
     name: str,
     working_dir: str,
     cols: int = 80,
@@ -125,7 +125,7 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
         return False
 
 
-async def send_keys(
+async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Terminal control requires multiple parameters
     session_name: str,
     text: str,
     working_dir: str = "~",
@@ -528,7 +528,7 @@ async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
         stdout, stderr = await result.communicate()
 
         if result.returncode == 0:
-            output = stdout.decode("utf-8", errors="replace")
+            output: str = stdout.decode("utf-8", errors="replace")
             if not output.strip():
                 logger.debug("Captured empty pane from session %s", session_name)
             return output
@@ -582,7 +582,7 @@ async def list_tmux_sessions() -> List[str]:
         stdout, _ = await result.communicate()
 
         if result.returncode == 0:
-            sessions = stdout.decode("utf-8").strip().split("\n")
+            sessions: list[str] = stdout.decode("utf-8").strip().split("\n")
             return [s for s in sessions if s]  # Filter empty strings
         return []
 
@@ -622,15 +622,15 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                     tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
 
                     # Get tmux processes
-                    tmux_processes = [
-                        {"pid": p.pid, "create_time": p.create_time()}
-                        for p in psutil.process_iter(["pid", "name", "create_time"])
-                        if "tmux" in p.info["name"].lower()
+                    tmux_processes = [  # type: ignore[misc]
+                        {"pid": p.pid, "create_time": p.create_time()}  # type: ignore[misc]
+                        for p in psutil.process_iter(["pid", "name", "create_time"])  # type: ignore[misc]
+                        if "tmux" in p.info["name"].lower()  # type: ignore[misc]
                     ]
 
                     # Get system metrics
-                    memory = psutil.virtual_memory()
-                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                    memory = psutil.virtual_memory()  # type: ignore[misc]
+                    cpu_percent = psutil.cpu_percent(interval=0.1)  # type: ignore[misc]
 
                     logger.error(
                         "Session %s does not exist (died unexpectedly)",
@@ -639,10 +639,10 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                             "session_name": session_name,
                             "stderr": stderr.decode().strip(),
                             "tmux_sessions_count": len([s for s in tmux_sessions if s]),
-                            "tmux_processes_count": len(tmux_processes),
-                            "system_memory_used_mb": memory.used // 1024 // 1024,
-                            "system_memory_percent": memory.percent,
-                            "system_cpu_percent": cpu_percent,
+                            "tmux_processes_count": len(tmux_processes),  # type: ignore[misc]
+                            "system_memory_used_mb": memory.used // 1024 // 1024,  # type: ignore[misc]
+                            "system_memory_percent": memory.percent,  # type: ignore[misc]
+                            "system_cpu_percent": cpu_percent,  # type: ignore[misc]
                         },
                     )
                 except Exception as diag_error:
@@ -687,7 +687,7 @@ async def get_current_command(session_name: str) -> Optional[str]:
             )
             return None
 
-        command = stdout.decode().strip()
+        command: str = stdout.decode().strip()
         logger.debug("Current command in %s: %s", session_name, command)
         return command
 
@@ -736,7 +736,7 @@ async def get_session_pane_id(session_name: str) -> Optional[str]:
         stdout, _ = await result.communicate()
 
         if result.returncode == 0:
-            pane_id = stdout.decode("utf-8").strip()
+            pane_id: str = stdout.decode("utf-8").strip()
             return pane_id if pane_id else None
         return None
 
@@ -807,7 +807,8 @@ async def get_pane_title(session_name: str) -> Optional[str]:
         stdout, _ = await result.communicate()
 
         if result.returncode == 0:
-            return stdout.decode().strip()
+            pane_title: str = stdout.decode().strip()
+            return pane_title
 
         return None
 
@@ -835,7 +836,8 @@ async def get_current_directory(session_name: str) -> Optional[str]:
         stdout, stderr = await result.communicate()
 
         if result.returncode == 0:
-            return stdout.decode().strip()
+            current_dir: str = stdout.decode().strip()
+            return current_dir
 
         logger.warning(
             "Failed to get current directory for %s: returncode=%d, stderr=%s",

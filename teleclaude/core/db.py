@@ -89,7 +89,7 @@ class Db:
         if self._db:
             await self._db.close()
 
-    async def create_session(
+    async def create_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Database insert requires all session fields
         self,
         computer_name: str,
         tmux_session_name: str,
@@ -257,7 +257,7 @@ class Db:
             if isinstance(metadata, dict):
                 fields["adapter_metadata"] = json.dumps(metadata)
             elif hasattr(metadata, "__dataclass_fields__"):  # Check if it's a dataclass
-                fields["adapter_metadata"] = json.dumps(asdict(metadata))
+                fields["adapter_metadata"] = json.dumps(asdict(metadata))  # type: ignore[call-overload,misc]  # Runtime checked for dataclass, asdict returns Any
             # else: assume it's already JSON string
 
         set_clause = ", ".join(f"{key} = ?" for key in fields)
@@ -271,11 +271,12 @@ class Db:
         if self._client:
             # Trust contract: session exists (we just updated it in db)
             session = await self.get_session(session_id)
-            await self._client.handle_event(
-                TeleClaudeEvents.SESSION_UPDATED,
-                {"session_id": session_id, "updated_fields": fields},
-                MessageMetadata(adapter_type=session.origin_adapter),
-            )
+            if session:  # Guard against race condition
+                await self._client.handle_event(
+                    TeleClaudeEvents.SESSION_UPDATED,
+                    {"session_id": session_id, "updated_fields": fields},
+                    MessageMetadata(adapter_type=session.origin_adapter),
+                )
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -501,7 +502,7 @@ class Db:
 
         cursor = await self.conn.execute(query, params)
         row = await cursor.fetchone()
-        count: int = int(row["count"]) if row else 0  # type: ignore[misc]  # aiosqlite Row values are Any
+        count: int = int(row["count"]) if row else 0  # type: ignore[misc]  # Row access is Any from aiosqlite
         return count
 
     async def get_sessions_by_adapter_metadata(
@@ -621,7 +622,7 @@ class Db:
         """
         return await ux_state.get_session_ux_state(self.conn, session_id)
 
-    async def update_ux_state(
+    async def update_ux_state(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # UX state has many optional fields
         self,
         session_id: str,
         *,
@@ -704,7 +705,7 @@ class Db:
         """
         cursor = await self.conn.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
         row = await cursor.fetchone()
-        value: str = str(row[0]) if row else ""  # type: ignore[misc]  # aiosqlite Row values are Any
+        value: str = str(row[0]) if row else ""  # type: ignore[misc]  # Row access is Any from aiosqlite
         return value if row else None
 
     async def set_system_setting(self, key: str, value: str) -> None:
@@ -770,10 +771,10 @@ class Db:
             return None
 
         return VoiceConfig(
-            name=row["voice_name"],
-            elevenlabs_id=row["elevenlabs_id"] or "",
-            macos_voice=row["macos_voice"] or "",
-            openai_voice=row["openai_voice"] or "",
+            name=row["voice_name"],  # type: ignore[misc]  # Row access is Any from aiosqlite
+            elevenlabs_id=row["elevenlabs_id"] or "",  # type: ignore[misc]  # Row access is Any from aiosqlite
+            macos_voice=row["macos_voice"] or "",  # type: ignore[misc]  # Row access is Any from aiosqlite
+            openai_voice=row["openai_voice"] or "",  # type: ignore[misc]  # Row access is Any from aiosqlite
         )
 
     async def cleanup_stale_voice_assignments(self, max_age_days: int = 7) -> int:

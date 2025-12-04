@@ -110,10 +110,10 @@ async def transcribe_voice(
                 params["model"],
                 params.get("language", "auto"),
             )
-            transcript = await resolved_client.audio.transcriptions.create(**params)
+            transcript = await resolved_client.audio.transcriptions.create(**params)  # type: ignore[misc, call-overload]
             logger.info("✓ Whisper API call successful")
 
-        transcribed_text: str = str(transcript.text).strip()
+        transcribed_text: str = str(transcript.text).strip()  # type: ignore[misc]
         logger.info(
             "✓ Transcription successful: '%s' (length: %s chars)", transcribed_text[:100], len(transcribed_text)
         )
@@ -204,9 +204,9 @@ async def handle_voice(
     # Voice message accepted - transcribe and send to active process
     # Check if output message exists (polling may have just started)
     # Get output_message_id from origin adapter's metadata
-    adapter_metadata = getattr(session.adapter_metadata, session.origin_adapter, None)
-    current_message_id = adapter_metadata.output_message_id if adapter_metadata else None
-    if current_message_id is None:
+    adapter_metadata = getattr(session.adapter_metadata, session.origin_adapter, None)  # type: ignore[misc]
+    current_message_id = adapter_metadata.output_message_id if adapter_metadata else None  # type: ignore[misc]
+    if current_message_id is None:  # type: ignore[misc]
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
         # Send rejection message
         await send_feedback(

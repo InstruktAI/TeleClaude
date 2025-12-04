@@ -9,7 +9,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
 import aiosqlite
 
@@ -40,7 +40,7 @@ class UXStateContext(Enum):
 
 
 @dataclass
-class SessionUXState:
+class SessionUXState:  # pylint: disable=too-many-instance-attributes  # UX state tracks multiple message types
     """Typed UX state for sessions."""
 
     output_message_id: Optional[str] = None
@@ -53,25 +53,28 @@ class SessionUXState:
     claude_session_file: Optional[str] = None  # Path to native Claude Code session .jsonl file
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SessionUXState":  # type: ignore
+    def from_dict(cls, data: dict[str, object]) -> "SessionUXState":
         """Create SessionUXState from dict."""
+        output_message_id_raw: object = data.get("output_message_id")
+        idle_notification_message_id_raw: object = data.get("idle_notification_message_id")
+        pending_deletions_raw: object = data.get("pending_deletions", [])
+        pending_feedback_deletions_raw: object = data.get("pending_feedback_deletions", [])
+        claude_session_id_raw: object = data.get("claude_session_id")
+        claude_session_file_raw: object = data.get("claude_session_file")
+
         return cls(
-            output_message_id=str(data["output_message_id"]) if data.get("output_message_id") else None,
+            output_message_id=str(output_message_id_raw) if output_message_id_raw else None,
             polling_active=bool(data.get("polling_active", False)),
             idle_notification_message_id=(
-                str(data["idle_notification_message_id"]) if data.get("idle_notification_message_id") else None
+                str(idle_notification_message_id_raw) if idle_notification_message_id_raw else None
             ),
-            pending_deletions=(
-                list(data.get("pending_deletions", [])) if isinstance(data.get("pending_deletions"), list) else []
-            ),
+            pending_deletions=list(pending_deletions_raw) if isinstance(pending_deletions_raw, list) else [],
             pending_feedback_deletions=(
-                list(data.get("pending_feedback_deletions", []))
-                if isinstance(data.get("pending_feedback_deletions"), list)
-                else []
+                list(pending_feedback_deletions_raw) if isinstance(pending_feedback_deletions_raw, list) else []
             ),
             notification_sent=bool(data.get("notification_sent", False)),
-            claude_session_id=str(data["claude_session_id"]) if data.get("claude_session_id") else None,
-            claude_session_file=str(data["claude_session_file"]) if data.get("claude_session_file") else None,
+            claude_session_id=str(claude_session_id_raw) if claude_session_id_raw else None,
+            claude_session_file=str(claude_session_file_raw) if claude_session_file_raw else None,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -142,8 +145,12 @@ async def get_session_ux_state(db: aiosqlite.Connection, session_id: str) -> Ses
         # Load from sessions table
         cursor = await db.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
         row = await cursor.fetchone()
-        if row and row[0]:
-            data = json.loads(row[0])
+        if row and row[0]:  # type: ignore[misc]  # Row access is Any from aiosqlite
+            data_raw: object = json.loads(row[0])  # type: ignore[misc]  # Row access is Any from aiosqlite
+            if not isinstance(data_raw, dict):
+                logger.warning("Invalid ux_state format for session %s", session_id[:8])
+                return SessionUXState()
+            data: dict[str, object] = data_raw
             logger.debug("Loaded session UX state for %s: %s", session_id[:8], data)
             return SessionUXState.from_dict(data)
 
@@ -168,7 +175,11 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
         cursor = await db.execute("SELECT value FROM system_settings WHERE key = 'ux_state'")
         row = await cursor.fetchone()
         if row:
-            data = json.loads(row[0])
+            data_raw: object = json.loads(row[0])  # type: ignore[misc]  # Row access is Any from aiosqlite
+            if not isinstance(data_raw, dict):
+                logger.warning("Invalid system ux_state format")
+                return SystemUXState()
+            data: dict[str, object] = data_raw
             logger.debug("Loaded system UX state: %s", data)
             return SystemUXState.from_dict(data)
 
@@ -179,7 +190,7 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
         return SystemUXState()
 
 
-async def update_session_ux_state(
+async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # UX state has many optional fields
     db: aiosqlite.Connection,
     session_id: str,
     *,

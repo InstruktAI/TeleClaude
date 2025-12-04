@@ -8,7 +8,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class AdapterMetadata(BaseModel):
+class AdapterMetadata(BaseModel):  # type: ignore[explicit-any]
     """Standardized metadata for adapter events.
 
     This model ensures consistent metadata structure across all adapters

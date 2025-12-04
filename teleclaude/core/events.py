@@ -43,6 +43,8 @@ EventType = Literal[
     "session_updated",
 ]
 
+# UI commands mapping (intentionally lowercase - not a constant despite dict type)
+# pylint: disable=invalid-name  # UiCommands is a module-level mapping, not a constant
 UiCommands = {
     "cd": "Change directory or list trusted directories",
     "claude": "Start Claude Code in GOD mode",
@@ -233,7 +235,7 @@ class SystemCommandContext:
 
 
 @dataclass
-class CommandEventContext:
+class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Event context requires many metadata fields
     """Context for command events (new_session, cd, kill, etc.)."""
 
     session_id: str

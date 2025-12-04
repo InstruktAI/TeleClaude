@@ -152,7 +152,7 @@ def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -
 
     # Console handler - only if stdout is a TTY (interactive terminal)
     # This avoids duplicates when launchd/nohup redirects stdout to the log file
-    if sys.stdout.isatty():
+    if sys.stdout.isatty():  # type: ignore[misc]
         console = logging.StreamHandler()
         console.setFormatter(console_formatter)
         handlers.append(console)

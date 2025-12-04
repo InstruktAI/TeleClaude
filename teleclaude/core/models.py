@@ -7,7 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
-    from telegram.types import InlineKeyboardMarkup
+    from telegram.types import InlineKeyboardMarkup  # type: ignore[import-not-found]
 
 # JSON-serializable types for database storage
 JsonPrimitive = Union[str, int, float, bool, None]
@@ -25,12 +25,12 @@ def asdict_exclude_none(obj: object) -> dict[str, object]:
     if isinstance(obj, dict):
         return {k: v for k, v in obj.items() if v is not None}
 
-    result = asdict(obj)  # type: ignore[call-overload]  # asdict accepts dataclass instances
+    result: dict[str, object] = asdict(obj)  # type: ignore[call-overload]  # asdict accepts dataclass instances
 
     def _exclude_none(data: object) -> object:
         """Recursively exclude None values from dicts."""
         if isinstance(data, dict):
-            return {k: _exclude_none(v) for k, v in data.items() if v is not None}
+            return {k: _exclude_none(v) for k, v in data.items() if v is not None}  # type: ignore[misc]
         if isinstance(data, list):
             return [_exclude_none(item) for item in data]
         return data
@@ -98,7 +98,7 @@ class AdapterType(str, Enum):
 
 
 @dataclass
-class PeerInfo:
+class PeerInfo:  # pylint: disable=too-many-instance-attributes  # Data model for peer discovery info
     """Information about a discovered peer computer."""
 
     name: str
@@ -121,7 +121,7 @@ class TelegramAdapterMetadata:
 
 
 @dataclass
-class RedisAdapterMetadata:
+class RedisAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Data model for Redis adapter metadata
     """Redis-specific adapter metadata."""
 
     channel_id: Optional[str] = None  # Stream key
@@ -155,8 +155,8 @@ class ChannelMetadata:
     origin: bool = False
 
 
-@dataclass
-class MessageMetadata:
+@dataclass  # type: ignore[misc]
+class MessageMetadata:  # type: ignore[no-any-unimported]  # pylint: disable=too-many-instance-attributes  # Metadata container for message operations
     """Per-call metadata for send_message/edit_message operations (transient call-level data).
 
     This dataclass contains options that affect HOW a single message is sent,
@@ -168,7 +168,7 @@ class MessageMetadata:
     """
 
     # Telegram-specific formatting
-    reply_markup: Optional["InlineKeyboardMarkup"] = None
+    reply_markup: Optional["InlineKeyboardMarkup"] = None  # type: ignore[no-any-unimported]
     parse_mode: str = "Markdown"
     message_thread_id: Optional[int] = None
 
@@ -192,7 +192,7 @@ class MessageMetadata:
 
 
 @dataclass
-class Session:
+class Session:  # pylint: disable=too-many-instance-attributes  # Data model for terminal sessions
     """Represents a terminal session."""
 
     session_id: str
@@ -234,17 +234,19 @@ class Session:
 
         # Parse adapter_metadata JSON to SessionAdapterMetadata
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
-            raw_metadata = json.loads(data["adapter_metadata"])
+            raw_metadata: dict[str, object] = json.loads(data["adapter_metadata"])
             # Build SessionAdapterMetadata from dict with typed adapter metadata
-            metadata_dict = {}
+            telegram_metadata: Optional[TelegramAdapterMetadata] = None
+            redis_metadata: Optional[RedisAdapterMetadata] = None
+
             for adapter_key, adapter_data in raw_metadata.items():
-                if adapter_data is None:
-                    continue  # Skip None metadata
+                if adapter_data is None or not isinstance(adapter_data, dict):
+                    continue  # Skip None metadata or non-dict values
                 if adapter_key == "telegram":
                     # Filter to only known fields (handles schema evolution)
                     known_fields = {"topic_id", "output_message_id"}
-                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}
-                    metadata_dict[adapter_key] = TelegramAdapterMetadata(**filtered)
+                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}  # type: ignore[misc]
+                    telegram_metadata = TelegramAdapterMetadata(**filtered)  # type: ignore[misc]
                 elif adapter_key == "redis":
                     # Filter to only known fields (handles schema evolution)
                     known_fields = {
@@ -258,11 +260,14 @@ class Session:
                         "channel_metadata",
                     }
                     filtered = {k: v for k, v in adapter_data.items() if k in known_fields}
-                    metadata_dict[adapter_key] = RedisAdapterMetadata(**filtered)
-            data["adapter_metadata"] = SessionAdapterMetadata(**metadata_dict)
+                    redis_metadata = RedisAdapterMetadata(**filtered)  # type: ignore[misc]
+
+            data["adapter_metadata"] = SessionAdapterMetadata(
+                telegram=telegram_metadata, redis=redis_metadata
+            )  # type: ignore[assignment]
         elif "adapter_metadata" not in data:
             # Ensure adapter_metadata always exists
-            data["adapter_metadata"] = SessionAdapterMetadata()
+            data["adapter_metadata"] = SessionAdapterMetadata()  # type: ignore[assignment]
 
         # Convert closed from SQLite integer (0/1) to Python bool
         if "closed" in data and isinstance(data["closed"], int):

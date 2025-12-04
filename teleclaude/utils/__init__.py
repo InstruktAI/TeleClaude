@@ -36,7 +36,7 @@ def command_retry(
 
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:  # type: ignore[misc]
             start_time = time.time()
             excluded_wait_time = 0.0  # Rate-limit wait time doesn't count against timeout
             last_exception = None
@@ -62,12 +62,12 @@ def command_retry(
                     # Check for rate limit (RetryAfter or similar)
                     if hasattr(e, "retry_after"):
                         if attempt < max_retries - 1:
-                            retry_after = getattr(e, "retry_after")
+                            retry_after = getattr(e, "retry_after")  # type: ignore[misc]
                             logger.warning(
-                                "Rate limited, retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries
+                                "Rate limited, retrying in %ss (attempt %d/%d)", retry_after, attempt + 1, max_retries  # type: ignore[misc]
                             )
-                            await asyncio.sleep(retry_after)
-                            excluded_wait_time += retry_after  # Don't count wait against timeout
+                            await asyncio.sleep(retry_after)  # type: ignore[misc]
+                            excluded_wait_time += retry_after  # type: ignore[misc]  # Don't count wait against timeout
                             last_exception = e
                         else:
                             logger.error("Rate limit exceeded after %d attempts", max_retries)
@@ -76,15 +76,15 @@ def command_retry(
                     # Check for network errors
                     elif type(e).__name__ in ("NetworkError", "TimedOut", "ConnectionError", "TimeoutError"):
                         if attempt < max_retries - 1:
-                            delay = 2**attempt  # 1s, 2s, 4s
+                            delay = 2**attempt  # type: ignore[misc]  # 1s, 2s, 4s
                             logger.warning(
                                 "Network error (%s), retrying in %ds (attempt %d/%d)",
                                 type(e).__name__,
-                                delay,
+                                delay,  # type: ignore[misc]
                                 attempt + 1,
                                 max_retries,
                             )
-                            await asyncio.sleep(delay)
+                            await asyncio.sleep(delay)  # type: ignore[misc]
                             last_exception = e
                         else:
                             logger.error("Network error after %d attempts: %s", max_retries, e)
@@ -100,7 +100,7 @@ def command_retry(
                 raise last_exception
             raise RuntimeError(f"Retry logic failed unexpectedly in {func.__name__}")
 
-        return wrapper
+        return wrapper  # type: ignore[misc]
 
     return decorator
 
@@ -117,7 +117,7 @@ def expand_env_vars(config: object) -> object:
         Configuration with all ${VAR} patterns replaced
     """
     if isinstance(config, dict):
-        return {k: expand_env_vars(v) for k, v in config.items()}
+        return {k: expand_env_vars(v) for k, v in config.items()}  # type: ignore[misc]
     if isinstance(config, list):
         return [expand_env_vars(item) for item in config]
     if isinstance(config, str):

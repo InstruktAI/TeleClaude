@@ -11,7 +11,7 @@ import os
 import shlex
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 
 import psutil
 
@@ -33,6 +33,39 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
+
+
+# TypedDicts for structured data
+
+
+class MemoryStats(TypedDict):
+    """Memory statistics structure."""
+
+    total_gb: float
+    available_gb: float
+    percent_used: float
+
+
+class DiskStats(TypedDict):
+    """Disk statistics structure."""
+
+    total_gb: float
+    free_gb: float
+    percent_used: float
+
+
+class CpuStats(TypedDict):
+    """CPU statistics structure."""
+
+    percent_used: float
+
+
+class SystemStats(TypedDict):
+    """System statistics structure."""
+
+    memory: MemoryStats
+    disk: DiskStats
+    cpu: CpuStats
 
 
 # Type alias for start_polling function
@@ -75,12 +108,12 @@ def with_session(func: Callable[..., Awaitable[None]]) -> Callable[..., Awaitabl
             await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
     """
 
-    @functools.wraps(func)
-    async def wrapper(context: EventContext, *args: object, **kwargs: object) -> None:
+    @functools.wraps(func)  # type: ignore[misc]
+    async def wrapper(context: EventContext, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
         # Extract session_id (let it crash if missing - our code emitted this event)
         # SystemCommandContext doesn't have session_id, but @with_session is only used for session-based commands
         assert hasattr(context, "session_id"), f"Context {type(context).__name__} missing session_id"
-        session_id: str = str(context.session_id)
+        session_id: str = str(context.session_id)  # type: ignore[misc]
 
         # Get session (let it crash if None - session should exist)
         session = await db.get_session(session_id)
@@ -90,7 +123,7 @@ def with_session(func: Callable[..., Awaitable[None]]) -> Callable[..., Awaitabl
         # Call handler with session injected as first parameter
         await func(session, context, *args, **kwargs)
 
-    return wrapper
+    return wrapper  # type: ignore[misc]
 
 
 async def _execute_control_key(  # type: ignore[explicit-any]  # terminal_action has varying signatures
@@ -114,8 +147,8 @@ async def _execute_control_key(  # type: ignore[explicit-any]  # terminal_action
     return await terminal_action(session.tmux_session_name, *terminal_args)
 
 
-async def handle_create_session(
-    context: EventContext,
+async def handle_create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
+    _context: EventContext,
     args: list[str],
     metadata: MessageMetadata,
     client: "AdapterClient",
@@ -206,11 +239,17 @@ async def handle_create_session(
     # Create channel via client (session object passed, adapter_metadata updated in DB)
     # Pass initiator (target_computer) for AI-to-AI sessions so stop events can be forwarded
     await client.create_channel(
-        session=session, title=title, origin_adapter=str(adapter_type), target_computer=initiator
+        session=session,
+        title=title,
+        origin_adapter=str(adapter_type),
+        target_computer=str(initiator) if initiator else None,
     )
 
     # Re-fetch session to get updated adapter_metadata (set by create_channel)
-    session = await db.get_session(session_id)
+    updated_session = await db.get_session(session_id)
+    if updated_session is None:
+        raise RuntimeError(f"Session {session_id} disappeared after create_channel")
+    session = updated_session
 
     # Create actual tmux session with voice env vars
     cols, rows = map(int, terminal_size.split("x"))
@@ -308,24 +347,37 @@ async def handle_get_computer_info() -> dict[str, object]:
         raise ValueError("Computer configuration is incomplete - user, role, and host are required")
 
     # Gather system stats
-    memory = psutil.virtual_memory()
-    disk = psutil.disk_usage("/")
-    cpu_percent = psutil.cpu_percent(interval=0.1)
+    memory = psutil.virtual_memory()  # type: ignore[misc]  # psutil has incomplete type stubs
+    disk = psutil.disk_usage("/")  # type: ignore[misc]  # psutil has incomplete type stubs
+    cpu_percent = psutil.cpu_percent(interval=0.1)  # type: ignore[misc]  # psutil has incomplete type stubs
 
-    system_stats: dict[str, object] = {
-        "memory": {
-            "total_gb": round(memory.total / (1024**3), 1),
-            "available_gb": round(memory.available / (1024**3), 1),
-            "percent_used": memory.percent,
-        },
-        "disk": {
-            "total_gb": round(disk.total / (1024**3), 1),
-            "free_gb": round(disk.free / (1024**3), 1),
-            "percent_used": disk.percent,
-        },
-        "cpu": {
-            "percent_used": cpu_percent,
-        },
+    # Build typed system stats
+    # Cast psutil values which have Any type stubs
+    memory_total = cast(int, memory.total)  # type: ignore[misc]  # psutil has incomplete type stubs
+    memory_available = cast(int, memory.available)  # type: ignore[misc]  # psutil has incomplete type stubs
+    memory_percent = cast(float, memory.percent)  # type: ignore[misc]  # psutil has incomplete type stubs
+    disk_total = cast(int, disk.total)  # type: ignore[misc]  # psutil has incomplete type stubs
+    disk_free = cast(int, disk.free)  # type: ignore[misc]  # psutil has incomplete type stubs
+    disk_percent = cast(float, disk.percent)  # type: ignore[misc]  # psutil has incomplete type stubs
+    cpu_percent_value = cast(float, cpu_percent)
+
+    memory_stats: MemoryStats = {
+        "total_gb": round(memory_total / (1024**3), 1),
+        "available_gb": round(memory_available / (1024**3), 1),
+        "percent_used": memory_percent,
+    }
+    disk_stats: DiskStats = {
+        "total_gb": round(disk_total / (1024**3), 1),
+        "free_gb": round(disk_free / (1024**3), 1),
+        "percent_used": disk_percent,
+    }
+    cpu_stats: CpuStats = {
+        "percent_used": cpu_percent_value,
+    }
+    system_stats: SystemStats = {
+        "memory": memory_stats,
+        "disk": disk_stats,
+        "cpu": cpu_stats,
     }
 
     info_data: dict[str, object] = {
@@ -366,7 +418,7 @@ async def handle_get_session_data(
         logger.error("No session_id in context for get_session_data")
         return {"status": "error", "error": "No session_id provided"}
 
-    session_id = context.session_id
+    session_id = str(context.session_id)  # type: ignore[misc]
 
     # Get session from database
     session = await db.get_session(session_id)
@@ -409,12 +461,12 @@ async def handle_get_session_data(
     }
 
 
-@with_session
-async def handle_cancel_command(
+@with_session  # type: ignore[misc]
+async def handle_cancel_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _context: EventContext,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
     double: bool = False,
 ) -> None:
     """Send CTRL+C (SIGINT) to a session.
@@ -448,12 +500,12 @@ async def handle_cancel_command(
         logger.error("Failed to send SIGINT to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_kill_command(
+@with_session  # type: ignore[misc]
+async def handle_kill_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _context: EventContext,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
 ) -> None:
     """Force kill foreground process with SIGKILL (guaranteed termination).
 
@@ -476,12 +528,12 @@ async def handle_kill_command(
         logger.error("Failed to send SIGKILL to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_escape_command(
+@with_session  # type: ignore[misc]
+async def handle_escape_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
+    _context: EventContext,
     args: list[str],
-    client: "AdapterClient",
+    _client: "AdapterClient",
     start_polling: StartPollingFunc,
     double: bool = False,
 ) -> None:
@@ -577,13 +629,13 @@ async def handle_escape_command(
         logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_ctrl_command(
+@with_session  # type: ignore[misc]
+async def handle_ctrl_command(  # type: ignore[misc]
     session: Session,
     context: EventContext,
     args: list[str],
     client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _start_polling: StartPollingFunc,
 ) -> None:
     """Send CTRL+key combination to a session.
 
@@ -602,7 +654,7 @@ async def handle_ctrl_command(
 
         # Track both command message AND feedback message for deletion
         # Track command message (e.g., /ctrl)
-        message_id = getattr(context, "message_id", None)
+        message_id = cast(Optional[str], getattr(context, "message_id", None))
         if message_id:
             await db.add_pending_deletion(session.session_id, str(message_id))
             logger.debug("Tracked command message %s for deletion (session %s)", message_id, session.session_id[:8])
@@ -629,12 +681,12 @@ async def handle_ctrl_command(
         logger.error("Failed to send CTRL+%s to session %s", key.upper(), session.session_id[:8])
 
 
-@with_session
-async def handle_tab_command(
+@with_session  # type: ignore[misc]
+async def handle_tab_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _context: EventContext,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
 ) -> None:
     """Send TAB key to a session.
 
@@ -655,13 +707,13 @@ async def handle_tab_command(
         logger.error("Failed to send TAB to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_shift_tab_command(
+@with_session  # type: ignore[misc]
+async def handle_shift_tab_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
+    _context: EventContext,
     args: list[str],
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
 ) -> None:
     """Send SHIFT+TAB key to a session with optional repeat count.
 
@@ -696,13 +748,13 @@ async def handle_shift_tab_command(
         logger.error("Failed to send SHIFT+TAB to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_backspace_command(
+@with_session  # type: ignore[misc]
+async def handle_backspace_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
+    _context: EventContext,
     args: list[str],
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
 ) -> None:
     """Send BACKSPACE key to a session with optional repeat count.
 
@@ -737,12 +789,12 @@ async def handle_backspace_command(
         logger.error("Failed to send BACKSPACE to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_enter_command(
+@with_session  # type: ignore[misc]
+async def handle_enter_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _context: EventContext,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
 ) -> None:
     """Send ENTER key to a session.
 
@@ -764,13 +816,13 @@ async def handle_enter_command(
         logger.error("Failed to send ENTER to session %s", session.session_id[:8])
 
 
-@with_session
-async def handle_arrow_key_command(
+@with_session  # type: ignore[misc]
+async def handle_arrow_key_command(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
+    _context: EventContext,
     args: list[str],
-    client: "AdapterClient",
-    start_polling: StartPollingFunc,
+    _client: "AdapterClient",
+    _start_polling: StartPollingFunc,
     direction: str,
 ) -> None:
     """Send arrow key to a session with optional repeat count.
@@ -809,10 +861,10 @@ async def handle_arrow_key_command(
         logger.error("Failed to send %s arrow key to session %s", direction.upper(), session.session_id[:8])
 
 
-@with_session
-async def handle_rename_session(
+@with_session  # type: ignore[misc]
+async def handle_rename_session(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
+    _context: EventContext,
     args: list[str],
     client: "AdapterClient",
 ) -> None:
@@ -861,8 +913,8 @@ async def handle_rename_session(
             await db.add_pending_deletion(session.session_id, error_msg_id)
 
 
-@with_session
-async def handle_cd_session(
+@with_session  # type: ignore[misc]
+async def handle_cd_session(  # type: ignore[misc]  # pylint: disable=too-many-locals  # Directory handling requires multiple variables
     session: Session,
     context: EventContext,
     args: list[str],
@@ -907,7 +959,7 @@ async def handle_cd_session(
     cd_command = f"cd {shlex.quote(target_dir)}"
 
     # Execute command WITHOUT polling (cd is instant)
-    message_id = str(getattr(context, "message_id", ""))
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
     success = await execute_terminal_command(session.session_id, cd_command, message_id, False)
 
     # Save working directory to DB if successful
@@ -916,10 +968,10 @@ async def handle_cd_session(
         logger.debug("Updated working_directory for session %s: %s", session.session_id[:8], target_dir)
 
 
-@with_session
-async def handle_exit_session(
+@with_session  # type: ignore[misc]
+async def handle_exit_session(  # type: ignore[misc]
     session: Session,
-    context: EventContext,
+    _context: EventContext,
     client: "AdapterClient",
 ) -> None:
     """Exit session - kill tmux, delete DB record, clean up resources.
@@ -986,8 +1038,8 @@ async def handle_end_session(
     return {"status": "success", "message": f"Session {session_id[:8]} ended successfully"}
 
 
-@with_session
-async def handle_claude_session(
+@with_session  # type: ignore[misc]
+async def handle_claude_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
     args: list[str],
@@ -1018,12 +1070,12 @@ async def handle_claude_session(
         cmd = base_cmd
 
     # Execute command WITH polling (claude is long-running)
-    message_id = str(getattr(context, "message_id", ""))
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
     await execute_terminal_command(session.session_id, cmd, message_id, True)
 
 
-@with_session
-async def handle_claude_resume_session(
+@with_session  # type: ignore[misc]
+async def handle_claude_resume_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
@@ -1037,11 +1089,11 @@ async def handle_claude_resume_session(
     """
     # Check if session has stored Claude session ID and project_dir
     # Use getattr with default since not all adapter metadata types have these fields
-    origin_meta = getattr(session.adapter_metadata, session.origin_adapter, None)
-    claude_session_id = getattr(origin_meta, "claude_session_id", None) if origin_meta else None
-    project_dir = getattr(origin_meta, "project_dir", None) or await terminal_bridge.get_current_directory(
-        session.tmux_session_name
-    )
+    origin_meta = cast(object, getattr(session.adapter_metadata, session.origin_adapter, None))
+    claude_session_id = cast(Optional[str], getattr(origin_meta, "claude_session_id", None)) if origin_meta else None
+    project_dir_value = cast(
+        Optional[str], getattr(origin_meta, "project_dir", None)
+    ) or await terminal_bridge.get_current_directory(session.tmux_session_name)
 
     # Get base command from config with fallback to constant
     # Strip whitespace to handle YAML literal blocks with trailing newlines
@@ -1050,12 +1102,12 @@ async def handle_claude_resume_session(
     # Build command
     if claude_session_id:
         logger.info("Continuing claude session %s", claude_session_id)
-        cmd = f"cd {shlex.quote(str(project_dir))} && {claude_cmd} --session-id {claude_session_id}"
+        cmd = f"cd {shlex.quote(str(project_dir_value))} && {claude_cmd} --session-id {claude_session_id}"
     else:
         # Fresh session: use --continue to resume last claude session in current dir
         logger.info("Starting fresh claude session with --continue")
         cmd = f"{claude_cmd} --continue"
 
     # Execute command WITH polling (claude is long-running)
-    message_id = str(getattr(context, "message_id", ""))
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
     await execute_terminal_command(session.session_id, cmd, message_id, True)

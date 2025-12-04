@@ -27,6 +27,7 @@ from teleclaude.core.models import (
     MessageMetadata,
     PeerInfo,
     RedisAdapterMetadata,
+    Session,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
@@ -36,7 +37,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
+class RedisAdapter(
+    BaseAdapter, RemoteExecutionProtocol
+):  # pylint: disable=too-many-instance-attributes  # Redis adapter requires many connection and state attributes
     """Adapter for AI-to-AI communication via Redis Streams.
 
     Uses Redis Streams for reliable, ordered message delivery between computers.
@@ -101,7 +104,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             return
 
         # Create Redis client with TLS support
-        self.redis = Redis.from_url(  # type: ignore[misc]  # Redis library returns type[Redis] with Any
+        self.redis = Redis.from_url(  # type: ignore[misc]
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
@@ -112,7 +115,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         # Test connection
         try:
-            await self.redis.ping()  # type: ignore[misc]  # Redis.ping() returns Awaitable[bool] | bool | Any
+            await self.redis.ping()  # type: ignore[misc]
             logger.info("Redis connection successful")
         except Exception as e:
             logger.error("Failed to connect to Redis: %s", e)
@@ -188,7 +191,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         except Exception as e:
             logger.error("Failed to persist last processed message ID: %s", e)
 
-    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
         """Send message chunk to Redis output stream.
 
         Args:
@@ -201,7 +204,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
 
         # Trust contract: create_channel already set up metadata
-        output_stream = session.adapter_metadata.redis.channel_id
+        redis_meta = session.adapter_metadata.redis
+        if not redis_meta or not redis_meta.channel_id:
+            raise ValueError(f"Session {session.session_id} has no Redis channel_id")
+        output_stream: str = redis_meta.channel_id
 
         # Send to Redis stream
         message_id_bytes: bytes = await self.redis.xadd(
@@ -217,7 +223,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.debug("Sent to Redis stream %s: %s", output_stream, message_id_bytes)
         return message_id_bytes.decode("utf-8")
 
-    async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:
+    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
         """Redis streams don't support editing - send new message instead.
 
         Args:
@@ -232,7 +238,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         await self.send_message(session, text, metadata)
         return True
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:
+    async def delete_message(self, session: Session, message_id: str) -> bool:
         """Delete message from Redis stream.
 
         Args:
@@ -244,7 +250,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
 
         # Trust contract: create_channel already set up metadata
-        output_stream = session.adapter_metadata.redis.output_stream
+        redis_meta = session.adapter_metadata.redis
+        if not redis_meta or not redis_meta.output_stream:
+            raise ValueError(f"Session {session.session_id} has no Redis output_stream")
+        output_stream: str = redis_meta.output_stream
 
         try:
             await self.redis.xdel(output_stream, message_id)
@@ -279,7 +288,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
     async def send_file(
         self,
-        session: "Session",
+        session: Session,
         file_path: str,
         metadata: MessageMetadata,
         caption: Optional[str] = None,
@@ -313,9 +322,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         logger.warning("send_general_message not supported by RedisAdapter")
         return ""
 
-    async def create_channel(
-        self, session: "Session", title: str, metadata: ChannelMetadata  # type: ignore[name-defined]
-    ) -> str:
+    async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         """Create Redis streams for session.
 
         For AI-to-AI sessions (with target_computer): Creates command + output streams.
@@ -361,7 +368,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
 
         return output_stream
 
-    async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         """Update channel title (no-op for Redis).
 
         Args:
@@ -373,7 +380,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         return True
 
-    async def close_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def close_channel(self, session: Session) -> bool:
         """No-op: Redis has no persistent channels to close.
 
         Args:
@@ -384,7 +391,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         return True
 
-    async def reopen_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def reopen_channel(self, session: Session) -> bool:
         """No-op: Redis has no persistent channels to reopen.
 
         Args:
@@ -395,7 +402,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
         return True
 
-    async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def delete_channel(self, session: Session) -> bool:
         """Delete Redis stream.
 
         Args:
@@ -406,7 +413,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         """
 
         # Trust contract: create_channel already set up metadata
-        output_stream = session.adapter_metadata.redis.output_stream
+        redis_meta = session.adapter_metadata.redis
+        if not redis_meta or not redis_meta.output_stream:
+            raise ValueError(f"Session {session.session_id} has no Redis output_stream")
+        output_stream: str = redis_meta.output_stream
 
         try:
             await self.redis.delete(output_stream)
@@ -456,7 +466,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             logger.error("Failed to get online computers: %s", e)
             return []
 
-    async def discover_peers(self) -> list[PeerInfo]:
+    async def discover_peers(self) -> list[PeerInfo]:  # pylint: disable=too-many-locals
         """Discover peers via Redis heartbeat keys.
 
         Returns:
@@ -649,7 +659,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
                 logger.error("Message polling error: %s", e)
                 await asyncio.sleep(5)  # Back off on error
 
-    async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]
+    async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]  # pylint: disable=too-many-locals
         """Handle incoming message from Redis stream.
 
         Args:
@@ -704,7 +714,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
             channel_metadata: dict[str, object] = {}
             if b"channel_metadata" in data:
                 try:
-                    parsed = json.loads(data[b"channel_metadata"].decode("utf-8"))
+                    parsed: object = json.loads(data[b"channel_metadata"].decode("utf-8"))
                     if isinstance(parsed, dict):
                         channel_metadata = parsed
                 except json.JSONDecodeError:
@@ -1177,7 +1187,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):
         result: dict[str, object] = result_obj
         return result
 
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # type: ignore[override, misc]  # mypy false positive with async generators
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # type: ignore[override, misc]  # mypy false positive with async generators  # pylint: disable=too-many-locals
         """Poll output stream and yield chunks as they arrive.
 
         Used by MCP server to stream output from remote sessions.

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ComputerRegistry:
+class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Registry manager needs state for heartbeat and discovery
     """Manages computer discovery via Telegram General topic heartbeats.
 
     Uses the General topic (thread_id=None) which is accessible to all computers
@@ -110,7 +110,7 @@ class ComputerRegistry:
 
         # Restore message IDs from previous session (if any)
         try:
-            ux_state = await get_system_ux_state(db._db)
+            ux_state = await get_system_ux_state(db._db)  # type: ignore[arg-type]
             self.my_ping_message_id = ux_state.registry.ping_message_id
             self.my_pong_message_id = ux_state.registry.pong_message_id
             if self.my_ping_message_id or self.my_pong_message_id:
@@ -168,7 +168,7 @@ class ComputerRegistry:
 
                 # Persist message ID
                 await update_system_ux_state(
-                    db._db,
+                    db._db,  # type: ignore[arg-type]
                     registry_ping_message_id=self.my_ping_message_id,
                     registry_pong_message_id=self.my_pong_message_id,
                 )
@@ -178,7 +178,7 @@ class ComputerRegistry:
         else:
             # Edit existing message (keep General topic clean)
             try:
-                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(
+                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(  # type: ignore[assignment,union-attr,misc]
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_ping_message_id,
                     text=text,
@@ -224,7 +224,7 @@ class ComputerRegistry:
 
                 # Persist message ID
                 await update_system_ux_state(
-                    db._db,
+                    db._db,  # type: ignore[arg-type]
                     registry_ping_message_id=self.my_ping_message_id,
                     registry_pong_message_id=self.my_pong_message_id,
                 )
@@ -233,7 +233,7 @@ class ComputerRegistry:
         else:
             # Edit existing pong message
             try:
-                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(
+                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(  # type: ignore[assignment,union-attr,misc]
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_pong_message_id,
                     text=text,
@@ -291,7 +291,7 @@ class ComputerRegistry:
 
                 # Extract bot_username from message sender
                 # msg.from_user.username should be bot username without @
-                bot_username = f"@{msg.from_user.username}" if msg.from_user else None
+                bot_username: str | None = f"@{msg.from_user.username}" if msg.from_user else None
 
                 # Update in-memory registry
                 self.computers[computer_name] = {
@@ -314,11 +314,11 @@ class ComputerRegistry:
             List of dicts with computer info, sorted by name.
         """
         computers = [c for c in self.computers.values() if c["status"] == "online"]
-        return sorted(computers, key=lambda c: str(c["name"]))
+        return sorted(computers, key=lambda c: str(c["name"]))  # type: ignore[misc]
 
     def get_all_computers(self) -> list[dict[str, object]]:
         """Get all computers (online + offline), sorted by name."""
-        return sorted(self.computers.values(), key=lambda c: str(c["name"]))
+        return sorted(self.computers.values(), key=lambda c: str(c["name"]))  # type: ignore[misc]
 
     def is_computer_online(self, computer_name: str) -> bool:
         """Check if specific computer is currently online."""

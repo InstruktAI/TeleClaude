@@ -1,11 +1,92 @@
 """Shared fixtures for integration tests."""
 
-import os
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from dotenv import load_dotenv
+
+
+class MockRedisClient:
+    """Mock Redis client for E2E testing - simulates streams and pub/sub.
+
+    Defined at module level so it can be used by patch() before daemon init.
+    """
+
+    def __init__(self) -> None:
+        self.streams: dict[str, list[tuple[str, dict[bytes, bytes]]]] = {}
+        self.data: dict[str, bytes] = {}
+
+    async def xadd(
+        self,
+        stream_name: str,
+        fields: dict[bytes, bytes],
+        maxlen: int | None = None,
+        id: str = "*",  # noqa: A002 - Redis API uses 'id'
+    ) -> str:
+        """Add message to stream."""
+        if stream_name not in self.streams:
+            self.streams[stream_name] = []
+        msg_id = f"{len(self.streams[stream_name])}-0"
+        self.streams[stream_name].append((msg_id, fields))
+        if maxlen and len(self.streams[stream_name]) > maxlen:
+            self.streams[stream_name] = self.streams[stream_name][-maxlen:]
+        return msg_id
+
+    async def xread(
+        self,
+        streams: dict[str, str],
+        count: int | None = None,
+        block: int | None = None,
+    ) -> list[list[object]] | None:
+        """Read from streams."""
+        result: list[list[object]] = []
+        for stream_name, last_id in streams.items():
+            if stream_name in self.streams:
+                msgs = [(msg_id, data) for msg_id, data in self.streams[stream_name] if msg_id > last_id]
+                if msgs:
+                    result.append([stream_name.encode(), msgs])
+        return result if result else None
+
+    async def set(self, key: str, value: bytes, ex: int | None = None) -> bool:
+        """Set key-value."""
+        self.data[key] = value
+        return True
+
+    async def get(self, key: str) -> bytes | None:
+        """Get value."""
+        return self.data.get(key)
+
+    async def delete(self, *keys: str) -> int:
+        """Delete keys."""
+        count = sum(1 for k in keys if self.data.pop(k, None) is not None)
+        return count
+
+    async def exists(self, key: str) -> int:
+        """Check if key exists."""
+        return 1 if key in self.data else 0
+
+    async def close(self) -> None:
+        """Close connection."""
+
+    async def ping(self) -> bool:
+        """Health check."""
+        return True
+
+    async def keys(self, pattern: str | bytes) -> list[bytes]:
+        """Get keys matching pattern."""
+        # Convert Redis pattern to regex
+        if isinstance(pattern, bytes):
+            pattern = pattern.decode("utf-8")
+
+        # Redis pattern: * = any chars, ? = one char
+        regex_pattern = pattern.replace("*", ".*").replace("?", ".")
+        regex = re.compile(f"^{regex_pattern}$")
+
+        # Filter keys
+        matching = [k.encode("utf-8") if isinstance(k, str) else k for k in self.data.keys() if regex.match(str(k))]
+        return matching
 
 
 @pytest.fixture(scope="function")
@@ -16,6 +97,10 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     """
     base_dir = Path(__file__).parent
     load_dotenv(base_dir / ".env")
+
+    # CRITICAL: Clear TELEGRAM_BOT_TOKEN immediately after loading .env
+    # This prevents real Telegram adapter from starting - we'll use a mock instead
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
 
     # CRITICAL: Set temp database path BEFORE importing teleclaude modules
     # tmp_path is function-scoped, so each test gets unique database automatically
@@ -31,7 +116,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
     class MockDatabase:
-        def path(self):
+        def path(self) -> str:
             return str(tmp_path / "test_teleclaude.db")
 
     class MockComputer:
@@ -43,9 +128,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         host = "test.local"
         timezone = "UTC"
         is_master = False
-        trusted_dirs = []
+        trusted_dirs: list[object] = []
 
-        def get_all_trusted_dirs(self):
+        def get_all_trusted_dirs(self) -> list[object]:
             """Return empty list for tests."""
             return []
 
@@ -68,7 +153,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     class MockTelegram:
         is_master = False
-        trusted_bots = []
+        trusted_bots: list[str] = []
 
     test_config = type(
         "Config",
@@ -128,176 +213,97 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     for module_name in config_modules:
         monkeypatch.setattr(f"{module_name}.config", test_config)
 
-    # Create daemon (config is loaded automatically from config.yml)
-    daemon = TeleClaudeDaemon(str(base_dir / ".env"))
+    # CRITICAL: Patch Redis.from_url and TelegramAdapter BEFORE daemon/adapter initialization
+    # This prevents real network calls to Redis and Telegram
+    mock_redis_client = MockRedisClient()
 
-    # CRITICAL: Mock Redis connection for E2E tests (prevent real network calls)
-    # Create a mock Redis client that simulates async Redis interface
-    class MockRedisClient:
-        """Mock Redis client for E2E testing - simulates streams and pub/sub."""
+    # Create mock Telegram adapter class that will be used instead of real one
+    from teleclaude.adapters.ui_adapter import UiAdapter
+    from teleclaude.core.adapter_client import AdapterClient as AC
 
-        def __init__(self):
-            self.streams = {}  # {stream_name: [(msg_id, data)]}
-            self.data = {}  # {key: value}
+    class MockTelegramAdapter(UiAdapter):
+        """Mock adapter that passes isinstance check for UiAdapter."""
 
-        async def xadd(self, stream_name, fields, maxlen=None, id="*"):
-            """Add message to stream."""
-            if stream_name not in self.streams:
-                self.streams[stream_name] = []
-            msg_id = f"{len(self.streams[stream_name])}-0"
-            self.streams[stream_name].append((msg_id, fields))
-            if maxlen and len(self.streams[stream_name]) > maxlen:
-                self.streams[stream_name] = self.streams[stream_name][-maxlen:]
-            return msg_id
+        ADAPTER_KEY = "telegram"
 
-        async def xread(self, streams, count=None, block=None):
-            """Read from streams."""
-            result = []
-            for stream_name, last_id in streams.items():
-                if stream_name in self.streams:
-                    msgs = [(msg_id, data) for msg_id, data in self.streams[stream_name] if msg_id > last_id]
-                    if msgs:
-                        result.append([stream_name.encode(), msgs])
-            return result if result else None
+        def __init__(self, client: AC) -> None:
+            super().__init__(client)
 
-        async def set(self, key, value, ex=None):
-            """Set key-value."""
-            self.data[key] = value
-            return True
+        async def start(self) -> None:
+            pass  # No real Telegram API calls
 
-        async def get(self, key):
-            """Get value."""
-            return self.data.get(key)
-
-        async def delete(self, *keys):
-            """Delete keys."""
-            count = sum(1 for k in keys if self.data.pop(k, None) is not None)
-            return count
-
-        async def exists(self, key):
-            """Check if key exists."""
-            return 1 if key in self.data else 0
-
-        async def close(self):
-            """Close connection."""
+        async def stop(self) -> None:
             pass
 
-        async def ping(self):
-            """Health check."""
+        async def send_message(self, session: object, text: str, metadata: object) -> str:
+            return "msg-123"
+
+        async def edit_message(self, session: object, message_id: str, text: str, metadata: object) -> bool:
             return True
 
-        async def keys(self, pattern):
-            """Get keys matching pattern."""
-            import re
+        async def delete_message(self, session: object, message_id: str) -> bool:
+            return True
 
-            # Convert Redis pattern to regex
-            if isinstance(pattern, bytes):
-                pattern = pattern.decode("utf-8")
+        async def send_file(self, session: object, file_path: str, metadata: object, caption: str | None = None) -> str:
+            return "file-msg-789"
 
-            # Redis pattern: * = any chars, ? = one char
-            # Convert to regex
-            regex_pattern = pattern.replace("*", ".*").replace("?", ".")
-            regex = re.compile(f"^{regex_pattern}$")
+        async def create_channel(self, session: object, title: str, metadata: object) -> str:
+            return "12345"
 
-            # Filter keys
-            matching = [k.encode("utf-8") if isinstance(k, str) else k for k in self.data.keys() if regex.match(str(k))]
-            return matching
+        async def update_channel_title(self, session: object, title: str) -> bool:
+            return True
 
-    # Mock Redis adapter connection and messaging methods
-    redis_adapter = daemon.client.adapters.get("redis")
-    if redis_adapter:
-        mock_redis_client = MockRedisClient()
-        monkeypatch.setattr(redis_adapter, "redis", mock_redis_client)
-        # Mock Redis adapter messaging methods (used by client.send_message for redis-originated sessions)
-        monkeypatch.setattr(redis_adapter, "send_message", AsyncMock(return_value="redis-msg-123"))
-        monkeypatch.setattr(redis_adapter, "edit_message", AsyncMock(return_value=True))
-        monkeypatch.setattr(redis_adapter, "delete_message", AsyncMock())
+        async def delete_channel(self, session: object) -> bool:
+            return True
+
+        async def close_channel(self, session: object) -> bool:
+            return True
+
+        async def reopen_channel(self, session: object) -> bool:
+            return True
+
+        async def discover_peers(self) -> list[object]:
+            return []
+
+        async def poll_output_stream(self, session: object, timeout: float = 300.0) -> None:  # type: ignore[override]
+            pass
+
+    with (
+        patch("redis.asyncio.Redis.from_url", return_value=mock_redis_client),
+        patch("teleclaude.core.adapter_client.TelegramAdapter", MockTelegramAdapter),
+    ):
+        # Create daemon (config is loaded automatically from config.yml)
+        daemon = TeleClaudeDaemon(str(base_dir / ".env"))
+
+        # Start adapters - this will use mocked Redis and mocked TelegramAdapter
+        await daemon.client.start()
 
     # Add db property for test compatibility
     daemon.db = db_module.db
 
-    # Mock Telegram adapter - create mock if not registered (no TELEGRAM_BOT_TOKEN)
+    # Mock Redis adapter messaging methods (used by client.send_message for redis-originated sessions)
+    redis_adapter = daemon.client.adapters.get("redis")
+    if redis_adapter:
+        monkeypatch.setattr(redis_adapter, "send_message", AsyncMock(return_value="redis-msg-123"))
+        monkeypatch.setattr(redis_adapter, "edit_message", AsyncMock(return_value=True))
+        monkeypatch.setattr(redis_adapter, "delete_message", AsyncMock())
+
+    # Replace Telegram adapter methods with trackable AsyncMocks
     telegram_adapter = daemon.client.adapters.get("telegram")
-    if not telegram_adapter:
-        # Create a mock telegram adapter that passes isinstance(adapter, UiAdapter)
-        # This is needed because AdapterClient.send_output_update() checks isinstance
-        from teleclaude.adapters.ui_adapter import UiAdapter
-        from teleclaude.core.adapter_client import AdapterClient
-
-        class MockTelegramAdapter(UiAdapter):
-            """Mock adapter that passes isinstance check for UiAdapter."""
-
-            def __init__(self, client: AdapterClient) -> None:
-                # Call parent init to register event handlers (like _handle_claude_event)
-                super().__init__(client)
-
-            # Stub all abstract methods - will be replaced by AsyncMock below
-            async def start(self) -> None:
-                pass
-
-            async def stop(self) -> None:
-                pass
-
-            async def send_message(self, session, text, metadata):  # type: ignore[override]
-                return "msg-123"
-
-            async def edit_message(self, session, message_id, text, metadata):  # type: ignore[override]
-                return True
-
-            async def delete_message(self, session, message_id):  # type: ignore[override]
-                pass
-
-            async def send_file(self, session, file_path, metadata, caption=None):  # type: ignore[override]
-                return "file-msg-789"
-
-            async def create_channel(self, session, title, metadata):  # type: ignore[override]
-                return "12345"
-
-            async def update_channel_title(self, session, title):  # type: ignore[override]
-                return True
-
-            async def delete_channel(self, session):  # type: ignore[override]
-                return True
-
-            async def close_channel(self, session):  # type: ignore[override]
-                return True
-
-            async def reopen_channel(self, session):  # type: ignore[override]
-                return True
-
-            async def discover_peers(self):  # type: ignore[override]
-                return []
-
-            async def poll_output_stream(self, session):  # type: ignore[override]
-                pass
-
-        telegram_adapter = MockTelegramAdapter(daemon.client)
-        # Replace methods with trackable AsyncMocks
-        telegram_adapter.start = AsyncMock()
-        telegram_adapter.stop = AsyncMock()
-        telegram_adapter.send_message = AsyncMock(return_value="msg-123")
-        telegram_adapter.edit_message = AsyncMock(return_value=True)
-        telegram_adapter.delete_message = AsyncMock()
-        telegram_adapter.send_file = AsyncMock(return_value="file-msg-789")
-        telegram_adapter.create_channel = AsyncMock(return_value="12345")
-        telegram_adapter.update_channel_title = AsyncMock(return_value=True)
-        telegram_adapter.delete_channel = AsyncMock(return_value=True)
-        telegram_adapter.send_general_message = AsyncMock(return_value="msg-456")
-        telegram_adapter.send_feedback = AsyncMock(return_value="feedback-123")
-        telegram_adapter.send_output_update = AsyncMock(return_value="output-msg-123")
-        telegram_adapter._cleanup_pending_deletions = AsyncMock()
-        daemon.client.adapters["telegram"] = telegram_adapter
-    else:
-        monkeypatch.setattr(telegram_adapter, "start", AsyncMock())
-        monkeypatch.setattr(telegram_adapter, "stop", AsyncMock())
-        monkeypatch.setattr(telegram_adapter, "send_message", AsyncMock(return_value="msg-123"))
-        monkeypatch.setattr(telegram_adapter, "edit_message", AsyncMock(return_value=True))
-        monkeypatch.setattr(telegram_adapter, "delete_message", AsyncMock())
-        monkeypatch.setattr(telegram_adapter, "send_file", AsyncMock(return_value="file-msg-789"))
-        monkeypatch.setattr(telegram_adapter, "create_channel", AsyncMock(return_value="12345"))
-        monkeypatch.setattr(telegram_adapter, "update_channel_title", AsyncMock(return_value=True))
-        monkeypatch.setattr(telegram_adapter, "delete_channel", AsyncMock(return_value=True))
-        monkeypatch.setattr(telegram_adapter, "send_general_message", AsyncMock(return_value="msg-456"))
+    if telegram_adapter:
+        telegram_adapter.start = AsyncMock()  # type: ignore[method-assign]
+        telegram_adapter.stop = AsyncMock()  # type: ignore[method-assign]
+        telegram_adapter.send_message = AsyncMock(return_value="msg-123")  # type: ignore[method-assign]
+        telegram_adapter.edit_message = AsyncMock(return_value=True)  # type: ignore[method-assign]
+        telegram_adapter.delete_message = AsyncMock()  # type: ignore[method-assign]
+        telegram_adapter.send_file = AsyncMock(return_value="file-msg-789")  # type: ignore[method-assign]
+        telegram_adapter.create_channel = AsyncMock(return_value="12345")  # type: ignore[method-assign]
+        telegram_adapter.update_channel_title = AsyncMock(return_value=True)  # type: ignore[method-assign]
+        telegram_adapter.delete_channel = AsyncMock(return_value=True)  # type: ignore[method-assign]
+        telegram_adapter.send_general_message = AsyncMock(return_value="msg-456")  # type: ignore[method-assign]
+        telegram_adapter.send_feedback = AsyncMock(return_value="feedback-123")  # type: ignore[method-assign]
+        telegram_adapter.send_output_update = AsyncMock(return_value="output-msg-123")  # type: ignore[method-assign]
+        telegram_adapter._cleanup_pending_deletions = AsyncMock()  # type: ignore[method-assign]
 
     # CRITICAL: Mock terminal_bridge.send_keys to prevent actual command execution
     # Set daemon.mock_command_mode to control behavior:

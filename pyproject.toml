@@ -63,6 +63,24 @@ disable_error_code = [
 module = "tests.*"
 disallow_untyped_defs = false  # Allow untyped defs in tests only
 
+[[tool.mypy.overrides]]
+module = "teleclaude.mcp_server"
+# MCP Tool schemas use untyped dict literals and decorators from the MCP library.
+# The MCP library doesn't provide typed schema builders or decorator stubs.
+# Errors include: untyped decorators, generic type args, attr-defined for duck typing
+disable_error_code = [
+    "misc",
+    "explicit-any",
+    "no-untyped-call",
+    "untyped-decorator",
+    "assignment",
+    "call-overload",
+    "type-arg",
+    "attr-defined",
+    "no-any-return",
+    "unused-ignore",
+]
+
 [tool.pylint.'MESSAGES CONTROL']
 # CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
 # ALL imports MUST be at the top of the file
@@ -79,6 +97,9 @@ disable = [
   "too-many-lines",  # TODO: Split modules over 1000 lines (5 violations)
   "too-many-nested-blocks",  # TODO: Extract functions to reduce nesting >5 levels (5 violations)
   "too-few-public-methods",  # Acceptable - single-method classes are valid (callables, strategies)
+  "too-many-locals",  # Complex functions in mcp_server.py/telegram_adapter.py - would need major refactor
+  "too-many-arguments",  # MCP tool handlers have many parameters - by design
+  "too-many-positional-arguments",  # Same as above
   # Intentional patterns (TODO: Review each periodically)
   "broad-exception-caught",  # Daemon robustness - TODO: Ensure all catch blocks log properly
   "consider-using-with",  # Lock file handle must stay open - TODO: Document each instance

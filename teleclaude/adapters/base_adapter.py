@@ -17,31 +17,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def with_error_feedback(func: Callable) -> Callable:
+def with_error_feedback(func: Callable[..., object]) -> Callable[..., object]:  # type: ignore[explicit-any]
     """Decorator to send adapter-specific error feedback on exceptions.
 
     Extracts session_id from first argument (str or Session.session_id) and
     calls adapter's send_error_feedback method before re-raising.
     """
 
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        session_id = None
+    @wraps(func)  # type: ignore[misc]
+    async def wrapper(self: object, *args: object, **kwargs: object) -> object:  # type: ignore[misc]
+        session_id: str | None = None
         if args:
-            first_arg = args[0]
+            first_arg: object = args[0]
             if isinstance(first_arg, str):
                 session_id = first_arg
             elif hasattr(first_arg, "session_id"):
                 session_id = first_arg.session_id
 
         try:
-            return await func(self, *args, **kwargs)
+            return await func(self, *args, **kwargs)  # type: ignore[misc]
         except Exception as e:
             if session_id and hasattr(self, "send_error_feedback"):
-                await self.send_error_feedback(session_id, str(e))
+                await self.send_error_feedback(session_id, str(e))  # type: ignore[misc]
             raise
 
-    return wrapper
+    return wrapper  # type: ignore[misc]
 
 
 class BaseAdapter(ABC):
@@ -54,7 +54,7 @@ class BaseAdapter(ABC):
     client: "AdapterClient"  # Set by subclasses in __init__
     ADAPTER_KEY: str  # Subclasses must define this constant
 
-    def _metadata(self, **kwargs) -> MessageMetadata:
+    def _metadata(self, **kwargs: object) -> MessageMetadata:
         """Create MessageMetadata with adapter_type pre-set.
 
         Args:
@@ -63,9 +63,9 @@ class BaseAdapter(ABC):
         Returns:
             MessageMetadata with adapter_type set to this adapter's ADAPTER_KEY
         """
-        return MessageMetadata(adapter_type=self.ADAPTER_KEY, **kwargs)
+        return MessageMetadata(adapter_type=self.ADAPTER_KEY, **kwargs)  # type: ignore[arg-type]
 
-    async def _get_session(self, session_id: str) -> "Session":  # type: ignore[name-defined]
+    async def _get_session(self, session_id: str) -> "Session":
         """Get session from database, raise if not found.
 
         Args:
@@ -93,7 +93,7 @@ class BaseAdapter(ABC):
         UI adapters override to send feedback messages.
         Redis adapter overrides to publish error envelopes.
         """
-        pass  # Default: do nothing
+        # Default: do nothing
 
     # ==================== Lifecycle Methods ====================
 
@@ -113,7 +113,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def create_channel(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         title: str,
         metadata: ChannelMetadata,
     ) -> str:
@@ -132,7 +132,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def update_channel_title(self, session: "Session", title: str) -> bool:  # type: ignore[name-defined]
+    async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Update channel/topic title.
 
         Args:
@@ -144,7 +144,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def close_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def close_channel(self, session: "Session") -> bool:
         """Soft-close channel (can be reopened).
 
         Args:
@@ -155,7 +155,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def reopen_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def reopen_channel(self, session: "Session") -> bool:
         """Reopen a closed channel.
 
         Args:
@@ -166,7 +166,7 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def delete_channel(self, session: "Session") -> bool:  # type: ignore[name-defined]
+    async def delete_channel(self, session: "Session") -> bool:
         """Delete channel/topic (permanent, cannot be reopened).
 
         Args:
@@ -181,7 +181,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_message(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         text: str,
         metadata: MessageMetadata,
     ) -> str:
@@ -199,7 +199,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def edit_message(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         message_id: str,
         text: str,
         metadata: MessageMetadata,
@@ -219,7 +219,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def delete_message(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         message_id: str,
     ) -> bool:
         """Delete message (if platform supports).
@@ -235,7 +235,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def send_file(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         file_path: str,
         metadata: MessageMetadata,
         caption: Optional[str] = None,
@@ -270,10 +270,10 @@ class BaseAdapter(ABC):
 
     async def send_feedback(
         self,
-        session: "Session",  # type: ignore[name-defined]
-        message: str,
-        metadata: MessageMetadata,
-        persistent: bool = False,
+        _session: "Session",
+        _message: str,
+        _metadata: MessageMetadata,
+        _persistent: bool = False,
     ) -> Optional[str]:
         """Send feedback message to user (UI adapters only).
 
@@ -317,7 +317,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def poll_output_stream(
         self,
-        session: "Session",  # type: ignore[name-defined]
+        session: "Session",
         timeout: float = 300.0,
     ) -> AsyncIterator[str]:
         """Poll for output chunks from remote session.
