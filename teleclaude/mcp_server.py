@@ -736,10 +736,18 @@ class TeleClaudeMCPServer:
             dict with session_id and status
         """
         # Emit NEW_SESSION event - daemon's handle_event will call handle_create_session
+        # Include channel_metadata with target_computer to identify this as AI-to-AI session
+        # (for remote sessions, Redis transport auto-injects "initiator" field)
         result: object = await self.client.handle_event(
             TeleClaudeEvents.NEW_SESSION,
             {"session_id": "", "args": [title]},
-            MessageMetadata(adapter_type="redis", project_dir=project_dir, title=title, claude_model=model),
+            MessageMetadata(
+                adapter_type="redis",
+                project_dir=project_dir,
+                title=title,
+                claude_model=model,
+                channel_metadata={"target_computer": self.computer_name},
+            ),
         )
 
         # handle_event returns {"status": "success", "data": {"session_id": "..."}}
