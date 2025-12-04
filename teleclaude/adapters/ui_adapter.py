@@ -36,6 +36,7 @@ from teleclaude.core.voice_message_handler import handle_voice
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
+    from teleclaude.core.ux_state import SessionUXState
 
 from teleclaude.utils import (
     format_active_status_line,
@@ -271,7 +272,9 @@ class UiAdapter(BaseAdapter):
         message_parts.append(status_line)
         return "\n".join(message_parts)
 
-    def _build_output_metadata(self, _session: "Session", _is_truncated: bool, _ux_state: object) -> MessageMetadata:
+    def _build_output_metadata(
+        self, _session: "Session", _is_truncated: bool, _ux_state: "SessionUXState"
+    ) -> MessageMetadata:
         """Build platform-specific metadata for output messages.
 
         Override in subclasses to add inline keyboards, buttons, etc.

@@ -153,10 +153,53 @@ class TestChannelManagement:
             title="Test Topic",
         )
 
-        result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
+        # Mock db.get_session to return session without topic_id (first creation)
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=mock_session)
+            result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
 
         assert result == "123"
         telegram_adapter.app.bot.create_forum_topic.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_create_channel_deduplication_returns_existing_topic(self, telegram_adapter):
+        """Test that create_channel returns existing topic_id instead of creating duplicate."""
+        from teleclaude.core.models import (
+            ChannelMetadata,
+            Session,
+            SessionAdapterMetadata,
+            TelegramAdapterMetadata,
+        )
+
+        telegram_adapter.app = MagicMock()
+        telegram_adapter.app.bot = MagicMock()
+        telegram_adapter.app.bot.create_forum_topic = AsyncMock()  # Should NOT be called
+
+        mock_session = Session(
+            session_id="session-123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            origin_adapter="telegram",
+            title="Test Topic",
+        )
+
+        # Mock db.get_session to return session WITH existing topic_id
+        session_with_topic = Session(
+            session_id="session-123",
+            computer_name="test",
+            tmux_session_name="test-session",
+            origin_adapter="telegram",
+            title="Test Topic",
+            adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=999)),
+        )
+
+        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session_with_topic)
+            result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
+
+        # Should return existing topic_id, NOT create new one
+        assert result == "999"
+        telegram_adapter.app.bot.create_forum_topic.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_channel_success(self, telegram_adapter):

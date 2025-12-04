@@ -50,7 +50,11 @@ from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
 from teleclaude.core.session_utils import get_session_output_dir
-from teleclaude.core.ux_state import get_system_ux_state, update_system_ux_state
+from teleclaude.core.ux_state import (
+    SessionUXState,
+    get_system_ux_state,
+    update_system_ux_state,
+)
 from teleclaude.utils import command_retry
 from teleclaude.utils.claude_transcript import parse_claude_transcript
 
@@ -62,12 +66,6 @@ STATUS_EMOJI = {"active": "🟢", "waiting": "🟡", "slow": "🟠", "stalled": 
 
 
 # TypedDicts for JSON/dict structures with known schemas
-class UxStateProtocol(TypedDict, total=False):
-    """Protocol for ux_state objects used in _build_output_metadata."""
-
-    claude_session_file: Optional[str]
-
-
 class HandleEventResult(TypedDict, total=False):
     """Result from client.handle_event() calls."""
 
@@ -157,6 +155,7 @@ class TelegramAdapter(
         self._topic_message_cache: dict[int | None, list[TelegramMessage]] = {}  # Cache for registry polling
         self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
+        self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
 
         # Peer discovery state (heartbeat advertisement only)
         self.registry_message_id: Optional[int] = None  # Message ID for [REGISTRY] heartbeat message
@@ -223,17 +222,16 @@ class TelegramAdapter(
 
         return "\n".join(lines)
 
-    def _build_output_metadata(self, session: "Session", _is_truncated: bool, ux_state: object) -> MessageMetadata:
+    def _build_output_metadata(
+        self, session: "Session", _is_truncated: bool, ux_state: SessionUXState
+    ) -> MessageMetadata:
         """Build Telegram-specific metadata with inline keyboard for downloads.
 
         Overrides UiAdapter._build_output_metadata().
         Shows download button only when there's a Claude Code session to download.
         """
-        # Cast ux_state to UxStateProtocol for type checking
-        ux_state_typed = cast(UxStateProtocol, ux_state)
-
         # Add download button if Claude session available
-        if ux_state_typed.get("claude_session_file"):
+        if ux_state.claude_session_file:
             keyboard = [
                 [
                     InlineKeyboardButton(
@@ -629,16 +627,40 @@ class TelegramAdapter(
         return str(result.message_id)
 
     async def create_channel(self, session: "Session", title: str, metadata: ChannelMetadata) -> str:
-        """Create a new topic in the supergroup."""
+        """Create a new topic in the supergroup.
+
+        Uses per-session lock to prevent duplicate topic creation on concurrent calls
+        or retries. This is critical because createForumTopic is NOT idempotent -
+        each call creates a new topic even with identical title.
+        """
         self._ensure_started()
+        session_id = session.session_id
 
-        # Create topic
-        topic = await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
+        # Get or create lock for this session_id
+        if session_id not in self._topic_creation_locks:
+            self._topic_creation_locks[session_id] = asyncio.Lock()
 
-        topic_id = topic.message_thread_id
-        logger.info("Created topic: %s (ID: %s)", title, topic_id)
+        async with self._topic_creation_locks[session_id]:
+            # Check if session already has a topic_id (from a previous successful call)
+            # Re-fetch session inside lock to get latest metadata
+            fresh_session = await db.get_session(session_id)
+            if fresh_session and fresh_session.adapter_metadata and fresh_session.adapter_metadata.telegram:
+                existing_topic_id = fresh_session.adapter_metadata.telegram.topic_id
+                if existing_topic_id:
+                    logger.warning(
+                        "Session %s already has topic_id %s, returning existing (prevented duplicate)",
+                        session_id[:8],
+                        existing_topic_id,
+                    )
+                    return str(existing_topic_id)
 
-        return str(topic_id)
+            # Create topic (only one concurrent call per session_id can reach here)
+            topic = await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
+
+            topic_id = topic.message_thread_id
+            logger.info("Created topic: %s (ID: %s)", title, topic_id)
+
+            return str(topic_id)
 
     async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Update topic title."""
@@ -1362,7 +1384,7 @@ Current size: {current_size}
                 if not claude_session_file:
                     await query.edit_message_text("❌ No Claude session file found", parse_mode="Markdown")
                     return
-                markdown_content = parse_claude_transcript(claude_session_file, session.title)
+                markdown_content = parse_claude_transcript(claude_session_file, session.title, tail_chars=0)
                 filename = f"claude-{session_id:8}.md"
                 caption = "Claude Code session transcript"
 
