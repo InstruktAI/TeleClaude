@@ -249,7 +249,6 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     state = SessionUXState(
         output_message_id="msg-123",
         polling_active=True,
-        idle_notification_message_id="idle-456",
         pending_deletions=["del-1", "del-2"],
         pending_feedback_deletions=["fb-1"],
         notification_sent=True,
@@ -261,7 +260,6 @@ def test_session_ux_state_to_dict_serializes_all_fields():
 
     assert data["output_message_id"] == "msg-123"
     assert data["polling_active"] is True
-    assert data["idle_notification_message_id"] == "idle-456"
     assert data["pending_deletions"] == ["del-1", "del-2"]
     assert data["pending_feedback_deletions"] == ["fb-1"]
     assert data["notification_sent"] is True

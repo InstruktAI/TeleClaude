@@ -26,7 +26,6 @@ database:
     path: ${WORKING_DIR}/teleclaude.db
 
 polling:
-    idle_notification_seconds: 60 # Send notification if no output change for this many seconds (informational only, keeps polling)
     directory_check_interval: 5 # Check for directory changes every N seconds (0 to disable, default: 5)
 
 telegram:

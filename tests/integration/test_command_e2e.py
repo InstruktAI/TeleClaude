@@ -43,7 +43,8 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     await daemon.handle_message(session.session_id, "any command here", msg_context)
 
     # Wait for command to execute and polling to send output
-    await asyncio.sleep(3.3)
+    # Poll loop: 1s initial delay + 3s base update interval
+    await asyncio.sleep(4.5)
 
     # Verify command was executed in tmux
     output = await terminal_bridge.capture_pane(session.tmux_session_name)
@@ -107,7 +108,8 @@ async def test_long_running_command(daemon_with_mocked_telegram):
         await terminal_bridge.send_keys(session.tmux_session_name, "test message")
 
         # Wait for response and polling to send output to Telegram
-        await asyncio.sleep(3.3)
+        # Poll loop: 1s initial delay + 3s base update interval
+        await asyncio.sleep(4.5)
 
         # Verify terminal has both initial output and response
         output = await terminal_bridge.capture_pane(session.tmux_session_name)

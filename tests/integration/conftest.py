@@ -135,7 +135,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             return []
 
     class MockPolling:
-        idle_notification_seconds = 300
+        directory_check_interval = 5
 
     class MockMCP:
         enabled = False

@@ -321,18 +321,6 @@ class Db:
 
         await self.update_ux_state(session_id, polling_active=False)
 
-    async def has_idle_notification(self, session_id: str) -> bool:
-        """Check if session has idle notification.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            True if idle notification exists for this session
-        """
-        ux_state = await self.get_ux_state(session_id)
-        return ux_state.idle_notification_message_id is not None
-
     async def get_output_message_id(self, session_id: str) -> Optional[str]:
         """Get output message ID for session.
 
@@ -353,43 +341,6 @@ class Db:
             message_id: Message ID of the output message (or None to clear)
         """
         await self.update_ux_state(session_id, output_message_id=message_id)
-
-    async def get_idle_notification(self, session_id: str) -> Optional[str]:
-        """Get idle notification message ID for session.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Message ID of idle notification, or None if not set
-        """
-        ux_state = await self.get_ux_state(session_id)
-        return ux_state.idle_notification_message_id
-
-    async def set_idle_notification(self, session_id: str, message_id: str) -> None:
-        """Set idle notification message ID for session.
-
-        Args:
-            session_id: Session identifier
-            message_id: Message ID of the idle notification
-        """
-
-        await self.update_ux_state(session_id, idle_notification_message_id=message_id)
-
-    async def remove_idle_notification(self, session_id: str) -> Optional[str]:
-        """Remove and return idle notification message ID for session.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Message ID that was removed, or None if not set
-        """
-        msg_id = await self.get_idle_notification(session_id)
-
-        await self.update_ux_state(session_id, idle_notification_message_id=None)
-
-        return msg_id
 
     async def get_pending_deletions(self, session_id: str) -> list[str]:
         """Get list of pending deletion message IDs for session.
@@ -628,7 +579,6 @@ class Db:
         *,
         output_message_id: Optional[str] | object = ux_state._UNSET,
         polling_active: bool | object = ux_state._UNSET,
-        idle_notification_message_id: Optional[str] | object = ux_state._UNSET,
         pending_deletions: list[str] | object = ux_state._UNSET,
         pending_feedback_deletions: list[str] | object = ux_state._UNSET,
         notification_sent: bool | object = ux_state._UNSET,
@@ -641,7 +591,6 @@ class Db:
             session_id: Session ID
             output_message_id: Output message ID (optional)
             polling_active: Whether polling is active (optional)
-            idle_notification_message_id: Idle notification message ID (optional)
             pending_deletions: List of user input message IDs pending deletion (optional)
             pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
             notification_sent: Whether Claude Code notification was sent (optional)
@@ -653,7 +602,6 @@ class Db:
             session_id,
             output_message_id=output_message_id,
             polling_active=polling_active,
-            idle_notification_message_id=idle_notification_message_id,
             pending_deletions=pending_deletions,
             pending_feedback_deletions=pending_feedback_deletions,
             notification_sent=notification_sent,

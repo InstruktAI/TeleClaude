@@ -91,7 +91,7 @@ class ComputerConfig:  # pylint: disable=too-many-instance-attributes  # Config 
 
 @dataclass
 class PollingConfig:
-    idle_notification_seconds: int
+    directory_check_interval: int = 5  # Seconds between directory change checks
 
 
 @dataclass
@@ -144,7 +144,7 @@ DEFAULT_CONFIG: dict[str, object] = {
         "host": None,
     },
     "polling": {
-        "idle_notification_seconds": 60,
+        "directory_check_interval": 5,
     },
     "mcp": {
         "enabled": True,
@@ -249,7 +249,7 @@ def _build_config(raw: dict[str, object]) -> Config:
             host=str(comp["host"]) if comp["host"] else None,  # type: ignore[index,misc]
         ),
         polling=PollingConfig(
-            idle_notification_seconds=int(poll["idle_notification_seconds"]),  # type: ignore[index,misc]
+            directory_check_interval=int(poll["directory_check_interval"]),  # type: ignore[index,misc]
         ),
         mcp=MCPConfig(
             enabled=bool(mcp["enabled"]),  # type: ignore[index,misc]

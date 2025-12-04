@@ -30,7 +30,7 @@ def mock_daemon():
         daemon.config = {
             "computer": {"name": "TestComputer", "default_shell": "/bin/zsh", "default_working_dir": "/tmp"},
             "terminal": {"default_size": "80x24"},
-            "polling": {"idle_notification_seconds": 60},
+            "polling": {"directory_check_interval": 5},
         }
 
         # Initialize global config (critical for terminal_bridge and other modules)
@@ -42,7 +42,6 @@ def mock_daemon():
         daemon.db.get_session = AsyncMock(return_value=None)
         daemon.db.update_last_activity = AsyncMock()
         daemon.db.is_polling = AsyncMock(return_value=False)
-        daemon.db.has_idle_notification = AsyncMock(return_value=False)
         daemon.db.cleanup_messages_after_success = AsyncMock()
         daemon.db.list_sessions = AsyncMock(return_value=[])
         daemon.db.create_session = AsyncMock()

@@ -45,13 +45,6 @@ class ProcessExited(OutputEvent):
 
 
 @dataclass
-class IdleDetected(OutputEvent):
-    """Idle detected event."""
-
-    idle_seconds: int
-
-
-@dataclass
 class DirectoryChanged(OutputEvent):
     """Directory changed event."""
 
@@ -81,17 +74,15 @@ class OutputPoller:
             marker_id: Unique marker ID for exit detection (None = no exit marker)
 
         Yields:
-            OutputEvent subclasses (OutputChanged, ProcessExited, IdleDetected, DirectoryChanged)
+            OutputEvent subclasses (OutputChanged, ProcessExited, DirectoryChanged)
         """
         # Configuration
-        idle_threshold = config.polling.idle_notification_seconds
         poll_interval = 1.0
-        global_update_interval = 2  # Global update interval (seconds) - first update after 1s
-        directory_check_interval = getattr(config.polling, "directory_check_interval", 5)  # type: ignore[misc]
+        global_update_interval = 3  # Global update interval (seconds) - first update after 1s
+        directory_check_interval = config.polling.directory_check_interval
 
         # State tracking
         idle_ticks = 0
-        notification_sent = False
         started_at = None
         last_output_changed_at = None
         current_update_interval = global_update_interval  # Start with global interval
@@ -183,7 +174,6 @@ class OutputPoller:
                 if output_changed:
                     previous_output = current_cleaned
                     idle_ticks = 0
-                    notification_sent = False
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
                     logger.debug(
@@ -264,10 +254,10 @@ class OutputPoller:
                         )
                         break
 
-                # Apply exponential backoff when idle: 2s -> 4s -> 6s -> 8s -> 10s
+                # Apply exponential backoff when idle: 3s -> 6s -> 9s -> 12s -> 15s
                 if idle_ticks >= current_update_interval:
                     old_interval = current_update_interval
-                    current_update_interval = min(current_update_interval + 2, 10)
+                    current_update_interval = min(current_update_interval + 3, 15)
                     logger.debug(
                         "[POLL %s] BACK-OFF APPLIED: idle_ticks=%d, interval %ds → %ds",
                         session_id[:8],
@@ -286,16 +276,10 @@ class OutputPoller:
                         current_update_interval,
                     )
 
-                    # Send idle notification once at threshold
-                    if idle_ticks == idle_threshold and not notification_sent:
-                        logger.info("No output change for %ds for %s, notifying user", idle_threshold, session_id[:8])
-                        yield IdleDetected(session_id=session_id, idle_seconds=idle_threshold)
-                        notification_sent = True
-
                 # Check for directory changes (if enabled)
-                if directory_check_interval > 0:  # type: ignore[misc]
+                if directory_check_interval > 0:
                     directory_check_ticks += 1
-                    if directory_check_ticks >= directory_check_interval:  # type: ignore[misc]
+                    if directory_check_ticks >= directory_check_interval:
                         directory_check_ticks = 0
                         current_directory = await terminal_bridge.get_current_directory(tmux_session_name)
                         if current_directory and current_directory != last_directory:

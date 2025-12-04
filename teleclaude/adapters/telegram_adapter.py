@@ -568,16 +568,6 @@ class TelegramAdapter(
                     logger.warning("Failed to delete message %s: %s", msg_id, e)
             await db.clear_pending_deletions(session.session_id)
 
-        # Delete idle notification if present
-        if await db.has_idle_notification(session.session_id):
-            try:
-                idle_msg = await db.remove_idle_notification(session.session_id)
-                if idle_msg:
-                    await self.delete_message(session, idle_msg)
-                    logger.debug("Deleted idle notification %s for session %s", idle_msg, session.session_id[:8])
-            except Exception as e:
-                logger.warning("Failed to delete idle notification: %s", e)
-
     async def _post_handle_user_input(self, session: "Session", message_id: str) -> None:
         """UI adapter post-handler: Track current message for next cleanup.
 

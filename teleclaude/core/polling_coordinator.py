@@ -13,10 +13,8 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata
 from teleclaude.core.output_poller import (
     DirectoryChanged,
-    IdleDetected,
     OutputChanged,
     OutputPoller,
     ProcessExited,
@@ -178,45 +176,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     elapsed,
                 )
 
-                # Delete idle notification if one exists (output resumed)
-                ux_state = await db.get_ux_state(event.session_id)
-                notification_id = ux_state.idle_notification_message_id
-                if notification_id:
-                    await adapter_client.delete_message(session, notification_id)  # type: ignore[arg-type]
-                    await db.update_ux_state(event.session_id, idle_notification_message_id=None)
-                    logger.debug("Deleted idle notification %s for session %s", notification_id, event.session_id[:8])
-
-                # Clear notification_sent flag (activity detected, re-enable notifications)
-                if ux_state.notification_sent:
-                    await db.clear_notification_flag(event.session_id)
-                    logger.debug(
-                        "Cleared notification_sent flag for session %s (activity detected)", event.session_id[:8]
-                    )
-
-            elif isinstance(event, IdleDetected):
-                # Check if Claude Code notification was sent (skip idle notification if so)
-                notification_sent = await db.get_notification_flag(event.session_id)
-                if notification_sent:
-                    logger.debug(
-                        "Skipping idle notification for session %s (Claude Code notification sent)",
-                        event.session_id[:8],
-                    )
-                    continue
-
-                # Idle detected - send feedback notification (UI only, not to tmux)
-                notification = (
-                    f"⏸️ No output for {event.idle_seconds} seconds - " "process may be waiting or hung up, try cancel"
-                )
-                session = await db.get_session(event.session_id)
-                if session:
-                    notification_id = await adapter_client.send_feedback(session, notification, MessageMetadata())
-                    if notification_id:
-                        # Persist to DB (survives daemon restart)
-                        await db.update_ux_state(event.session_id, idle_notification_message_id=notification_id)
-                        logger.debug(
-                            "Stored idle notification %s for session %s", notification_id, event.session_id[:8]
-                        )
-
             elif isinstance(event, DirectoryChanged):
                 # Directory changed - update session (db dispatcher handles title update)
                 await db.update_session(event.session_id, working_directory=event.new_path)
@@ -275,8 +234,5 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
         # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
         # Only cleared when session closes (/exit command)
-
-        # Clear idle notification
-        await db.update_ux_state(session_id, idle_notification_message_id=None)
 
         logger.debug("Polling ended for session %s", session_id[:8])

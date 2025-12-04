@@ -40,12 +40,11 @@ class UXStateContext(Enum):
 
 
 @dataclass
-class SessionUXState:  # pylint: disable=too-many-instance-attributes  # UX state tracks multiple message types
+class SessionUXState:
     """Typed UX state for sessions."""
 
     output_message_id: Optional[str] = None
     polling_active: bool = False
-    idle_notification_message_id: Optional[str] = None
     pending_deletions: list[str] = field(default_factory=list)  # User input messages
     pending_feedback_deletions: list[str] = field(default_factory=list)  # Feedback messages
     notification_sent: bool = False  # Claude Code notification hook flag
@@ -56,7 +55,6 @@ class SessionUXState:  # pylint: disable=too-many-instance-attributes  # UX stat
     def from_dict(cls, data: dict[str, object]) -> "SessionUXState":
         """Create SessionUXState from dict."""
         output_message_id_raw: object = data.get("output_message_id")
-        idle_notification_message_id_raw: object = data.get("idle_notification_message_id")
         pending_deletions_raw: object = data.get("pending_deletions", [])
         pending_feedback_deletions_raw: object = data.get("pending_feedback_deletions", [])
         claude_session_id_raw: object = data.get("claude_session_id")
@@ -65,9 +63,6 @@ class SessionUXState:  # pylint: disable=too-many-instance-attributes  # UX stat
         return cls(
             output_message_id=str(output_message_id_raw) if output_message_id_raw else None,
             polling_active=bool(data.get("polling_active", False)),
-            idle_notification_message_id=(
-                str(idle_notification_message_id_raw) if idle_notification_message_id_raw else None
-            ),
             pending_deletions=list(pending_deletions_raw) if isinstance(pending_deletions_raw, list) else [],
             pending_feedback_deletions=(
                 list(pending_feedback_deletions_raw) if isinstance(pending_feedback_deletions_raw, list) else []
@@ -82,7 +77,6 @@ class SessionUXState:  # pylint: disable=too-many-instance-attributes  # UX stat
         return {
             "output_message_id": self.output_message_id,
             "polling_active": self.polling_active,
-            "idle_notification_message_id": self.idle_notification_message_id,
             "pending_deletions": self.pending_deletions,
             "pending_feedback_deletions": self.pending_feedback_deletions,
             "notification_sent": self.notification_sent,
@@ -196,7 +190,6 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
     *,
     output_message_id: Optional[str] | object = _UNSET,
     polling_active: bool | object = _UNSET,
-    idle_notification_message_id: Optional[str] | object = _UNSET,
     pending_deletions: list[str] | object = _UNSET,
     pending_feedback_deletions: list[str] | object = _UNSET,
     notification_sent: bool | object = _UNSET,
@@ -210,7 +203,6 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
         session_id: Session identifier
         output_message_id: Output message ID (optional)
         polling_active: Whether polling is active (optional)
-        idle_notification_message_id: Idle notification message ID (optional)
         pending_deletions: List of user input message IDs pending deletion (optional)
         pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
         notification_sent: Whether Claude Code notification was sent (optional)
@@ -226,8 +218,6 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
             existing.output_message_id = output_message_id  # type: ignore
         if polling_active is not _UNSET:
             existing.polling_active = polling_active  # type: ignore
-        if idle_notification_message_id is not _UNSET:
-            existing.idle_notification_message_id = idle_notification_message_id  # type: ignore
         if pending_deletions is not _UNSET:
             existing.pending_deletions = pending_deletions  # type: ignore
         if pending_feedback_deletions is not _UNSET:

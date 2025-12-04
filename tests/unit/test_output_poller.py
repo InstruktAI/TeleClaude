@@ -8,7 +8,6 @@ import pytest
 
 from teleclaude.core.output_poller import (
     DirectoryChanged,
-    IdleDetected,
     OutputChanged,
     OutputPoller,
     ProcessExited,
@@ -435,48 +434,11 @@ class TestOutputPollerPoll:
                 # Last event is ProcessExited
                 assert isinstance(events[-1], ProcessExited)
 
-    async def test_idle_notification(self, poller, tmp_path):
-        """Test poll sends idle notification after threshold."""
-        output_file = tmp_path / "output.txt"
-
-        with patch("teleclaude.core.output_poller.config") as mock_config:
-            mock_config.polling.idle_notification_seconds = 5
-            mock_config.polling.directory_check_interval = 0  # Disable directory checking
-
-            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
-                with patch("teleclaude.core.output_poller.db") as mock_db:
-                    with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
-                        iteration_count = 0
-
-                        async def session_exists_mock(name, log_missing=True):
-                            nonlocal iteration_count
-                            iteration_count += 1
-                            # Exit after idle threshold reached (5 seconds + 1 for initial + 1 for notification)
-                            return iteration_count < 8
-
-                        mock_terminal.session_exists = session_exists_mock
-                        mock_db.get_session = AsyncMock(return_value=None)
-
-                        # Output never changes (stays at "stuck output")
-                        mock_terminal.capture_pane = AsyncMock(return_value="stuck output\n")
-
-                        # Collect events
-                        events = []
-                        async for event in poller.poll("test-idle", "test-tmux", output_file, marker_id=None):
-                            events.append(event)
-
-                    # Find IdleDetected event
-                    idle_events = [e for e in events if isinstance(e, IdleDetected)]
-                    assert len(idle_events) >= 1
-                    assert idle_events[0].session_id == "test-idle"
-                    assert idle_events[0].idle_seconds == 5
-
     async def test_periodic_updates_with_exponential_backoff(self, poller, tmp_path):
         """Test poll sends periodic updates with exponential backoff."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.config") as mock_config:
-            mock_config.polling.idle_notification_seconds = 60
             mock_config.polling.directory_check_interval = 0  # Disable directory checking
 
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -544,7 +506,6 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.config") as mock_config:
             # Set directory check interval to 3 seconds
-            mock_config.polling.idle_notification_seconds = 60
             mock_config.polling.directory_check_interval = 3
 
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -591,7 +552,6 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.config") as mock_config:
             # Disable directory checking
-            mock_config.polling.idle_notification_seconds = 60
             mock_config.polling.directory_check_interval = 0
 
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
