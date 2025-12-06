@@ -2,7 +2,7 @@
 
 import time
 from typing import Optional
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -22,8 +22,8 @@ class MockUiAdapter(UiAdapter):
 
     def __init__(self):
         # Create mock client
-        mock_client = AsyncMock()
-        mock_client.on = AsyncMock()  # Mock event registration
+        mock_client = MagicMock()
+        mock_client.on = MagicMock()  # Mock event registration
         super().__init__(mock_client)
         self._send_message_mock = AsyncMock(return_value="msg-123")
         self._edit_message_mock = AsyncMock(return_value=True)

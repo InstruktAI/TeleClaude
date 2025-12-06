@@ -7,6 +7,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      TELECLAUDE_CONFIG_PATH: tests/integration/config.yml
+      TELECLAUDE_ENV_PATH: tests/integration/.env
 
     steps:
       - uses: actions/checkout@v4
@@ -18,11 +21,6 @@ jobs:
 
       - name: Install tmux
         run: sudo apt-get update && sudo apt-get install -y tmux
-
-      - name: Setup test environment
-        run: |
-          # Copy test .env to project root for CI
-          cp tests/integration/.env .env
 
       - name: Create venv
         run: python -m venv .venv

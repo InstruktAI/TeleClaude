@@ -4,7 +4,7 @@ Tests UC-M1: Telegram User with Redis Observer
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -256,8 +256,8 @@ async def test_ui_observer_receives_broadcasts():
 
         def __init__(self):
             # Create mock client
-            mock_client = AsyncMock()
-            mock_client.on = AsyncMock()
+            mock_client = MagicMock()
+            mock_client.on = MagicMock()
             super().__init__(mock_client)
             self.send_message_calls = []
 
@@ -371,8 +371,8 @@ async def test_observer_failure_does_not_affect_origin():
 
         def __init__(self):
             # Create mock client
-            mock_client = AsyncMock()
-            mock_client.on = AsyncMock()
+            mock_client = MagicMock()
+            mock_client.on = MagicMock()
             super().__init__(mock_client)
             self.send_message_calls = []
 

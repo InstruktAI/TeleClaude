@@ -98,6 +98,7 @@ When orchestrating multiple AI workers, the master AI can manage session lifecyc
 - `teleclaude__end_session(computer, session_id)` - Gracefully terminate a session (kills tmux, marks closed, cleans up resources). Use when a worker has filled its context or needs replacement.
 
 **Context exhaustion pattern:**
+
 1. Monitor worker's context usage via `get_session_data`
 2. When worker nears capacity, ask it to document findings
 3. Call `end_session` to terminate gracefully
@@ -274,12 +275,11 @@ commands = [
 
 The UI should never have message clutter. At any time, only ONE of each message type should be visible:
 
-| Message Type | Tracking Mechanism | Cleanup Trigger |
-|--------------|-------------------|-----------------|
-| User input messages | `pending_deletions` (db) | Pre-handler on next user input |
-| Feedback messages (summaries, errors) | `pending_feedback_deletions` (db) | `send_feedback(persistent=False)` |
-| Idle notifications | `idle_notification_message_id` (db) | Pre-handler on next user input |
-| File artifacts (from Claude) | **NOT tracked** | **NEVER deleted** |
+| Message Type                          | Tracking Mechanism                | Cleanup Trigger                |
+| ------------------------------------- | --------------------------------- | ------------------------------ |
+| User input messages                   | `pending_deletions` (db)          | Pre-handler on next user input |
+| Feedback messages (summaries, errors) | `pending_feedback_deletions` (db) | `send_feedback(...)`           |
+| File artifacts (from Claude)          | **NOT tracked**                   | **NEVER deleted**              |
 
 **How it works:**
 
@@ -302,7 +302,8 @@ The UI should never have message clutter. At any time, only ONE of each message 
 ## Code Standards
 
 See global directives (automatically loaded for all projects):
-- `~/.claude/docs/development/coding-directives.md`
+
+- `@~/.claude/docs/development/coding-directives.md`
 - `~/.claude/docs/development/testing-directives.md`
 
 ## Technical Architecture
