@@ -26,6 +26,7 @@ env/
 # Environment & Config
 .env
 config.yml
+!tests/integration/config.yml
 
 # Runtime
 *.pid

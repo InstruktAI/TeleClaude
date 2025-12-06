@@ -16,8 +16,13 @@ from teleclaude.utils import expand_env_vars
 # Project root (relative to this file)
 _project_root = Path(__file__).parent.parent
 
-# Load .env from project root BEFORE expanding config variables
-load_dotenv(_project_root / ".env")
+# Load .env (allow override for tests)
+_env_path = os.getenv("TELECLAUDE_ENV_PATH")
+_dotenv_path = Path(_env_path).expanduser() if _env_path else _project_root / ".env"
+if not _dotenv_path.is_absolute():
+    _dotenv_path = (_project_root / _dotenv_path).resolve()
+
+load_dotenv(_dotenv_path)
 
 
 @dataclass
@@ -273,10 +278,16 @@ def _build_config(raw: dict[str, object]) -> Config:
 
 
 # Load config.yml from project root (required)
-_config_path = _project_root / "config.yml"
+_config_env_path = os.getenv("TELECLAUDE_CONFIG_PATH")
+_config_path = Path(_config_env_path).expanduser() if _config_env_path else _project_root / "config.yml"
+if not _config_path.is_absolute():
+    _config_path = (_project_root / _config_path).resolve()
 
 if not _config_path.exists():
-    raise FileNotFoundError(f"Config file not found: {_config_path}. Run 'make init' to create it.")
+    raise FileNotFoundError(
+        f"Config file not found: {_config_path}. "
+        "Set TELECLAUDE_CONFIG_PATH to a valid config (e.g., tests/integration/config.yml) or run 'make init' to create it."
+    )
 
 with open(_config_path, encoding="utf-8") as f:
     _user_config = yaml.safe_load(f)  # type: ignore[misc]

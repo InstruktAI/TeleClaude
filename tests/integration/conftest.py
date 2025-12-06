@@ -88,6 +88,15 @@ class MockRedisClient:
         matching = [k.encode("utf-8") if isinstance(k, str) else k for k in self.data.keys() if regex.match(str(k))]
         return matching
 
+    async def setex(self, key: str, ttl: int, value: bytes) -> bool:
+        """Set key with expiration (expiry ignored for tests)."""
+        self.data[key] = value
+        return True
+
+    async def aclose(self) -> None:
+        """Close client (no-op for tests)."""
+        return None
+
 
 @pytest.fixture(scope="function")
 async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
@@ -271,6 +280,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     with (
         patch("redis.asyncio.Redis.from_url", return_value=mock_redis_client),
         patch("teleclaude.core.adapter_client.TelegramAdapter", MockTelegramAdapter),
+        patch("teleclaude.adapters.redis_adapter.RedisAdapter._poll_redis_messages", new=AsyncMock(return_value=None)),
+        patch("teleclaude.adapters.redis_adapter.RedisAdapter._heartbeat_loop", new=AsyncMock(return_value=None)),
     ):
         # Create daemon (config is loaded automatically from config.yml)
         daemon = TeleClaudeDaemon(str(base_dir / ".env"))
@@ -414,7 +425,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     monkeypatch.setattr(terminal_bridge, "kill_session", mock_kill_session)
     monkeypatch.setattr(terminal_bridge, "capture_pane", mock_capture_pane)
 
-    yield daemon
-
-    # Close database connection (temp DB file will be auto-deleted by pytest)
-    await daemon.db.close()
+    try:
+        yield daemon
+    finally:
+        # Stop daemon to cancel background pollers before pytest-timeout triggers
+        await daemon.stop()
