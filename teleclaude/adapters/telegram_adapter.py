@@ -13,7 +13,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Optional, TypedDict, cast
+from typing import TYPE_CHECKING, AsyncIterator, Optional, TypedDict
 
 if TYPE_CHECKING:
     from telegram import Message as TelegramMessage
@@ -1418,8 +1418,8 @@ Current size: {current_size}
                 await query.answer("❌ Not authorized", show_alert=True)
                 return
 
-            # Emit NEW_SESSION event directly (no visible command message)
-            result_obj = await self.client.handle_event(
+            # Handle NEW_SESSION event directly (no visible command message)
+            await self.client.handle_event(
                 event=TeleClaudeEvents.NEW_SESSION,
                 payload={
                     "args": [],
@@ -1427,37 +1427,8 @@ Current size: {current_size}
                 metadata=self._metadata(),
             )
 
-            # Cast result to HandleEventResult for type checking
-            result = cast(HandleEventResult, result_obj)
-
             # Acknowledge the button click
             await query.answer("Creating session...", show_alert=False)
-
-            # Send confirmation message in General topic with link to new session
-            if result.get("status") == "success":
-                data_obj = result.get("data", {})
-                if isinstance(data_obj, dict):
-                    event_data = cast(HandleEventData, data_obj)
-                    session_id_val = event_data.get("session_id")
-                    if session_id_val and isinstance(session_id_val, str):
-                        new_session = await db.get_session(session_id_val)
-                        if new_session and new_session.adapter_metadata and new_session.adapter_metadata.telegram:
-                            topic_id = new_session.adapter_metadata.telegram.topic_id
-                            # Build deep link to the topic
-                            # supergroup_id is negative, strip the -100 prefix for the link
-                            chat_id_str = str(self.supergroup_id)
-                            if chat_id_str.startswith("-100"):
-                                chat_id_for_link = chat_id_str[4:]
-                            else:
-                                chat_id_for_link = chat_id_str.lstrip("-")
-                            topic_url = f"https://t.me/c/{chat_id_for_link}/{topic_id}"
-                            await self.bot.send_message(
-                                chat_id=self.supergroup_id,
-                                text=f"✅ Created: {new_session.title}",
-                                reply_markup=InlineKeyboardMarkup(
-                                    [[InlineKeyboardButton("Open Session", url=topic_url)]]
-                                ),
-                            )
 
         elif action == "cd":
             # Find session from the message's thread
@@ -1814,14 +1785,16 @@ Usage:
         if not text:
             return
 
-        # Strip leading // and replace with / (Telegram workaround - only at start of input)
-        # Double slash bypasses Telegram command detection AND skips HUMAN: prefix
-        # so the raw command goes directly to Claude Code
+        ux_state = await db.get_ux_state(session.session_id)
         skip_human_prefix = False
-        if text.startswith("//"):
-            text = "/" + text[2:]
+        if not ux_state.polling_active:
             skip_human_prefix = True
-            logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
+            # Strip leading // and replace with / (Telegram workaround - only at start of input)
+            # Double slash bypasses Telegram command detection AND skips HUMAN: prefix
+            # so the raw command goes directly to Claude Code
+            if text.startswith("//"):
+                text = "/" + text[2:]
+                logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
 
         # Format with HUMAN: prefix unless bypassed via // prefix
         formatted_text = text if skip_human_prefix else self.format_user_input(text)

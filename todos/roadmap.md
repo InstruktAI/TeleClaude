@@ -5,7 +5,7 @@
 
 ---
 
-## AI Model Usage
+## [~] AI Model Usage
 
 We hit model API rate limits frequently, causing delays and failures. To mitigate this, we plan to implement dynamic model selection based on availability and cost.
 

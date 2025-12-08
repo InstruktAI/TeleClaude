@@ -346,13 +346,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         redis_adapter: RedisAdapter = redis_adapter_base
         status_key = f"system_status:{config.computer.name}:deploy"
+        redis_client = redis_adapter._require_redis()
+
+        async def update_status(payload: dict[str, object]) -> None:
+            await redis_client.set(status_key, json.dumps(payload))
 
         try:
             # 1. Write deploying status
-            await redis_adapter.redis.set(
-                status_key,
-                json.dumps({"status": "deploying", "timestamp": time.time()}),  # type: ignore[misc]
-            )
+            deploying_payload: dict[str, object] = {"status": "deploying", "timestamp": time.time()}
+            await update_status(deploying_payload)
             logger.info("Deploy: marked status as deploying")
 
             # 2. Git pull with automatic merge commit handling
@@ -385,10 +387,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 stderr_msg = stderr.decode("utf-8").strip()
                 error_msg = f"{stderr_msg}\n{stdout_msg}".strip()
                 logger.error("Deploy: git pull failed: %s", error_msg)
-                await redis_adapter.redis.set(
-                    status_key,
-                    json.dumps({"status": "error", "error": f"git pull failed: {error_msg}"}),  # type: ignore[misc]
-                )
+                git_error_payload: dict[str, object] = {
+                    "status": "error",
+                    "error": f"git pull failed: {error_msg}",
+                }
+                await update_status(git_error_payload)
                 return
 
             output = stdout.decode("utf-8")
@@ -409,29 +412,29 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 install_stdout, install_stderr = await asyncio.wait_for(install_result.communicate(), timeout=60.0)  # type: ignore[misc]
             except asyncio.TimeoutError:
                 logger.error("Deploy: make install timed out after 60s")
-                await redis_adapter.redis.set(
-                    status_key,
-                    json.dumps({"status": "error", "error": "make install timed out after 60s"}),  # type: ignore[misc]
-                )
+                timeout_payload: dict[str, object] = {
+                    "status": "error",
+                    "error": "make install timed out after 60s",
+                }
+                await update_status(timeout_payload)
                 return
 
             if install_result.returncode != 0:
                 error_msg = install_stderr.decode("utf-8")
                 logger.error("Deploy: make install failed: %s", error_msg)
-                await redis_adapter.redis.set(
-                    status_key,
-                    json.dumps({"status": "error", "error": f"make install failed: {error_msg}"}),  # type: ignore[misc]
-                )
+                install_error_payload: dict[str, object] = {
+                    "status": "error",
+                    "error": f"make install failed: {error_msg}",
+                }
+                await update_status(install_error_payload)
                 return
 
             install_output = install_stdout.decode("utf-8")
             logger.info("Deploy: make install successful - %s", install_output.strip())
 
             # 4. Write restarting status
-            await redis_adapter.redis.set(
-                status_key,
-                json.dumps({"status": "restarting", "timestamp": time.time()}),  # type: ignore[misc]
-            )
+            restarting_payload: dict[str, object] = {"status": "restarting", "timestamp": time.time()}
+            await update_status(restarting_payload)
 
             # 5. Exit to trigger service manager restart
             # With Restart=on-failure, any non-zero exit triggers restart
@@ -441,11 +444,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         except Exception as e:
             logger.error("Deploy failed: %s", e, exc_info=True)
-            if redis_adapter and redis_adapter.redis:
-                await redis_adapter.redis.set(
-                    status_key,
-                    json.dumps({"status": "error", "error": str(e)}),  # type: ignore[misc]
-                )
+            exception_payload: dict[str, object] = {"status": "error", "error": str(e)}
+            await update_status(exception_payload)
 
     async def _handle_health_check(self) -> None:
         """Handle health check system command."""

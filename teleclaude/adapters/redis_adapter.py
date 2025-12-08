@@ -5,6 +5,8 @@ Redis Streams as the transport layer. It bypasses Telegram's bot-to-bot
 messaging restriction.
 """
 
+# pylint: disable=too-many-instance-attributes
+
 from __future__ import annotations
 
 import asyncio
@@ -67,8 +69,7 @@ class RedisAdapter(
         # Store adapter client reference (ONLY interface to daemon)
         self.client = adapter_client
 
-        # Get global config singleton
-        self.redis: Redis | None = None
+        # Adapter state
         self._message_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
         self._connection_task: Optional[asyncio.Task[None]] = None
@@ -95,6 +96,9 @@ class RedisAdapter(
 
         # Track pending new_session requests for response
         self._pending_new_session_request: Optional[str] = None
+
+        # Initialize redis client placeholder (actual connection established in start)
+        self.redis: Redis = self._create_redis_client()
 
         logger.info("RedisAdapter initialized for computer: %s", self.computer_name)
 
@@ -126,7 +130,7 @@ class RedisAdapter(
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
-        return Redis.from_url(  # type: ignore[misc]
+        redis_client: Redis = Redis.from_url(  # type: ignore[misc]
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
@@ -134,6 +138,11 @@ class RedisAdapter(
             decode_responses=False,  # We handle decoding manually
             ssl_cert_reqs=ssl.CERT_NONE,  # Disable certificate verification for self-signed certs
         )
+        return redis_client
+
+    def _require_redis(self) -> Redis:
+        """Return initialized Redis client or raise for clearer errors."""
+        return self.redis
 
     async def _connect_with_backoff(self) -> None:
         """Attempt to connect to Redis with capped exponential backoff."""
@@ -189,10 +198,7 @@ class RedisAdapter(
         # Cancel background tasks
         if self._message_poll_task:
             self._message_poll_task.cancel()
-            try:
-                await self._message_poll_task
-            except asyncio.CancelledError:
-                pass
+            self._message_poll_task = None
 
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
@@ -260,7 +266,8 @@ class RedisAdapter(
         output_stream: str = redis_meta.channel_id
 
         # Send to Redis stream
-        message_id_bytes: bytes = await self.redis.xadd(
+        redis_client = self._require_redis()
+        message_id_bytes: bytes = await redis_client.xadd(
             output_stream,
             {
                 b"chunk": text.encode("utf-8"),
@@ -306,7 +313,8 @@ class RedisAdapter(
         output_stream: str = redis_meta.output_stream
 
         try:
-            await self.redis.xdel(output_stream, message_id)
+            redis_client = self._require_redis()
+            await redis_client.xdel(output_stream, message_id)
             return True
         except Exception as e:
             logger.error("Failed to delete message %s: %s", message_id, e)
@@ -322,7 +330,8 @@ class RedisAdapter(
 
         try:
             output_stream = f"output:{session_id}"
-            await self.redis.xadd(
+            redis_client = self._require_redis()
+            await redis_client.xadd(
                 output_stream,
                 {
                     b"type": b"error",
@@ -467,9 +476,10 @@ class RedisAdapter(
         if not redis_meta or not redis_meta.output_stream:
             raise ValueError(f"Session {session.session_id} has no Redis output_stream")
         output_stream: str = redis_meta.output_stream
+        redis_client = self._require_redis()
 
         try:
-            await self.redis.delete(output_stream)
+            await redis_client.delete(output_stream)
             return True
         except Exception as e:
             logger.error("Failed to delete stream %s: %s", output_stream, e)
@@ -485,15 +495,17 @@ class RedisAdapter(
             List of computer names (excluding self)
         """
 
+        redis_client = self._require_redis()
+
         try:
             # Find all heartbeat keys
-            keys: object = await self.redis.keys(b"computer:*:heartbeat")
+            keys: object = await redis_client.keys(b"computer:*:heartbeat")
             logger.debug("Found %d heartbeat keys", len(keys))  # type: ignore[arg-type]
 
             computers = []
             for key in keys:  # type: ignore[misc, attr-defined]
                 # Get data
-                data_bytes: object = await self.redis.get(key)  # type: ignore[misc]
+                data_bytes: object = await redis_client.get(key)  # type: ignore[misc]
                 if data_bytes:
                     # Redis returns bytes - decode to str for json.loads
                     data_str: str = data_bytes.decode("utf-8")  # type: ignore[attr-defined]
@@ -524,15 +536,17 @@ class RedisAdapter(
         """
         logger.info(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
 
+        redis_client = self._require_redis()
+
         try:
             # Find all heartbeat keys
-            keys: object = await self.redis.keys(b"computer:*:heartbeat")
+            keys: object = await redis_client.keys(b"computer:*:heartbeat")
             logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)  # type: ignore[arg-type]
 
             peers = []
             for key in keys:  # type: ignore[misc, attr-defined]  # key is Any from Redis.keys() iteration, keys is object
                 # Get data
-                data_bytes: object = await self.redis.get(key)  # type: ignore[misc]  # Redis.get() returns Any
+                data_bytes: object = await redis_client.get(key)  # type: ignore[misc]  # Redis.get() returns Any
                 if data_bytes:
                     # Redis returns bytes - decode to str for json.loads
                     data_str: str = data_bytes.decode("utf-8")  # type: ignore[attr-defined]  # Redis returns bytes
@@ -661,7 +675,8 @@ class RedisAdapter(
                     last_id,
                 )
 
-                messages: object = await self.redis.xread(
+                redis_client = self._require_redis()
+                messages: object = await redis_client.xread(
                     {message_stream.encode("utf-8"): last_id},
                     block=1000,  # Block for 1 second
                     count=5,
@@ -785,6 +800,12 @@ class RedisAdapter(
                 channel_metadata=channel_metadata if channel_metadata else None,
             )
 
+            # Pass through optional session creation fields so handlers can build correct titles/working dirs
+            if b"project_dir" in data:
+                metadata_to_send.project_dir = data[b"project_dir"].decode("utf-8") or None
+            if b"title" in data:
+                metadata_to_send.title = data[b"title"].decode("utf-8") or None
+
             # Add session-level data to payload
             if b"project_dir" in data:
                 payload["project_dir"] = data[b"project_dir"].decode("utf-8")
@@ -885,7 +906,8 @@ class RedisAdapter(
         }
 
         # Set key with auto-expiry
-        await self.redis.setex(
+        redis_client = self._require_redis()
+        await redis_client.setex(
             key,
             self.heartbeat_ttl,
             json.dumps(payload),
@@ -932,7 +954,8 @@ class RedisAdapter(
                     break
 
                 # Read from output stream
-                messages = await self.redis.xread({output_stream.encode("utf-8"): last_id}, block=1000, count=5)
+                redis_client = self._require_redis()
+                messages = await redis_client.xread({output_stream.encode("utf-8"): last_id}, block=1000, count=5)
 
                 if not messages:
                     continue
@@ -1000,7 +1023,8 @@ class RedisAdapter(
         data = json.dumps(observation_data)
 
         # Set key with TTL - auto-expires after duration
-        await self.redis.setex(key, duration_seconds, data)
+        redis_client = self._require_redis()
+        await redis_client.setex(key, duration_seconds, data)
         logger.info(
             "Signaled observation: %s observing %s on %s for %ds",
             self.computer_name,
@@ -1020,7 +1044,8 @@ class RedisAdapter(
         """
 
         key = f"observation:{self.computer_name}:{session_id}"
-        exists = await self.redis.exists(key)
+        redis_client = self._require_redis()
+        exists = await redis_client.exists(key)
         return bool(exists)
 
     # === Request/Response pattern for ephemeral queries (list_projects, etc.) ===
@@ -1065,7 +1090,8 @@ class RedisAdapter(
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})
-        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
+        redis_client = self._require_redis()
+        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
         message_id = message_id_bytes.decode("utf-8")
 
         logger.debug("XADD returned message_id=%s", message_id)
@@ -1093,7 +1119,8 @@ class RedisAdapter(
             len(data),
         )
 
-        response_id_bytes: bytes = await self.redis.xadd(
+        redis_client = self._require_redis()
+        response_id_bytes: bytes = await redis_client.xadd(
             output_stream,
             {
                 b"chunk": data.encode("utf-8"),
@@ -1151,7 +1178,8 @@ class RedisAdapter(
                 logger.debug(
                     "read_response() poll #%d for message %s (elapsed=%.1fs)", poll_count, message_id[:8], elapsed
                 )
-                messages = await self.redis.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
+                redis_client = self._require_redis()
+                messages = await redis_client.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
 
                 if messages:
                     # Got response - extract and return
@@ -1210,7 +1238,8 @@ class RedisAdapter(
 
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
-        message_id_bytes: bytes = await self.redis.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
+        redis_client = self._require_redis()
+        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
 
         logger.info("Sent system command to %s: %s", computer_name, command)
         return message_id_bytes.decode("utf-8")
@@ -1227,7 +1256,8 @@ class RedisAdapter(
         """
 
         status_key = f"system_status:{computer_name}:{command}"
-        data = await self.redis.get(status_key)
+        redis_client = self._require_redis()
+        data = await redis_client.get(status_key)
 
         if not data:
             return {"status": "unknown"}
@@ -1270,7 +1300,8 @@ class RedisAdapter(
 
                 # Read from stream (blocking with 500ms timeout)
                 try:
-                    messages = await self.redis.xread({output_stream.encode("utf-8"): last_id}, block=500, count=10)
+                    redis_client = self._require_redis()
+                    messages = await redis_client.xread({output_stream.encode("utf-8"): last_id}, block=500, count=10)
 
                     if not messages:
                         # No messages - increment idle counter

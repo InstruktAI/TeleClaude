@@ -199,11 +199,11 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     # For AI-to-AI sessions (initiator present), use "initiator > computer[project]" format
     # For human sessions, use "computer[project]" format
     if initiator:
-        # AI-to-AI: "$MozBook > $RasPi[apps/TeleClaude] - New session"
+        # AI-to-AI: "AI:$MozBook > $RasPi[apps/TeleClaude] - New session"
         if args and len(args) > 0:
-            base_title = f"${initiator} > ${computer_name}[{short_project}] - {' '.join(args)}"
+            base_title = f"AI:${initiator} > ${computer_name}[{short_project}] - {' '.join(args)}"
         else:
-            base_title = f"${initiator} > ${computer_name}[{short_project}] - New session"
+            base_title = f"AI:${initiator} > ${computer_name}[{short_project}] - New session"
     else:
         # Human-initiated (Telegram): "$RasPi[apps/TeleClaude] - New session"
         if args and len(args) > 0:
