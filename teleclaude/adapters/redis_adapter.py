@@ -68,9 +68,10 @@ class RedisAdapter(
         self.client = adapter_client
 
         # Get global config singleton
-        self.redis: Redis
+        self.redis: Redis | None = None
         self._message_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
+        self._connection_task: Optional[asyncio.Task[None]] = None
         self._output_stream_listeners: dict[str, asyncio.Task[None]] = {}  # session_id -> listener task
         self._running = False
 
@@ -103,8 +104,29 @@ class RedisAdapter(
             logger.warning("RedisAdapter already running")
             return
 
-        # Create Redis client with TLS support
-        self.redis = Redis.from_url(  # type: ignore[misc]
+        self._running = True
+
+        # Start connection orchestration without blocking daemon boot
+        self._connection_task = asyncio.create_task(self._ensure_connection_and_start_tasks())
+        logger.info("RedisAdapter start triggered (connection handled asynchronously)")
+
+    async def _ensure_connection_and_start_tasks(self) -> None:
+        """Connect and launch background tasks with retry, without blocking daemon startup."""
+
+        await self._connect_with_backoff()
+
+        if not self._running:
+            return
+
+        # Start background tasks once connected
+        self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+        logger.info("RedisAdapter connected and background tasks started")
+
+    def _create_redis_client(self) -> Redis:
+        """Create a Redis client with the configured settings."""
+        return Redis.from_url(  # type: ignore[misc]
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
@@ -113,21 +135,41 @@ class RedisAdapter(
             ssl_cert_reqs=ssl.CERT_NONE,  # Disable certificate verification for self-signed certs
         )
 
-        # Test connection
-        try:
-            await self.redis.ping()  # type: ignore[misc]
-            logger.info("Redis connection successful")
-        except Exception as e:
-            logger.error("Failed to connect to Redis: %s", e)
-            raise
+    async def _connect_with_backoff(self) -> None:
+        """Attempt to connect to Redis with capped exponential backoff."""
 
-        self._running = True
+        delay = 1
+        while self._running:
+            try:
+                self.redis = self._create_redis_client()
+                await self.redis.ping()  # type: ignore[misc]
+                logger.info("Redis connection successful")
+                return
+            except Exception as e:  # broad to keep daemon alive until Redis returns
+                logger.error("Failed to connect to Redis (retry in %ss): %s", delay, e)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 10)
 
-        # Start background tasks
-        self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        logger.info("Stopped redis connection attempts (adapter no longer running)")
 
-        logger.info("RedisAdapter started")
+    async def _reconnect_with_backoff(self) -> None:
+        """Reconnect the Redis client after a connection failure."""
+
+        delay = 1
+        while self._running:
+            try:
+                if self.redis:
+                    await self.redis.aclose()
+                self.redis = self._create_redis_client()
+                await self.redis.ping()  # type: ignore[misc]
+                logger.info("Redis reconnection successful")
+                return
+            except Exception as e:  # broad to avoid crash loops
+                logger.error("Redis reconnection failed (retry in %ss): %s", delay, e)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 10)
+
+        logger.info("Stopped redis reconnection attempts (adapter no longer running)")
 
     async def stop(self) -> None:
         """Stop adapter and cleanup resources."""
@@ -135,6 +177,14 @@ class RedisAdapter(
             return
 
         self._running = False
+
+        # Cancel connection orchestrator
+        if self._connection_task:
+            self._connection_task.cancel()
+            try:
+                await self._connection_task
+            except asyncio.CancelledError:
+                pass
 
         # Cancel background tasks
         if self._message_poll_task:
@@ -657,7 +707,7 @@ class RedisAdapter(
                 break
             except Exception as e:
                 logger.error("Message polling error: %s", e)
-                await asyncio.sleep(5)  # Back off on error
+                await self._reconnect_with_backoff()
 
     async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]  # pylint: disable=too-many-locals
         """Handle incoming message from Redis stream.
@@ -820,7 +870,7 @@ class RedisAdapter(
                 break
             except Exception as e:
                 logger.error("Heartbeat failed: %s", e)
-                await asyncio.sleep(self.heartbeat_interval)
+                await self._reconnect_with_backoff()
 
     async def _send_heartbeat(self) -> None:
         """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
@@ -916,6 +966,7 @@ class RedisAdapter(
             logger.debug("Output stream listener cancelled for session %s", session_id[:8])
         except Exception as e:
             logger.error("Output stream listener error for session %s: %s", session_id[:8], e)
+            await self._reconnect_with_backoff()
         finally:
             # Cleanup
             if session_id in self._output_stream_listeners:
@@ -1264,7 +1315,7 @@ class RedisAdapter(
 
                 except Exception as e:
                     logger.error("Error polling output stream: %s", e)
-                    await asyncio.sleep(1)
+                    await self._reconnect_with_backoff()
 
         except asyncio.CancelledError:
             logger.info("Output stream polling cancelled for session %s", session_id[:8])
