@@ -148,22 +148,6 @@ class UiAdapter(BaseAdapter):
         except Exception as e:
             logger.error("Failed to send error feedback for session %s: %s", session_id, e)
 
-    # === User Input Formatting ===
-
-    def format_user_input(self, text: str) -> str:
-        """Format incoming user input with HUMAN: prefix.
-
-        This distinguishes human messages from AI messages (which use AI[computer:session_id] prefix).
-        All UI adapters should call this when processing user text input before sending to daemon.
-
-        Args:
-            text: Raw user input text
-
-        Returns:
-            Prefixed text: "HUMAN: {text}"
-        """
-        return f"HUMAN: {text}"
-
     # === Command Registration ===
 
     def _get_command_handlers(self) -> list[tuple[str, object]]:

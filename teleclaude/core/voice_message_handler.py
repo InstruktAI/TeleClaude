@@ -21,7 +21,7 @@ from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.models import MessageMetadata
 
 if TYPE_CHECKING:
-    from teleclaude.core.adapter_client import AdapterClient
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +239,7 @@ async def handle_voice(
         return
 
     # Transcribe audio using Whisper
-    transcribed_text = await transcribe_voice_with_retry(audio_path)
+    text = await transcribe_voice_with_retry(audio_path)
 
     # Clean up temp file
     try:
@@ -248,7 +248,7 @@ async def handle_voice(
     except Exception as e:
         logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
 
-    if not transcribed_text:
+    if not text:
         # Append error to existing message
         await send_feedback(
             session_id,
@@ -257,13 +257,25 @@ async def handle_voice(
         )
         return
 
-    # Send transcribed text as input to the running process
-    # Prefix with HUMAN: to distinguish from AI messages
-    prefixed_text = f"HUMAN: {transcribed_text}"
-    logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], prefixed_text)
+    ux_state = await db.get_ux_state(session.session_id)
+    skip_human_prefix = False
+    if not ux_state.polling_active:
+        skip_human_prefix = True
+    # Strip leading // and replace with / (Telegram workaround - only at start of input)
+    # Double slash bypasses Telegram command detection AND skips HUMAN: prefix
+    # so the raw command goes directly to Claude Code
+    if text.startswith("//"):
+        skip_human_prefix = True
+        text = "/" + text[2:]
+        logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
+
+    # If polling format with HUMAN: prefix unless bypassed via // prefix
+    formatted_text = text if skip_human_prefix else f"HUMAN: {text}"
+
+    logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], formatted_text)
     success, _ = await terminal_bridge.send_keys(
         session.tmux_session_name,
-        prefixed_text,
+        formatted_text,
     )
 
     if not success:
