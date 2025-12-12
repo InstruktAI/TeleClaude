@@ -61,7 +61,39 @@ from teleclaude.restart_claude import revive_claude_in_session
 DEFAULT_LOG_FILE = "/var/log/teleclaude.log"
 DEFAULT_LOG_LEVEL = "INFO"
 
+# Startup retry configuration
+STARTUP_MAX_RETRIES = 3
+STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
+
 logger = logging.getLogger(__name__)
+
+
+def _is_retryable_startup_error(error: Exception) -> bool:
+    """Check if startup error is transient and worth retrying.
+
+    Retryable errors include network issues like DNS failures, connection
+    timeouts, and refused connections. Non-retryable errors include
+    configuration errors, authentication failures, and lock errors.
+
+    Args:
+        error: The exception that occurred during startup
+
+    Returns:
+        True if the error is transient and startup should be retried
+    """
+    # Error type names that indicate transient network issues
+    retryable_types = ("NetworkError", "ConnectError", "TimeoutError", "OSError")
+    # Error message patterns that indicate transient issues
+    retryable_messages = ("name resolution", "connection refused", "timed out", "temporary failure")
+
+    error_type = type(error).__name__
+    error_msg = str(error).lower()
+
+    if error_type in retryable_types:
+        return True
+    if any(msg in error_msg for msg in retryable_messages):
+        return True
+    return False
 
 
 class DaemonLockError(Exception):
@@ -1195,11 +1227,40 @@ async def main() -> None:
     signal.signal(signal.SIGINT, signal_handler)
 
     try:
-        # Acquire lock to prevent multiple instances
+        # Acquire lock to prevent multiple instances (non-retryable)
         daemon._acquire_lock()
 
-        # Start daemon
-        await daemon.start()
+        # Start daemon with retry logic for transient network errors
+        for attempt in range(STARTUP_MAX_RETRIES):
+            try:
+                await daemon.start()
+                break  # Success - exit retry loop
+            except Exception as e:
+                # Non-retryable errors fail immediately
+                if not _is_retryable_startup_error(e):
+                    logger.error("Daemon startup failed (non-retryable): %s", e, exc_info=True)
+                    sys.exit(1)
+
+                # Last attempt exhausted
+                if attempt == STARTUP_MAX_RETRIES - 1:
+                    logger.error(
+                        "Daemon startup failed after %d attempts: %s",
+                        STARTUP_MAX_RETRIES,
+                        e,
+                        exc_info=True,
+                    )
+                    sys.exit(1)
+
+                # Retry with exponential backoff
+                delay = STARTUP_RETRY_DELAYS[attempt]
+                logger.warning(
+                    "Startup failed (attempt %d/%d): %s. Retrying in %ds...",
+                    attempt + 1,
+                    STARTUP_MAX_RETRIES,
+                    e,
+                    delay,
+                )
+                await asyncio.sleep(delay)
 
         # Wait for shutdown signal
         await daemon.shutdown_event.wait()
@@ -1210,7 +1271,8 @@ async def main() -> None:
     except KeyboardInterrupt:
         logger.info("Received interrupt signal...")
     except Exception as e:
-        logger.error("Daemon startup failed with exception: %s", e, exc_info=True)
+        logger.error("Unexpected error: %s", e, exc_info=True)
+        sys.exit(1)
     finally:
         try:
             await daemon.stop()
