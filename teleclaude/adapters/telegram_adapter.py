@@ -25,6 +25,7 @@ from telegram import (
     BotCommandScopeChat,
     Document,
     ForceReply,
+    ForumTopic,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -409,7 +410,7 @@ class TelegramAdapter(
         message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)  # type: ignore[misc]
         return str(message.message_id)
 
-    @command_retry(max_retries=3)
+    @command_retry(max_retries=3, max_timeout=15.0)
     async def _send_message_with_retry(
         self, topic_id: int, formatted_text: str, reply_markup: object, parse_mode: Optional[str]
     ) -> Message:
@@ -537,7 +538,7 @@ class TelegramAdapter(
             logger.error("Failed to delete message %s: %s", message_id, e)
             return False
 
-    @command_retry(max_retries=3)
+    @command_retry(max_retries=3, max_timeout=15.0)
     async def _delete_message_with_retry(self, message_id: str) -> None:
         """Delete message with retry logic."""
         await self.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
@@ -645,12 +646,17 @@ class TelegramAdapter(
                     return str(existing_topic_id)
 
             # Create topic (only one concurrent call per session_id can reach here)
-            topic = await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
+            topic = await self._create_forum_topic_with_retry(title)
 
             topic_id = topic.message_thread_id
             logger.info("Created topic: %s (ID: %s)", title, topic_id)
 
             return str(topic_id)
+
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _create_forum_topic_with_retry(self, title: str) -> ForumTopic:
+        """Internal method with retry logic for creating forum topics."""
+        return await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
 
     async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Update topic title."""
@@ -663,13 +669,16 @@ class TelegramAdapter(
         assert isinstance(topic_id, int), "topic_id must be int"
 
         try:
-            await self.bot.edit_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id, name=title)
+            await self._edit_forum_topic_with_retry(topic_id, title)
             return True
-        except (RetryAfter, NetworkError, TimedOut):
-            raise  # Let decorator handle retry
         except TelegramError as e:
             logger.error("Failed to update topic title: %s", e)
             return False
+
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _edit_forum_topic_with_retry(self, topic_id: int, title: str) -> None:
+        """Internal method with retry logic for editing forum topics."""
+        await self.bot.edit_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id, name=title)
 
     async def close_channel(self, session: "Session") -> bool:
         """Soft-close forum topic (can be reopened)."""
@@ -682,14 +691,17 @@ class TelegramAdapter(
         assert isinstance(topic_id, int), "topic_id must be int"
 
         try:
-            await self.bot.close_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+            await self._close_forum_topic_with_retry(topic_id)
             logger.info("Closed topic %s for session %s", topic_id, session.session_id[:8])
             return True
-        except (RetryAfter, NetworkError, TimedOut):
-            raise  # Let decorator handle retry
         except TelegramError as e:
             logger.warning("Failed to close topic %s: %s", topic_id, e)
             return False
+
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _close_forum_topic_with_retry(self, topic_id: int) -> None:
+        """Internal method with retry logic for closing forum topics."""
+        await self.bot.close_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
 
     async def reopen_channel(self, session: "Session") -> bool:
         """Reopen a closed forum topic."""
@@ -702,14 +714,17 @@ class TelegramAdapter(
         assert isinstance(topic_id, int), "topic_id must be int"
 
         try:
-            await self.bot.reopen_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+            await self._reopen_forum_topic_with_retry(topic_id)
             logger.info("Reopened topic %s for session %s", topic_id, session.session_id[:8])
             return True
-        except (RetryAfter, NetworkError, TimedOut):
-            raise  # Let decorator handle retry
         except TelegramError as e:
             logger.warning("Failed to reopen topic %s: %s", topic_id, e)
             return False
+
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _reopen_forum_topic_with_retry(self, topic_id: int) -> None:
+        """Internal method with retry logic for reopening forum topics."""
+        await self.bot.reopen_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
 
     async def delete_channel(self, session: "Session") -> bool:
         """Delete forum topic (permanent)."""
@@ -722,14 +737,17 @@ class TelegramAdapter(
         assert isinstance(topic_id, int), "topic_id must be int"
 
         try:
-            await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
+            await self._delete_forum_topic_with_retry(topic_id)
             logger.info("Deleted topic %s for session %s", topic_id, session.session_id[:8])
             return True
-        except (RetryAfter, NetworkError, TimedOut):
-            raise  # Let decorator handle retry
         except TelegramError as e:
             logger.warning("Failed to delete topic %s: %s", topic_id, e)
             return False
+
+    @command_retry(max_retries=3, max_timeout=15.0)
+    async def _delete_forum_topic_with_retry(self, topic_id: int) -> None:
+        """Internal method with retry logic for deleting forum topics."""
+        await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
 
     # ==================== Platform-Specific Parameters ====================
 
@@ -2081,10 +2099,10 @@ Usage:
 
     # === MCP Server Support Methods ===
 
-    async def create_topic(self, title: str) -> object:
+    async def create_topic(self, title: str) -> ForumTopic:
         """Create a new forum topic and return the topic object."""
         self._ensure_started()
-        topic = await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
+        topic = await self._create_forum_topic_with_retry(title)
         logger.info("Created topic: %s (ID: %s)", title, topic.message_thread_id)
         return topic
 
