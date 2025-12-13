@@ -56,3 +56,4 @@ workspace/
 .claude/data/
 *.local.json
 trees/
+worktrees/

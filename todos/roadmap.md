@@ -1,11 +1,11 @@
 # Roadmap
 
-> **Last Updated**: 2025-12-03
+> **Last Updated**: 2025-12-13
 > **Status Legend**: `[ ]` = Todo | `[~]` = In Progress | `[x]` = Done
 
 ---
 
-## [~] AI Model Usage
+## [x] AI Model Usage
 
 We hit model API rate limits frequently, causing delays and failures. To mitigate this, we plan to implement dynamic model selection based on availability and cost.
 
@@ -22,9 +22,9 @@ So we need to append the `--model=sonnet` part at the right place in the command
 
 Another thing we have to get right is in restart_claude.py to detect wether its an AI session so its appends it there as well. Maybe we have to keep a special field in the session DB for that: `initiated_by_ai: bool`. Yes, that is imperative.
 
-### [>] add --model flag to AI calls
+### [x] add --model flag to AI calls
 
-Create `todos/ai-model-selector.md` with full specification, message format, example flows.
+Implemented via `claude_model` field in sessions table. MCP tool `teleclaude__start_session` accepts optional `model` parameter.
 
 ---
 
