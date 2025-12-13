@@ -269,11 +269,11 @@ async def test_handle_voice_forwards_transcription_to_process():
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
             await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
 
-        # Verify transcription forwarded with HUMAN: prefix
+        # Verify transcription forwarded to terminal
         mock_send_keys.assert_called_once()
         call_args = mock_send_keys.call_args[0]
         assert call_args[0] == "tc_test"
-        assert call_args[1] == "HUMAN: Transcribed text"
+        assert call_args[1] == "Transcribed text"
 
     finally:
         Path(audio_path).unlink(missing_ok=True)

@@ -1803,26 +1803,17 @@ Usage:
         if not text:
             return
 
-        ux_state = await db.get_ux_state(session.session_id)
-        skip_human_prefix = False
-        if not ux_state.polling_active:
-            skip_human_prefix = True
         # Strip leading // and replace with / (Telegram workaround - only at start of input)
-        # Double slash bypasses Telegram command detection AND skips HUMAN: prefix
-        # so the raw command goes directly to Claude Code
+        # Double slash bypasses Telegram command detection so raw command goes to Claude Code
         if text.startswith("//"):
-            skip_human_prefix = True
             text = "/" + text[2:]
             logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
-
-        # If polling format with HUMAN: prefix unless bypassed via // prefix
-        formatted_text = text if skip_human_prefix else f"HUMAN: {text}"
 
         await self.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
             payload={
                 "session_id": session.session_id,
-                "text": formatted_text,
+                "text": text,
                 "message_id": str(update.effective_message.message_id),
             },
             metadata=self._metadata(),
