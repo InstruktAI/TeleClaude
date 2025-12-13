@@ -1,5 +1,7 @@
 """Unit tests for daemon startup retry logic."""
 
+from unittest.mock import patch
+
 import pytest
 
 from teleclaude.daemon import (
@@ -103,3 +105,117 @@ class TestStartupRetryConstants:
     def test_retry_delays_length_matches_max_retries(self):
         """Verify enough delay values for all retry attempts."""
         assert len(STARTUP_RETRY_DELAYS) == STARTUP_MAX_RETRIES
+
+
+class TestDaemonStartupRetryIntegration:
+    """Integration tests for daemon startup retry with network failures."""
+
+    @pytest.mark.asyncio
+    async def test_voice_handler_not_initialized_on_network_failure(self):
+        """Verify voice handler is not initialized if network connection fails.
+
+        This test ensures the fix for the bug where voice handler was initialized
+        before network operations, causing retry failures.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from teleclaude.core import voice_message_handler
+        from teleclaude.daemon import TeleClaudeDaemon
+
+        # Reset voice handler state
+        voice_message_handler._openai_client = None
+
+        try:
+            with (
+                patch("teleclaude.daemon.db") as mock_db,
+                patch("teleclaude.daemon.config") as mock_config,
+                patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
+                patch.object(TeleClaudeDaemon, "_acquire_lock"),
+            ):
+                # Setup mocks
+                mock_db.initialize = AsyncMock()
+                mock_db.set_client = MagicMock()
+                mock_config.mcp.enabled = False
+
+                # Create daemon
+                daemon = TeleClaudeDaemon(".env.test")
+
+                # Mock client.start() to fail (network error)
+                daemon.client.start = AsyncMock(side_effect=ConnectionError("Network unreachable"))
+
+                # Attempt to start daemon (should fail)
+                with pytest.raises(ConnectionError):
+                    await daemon.start()
+
+                # Verify voice handler was NOT initialized (network failed first)
+                mock_init_voice.assert_not_called()
+
+        finally:
+            voice_message_handler._openai_client = None
+
+    @pytest.mark.asyncio
+    async def test_voice_handler_initialized_after_network_success(self):
+        """Verify voice handler is initialized only after network connection succeeds."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from teleclaude.core import voice_message_handler
+        from teleclaude.daemon import TeleClaudeDaemon
+
+        # Reset voice handler state
+        voice_message_handler._openai_client = None
+
+        try:
+            with (
+                patch("teleclaude.daemon.db") as mock_db,
+                patch("teleclaude.daemon.config") as mock_config,
+                patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
+                patch("teleclaude.daemon.polling_coordinator") as mock_polling,
+                patch.object(TeleClaudeDaemon, "_acquire_lock"),
+                patch.object(TeleClaudeDaemon, "_revive_all_claude_sessions"),
+                patch.object(TeleClaudeDaemon, "_periodic_cleanup"),
+            ):
+                # Setup mocks
+                mock_db.initialize = AsyncMock()
+                mock_db.set_client = MagicMock()
+                mock_config.mcp.enabled = False
+                mock_polling.restore_active_pollers = AsyncMock()
+
+                # Create daemon
+                daemon = TeleClaudeDaemon(".env.test")
+
+                # Mock successful network connection
+                daemon.client.start = AsyncMock()
+
+                # Start daemon (should succeed)
+                await daemon.start()
+
+                # Verify voice handler WAS initialized (after network succeeded)
+                mock_init_voice.assert_called_once()
+
+        finally:
+            voice_message_handler._openai_client = None
+
+    @pytest.mark.asyncio
+    async def test_voice_handler_idempotent_on_retry(self):
+        """Verify voice handler init is idempotent and safe to call on retry.
+
+        Even though we reordered initialization, this test ensures the voice
+        handler itself is defensive and won't crash if accidentally called twice.
+        """
+        from teleclaude.core import voice_message_handler
+
+        # Reset voice handler state
+        voice_message_handler._openai_client = None
+
+        try:
+            with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
+                # First initialization
+                voice_message_handler.init_voice_handler(api_key="test-key")
+                assert mock_openai.call_count == 1
+
+                # Second initialization (simulating retry) - should be no-op
+                voice_message_handler.init_voice_handler(api_key="test-key")
+                assert mock_openai.call_count == 1  # Still only called once
+
+        finally:
+            voice_message_handler._openai_client = None

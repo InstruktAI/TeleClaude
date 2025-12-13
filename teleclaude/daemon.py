@@ -816,12 +816,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         db.set_client(self.client)
         logger.info("Database wired to AdapterClient")
 
-        # Initialize voice handler
+        # Start all adapters via AdapterClient (network operation - can fail)
+        await self.client.start()
+
+        # Initialize voice handler (side effect - only after network succeeds)
         init_voice_handler()
         logger.info("Voice handler initialized")
-
-        # Start all adapters via AdapterClient
-        await self.client.start()
 
         # Check if we just restarted from deployment
         redis_adapter_base = self.client.adapters.get("redis")

@@ -28,15 +28,18 @@ def test_init_voice_handler_initializes_client():
         assert voice_message_handler._openai_client is not None
 
 
-def test_init_voice_handler_rejects_double_init():
-    """Test that init_voice_handler raises on double initialization."""
+def test_init_voice_handler_is_idempotent():
+    """Test that init_voice_handler is safe to call multiple times (idempotent)."""
     from teleclaude.core import voice_message_handler
 
-    with patch("teleclaude.core.voice_message_handler.AsyncOpenAI"):
+    with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
+        # First call initializes
         voice_message_handler.init_voice_handler(api_key="test-api-key")
+        assert mock_openai.call_count == 1
 
-        with pytest.raises(RuntimeError, match="already initialized"):
-            voice_message_handler.init_voice_handler(api_key="another-key")
+        # Second call is a no-op (idempotent)
+        voice_message_handler.init_voice_handler(api_key="another-key")
+        assert mock_openai.call_count == 1  # Still only called once
 
 
 def test_init_voice_handler_requires_api_key():

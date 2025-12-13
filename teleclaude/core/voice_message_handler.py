@@ -36,17 +36,19 @@ _openai_client: Optional[AsyncOpenAI] = None
 def init_voice_handler(api_key: Optional[str] = None) -> None:
     """Initialize OpenAI client for voice transcription.
 
+    Idempotent: safe to call multiple times (no-op if already initialized).
+
     Args:
         api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
 
     Raises:
-        RuntimeError: If voice handler is already initialized
         ValueError: If API key is not provided or found in environment
     """
     global _openai_client
 
     if _openai_client is not None:
-        raise RuntimeError("Voice handler already initialized")
+        logger.debug("Voice handler already initialized, skipping")
+        return
 
     resolved_api_key = api_key or os.getenv("OPENAI_API_KEY")
     if not resolved_api_key:
