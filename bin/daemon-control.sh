@@ -183,7 +183,7 @@ status_daemon() {
     # Check if service is loaded
     if ! is_service_loaded; then
         log_warn "Service NOT loaded/enabled"
-        log_warn "Run './bin/daemon-control.sh start' to start the service"
+        log_warn "Run 'make start' to start the service"
         return 1
     fi
 
