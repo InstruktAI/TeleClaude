@@ -200,9 +200,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     tmux_session_name: str
     origin_adapter: str  # Single origin adapter (e.g., "redis" or "telegram")
     title: str
-    adapter_metadata: SessionAdapterMetadata = field(
-        default_factory=SessionAdapterMetadata
-    )
+    adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
     closed: bool = False
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
@@ -210,12 +208,8 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     working_directory: str = "~"
     description: Optional[str] = None
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
-    initiated_by_ai: bool = (
-        False  # True if session was created via AI-to-AI (uses Sonnet model)
-    )
-    claude_model: Optional[str] = (
-        None  # Claude Code model (e.g., 'sonnet', 'opus'). None = default
-    )
+    initiated_by_ai: bool = False  # True if session was created via AI-to-AI (uses Sonnet model)
+    claude_model: Optional[str] = None  # Claude Code model (e.g., 'sonnet', 'opus'). None = default
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
@@ -226,9 +220,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
         if self.last_activity:
             data["last_activity"] = self.last_activity.isoformat()
         # Convert SessionAdapterMetadata (dataclass) to JSON string for DB storage
-        data["adapter_metadata"] = json.dumps(
-            asdict_exclude_none(self.adapter_metadata)
-        )
+        data["adapter_metadata"] = json.dumps(asdict_exclude_none(self.adapter_metadata))
         return data
 
     @classmethod
@@ -253,9 +245,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
                 if adapter_key == "telegram":
                     # Filter to only known fields (handles schema evolution)
                     known_fields = {"topic_id", "output_message_id"}
-                    filtered = {
-                        k: v for k, v in adapter_data.items() if k in known_fields
-                    }  # type: ignore[misc]
+                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}  # type: ignore[misc]
                     telegram_metadata = TelegramAdapterMetadata(**filtered)  # type: ignore[misc]
                 elif adapter_key == "redis":
                     # Filter to only known fields (handles schema evolution)
@@ -269,14 +259,10 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
                         "title",
                         "channel_metadata",
                     }
-                    filtered = {
-                        k: v for k, v in adapter_data.items() if k in known_fields
-                    }
+                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}
                     redis_metadata = RedisAdapterMetadata(**filtered)  # type: ignore[misc]
 
-            data["adapter_metadata"] = SessionAdapterMetadata(
-                telegram=telegram_metadata, redis=redis_metadata
-            )  # type: ignore
+            data["adapter_metadata"] = SessionAdapterMetadata(telegram=telegram_metadata, redis=redis_metadata)  # type: ignore
         elif "adapter_metadata" not in data:
             # Ensure adapter_metadata always exists
             data["adapter_metadata"] = SessionAdapterMetadata()  # type: ignore
