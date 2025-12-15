@@ -169,8 +169,6 @@ class TeleClaudeMCPServer:
                         "2) Match and select the correct project from the results "
                         "3) Use the exact project path from list_projects in the project_dir parameter here. "
                         "Returns session_id. Wait 10 seconds then use teleclaude__get_session_data to check progress. "
-                        "**MODEL SELECTION:** Optionally specify 'model' parameter ('opus', 'sonnet', 'haiku') "
-                        "to control which Claude model the session uses. Defaults to opus if not specified."
                     ),
                     inputSchema={
                         "type": "object",
@@ -206,13 +204,6 @@ class TeleClaudeMCPServer:
                                     "The initial task or prompt to send to the agent "
                                     "(e.g., 'Read README and summarize', 'Trace message flow from Telegram to session'). "
                                     "Session starts immediately processing this message."
-                                ),
-                            },
-                            "model": {
-                                "type": "string",
-                                "description": (
-                                    "Optional model to use (e.g., 'opus', 'sonnet', 'haiku' for Claude). "
-                                    "Defaults to opus for Claude if not specified."
                                 ),
                             },
                         },
@@ -469,11 +460,9 @@ class TeleClaudeMCPServer:
                 title = str(arguments["title"])
                 message = str(arguments["message"])
                 agent = str(arguments.get("agent", "claude"))
-                model_obj = arguments.get("model")
-                model = str(model_obj) if model_obj else None
                 # caller_session_id extracted at top of call_tool for completion notifications
                 result = await self.teleclaude__start_session(
-                    computer, project_dir, title, message, caller_session_id, model, agent
+                    computer, project_dir, title, message, caller_session_id, agent
                 )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
@@ -739,7 +728,6 @@ class TeleClaudeMCPServer:
         title: str,
         message: str,
         caller_session_id: str | None = None,
-        model: str | None = None,
         agent: str = "claude",
     ) -> dict[str, object]:
         """Create session on local or remote computer.
@@ -754,15 +742,14 @@ class TeleClaudeMCPServer:
             title: Session title describing the task (use "TEST: {description}" for testing sessions)
             message: Initial task or prompt to send to the agent
             caller_session_id: Optional caller's session ID for completion notifications
-            model: Optional model ('opus', 'sonnet', 'haiku' for Claude). Defaults to opus if not specified.
             agent: Which AI agent to start ('claude', 'gemini', 'codex'). Defaults to 'claude'.
 
         Returns:
             dict with session_id and status
         """
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message, caller_session_id, model, agent)
-        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, model, agent)
+            return await self._start_local_session(project_dir, title, message, caller_session_id, agent)
+        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, agent)
 
     async def _start_local_session(
         self,
@@ -770,7 +757,6 @@ class TeleClaudeMCPServer:
         title: str,
         message: str,
         caller_session_id: str | None = None,
-        model: str | None = None,
         agent: str = "claude",
     ) -> dict[str, object]:
         """Create session on local computer directly via handle_event.
@@ -780,7 +766,6 @@ class TeleClaudeMCPServer:
             title: Session title
             message: Initial prompt for agent
             caller_session_id: Optional caller's session ID for completion notifications
-            model: Optional model ('opus', 'sonnet', 'haiku')
             agent: Agent to start ('claude', 'gemini', 'codex')
 
         Returns:
@@ -796,7 +781,6 @@ class TeleClaudeMCPServer:
                 adapter_type="redis",
                 project_dir=project_dir,
                 title=title,
-                claude_model=model if agent == "claude" else None,
                 channel_metadata={"target_computer": self.computer_name},
             ),
         )
@@ -856,7 +840,6 @@ class TeleClaudeMCPServer:
         title: str,
         message: str,
         caller_session_id: str | None = None,
-        model: str | None = None,
         agent: str = "claude",
     ) -> dict[str, object]:
         """Create session on remote computer via Redis transport.
@@ -867,7 +850,6 @@ class TeleClaudeMCPServer:
             title: Session title
             message: Initial prompt for agent
             caller_session_id: Optional caller's session ID for completion notifications
-            model: Optional model ('opus', 'sonnet', 'haiku')
             agent: Agent to start ('claude', 'gemini', 'codex')
 
         Returns:
@@ -886,7 +868,6 @@ class TeleClaudeMCPServer:
         metadata = MessageMetadata(
             project_dir=project_dir,
             title=title,
-            claude_model=model if agent == "claude" else None,
         )
 
         message_id = await self.client.send_request(
