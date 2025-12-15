@@ -31,15 +31,15 @@ class _HasSessionId(Protocol):
     session_id: str
 
 
-def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[explicit-any]
+def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
     """Decorator to send adapter-specific error feedback on exceptions.
 
     Extracts session_id from first argument (str or Session.session_id) and
     calls adapter's send_error_feedback method before re-raising.
     """
 
-    @wraps(func)  # type: ignore[misc]
-    async def wrapper(self: Any, *args: object, **kwargs: object) -> Any:  # type: ignore[explicit-any, misc]
+    @wraps(func)
+    async def wrapper(self: Any, *args: object, **kwargs: object) -> Any:
         session_id: str | None = None
         if args:
             first_arg: object = args[0]
@@ -49,13 +49,13 @@ def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Aw
                 session_id = first_arg.session_id
 
         try:
-            return await func(self, *args, **kwargs)  # type: ignore[misc]
+            return await func(self, *args, **kwargs)
         except Exception as e:
             if session_id and hasattr(self, "send_error_feedback"):
                 await self.send_error_feedback(session_id, str(e))
             raise
 
-    return wrapper  # type: ignore[misc]
+    return wrapper
 
 
 class BaseAdapter(ABC):
@@ -77,7 +77,7 @@ class BaseAdapter(ABC):
         Returns:
             MessageMetadata with adapter_type set to this adapter's ADAPTER_KEY
         """
-        return MessageMetadata(adapter_type=self.ADAPTER_KEY, **kwargs)  # type: ignore[arg-type]
+        return MessageMetadata(adapter_type=self.ADAPTER_KEY, **kwargs)  # pyright: ignore[reportArgumentType]
 
     async def _get_session(self, session_id: str) -> "Session":
         """Get session from database, raise if not found.

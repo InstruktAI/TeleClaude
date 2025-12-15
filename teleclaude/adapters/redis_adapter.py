@@ -128,7 +128,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
-        redis_client: Redis = Redis.from_url(  # type: ignore[misc]
+        redis_client: Redis = Redis.from_url(
             self.redis_url,
             password=self.redis_password,
             max_connections=self.max_connections,
@@ -149,7 +149,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         while self._running:
             try:
                 self.redis = self._create_redis_client()
-                await self.redis.ping()  # type: ignore[misc]
+                await self.redis.ping()  # pyright: ignore[reportGeneralTypeIssues]
                 logger.info("Redis connection successful")
                 return
             except Exception as e:  # broad to keep daemon alive until Redis returns
@@ -168,7 +168,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 if self.redis:
                     await self.redis.aclose()
                 self.redis = self._create_redis_client()
-                await self.redis.ping()  # type: ignore[misc]
+                await self.redis.ping()  # pyright: ignore[reportGeneralTypeIssues]
                 logger.info("Redis reconnection successful")
                 return
             except Exception as e:  # broad to avoid crash loops
@@ -498,15 +498,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         try:
             # Find all heartbeat keys
             keys: object = await redis_client.keys(b"computer:*:heartbeat")
-            logger.debug("Found %d heartbeat keys", len(keys))  # type: ignore[arg-type]
+            logger.debug("Found %d heartbeat keys", len(keys))  # pyright: ignore[reportArgumentType]
 
             computers = []
-            for key in keys:  # type: ignore[misc, attr-defined]
+            for key in keys:  # pyright: ignore[reportGeneralTypeIssues]  # pyright: ignore[reportGeneralTypeIssues]
                 # Get data
-                data_bytes: object = await redis_client.get(key)  # type: ignore[misc]
+                data_bytes: object = await redis_client.get(key)
                 if data_bytes:
                     # Redis returns bytes - decode to str for json.loads
-                    data_str: str = data_bytes.decode("utf-8")  # type: ignore[attr-defined]
+                    data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
                     info_obj: object = json.loads(data_str)
                     if not isinstance(info_obj, dict):
                         continue
@@ -539,15 +539,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         try:
             # Find all heartbeat keys
             keys: object = await redis_client.keys(b"computer:*:heartbeat")
-            logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)  # type: ignore[arg-type]
+            logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)  # pyright: ignore[reportArgumentType]
 
             peers = []
-            for key in keys:  # type: ignore[misc, attr-defined]  # key is Any from Redis.keys() iteration, keys is object
+            for key in keys:  # pyright: ignore[reportGeneralTypeIssues]  # pyright: ignore[reportGeneralTypeIssues]
                 # Get data
-                data_bytes: object = await redis_client.get(key)  # type: ignore[misc]  # Redis.get() returns Any
+                data_bytes: object = await redis_client.get(key)
                 if data_bytes:
                     # Redis returns bytes - decode to str for json.loads
-                    data_str: str = data_bytes.decode("utf-8")  # type: ignore[attr-defined]  # Redis returns bytes
+                    data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
                     info_obj: object = json.loads(data_str)
                     if not isinstance(info_obj, dict):
                         continue
@@ -627,7 +627,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                         )
                     )
 
-            return sorted(peers, key=lambda p: p.name)  # type: ignore[misc]  # lambda inferred as Callable[[Any], Any]
+            return sorted(peers, key=lambda p: p.name)
 
         except Exception as e:
             logger.error("Failed to discover peers: %s", e)
@@ -682,7 +682,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                 logger.debug(
                     "XREAD returned %d stream(s) with messages",
-                    len(messages) if messages else 0,  # type: ignore[arg-type]  # messages is Any from Redis
+                    len(messages) if messages else 0,
                 )
 
                 if not messages:
@@ -697,29 +697,29 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     # stream_name and stream_messages come from Redis xread() - types are Any
                     stream_name_str: str = (
                         stream_name.decode("utf-8") if isinstance(stream_name, bytes) else str(stream_name)
-                    )  # type: ignore[misc]  # stream_name is Any
+                    )
                     logger.debug(
                         "Stream %s has %d message(s)",
                         stream_name_str,
-                        len(stream_messages),  # type: ignore[misc]  # stream_messages is Any from Redis
+                        len(stream_messages),
                     )
 
-                    for message_id, data in stream_messages:  # type: ignore[misc]  # message_id/data are Any from Redis
+                    for message_id, data in stream_messages:
                         logger.debug(
                             "Processing message %s with data keys: %s",
-                            message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,  # type: ignore[misc]  # message_id is Any
-                            [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],  # type: ignore[misc]  # k is Any from data.keys()
+                            message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,
+                            [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],
                         )
 
                         # Persist last_id BEFORE processing to prevent re-processing on restart
                         # This is critical for deploy commands that call os._exit(0)
                         last_id = message_id
-                        msg_id_str: str = last_id.decode("utf-8") if isinstance(last_id, bytes) else str(last_id)  # type: ignore[misc]  # last_id is Any
+                        msg_id_str: str = last_id.decode("utf-8") if isinstance(last_id, bytes) else str(last_id)
                         await self._set_last_processed_message_id(msg_id_str)
                         logger.debug("Saved last_id %s before processing", msg_id_str)
 
                         # Process message with Redis message_id for response correlation
-                        await self._handle_incoming_message(msg_id_str, data)  # type: ignore[misc]  # data is Any from Redis
+                        await self._handle_incoming_message(msg_id_str, data)
 
             except asyncio.CancelledError:
                 break
@@ -727,7 +727,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.error("Message polling error: %s", e)
                 await self._reconnect_with_backoff()
 
-    async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:  # type: ignore[explicit-any]  # pylint: disable=too-many-locals
+    async def _handle_incoming_message(self, message_id: str, data: dict[bytes, bytes]) -> Any:
         """Handle incoming message from Redis stream.
 
         Args:
@@ -760,7 +760,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 return
 
             # Emit event to daemon via client
-            event_type: EventType = cmd_name  # type: ignore[assignment]
+            event_type: EventType = cmd_name  # pyright: ignore[reportAssignmentType]  # pyright: ignore[reportAssignmentType]
 
             # MESSAGE and CLAUDE events use text in payload (keep message as single string)
             # Other commands use args list
@@ -826,7 +826,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             )
 
             # Start output stream listener for new AI-to-AI sessions
-            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":  # type: ignore[misc]  # result is Any | bool from handle_event()
+            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":
                 result_data = result.get("data")
                 if isinstance(result_data, dict):
                     new_session_id = result_data.get("session_id")
@@ -964,12 +964,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     continue
 
                 # Process incoming messages from initiator
-                for _stream_name, stream_messages in messages:  # type: ignore[misc]  # messages is Any from Redis
-                    for message_id, data in stream_messages:  # type: ignore[misc]  # stream_messages is Any from Redis
+                for _stream_name, stream_messages in messages:
+                    for message_id, data in stream_messages:
                         last_id = message_id
 
                         # Check if this is a message FROM the initiator (not our own output)
-                        chunk_bytes: bytes = data.get(b"chunk", b"")  # type: ignore[misc]  # data is Any from Redis
+                        chunk_bytes: bytes = data.get(b"chunk", b"")
                         chunk = chunk_bytes.decode("utf-8")
 
                         if not chunk:
@@ -1094,7 +1094,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})
         redis_client = self._require_redis()
-        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
+        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
         message_id = message_id_bytes.decode("utf-8")
 
         logger.debug("XADD returned message_id=%s", message_id)
@@ -1189,9 +1189,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     logger.debug(
                         "read_response() received response for message %s after %d polls", message_id[:8], poll_count
                     )
-                    for _stream_name, stream_messages in messages:  # type: ignore[misc]  # messages is Any from Redis
-                        for _entry_id, data in stream_messages:  # type: ignore[misc]  # stream_messages is Any from Redis
-                            chunk_bytes: bytes = data.get(b"chunk", b"")  # type: ignore[misc]  # data is Any from Redis
+                    for _stream_name, stream_messages in messages:
+                        for _entry_id, data in stream_messages:
+                            chunk_bytes: bytes = data.get(b"chunk", b"")
                             chunk: str = chunk_bytes.decode("utf-8")
                             if chunk:
                                 logger.debug(
@@ -1242,7 +1242,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Send to Redis stream
         logger.debug("Sending system command to %s: %s", computer_name, command)
         redis_client = self._require_redis()
-        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # type: ignore[arg-type]  # Redis xadd signature expects wider dict type
+        message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
 
         logger.info("Sent system command to %s: %s", computer_name, command)
         return message_id_bytes.decode("utf-8")
@@ -1265,13 +1265,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if not data:
             return {"status": "unknown"}
 
-        result_obj: object = json.loads(data.decode("utf-8"))  # type: ignore[misc]  # json.loads returns Any
+        result_obj: object = json.loads(data.decode("utf-8"))
         if not isinstance(result_obj, dict):
             return {"status": "error", "error": "Invalid result format"}
         result: dict[str, object] = result_obj
         return result
 
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # type: ignore[override, misc]  # mypy false positive with async generators  # pylint: disable=too-many-locals
+    async def poll_output_stream(self, session_id: str, timeout: float = 300.0) -> AsyncIterator[str]:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Poll output stream and yield chunks as they arrive.
 
         Used by MCP server to stream output from remote sessions.
@@ -1326,20 +1326,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     idle_count = 0
 
                     # Process messages
-                    for _stream_name, stream_messages in messages:  # type: ignore[misc]  # messages is Any from Redis
-                        for message_id, data in stream_messages:  # type: ignore[misc]  # stream_messages is Any from Redis
-                            chunk = data.get(b"chunk", b"").decode("utf-8")  # type: ignore[misc]  # data is Any from Redis
+                    for _stream_name, stream_messages in messages:
+                        for message_id, data in stream_messages:
+                            chunk = data.get(b"chunk", b"").decode("utf-8")
 
-                            if not chunk:  # type: ignore[misc]  # chunk type inferred from decode
+                            if not chunk:
                                 continue
 
                             # Check for completion marker
-                            if "[Output Complete]" in chunk:  # type: ignore[misc]  # chunk type inferred from decode
+                            if "[Output Complete]" in chunk:
                                 logger.info("Received completion marker for session %s", session_id[:8])
                                 return
 
                             # Yield chunk content
-                            content = self._extract_chunk_content(chunk)  # type: ignore[misc]  # chunk type inferred from decode
+                            content = self._extract_chunk_content(chunk)
                             if content:
                                 yield content
                                 last_yield_time = time.time()
