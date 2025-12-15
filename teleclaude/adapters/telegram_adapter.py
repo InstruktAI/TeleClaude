@@ -1361,13 +1361,7 @@ Current size: {current_size}
         await self._pre_handle_user_input(session)
         await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
 
-        # Get Agent session ID from ux_state
-        ux_state = await db.get_ux_state(session.session_id)
-        native_session_id = ux_state.native_session_id
-
-        if not native_session_id:
-            await self.send_feedback(session, "❌ No Agent session found in this topic", MessageMetadata())
-            return
+        # native_session_id is optional - restart script handles missing ID by starting fresh
 
         try:
             # Execute restart script via Python module

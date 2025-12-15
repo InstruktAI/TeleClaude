@@ -1124,6 +1124,9 @@ async def handle_agent_start(
     cmd = " ".join(cmd_parts)
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
+    # Save active agent to UX state
+    await db.update_ux_state(session.session_id, active_agent=agent_name)
+
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))
     await execute_terminal_command(session.session_id, cmd, message_id, True)
@@ -1161,6 +1164,9 @@ async def handle_agent_resume(
 
     cmd = " ".join(cmd_parts)
     logger.info("Executing agent resume command for %s: %s", agent_name, cmd)
+
+    # Save active agent to UX state
+    await db.update_ux_state(session.session_id, active_agent=agent_name)
 
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))

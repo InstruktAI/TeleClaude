@@ -580,6 +580,7 @@ class Db:
         notification_sent: bool | object = ux_state._UNSET,
         native_session_id: Optional[str] | object = ux_state._UNSET,
         native_log_file: Optional[str] | object = ux_state._UNSET,
+        active_agent: Optional[str] | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
 
@@ -592,6 +593,7 @@ class Db:
             notification_sent: Whether Agent notification was sent (optional)
             native_session_id: Native agent session ID (optional)
             native_log_file: Path to native agent log file (optional)
+            active_agent: Name of the active agent (optional)
         """
         await update_session_ux_state(
             self.conn,
@@ -603,6 +605,7 @@ class Db:
             notification_sent=notification_sent,
             native_session_id=native_session_id,
             native_log_file=native_log_file,
+            active_agent=active_agent,
         )
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:

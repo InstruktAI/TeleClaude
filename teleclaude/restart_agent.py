@@ -27,20 +27,22 @@ from teleclaude.logging_config import setup_logging
 logger = logging.getLogger(__name__)
 
 
-async def restart_agent_in_session(session: Session, agent_name: str = "claude") -> bool:
+async def restart_agent_in_session(session: Session, agent_name: Optional[str] = None) -> bool:
     """Restart Agent in a TeleClaude session.
 
     Args:
         session: Session object from database
-        agent_name: Name of agent to restart (default: "claude")
+        agent_name: Name of agent to restart (optional, derived from session if missing)
 
     Returns:
         True if restart command was sent successfully, False otherwise
     """
-    logger.info("Restarting %s in session %s (tmux: %s)", agent_name, session.session_id[:8], session.tmux_session_name)
+    logger.info("Restarting agent in session %s (tmux: %s)", session.session_id[:8], session.tmux_session_name)
 
-    # Extract native session ID from ux_state
+    # Extract native session ID and active agent from ux_state
     native_session_id: Optional[str] = None
+    active_agent: Optional[str] = None
+
     if session.ux_state:
         try:
             ux_state_raw: object = json.loads(session.ux_state)
@@ -49,8 +51,22 @@ async def restart_agent_in_session(session: Session, agent_name: str = "claude")
                 val: object = ux_state_raw.get("native_session_id") or ux_state_raw.get("claude_session_id")
                 if val:
                     native_session_id = str(val)
+
+                agent_val: object = ux_state_raw.get("active_agent")
+                if agent_val:
+                    active_agent = str(agent_val)
         except (json.JSONDecodeError, AttributeError) as e:
             logger.warning("Failed to parse ux_state for session %s: %s", session.session_id[:8], e)
+
+    # Determine agent name: argument > ux_state
+    target_agent = agent_name or active_agent
+    if not target_agent:
+        logger.error(
+            "Cannot determine active agent for session %s. Please specify agent_name or ensure it's saved in UX state.",
+            session.session_id[:8],
+        )
+        return False
+    logger.info("Target agent: %s", target_agent)
 
     # Kill any existing process (send CTRL+C twice)
     logger.debug("Sending CTRL+C twice to kill any existing process...")
@@ -62,9 +78,9 @@ async def restart_agent_in_session(session: Session, agent_name: str = "claude")
         await asyncio.sleep(1.0)  # Wait for process to exit
 
     # Get agent command from config
-    agent_config = config.agents.get(agent_name)
+    agent_config = config.agents.get(target_agent)
     if not agent_config:
-        logger.error("Unknown agent: %s", agent_name)
+        logger.error("Unknown agent: %s", target_agent)
         return False
 
     base_cmd = agent_config.command.strip()
@@ -77,11 +93,11 @@ async def restart_agent_in_session(session: Session, agent_name: str = "claude")
         # Ideally agent config should have a resume_template.
         # But for now, we assume standard CLI pattern: cmd --resume ID
         restart_cmd = f"{base_cmd} --resume {native_session_id}"
-        logger.info("Resuming %s session %s (from database)", agent_name, native_session_id[:8])
+        logger.info("Resuming %s session %s (from database)", target_agent, native_session_id[:8])
     else:
         # No session ID - just start fresh (or resume default if agent handles it)
         restart_cmd = base_cmd
-        logger.info("Starting fresh %s session (no session ID in database)", agent_name)
+        logger.info("Starting fresh %s session (no session ID in database)", target_agent)
 
     # Send restart command via tmux
     success, _ = await terminal_bridge.send_keys(
@@ -121,16 +137,13 @@ async def main() -> None:
             logger.error("No TeleClaude session found for session ID %s", teleclaude_session_id)
             sys.exit(1)
 
-        # Determine agent name - for now default to "claude" as we don't store active agent yet
-        # TODO: Retrieve active agent from Session/UXState once implemented
-        agent_name = "claude"
+        logger.info("Restarting active agent in TeleClaude session %s", teleclaude_session_id[:8])
 
-        logger.info("Restarting %s in TeleClaude session %s", agent_name, teleclaude_session_id[:8])
-
-        success = await restart_agent_in_session(session, agent_name)
+        # Don't pass agent_name - let it derive from session
+        success = await restart_agent_in_session(session)
         if not success:
+            logger.error("Failed to restart agent for session %s. See logs for details.", teleclaude_session_id[:8])
             sys.exit(1)
-
     finally:
         await db_instance.close()
 

@@ -6,6 +6,31 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+@pytest.fixture
+async def mock_initialized_db(monkeypatch):
+    """Fixture to provide a mocked, initialized database connection."""
+    import aiosqlite
+
+    from teleclaude.core.db import Db
+
+    # Create an in-memory SQLite database
+    mock_conn = await aiosqlite.connect(":memory:")
+    await mock_conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, ux_state TEXT)")
+    await mock_conn.commit()
+
+    # Create a mock Db instance that uses our in-memory connection
+    mock_db_instance = Db(":memory:")
+    mock_db_instance._db = mock_conn  # Directly set the connection
+
+    # Patch the global db object in command_handlers module
+    monkeypatch.setattr("teleclaude.core.command_handlers.db", mock_db_instance)
+    monkeypatch.setattr("teleclaude.core.db.db", mock_db_instance)  # Also patch the singleton itself
+
+    yield mock_db_instance
+
+    await mock_conn.close()
+
+
 @pytest.mark.asyncio
 async def test_handle_get_computer_info_returns_system_stats():
     """Test that handle_get_computer_info returns system stats."""
@@ -408,7 +433,7 @@ async def test_handle_ctrl_requires_key_argument():
 
 
 @pytest.mark.asyncio
-async def test_handle_agent_start_executes_command_with_args():
+async def test_handle_agent_start_executes_command_with_args(mock_initialized_db):
     """Test that handle_agent_start executes agent's command with provided arguments."""
     from teleclaude.config import AgentConfig
     from teleclaude.core import command_handlers
@@ -446,7 +471,7 @@ async def test_handle_agent_start_executes_command_with_args():
 
 
 @pytest.mark.asyncio
-async def test_handle_agent_start_executes_command_without_extra_args_if_none_provided():
+async def test_handle_agent_start_executes_command_without_extra_args_if_none_provided(mock_initialized_db):
     """Test that handle_agent_start executes agent's command correctly when no extra args are provided."""
     from teleclaude.config import AgentConfig
     from teleclaude.core import command_handlers
@@ -478,7 +503,7 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 
 
 @pytest.mark.asyncio
-async def test_handle_agent_resume_executes_command_with_args():
+async def test_handle_agent_resume_executes_command_with_args(mock_initialized_db):
     """Test that handle_agent_resume executes agent's command with provided arguments."""
     from teleclaude.config import AgentConfig
     from teleclaude.core import command_handlers
