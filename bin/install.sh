@@ -702,6 +702,19 @@ setup_mcp_config() {
     print_info "Using mcp-wrapper.py at: $INSTALL_DIR/bin/mcp-wrapper.py"
 }
 
+# Setup agent hooks
+setup_agent_hooks() {
+    print_header "Configuring Agent Hooks"
+    print_info "Running scripts/install_hooks.py..."
+    
+    if "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/scripts/install_hooks.py"; then
+        print_success "Agent hooks configured"
+    else
+        print_error "Failed to configure agent hooks"
+        # Don't exit, might be partial failure
+    fi
+}
+
 # Main installation flow
 main() {
     print_header "TeleClaude Installation"
@@ -730,6 +743,9 @@ main() {
 
     # Configure MCP integration
     setup_mcp_config
+
+    # Configure Agent Hooks
+    setup_agent_hooks
 
     # Success message
     print_header "Installation Complete!"

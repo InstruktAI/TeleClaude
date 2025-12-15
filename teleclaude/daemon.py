@@ -29,6 +29,7 @@ from teleclaude.core import (
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_parsers import CodexParser
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
@@ -53,6 +54,7 @@ from teleclaude.core.session_listeners import (
     pop_listeners,
 )
 from teleclaude.core.session_utils import get_output_file
+from teleclaude.core.session_watcher import SessionWatcher
 from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
@@ -124,6 +126,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
+
+        # Initialize session watcher for file-based hooks (Universal Hooks)
+        self.session_watcher = SessionWatcher(self.client)
+        self.session_watcher.register_parser("codex", CodexParser())
 
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
@@ -861,6 +867,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             get_output_file=self._get_output_file_path,
         )
 
+        # Start session watcher
+        await self.session_watcher.start()
+        logger.info("Session watcher started")
+
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
 
     async def stop(self) -> None:
@@ -884,6 +894,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Periodic cleanup task stopped")
+
+        # Stop session watcher
+        if hasattr(self, "session_watcher"):
+            await self.session_watcher.stop()
+            logger.info("Session watcher stopped")
 
         # Stop all adapters
         for adapter_name, adapter in self.client.adapters.items():

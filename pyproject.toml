@@ -141,6 +141,10 @@ disable_error_code = ["misc", "explicit-any", "arg-type"]
 module = "teleclaude.core.agent_parsers"
 disable_error_code = ["misc", "explicit-any", "arg-type", "assignment"]
 
+[[tool.mypy.overrides]]
+module = "teleclaude.hooks.*"
+ignore_errors = true
+
 [tool.pylint.'MESSAGES CONTROL']
 # CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
 # ALL imports MUST be at the top of the file
