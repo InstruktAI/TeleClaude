@@ -18,7 +18,7 @@ cd "$PROJECT_ROOT"
 
 # Configuration
 PID_FILE="$PROJECT_ROOT/teleclaude.pid"
-LOG_FILE="/var/log/teleclaude.log"
+LOG_FILE="logs/teleclaude.log"
 
 # Platform-specific config
 if [[ "$OSTYPE" == "darwin"* ]]; then

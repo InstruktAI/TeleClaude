@@ -25,8 +25,9 @@ Implement a robust, agent-agnostic event system that monitors session log files 
 
 ### 4. Architecture Updates
 - **New Component:** `SessionWatcher` service that runs alongside `OutputPoller`.
-- **Decoupling:** Deprecate/remove `teleclaude__handle_claude_event` MCP tool (incoming webhooks).
-- **Unified Event Flow:** All agent events should originate from `SessionWatcher` -> `AdapterClient.handle_event`.
+- **Decoupling:** Deprecate/remove `teleclaude__handle_agent_event` MCP tool (incoming webhooks).
+- **Unified Event Flow:** Agent events must all reach `teleclaude__handle_agent_event`; `SessionWatcher` only generates events for agents that lack native hooks (e.g., Codex), while Claude/Gemini keep their hook-based plumbing.
+- **Testing Gap:** Gemini hooks have never been exercised by automated tests and should be validated before relying on them in production.
 
 ## Technical constraints
 - **Performance:** File watching must be efficient (inotify/kqueue where available, or optimized polling).

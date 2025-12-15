@@ -157,7 +157,7 @@ redis:
 grep -A 2 "^redis:" config.yml | grep enabled
 
 # 2. Check for startup errors in logs
-tail -100 /var/log/teleclaude.log | grep -i redis
+tail -100 logs/teleclaude.log | grep -i redis
 
 # 3. Verify redis package is installed
 .venv/bin/pip list | grep redis
@@ -211,7 +211,7 @@ launchctl unload ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
 launchctl load ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
 
 # View logs
-tail -f /var/log/teleclaude.log
+tail -f logs/teleclaude.log
 ```
 
 **Note:** It is acceptable to kill the daemon process directly (e.g., `kill <PID>`). The service will automatically restart it within 10 seconds.
@@ -222,26 +222,26 @@ tail -f /var/log/teleclaude.log
 
 ```bash
 # Monitor daemon logs in real-time
-tail -f /var/log/teleclaude.log
+tail -f logs/teleclaude.log
 ```
 
 ### CRITICAL: When Debugging Log Issues
 
 1. **ALWAYS check timestamps first** - Don't assume logs are current
-2. **Check if logs were rotated/cleared** - Look for gaps in timestamps or check file modification time with `ls -lh /var/log/teleclaude.log`
+2. **Check if logs were rotated/cleared** - Look for gaps in timestamps or check file modification time with `ls -lh logs/teleclaude.log`
 3. **Use precise time ranges** - When searching logs, use timestamps from the logs themselves, not assumptions
 4. **Example workflow:**
 
    ```bash
    # Check log file age and size
-   ls -lh /var/log/teleclaude.log
+   ls -lh logs/teleclaude.log
 
    # Check first and last timestamps
-   head -5 /var/log/teleclaude.log  # First entries
-   tail -5 /var/log/teleclaude.log  # Most recent entries
+   head -5 logs/teleclaude.log  # First entries
+   tail -5 logs/teleclaude.log  # Most recent entries
 
    # Search for specific time range
-   grep "2025-10-31 16:4[0-9]:" /var/log/teleclaude.log | grep -E "(Command|Message|ERROR)"
+   grep "2025-10-31 16:4[0-9]:" logs/teleclaude.log | grep -E "(Command|Message|ERROR)"
    ```
 
 5. **Before testing** - Note the current time and look for log entries AFTER that time

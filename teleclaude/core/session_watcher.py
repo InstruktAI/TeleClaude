@@ -14,6 +14,7 @@ from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.parsers import LogParser
+from teleclaude.core.summarizer import summarizer
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -158,7 +159,7 @@ class SessionWatcher:
 
             # Emit session_start event immediately
             await self.client.handle_event(
-                TeleClaudeEvents.CLAUDE_EVENT,  # Generic event name for hooks
+                TeleClaudeEvents.AGENT_EVENT,  # Generic event name for hooks
                 {
                     "event_type": "session_start",
                     "session_id": target_session.session_id,
@@ -212,13 +213,21 @@ class SessionWatcher:
                             # parser yields LogEvent(event_type, data, timestamp)
                             # We use CLAUDE_EVENT (hook event) as the generic bus for now
 
-                            payload_data = event.data
+                            payload_data = event.data.copy()
+
+                            # Enrich stop events with summary using centralized summarizer
+                            if event.event_type == "stop":
+                                try:
+                                    summary_data = await summarizer.summarize_session(session.session_id)
+                                    payload_data.update(summary_data)
+                                except Exception as e:
+                                    logger.error("Failed to summarize session %s: %s", session.session_id[:8], e)
 
                             # Add native session ID if available in DB/file
                             # (parser might extract it from content too)
 
                             await self.client.handle_event(
-                                TeleClaudeEvents.CLAUDE_EVENT,
+                                TeleClaudeEvents.AGENT_EVENT,
                                 {
                                     "event_type": event.event_type,
                                     "session_id": session.session_id,  # TeleClaude ID

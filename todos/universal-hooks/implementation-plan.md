@@ -23,7 +23,7 @@
 
 - [x] **Create Hook Script:** Created `receiver_gemini.py` and consolidated bridge scripts in `teleclaude/hooks/`.
 - [x] **Configure Gemini:** Created `scripts/install_hooks.py` and integrated into `bin/install.sh`.
-- [x] **Update MCP Server:** Verified `teleclaude__handle_claude_event` handles generic events.
+- [x] **Update MCP Server:** Verified `teleclaude__handle_agent_event` handles generic events.
 
 ## Group 5: Integration & Cleanup
 

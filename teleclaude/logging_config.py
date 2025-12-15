@@ -9,6 +9,8 @@ import logging
 import os
 import sys
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional
 
 # Add TRACE level (below DEBUG)
@@ -99,12 +101,13 @@ class PathFormatter(logging.Formatter):
 
 def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -> None:
     """
-    Setup logging with standardized format.
+    Setup logging with standardized format and rotation.
 
     Args:
         level: Log level (TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL)
                Defaults to LOG_LEVEL env var or INFO
-        log_file: Optional file path to write logs to (in addition to console)
+        log_file: Optional file path to write main log to.
+                  If not provided, uses logs/teleclaude.log in project root.
     """
     level = level or os.getenv("LOG_LEVEL", "INFO").upper()
 
@@ -128,30 +131,68 @@ def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -
         use_colors=False,
     )
 
+    # Determine logs directory
+    project_root = Path(__file__).parent.parent
+    logs_dir = project_root / "logs"
+    try:
+        logs_dir.mkdir(exist_ok=True)
+    except (PermissionError, OSError) as e:
+        print(f"Warning: Could not create logs directory {logs_dir}: {e}", file=sys.stderr)
+        # Fallback to /tmp if project dir is not writable
+        logs_dir = Path(f"/tmp/teleclaude-{os.getpid()}-logs")
+        logs_dir.mkdir(exist_ok=True)
+
+    # Configure specific loggers (Actors)
+    # Map logger name prefix -> filename
+    actor_logs = {
+        "teleclaude.daemon": "daemon.log",
+        "teleclaude.mcp_server": "mcp_server.log",
+        "teleclaude.adapters.telegram_adapter": "telegram.log",
+        "teleclaude.adapters.redis_adapter": "redis.log",
+        "teleclaude.core": "core.log",
+        "teleclaude.mcp_wrapper": "mcp-wrapper.log",
+    }
+
+    for logger_name, filename in actor_logs.items():
+        actor_logger = logging.getLogger(logger_name)
+        # Prevent double logging if handler already exists (e.g. re-import)
+        if not any(isinstance(h, RotatingFileHandler) for h in actor_logger.handlers):
+            try:
+                log_path = logs_dir / filename
+                handler = RotatingFileHandler(
+                    log_path,
+                    maxBytes=1024 * 1024,  # 1MB
+                    backupCount=5,
+                    encoding="utf-8",
+                )
+                handler.setFormatter(file_formatter)
+                actor_logger.addHandler(handler)
+            except (PermissionError, OSError) as e:
+                print(f"Warning: Could not set up log for {logger_name}: {e}", file=sys.stderr)
+
     handlers: list[logging.Handler] = []
 
-    # File handler (if specified) - ALWAYS use this
-    if log_file:
-        try:
-            # Ensure log directory exists
-            log_dir = os.path.dirname(log_file)
-            if log_dir:
-                os.makedirs(log_dir, exist_ok=True)
+    # Main Log File (Root Logger)
+    # Use provided log_file OR default to logs/teleclaude.log
+    main_log_path = Path(log_file) if log_file else (logs_dir / "teleclaude.log")
 
-            file_handler = logging.FileHandler(log_file, encoding="utf-8")
-            file_handler.setFormatter(file_formatter)
-            handlers.append(file_handler)
-        except (PermissionError, OSError) as e:
-            # Fall back to /tmp/ if configured log file is not writable (e.g., CI environments)
-            fallback_log = f"/tmp/teleclaude-{os.getpid()}.log"
-            file_handler = logging.FileHandler(fallback_log, encoding="utf-8")
-            file_handler.setFormatter(file_formatter)
-            handlers.append(file_handler)
-            # Log warning about fallback (will be written to fallback file)
-            print(f"Warning: Could not write to {log_file}: {e}. Using fallback: {fallback_log}", file=sys.stderr)
+    try:
+        # Ensure parent dir exists (if custom path provided)
+        if log_file:
+            main_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        file_handler = RotatingFileHandler(
+            main_log_path,
+            maxBytes=1024 * 1024,  # 1MB
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(file_formatter)
+        handlers.append(file_handler)
+    except (PermissionError, OSError) as e:
+        print(f"Warning: Could not write to {main_log_path}: {e}", file=sys.stderr)
 
     # Console handler - only if stdout is a TTY (interactive terminal)
-    # This avoids duplicates when launchd/nohup redirects stdout to the log file
     if sys.stdout.isatty():  # type: ignore[misc]
         console = logging.StreamHandler()
         console.setFormatter(console_formatter)
@@ -159,4 +200,5 @@ def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -
 
     # Configure root logger
     logging.root.setLevel(level_const)
+    # Clear existing handlers to avoid duplicates on reload
     logging.root.handlers = handlers

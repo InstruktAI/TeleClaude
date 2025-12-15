@@ -36,12 +36,13 @@ telegram:
         - teleclaude_server_bot
         # Add other computer bot usernames here
 
+agents:
     # agent_name:
     #   command: "command_to_run_agent_on_terminal"
     claude:
         command: "claude --dangerously-skip-permissions --settings '{\"forceLoginMethod\": \"claudeai\"}'"
     gemini:
-        command: "gemini --yolo" # Example for Gemini
+        command: "gemini --yolo --model=gemini-3-pro-preview" # Example for Gemini
     codex:
         command: "codex --dangerously-bypass-approvals-and-sandbox --search" # Example for Codex
 

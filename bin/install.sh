@@ -21,7 +21,7 @@ LOG_FILE="${INSTALL_DIR}/install.log"
 PYTHON_MIN_VERSION="3.11"
 TMUX_MIN_VERSION="3.0"
 NON_INTERACTIVE=false
-DAEMON_LOG_FILE="/var/log/teleclaude.log"
+DAEMON_LOG_FILE="${INSTALL_DIR}/logs/teleclaude.log"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -761,7 +761,7 @@ main() {
     print_info "The daemon is running as a system service and will:"
     echo "  • Start automatically on boot"
     echo "  • Restart automatically if it crashes"
-    echo "  • Log to: /var/log/teleclaude.log"
+    echo "  • Log to: logs/teleclaude.log"
     echo ""
     print_warning "IMPORTANT: Do NOT manually start the daemon!"
     print_warning "The service manages the daemon automatically."

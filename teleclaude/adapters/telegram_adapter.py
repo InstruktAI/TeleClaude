@@ -51,6 +51,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from teleclaude.config import config
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
@@ -61,7 +62,10 @@ from teleclaude.core.ux_state import (
     update_system_ux_state,
 )
 from teleclaude.utils import command_retry
-from teleclaude.utils.claude_transcript import parse_claude_transcript
+from teleclaude.utils.claude_transcript import (
+    get_transcript_parser_info,
+    parse_session_transcript,
+)
 
 from .base_adapter import AdapterError
 from .ui_adapter import UiAdapter
@@ -1414,9 +1418,19 @@ Current size: {current_size}
                 return
 
             try:
-                # Check if there's a Claude Code session transcript
+                # Check if there's a session transcript
                 ux_state = await db.get_ux_state(session_id)
                 native_log_file = ux_state.native_log_file if ux_state else None
+                agent_value = ux_state.active_agent if ux_state else None
+                if not agent_value:
+                    await query.edit_message_text("❌ Active agent unknown for this session", parse_mode="Markdown")
+                    return
+                try:
+                    agent_name = AgentName.from_str(agent_value)
+                except ValueError as exc:
+                    await query.edit_message_text(f"❌ {exc}", parse_mode="Markdown")
+                    return
+                parser_info = get_transcript_parser_info(agent_name)
 
                 # Get session for metadata
                 session = await db.get_session(session_id)
@@ -1426,13 +1440,20 @@ Current size: {current_size}
                 # Clean up previous feedback messages (notifications, etc.) before sending download
                 await self.cleanup_feedback_messages(session)
 
-                # Convert Claude transcript to markdown
+                # Convert transcript to markdown
                 if not native_log_file:
-                    await query.edit_message_text("❌ No Claude session file found", parse_mode="Markdown")
+                    await query.edit_message_text(
+                        f"❌ No {parser_info.display_name} session file found", parse_mode="Markdown"
+                    )
                     return
-                markdown_content = parse_claude_transcript(native_log_file, session.title, tail_chars=0)
-                filename = f"claude-{session_id:8}.md"
-                caption = "Claude Code session transcript"
+                markdown_content = parse_session_transcript(
+                    native_log_file,
+                    session.title,
+                    agent_name=agent_name,
+                    tail_chars=0,
+                )
+                filename = f"{parser_info.file_prefix}-{session_id:8}.md"
+                caption = f"{parser_info.display_name} session transcript"
 
                 # Create a temporary file to send
                 with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False, encoding="utf-8") as tmp:

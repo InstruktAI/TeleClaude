@@ -1,236 +1,319 @@
 #!/usr/bin/env python3
 # pylint: skip-file
 # mypy: ignore-errors
-"""MCP wrapper that injects TeleClaude context and handles daemon restarts via transparent reconnection."""
+"""Resilient MCP wrapper that handles backend server restarts.
 
-from __future__ import annotations
+Dynamically extracts tool definitions from mcp_server.py at startup.
+"""
 
+import asyncio
 import json
+import logging
 import os
-import select
-import socket
+import re
 import sys
-import time
-from typing import MutableMapping, Optional
+from pathlib import Path
+from typing import MutableMapping
+
+# Configure logging to file (NEVER stdout/stderr - breaks MCP stdio transport)
+LOG_FILE = Path(__file__).parent.parent / "logs" / "mcp-wrapper.log"
+LOG_FILE.parent.mkdir(exist_ok=True)
+logging.basicConfig(
+    filename=str(LOG_FILE),
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
-RECONNECT_DELAY = 0.5  # Seconds between reconnection attempts
-
-# Context values to inject into arguments
 CONTEXT_TO_INJECT: dict[str, str] = {"caller_session_id": "TELECLAUDE_SESSION_ID"}
+RECONNECT_DELAY = 5
+CONNECTION_TIMEOUT = 10
+
+# If true, always proxy to backend (never use cached handshake)
+DISABLE_STATIC_HANDSHAKE = os.getenv("MCP_DISABLE_STATIC_HANDSHAKE", "false").lower() == "true"
+
+
+def extract_tools_from_mcp_server() -> list[str]:
+    """Extract tool names from mcp_server.py by grepping for teleclaude__ pattern.
+
+    Excludes internal-only tools that should not be exposed to MCP clients.
+    """
+    script_dir = Path(__file__).parent
+    mcp_server_path = script_dir.parent / "teleclaude" / "mcp_server.py"
+
+    if not mcp_server_path.exists():
+        logger.warning("mcp_server.py not found at %s", mcp_server_path)
+        return []
+
+    content = mcp_server_path.read_text()
+    # Match: name="teleclaude__something"
+    pattern = r'name="(teleclaude__[a-z_]+)"'
+    matches = re.findall(pattern, content)
+
+    # Exclude internal-only tools (used by hooks, not for client invocation)
+    excluded = {"teleclaude__handle_agent_event"}
+    tools = [tool for tool in matches if tool not in excluded]
+
+    return list(dict.fromkeys(tools))  # Dedupe while preserving order
+
+
+def build_response_template(tool_names: list[str]) -> tuple[str, str]:
+    """Pre-build response templates with placeholder for request ID.
+
+    Returns:
+        Tuple of (response_template, notification) where response_template
+        contains __REQUEST_ID__ placeholder for string replacement.
+    """
+    # Pre-serialize response structure for maximum speed
+    # Use string template with unique placeholder to avoid JSON parsing overhead at runtime
+    tools_json = json.dumps(tool_names)
+    # Build template with __REQUEST_ID__ placeholder for str.replace()
+    response_template = (
+        '{"jsonrpc":"2.0","id":__REQUEST_ID__,"result":{'
+        '"protocolVersion":"2024-11-05",'
+        '"capabilities":{"tools":{}},'
+        '"serverInfo":{"name":"TeleClaude","version":"1.0.0","tools_available":' + tools_json + "}}}"
+    )
+    notification = '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
+    return response_template, notification
+
+
+# Extract tools and pre-build templates at module load time (zero runtime overhead)
+TOOL_NAMES = extract_tools_from_mcp_server()
+RESPONSE_TEMPLATE, NOTIFICATION = build_response_template(TOOL_NAMES)
 
 
 def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, object]:
-    """Inject TeleClaude context into params.arguments."""
-    arguments_obj = params.get("arguments")
-    arguments: MutableMapping[str, object] = dict(arguments_obj) if isinstance(arguments_obj, MutableMapping) else {}
+    """Inject context from environment variables into tool call params."""
+    arguments = params.get("arguments", {})
+    if not isinstance(arguments, MutableMapping):
+        arguments = {}
 
-    for field_name, env_var in CONTEXT_TO_INJECT.items():
-        env_value = os.environ.get(env_var)
-        if env_value is not None:
-            arguments[field_name] = env_value
+    for param_name, env_var in CONTEXT_TO_INJECT.items():
+        if param_name not in arguments:
+            env_value = os.environ.get(env_var)
+            if env_value:
+                arguments[param_name] = env_value
 
     params["arguments"] = arguments
     return params
 
 
-class McpProxy:
-    """Stateful proxy that maintains MCP connection across daemon restarts."""
+def process_message(
+    message: MutableMapping[str, object],
+) -> MutableMapping[str, object]:
+    """Process outgoing messages, injecting context where needed."""
+    if message.get("method") == "tools/call":
+        params = message.get("params")
+        if isinstance(params, MutableMapping):
+            message["params"] = inject_context(params)
+    return message
 
-    def __init__(self, socket_path: str):
-        self.socket_path = socket_path
-        self.sock: Optional[socket.socket] = None
-        self.cached_initialize_request: Optional[dict] = None
-        self.is_connected = False
 
-        # Buffer for data from stdin when socket is down
-        self.stdin_buffer: list[bytes] = []
-        # Buffer for incomplete socket reads
-        self.socket_buffer = b""
+class MCPProxy:
+    """Async proxy between MCP client (stdio) and TeleClaude server (unix socket)."""
 
-    def connect(self) -> bool:
-        """Attempt to connect to the daemon socket."""
-        try:
-            if self.sock:
-                self.sock.close()
+    def __init__(self):
+        self.reader: asyncio.StreamReader | None = None
+        self.writer: asyncio.StreamWriter | None = None
+        self.connected = asyncio.Event()
+        self.shutdown = asyncio.Event()
 
-            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.sock.connect(self.socket_path)
-            self.sock.setblocking(False)
-            self.is_connected = True
-
-            # If we are reconnecting (have cached init), perform silent handshake
-            if self.cached_initialize_request:
-                self._perform_silent_handshake()
-
-            return True
-        except (FileNotFoundError, ConnectionRefusedError, OSError):
-            self.is_connected = False
-            return False
-
-    def _perform_silent_handshake(self):
-        """Replay initialize request and swallow the response."""
-        if not self.sock or not self.cached_initialize_request:
-            return
-
-        # 1. Send cached 'initialize'
-        init_json = json.dumps(self.cached_initialize_request) + "\n"
-        try:
-            self.sock.sendall(init_json.encode())
-        except OSError:
-            self.is_connected = False
-            return
-
-        # 2. Consume responses until we get the result and the initialized notification
-        # This is a blocking read with timeout because we MUST clear the pipe before allowing traffic
-        self.sock.setblocking(True)
-        self.sock.settimeout(2.0)
-
-        try:
-            temp_buffer = b""
-            handshake_complete = False
-            # We expect a response to ID and potentially a notification
-            expected_id = self.cached_initialize_request.get("id")
-
-            while not handshake_complete:
-                chunk = self.sock.recv(4096)
-                if not chunk:
-                    break
-                temp_buffer += chunk
-
-                while b"\n" in temp_buffer:
-                    line, temp_buffer = temp_buffer.split(b"\n", 1)
-                    try:
-                        msg = json.loads(line)
-                        # Check if this is the response to our init
-                        if msg.get("id") == expected_id:
-                            # Send 'notifications/initialized' if the protocol requires client to send it after result
-                            # (MCP spec: Client sends initialized notification after receiving initialize result)
-                            initialized_msg = {"jsonrpc": "2.0", "method": "notifications/initialized"}
-                            self.sock.sendall((json.dumps(initialized_msg) + "\n").encode())
-                            handshake_complete = True
-                    except json.JSONDecodeError:
-                        pass
-
-        except (socket.timeout, OSError):
-            # If handshake fails, we'll just try again in the main loop
-            self.is_connected = False
-        finally:
-            if self.sock:
-                self.sock.setblocking(False)
-
-    def process_stdin_line(self, line: str) -> None:
-        """Process a line from stdin (Agent -> Daemon)."""
-        try:
-            msg = json.loads(line)
-
-            # Cache initialize request if seen
-            if msg.get("method") == "initialize":
-                self.cached_initialize_request = msg
-
-            # Inject context into tool calls
-            if msg.get("method") == "tools/call":
-                params = msg.get("params", {})
-                if isinstance(params, dict):
-                    msg["params"] = inject_context(params)
-
-            payload = (json.dumps(msg) + "\n").encode()
-
-            if self.is_connected and self.sock:
-                try:
-                    self.sock.sendall(payload)
-                except OSError:
-                    self.is_connected = False
-                    self.stdin_buffer.append(payload)
-            else:
-                self.stdin_buffer.append(payload)
-
-        except json.JSONDecodeError:
-            # Forward raw if not JSON (shouldn't happen in MCP, but safe fallback)
-            payload = line.encode()
-            if self.is_connected and self.sock:
-                try:
-                    self.sock.sendall(payload)
-                except OSError:
-                    self.is_connected = False
-                    self.stdin_buffer.append(payload)
-            else:
-                self.stdin_buffer.append(payload)
-
-    def run(self):
-        """Main event loop."""
-        # Initial connection with timeout
-        start_time = time.time()
-        while not self.connect():
-            if time.time() - start_time > 5.0:
-                # Fail gracefully so agent can continue (albeit without this tool)
-                sys.stderr.write("Error: Could not connect to TeleClaude daemon within 5 seconds.\n")
-                sys.exit(1)
-            time.sleep(RECONNECT_DELAY)
-
-        while True:
-            # Prepare select lists
-            readers = [sys.stdin]
-            if self.is_connected and self.sock:
-                readers.append(self.sock)
-
+    async def connect(self) -> bool:
+        """Connect to backend socket with timeout."""
+        while not self.shutdown.is_set():
             try:
-                # Wait for data (or timeout to retry connection)
-                readable, _, _ = select.select(readers, [], [], RECONNECT_DELAY)
-            except (ValueError, OSError):
-                # Handle bad file descriptors
-                if self.sock:
-                    self.sock.close()
-                self.is_connected = False
-                continue
+                logger.info("Connecting to %s...", MCP_SOCKET)
+                self.reader, self.writer = await asyncio.wait_for(
+                    asyncio.open_unix_connection(MCP_SOCKET),
+                    timeout=CONNECTION_TIMEOUT,
+                )
+                self.connected.set()
+                logger.info("Connected to backend")
+                return True
+            except FileNotFoundError:
+                logger.warning("Socket not found. Retrying in %ss...", RECONNECT_DELAY)
+            except ConnectionRefusedError:
+                logger.warning("Connection refused. Retrying in %ss...", RECONNECT_DELAY)
+            except asyncio.TimeoutError:
+                logger.warning("Connection timeout. Retrying in %ss...", RECONNECT_DELAY)
+            except Exception as e:
+                logger.error("Connection error: %s. Retrying in %ss...", e, RECONNECT_DELAY)
 
-            # Check if we need to reconnect
-            if not self.is_connected:
-                if self.connect():
-                    # Flush buffer
-                    if self.sock:
-                        try:
-                            for packet in self.stdin_buffer:
-                                self.sock.sendall(packet)
-                            self.stdin_buffer.clear()
-                        except OSError:
-                            self.is_connected = False
-                else:
-                    # Still down, wait a bit
+            await asyncio.sleep(RECONNECT_DELAY)
+        return False
+
+    async def reconnect(self):
+        """Handle reconnection after disconnect."""
+        self.connected.clear()
+        if self.writer:
+            self.writer.close()
+            try:
+                await self.writer.wait_closed()
+            except Exception:
+                pass
+        self.reader = None
+        self.writer = None
+        await self.connect()
+
+    async def stdin_to_socket(self, stdin_reader: asyncio.StreamReader):
+        """Forward stdin to backend socket."""
+        try:
+            while not self.shutdown.is_set():
+                line = await stdin_reader.readline()
+                if not line:
+                    self.shutdown.set()
+                    break
+
+                # Process message (inject context)
+                try:
+                    msg = json.loads(line.decode())
+                    if isinstance(msg, MutableMapping):
+                        msg = process_message(msg)
+                        line = (json.dumps(msg) + "\n").encode()
+                except json.JSONDecodeError:
+                    pass
+
+                # Wait for connection and send
+                await self.connected.wait()
+                if self.writer and not self.shutdown.is_set():
+                    try:
+                        self.writer.write(line)
+                        await self.writer.drain()
+                    except (ConnectionResetError, BrokenPipeError):
+                        logger.warning("Backend disconnected, reconnecting...")
+                        asyncio.create_task(self.reconnect())
+        except Exception as e:
+            logger.error("stdin_to_socket error: %s", e)
+
+    async def socket_to_stdout(self):
+        """Forward backend socket to stdout, filtering internal tools from responses."""
+        try:
+            while not self.shutdown.is_set():
+                await self.connected.wait()
+                if not self.reader or self.shutdown.is_set():
                     continue
 
-            for source in readable:
-                if source is sys.stdin:
-                    line = sys.stdin.readline()
+                try:
+                    line = await self.reader.readline()
                     if not line:
-                        # EOF from Agent -> Shutdown
-                        return
-                    self.process_stdin_line(line)
+                        logger.info("Backend closed connection")
+                        asyncio.create_task(self.reconnect())
+                        continue
 
-                elif source is self.sock:
+                    # Filter internal tools from tools/list responses
                     try:
-                        data = self.sock.recv(65536)
-                        if not data:
-                            # Socket closed by daemon
-                            self.is_connected = False
-                            if self.sock:
-                                self.sock.close()
-                            continue
+                        msg = json.loads(line.decode())
+                        if (
+                            isinstance(msg, dict)
+                            and "result" in msg
+                            and isinstance(msg.get("result"), dict)
+                            and "tools" in msg["result"]
+                        ):
+                            # This is a tools/list response - filter internal tools
+                            tools = msg["result"]["tools"]
+                            if isinstance(tools, list):
+                                msg["result"]["tools"] = [
+                                    tool
+                                    for tool in tools
+                                    if not (
+                                        isinstance(tool, dict) and tool.get("name") == "teleclaude__handle_agent_event"
+                                    )
+                                ]
+                                line = (json.dumps(msg) + "\n").encode()
+                                logger.debug("Filtered internal tools from tools/list response")
+                    except (json.JSONDecodeError, KeyError):
+                        # Not a JSON message or not a tools response - pass through unchanged
+                        pass
 
-                        self.socket_buffer += data
-                        while b"\n" in self.socket_buffer:
-                            line_bytes, self.socket_buffer = self.socket_buffer.split(b"\n", 1)
-                            sys.stdout.write(line_bytes.decode() + "\n")
-                            sys.stdout.flush()
-                    except OSError:
-                        self.is_connected = False
-                        if self.sock:
-                            self.sock.close()
+                    sys.stdout.buffer.write(line)
+                    sys.stdout.buffer.flush()
+                except (ConnectionResetError, BrokenPipeError):
+                    logger.warning("Backend disconnected")
+                    asyncio.create_task(self.reconnect())
+        except Exception as e:
+            logger.error("socket_to_stdout error: %s", e)
+
+    async def handle_initialize(self, stdin_reader: asyncio.StreamReader) -> bool:
+        """Handle MCP initialize request.
+
+        Returns True if initialization succeeded, False otherwise.
+        """
+        line = await stdin_reader.readline()
+        if not line:
+            return False
+
+        try:
+            line_str = line.decode()
+            msg = json.loads(line_str)
+
+            if msg.get("method") == "initialize":
+                request_id = msg.get("id", 1)
+
+                # Determine timeout based on static handshake setting
+                timeout = None if DISABLE_STATIC_HANDSHAKE else 0.5
+
+                # Wait for backend - if it connects, proxy the real handshake
+                try:
+                    await asyncio.wait_for(self.connected.wait(), timeout=timeout)
+                    # Backend is ready! Forward the initialize request
+                    logger.info("Backend ready, proxying initialize request")
+                    if self.writer:
+                        self.writer.write(line)
+                        await self.writer.drain()
+                    # Don't send cached response - let backend handle it
+                except asyncio.TimeoutError:
+                    # Backend not ready yet, send cached response for zero-downtime
+                    logger.info("Backend not ready, using cached handshake (id=%s)", request_id)
+                    response = RESPONSE_TEMPLATE.replace("__REQUEST_ID__", str(request_id))
+                    combined = f"{response}\n{NOTIFICATION}\n"
+                    sys.stdout.buffer.write(combined.encode())
+                    sys.stdout.buffer.flush()
+                return True
+
+        except json.JSONDecodeError as e:
+            logger.error("Handshake error: %s", e)
+            return False
+
+        return True
+
+    async def run(self):
+        """Main proxy loop."""
+        # Setup stdin reader
+        stdin_reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(stdin_reader)
+        await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
+
+        # Try to connect to backend immediately (with short timeout for fast clients like Codex)
+        quick_connect = asyncio.create_task(self.connect())
+
+        # Handle MCP initialize request
+        init_ok = await self.handle_initialize(stdin_reader)
+        if not init_ok:
+            logger.error("Initialize failed, shutting down")
+            return
+
+        # Start message pumps (connect task already running)
+        stdin_task = asyncio.create_task(self.stdin_to_socket(stdin_reader))
+        stdout_task = asyncio.create_task(self.socket_to_stdout())
+
+        try:
+            await asyncio.gather(quick_connect, stdin_task, stdout_task)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.shutdown.set()
+            if self.writer:
+                self.writer.close()
+
+
+def main():
+    """Entry point."""
+    logger.info("MCP wrapper starting. Extracted tools: %s", TOOL_NAMES)
+    proxy = MCPProxy()
+    asyncio.run(proxy.run())
 
 
 if __name__ == "__main__":
-    proxy = McpProxy(MCP_SOCKET)
-    try:
-        proxy.run()
-    except KeyboardInterrupt:
-        pass
+    main()

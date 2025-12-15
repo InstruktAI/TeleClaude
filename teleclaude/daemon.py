@@ -29,10 +29,12 @@ from teleclaude.core import (
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agent_parsers import CodexParser
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
+    AgentEventContext,
     CommandEventContext,
     DeployArgs,
     EventContext,
@@ -55,13 +57,13 @@ from teleclaude.core.session_listeners import (
 )
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.session_watcher import SessionWatcher
+from teleclaude.core.summarizer import summarizer
 from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
 # Logging defaults (can be overridden via environment variables)
-DEFAULT_LOG_FILE = "/var/log/teleclaude.log"
 DEFAULT_LOG_LEVEL = "INFO"
 
 # Startup retry configuration
@@ -130,6 +132,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Initialize session watcher for file-based hooks (Universal Hooks)
         self.session_watcher = SessionWatcher(self.client)
         self.session_watcher.register_parser("codex", CodexParser())
+
+        # Initialize AgentCoordinator for agent events and cross-computer orchestration
+        self.agent_coordinator = AgentCoordinator(self.client)
+        self.client.on(cast(EventType, TeleClaudeEvents.AGENT_EVENT), self._handle_agent_event)
 
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
@@ -368,6 +374,62 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self._handle_health_check()
         else:
             logger.warning("Unknown system command: %s", ctx.command)
+
+    async def _handle_agent_event(self, _event: str, context: EventContext) -> None:
+        """Central handler for AGENT_EVENT (formerly CLAUDE_EVENT).
+
+        Orchestrates summarization, title updates, and coordination.
+        """
+        # We know this is AgentEventContext because of the event type registration
+        if not isinstance(context, AgentEventContext):
+            return
+
+        agent_event_type = context.event_type
+        session_id = context.session_id
+
+        # Enrich STOP event with summary if missing
+        if agent_event_type == "stop":
+            # If not already present
+            if not context.data.get("title") and not context.data.get("summary"):
+                try:
+                    summary_data = await summarizer.summarize_session(session_id)
+                    context.data.update(summary_data)
+                except Exception as e:
+                    logger.error("Failed to summarize session %s: %s", session_id[:8], e)
+
+        # Handle title updates (from enrichment OR direct title_update event)
+        title = str(context.data.get("title", ""))
+        if title:
+            await self._update_session_title(session_id, title)
+
+        # Dispatch to coordinator
+        if agent_event_type == "session_start":
+            await self.agent_coordinator.handle_session_start(context)
+        elif agent_event_type == "stop":
+            await self.agent_coordinator.handle_stop(context)
+        elif agent_event_type == "notification":
+            await self.agent_coordinator.handle_notification(context)
+
+    async def _update_session_title(self, session_id: str, title: str) -> None:
+        """Update session title in DB and UI."""
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        import re
+
+        if not re.search(r"New session( \(\d+\))?$", session.title):
+            return
+
+        title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
+        match = re.match(title_pattern, session.title)
+
+        if match:
+            new_title = f"{match.group(1)}{title}"
+            await db.update_session(session_id, title=new_title)
+            # db.update_session emits SESSION_UPDATED, which adapters listen to.
+            # So UI updates automatically!
+            logger.info("Updated title: %s", new_title)
 
     async def _handle_deploy(self, _args: DeployArgs) -> None:  # pylint: disable=too-many-locals  # Deployment requires multiple state variables
         """Execute deployment: git pull + restart daemon via service manager.
@@ -1189,8 +1251,7 @@ async def main() -> None:
 
     # Setup logging from environment variables
     log_level = os.getenv("TELECLAUDE_LOG_LEVEL", DEFAULT_LOG_LEVEL)
-    log_file = os.getenv("TELECLAUDE_LOG_FILE", DEFAULT_LOG_FILE)
-    setup_logging(level=log_level, log_file=log_file)
+    setup_logging(level=log_level)
 
     # Create daemon
     daemon = TeleClaudeDaemon(str(env_path))

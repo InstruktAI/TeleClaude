@@ -50,3 +50,18 @@ class LogParser(ABC):
             Native session ID string if found, None otherwise.
         """
         pass
+
+    @abstractmethod
+    def extract_last_turn(self, file_path: Path) -> str:
+        """Extract the text content of the last assistant/model turn.
+
+        Used for summarization. Should return the plain text of what the agent did
+        since the last user input.
+
+        Args:
+            file_path: Path to the log file.
+
+        Returns:
+            Text content of the last turn.
+        """
+        pass

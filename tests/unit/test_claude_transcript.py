@@ -1,9 +1,17 @@
 """Test claude_transcript parser."""
 
+import json
 import tempfile
 from pathlib import Path
 
-from teleclaude.utils.claude_transcript import parse_claude_transcript
+from teleclaude.core.agents import AgentName
+from teleclaude.utils.claude_transcript import (
+    get_transcript_parser_info,
+    parse_claude_transcript,
+    parse_codex_transcript,
+    parse_gemini_transcript,
+    parse_session_transcript,
+)
 
 
 def test_parse_claude_transcript_with_title():
@@ -224,3 +232,110 @@ def test_parse_claude_transcript_tail_chars():
         assert "END_MARKER" in truncated
 
         Path(f.name).unlink()
+
+
+def test_get_transcript_parser_info_gemini():
+    """Gemini parser metadata should be returned when requested."""
+    info = get_transcript_parser_info(AgentName.GEMINI)
+    assert info.display_name == "Gemini"
+    assert info.file_prefix == "gemini"
+
+
+def test_parse_session_transcript_agent_override(tmp_path):
+    """Agent-specific parser helpers still honor the shared renderer."""
+    session_file = tmp_path / "agent-session.jsonl"
+    gemini_payload = {
+        "sessionId": "agent-session",
+        "messages": [
+            {
+                "type": "user",
+                "timestamp": "2025-12-15T12:00:00.000Z",
+                "content": "hi",
+            },
+            {
+                "type": "gemini",
+                "timestamp": "2025-12-15T12:00:02.000Z",
+                "content": "there",
+                "thoughts": [{"description": "Thinking"}],
+            },
+        ],
+    }
+    session_file.write_text(json.dumps(gemini_payload), encoding="utf-8")
+
+    result = parse_session_transcript(
+        str(session_file),
+        "Agent Test",
+        agent_name=AgentName.GEMINI,
+        tail_chars=0,
+    )
+    assert "# Agent Test" in result
+    assert "hi" in result
+    assert "there" in result
+
+
+def test_parse_codex_transcript(tmp_path):
+    """Codex transcripts normalize into markdown headings."""
+    session_file = tmp_path / "codex.jsonl"
+    entries = [
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:00.000Z",
+                "payload": {"role": "user", "content": "codex user request"},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:05.000Z",
+                "payload": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "codex assistant reply"}],
+                },
+            }
+        ),
+    ]
+    session_file.write_text("\n".join(entries), encoding="utf-8")
+
+    result = parse_codex_transcript(str(session_file), "Codex Test", tail_chars=0)
+    assert "Codex Test" in result
+    assert "codex user request" in result
+    assert "codex assistant reply" in result
+
+
+def test_parse_gemini_transcript(tmp_path):
+    """Gemini sessions include thinking + tool blocks plus NORMAL text."""
+    session_file = tmp_path / "gemini.json"
+    gemini_payload = {
+        "sessionId": "abc",
+        "messages": [
+            {
+                "type": "user",
+                "timestamp": "2025-12-15T22:00:00.000Z",
+                "content": "gemini user input",
+            },
+            {
+                "type": "gemini",
+                "timestamp": "2025-12-15T22:00:02.000Z",
+                "content": "gemini assistant answer",
+                "thoughts": [{"description": "Considering options"}, {"description": ""}],
+                "toolCalls": [
+                    {
+                        "name": "search_file_content",
+                        "displayName": "Search",
+                        "args": {"pattern": "get_session_data"},
+                        "result": [{"functionResponse": {"response": {"output": "no matches found"}}}],
+                    }
+                ],
+            },
+        ],
+    }
+    session_file.write_text(json.dumps(gemini_payload), encoding="utf-8")
+
+    result = parse_gemini_transcript(str(session_file), "Gemini Test", tail_chars=0)
+    assert "Gemini Test" in result
+    assert "gemini user input" in result
+    assert "gemini assistant answer" in result
+    assert "Considering options" in result
+    assert "TOOL CALL" in result
+    assert "TOOL RESPONSE" in result

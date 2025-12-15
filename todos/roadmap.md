@@ -30,6 +30,6 @@ Implemented via `claude_model` field in sessions table. MCP tool `teleclaude__st
 
 ## Documentation
 
-### [ ] AI-to-AI Protocol Documentation
+### [x] AI-to-AI Protocol Documentation
 
 Create `docs/ai-to-ai-protocol.md` with full specification, message format, example flows.

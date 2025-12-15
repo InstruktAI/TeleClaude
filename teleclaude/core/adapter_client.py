@@ -17,7 +17,7 @@ from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
-    ClaudeEventContext,
+    AgentEventContext,
     CommandEventContext,
     EventContext,
     EventType,
@@ -604,7 +604,7 @@ class AdapterClient:
         session_id = str(payload.get("session_id"))
 
         context_builders: dict[str, Callable[[], EventContext]] = {
-            TeleClaudeEvents.CLAUDE_EVENT: lambda: ClaudeEventContext(
+            TeleClaudeEvents.AGENT_EVENT: lambda: AgentEventContext(
                 session_id=session_id,
                 event_type=cast(str, payload.get("event_type")),
                 data=cast(dict[str, object], payload.get("data", {})),

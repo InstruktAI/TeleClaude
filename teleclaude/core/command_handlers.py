@@ -17,6 +17,7 @@ import psutil
 
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
 from teleclaude.core.models import MessageMetadata, Session
@@ -26,7 +27,10 @@ from teleclaude.core.session_cleanup import (
 )
 from teleclaude.core.session_utils import ensure_unique_title
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
-from teleclaude.utils.claude_transcript import parse_claude_transcript
+from teleclaude.utils.claude_transcript import (
+    get_transcript_parser_info,
+    parse_session_transcript,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -250,14 +254,19 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
 
     # Create actual tmux session with voice env vars
     cols, rows = map(int, terminal_size.split("x"))
-    voice_env_vars = get_voice_env_vars(voice) if voice else None
+    voice_env_vars = get_voice_env_vars(voice) if voice else {}
+
+    # Inject TELECLAUDE_SESSION_ID so mcp-wrapper knows who it is
+    env_vars = voice_env_vars.copy()
+    env_vars["TELECLAUDE_SESSION_ID"] = session_id
+
     success = await terminal_bridge.create_tmux_session(
         name=tmux_name,
         working_dir=working_dir,
         cols=cols,
         rows=rows,
         session_id=session_id,
-        env_vars=voice_env_vars,
+        env_vars=env_vars,
     )
 
     if success:
@@ -438,17 +447,32 @@ async def handle_get_session_data(
         logger.error("Native session file does not exist: %s", native_log_file)
         return {"status": "error", "error": "Session file does not exist"}
 
-    # Parse Claude transcript to markdown with filtering
+    raw_agent_name = ux_state.active_agent
+    if not raw_agent_name:
+        logger.error("Session %s missing active_agent metadata", session_id[:8])
+        return {"status": "error", "error": "Active agent unknown"}
+
     try:
-        markdown_content = parse_claude_transcript(
+        agent_name = AgentName.from_str(raw_agent_name)
+    except ValueError as exc:
+        logger.error("Unknown agent for session %s: %s", session_id[:8], exc)
+        return {"status": "error", "error": str(exc)}
+
+    parser_info = get_transcript_parser_info(agent_name)
+
+    # Parse session transcript to markdown with filtering
+    try:
+        markdown_content = parse_session_transcript(
             str(native_log_file),
             session.title,
+            agent_name=agent_name,
             since_timestamp=since_timestamp,
             until_timestamp=until_timestamp,
             tail_chars=tail_chars,
         )
         logger.info(
-            "Parsed %d bytes of markdown for session %s",
+            "Parsed %s transcript (%d bytes) for session %s",
+            parser_info.display_name,
             len(markdown_content),
             session_id[:8],
         )

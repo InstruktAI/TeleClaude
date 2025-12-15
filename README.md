@@ -123,7 +123,7 @@ The service automatically:
 
 - Starts on system boot
 - Restarts if it crashes
-- Logs to `/var/log/teleclaude.log`
+- Logs to `logs/teleclaude.log`
 
 **Development mode** (run in foreground):
 
@@ -426,7 +426,13 @@ make start
 
 1. Check bot is admin in supergroup (required for topic management)
 2. Verify your Telegram user ID is in `TELEGRAM_USER_IDS` whitelist
-3. Check daemon logs: `tail -f /var/log/teleclaude.log`
+### Debugging
+
+1. Check status: `make status`
+2. Restart daemon: `make restart`
+3. Check daemon logs: `tail -f logs/teleclaude.log`
+
+## Contributing
 4. Verify bot token is correct in `.env`
 
 ### tmux sessions not being created
@@ -518,6 +524,7 @@ See developer documentation:
 ## Documentation
 
 - **[Architecture Reference](docs/architecture.md)** - System design and component layers
+- **[MCP Architecture](docs/mcp-architecture.md)** - Resilient MCP server with zero-downtime restarts
 - **[Protocol Architecture Guide](docs/protocol-architecture.md)** - Cross-computer orchestration patterns
 - **[Multi-Computer Setup](docs/multi-computer-setup.md)** - AI-to-AI communication setup
 - **[Troubleshooting Guide](docs/troubleshooting.md)** - Common issues and solutions

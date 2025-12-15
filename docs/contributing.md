@@ -243,8 +243,12 @@ See global directives (automatically loaded for all projects):
 3. **Run linting**: `make lint`
 4. **Run tests**: `make test`
 5. **Restart daemon**: `make restart`
-6. **Verify**: `make status`
-7. **Monitor logs**: `tail -f /var/log/teleclaude.log`
+3. **Verify**: `make status`
+4. **Monitor logs`: `tail -f logs/teleclaude.log`
+
+**Never stop the service to check logs** - use `tail -f` instead.
+
+### Service Lifecycle Commands
 
 ### Quick Reference
 

@@ -119,7 +119,7 @@ async def main() -> None:
     """Restart Agent in its TeleClaude session (standalone script)."""
     # Setup logging from environment variables
     log_level = os.getenv("TELECLAUDE_LOG_LEVEL", "INFO")
-    log_file = os.getenv("TELECLAUDE_LOG_FILE", "/var/log/teleclaude.log")
+    log_file = os.getenv("TELECLAUDE_LOG_FILE", "logs/teleclaude.log")
     setup_logging(level=log_level, log_file=log_file)
 
     # Get TeleClaude session ID from environment

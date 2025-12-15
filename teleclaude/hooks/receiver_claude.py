@@ -57,7 +57,7 @@ def main() -> None:
 
         # Forward to TeleClaude
         mcp_send(
-            "teleclaude__handle_claude_event",
+            "teleclaude__handle_agent_event",
             {"session_id": teleclaude_session_id, "event_type": event_type, "data": data},
         )
 

@@ -1,5 +1,6 @@
 """Unit tests for command handlers."""
 
+import json
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -372,7 +373,7 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session.last_activity = datetime.now()
 
     mock_ux_state = MagicMock()
-    mock_ux_state.claude_session_file = None  # No file yet
+    mock_ux_state.native_log_file = None  # No file yet
 
     mock_context = MagicMock(spec=EventContext)
     mock_context.session_id = "test-session-123"
@@ -386,6 +387,59 @@ async def test_handle_get_session_data_returns_transcript():
     # No claude_session_file means error
     assert result["status"] == "error"
     assert "file" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_returns_markdown(tmp_path):
+    """Verify successful transcript parsing path for existing file."""
+    from datetime import datetime
+
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-456"
+    mock_session.title = "Markdown Session"
+    mock_session.working_directory = "/home/user"
+    mock_session.created_at = datetime.now()
+    mock_session.last_activity = datetime.now()
+
+    nested_path = tmp_path / "session.json"
+    gemini_payload = {
+        "sessionId": "test-session-456",
+        "messages": [
+            {
+                "type": "user",
+                "timestamp": "2025-12-15T12:00:00.000Z",
+                "content": "hi",
+            },
+            {
+                "type": "gemini",
+                "timestamp": "2025-12-15T12:01:00.000Z",
+                "content": "hello",
+                "thoughts": [{"description": "Processing"}, {"description": ""}],
+            },
+        ],
+    }
+    nested_path.write_text(json.dumps(gemini_payload), encoding="utf-8")
+
+    mock_ux_state = MagicMock()
+    mock_ux_state.native_log_file = str(nested_path)
+    mock_ux_state.active_agent = "gemini"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_context.session_id = "test-session-456"
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+
+        result = await command_handlers.handle_get_session_data(mock_context)
+
+    assert result["status"] == "success"
+    assert "Markdown Session" in result["messages"]
+    assert "hi" in result["messages"]
+    assert "hello" in result["messages"]
 
 
 @pytest.mark.asyncio

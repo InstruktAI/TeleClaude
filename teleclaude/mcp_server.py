@@ -24,11 +24,27 @@ from teleclaude.core.db import db
 from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_listeners import register_listener, unregister_listener
+from teleclaude.core.summarizer import summarizer
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
+
+
+def _is_client_disconnect_exception(exc: BaseException) -> bool:
+    """Return True if the exception indicates the client went away."""
+    if isinstance(exc, ExceptionGroup):
+        return all(_is_client_disconnect_exception(inner) for inner in exc.exceptions)
+    return isinstance(
+        exc,
+        (
+            ConnectionResetError,
+            BrokenPipeError,
+            anyio.ClosedResourceError,
+            anyio.EndOfStream,
+        ),
+    )
 
 
 class TeleClaudeMCPServer:
@@ -382,10 +398,10 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__handle_claude_event",
-                    title="TeleClaude: Handle Claude Event",
+                    name="teleclaude__handle_agent_event",
+                    title="TeleClaude: Handle Agent Event",
                     description=(
-                        "Emit Claude Code events to registered listeners. "
+                        "Emit Agent events to registered listeners. "
                         "USED BY HOOKS, AND FOR INTERNAL USE ONLY, so do not call yourself."
                     ),
                     inputSchema={
@@ -397,7 +413,7 @@ class TeleClaudeMCPServer:
                             },
                             "event_type": {
                                 "type": "string",
-                                "description": "Type of Claude event (e.g., 'stop', 'compact')",
+                                "description": "Type of Agent event (e.g., 'stop', 'compact')",
                             },
                             "data": {
                                 "type": "object",
@@ -518,12 +534,12 @@ class TeleClaudeMCPServer:
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 result = await self.teleclaude__end_session(computer, session_id)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
-            elif name == "teleclaude__handle_claude_event":
+            elif name == "teleclaude__handle_agent_event":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 event_type = str(arguments.get("event_type", "")) if arguments else ""
                 data_obj = arguments.get("data") if arguments else None
                 data = dict(data_obj) if isinstance(data_obj, dict) else {}
-                result_text = await self.teleclaude__handle_claude_event(session_id, event_type, data)
+                result_text = await self.teleclaude__handle_agent_event(session_id, event_type, data)
                 return [TextContent(type="text", text=result_text)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
@@ -591,6 +607,13 @@ class TeleClaudeMCPServer:
                                 break
                             try:
                                 message = JSONRPCMessage.model_validate_json(line.decode("utf-8"))
+                                dump = message.model_dump()
+                                logger.debug(
+                                    "MCP reader received: method=%s id=%s params=%s",
+                                    dump.get("method"),
+                                    dump.get("id"),
+                                    dump.get("params"),
+                                )
                                 await read_stream_writer.send(SessionMessage(message))
                             except Exception as exc:
                                 await read_stream_writer.send(exc)
@@ -612,11 +635,24 @@ class TeleClaudeMCPServer:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(socket_reader)
                 tg.start_soon(socket_writer)
-                await server.run(
-                    read_stream,
-                    write_stream,
-                    server.create_initialization_options(),
-                )
+                try:
+                    await server.run(
+                        read_stream,
+                        write_stream,
+                        server.create_initialization_options(),
+                    )
+                except (
+                    anyio.ClosedResourceError,
+                    anyio.EndOfStream,
+                    ConnectionResetError,
+                    BrokenPipeError,
+                ):
+                    logger.debug("MCP client disconnected (stream closed)")
+                except Exception as e:
+                    if _is_client_disconnect_exception(e):
+                        logger.debug("MCP client disconnected (task group closed)")
+                    else:
+                        logger.warning("MCP server session ended with error: %s", e)
 
         except Exception:
             logger.exception("Error handling MCP connection")
@@ -1467,8 +1503,8 @@ class TeleClaudeMCPServer:
             logger.error("Failed to end session: %s", e)
             return {"status": "error", "message": f"Failed to end session: {str(e)}"}
 
-    async def teleclaude__handle_claude_event(self, session_id: str, event_type: str, data: dict[str, object]) -> str:
-        """Emit Claude Code event to registered listeners (called by Claude Code hooks).
+    async def teleclaude__handle_agent_event(self, session_id: str, event_type: str, data: dict[str, object]) -> str:
+        """Emit Agent event to registered listeners (called by agent hooks).
 
         Args:
             session_id: TeleClaude session UUID
@@ -1483,12 +1519,20 @@ class TeleClaudeMCPServer:
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
+        # Enrich stop events with summary
+        if event_type == "stop":
+            try:
+                summary_data = await summarizer.summarize_session(session_id)
+                data.update(summary_data)  # Add summary/title to payload
+            except Exception as e:
+                logger.error("Failed to summarize session %s: %s", session_id[:8], e)
+
         # Emit event to registered listeners
         await self.client.handle_event(
-            TeleClaudeEvents.CLAUDE_EVENT,
+            TeleClaudeEvents.AGENT_EVENT,
             {"session_id": session_id, "event_type": event_type, "data": data},  # type: ignore[dict-item]
             MessageMetadata(adapter_type="internal"),
         )
 
-        logger.debug("Emitted Claude event: session=%s, type=%s", session_id[:8], event_type)
+        logger.debug("Emitted Agent event: session=%s, type=%s", session_id[:8], event_type)
         return "OK"

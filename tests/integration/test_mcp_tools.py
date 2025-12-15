@@ -170,7 +170,7 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_telegram):
-    """Test notification event via teleclaude__handle_claude_event sends feedback and sets flag."""
+    """Test notification event via teleclaude__handle_agent_event sends feedback and sets flag."""
     import json
 
     daemon = daemon_with_mocked_telegram
@@ -185,10 +185,10 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
     )
 
     # Send notification via claude_event (the new way - bridge sends events)
-    result = await mcp_server.teleclaude__handle_claude_event(
+    result = await mcp_server.teleclaude__handle_agent_event(
         session_id=session.session_id,
         event_type="notification",
-        data={"message": "Claude is ready for action!"},
+        data={"original_message": "Claude is ready for action!"},
     )
 
     # Verify result

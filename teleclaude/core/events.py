@@ -40,7 +40,7 @@ EventType = Literal[
     "session_closed",
     "session_reopened",
     "system_command",
-    "claude_event",
+    "agent_event",
     "session_updated",
 ]
 
@@ -135,7 +135,7 @@ class TeleClaudeEvents:
     SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
 
     # Agent events (from hooks)
-    CLAUDE_EVENT: Literal["claude_event"] = "claude_event"  # Agent events (title change, etc.)
+    AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
 
     # Cross-computer notifications
     STOP_NOTIFICATION: Literal["stop_notification"] = "stop_notification"  # Forwarded stop event from remote
@@ -255,7 +255,7 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
 
 
 @dataclass
-class ClaudeEventContext:
+class AgentEventContext:
     """Context for Agent events (from hooks)."""
 
     session_id: str
@@ -279,12 +279,12 @@ EventContext = (
     | FileEventContext
     | SessionLifecycleContext
     | SystemCommandContext
-    | ClaudeEventContext
+    | AgentEventContext
     | SessionUpdatedContext
 )
 
 # Command events that use CommandEventContext and route through _handle_command_event
-# Note: claude_event and session_updated are NOT included - they have their own contexts
+# Note: agent_event and session_updated are NOT included - they have their own contexts
 # and handlers in ui_adapter.py
 COMMAND_EVENTS: set[EventType] = {
     "new_session",

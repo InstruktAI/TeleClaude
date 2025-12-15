@@ -158,8 +158,8 @@ async def test_teleclaude_send_message_adds_ai_prefix(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_teleclaude_handle_claude_event_sends_to_session(mock_mcp_server):
-    """Test that handle_claude_event sends event to session."""
+async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
+    """Test that handle_agent_event sends event to session."""
     server = mock_mcp_server
 
     # Mock db.get_session to return valid session
@@ -170,7 +170,7 @@ async def test_teleclaude_handle_claude_event_sends_to_session(mock_mcp_server):
         mock_db.get_session = AsyncMock(return_value=mock_session)
         server.client.handle_event = AsyncMock(return_value=None)
 
-        result = await server.teleclaude__handle_claude_event(
+        result = await server.teleclaude__handle_agent_event(
             session_id="test-session-123",
             event_type="notification",
             data={"message": "Test notification"},
@@ -279,12 +279,12 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
         finally:
             Path(test_file).unlink(missing_ok=True)
 
-    # Test handle_claude_event with invalid session
+    # Test handle_agent_event with invalid session
     with patch("teleclaude.mcp_server.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=None)
 
         with pytest.raises(ValueError, match="not found"):
-            await server.teleclaude__handle_claude_event(
+            await server.teleclaude__handle_agent_event(
                 session_id="nonexistent-session",
                 event_type="notification",
                 data={},

@@ -1,9 +1,13 @@
-"""Parse and convert Claude Code session transcripts to markdown."""
+"""Parse and convert Claude/Gemini/Codex session transcripts to markdown."""
 
 import json
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, cast
+
+from teleclaude.core.agents import AgentName
 
 
 def parse_claude_transcript(
@@ -29,30 +33,69 @@ def parse_claude_transcript(
     if not path.exists():
         return f"Transcript file not found: {transcript_path}"
 
-    since_dt = _parse_timestamp(since_timestamp) if since_timestamp else None
-    until_dt = _parse_timestamp(until_timestamp) if until_timestamp else None
-
-    lines: list[str] = [f"# {title}", ""]
-    last_section: Optional[str] = None
-
     try:
-        with open(path) as f:
-            for line in f:
-                if not line.strip():
-                    continue
-
-                entry = json.loads(line)  # type: ignore[misc]
-
-                if _should_skip_entry(entry, since_dt, until_dt):  # type: ignore[misc]
-                    continue
-
-                last_section = _process_entry(entry, lines, last_section)  # type: ignore[misc]
-
+        entries = _iter_claude_entries(path)
+        return _render_transcript_from_entries(
+            entries,
+            title,
+            since_timestamp,
+            until_timestamp,
+            tail_chars,
+        )
     except Exception as e:
         return f"Error parsing transcript: {e}"
 
-    result = "\n".join(lines)
-    return _apply_tail_limit(result, tail_chars)
+
+def parse_codex_transcript(
+    transcript_path: str,
+    title: str,
+    since_timestamp: Optional[str] = None,
+    until_timestamp: Optional[str] = None,
+    tail_chars: int = 5000,
+) -> str:
+    """Convert Codex JSONL transcript to markdown with filtering."""
+
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return f"Transcript file not found: {transcript_path}"
+
+    try:
+        entries = _iter_codex_entries(path)
+        return _render_transcript_from_entries(
+            entries,
+            title,
+            since_timestamp,
+            until_timestamp,
+            tail_chars,
+        )
+    except Exception as e:
+        return f"Error parsing transcript: {e}"
+
+
+def parse_gemini_transcript(
+    transcript_path: str,
+    title: str,
+    since_timestamp: Optional[str] = None,
+    until_timestamp: Optional[str] = None,
+    tail_chars: int = 5000,
+) -> str:
+    """Convert Gemini JSON transcript into markdown."""
+
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return f"Transcript file not found: {transcript_path}"
+
+    try:
+        entries = _iter_gemini_entries(path)
+        return _render_transcript_from_entries(
+            entries,
+            title,
+            since_timestamp,
+            until_timestamp,
+            tail_chars,
+        )
+    except Exception as e:
+        return f"Error parsing transcript: {e}"
 
 
 def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], until_dt: Optional[datetime]) -> bool:
@@ -79,7 +122,14 @@ def _process_entry(entry: dict[str, object], lines: list[str], last_section: Opt
         entry_dt = _parse_timestamp(entry_timestamp)
     time_prefix = _format_timestamp_prefix(entry_dt) if entry_dt else ""
 
-    message = entry.get("message", {})
+    message = entry.get("message")
+
+    # Handle Codex/Gemini "response_item" format where message is in payload
+    if not isinstance(message, dict) and entry.get("type") == "response_item":
+        payload = entry.get("payload")
+        if isinstance(payload, dict):
+            message = payload
+
     if not isinstance(message, dict):
         return last_section
 
@@ -126,7 +176,7 @@ def _process_list_content(
         if not isinstance(block_type, str):
             continue
 
-        if block_type == "text":
+        if block_type in ("text", "input_text", "output_text"):
             current_section = _process_text_block(block, role, time_prefix, lines, current_section)
         elif block_type == "thinking":
             current_section = _process_thinking_block(block, time_prefix, lines, current_section)
@@ -145,14 +195,24 @@ def _process_text_block(
     lines: list[str],
     last_section: Optional[str],
 ) -> Optional[str]:
-    """Process text block from assistant."""
+    """Process text block from assistant or user."""
     if role == "assistant" and last_section != "assistant":
         lines.append("")
         lines.append(f"## {time_prefix}🤖 Assistant")
         lines.append("")
+    elif role == "user" and (last_section != "user" or time_prefix):
+        lines.append("")
+        lines.append(f"## {time_prefix}👤 User")
+        lines.append("")
+
     text = block.get("text", "")
     lines.append(str(text))
-    return "assistant" if role == "assistant" else last_section
+
+    if role == "assistant":
+        return "assistant"
+    if role == "user":
+        return "user"
+    return last_section
 
 
 def _process_thinking_block(
@@ -280,3 +340,218 @@ def _format_thinking(text: str) -> str:
     result_lines.append("")
 
     return "\n".join(result_lines)
+
+
+def _render_transcript_from_entries(
+    entries: Iterable[dict[str, object]],
+    title: str,
+    since_timestamp: Optional[str],
+    until_timestamp: Optional[str],
+    tail_chars: int,
+) -> str:
+    """Render markdown from normalized transcript entries."""
+
+    since_dt = _parse_timestamp(since_timestamp) if since_timestamp else None
+    until_dt = _parse_timestamp(until_timestamp) if until_timestamp else None
+
+    lines: list[str] = [f"# {title}", ""]
+    last_section: Optional[str] = None
+
+    for entry in entries:
+        if _should_skip_entry(entry, since_dt, until_dt):
+            continue
+
+        last_section = _process_entry(entry, lines, last_section)
+
+    result = "\n".join(lines)
+    return _apply_tail_limit(result, tail_chars)
+
+
+def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:
+    """Yield JSON objects for each line in a transcript file."""
+
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                entry_value: object = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if isinstance(entry_value, dict):
+                yield cast(dict[str, object], entry_value)
+
+
+def _iter_claude_entries(path: Path) -> Iterable[dict[str, object]]:
+    """Yield entries from Claude Code transcripts (raw JSONL)."""
+
+    yield from _iter_jsonl_entries(path)
+
+
+def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:
+    """Yield entries from Codex JSONL transcripts, skipping metadata."""
+
+    for entry in _iter_jsonl_entries(path):
+        if entry.get("type") == "session_meta":
+            continue
+        yield entry
+
+
+def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:
+    """Yield normalized entries from Gemini JSON session files."""
+
+    with open(path, encoding="utf-8") as f:
+        raw_document: object = json.load(f)
+
+    document: dict[str, object] = {}
+    if isinstance(raw_document, dict):
+        document = cast(dict[str, object], raw_document)
+
+    raw_messages = document.get("messages", [])
+    messages: list[dict[str, object]] = []
+    if isinstance(raw_messages, list):
+        for item in raw_messages:
+            if isinstance(item, dict):
+                messages.append(cast(dict[str, object], item))
+
+    for message in messages:
+        msg_type = message.get("type")
+        timestamp = message.get("timestamp")
+
+        if msg_type == "user":
+            content_value = message.get("content", "")
+            yield {
+                "type": "user",
+                "timestamp": timestamp,
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": str(content_value)}],
+                },
+            }
+            continue
+
+        if msg_type != "gemini":
+            continue
+
+        blocks: list[dict[str, object]] = []
+        thoughts_raw = message.get("thoughts")
+        thoughts: list[dict[str, object]] = []
+        if isinstance(thoughts_raw, list):
+            for thought_item in thoughts_raw:
+                if isinstance(thought_item, dict):
+                    thoughts.append(cast(dict[str, object], thought_item))
+
+        for thought in thoughts:
+            description = thought.get("description") or thought.get("text") or ""
+            if description:
+                blocks.append({"type": "thinking", "thinking": description})
+
+        content_text = message.get("content")
+        if content_text:
+            blocks.append({"type": "text", "text": str(content_text)})
+
+        tool_calls_raw = message.get("toolCalls")
+        tool_calls: list[dict[str, object]] = []
+        if isinstance(tool_calls_raw, list):
+            for tool_item in tool_calls_raw:
+                if isinstance(tool_item, dict):
+                    tool_calls.append(cast(dict[str, object], tool_item))
+
+        for tool_call in tool_calls:
+            name = tool_call.get("displayName") or tool_call.get("name") or "tool"
+            args = tool_call.get("args")
+            input_payload: dict[str, object] = {}
+            if isinstance(args, dict):
+                input_payload = cast(dict[str, object], args)
+            blocks.append(
+                {
+                    "type": "tool_use",
+                    "name": name,
+                    "input": input_payload,
+                }
+            )
+
+            result_texts: list[str] = []
+            result_raw = tool_call.get("result")
+            if isinstance(result_raw, list):
+                for result in result_raw:
+                    if not isinstance(result, dict):
+                        continue
+                    function_response = result.get("functionResponse")
+                    if isinstance(function_response, dict):
+                        response_candidate = function_response.get("response")
+                    else:
+                        response_candidate = result.get("response")
+
+                    response_value = None
+                    if isinstance(response_candidate, dict):
+                        response_value = response_candidate.get("output")
+                    elif response_candidate:
+                        response_value = response_candidate
+                    if response_value:
+                        result_texts.append(str(response_value))
+
+            fallback_text = tool_call.get("resultDisplay") or tool_call.get("description")
+            if fallback_text and not result_texts:
+                result_texts.append(str(fallback_text))
+
+            if any(result_texts):
+                blocks.append({"type": "tool_result", "content": "\n\n".join(result_texts)})
+
+        if not blocks and content_text:
+            blocks.append({"type": "text", "text": str(content_text)})
+
+        if not blocks:
+            continue
+
+        yield {
+            "type": "assistant",
+            "timestamp": timestamp,
+            "message": {
+                "role": "assistant",
+                "content": blocks,
+            },
+        }
+
+
+@dataclass(frozen=True)
+class TranscriptParserInfo:
+    """Metadata for formatting a native agent transcript."""
+
+    display_name: str
+    file_prefix: str
+    parser: Callable[[str, str, Optional[str], Optional[str], int], str]
+
+
+AGENT_TRANSCRIPT_PARSERS: dict[AgentName, TranscriptParserInfo] = {
+    AgentName.CLAUDE: TranscriptParserInfo("Claude Code", "claude", parse_claude_transcript),
+    AgentName.GEMINI: TranscriptParserInfo("Gemini", "gemini", parse_gemini_transcript),
+    AgentName.CODEX: TranscriptParserInfo("Codex", "codex", parse_codex_transcript),
+}
+
+
+def get_transcript_parser_info(agent_name: AgentName) -> TranscriptParserInfo:
+    """Return metadata for the given agent's transcript parser."""
+    return AGENT_TRANSCRIPT_PARSERS[agent_name]
+
+
+def parse_session_transcript(
+    transcript_path: str,
+    title: str,
+    *,
+    agent_name: AgentName,
+    since_timestamp: Optional[str] = None,
+    until_timestamp: Optional[str] = None,
+    tail_chars: int = 5000,
+) -> str:
+    """Parse a session transcript using the agent-specific parser."""
+
+    parser_info = get_transcript_parser_info(agent_name)
+    return parser_info.parser(
+        transcript_path,
+        title,
+        since_timestamp,
+        until_timestamp,
+        tail_chars,
+    )

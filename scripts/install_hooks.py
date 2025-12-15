@@ -47,6 +47,31 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
     return merged
 
 
+def _teleclaude_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
+    """Return TeleClaude hook definitions pointing to the receiver script."""
+
+    return {
+        "SessionStart": {
+            "name": "teleclaude-session-start",
+            "type": "command",
+            "command": f"{receiver_script} session_start",
+            "description": "Notify TeleClaude of session start",
+        },
+        "Notification": {
+            "name": "teleclaude-notification",
+            "type": "command",
+            "command": f"{receiver_script} notification",
+            "description": "Notify TeleClaude of user input request",
+        },
+        "AfterModel": {
+            "name": "teleclaude-stop",
+            "type": "command",
+            "command": f"{receiver_script} stop",
+            "description": "Notify TeleClaude of turn completion",
+        },
+    }
+
+
 def configure_gemini(repo_root: Path) -> None:
     """Configure Gemini CLI hooks."""
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver_gemini.py"
@@ -71,26 +96,7 @@ def configure_gemini(repo_root: Path) -> None:
 
     # Define hooks
     # We pass event name as argument
-    hooks_map = {
-        "SessionStart": {
-            "name": "teleclaude-session-start",
-            "type": "command",
-            "command": f"{receiver_script} session_start",
-            "description": "Notify TeleClaude of session start",
-        },
-        "Notification": {
-            "name": "teleclaude-notification",
-            "type": "command",
-            "command": f"{receiver_script} notification",
-            "description": "Notify TeleClaude of user input request",
-        },
-        "AfterModel": {
-            "name": "teleclaude-stop",
-            "type": "command",
-            "command": f"{receiver_script} stop",
-            "description": "Notify TeleClaude of turn completion",
-        },
-    }
+    hooks_map = _teleclaude_hook_map(receiver_script)
 
     # Merge
     current_hooks = settings.get("hooks", {})
@@ -103,11 +109,43 @@ def configure_gemini(repo_root: Path) -> None:
     print(f"Gemini hooks configured in {settings_path}")
 
 
+def configure_claude(repo_root: Path) -> None:
+    """Configure Claude Code hooks."""
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver_claude.py"
+    if not receiver_script.exists():
+        print(f"Warning: Claude receiver not found at {receiver_script}")
+        return
+
+    os.chmod(receiver_script, 0o755)
+
+    settings_path = Path.home() / ".claude.json"
+
+    settings = {}
+    if settings_path.exists():
+        try:
+            with open(settings_path, "r") as f:
+                settings = json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load Claude settings: {e}")
+
+    hooks_map = _teleclaude_hook_map(receiver_script)
+
+    current_hooks = settings.get("hooks", {})
+    settings["hooks"] = merge_hooks(current_hooks, hooks_map)
+
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(settings_path, "w") as f:
+        json.dump(settings, f, indent=2)
+
+    print(f"Claude hooks configured in {settings_path}")
+
+
 def main() -> None:
     # Repo root is parent of scripts/ dir
     repo_root = Path(__file__).parent.parent.resolve()
     print(f"Configuring hooks from repo: {repo_root}")
 
+    configure_claude(repo_root)
     configure_gemini(repo_root)
     # Add configure_claude(repo_root) here in future
 

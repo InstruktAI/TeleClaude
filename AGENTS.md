@@ -36,22 +36,16 @@ This file provides guidance to agents when working with code in this repository.
 - If you find multiple `.db` files, DELETE the extras immediately
 - Any code that creates a new database file is a CRITICAL BUG
 
-### Rule #2: MCP CONNECTION POLICY
+### Rule #2: MCP CONNECTION RESILIENCE
 
-**CRITICAL**: MCP connection behavior depends on terminal context.
+**The MCP wrapper handles all reconnection automatically - clients never need to restart.**
 
-**In tmux sessions:**
+The resilient MCP wrapper (`bin/mcp-wrapper.py`) provides:
+- **Zero-downtime restarts** - Cached handshake response while backend reconnects
+- **Automatic reconnection** - Transparent backend connection recovery
+- **Tool filtering** - Internal tools (like `teleclaude__handle_agent_event`) hidden from clients
 
-- MCP connection automatically reconnects after `make restart`
-- You can continue testing MCP tools immediately
-
-**In normal terminal sessions:**
-
-- MCP connection is PERMANENTLY LOST after `make restart`
-- The old agent mcp session maintains a socket connection that cannot reconnect.
-- You CANNOT do anything to fix this.
-- You MUST ask the user to restart their session to reconnect.
-- If MCP tools return empty/stale results after a restart, ask the user: "The MCP connection was lost during the daemon restart. Please restart your session to reconnect."
+See [docs/mcp-architecture.md](docs/mcp-architecture.md) for implementation details.
 
 ### Rule #3: AI-TO-AI COLLABORATION PROTOCOL
 
@@ -358,7 +352,7 @@ bin/rsync.sh <computer-name>
 ssh -A user@hostname 'cd $HOME/apps/TeleClaude && make restart'
 
 # Monitor remote logs
-ssh -A user@hostname 'tail -f /var/log/teleclaude.log'
+ssh -A user@hostname 'tail -f logs/teleclaude.log'
 ```
 
 **3. Iterate quickly** - repeat steps 1-2 until feature works
