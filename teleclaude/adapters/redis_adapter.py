@@ -766,13 +766,24 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             # Other commands use args list
             payload: dict[str, object]
             if event_type == TeleClaudeEvents.MESSAGE:
-                # Join args back into single text string for MESSAGE events
                 payload = {"session_id": session_id, "text": " ".join(args) if args else ""}
                 logger.debug("Emitting MESSAGE event with text: %s", " ".join(args) if args else "(empty)")
-            elif event_type == TeleClaudeEvents.CLAUDE:
-                # Join args back into single string for /claude command (passed to handle_claude_session)
-                payload = {"session_id": session_id, "args": [" ".join(args)] if args else []}
-                logger.debug("Emitting CLAUDE event with args: %s", [" ".join(args)] if args else [])
+            elif cmd_name in ["claude", "gemini", "codex"]:
+                agent_name = cmd_name
+                event_type = TeleClaudeEvents.AGENT_START
+                payload = {"session_id": session_id, "agent_name": agent_name, "args": args}
+                logger.debug("Emitting AGENT_START event for %s with args: %s", agent_name, args)
+            elif cmd_name in ["claude_resume", "gemini_resume", "codex_resume"]:
+                agent_name = cmd_name.replace("_resume", "")
+                event_type = TeleClaudeEvents.AGENT_RESUME
+                resume_latest = True if not args else False
+                payload = {
+                    "session_id": session_id,
+                    "agent_name": agent_name,
+                    "resume_latest": resume_latest,
+                    "args": args,
+                }
+                logger.debug("Emitting AGENT_RESUME event for %s", agent_name)
             else:
                 payload = {"session_id": session_id, "args": args}
                 logger.debug("Emitting %s event with args: %s", event_type, args)

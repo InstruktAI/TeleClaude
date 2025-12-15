@@ -36,11 +36,13 @@ telegram:
         - teleclaude_server_bot
         # Add other computer bot usernames here
 
-mcp:
-    enabled: true  # Enable MCP server (Claude Code connects via socat)
-    socket_path: /tmp/teleclaude.sock
-    claude_command: |
-      claude --dangerously-skip-permissions --settings '{"forceLoginMethod": "claudeai"}'
+agents:
+    claude:
+        command: "claude --dangerously-skip-permissions --settings '{\"forceLoginMethod\": \"claudeai\"}'"
+    gemini:
+        command: "gemini --yolo" # Example for Gemini
+    codex:
+        command: "codex --dangerously-bypass-approvals-and-sandbox --search" # Example for Codex
 
 # Redis Configuration (for AI-to-AI communication)
 redis:

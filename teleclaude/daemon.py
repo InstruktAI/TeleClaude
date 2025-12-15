@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
+from teleclaude.constants import MCP_ENABLED
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -41,6 +42,7 @@ from teleclaude.core.events import (
     SystemCommandContext,
     TeleClaudeEvents,
     VoiceEventContext,
+    parse_command_string,
 )
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
@@ -151,8 +153,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize MCP server (if enabled)
         self.mcp_server: Optional[TeleClaudeMCPServer] = None
-        logger.debug("MCP enabled: %s", config.mcp.enabled)
-        if config.mcp.enabled:
+        logger.debug("MCP enabled: %s", MCP_ENABLED)
+        if MCP_ENABLED:
             try:
                 self.mcp_server = TeleClaudeMCPServer(
                     adapter_client=self.client,
@@ -302,12 +304,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
 
         # Restore voice env vars from DB if available
-        # Lookup by claude_session_id first (persists across tmux restarts), then by session_id
+        # Lookup by native_session_id first (persists across tmux restarts), then by session_id
         voice_env_vars = None
         ux_state = await db.get_ux_state(session.session_id)
         voice = None
-        if ux_state.claude_session_id:
-            voice = await db.get_voice(ux_state.claude_session_id)
+        if ux_state.native_session_id:
+            voice = await db.get_voice(ux_state.native_session_id)
         if not voice:
             voice = await db.get_voice(session.session_id)
         if voice:
@@ -922,18 +924,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 session_id = result["session_id"]
                 auto_context = CommandEventContext(session_id=session_id, args=[])
 
-                if metadata.auto_command == TeleClaudeEvents.CLAUDE:
-                    await command_handlers.handle_claude_session(auto_context, [], self._execute_terminal_command)  # type: ignore[misc]
-                elif metadata.auto_command == TeleClaudeEvents.CLAUDE_RESUME:
-                    await command_handlers.handle_claude_resume_session(auto_context, self._execute_terminal_command)
-                elif metadata.auto_command == TeleClaudeEvents.GEMINI:
-                    await command_handlers.handle_gemini_session(auto_context, [], self._execute_terminal_command)  # type: ignore[misc]
-                elif metadata.auto_command == TeleClaudeEvents.GEMINI_RESUME:
-                    await command_handlers.handle_gemini_resume_session(auto_context, self._execute_terminal_command)
-                elif metadata.auto_command == TeleClaudeEvents.CODEX:
-                    await command_handlers.handle_codex_session(auto_context, [], self._execute_terminal_command)  # type: ignore[misc]
-                elif metadata.auto_command == TeleClaudeEvents.CODEX_RESUME:
-                    await command_handlers.handle_codex_resume_session(auto_context, self._execute_terminal_command)
+                # Parse auto_command (e.g., "agent claude --flag")
+                cmd_name, auto_args = parse_command_string(metadata.auto_command)
+
+                if cmd_name == TeleClaudeEvents.AGENT_START and auto_args:
+                    agent_name = auto_args.pop(0)  # First arg is agent name
+                    await command_handlers.handle_agent_start(
+                        auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
+                    )
+                elif cmd_name == TeleClaudeEvents.AGENT_RESUME and auto_args:
+                    agent_name = auto_args.pop(0)
+                    await command_handlers.handle_agent_resume(
+                        auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
+                    )
+                else:
+                    logger.warning("Unknown or malformed auto_command: %s", metadata.auto_command)
 
             return result
         elif command == TeleClaudeEvents.LIST_SESSIONS:
@@ -1004,6 +1009,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_rename_session(context, args, self.client)
         elif command == TeleClaudeEvents.CD:
             return await command_handlers.handle_cd_session(context, args, self.client, self._execute_terminal_command)
+        elif command == TeleClaudeEvents.AGENT_START:
+            agent_name = args.pop(0) if args else ""
+            return await command_handlers.handle_agent_start(
+                context, agent_name, args, self.client, self._execute_terminal_command
+            )
+        elif command == TeleClaudeEvents.AGENT_RESUME:
+            agent_name = args.pop(0) if args else ""
+            return await command_handlers.handle_agent_resume(
+                context, agent_name, args, self.client, self._execute_terminal_command
+            )
         elif command == TeleClaudeEvents.CLAUDE:
             return await command_handlers.handle_claude_session(context, args, self._execute_terminal_command)
         elif command == TeleClaudeEvents.CLAUDE_RESUME:

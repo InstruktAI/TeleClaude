@@ -129,7 +129,7 @@ class RedisAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # D
 
     # MCP/AI-to-AI session fields
     target_computer: Optional[str] = None
-    claude_session_id: Optional[str] = None
+    native_session_id: Optional[str] = None
     project_dir: Optional[str] = None
     last_checkpoint_time: Optional[str] = None
     title: Optional[str] = None
@@ -185,7 +185,6 @@ class MessageMetadata:  # type: ignore[no-any-unimported]  # pylint: disable=too
     title: Optional[str] = None
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
-    claude_model: Optional[str] = None
 
     # Auto-command to run after session creation (e.g., "claude", "claude_resume")
     auto_command: Optional[str] = None
@@ -209,7 +208,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     description: Optional[str] = None
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI (uses Sonnet model)
-    claude_model: Optional[str] = None  # Claude Code model (e.g., 'sonnet', 'opus'). None = default
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
@@ -253,7 +251,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
                         "channel_id",
                         "output_stream",
                         "target_computer",
-                        "claude_session_id",
+                        "native_session_id",
                         "project_dir",
                         "last_checkpoint_time",
                         "title",
@@ -291,7 +289,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "description",
             "ux_state",
             "initiated_by_ai",
-            "claude_model",
         }
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
 

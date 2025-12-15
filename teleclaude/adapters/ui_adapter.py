@@ -516,29 +516,29 @@ class UiAdapter(BaseAdapter):
             context: Typed Claude event context
         """
 
-        claude_session_id = context.data.get("session_id")
-        claude_session_file = context.data.get("transcript_path")
+        native_session_id = context.data.get("session_id")
+        native_log_file = context.data.get("transcript_path")
 
-        if not claude_session_id or not claude_session_file:
+        if not native_session_id or not native_log_file:
             return
 
         await db.update_ux_state(
             context.session_id,
-            claude_session_id=str(claude_session_id),
-            claude_session_file=str(claude_session_file),
+            native_session_id=str(native_session_id),
+            native_log_file=str(native_log_file),
         )
 
         # Copy voice assignment from teleclaude session_id to claude_session_id
         # This allows voice to persist even if tmux session is destroyed and recreated
         voice = await db.get_voice(context.session_id)
         if voice:
-            await db.assign_voice(str(claude_session_id), voice)
-            logger.debug("Copied voice '%s' to claude_session_id %s", voice.name, str(claude_session_id)[:8])
+            await db.assign_voice(str(native_session_id), voice)
+            logger.debug("Copied voice '%s' to native_session_id %s", voice.name, str(native_session_id)[:8])
 
         logger.info(
-            "Stored Claude session data: teleclaude=%s, claude=%s",
+            "Stored Claude session data: teleclaude=%s, native=%s",
             context.session_id[:8],
-            str(claude_session_id)[:8],
+            str(native_session_id)[:8],
         )
 
     async def _handle_claude_stop(self, context: ClaudeEventContext) -> None:

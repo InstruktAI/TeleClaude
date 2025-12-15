@@ -146,10 +146,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     class MockPolling:
         directory_check_interval = 5
 
-    class MockMCP:
-        enabled = False
-        socket_path = "/tmp/test.sock"
-
     class MockRedis:
         enabled = True  # Enable Redis for E2E tests
         url = "redis://localhost:6379"
@@ -171,13 +167,19 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "database": MockDatabase(),
             "computer": MockComputer(),
             "polling": MockPolling(),
-            "mcp": MockMCP(),
             "redis": MockRedis(),
             "telegram": MockTelegram(),
+            "agents": {
+                "claude": config_module.AgentConfig(command="mock_claude_command --arg"),
+                "gemini": config_module.AgentConfig(command="mock_gemini_command --arg"),
+                "codex": config_module.AgentConfig(command="mock_codex_command --arg"),
+            },
         },
     )()
 
     monkeypatch.setattr(config_module, "config", test_config)
+
+    monkeypatch.setattr(config_module.config.redis, "url", "redis://localhost:6379")
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution

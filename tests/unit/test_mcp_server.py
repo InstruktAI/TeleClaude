@@ -316,9 +316,11 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     first_call = server.client.handle_event.call_args_list[0]
     assert first_call[0][0] == "new_session"
 
-    # Check command call - should be "gemini" event
+    # Check command call - should be "agent" event with "gemini" in args
     second_call = server.client.handle_event.call_args_list[1]
-    assert second_call[0][0] == "gemini"
+    assert second_call[0][0] == "agent"  # TeleClaudeEvents.AGENT_START
+    call_payload = second_call[0][1]
+    assert call_payload["args"][0] == "gemini"
 
     # Reset mock
     server.client.handle_event.reset_mock()
@@ -334,9 +336,11 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     )
     assert result["status"] == "success"
 
-    # Check command call - should be "codex" event
+    # Check command call - should be "agent" event with "codex"
     second_call = server.client.handle_event.call_args_list[1]
-    assert second_call[0][0] == "codex"
+    assert second_call[0][0] == "agent"
+    call_payload = second_call[0][1]
+    assert call_payload["args"][0] == "codex"
 
     # Reset mock
     server.client.handle_event.reset_mock()
@@ -352,6 +356,8 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     )
     assert result["status"] == "success"
 
-    # Check command call - should be "claude" event
+    # Check command call - should be "agent" event with "claude"
     second_call = server.client.handle_event.call_args_list[1]
-    assert second_call[0][0] == "claude"
+    assert second_call[0][0] == "agent"
+    call_payload = second_call[0][1]
+    assert call_payload["args"][0] == "claude"

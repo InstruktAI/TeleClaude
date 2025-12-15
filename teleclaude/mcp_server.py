@@ -18,6 +18,7 @@ from mcp.types import JSONRPCMessage, TextContent, Tool
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
+from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
@@ -533,7 +534,7 @@ class TeleClaudeMCPServer:
 
     async def start(self) -> None:
         """Start MCP server on Unix socket."""
-        socket_path_str = os.path.expandvars(config.mcp.socket_path)
+        socket_path_str = os.path.expandvars(MCP_SOCKET_PATH)
         socket_path = Path(socket_path_str)
 
         # Remove existing socket file if present
@@ -816,20 +817,14 @@ class TeleClaudeMCPServer:
             effective_caller_id if effective_caller_id != "unknown" else None,
         )
 
-        # Determine which event to fire based on agent
-        event_type = TeleClaudeEvents.CLAUDE
-        if agent == "gemini":
-            event_type = TeleClaudeEvents.GEMINI
-        elif agent == "codex":
-            event_type = TeleClaudeEvents.CODEX
-
+        # Determine which event to fire based on agent (now always AGENT_START)
         # Send command with prefixed message to start the agent
         await self.client.handle_event(
-            event_type,
-            {"session_id": session_id, "args": [prefixed_message]},
+            TeleClaudeEvents.AGENT_START,
+            {"session_id": session_id, "args": [agent, prefixed_message]},  # Pass agent name and message as args
             MessageMetadata(adapter_type="redis"),
         )
-        logger.debug("Sent /%s command with message to local session %s", agent, session_id[:8])
+        logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
 
         return {"session_id": session_id, "status": "success"}
 
@@ -955,17 +950,16 @@ class TeleClaudeMCPServer:
                 logger.debug("Skipping listener registration: no caller_session_id")
 
             # Send agent start command with prefixed message
-            # Use shlex.quote for proper escaping (handles ', ", !, $, etc.)
+            # The remote handle_command expects: /agent {agent_name} {message}
             quoted_message = shlex.quote(prefixed_message)
             await self.client.send_request(
                 computer_name=computer,
-                command=f"/{agent} {quoted_message}",
+                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {quoted_message}",
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
             logger.debug(
-                "Sent /%s command with message to remote session %s",
-                agent,
+                "Sent AGENT_START command with message to remote session %s",
                 remote_session_id[:8],
             )
 

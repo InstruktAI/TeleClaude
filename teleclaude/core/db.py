@@ -15,7 +15,7 @@ from teleclaude.config import config
 from . import ux_state
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata
-from .ux_state import SessionUXState
+from .ux_state import SessionUXState, update_session_ux_state
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -100,7 +100,6 @@ class Db:
         working_directory: str = "~",
         description: Optional[str] = None,
         session_id: Optional[str] = None,
-        claude_model: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
@@ -114,7 +113,6 @@ class Db:
             working_directory: Initial working directory
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
-            claude_model: Optional Claude model ('opus', 'sonnet', 'haiku') for AI-initiated sessions
 
         Returns:
             Created Session object
@@ -135,7 +133,6 @@ class Db:
             terminal_size=terminal_size,
             working_directory=working_directory,
             description=description,
-            claude_model=claude_model,
         )
 
         data = session.to_dict()
@@ -144,8 +141,8 @@ class Db:
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, closed, created_at,
-                last_activity, terminal_size, working_directory, description, claude_model
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_activity, terminal_size, working_directory, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -160,7 +157,6 @@ class Db:
                 data["terminal_size"],
                 data["working_directory"],
                 data["description"],
-                data["claude_model"],
             ),
         )
         await self.conn.commit()
@@ -582,8 +578,8 @@ class Db:
         pending_deletions: list[str] | object = ux_state._UNSET,
         pending_feedback_deletions: list[str] | object = ux_state._UNSET,
         notification_sent: bool | object = ux_state._UNSET,
-        claude_session_id: Optional[str] | object = ux_state._UNSET,
-        claude_session_file: Optional[str] | object = ux_state._UNSET,
+        native_session_id: Optional[str] | object = ux_state._UNSET,
+        native_log_file: Optional[str] | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
 
@@ -594,10 +590,10 @@ class Db:
             pending_deletions: List of user input message IDs pending deletion (optional)
             pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
             notification_sent: Whether Claude Code notification was sent (optional)
-            claude_session_id: Claude Code session ID (optional)
-            claude_session_file: Path to native Claude Code session file (optional)
+            native_session_id: Native agent session ID (optional)
+            native_log_file: Path to native agent log file (optional)
         """
-        await ux_state.update_session_ux_state(
+        await update_session_ux_state(
             self.conn,
             session_id,
             output_message_id=output_message_id,
@@ -605,8 +601,8 @@ class Db:
             pending_deletions=pending_deletions,
             pending_feedback_deletions=pending_feedback_deletions,
             notification_sent=notification_sent,
-            claude_session_id=claude_session_id,
-            claude_session_file=claude_session_file,
+            native_session_id=native_session_id,
+            native_log_file=native_log_file,
         )
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:

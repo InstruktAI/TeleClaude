@@ -16,11 +16,6 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 import psutil
 
 from teleclaude.config import config
-from teleclaude.constants import (
-    DEFAULT_CLAUDE_COMMAND,
-    DEFAULT_CODEX_COMMAND,
-    DEFAULT_GEMINI_COMMAND,
-)
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
@@ -226,9 +221,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     if voice:
         await db.assign_voice(session_id, voice)
 
-    # Extract claude_model from metadata if present (AI-initiated sessions)
-    claude_model = metadata.claude_model if metadata else None
-
     # Create session in database first (need session_id for create_channel)
     # session_id was generated earlier for tmux naming
     session = await db.create_session(
@@ -239,7 +231,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         terminal_size=terminal_size,
         working_directory=working_dir,
         session_id=session_id,
-        claude_model=claude_model,
     )
 
     # Create channel via client (session object passed, adapter_metadata updated in DB)
@@ -436,21 +427,21 @@ async def handle_get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
-    # Get ux_state to get claude_session_file
+    # Get ux_state to get native_log_file
     ux_state = await db.get_ux_state(session_id)
-    if not ux_state or not ux_state.claude_session_file:
-        logger.error("No claude_session_file for session %s", session_id[:8])
+    if not ux_state or not ux_state.native_log_file:
+        logger.error("No native_log_file for session %s", session_id[:8])
         return {"status": "error", "error": "Session file not found"}
 
-    claude_session_file = Path(ux_state.claude_session_file)
-    if not claude_session_file.exists():
-        logger.error("Claude session file does not exist: %s", claude_session_file)
+    native_log_file = Path(ux_state.native_log_file)
+    if not native_log_file.exists():
+        logger.error("Native session file does not exist: %s", native_log_file)
         return {"status": "error", "error": "Session file does not exist"}
 
     # Parse Claude transcript to markdown with filtering
     try:
         markdown_content = parse_claude_transcript(
-            str(claude_session_file),
+            str(native_log_file),
             session.title,
             since_timestamp=since_timestamp,
             until_timestamp=until_timestamp,
@@ -462,7 +453,7 @@ async def handle_get_session_data(
             session_id[:8],
         )
     except Exception as e:
-        logger.error("Failed to parse session file %s: %s", claude_session_file, e)
+        logger.error("Failed to parse session file %s: %s", native_log_file, e)
         return {"status": "error", "error": f"Failed to parse session file: {e}"}
 
     return {
@@ -1098,10 +1089,90 @@ async def handle_end_session(
 
 
 @with_session
+async def handle_agent_start(
+    session: Session,
+    context: EventContext,
+    agent_name: str,
+    args: list[str],
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Start a generic AI agent in session with optional arguments.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
+        agent_name: The name of the agent to start (e.g., "claude", "gemini")
+        args: Command arguments (passed to agent command)
+        client: AdapterClient for sending feedback
+        execute_terminal_command: Function to execute terminal command
+    """
+    agent_config = config.agents.get(agent_name)
+    if not agent_config:
+        await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
+        return
+
+    full_command = agent_config.command
+
+    cmd_parts = [full_command]
+
+    # Add any additional arguments from the user
+    if args:
+        # Use shlex.quote for proper shell escaping
+        quoted_args = [shlex.quote(arg) for arg in args]
+        cmd_parts.extend(quoted_args)
+    cmd = " ".join(cmd_parts)
+    logger.info("Executing agent start command for %s: %s", agent_name, cmd)
+
+    # Execute command WITH polling (agents are long-running)
+    message_id = str(getattr(context, "message_id", ""))
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session
+async def handle_agent_resume(
+    session: Session,
+    context: EventContext,
+    agent_name: str,
+    args: list[str],
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Resume a generic AI agent session.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
+        agent_name: The name of the agent to resume
+        args: Command arguments (passed to agent command, e.g., --session-id XXX)
+        client: AdapterClient for sending feedback
+        execute_terminal_command: Function to execute terminal command
+    """
+    agent_config = config.agents.get(agent_name)
+    if not agent_config:
+        await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
+        return
+
+    # Build the command from agent's base command and provided arguments
+    cmd_parts = [agent_config.command.strip()]
+    if args:
+        quoted_args = [shlex.quote(arg) for arg in args]
+        cmd_parts.extend(quoted_args)
+
+    cmd = " ".join(cmd_parts)
+    logger.info("Executing agent resume command for %s: %s", agent_name, cmd)
+
+    # Execute command WITH polling (agents are long-running)
+    message_id = str(getattr(context, "message_id", ""))
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session
 async def handle_claude_session(
     session: Session,
     context: EventContext,
     args: list[str],
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Claude Code in session with optional arguments.
@@ -1110,33 +1181,17 @@ async def handle_claude_session(
         session: Session object (injected by @with_session)
         context: Command context with message_id
         args: Command arguments (passed to claude command)
+        client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Get base command from config with fallback to constant
-    # Strip whitespace to handle YAML literal blocks with trailing newlines
-    base_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
-
-    # Prepend --model flag if session has claude_model set (AI-initiated sessions)
-    if session.claude_model:
-        base_cmd = f"{base_cmd} --model={session.claude_model}"
-
-    # Build command with args (properly quoted for shell)
-    if args:
-        # Use shlex.quote for proper shell escaping (handles !, $, ", ', etc.)
-        quoted_args = shlex.quote(" ".join(args))
-        cmd = f"{base_cmd} {quoted_args}"
-    else:
-        cmd = base_cmd
-
-    # Execute command WITH polling (claude is long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await handle_agent_start(session, context, "claude", args, client, execute_terminal_command)
 
 
 @with_session
 async def handle_claude_resume_session(
     session: Session,
     context: EventContext,
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Claude Code session using explicit session ID from metadata.
@@ -1144,32 +1199,10 @@ async def handle_claude_resume_session(
     Args:
         session: Session object (injected by @with_session)
         context: Command context with message_id
+        client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Check if session has stored Claude session ID and project_dir
-    # Use getattr with default since not all adapter metadata types have these fields
-    origin_meta = cast(object, getattr(session.adapter_metadata, session.origin_adapter, None))
-    claude_session_id = cast(Optional[str], getattr(origin_meta, "claude_session_id", None)) if origin_meta else None
-    project_dir_value = cast(
-        Optional[str], getattr(origin_meta, "project_dir", None)
-    ) or await terminal_bridge.get_current_directory(session.tmux_session_name)
-
-    # Get base command from config with fallback to constant
-    # Strip whitespace to handle YAML literal blocks with trailing newlines
-    claude_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
-
-    # Build command
-    if claude_session_id:
-        logger.info("Continuing claude session %s", claude_session_id)
-        cmd = f"cd {shlex.quote(str(project_dir_value))} && {claude_cmd} --session-id {claude_session_id}"
-    else:
-        # Fresh session: use --continue to resume last claude session in current dir
-        logger.info("Starting fresh claude session with --continue")
-        cmd = f"{claude_cmd} --continue"
-
-    # Execute command WITH polling (claude is long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await handle_agent_resume(session, context, "claude", [], client, execute_terminal_command)
 
 
 @with_session
@@ -1177,6 +1210,7 @@ async def handle_gemini_session(
     session: Session,
     context: EventContext,
     args: list[str],
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Gemini in session with optional arguments.
@@ -1185,28 +1219,17 @@ async def handle_gemini_session(
         session: Session object (injected by @with_session)
         context: Command context with message_id
         args: Command arguments (passed to gemini command)
+        client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Get base command from config with fallback to constant
-    base_cmd = config.mcp.gemini_command.strip() if config.mcp.gemini_command else DEFAULT_GEMINI_COMMAND
-
-    # Build command with args (properly quoted for shell)
-    if args:
-        # Use shlex.quote for proper shell escaping (handles !, $, ", ', etc.)
-        quoted_args = shlex.quote(" ".join(args))
-        cmd = f"{base_cmd} {quoted_args}"
-    else:
-        cmd = base_cmd
-
-    # Execute command WITH polling (gemini is long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await handle_agent_start(session, context, "gemini", args, client, execute_terminal_command)
 
 
 @with_session
 async def handle_gemini_resume_session(
     session: Session,
     context: EventContext,
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Gemini session.
@@ -1214,18 +1237,10 @@ async def handle_gemini_resume_session(
     Args:
         session: Session object (injected by @with_session)
         context: Command context with message_id
+        client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Get base command from config with fallback to constant
-    gemini_cmd = config.mcp.gemini_command.strip() if config.mcp.gemini_command else DEFAULT_GEMINI_COMMAND
-
-    # Assumption: Gemini supports --resume latest
-    logger.info("Starting fresh gemini session with --resume latest")
-    cmd = f"{gemini_cmd} --resume latest"
-
-    # Execute command WITH polling (gemini is long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await handle_agent_resume(session, context, "gemini", [], client, execute_terminal_command)
 
 
 @with_session
@@ -1233,6 +1248,7 @@ async def handle_codex_session(
     session: Session,
     context: EventContext,
     args: list[str],
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Codex in session with optional arguments.
@@ -1241,28 +1257,17 @@ async def handle_codex_session(
         session: Session object (injected by @with_session)
         context: Command context with message_id
         args: Command arguments (passed to codex command)
+        client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Get base command from config with fallback to constant
-    base_cmd = config.mcp.codex_command.strip() if config.mcp.codex_command else DEFAULT_CODEX_COMMAND
-
-    # Build command with args (properly quoted for shell)
-    if args:
-        # Use shlex.quote for proper shell escaping (handles !, $, ", ', etc.)
-        quoted_args = shlex.quote(" ".join(args))
-        cmd = f"{base_cmd} {quoted_args}"
-    else:
-        cmd = base_cmd
-
-    # Execute command WITH polling (codex is long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await handle_agent_start(session, context, "codex", args, client, execute_terminal_command)
 
 
 @with_session
 async def handle_codex_resume_session(
     session: Session,
     context: EventContext,
+    client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Codex session.
@@ -1270,15 +1275,7 @@ async def handle_codex_resume_session(
     Args:
         session: Session object (injected by @with_session)
         context: Command context with message_id
+        client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Get base command from config with fallback to constant
-    codex_cmd = config.mcp.codex_command.strip() if config.mcp.codex_command else DEFAULT_CODEX_COMMAND
-
-    # Assumption: Codex supports resume --last
-    logger.info("Starting fresh codex session with resume --last")
-    cmd = f"{codex_cmd} --resume last"
-
-    # Execute command WITH polling (codex is long-running)
-    message_id = str(getattr(context, "message_id", ""))
-    await execute_terminal_command(session.session_id, cmd, message_id, True)
+    await handle_agent_resume(session, context, "codex", [], client, execute_terminal_command)

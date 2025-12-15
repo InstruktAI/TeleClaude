@@ -252,8 +252,8 @@ def test_session_ux_state_to_dict_serializes_all_fields():
         pending_deletions=["del-1", "del-2"],
         pending_feedback_deletions=["fb-1"],
         notification_sent=True,
-        claude_session_id="claude-789",
-        claude_session_file="/path/to/session.jsonl",
+        native_session_id="claude-789",
+        native_log_file="/path/to/session.jsonl",
     )
 
     data = state.to_dict()
@@ -263,5 +263,5 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     assert data["pending_deletions"] == ["del-1", "del-2"]
     assert data["pending_feedback_deletions"] == ["fb-1"]
     assert data["notification_sent"] is True
-    assert data["claude_session_id"] == "claude-789"
-    assert data["claude_session_file"] == "/path/to/session.jsonl"
+    assert data["native_session_id"] == "claude-789"
+    assert data["native_log_file"] == "/path/to/session.jsonl"

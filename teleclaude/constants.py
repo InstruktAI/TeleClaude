@@ -3,8 +3,11 @@
 This module defines shared constants to ensure consistency.
 """
 
+# MCP Configuration
+MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
+MCP_ENABLED = True
+
 # Default Claude Code command with all required flags
-# Used when config.mcp.claude_command is not set
 DEFAULT_CLAUDE_COMMAND = 'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''
 
 # Default Gemini command

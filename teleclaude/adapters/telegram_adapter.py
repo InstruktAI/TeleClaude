@@ -234,7 +234,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         Shows download button only when there's a Claude Code session to download.
         """
         # Add download button if Claude session available
-        if ux_state.claude_session_file:
+        if ux_state.native_log_file:
             keyboard = [
                 [
                     InlineKeyboardButton(
@@ -1339,9 +1339,9 @@ Current size: {current_size}
 
         # Get Claude session ID from ux_state
         ux_state = await db.get_ux_state(session.session_id)
-        claude_session_id = ux_state.claude_session_id
+        native_session_id = ux_state.native_session_id
 
-        if not claude_session_id:
+        if not native_session_id:
             await self.send_feedback(session, "❌ No Claude Code session found in this topic", MessageMetadata())
             return
 
@@ -1398,7 +1398,7 @@ Current size: {current_size}
             try:
                 # Check if there's a Claude Code session transcript
                 ux_state = await db.get_ux_state(session_id)
-                claude_session_file = ux_state.claude_session_file if ux_state else None
+                native_log_file = ux_state.native_log_file if ux_state else None
 
                 # Get session for metadata
                 session = await db.get_session(session_id)
@@ -1409,10 +1409,10 @@ Current size: {current_size}
                 await self.cleanup_feedback_messages(session)
 
                 # Convert Claude transcript to markdown
-                if not claude_session_file:
+                if not native_log_file:
                     await query.edit_message_text("❌ No Claude session file found", parse_mode="Markdown")
                     return
-                markdown_content = parse_claude_transcript(claude_session_file, session.title, tail_chars=0)
+                markdown_content = parse_claude_transcript(native_log_file, session.title, tail_chars=0)
                 filename = f"claude-{session_id:8}.md"
                 caption = "Claude Code session transcript"
 

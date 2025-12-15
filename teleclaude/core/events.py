@@ -31,6 +31,8 @@ EventType = Literal[
     "key_left",
     "key_right",
     "rename",
+    "agent",
+    "agent_resume",
     "claude",
     "claude_resume",
     "gemini",
@@ -51,6 +53,8 @@ EventType = Literal[
 # pylint: disable=invalid-name  # UiCommands is a module-level mapping, not a constant
 UiCommands = {
     "cd": "Change directory or list trusted directories",
+    "agent": "Start an AI agent (e.g., /agent claude)",
+    "agent_resume": "Resume an AI agent session",
     "claude": "Start Claude Code in GOD mode",
     "claude_restart": "Restart latest Claude Code session",
     "claude_resume": "Resume last Claude Code session (GOD mode)",
@@ -116,6 +120,8 @@ class TeleClaudeEvents:
     RENAME: Literal["rename"] = "rename"
 
     # AI commands
+    AGENT_START: Literal["agent"] = "agent"
+    AGENT_RESUME: Literal["agent_resume"] = "agent_resume"
     CLAUDE: Literal["claude"] = "claude"
     CLAUDE_RESUME: Literal["claude_resume"] = "claude_resume"
     GEMINI: Literal["gemini"] = "gemini"
@@ -255,7 +261,6 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
     auto_command: Optional[str] = None  # For chaining commands (e.g., start Claude after session creation)
-    claude_model: Optional[str] = None  # Claude model for AI-initiated sessions ('opus', 'sonnet', 'haiku')
 
 
 @dataclass
@@ -312,6 +317,8 @@ COMMAND_EVENTS: set[EventType] = {
     "key_left",
     "key_right",
     "rename",
+    "agent",
+    "agent_resume",
     "claude",
     "claude_resume",
     "gemini",

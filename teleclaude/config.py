@@ -7,10 +7,16 @@ Config is loaded at module import time and available globally via:
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict
 
 import yaml
 from dotenv import load_dotenv
 
+from teleclaude.constants import (
+    DEFAULT_CLAUDE_COMMAND,
+    DEFAULT_CODEX_COMMAND,
+    DEFAULT_GEMINI_COMMAND,
+)
 from teleclaude.utils import expand_env_vars
 
 # Project root (relative to this file)
@@ -100,12 +106,10 @@ class PollingConfig:
 
 
 @dataclass
-class MCPConfig:
-    enabled: bool
-    socket_path: str
-    claude_command: str | None = None
-    gemini_command: str | None = None
-    codex_command: str | None = None
+class AgentConfig:
+    """Configuration for a specific AI agent."""
+
+    command: str  # The full base command string, including fixed flags
 
 
 @dataclass
@@ -130,9 +134,9 @@ class Config:
     database: DatabaseConfig
     computer: ComputerConfig
     polling: PollingConfig
-    mcp: MCPConfig
     redis: RedisConfig
     telegram: TelegramConfig
+    agents: Dict[str, AgentConfig]
 
 
 # Default configuration values (single source of truth)
@@ -153,13 +157,6 @@ DEFAULT_CONFIG: dict[str, object] = {
     "polling": {
         "directory_check_interval": 5,
     },
-    "mcp": {
-        "enabled": True,
-        "socket_path": "/tmp/teleclaude.sock",
-        "claude_command": None,
-        "gemini_command": None,
-        "codex_command": None,
-    },
     "redis": {
         "enabled": False,
         "url": "redis://localhost:6379",
@@ -172,6 +169,17 @@ DEFAULT_CONFIG: dict[str, object] = {
     },
     "telegram": {
         "trusted_bots": [],
+    },
+    "agents": {
+        "claude": {
+            "command": DEFAULT_CLAUDE_COMMAND,
+        },
+        "gemini": {
+            "command": DEFAULT_GEMINI_COMMAND,
+        },
+        "codex": {
+            "command": DEFAULT_CODEX_COMMAND,
+        },
     },
 }
 
@@ -237,50 +245,52 @@ def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
 
 def _build_config(raw: dict[str, object]) -> Config:
     """Build typed Config from raw dict with proper type conversion."""
-    db = raw["database"]
-    comp = raw["computer"]
-    poll = raw["polling"]
-    mcp = raw["mcp"]
-    redis = raw["redis"]
-    tg = raw["telegram"]
+    db_raw = raw["database"]
+    comp_raw = raw["computer"]
+    poll_raw = raw["polling"]
+    redis_raw = raw["redis"]
+    tg_raw = raw["telegram"]
+    agents_raw = raw.get("agents", {})
+
+    agents_registry: Dict[str, AgentConfig] = {}
+    if isinstance(agents_raw, dict):
+        for name, agent_data in agents_raw.items():
+            if isinstance(agent_data, dict):
+                agents_registry[name] = AgentConfig(
+                    command=str(agent_data["command"]),
+                )
 
     return Config(
         database=DatabaseConfig(
-            _configured_path=str(db["path"]),  # type: ignore[index,misc]
+            _configured_path=str(db_raw["path"]),  # type: ignore[index,misc]
         ),
         computer=ComputerConfig(
-            name=str(comp["name"]),  # type: ignore[index,misc]
-            user=str(comp["user"]),  # type: ignore[index,misc]
-            role=str(comp["role"]),  # type: ignore[index,misc]
-            timezone=str(comp["timezone"]),  # type: ignore[index,misc]
-            default_working_dir=str(comp["default_working_dir"]),  # type: ignore[index,misc]
-            is_master=bool(comp["is_master"]),  # type: ignore[index,misc]
-            trusted_dirs=_parse_trusted_dirs(list(comp["trusted_dirs"])),  # type: ignore[index,misc]
-            host=str(comp["host"]) if comp["host"] else None,  # type: ignore[index,misc]
+            name=str(comp_raw["name"]),  # type: ignore[index,misc]
+            user=str(comp_raw["user"]),  # type: ignore[index,misc]
+            role=str(comp_raw["role"]),  # type: ignore[index,misc]
+            timezone=str(comp_raw["timezone"]),  # type: ignore[index,misc]
+            default_working_dir=str(comp_raw["default_working_dir"]),  # type: ignore[index,misc]
+            is_master=bool(comp_raw["is_master"]),  # type: ignore[index,misc]
+            trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
+            host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
         ),
         polling=PollingConfig(
-            directory_check_interval=int(poll["directory_check_interval"]),  # type: ignore[index,misc]
-        ),
-        mcp=MCPConfig(
-            enabled=bool(mcp["enabled"]),  # type: ignore[index,misc]
-            socket_path=str(mcp["socket_path"]),  # type: ignore[index,misc]
-            claude_command=str(mcp["claude_command"]) if mcp.get("claude_command") else None,  # type: ignore[index,attr-defined,misc]
-            gemini_command=str(mcp["gemini_command"]) if mcp.get("gemini_command") else None,  # type: ignore[index,attr-defined,misc]
-            codex_command=str(mcp["codex_command"]) if mcp.get("codex_command") else None,  # type: ignore[index,attr-defined,misc]
+            directory_check_interval=int(poll_raw["directory_check_interval"]),  # type: ignore[index,misc]
         ),
         redis=RedisConfig(
-            enabled=bool(redis["enabled"]),  # type: ignore[index,misc]
-            url=str(redis["url"]),  # type: ignore[index,misc]
-            password=str(redis["password"]) if redis["password"] else None,  # type: ignore[index,misc]
-            max_connections=int(redis["max_connections"]),  # type: ignore[index,misc]
-            socket_timeout=int(redis["socket_timeout"]),  # type: ignore[index,misc]
-            message_stream_maxlen=int(redis["message_stream_maxlen"]),  # type: ignore[index,misc]
-            output_stream_maxlen=int(redis["output_stream_maxlen"]),  # type: ignore[index,misc]
-            output_stream_ttl=int(redis["output_stream_ttl"]),  # type: ignore[index,misc]
+            enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]
+            url=str(redis_raw["url"]),  # type: ignore[index,misc]
+            password=str(redis_raw["password"]) if redis_raw["password"] else None,  # type: ignore[index,misc]
+            max_connections=int(redis_raw["max_connections"]),  # type: ignore[index,misc]
+            socket_timeout=int(redis_raw["socket_timeout"]),  # type: ignore[index,misc]
+            message_stream_maxlen=int(redis_raw["message_stream_maxlen"]),  # type: ignore[index,misc]
+            output_stream_maxlen=int(redis_raw["output_stream_maxlen"]),  # type: ignore[index,misc]
+            output_stream_ttl=int(redis_raw["output_stream_ttl"]),  # type: ignore[index,misc]
         ),
         telegram=TelegramConfig(
-            trusted_bots=list(tg["trusted_bots"]),  # type: ignore[index,misc]
+            trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
         ),
+        agents=agents_registry,
     )
 
 
