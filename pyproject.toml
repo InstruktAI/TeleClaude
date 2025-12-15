@@ -126,16 +126,16 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "teleclaude.adapters.redis_adapter"
 # Redis client returns Any types that propagate.
-disable_error_code = ["misc", "no-any-return", "unused-ignore", "attr-defined"]
+disable_error_code = ["misc", "no-any-return", "attr-defined"]
 
 [[tool.mypy.overrides]]
 module = "teleclaude.core.command_handlers"
 # Decorators and dynamic typing cause issues here.
-disable_error_code = ["explicit-any", "misc", "unused-ignore"]
+disable_error_code = ["explicit-any", "misc"]
 
 [[tool.mypy.overrides]]
 module = "teleclaude.adapters.base_adapter"
-disable_error_code = ["misc", "unused-ignore"]
+disable_error_code = ["misc"]
 
 [tool.pylint.'MESSAGES CONTROL']
 # CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
