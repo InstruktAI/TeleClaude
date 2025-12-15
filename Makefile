@@ -38,7 +38,7 @@ help:
 install:
 	@echo "Installing dependencies..."
 	@if ! command -v uv >/dev/null; then echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; fi
-	uv sync --extra test
+	PATH="$$HOME/.local/bin:$$PATH" uv sync --extra test
 	@echo "✓ Dependencies and package installed"
 	@echo ""
 	@echo "Next step: Run 'make init' to set up the service (or 'make init ARGS=-y' for unattended mode)"
