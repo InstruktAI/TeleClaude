@@ -48,10 +48,6 @@ class TeleClaudeMCPServer:
         self.terminal_bridge = terminal_bridge
 
         self.computer_name = config.computer.name
-        self.server = Server("teleclaude")
-
-        # Setup MCP tool handlers
-        self._setup_tools()
 
     def _is_local_computer(self, computer: str) -> bool:
         """Check if the target computer refers to the local machine.
@@ -89,10 +85,10 @@ class TeleClaudeMCPServer:
             # Database not initialized (e.g., in tests)
             pass
 
-    def _setup_tools(self) -> None:
+    def _setup_tools(self, server: Server) -> None:
         """Register MCP tools with the server."""
 
-        @self.server.list_tools()
+        @server.list_tools()
         async def list_tools() -> list[Tool]:  # pyright: ignore[reportUnusedFunction]
             """List available MCP tools."""
             return [
@@ -413,7 +409,7 @@ class TeleClaudeMCPServer:
                 ),
             ]
 
-        @self.server.call_tool()
+        @server.call_tool()
         async def call_tool(  # pyright: ignore[reportUnusedFunction]
             name: str, arguments: dict[str, object]
         ) -> list[TextContent]:
@@ -559,6 +555,11 @@ class TeleClaudeMCPServer:
         """Handle a single MCP client connection over Unix socket."""
         logger.info("New MCP client connected")
         try:
+            # Create FRESH server instance for this connection
+            # This ensures clean state (no stale initialization)
+            server = Server("teleclaude")
+            self._setup_tools(server)
+
             # Create memory streams like stdio_server does
             read_stream_writer: MemoryObjectSendStream[SessionMessage | Exception]
             read_stream: MemoryObjectReceiveStream[SessionMessage | Exception]
@@ -611,10 +612,10 @@ class TeleClaudeMCPServer:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(socket_reader)
                 tg.start_soon(socket_writer)
-                await self.server.run(
+                await server.run(
                     read_stream,
                     write_stream,
-                    self.server.create_initialization_options(),
+                    server.create_initialization_options(),
                 )
 
         except Exception:
