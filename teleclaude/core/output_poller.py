@@ -78,18 +78,22 @@ class OutputPoller:
         """
         # Configuration
         poll_interval = 1.0
-        global_update_interval = 3  # Global update interval (seconds) - first update after 1s
+        global_update_interval = (
+            3  # Global update interval (seconds) - first update after 1s
+        )
         directory_check_interval = config.polling.directory_check_interval
 
         # State tracking
         idle_ticks = 0
-        started_at = None
-        last_output_changed_at = None
+        started_at: float | None = None
+        last_output_changed_at: float | None = None
         current_update_interval = global_update_interval  # Start with global interval
-        last_directory = None
+        last_directory: str | None = None
         directory_check_ticks = 0
         poll_iteration = 0
-        session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
+        session_existed_last_poll = (
+            True  # Watchdog: track if session existed in previous poll
+        )
         output_sent_at_least_once = False  # Ensure user sees output before exit
         previous_output = ""  # Track previous clean output for change detection
 
@@ -98,15 +102,21 @@ class OutputPoller:
             await asyncio.sleep(1.0)
             started_at = time.time()
             last_output_changed_at = started_at
-            last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
-            logger.debug("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
+            last_yield_time = (
+                started_at  # Track when we last yielded (wall-clock, not tick-based)
+            )
+            logger.debug(
+                "Polling started for %s with marker_id=%s", session_id[:8], marker_id
+            )
 
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
                 poll_iteration += 1
 
                 # Exit condition 1: Session died (don't log ERROR here - we check below)
-                session_exists_now = await terminal_bridge.session_exists(tmux_session_name, log_missing=False)
+                session_exists_now = await terminal_bridge.session_exists(
+                    tmux_session_name, log_missing=False
+                )
 
                 # WATCHDOG: Detect session disappearing between polls
                 if session_existed_last_poll and not session_exists_now:
@@ -148,7 +158,10 @@ class OutputPoller:
                             logger.warning("Failed to read final output: %s", e)
 
                     yield ProcessExited(
-                        session_id=session_id, exit_code=None, final_output=final_output, started_at=started_at
+                        session_id=session_id,
+                        exit_code=None,
+                        final_output=final_output,
+                        started_at=started_at,
                     )
                     break
 
@@ -204,7 +217,10 @@ class OutputPoller:
                         started_at=started_at,
                         last_changed_at=last_output_changed_at,
                     )
-                    logger.debug("[POLL %s] Resumed after yield, consumer processed event", session_id[:8])
+                    logger.debug(
+                        "[POLL %s] Resumed after yield, consumer processed event",
+                        session_id[:8],
+                    )
 
                     # Mark that we've sent at least one update
                     output_sent_at_least_once = True
@@ -281,9 +297,16 @@ class OutputPoller:
                     directory_check_ticks += 1
                     if directory_check_ticks >= directory_check_interval:
                         directory_check_ticks = 0
-                        current_directory = await terminal_bridge.get_current_directory(tmux_session_name)
-                        if current_directory and current_directory != last_directory:
-                            if last_directory is not None:
+                        current_directory = await terminal_bridge.get_current_directory(
+                            tmux_session_name
+                        )
+
+                        if current_directory:
+                            # Only yield event if we moved FROM a directory (not startup)
+                            if (
+                                last_directory is not None
+                                and current_directory != last_directory
+                            ):
                                 logger.info(
                                     "Directory changed for %s: %s -> %s",
                                     session_id[:8],
@@ -295,14 +318,19 @@ class OutputPoller:
                                     new_path=current_directory,
                                     old_path=last_directory,
                                 )
-                            last_directory = current_directory
+
+                            # Update state if changed
+                            if current_directory != last_directory:
+                                last_directory = current_directory
 
                 await asyncio.sleep(poll_interval)
 
         finally:
             logger.debug("Polling ended for session %s", session_id[:8])
 
-    def _extract_exit_code(self, output: str, marker_id: Optional[str]) -> Optional[int]:
+    def _extract_exit_code(
+        self, output: str, marker_id: Optional[str]
+    ) -> Optional[int]:
         """Extract exit code from output using exact marker matching.
 
         Args:

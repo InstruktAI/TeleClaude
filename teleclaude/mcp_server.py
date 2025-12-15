@@ -63,7 +63,9 @@ class TeleClaudeMCPServer:
         """
         return computer in ("local", self.computer_name)
 
-    async def _maybe_register_listener(self, target_session_id: str, caller_session_id: str | None = None) -> None:
+    async def _maybe_register_listener(
+        self, target_session_id: str, caller_session_id: str | None = None
+    ) -> None:
         """Register caller as listener for target session's stop event if possible.
 
         Called on any contact with a session (start, send_message, get_session_data)
@@ -429,10 +431,17 @@ class TeleClaudeMCPServer:
             keeping context handling centralized.
             """
             # Extract context (injected by wrapper) - handlers don't need to parse this
-            caller_session_id = str(arguments.pop("caller_session_id")) if arguments.get("caller_session_id") else None
+            caller_session_id = (
+                str(arguments.pop("caller_session_id"))
+                if arguments.get("caller_session_id")
+                else None
+            )
 
             logger.debug(
-                "MCP call_tool() invoked: name=%s, arguments=%s, caller=%s", name, arguments, caller_session_id
+                "MCP call_tool() invoked: name=%s, arguments=%s, caller=%s",
+                name,
+                arguments,
+                caller_session_id,
             )
             if name == "teleclaude__list_computers":
                 # Extract optional filter (currently unused by implementation)
@@ -442,16 +451,28 @@ class TeleClaudeMCPServer:
                 #     computer_names = [str(c) for c in computer_names_obj]
 
                 computers = await self.teleclaude__list_computers()
-                return [TextContent(type="text", text=json.dumps(computers, default=str, indent=2))]
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(computers, default=str, indent=2)
+                    )
+                ]
             if name == "teleclaude__list_projects":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 projects = await self.teleclaude__list_projects(computer)
-                return [TextContent(type="text", text=json.dumps(projects, default=str))]
+                return [
+                    TextContent(type="text", text=json.dumps(projects, default=str))
+                ]
             elif name == "teleclaude__list_sessions":
-                computer_obj = arguments.get("computer", "local") if arguments else "local"
-                computer: str | None = None if computer_obj is None else str(computer_obj)
+                computer_obj = (
+                    arguments.get("computer", "local") if arguments else "local"
+                )
+                computer: str | None = (
+                    None if computer_obj is None else str(computer_obj)
+                )
                 sessions = await self.teleclaude__list_sessions(computer)
-                return [TextContent(type="text", text=json.dumps(sessions, default=str))]
+                return [
+                    TextContent(type="text", text=json.dumps(sessions, default=str))
+                ]
             elif name == "teleclaude__start_session":
                 # All arguments required by MCP schema - no fallbacks needed
                 if not arguments:
@@ -461,7 +482,9 @@ class TeleClaudeMCPServer:
                 title = str(arguments["title"])
                 message = str(arguments["message"])
                 # caller_session_id extracted at top of call_tool for completion notifications
-                result = await self.teleclaude__start_session(computer, project_dir, title, message, caller_session_id)
+                result = await self.teleclaude__start_session(
+                    computer, project_dir, title, message, caller_session_id
+                )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
@@ -471,43 +494,63 @@ class TeleClaudeMCPServer:
                 # caller_session_id extracted at top of call_tool for AI-to-AI message prefix
                 # Collect all chunks from async generator
                 chunks: list[str] = []
-                async for chunk in self.teleclaude__send_message(computer, session_id, message, caller_session_id):
+                async for chunk in self.teleclaude__send_message(
+                    computer, session_id, message, caller_session_id
+                ):
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__get_session_data":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
-                since_timestamp_obj = arguments.get("since_timestamp") if arguments else None
-                since_timestamp = str(since_timestamp_obj) if since_timestamp_obj else None
-                until_timestamp_obj = arguments.get("until_timestamp") if arguments else None
+                since_timestamp_obj = (
+                    arguments.get("since_timestamp") if arguments else None
+                )
+                since_timestamp = (
+                    str(since_timestamp_obj) if since_timestamp_obj else None
+                )
                 until_timestamp = str(until_timestamp_obj) if until_timestamp_obj else None
                 tail_chars_obj = arguments.get("tail_chars") if arguments else None
                 if isinstance(tail_chars_obj, (int, str)):
-                    tail_chars = int(cast(int | str, tail_chars_obj))
+                    tail_chars = int(tail_chars_obj)
                 else:
                     tail_chars = 5000
                 # caller_session_id extracted at top of call_tool for stop notifications (observer pattern)
                 result = await self.teleclaude__get_session_data(
-                    computer, session_id, since_timestamp, until_timestamp, tail_chars, caller_session_id
+                    computer,
+                    session_id,
+                    since_timestamp,
+                    until_timestamp,
+                    tail_chars,
+                    caller_session_id,
                 )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__deploy_to_all_computers":
                 # No arguments - always deploys to ALL computers
-                deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
-                return [TextContent(type="text", text=json.dumps(deploy_result, default=str))]
+                deploy_result: dict[
+                    str, dict[str, object]
+                ] = await self.teleclaude__deploy_to_all_computers()
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(deploy_result, default=str)
+                    )
+                ]
             elif name == "teleclaude__send_file":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 file_path = str(arguments.get("file_path", "")) if arguments else ""
                 caption_obj = arguments.get("caption") if arguments else None
                 caption = str(caption_obj) if caption_obj else None
-                result_text = await self.teleclaude__send_file(session_id, file_path, caption)
+                result_text = await self.teleclaude__send_file(
+                    session_id, file_path, caption
+                )
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__stop_notifications":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 # caller_session_id extracted at top of call_tool for listener unregistration
-                result = await self.teleclaude__stop_notifications(computer, session_id, caller_session_id)
+                result = await self.teleclaude__stop_notifications(
+                    computer, session_id, caller_session_id
+                )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__end_session":
                 computer = str(arguments.get("computer", "")) if arguments else ""
@@ -519,7 +562,9 @@ class TeleClaudeMCPServer:
                 event_type = str(arguments.get("event_type", "")) if arguments else ""
                 data_obj = arguments.get("data") if arguments else None
                 data = dict(data_obj) if isinstance(data_obj, dict) else {}
-                result_text = await self.teleclaude__handle_claude_event(session_id, event_type, data)
+                result_text = await self.teleclaude__handle_claude_event(
+                    session_id, event_type, data
+                )
                 return [TextContent(type="text", text=result_text)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
@@ -537,7 +582,8 @@ class TeleClaudeMCPServer:
 
         # Create Unix socket server
         server = await asyncio.start_unix_server(
-            lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)), path=str(socket_path)
+            lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)),
+            path=str(socket_path),
         )
 
         # Make socket accessible (owner only)
@@ -546,7 +592,9 @@ class TeleClaudeMCPServer:
         async with server:
             await server.serve_forever()
 
-    async def _handle_socket_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _handle_socket_connection(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         """Handle a single MCP client connection over Unix socket."""
         logger.info("New MCP client connected")
         try:
@@ -564,7 +612,10 @@ class TeleClaudeMCPServer:
                 anyio.create_memory_object_stream(0),
             )
             write_stream, write_stream_reader = cast(
-                tuple[MemoryObjectSendStream[SessionMessage], MemoryObjectReceiveStream[SessionMessage]],
+                tuple[
+                    MemoryObjectSendStream[SessionMessage],
+                    MemoryObjectReceiveStream[SessionMessage],
+                ],
                 anyio.create_memory_object_stream(0),
             )
 
@@ -577,7 +628,9 @@ class TeleClaudeMCPServer:
                             if not line:
                                 break
                             try:
-                                message = JSONRPCMessage.model_validate_json(line.decode("utf-8"))
+                                message = JSONRPCMessage.model_validate_json(
+                                    line.decode("utf-8")
+                                )
                                 await read_stream_writer.send(SessionMessage(message))
                             except Exception as exc:
                                 await read_stream_writer.send(exc)
@@ -589,7 +642,9 @@ class TeleClaudeMCPServer:
                 try:
                     async with write_stream_reader:
                         async for session_message in write_stream_reader:
-                            json_str = session_message.message.model_dump_json(by_alias=True, exclude_none=True)
+                            json_str = session_message.message.model_dump_json(
+                                by_alias=True, exclude_none=True
+                            )
                             writer.write((json_str + "\n").encode("utf-8"))
                             await writer.drain()
                 except anyio.ClosedResourceError:
@@ -599,7 +654,11 @@ class TeleClaudeMCPServer:
             async with anyio.create_task_group() as tg:
                 tg.start_soon(socket_reader)
                 tg.start_soon(socket_writer)
-                await self.server.run(read_stream, write_stream, self.server.create_initialization_options())
+                await self.server.run(
+                    read_stream,
+                    write_stream,
+                    self.server.create_initialization_options(),
+                )
 
         except Exception:
             logger.exception("Error handling MCP connection")
@@ -669,7 +728,9 @@ class TeleClaudeMCPServer:
         """
         # Validate computer is online
         peers = await self.client.discover_peers()
-        target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
+        target_online = any(
+            p["name"] == computer and p["status"] == "online" for p in peers
+        )
 
         if not target_online:
             logger.warning("Computer %s not online, skipping list_projects", computer)
@@ -679,7 +740,9 @@ class TeleClaudeMCPServer:
         message_id = await self.client.send_request(
             computer_name=computer, command="list_projects", metadata=MessageMetadata()
         )
-        logger.debug("Request sent with message_id=%s, reading response...", message_id[:15])
+        logger.debug(
+            "Request sent with message_id=%s, reading response...", message_id[:15]
+        )
 
         # Read response from AdapterClient (one-shot, not streaming)
         try:
@@ -695,7 +758,9 @@ class TeleClaudeMCPServer:
             # Extract projects list from success envelope
             data = envelope.get("data", [])
             if not isinstance(data, list):
-                logger.warning("Unexpected data format from %s: %s", computer, type(data).__name__)
+                logger.warning(
+                    "Unexpected data format from %s: %s", computer, type(data).__name__
+                )
                 return []
             return list(data)  # Type assertion for mypy
 
@@ -733,8 +798,12 @@ class TeleClaudeMCPServer:
             dict with session_id and status
         """
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message, caller_session_id, model)
-        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, model)
+            return await self._start_local_session(
+                project_dir, title, message, caller_session_id, model
+            )
+        return await self._start_remote_session(
+            computer, project_dir, title, message, caller_session_id, model
+        )
 
     async def _start_local_session(
         self,
@@ -773,26 +842,41 @@ class TeleClaudeMCPServer:
 
         # handle_event returns {"status": "success", "data": {"session_id": "..."}}
         if not isinstance(result, dict) or result.get("status") != "success":
-            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
-            return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
+            error_msg = (
+                result.get("error", "Unknown error")
+                if isinstance(result, dict)
+                else "Session creation failed"
+            )
+            return {
+                "status": "error",
+                "message": f"Local session creation failed: {error_msg}",
+            }
 
         data: object = result.get("data", {})
-        session_id: str | None = data.get("session_id") if isinstance(data, dict) else None
+        session_id: str | None = (
+            data.get("session_id") if isinstance(data, dict) else None
+        )
 
         if not session_id:
-            return {"status": "error", "message": "Local session did not return session_id"}
+            return {
+                "status": "error",
+                "message": "Local session did not return session_id",
+            }
 
         logger.info("Local session created: %s", session_id[:8])
 
         # Build AI-to-AI protocol prefix for the initial message
         # Use "local" since this is a local session - receiving AI can reply with computer="local"
         # Use parameter if provided, otherwise fall back to env var (for backwards compatibility)
-        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+        effective_caller_id = caller_session_id or os.environ.get(
+            "TELECLAUDE_SESSION_ID", "unknown"
+        )
         prefixed_message = f"AI[local:{effective_caller_id}] | {message}"
 
         # Register listener so we get notified when target session stops
         await self._maybe_register_listener(
-            session_id, effective_caller_id if effective_caller_id != "unknown" else None
+            session_id,
+            effective_caller_id if effective_caller_id != "unknown" else None,
         )
 
         # Send /claude command with prefixed message to start Claude Code
@@ -801,7 +885,9 @@ class TeleClaudeMCPServer:
             {"session_id": session_id, "args": [prefixed_message]},
             MessageMetadata(adapter_type="redis"),
         )
-        logger.debug("Sent /claude command with message to local session %s", session_id[:8])
+        logger.debug(
+            "Sent /claude command with message to local session %s", session_id[:8]
+        )
 
         return {"session_id": session_id, "status": "success"}
 
@@ -829,14 +915,18 @@ class TeleClaudeMCPServer:
         """
         # Validate computer is online - fail fast if not
         peers = await self.client.discover_peers()
-        target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
+        target_online = any(
+            p["name"] == computer and p["status"] == "online" for p in peers
+        )
 
         if not target_online:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
         # Send new_session command to remote - uses standardized handle_create_session
         # Transport layer generates request_id from Redis message ID
-        metadata = MessageMetadata(project_dir=project_dir, title=title, claude_model=model)
+        metadata = MessageMetadata(
+            project_dir=project_dir, title=title, claude_model=model
+        )
 
         message_id = await self.client.send_request(
             computer_name=computer,
@@ -852,16 +942,26 @@ class TeleClaudeMCPServer:
             # Handle error response
             if envelope.get("status") == "error":
                 error_msg = envelope.get("error", "Unknown error")
-                return {"status": "error", "message": f"Remote session creation failed: {error_msg}"}
+                return {
+                    "status": "error",
+                    "message": f"Remote session creation failed: {error_msg}",
+                }
 
             # Extract session_id from success response
             data = envelope.get("data", {})
-            remote_session_id = data.get("session_id") if isinstance(data, dict) else None
+            remote_session_id = (
+                data.get("session_id") if isinstance(data, dict) else None
+            )
 
             if not remote_session_id:
-                return {"status": "error", "message": "Remote did not return session_id"}
+                return {
+                    "status": "error",
+                    "message": "Remote did not return session_id",
+                }
 
-            logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
+            logger.info(
+                "Remote session created: %s on %s", remote_session_id[:8], computer
+            )
 
             # Now send /cd command if project_dir provided
             if project_dir:
@@ -871,19 +971,27 @@ class TeleClaudeMCPServer:
                     metadata=MessageMetadata(),
                     session_id=str(remote_session_id),
                 )
-                logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
+                logger.debug(
+                    "Sent /cd command to remote session %s", remote_session_id[:8]
+                )
 
             # Build AI-to-AI protocol prefix for the initial message
             # This allows the receiving AI to reply back to the caller
             # Use parameter if provided, otherwise fall back to env var (for backwards compatibility)
-            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-            prefixed_message = f"AI[{self.computer_name}:{effective_caller_id}] | {message}"
+            effective_caller_id = caller_session_id or os.environ.get(
+                "TELECLAUDE_SESSION_ID", "unknown"
+            )
+            prefixed_message = (
+                f"AI[{self.computer_name}:{effective_caller_id}] | {message}"
+            )
 
             # Register listener so we get notified when target session stops
             # Note: For remote sessions, the Stop event comes via Redis transport
             logger.debug(
                 "Attempting listener registration: caller=%s, target=%s",
-                effective_caller_id[:8] if effective_caller_id != "unknown" else "unknown",
+                effective_caller_id[:8]
+                if effective_caller_id != "unknown"
+                else "unknown",
                 str(remote_session_id)[:8],
             )
             if effective_caller_id != "unknown":
@@ -912,7 +1020,9 @@ class TeleClaudeMCPServer:
                             effective_caller_id[:8],
                         )
                 except RuntimeError as e:
-                    logger.warning("Database not initialized for listener registration: %s", e)
+                    logger.warning(
+                        "Database not initialized for listener registration: %s", e
+                    )
             else:
                 logger.debug("Skipping listener registration: no caller_session_id")
 
@@ -925,17 +1035,28 @@ class TeleClaudeMCPServer:
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
-            logger.debug("Sent /claude command with message to remote session %s", remote_session_id[:8])
+            logger.debug(
+                "Sent /claude command with message to remote session %s",
+                remote_session_id[:8],
+            )
 
             return {"session_id": remote_session_id, "status": "success"}
 
         except TimeoutError:
-            return {"status": "error", "message": "Timeout waiting for remote session creation"}
+            return {
+                "status": "error",
+                "message": "Timeout waiting for remote session creation",
+            }
         except Exception as e:
             logger.error("Failed to create remote session: %s", e)
-            return {"status": "error", "message": f"Failed to create remote session: {str(e)}"}
+            return {
+                "status": "error",
+                "message": f"Failed to create remote session: {str(e)}",
+            }
 
-    async def teleclaude__list_sessions(self, computer: Optional[str] = "local") -> list[dict[str, object]]:
+    async def teleclaude__list_sessions(
+        self, computer: Optional[str] = "local"
+    ) -> list[dict[str, object]]:
         """List sessions from local or remote computer(s).
 
         For local computer: Queries local database directly.
@@ -994,7 +1115,9 @@ class TeleClaudeMCPServer:
         redis_adapter: RedisAdapter = redis_adapter_base
 
         try:
-            message_id = await redis_adapter.send_request(computer, "list_sessions", MessageMetadata())
+            message_id = await redis_adapter.send_request(
+                computer, "list_sessions", MessageMetadata()
+            )
             response_data = await self.client.read_response(message_id, timeout=3.0)
             sessions = json.loads(response_data.strip())
 
@@ -1022,7 +1145,9 @@ class TeleClaudeMCPServer:
         # Get all online remote computers
         redis_adapter_base = self.client.adapters.get("redis")
         if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
-            logger.warning("Redis adapter not available - returning local sessions only")
+            logger.warning(
+                "Redis adapter not available - returning local sessions only"
+            )
             return all_sessions
         redis_adapter: RedisAdapter = redis_adapter_base
 
@@ -1061,11 +1186,14 @@ class TeleClaudeMCPServer:
         """
         try:
             # Get caller's session_id - prefer parameter, fall back to env var (for backwards compatibility)
-            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+            effective_caller_id = caller_session_id or os.environ.get(
+                "TELECLAUDE_SESSION_ID", "unknown"
+            )
 
             # Register as listener so we get notified when target session stops
             await self._maybe_register_listener(
-                session_id, effective_caller_id if effective_caller_id != "unknown" else None
+                session_id,
+                effective_caller_id if effective_caller_id != "unknown" else None,
             )
 
             # Build AI-to-AI protocol prefix
@@ -1073,7 +1201,9 @@ class TeleClaudeMCPServer:
             # Format: AI[computer:session_id] | message
             is_local = self._is_local_computer(computer)
             sender_computer = "local" if is_local else self.computer_name
-            prefixed_message = f"AI[{sender_computer}:{effective_caller_id}] | {message}"
+            prefixed_message = (
+                f"AI[{sender_computer}:{effective_caller_id}] | {message}"
+            )
 
             if is_local:
                 # Local session - send directly via handle_event
@@ -1131,8 +1261,12 @@ class TeleClaudeMCPServer:
         await self._maybe_register_listener(session_id, caller_session_id)
 
         if self._is_local_computer(computer):
-            return await self._get_local_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
-        return await self._get_remote_session_data(computer, session_id, since_timestamp, until_timestamp, tail_chars)
+            return await self._get_local_session_data(
+                session_id, since_timestamp, until_timestamp, tail_chars
+            )
+        return await self._get_remote_session_data(
+            computer, session_id, since_timestamp, until_timestamp, tail_chars
+        )
 
     async def _get_local_session_data(
         self,
@@ -1156,7 +1290,9 @@ class TeleClaudeMCPServer:
         context = CommandEventContext(session_id=session_id, args=[])
 
         # Call handler directly with all params
-        return await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
+        return await command_handlers.handle_get_session_data(
+            context, since_timestamp, until_timestamp, tail_chars
+        )
 
     async def _get_remote_session_data(
         self,
@@ -1235,16 +1371,25 @@ class TeleClaudeMCPServer:
         # Get Redis adapter
         redis_adapter_base = self.client.adapters.get("redis")
         if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
-            return {"_error": {"status": "error", "message": "Redis adapter not available"}}
+            return {
+                "_error": {"status": "error", "message": "Redis adapter not available"}
+            }
 
         redis_adapter: RedisAdapter = redis_adapter_base
 
         # Discover ALL computers (excluding self)
         all_peers = await redis_adapter.discover_peers()
-        computers = [str(peer.name) for peer in all_peers if peer.name != self.computer_name]
+        computers = [
+            str(peer.name) for peer in all_peers if peer.name != self.computer_name
+        ]
 
         if not computers:
-            return {"_message": {"status": "success", "message": "No remote computers to deploy to"}}
+            return {
+                "_message": {
+                    "status": "success",
+                    "message": "No remote computers to deploy to",
+                }
+            }
 
         logger.info("Deploying to ALL computers: %s", computers)
 
@@ -1252,7 +1397,9 @@ class TeleClaudeMCPServer:
         verify_health = True  # Always verify health
         for computer in computers:
             await redis_adapter.send_system_command(
-                computer_name=computer, command="deploy", args={"verify_health": verify_health}
+                computer_name=computer,
+                command="deploy",
+                args={"verify_health": verify_health},
             )
             logger.info("Sent deploy command to %s", computer)
 
@@ -1260,23 +1407,32 @@ class TeleClaudeMCPServer:
         results: dict[str, dict[str, object]] = {}
         for computer in computers:
             for _ in range(60):  # 60 attempts, 1 second apart
-                status = await redis_adapter.get_system_command_status(computer_name=computer, command="deploy")
+                status = await redis_adapter.get_system_command_status(
+                    computer_name=computer, command="deploy"
+                )
 
                 status_str = str(status.get("status", "unknown"))
                 if status_str in ("deployed", "error"):
                     results[computer] = status
-                    logger.info("Computer %s deployment status: %s", computer, status_str)
+                    logger.info(
+                        "Computer %s deployment status: %s", computer, status_str
+                    )
                     break
 
                 await asyncio.sleep(1)
             else:
                 # Timeout
-                results[computer] = {"status": "timeout", "message": "Deployment timed out after 60 seconds"}
+                results[computer] = {
+                    "status": "timeout",
+                    "message": "Deployment timed out after 60 seconds",
+                }
                 logger.warning("Deployment to %s timed out", computer)
 
         return results
 
-    async def teleclaude__send_file(self, session_id: str, file_path: str, caption: str | None = None) -> str:
+    async def teleclaude__send_file(
+        self, session_id: str, file_path: str, caption: str | None = None
+    ) -> str:
         """Send file via session's origin adapter.
 
         Args:
@@ -1300,7 +1456,9 @@ class TeleClaudeMCPServer:
             return f"Error: Session {session_id} not found"
 
         try:
-            message_id = await self.client.send_file(session=session, file_path=str(path.absolute()), caption=caption)
+            message_id = await self.client.send_file(
+                session=session, file_path=str(path.absolute()), caption=caption
+            )
             return f"File sent successfully: {path.name} (message_id: {message_id})"
         except ValueError as e:
             logger.error("Failed to send file %s: %s", file_path, e)
@@ -1333,7 +1491,9 @@ class TeleClaudeMCPServer:
 
         if self._is_local_computer(computer):
             # Local - unregister listener directly
-            success = unregister_listener(target_session_id=session_id, caller_session_id=caller_session_id)
+            success = unregister_listener(
+                target_session_id=session_id, caller_session_id=caller_session_id
+            )
             if success:
                 return {
                     "status": "success",
@@ -1366,7 +1526,10 @@ class TeleClaudeMCPServer:
             return {"status": "error", "message": "Timeout waiting for response"}
         except Exception as e:
             logger.error("Failed to stop notifications: %s", e)
-            return {"status": "error", "message": f"Failed to stop notifications: {str(e)}"}
+            return {
+                "status": "error",
+                "message": f"Failed to stop notifications: {str(e)}",
+            }
 
     async def teleclaude__end_session(
         self,
@@ -1410,7 +1573,9 @@ class TeleClaudeMCPServer:
             logger.error("Failed to end session: %s", e)
             return {"status": "error", "message": f"Failed to end session: {str(e)}"}
 
-    async def teleclaude__handle_claude_event(self, session_id: str, event_type: str, data: dict[str, object]) -> str:
+    async def teleclaude__handle_claude_event(
+        self, session_id: str, event_type: str, data: dict[str, object]
+    ) -> str:
         """Emit Claude Code event to registered listeners (called by Claude Code hooks).
 
         Args:
@@ -1433,5 +1598,7 @@ class TeleClaudeMCPServer:
             MessageMetadata(adapter_type="internal"),
         )
 
-        logger.debug("Emitted Claude event: session=%s, type=%s", session_id[:8], event_type)
+        logger.debug(
+            "Emitted Claude event: session=%s, type=%s", session_id[:8], event_type
+        )
         return "OK"
