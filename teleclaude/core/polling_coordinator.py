@@ -19,38 +19,22 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
-from teleclaude.utils import (
-    strip_ansi_codes,
-    strip_exit_markers,
-)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = logging.getLogger(__name__)
 
+_ANSI_ESCAPE_RE = re.compile("\x1b\\[[0-?]*[ -/]*[@-~]")
+_EXIT_MARKER_RE = re.compile(r"__EXIT__\d+__\n?")
 
-def _filter_for_ui(raw_output: str) -> str:
-    """Filter raw terminal output for UI display.
 
-    Strips Claude Code hooks, ANSI escape codes, exit markers, and collapses excessive blank lines.
-
-    Args:
-        raw_output: Raw terminal output with ANSI codes and markers
-
-    Returns:
-        Filtered output ready for UI display
-    """
-
-    # Strip ANSI codes and exit markers
-    filtered = strip_ansi_codes(raw_output)
-    filtered = strip_exit_markers(filtered)
-
-    # Collapse multiple consecutive newlines into single newline
-    # This reduces excessive blank lines while preserving line structure
-    filtered = re.sub(r"\n\n+", "\n", filtered)
-
-    return filtered
+def _filter_for_ui(raw: str) -> str:
+    raw = raw.replace('; echo "__EXIT__$?__"', "")
+    raw = _ANSI_ESCAPE_RE.sub("", raw)
+    raw = _EXIT_MARKER_RE.sub("", raw)
+    raw = re.sub(r"\n{2,}", "\n", raw)
+    return raw
 
 
 async def restore_active_pollers(

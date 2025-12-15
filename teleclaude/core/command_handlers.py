@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 import psutil
 
 from teleclaude.config import config
-from teleclaude.constants import DEFAULT_CLAUDE_COMMAND
+from teleclaude.constants import (
+    DEFAULT_CLAUDE_COMMAND,
+    DEFAULT_CODEX_COMMAND,
+    DEFAULT_GEMINI_COMMAND,
+)
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
@@ -1109,5 +1113,117 @@ async def handle_claude_resume_session(  # type: ignore[misc]
         cmd = f"{claude_cmd} --continue"
 
     # Execute command WITH polling (claude is long-running)
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session  # type: ignore[misc]
+async def handle_gemini_session(  # type: ignore[misc]
+    session: Session,
+    context: EventContext,
+    args: list[str],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Start Gemini in session with optional arguments.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
+        args: Command arguments (passed to gemini command)
+        execute_terminal_command: Function to execute terminal command
+    """
+    # Get base command from config with fallback to constant
+    base_cmd = config.mcp.gemini_command.strip() if config.mcp.gemini_command else DEFAULT_GEMINI_COMMAND
+
+    # Build command with args (properly quoted for shell)
+    if args:
+        # Use shlex.quote for proper shell escaping (handles !, $, ", ', etc.)
+        quoted_args = shlex.quote(" ".join(args))
+        cmd = f"{base_cmd} {quoted_args}"
+    else:
+        cmd = base_cmd
+
+    # Execute command WITH polling (gemini is long-running)
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session  # type: ignore[misc]
+async def handle_gemini_resume_session(  # type: ignore[misc]
+    session: Session,
+    context: EventContext,
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Resume Gemini session.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
+        execute_terminal_command: Function to execute terminal command
+    """
+    # Get base command from config with fallback to constant
+    gemini_cmd = config.mcp.gemini_command.strip() if config.mcp.gemini_command else DEFAULT_GEMINI_COMMAND
+
+    # Assumption: Gemini supports --resume latest
+    logger.info("Starting fresh gemini session with --resume latest")
+    cmd = f"{gemini_cmd} --resume latest"
+
+    # Execute command WITH polling (gemini is long-running)
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session  # type: ignore[misc]
+async def handle_codex_session(  # type: ignore[misc]
+    session: Session,
+    context: EventContext,
+    args: list[str],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Start Codex in session with optional arguments.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
+        args: Command arguments (passed to codex command)
+        execute_terminal_command: Function to execute terminal command
+    """
+    # Get base command from config with fallback to constant
+    base_cmd = config.mcp.codex_command.strip() if config.mcp.codex_command else DEFAULT_CODEX_COMMAND
+
+    # Build command with args (properly quoted for shell)
+    if args:
+        # Use shlex.quote for proper shell escaping (handles !, $, ", ', etc.)
+        quoted_args = shlex.quote(" ".join(args))
+        cmd = f"{base_cmd} {quoted_args}"
+    else:
+        cmd = base_cmd
+
+    # Execute command WITH polling (codex is long-running)
+    message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
+    await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session  # type: ignore[misc]
+async def handle_codex_resume_session(  # type: ignore[misc]
+    session: Session,
+    context: EventContext,
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Resume Codex session.
+
+    Args:
+        session: Session object (injected by @with_session)
+        context: Command context with message_id
+        execute_terminal_command: Function to execute terminal command
+    """
+    # Get base command from config with fallback to constant
+    codex_cmd = config.mcp.codex_command.strip() if config.mcp.codex_command else DEFAULT_CODEX_COMMAND
+
+    # Assumption: Codex supports resume --last
+    logger.info("Starting fresh codex session with resume --last")
+    cmd = f"{codex_cmd} --resume last"
+
+    # Execute command WITH polling (codex is long-running)
     message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
     await execute_terminal_command(session.session_id, cmd, message_id, True)

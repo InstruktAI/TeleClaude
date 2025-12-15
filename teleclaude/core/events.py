@@ -33,6 +33,10 @@ EventType = Literal[
     "rename",
     "claude",
     "claude_resume",
+    "gemini",
+    "gemini_resume",
+    "codex",
+    "codex_resume",
     "message",
     "voice",
     "file",
@@ -114,6 +118,10 @@ class TeleClaudeEvents:
     # AI commands
     CLAUDE: Literal["claude"] = "claude"
     CLAUDE_RESUME: Literal["claude_resume"] = "claude_resume"
+    GEMINI: Literal["gemini"] = "gemini"
+    GEMINI_RESUME: Literal["gemini_resume"] = "gemini_resume"
+    CODEX: Literal["codex"] = "codex"
+    CODEX_RESUME: Literal["codex_resume"] = "codex_resume"
 
     # User input
     MESSAGE: Literal["message"] = "message"  # Messages to long-running processes
@@ -306,4 +314,8 @@ COMMAND_EVENTS: set[EventType] = {
     "rename",
     "claude",
     "claude_resume",
+    "gemini",
+    "gemini_resume",
+    "codex",
+    "codex_resume",
 }

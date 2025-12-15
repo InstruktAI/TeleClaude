@@ -10,10 +10,13 @@ import subprocess
 import tempfile
 import time
 import traceback
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Optional, TypedDict
+from typing import TYPE_CHECKING, AsyncIterator, Optional, TypedDict, cast
+
+import httpx
 
 if TYPE_CHECKING:
     from telegram import Message as TelegramMessage
@@ -45,6 +48,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.request import HTTPXRequest
 
 from teleclaude.config import config
 from teleclaude.core.db import db
@@ -108,9 +112,7 @@ class EditContext:
     reply_markup: Optional[object] = None
 
 
-class TelegramAdapter(
-    UiAdapter
-):  # pylint: disable=too-many-instance-attributes  # Telegram adapter manages many handlers and state
+class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attributes  # Telegram adapter manages many handlers and state
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
@@ -252,6 +254,13 @@ class TelegramAdapter(
         # when handlers are busy (e.g., during active polling)
         builder = Application.builder()  # type: ignore[misc]
         builder.token(self.bot_token)
+        # Force IPv4 for Telegram API calls. Some networks advertise IPv6 (AAAA) without
+        # providing a working IPv6 route, which can cause connect timeouts inside httpx.
+        httpx_kwargs = cast(
+            dict[str, object],
+            {"transport": httpx.AsyncHTTPTransport(local_address="0.0.0.0")},
+        )
+        builder.request(HTTPXRequest(httpx_kwargs=httpx_kwargs))
         builder.concurrent_updates(True)  # Enable concurrent update processing
         self.app = builder.build()
         assert self.app is not None  # Help mypy - app is guaranteed non-None after build()
@@ -268,9 +277,15 @@ class TelegramAdapter(
         # - Use filters.UpdateType.EDITED_MESSAGE for ONLY edited messages
         # - Use filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE for BOTH
         for command_name, handler in self._get_command_handlers():
+            typed_handler = cast(
+                Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]],
+                handler,
+            )
             # Handle both new and edited commands (explicit OR filter)
             cmd_handler: object = CommandHandler(
-                command_name, handler, filters=filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE  # type: ignore[arg-type]
+                command_name,
+                typed_handler,
+                filters=filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE,
             )
             self.app.add_handler(cmd_handler)  # type: ignore[arg-type]
 
@@ -343,20 +358,27 @@ class TelegramAdapter(
 
         # Register bot commands with Telegram (only for master computer)
         if self.is_master:
-            commands = [BotCommand(name + "  ", description) for name, description in UiCommands.items()]
-            # Clear global commands first (removes old @BotName cached commands)
-            await self.bot.set_my_commands([])
-            # Set commands for the specific supergroup (not global)
-            scope = BotCommandScopeChat(chat_id=self.supergroup_id)
-            await self.bot.set_my_commands(commands, scope=scope)
-            logger.info("Registered %d bot commands with Telegram for supergroup (master computer)", len(commands))
+            commands = [BotCommand(name, description) for name, description in UiCommands.items()]
+            try:
+                # Clear global commands first (removes old @BotName cached commands)
+                await self.bot.set_my_commands([])
+                # Set commands for the specific supergroup (not global)
+                scope = BotCommandScopeChat(chat_id=self.supergroup_id)
+                await self.bot.set_my_commands(commands, scope=scope)
+                logger.info("Registered %d bot commands with Telegram for supergroup (master computer)", len(commands))
+            except BadRequest as e:
+                # Don't crash the daemon if the bot isn't in the group yet / chat_id is wrong.
+                logger.error("Failed to register bot commands for supergroup %s: %s", self.supergroup_id, e)
         else:
             # Non-master: Clear all commands (both global and supergroup)
             # This removes old cached commands that cause @BotName autocomplete
-            await self.bot.set_my_commands([])  # Clear global commands
-            scope = BotCommandScopeChat(chat_id=self.supergroup_id)
-            await self.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
-            logger.info("Cleared all bot commands (non-master computer)")
+            try:
+                await self.bot.set_my_commands([])  # Clear global commands
+                scope = BotCommandScopeChat(chat_id=self.supergroup_id)
+                await self.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
+                logger.info("Cleared all bot commands (non-master computer)")
+            except BadRequest as e:
+                logger.error("Failed to clear bot commands for supergroup %s: %s", self.supergroup_id, e)
 
         # Try to get chat info to verify bot is in the group
         try:
@@ -1353,9 +1375,7 @@ Current size: {current_size}
         except Exception as e:
             await self.send_feedback(session, f"❌ Error: {str(e)}", MessageMetadata())
 
-    async def _handle_callback_query(
-        self, update: Update, _context: ContextTypes.DEFAULT_TYPE
-    ) -> None:  # pylint: disable=too-many-locals
+    async def _handle_callback_query(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:  # pylint: disable=too-many-locals
         """Handle button clicks from inline keyboards."""
         query = update.callback_query
         if not query:
@@ -1487,9 +1507,9 @@ Current size: {current_size}
             # Update the message to show what was selected
             await query.edit_message_text(f"Changing directory to: `{dir_path}`", parse_mode="Markdown")
 
-        elif action in ("csel", "crsel"):
-            # Show project selection for Claude/Claude Resume
-            # Short codes: csel = claude select, crsel = claude resume select
+        elif action in ("csel", "crsel", "gsel", "grsel", "cxsel", "cxrsel"):
+            # Show project selection for AI tools
+            # Short codes: csel=claude, crsel=claude resume, gsel=gemini, grsel=gemini resume, cxsel=codex, cxrsel=codex resume
             if not query.from_user or not query.message:
                 return
 
@@ -1498,9 +1518,17 @@ Current size: {current_size}
                 await query.answer("❌ Not authorized", show_alert=True)
                 return
 
-            # Determine which Claude mode (new or resume)
-            # Use short callback prefix: c = claude, cr = claude resume
-            callback_prefix = "c" if action == "csel" else "cr"
+            # Determine mode and prefix
+            mode_map = {
+                "csel": ("c", "Claude"),
+                "crsel": ("cr", "Claude Resume"),
+                "gsel": ("g", "Gemini"),
+                "grsel": ("gr", "Gemini Resume"),
+                "cxsel": ("cx", "Codex"),
+                "cxrsel": ("cxr", "Codex Resume"),
+            }
+
+            callback_prefix, mode_label = mode_map[action]
 
             # Build keyboard with trusted directories using helper
             reply_markup = self._build_project_keyboard(callback_prefix)
@@ -1513,7 +1541,6 @@ Current size: {current_size}
             )
 
             reply_markup = InlineKeyboardMarkup(keyboard)
-            mode_label = "Claude" if action == "csel" else "Claude Resume"
             await query.edit_message_text(
                 f"**Select project for {mode_label}:**", reply_markup=reply_markup, parse_mode="Markdown"
             )
@@ -1528,10 +1555,10 @@ Current size: {current_size}
             text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             await query.edit_message_text(text, reply_markup=reply_markup)
 
-        elif action in ("c", "cr"):
-            # Create session in selected project and start Claude
-            # Short codes: c = claude, cr = claude resume
-            # Callback format: c:INDEX or cr:INDEX where INDEX is into trusted_dirs
+        elif action in ("c", "cr", "g", "gr", "cx", "cxr"):
+            # Create session in selected project and start AI tool
+            # Short codes: c=claude, cr=claude resume, g=gemini, gr=gemini resume, cx=codex, cxr=codex resume
+            # Callback format: PREFIX:INDEX where INDEX is into trusted_dirs
             if not query.from_user:
                 return
 
@@ -1551,19 +1578,29 @@ Current size: {current_size}
                 await query.answer("❌ Invalid project selection", show_alert=True)
                 return
 
+            # Determine event type and label
+            event_map = {
+                "c": (TeleClaudeEvents.CLAUDE, "Claude"),
+                "cr": (TeleClaudeEvents.CLAUDE_RESUME, "Claude Resume"),
+                "g": (TeleClaudeEvents.GEMINI, "Gemini"),
+                "gr": (TeleClaudeEvents.GEMINI_RESUME, "Gemini Resume"),
+                "cx": (TeleClaudeEvents.CODEX, "Codex"),
+                "cxr": (TeleClaudeEvents.CODEX_RESUME, "Codex Resume"),
+            }
+
+            # Trust that action is in map (guaranteed by if condition)
+            auto_command, mode_label = event_map[action]
+
             # Acknowledge immediately
-            mode_label = "Claude" if action == "c" else "Claude Resume"
             await query.answer(f"Creating session with {mode_label}...", show_alert=False)
 
             # Emit NEW_SESSION event with project_dir and auto_command in metadata
-            # This creates session AND starts Claude in one flow
-            claude_event = TeleClaudeEvents.CLAUDE if action == "c" else TeleClaudeEvents.CLAUDE_RESUME
             await self.client.handle_event(
                 event=TeleClaudeEvents.NEW_SESSION,
                 payload={
                     "args": [],
                 },
-                metadata=self._metadata(project_dir=project_path, auto_command=claude_event),
+                metadata=self._metadata(project_dir=project_path, auto_command=auto_command),
             )
 
     # ==================== Peer Discovery Methods ====================
@@ -1598,6 +1635,14 @@ Current size: {current_size}
             [
                 InlineKeyboardButton(text="🤖 New Claude", callback_data=f"csel:{bot_username}"),
                 InlineKeyboardButton(text="🔄 Resume Claude", callback_data=f"crsel:{bot_username}"),
+            ],
+            [
+                InlineKeyboardButton(text="✨ New Gemini", callback_data=f"gsel:{bot_username}"),
+                InlineKeyboardButton(text="🔄 Resume Gemini", callback_data=f"grsel:{bot_username}"),
+            ],
+            [
+                InlineKeyboardButton(text="💻 New Codex", callback_data=f"cxsel:{bot_username}"),
+                InlineKeyboardButton(text="🔄 Resume Codex", callback_data=f"cxrsel:{bot_username}"),
             ],
         ]
         return InlineKeyboardMarkup(keyboard)

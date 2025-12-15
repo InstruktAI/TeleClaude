@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # pylint: skip-file
 # mypy: ignore-errors
-"""MCP wrapper that injects TeleClaude context into tool call arguments."""
+"""MCP wrapper that injects TeleClaude context and handles daemon restarts via transparent reconnection."""
 
 from __future__ import annotations
 
@@ -10,12 +10,13 @@ import os
 import select
 import socket
 import sys
-from typing import MutableMapping
+import time
+from typing import MutableMapping, Optional
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
+RECONNECT_DELAY = 0.5  # Seconds between reconnection attempts
 
 # Context values to inject into arguments
-# Maps: argument_name -> environment_variable_name
 CONTEXT_TO_INJECT: dict[str, str] = {"caller_session_id": "TELECLAUDE_SESSION_ID"}
 
 
@@ -33,66 +34,198 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
     return params
 
 
-def process_message(message: MutableMapping[str, object]) -> MutableMapping[str, object]:
-    """Process incoming MCP message, injecting context into tool calls."""
-    if message.get("method") == "tools/call":
-        params_value = message.get("params")
-        params: MutableMapping[str, object] = params_value if isinstance(params_value, MutableMapping) else {}
-        message["params"] = inject_context(params)
-    return message
+class McpProxy:
+    """Stateful proxy that maintains MCP connection across daemon restarts."""
 
+    def __init__(self, socket_path: str):
+        self.socket_path = socket_path
+        self.sock: Optional[socket.socket] = None
+        self.cached_initialize_request: Optional[dict] = None
+        self.is_connected = False
 
-def main() -> None:
-    """Main loop: read from stdin, inject context, forward to socket, relay response."""
-    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    sock.connect(MCP_SOCKET)
+        # Buffer for data from stdin when socket is down
+        self.stdin_buffer: list[bytes] = []
+        # Buffer for incomplete socket reads
+        self.socket_buffer = b""
 
-    # Set socket to non-blocking for multiplexing
-    sock.setblocking(False)
+    def connect(self) -> bool:
+        """Attempt to connect to the daemon socket."""
+        try:
+            if self.sock:
+                self.sock.close()
 
-    # Buffer for incomplete messages
-    socket_buffer = b""
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.connect(self.socket_path)
+            self.sock.setblocking(False)
+            self.is_connected = True
 
-    while True:
-        # Wait for input from either stdin or socket
-        readable, _, _ = select.select([sys.stdin, sock], [], [])
+            # If we are reconnecting (have cached init), perform silent handshake
+            if self.cached_initialize_request:
+                self._perform_silent_handshake()
 
-        for source in readable:
-            if source is sys.stdin:
-                # Read from stdin (Claude Code -> wrapper)
-                line = sys.stdin.readline()
-                if not line:
-                    # EOF - Claude Code closed connection
-                    sock.close()
-                    return
+            return True
+        except (FileNotFoundError, ConnectionRefusedError, OSError):
+            self.is_connected = False
+            return False
 
+    def _perform_silent_handshake(self):
+        """Replay initialize request and swallow the response."""
+        if not self.sock or not self.cached_initialize_request:
+            return
+
+        # 1. Send cached 'initialize'
+        init_json = json.dumps(self.cached_initialize_request) + "\n"
+        try:
+            self.sock.sendall(init_json.encode())
+        except OSError:
+            self.is_connected = False
+            return
+
+        # 2. Consume responses until we get the result and the initialized notification
+        # This is a blocking read with timeout because we MUST clear the pipe before allowing traffic
+        self.sock.setblocking(True)
+        self.sock.settimeout(2.0)
+
+        try:
+            temp_buffer = b""
+            handshake_complete = False
+            # We expect a response to ID and potentially a notification
+            expected_id = self.cached_initialize_request.get("id")
+
+            while not handshake_complete:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    break
+                temp_buffer += chunk
+
+                while b"\n" in temp_buffer:
+                    line, temp_buffer = temp_buffer.split(b"\n", 1)
+                    try:
+                        msg = json.loads(line)
+                        # Check if this is the response to our init
+                        if msg.get("id") == expected_id:
+                            # Send 'notifications/initialized' if the protocol requires client to send it after result
+                            # (MCP spec: Client sends initialized notification after receiving initialize result)
+                            initialized_msg = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+                            self.sock.sendall((json.dumps(initialized_msg) + "\n").encode())
+                            handshake_complete = True
+                    except json.JSONDecodeError:
+                        pass
+
+        except (socket.timeout, OSError):
+            # If handshake fails, we'll just try again in the main loop
+            self.is_connected = False
+        finally:
+            if self.sock:
+                self.sock.setblocking(False)
+
+    def process_stdin_line(self, line: str) -> None:
+        """Process a line from stdin (Agent -> Daemon)."""
+        try:
+            msg = json.loads(line)
+
+            # Cache initialize request if seen
+            if msg.get("method") == "initialize":
+                self.cached_initialize_request = msg
+
+            # Inject context into tool calls
+            if msg.get("method") == "tools/call":
+                params = msg.get("params", {})
+                if isinstance(params, dict):
+                    msg["params"] = inject_context(params)
+
+            payload = (json.dumps(msg) + "\n").encode()
+
+            if self.is_connected and self.sock:
                 try:
-                    parsed: object = json.loads(line)
-                except json.JSONDecodeError:
-                    sock.sendall(line.encode())
+                    self.sock.sendall(payload)
+                except OSError:
+                    self.is_connected = False
+                    self.stdin_buffer.append(payload)
+            else:
+                self.stdin_buffer.append(payload)
+
+        except json.JSONDecodeError:
+            # Forward raw if not JSON (shouldn't happen in MCP, but safe fallback)
+            payload = line.encode()
+            if self.is_connected and self.sock:
+                try:
+                    self.sock.sendall(payload)
+                except OSError:
+                    self.is_connected = False
+                    self.stdin_buffer.append(payload)
+            else:
+                self.stdin_buffer.append(payload)
+
+    def run(self):
+        """Main event loop."""
+        # Initial connection
+        while not self.connect():
+            time.sleep(RECONNECT_DELAY)
+
+        while True:
+            # Prepare select lists
+            readers = [sys.stdin]
+            if self.is_connected and self.sock:
+                readers.append(self.sock)
+
+            try:
+                # Wait for data (or timeout to retry connection)
+                readable, _, _ = select.select(readers, [], [], RECONNECT_DELAY)
+            except (ValueError, OSError):
+                # Handle bad file descriptors
+                if self.sock:
+                    self.sock.close()
+                self.is_connected = False
+                continue
+
+            # Check if we need to reconnect
+            if not self.is_connected:
+                if self.connect():
+                    # Flush buffer
+                    if self.sock:
+                        try:
+                            for packet in self.stdin_buffer:
+                                self.sock.sendall(packet)
+                            self.stdin_buffer.clear()
+                        except OSError:
+                            self.is_connected = False
+                else:
+                    # Still down, wait a bit
                     continue
 
-                if isinstance(parsed, MutableMapping):
-                    processed = process_message(parsed)
-                    sock.sendall((json.dumps(processed) + "\n").encode())
-                else:
-                    sock.sendall(line.encode())
+            for source in readable:
+                if source is sys.stdin:
+                    line = sys.stdin.readline()
+                    if not line:
+                        # EOF from Agent -> Shutdown
+                        return
+                    self.process_stdin_line(line)
 
-            elif source is sock:
-                # Read from socket (TeleClaude daemon -> wrapper)
-                data = sock.recv(65536)
-                if not data:
-                    # Socket closed
-                    return
-                socket_buffer += data
+                elif source is self.sock:
+                    try:
+                        data = self.sock.recv(65536)
+                        if not data:
+                            # Socket closed by daemon
+                            self.is_connected = False
+                            if self.sock:
+                                self.sock.close()
+                            continue
 
-                # Process complete lines
-                while b"\n" in socket_buffer:
-                    line_bytes, socket_buffer = socket_buffer.split(b"\n", 1)
-                    # Forward to stdout (wrapper -> Claude Code)
-                    sys.stdout.write(line_bytes.decode() + "\n")
-                    sys.stdout.flush()
+                        self.socket_buffer += data
+                        while b"\n" in self.socket_buffer:
+                            line_bytes, self.socket_buffer = self.socket_buffer.split(b"\n", 1)
+                            sys.stdout.write(line_bytes.decode() + "\n")
+                            sys.stdout.flush()
+                    except OSError:
+                        self.is_connected = False
+                        if self.sock:
+                            self.sock.close()
 
 
 if __name__ == "__main__":
-    main()
+    proxy = McpProxy(MCP_SOCKET)
+    try:
+        proxy.run()
+    except KeyboardInterrupt:
+        pass

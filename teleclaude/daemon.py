@@ -19,11 +19,11 @@ from dotenv import load_dotenv
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.core import terminal_bridge  # Imported for test mocking
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
     session_cleanup,
+    terminal_bridge,  # Imported for test mocking
     voice_assignment,
     voice_message_handler,
 )
@@ -55,7 +55,6 @@ from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.restart_claude import revive_claude_in_session
 
 # Logging defaults (can be overridden via environment variables)
 DEFAULT_LOG_FILE = "/var/log/teleclaude.log"
@@ -362,9 +361,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         else:
             logger.warning("Unknown system command: %s", ctx.command)
 
-    async def _handle_deploy(
-        self, _args: DeployArgs
-    ) -> None:  # pylint: disable=too-many-locals  # Deployment requires multiple state variables
+    async def _handle_deploy(self, _args: DeployArgs) -> None:  # pylint: disable=too-many-locals  # Deployment requires multiple state variables
         """Execute deployment: git pull + restart daemon via service manager.
 
         Args:
@@ -732,7 +729,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         adapter = self.client.adapters.get(adapter_type)
         if not adapter:
             raise ValueError(
-                f"No adapter available for type '{adapter_type}'. " f"Available: {list(self.client.adapters.keys())}"
+                f"No adapter available for type '{adapter_type}'. Available: {list(self.client.adapters.keys())}"
             )
         return adapter
 
@@ -862,10 +859,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             get_output_file=self._get_output_file_path,
         )
 
-        # Revive Claude Code in all active sessions (after laptop restart or daemon start)
-        # This runs in background to not block daemon startup
-        asyncio.create_task(self._revive_all_claude_sessions())
-
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
 
     async def stop(self) -> None:
@@ -933,6 +926,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     await command_handlers.handle_claude_session(auto_context, [], self._execute_terminal_command)  # type: ignore[misc]
                 elif metadata.auto_command == TeleClaudeEvents.CLAUDE_RESUME:
                     await command_handlers.handle_claude_resume_session(auto_context, self._execute_terminal_command)
+                elif metadata.auto_command == TeleClaudeEvents.GEMINI:
+                    await command_handlers.handle_gemini_session(auto_context, [], self._execute_terminal_command)  # type: ignore[misc]
+                elif metadata.auto_command == TeleClaudeEvents.GEMINI_RESUME:
+                    await command_handlers.handle_gemini_resume_session(auto_context, self._execute_terminal_command)
+                elif metadata.auto_command == TeleClaudeEvents.CODEX:
+                    await command_handlers.handle_codex_session(auto_context, [], self._execute_terminal_command)  # type: ignore[misc]
+                elif metadata.auto_command == TeleClaudeEvents.CODEX_RESUME:
+                    await command_handlers.handle_codex_resume_session(auto_context, self._execute_terminal_command)
 
             return result
         elif command == TeleClaudeEvents.LIST_SESSIONS:
@@ -1007,6 +1008,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_claude_session(context, args, self._execute_terminal_command)
         elif command == TeleClaudeEvents.CLAUDE_RESUME:
             return await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
+        elif command == TeleClaudeEvents.GEMINI:
+            return await command_handlers.handle_gemini_session(context, args, self._execute_terminal_command)
+        elif command == TeleClaudeEvents.GEMINI_RESUME:
+            return await command_handlers.handle_gemini_resume_session(context, self._execute_terminal_command)
+        elif command == TeleClaudeEvents.CODEX:
+            return await command_handlers.handle_codex_session(context, args, self._execute_terminal_command)
+        elif command == TeleClaudeEvents.CODEX_RESUME:
+            return await command_handlers.handle_codex_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
             return await command_handlers.handle_exit_session(context, self.client)
 
@@ -1129,53 +1138,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         except Exception as e:
             logger.error("Error cleaning up inactive sessions: %s", e)
-
-    async def _revive_all_claude_sessions(self) -> None:
-        """Revive Claude Code in all active sessions after daemon start.
-
-        On laptop restart or daemon start, tmux sessions may survive but Claude Code
-        processes inside them are dead. This method iterates through all non-closed
-        sessions with existing tmux sessions and restarts Claude Code in each.
-
-        Runs in background to not block daemon startup.
-        """
-        try:
-            # Small delay to ensure all services are fully ready
-            await asyncio.sleep(2.0)
-
-            sessions = await db.list_sessions()
-            active_sessions = [s for s in sessions if not s.closed]
-
-            if not active_sessions:
-                logger.debug("No active sessions to revive")
-                return
-
-            logger.info("Checking %d active sessions for Claude revival...", len(active_sessions))
-
-            revived_count = 0
-            for session in active_sessions:
-                # Check if tmux session actually exists
-                tmux_exists = await terminal_bridge.session_exists(session.tmux_session_name)
-
-                if not tmux_exists:
-                    logger.debug("Tmux session %s doesn't exist, skipping", session.tmux_session_name)
-                    continue
-
-                # Revive Claude in this session
-                success = await revive_claude_in_session(session)
-                if success:
-                    revived_count += 1
-
-                # Small delay between revivals to avoid overwhelming tmux
-                await asyncio.sleep(0.5)
-
-            if revived_count > 0:
-                logger.info("Revived Claude Code in %d session(s)", revived_count)
-            else:
-                logger.debug("No sessions needed Claude revival")
-
-        except Exception as e:
-            logger.error("Error reviving Claude sessions: %s", e, exc_info=True)
 
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None

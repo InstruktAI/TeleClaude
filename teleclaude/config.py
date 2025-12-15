@@ -104,6 +104,8 @@ class MCPConfig:
     enabled: bool
     socket_path: str
     claude_command: str | None = None
+    gemini_command: str | None = None
+    codex_command: str | None = None
 
 
 @dataclass
@@ -154,6 +156,9 @@ DEFAULT_CONFIG: dict[str, object] = {
     "mcp": {
         "enabled": True,
         "socket_path": "/tmp/teleclaude.sock",
+        "claude_command": None,
+        "gemini_command": None,
+        "codex_command": None,
     },
     "redis": {
         "enabled": False,
@@ -190,7 +195,7 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
     return result
 
 
-def _parse_trusted_dirs(raw_dirs: list[str | dict[str, str]]) -> list[TrustedDir]:
+def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     """Parse trusted_dirs from config, handling both old and new formats.
 
     Supports backward compatibility:
@@ -260,6 +265,8 @@ def _build_config(raw: dict[str, object]) -> Config:
             enabled=bool(mcp["enabled"]),  # type: ignore[index,misc]
             socket_path=str(mcp["socket_path"]),  # type: ignore[index,misc]
             claude_command=str(mcp["claude_command"]) if mcp.get("claude_command") else None,  # type: ignore[index,attr-defined,misc]
+            gemini_command=str(mcp["gemini_command"]) if mcp.get("gemini_command") else None,  # type: ignore[index,attr-defined,misc]
+            codex_command=str(mcp["codex_command"]) if mcp.get("codex_command") else None,  # type: ignore[index,attr-defined,misc]
         ),
         redis=RedisConfig(
             enabled=bool(redis["enabled"]),  # type: ignore[index,misc]
