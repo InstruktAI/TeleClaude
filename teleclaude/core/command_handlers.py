@@ -114,8 +114,8 @@ def with_session(
             await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
     """
 
-    @functools.wraps(func)  # type: ignore[misc]
-    async def wrapper(context: EventContext, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
+    @functools.wraps(func)
+    async def wrapper(context: EventContext, *args: object, **kwargs: object) -> None:
         # Extract session_id (let it crash if missing - our code emitted this event)
         # SystemCommandContext doesn't have session_id, but @with_session is only used for session-based commands
         assert hasattr(context, "session_id"), f"Context {type(context).__name__} missing session_id"

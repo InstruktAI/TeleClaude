@@ -31,7 +31,7 @@ class _HasSessionId(Protocol):
     session_id: str
 
 
-def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[explicit-any, misc]
+def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[explicit-any]
     """Decorator to send adapter-specific error feedback on exceptions.
 
     Extracts session_id from first argument (str or Session.session_id) and
@@ -49,7 +49,7 @@ def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Aw
                 session_id = first_arg.session_id
 
         try:
-            return await func(self, *args, **kwargs)
+            return await func(self, *args, **kwargs)  # type: ignore[misc]
         except Exception as e:
             if session_id and hasattr(self, "send_error_feedback"):
                 await self.send_error_feedback(session_id, str(e))

@@ -690,7 +690,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     continue
 
                 # Process commands
-                for stream_name, stream_messages in messages:  # type: ignore[misc, attr-defined]  # stream_name/stream_messages are Any from Redis, messages is object
+                for (
+                    stream_name,
+                    stream_messages,
+                ) in messages:  # stream_name/stream_messages are Any from Redis, messages is object
                     # stream_name and stream_messages come from Redis xread() - types are Any
                     stream_name_str: str = (
                         stream_name.decode("utf-8") if isinstance(stream_name, bytes) else str(stream_name)
