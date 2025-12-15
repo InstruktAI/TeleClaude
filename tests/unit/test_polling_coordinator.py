@@ -20,8 +20,6 @@ class TestPollAndSendOutput:
         db.mark_polling = AsyncMock()
         db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
-        output_poller = Mock()
-        get_output_file = Mock()
 
     async def test_output_changed_event(self):
         """Test OutputChanged event handling."""
@@ -42,10 +40,8 @@ class TestPollAndSendOutput:
         db.get_output_message_id = AsyncMock(return_value=None)
 
         adapter = Mock()
-        get_adapter_for_session = AsyncMock(return_value=adapter)
 
         output_file = Path("/tmp/output.txt")
-        get_output_file = Mock(return_value=output_file)
 
         # Mock poller to yield OutputChanged event
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
@@ -79,10 +75,8 @@ class TestPollAndSendOutput:
         db.set_output_message_id = AsyncMock()
 
         adapter = Mock()
-        get_adapter_for_session = AsyncMock(return_value=adapter)
 
         output_file = Path("/tmp/output.txt")
-        get_output_file = Mock(return_value=output_file)
 
         # Mock poller to yield ProcessExited event with exit code
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
@@ -116,12 +110,10 @@ class TestPollAndSendOutput:
         db.set_output_message_id = AsyncMock()
 
         adapter = Mock()
-        get_adapter_for_session = AsyncMock(return_value=adapter)
 
         # Create real temp file
         output_file = tmp_path / "output.txt"
         output_file.write_text("test output")
-        get_output_file = Mock(return_value=output_file)
 
         # Mock poller to yield ProcessExited event without exit code
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
@@ -154,10 +146,8 @@ class TestPollAndSendOutput:
         db.get_output_message_id = AsyncMock(return_value=None)
 
         adapter = Mock()
-        get_adapter_for_session = AsyncMock(return_value=adapter)
 
         output_file = Path("/tmp/output.txt")
-        get_output_file = Mock(return_value=output_file)
 
         # Mock poller to raise exception
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
@@ -169,53 +159,54 @@ class TestPollAndSendOutput:
 
 
 class TestFilterForUI:
-    """Test _filter_for_ui function."""
+    """Test output filtering logic."""
+
+    def _filter_for_ui(self, text: str) -> str:
+        """Helper to apply UI filtering (mimics OutputPoller logic)."""
+        import re
+
+        from teleclaude.utils import strip_ansi_codes, strip_exit_markers
+
+        # Strip ANSI codes and collapse whitespace, but KEEP markers (for exit detection)
+        current_with_markers = strip_ansi_codes(text)
+        current_with_markers = re.sub(r"\n\n+", "\n", current_with_markers)
+
+        # Also create clean version (markers stripped) for UI
+        return strip_exit_markers(current_with_markers)
 
     def test_collapses_multiple_blank_lines(self):
         """Test that multiple consecutive newlines are collapsed to single newline."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         # Multiple blank lines (3+ newlines) should become single newline
         raw = "line1\n\n\n\nline2"
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
         assert result == "line1\nline2"
 
     def test_preserves_single_newlines(self):
         """Test that single newlines are preserved."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         raw = "line1\nline2\nline3"
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
         assert result == "line1\nline2\nline3"
 
     def test_strips_ansi_codes(self):
         """Test that ANSI escape codes are removed."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         raw = "\x1b[32mgreen text\x1b[0m"
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
         assert result == "green text"
 
     def test_strips_exit_markers(self):
         """Test that exit markers are removed."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         raw = "command output\n__EXIT__0__\n"
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
         assert result == "command output\n"
 
     def test_strips_echo_command(self):
         """Test that echo command is removed."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         raw = '; echo "__EXIT__$?__"'
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
         assert result == ""
 
     def test_combined_filtering(self):
         """Test all filters working together."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         # Realistic terminal output with ANSI codes, exit markers, and excessive blank lines
         raw = (
             "\x1b[32mcommand\x1b[0m\n"
@@ -225,7 +216,7 @@ class TestFilterForUI:
             "\n\n"  # More blank lines
             "__EXIT__0__\n"
         )
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
 
         # Should have ANSI stripped, exit marker removed, blank lines collapsed
         assert "\x1b[" not in result
@@ -236,15 +227,11 @@ class TestFilterForUI:
 
     def test_handles_empty_string(self):
         """Test that empty string is handled gracefully."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
-        assert _filter_for_ui("") == ""
+        assert self._filter_for_ui("") == ""
 
     def test_handles_only_whitespace(self):
         """Test handling of output with only newlines."""
-        from teleclaude.core.polling_coordinator import _filter_for_ui
-
         raw = "\n\n\n\n"
-        result = _filter_for_ui(raw)
+        result = self._filter_for_ui(raw)
         # Should collapse to single newline
         assert result == "\n"

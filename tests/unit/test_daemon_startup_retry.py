@@ -171,7 +171,6 @@ class TestDaemonStartupRetryIntegration:
                 patch("teleclaude.daemon.init_voice_handler") as mock_init_voice,
                 patch("teleclaude.daemon.polling_coordinator") as mock_polling,
                 patch.object(TeleClaudeDaemon, "_acquire_lock"),
-                patch.object(TeleClaudeDaemon, "_revive_all_claude_sessions"),
                 patch.object(TeleClaudeDaemon, "_periodic_cleanup"),
             ):
                 # Setup mocks
