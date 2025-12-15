@@ -589,7 +589,7 @@ class Db:
             polling_active: Whether polling is active (optional)
             pending_deletions: List of user input message IDs pending deletion (optional)
             pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
-            notification_sent: Whether Claude Code notification was sent (optional)
+            notification_sent: Whether Agent notification was sent (optional)
             native_session_id: Native agent session ID (optional)
             native_log_file: Path to native agent log file (optional)
         """
@@ -608,7 +608,7 @@ class Db:
     async def set_notification_flag(self, session_id: str, value: bool) -> None:
         """Set notification_sent flag in UX state.
 
-        Used by Claude Code notification hook to signal that notification was sent.
+        Used by Agent notification hook to signal that notification was sent.
 
         Args:
             session_id: Session ID
@@ -674,10 +674,10 @@ class Db:
     # Voice assignment methods
 
     async def assign_voice(self, voice_id: str, voice: VoiceConfig) -> None:
-        """Assign a voice keyed by ID (either teleclaude_session_id or claude_session_id).
+        """Assign a voice keyed by ID (either teleclaude_session_id or native_session_id).
 
         Args:
-            voice_id: Either teleclaude session ID or Claude Code session ID
+            voice_id: Either teleclaude session ID or Agent session ID
             voice: VoiceConfig to assign
         """
         await self.conn.execute(
@@ -700,7 +700,7 @@ class Db:
         """Get voice assignment by ID.
 
         Args:
-            voice_id: Either teleclaude session ID or Claude Code session ID
+            voice_id: Either teleclaude session ID or Agent session ID
 
         Returns:
             VoiceConfig or None if no voice assigned

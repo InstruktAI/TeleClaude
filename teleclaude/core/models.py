@@ -207,7 +207,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     working_directory: str = "~"
     description: Optional[str] = None
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
-    initiated_by_ai: bool = False  # True if session was created via AI-to-AI (uses Sonnet model)
+    initiated_by_ai: bool = False  # True if session was created via AI-to-AI
 
     def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""

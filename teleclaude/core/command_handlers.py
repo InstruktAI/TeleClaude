@@ -398,9 +398,9 @@ async def handle_get_session_data(
     until_timestamp: Optional[str] = None,
     tail_chars: int = 5000,
 ) -> dict[str, object]:
-    """Get session data from claude_session_file.
+    """Get session data from native_log_file.
 
-    Reads the Claude Code session file (JSONL format) and parses to markdown.
+    Reads the Agent session file (JSONL format) and parses to markdown.
     Uses same parsing as download functionality for consistent formatting.
     Supports timestamp filtering and character limit.
 
@@ -1175,7 +1175,7 @@ async def handle_claude_session(
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
-    """Start Claude Code in session with optional arguments.
+    """Start Claude agent in session with optional arguments.
 
     Args:
         session: Session object (injected by @with_session)
@@ -1194,7 +1194,7 @@ async def handle_claude_resume_session(
     client: "AdapterClient",
     execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
-    """Resume Claude Code session using explicit session ID from metadata.
+    """Resume Agent session using explicit session ID from metadata.
 
     Args:
         session: Session object (injected by @with_session)

@@ -47,7 +47,7 @@ class SessionUXState:
     polling_active: bool = False
     pending_deletions: list[str] = field(default_factory=list)  # User input messages
     pending_feedback_deletions: list[str] = field(default_factory=list)  # Feedback messages
-    notification_sent: bool = False  # Claude Code notification hook flag
+    notification_sent: bool = False  # Agent notification hook flag
     native_session_id: Optional[str] = None  # Native agent session ID
     native_log_file: Optional[str] = None  # Path to native agent session .jsonl file
 
@@ -205,9 +205,9 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
         polling_active: Whether polling is active (optional)
         pending_deletions: List of user input message IDs pending deletion (optional)
         pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
-        notification_sent: Whether Claude Code notification was sent (optional)
-        claude_session_id: Claude Code session ID (optional)
-        claude_session_file: Path to native Claude Code session file (optional)
+        notification_sent: Whether Agent notification was sent (optional)
+        native_session_id: Native agent session ID (optional)
+        native_log_file: Path to native agent log file (optional)
     """
     try:
         # Load existing state

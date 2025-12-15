@@ -1019,18 +1019,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_agent_resume(
                 context, agent_name, args, self.client, self._execute_terminal_command
             )
-        elif command == TeleClaudeEvents.CLAUDE:
-            return await command_handlers.handle_claude_session(context, args, self._execute_terminal_command)
-        elif command == TeleClaudeEvents.CLAUDE_RESUME:
-            return await command_handlers.handle_claude_resume_session(context, self._execute_terminal_command)
-        elif command == TeleClaudeEvents.GEMINI:
-            return await command_handlers.handle_gemini_session(context, args, self._execute_terminal_command)
-        elif command == TeleClaudeEvents.GEMINI_RESUME:
-            return await command_handlers.handle_gemini_resume_session(context, self._execute_terminal_command)
-        elif command == TeleClaudeEvents.CODEX:
-            return await command_handlers.handle_codex_session(context, args, self._execute_terminal_command)
-        elif command == TeleClaudeEvents.CODEX_RESUME:
-            return await command_handlers.handle_codex_resume_session(context, self._execute_terminal_command)
         elif command == "exit":
             return await command_handlers.handle_exit_session(context, self.client)
 

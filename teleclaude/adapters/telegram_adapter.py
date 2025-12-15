@@ -231,16 +231,12 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         """Build Telegram-specific metadata with inline keyboard for downloads.
 
         Overrides UiAdapter._build_output_metadata().
-        Shows download button only when there's a Claude Code session to download.
+        Shows download button only when there's an Agent session to download.
         """
-        # Add download button if Claude session available
+        # Add download button if Agent session available
         if ux_state.native_log_file:
             keyboard = [
-                [
-                    InlineKeyboardButton(
-                        "📎 Download Claude session", callback_data=f"download_full:{session.session_id}"
-                    )
-                ]
+                [InlineKeyboardButton("📎 Download Agent session", callback_data=f"download_full:{session.session_id}")]
             ]
             return MessageMetadata(reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -1281,8 +1277,8 @@ Current size: {current_size}
             session, "**Select a directory:**", MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown")
         )
 
-    async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /claude command - start Claude Code with optional flags."""
+    async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:
+        """Generic handler for agent start commands."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
@@ -1292,9 +1288,10 @@ Current size: {current_size}
         assert update.effective_message is not None
 
         await self.client.handle_event(
-            event=TeleClaudeEvents.CLAUDE,
+            event=TeleClaudeEvents.AGENT_START,
             payload={
-                "command": self._event_to_command("claude"),
+                "command": self._event_to_command(agent_name),
+                "agent_name": agent_name,
                 "args": context.args or [],
                 "session_id": session.session_id,
                 "message_id": str(update.effective_message.message_id),
@@ -1302,8 +1299,10 @@ Current size: {current_size}
             metadata=self._metadata(),
         )
 
-    async def _handle_claude_resume(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /claude_resume command - resume last Claude Code session."""
+    async def _handle_agent_resume_command(
+        self, update: Update, _context: ContextTypes.DEFAULT_TYPE, agent_name: str
+    ) -> None:
+        """Generic handler for agent resume commands."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
@@ -1313,9 +1312,10 @@ Current size: {current_size}
         assert update.effective_message is not None
 
         await self.client.handle_event(
-            event=TeleClaudeEvents.CLAUDE_RESUME,
+            event=TeleClaudeEvents.AGENT_RESUME,
             payload={
-                "command": self._event_to_command("claude_resume"),
+                "command": self._event_to_command(f"{agent_name}_resume"),
+                "agent_name": agent_name,
                 "args": [],
                 "session_id": session.session_id,
                 "message_id": str(update.effective_message.message_id),
@@ -1323,8 +1323,32 @@ Current size: {current_size}
             metadata=self._metadata(),
         )
 
-    async def _handle_claude_restart(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /claude_restart command - restart Claude in this session."""
+    async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /claude command - start Claude agent."""
+        await self._handle_agent_command(update, context, "claude")
+
+    async def _handle_gemini(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /gemini command - start Gemini agent."""
+        await self._handle_agent_command(update, context, "gemini")
+
+    async def _handle_codex(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /codex command - start Codex agent."""
+        await self._handle_agent_command(update, context, "codex")
+
+    async def _handle_claude_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /claude_resume command - resume last Claude agent session."""
+        await self._handle_agent_resume_command(update, context, "claude")
+
+    async def _handle_gemini_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /gemini_resume command - resume last Gemini agent session."""
+        await self._handle_agent_resume_command(update, context, "gemini")
+
+    async def _handle_codex_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /codex_resume command - resume last Codex agent session."""
+        await self._handle_agent_resume_command(update, context, "codex")
+
+    async def _handle_agent_restart(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /agent_restart command - restart Agent in this session."""
         session = await self._get_session_from_topic(update)
         if not session:
             return
@@ -1337,12 +1361,12 @@ Current size: {current_size}
         await self._pre_handle_user_input(session)
         await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
 
-        # Get Claude session ID from ux_state
+        # Get Agent session ID from ux_state
         ux_state = await db.get_ux_state(session.session_id)
         native_session_id = ux_state.native_session_id
 
         if not native_session_id:
-            await self.send_feedback(session, "❌ No Claude Code session found in this topic", MessageMetadata())
+            await self.send_feedback(session, "❌ No Agent session found in this topic", MessageMetadata())
             return
 
         try:
@@ -1351,7 +1375,7 @@ Current size: {current_size}
             python_path = project_root / ".venv" / "bin" / "python"
 
             result = subprocess.run(
-                [str(python_path), "-m", "teleclaude.restart_claude"],
+                [str(python_path), "-m", "teleclaude.restart_agent"],
                 env={**os.environ, "TELECLAUDE_SESSION_ID": session.session_id},
                 capture_output=True,
                 text=True,
@@ -1360,7 +1384,7 @@ Current size: {current_size}
             )
 
             if result.returncode == 0:
-                await self.send_feedback(session, "✅ Claude Code restarted successfully", MessageMetadata())
+                await self.send_feedback(session, "✅ Agent restarted successfully", MessageMetadata())
             else:
                 # Combine stdout and stderr for complete error context
                 error_parts = []
@@ -1580,12 +1604,12 @@ Current size: {current_size}
 
             # Determine event type and label
             event_map = {
-                "c": (TeleClaudeEvents.CLAUDE, "Claude"),
-                "cr": (TeleClaudeEvents.CLAUDE_RESUME, "Claude Resume"),
-                "g": (TeleClaudeEvents.GEMINI, "Gemini"),
-                "gr": (TeleClaudeEvents.GEMINI_RESUME, "Gemini Resume"),
-                "cx": (TeleClaudeEvents.CODEX, "Codex"),
-                "cxr": (TeleClaudeEvents.CODEX_RESUME, "Codex Resume"),
+                "c": ("agent claude", "Claude"),
+                "cr": ("agent_resume claude", "Claude Resume"),
+                "g": ("agent gemini", "Gemini"),
+                "gr": ("agent_resume gemini", "Gemini Resume"),
+                "cx": ("agent codex", "Codex"),
+                "cxr": ("agent_resume codex", "Codex Resume"),
             }
 
             # Trust that action is in map (guaranteed by if condition)

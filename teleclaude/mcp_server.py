@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class TeleClaudeMCPServer:
-    """MCP server for exposing TeleClaude functionality to Claude Code.
+    """MCP server for exposing TeleClaude functionality to AI Agent.
 
     Uses AdapterClient for all AI-to-AI communication via transport adapters.
     """
@@ -164,7 +164,7 @@ class TeleClaudeMCPServer:
                     name="teleclaude__start_session",
                     title="TeleClaude: Start Session",
                     description=(
-                        "Start a new session (Claude Code, Gemini, or Codex) on a remote computer in a specific project. "
+                        "Start a new session (Claude, Gemini, or Codex) on a remote computer in a specific project. "
                         "**REQUIRED WORKFLOW:** "
                         "1) Call teleclaude__list_projects FIRST to discover available projects "
                         "2) Match and select the correct project from the results "
@@ -215,7 +215,7 @@ class TeleClaudeMCPServer:
                     name="teleclaude__send_message",
                     title="TeleClaude: Send Message",
                     description=(
-                        "Send message to an existing Claude Code session. "
+                        "Send message to an existing AI Agent session. "
                         "Use teleclaude__list_sessions to find session IDs. "
                         "Messages are automatically prefixed with your session ID for AI-to-AI communication."
                     ),

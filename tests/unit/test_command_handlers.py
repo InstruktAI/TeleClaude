@@ -1,6 +1,5 @@
 """Unit tests for command handlers."""
 
-import shlex
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 

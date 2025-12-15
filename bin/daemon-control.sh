@@ -294,25 +294,6 @@ restart_daemon() {
         EXIT_CODE=1
     fi
 
-    # Restart Claude in ALL TeleClaude tmux sessions (not just current)
-    # Each tc_* session has TELECLAUDE_SESSION_ID env var set at creation
-    # restart_claude.py looks up claude_session_id from database and resumes
-    (
-        sleep 1
-        cd "$PROJECT_ROOT"
-
-        # Get all tc_* tmux sessions and restart Claude in each
-        for TMUX_SESSION in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^tc_'); do
-            SESSION_ID=$(tmux show-environment -t "$TMUX_SESSION" TELECLAUDE_SESSION_ID 2>/dev/null | cut -d= -f2-)
-            if [ -n "$SESSION_ID" ]; then
-                log_info "Restarting Claude in $TMUX_SESSION..."
-                TELECLAUDE_SESSION_ID="$SESSION_ID" "$PROJECT_ROOT/.venv/bin/python" -m teleclaude.restart_claude &
-                sleep 0.5  # Small delay between restarts to avoid overwhelming tmux
-            fi
-        done
-        wait  # Wait for all background restarts to complete
-    ) </dev/null >/dev/null 2>&1 & disown
-
     # Return immediately with collected exit code
     return $EXIT_CODE
 }

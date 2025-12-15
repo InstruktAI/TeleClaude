@@ -9,7 +9,6 @@ UI adapters provide:
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import re
 import time
@@ -493,7 +492,7 @@ class UiAdapter(BaseAdapter):
 
         Args:
             event: Event type
-            context: Typed Claude event context
+            context: Typed Agent event context
         """
         if not context.event_type:
             return
@@ -510,10 +509,10 @@ class UiAdapter(BaseAdapter):
             await self._handle_title_update(context)
 
     async def _handle_claude_session_start(self, context: ClaudeEventContext) -> None:
-        """Handle session_start event - store claude_session_id, claude_session_file, and copy voice.
+        """Handle session_start event - store native_session_id, native_log_file, and copy voice.
 
         Args:
-            context: Typed Claude event context
+            context: Typed Agent event context
         """
 
         native_session_id = context.data.get("session_id")
@@ -528,7 +527,7 @@ class UiAdapter(BaseAdapter):
             native_log_file=str(native_log_file),
         )
 
-        # Copy voice assignment from teleclaude session_id to claude_session_id
+        # Copy voice assignment from teleclaude session_id to native_session_id
         # This allows voice to persist even if tmux session is destroyed and recreated
         voice = await db.get_voice(context.session_id)
         if voice:
@@ -536,13 +535,13 @@ class UiAdapter(BaseAdapter):
             logger.debug("Copied voice '%s' to native_session_id %s", voice.name, str(native_session_id)[:8])
 
         logger.info(
-            "Stored Claude session data: teleclaude=%s, native=%s",
+            "Stored Agent session data: teleclaude=%s, native=%s",
             context.session_id[:8],
             str(native_session_id)[:8],
         )
 
     async def _handle_claude_stop(self, context: ClaudeEventContext) -> None:
-        """Handle stop event - Claude Code session stopped (enriched with title/summary).
+        """Handle stop event - Agent session stopped (enriched with title/summary).
 
         This is the SINGLE event that handles everything:
         1. Notify local listeners (AI-to-AI on same computer)
@@ -554,14 +553,14 @@ class UiAdapter(BaseAdapter):
         (title, summary) is already included in context.data.
 
         Args:
-            context: Typed Claude event context with optional title/summary
+            context: Typed Agent event context with optional title/summary
         """
         session_id = context.session_id
         title = str(context.data.get("title", "")) if context.data.get("title") else None
         summary = str(context.data.get("summary", "")) if context.data.get("summary") else None
 
         logger.debug(
-            "Claude stop event for session %s (title: %s, summary: %s)",
+            "Agent stop event for session %s (title: %s, summary: %s)",
             session_id[:8],
             title[:20] if title else "none",
             summary[:20] if summary else "none",
@@ -672,13 +671,13 @@ class UiAdapter(BaseAdapter):
     async def _handle_notification(self, context: ClaudeEventContext) -> None:
         """Handle notification event - notify listeners and send feedback to Telegram.
 
-        When Claude asks a question (AskUserQuestion) or needs input, we:
+        When an agent asks a question (AskUserQuestion) or needs input, we:
         1. Forward the question to any registered listeners (calling AIs)
         2. Forward to remote initiator for cross-computer AI-to-AI sessions
-        3. Send friendly feedback message to Telegram
+        3. Send friendly feedback to Telegram
 
         Args:
-            context: Typed Claude event context with message and original_message in data
+            context: Typed Agent event context with message and original_message in data
         """
         session_id = context.session_id
         friendly_message = context.data.get("message")
@@ -705,55 +704,14 @@ class UiAdapter(BaseAdapter):
 
         logger.debug("Sent notification for session %s: %s", session_id[:8], str(friendly_message)[:50])
 
-    async def _extract_claude_title(self, session_file_path: str) -> Optional[str]:
-        """Extract AI-generated title from Claude session file.
-
-        Args:
-            session_file_path: Path to Claude session .jsonl file
-
-        Returns:
-            Extracted title or None
-        """
-        session_file = Path(session_file_path).expanduser()
-        if not session_file.exists():
-            return None
-
-        try:
-            # Read file backwards to find most recent summary entry
-            with open(session_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-
-            # Parse lines in reverse to find latest summary
-            for line in reversed(lines):
-                if not line.strip():
-                    continue
-                try:
-                    entry_obj: object = json.loads(line)  # JSON returns Any
-                    # Narrow type: entry should be dict
-                    if not isinstance(entry_obj, dict):
-                        continue
-                    entry: dict[str, object] = entry_obj
-                    entry_type: object = entry.get("type")
-                    if entry_type == "summary" and "title" in entry:
-                        title_obj: object = entry["title"]
-                        return str(title_obj) if title_obj is not None else None
-                except json.JSONDecodeError:
-                    continue
-
-            return None
-
-        except Exception as e:
-            logger.error("Failed to extract Claude title from %s: %s", session_file_path, e)
-            return None
-
     async def _notify_session_listener(self, target_session_id: str, *, title: str | None = None) -> None:
-        """Notify all callers that a target session's Claude finished its turn.
+        """Notify all callers that a target session's agent finished its turn.
 
         Uses get_listeners (not pop) because listeners stay active until session closes.
-        "Stop" means Claude finished its turn, not that the session ended.
+        "Stop" means agent finished its turn, not that the session ended.
 
         Args:
-            target_session_id: The session whose Claude finished its turn
+            target_session_id: The session whose agent finished its turn
             title: Optional AI-generated title from summarizer (preferred over DB title)
         """
         listeners = get_listeners(target_session_id)

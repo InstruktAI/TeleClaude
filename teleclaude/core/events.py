@@ -32,13 +32,11 @@ EventType = Literal[
     "key_right",
     "rename",
     "agent",
+    "agent_restart",
     "agent_resume",
     "claude",
-    "claude_resume",
     "gemini",
-    "gemini_resume",
     "codex",
-    "codex_resume",
     "message",
     "voice",
     "file",
@@ -54,18 +52,19 @@ EventType = Literal[
 UiCommands = {
     "cd": "Change directory or list trusted directories",
     "agent": "Start an AI agent (e.g., /agent claude)",
+    "agent_restart": "Restart generic agent session",
     "agent_resume": "Resume an AI agent session",
-    "claude": "Start Claude Code in GOD mode",
-    "claude_restart": "Restart latest Claude Code session",
-    "claude_resume": "Resume last Claude Code session (GOD mode)",
-    "claude_plan": "Navigate to Claude Code plan mode",
+    "claude": "Start Claude (alias for /agent claude)",
+    "claude_plan": "Navigate to Claude plan mode",
+    "gemini": "Start Gemini (alias for /agent gemini)",
+    "codex": "Start Codex (alias for /agent codex)",
     "backspace": "Send BACKSPACE key (optional count)",
     "cancel": "Send CTRL+C to interrupt current command",
     "cancel2x": "Send CTRL+C twice (for stubborn programs)",
     "ctrl": "Send CTRL+key (e.g., /ctrl d for CTRL+D)",
     "enter": "Send ENTER key",
     "escape": "Send ESC key (exit Vim insert mode, etc.)",
-    "escape2x": "Send ESC twice (for Claude Code, etc.)",
+    "escape2x": "Send ESC twice (for Agent, etc.)",
     "help": "Show help message",
     "key_down": "Send DOWN arrow key (optional repeat count)",
     "key_left": "Send LEFT arrow key (optional repeat count)",
@@ -121,13 +120,11 @@ class TeleClaudeEvents:
 
     # AI commands
     AGENT_START: Literal["agent"] = "agent"
+    AGENT_RESTART: Literal["agent_restart"] = "agent_restart"
     AGENT_RESUME: Literal["agent_resume"] = "agent_resume"
     CLAUDE: Literal["claude"] = "claude"
-    CLAUDE_RESUME: Literal["claude_resume"] = "claude_resume"
     GEMINI: Literal["gemini"] = "gemini"
-    GEMINI_RESUME: Literal["gemini_resume"] = "gemini_resume"
     CODEX: Literal["codex"] = "codex"
-    CODEX_RESUME: Literal["codex_resume"] = "codex_resume"
 
     # User input
     MESSAGE: Literal["message"] = "message"  # Messages to long-running processes
@@ -143,8 +140,8 @@ class TeleClaudeEvents:
     # System commands
     SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
 
-    # Claude Code events (from hooks)
-    CLAUDE_EVENT: Literal["claude_event"] = "claude_event"  # Claude Code events (title change, etc.)
+    # Agent events (from hooks)
+    CLAUDE_EVENT: Literal["claude_event"] = "claude_event"  # Agent events (title change, etc.)
 
     # Cross-computer notifications
     STOP_NOTIFICATION: Literal["stop_notification"] = "stop_notification"  # Forwarded stop event from remote
@@ -260,12 +257,12 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
     title: Optional[str] = None
     project_dir: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None
-    auto_command: Optional[str] = None  # For chaining commands (e.g., start Claude after session creation)
+    auto_command: Optional[str] = None  # For chaining commands (e.g., start agent after session creation)
 
 
 @dataclass
 class ClaudeEventContext:
-    """Context for Claude Code events (from hooks)."""
+    """Context for Agent events (from hooks)."""
 
     session_id: str
     data: dict[str, object]
@@ -318,11 +315,9 @@ COMMAND_EVENTS: set[EventType] = {
     "key_right",
     "rename",
     "agent",
+    "agent_restart",
     "agent_resume",
     "claude",
-    "claude_resume",
     "gemini",
-    "gemini_resume",
     "codex",
-    "codex_resume",
 }
