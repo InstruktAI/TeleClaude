@@ -38,12 +38,12 @@ telegram:
 
     # agent_name:
     #   command: "command_to_run_agent_on_terminal"
-claude:
-    command: "claude --dangerously-skip-permissions --settings '{\"forceLoginMethod\": \"claudeai\"}'"
-gemini:
-    command: "gemini --yolo" # Example for Gemini
-codex:
-    command: "codex --dangerously-bypass-approvals-and-sandbox --search" # Example for Codex
+    claude:
+        command: "claude --dangerously-skip-permissions --settings '{\"forceLoginMethod\": \"claudeai\"}'"
+    gemini:
+        command: "gemini --yolo" # Example for Gemini
+    codex:
+        command: "codex --dangerously-bypass-approvals-and-sandbox --search" # Example for Codex
 
 # Redis Configuration (for AI-to-AI communication)
 redis:

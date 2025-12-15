@@ -173,12 +173,18 @@ DEFAULT_CONFIG: dict[str, object] = {
     "agents": {
         "claude": {
             "command": DEFAULT_CLAUDE_COMMAND,
+            "session_dir": "~/.claude/sessions",
+            "log_pattern": "*.jsonl",
         },
         "gemini": {
             "command": DEFAULT_GEMINI_COMMAND,
+            "session_dir": "~/.gemini/sessions",
+            "log_pattern": "*.jsonl",
         },
         "codex": {
             "command": DEFAULT_CODEX_COMMAND,
+            "session_dir": "~/.codex/sessions",
+            "log_pattern": "*.jsonl",
         },
     },
 }

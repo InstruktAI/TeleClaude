@@ -323,7 +323,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     # - "short": Quick completion (default)
     # - "long": Long-running interactive process
     daemon.mock_command_mode = "short"
-    original_send_keys = terminal_bridge.send_keys
 
     # Track output files for polling simulation
     output_files_for_session = {}
