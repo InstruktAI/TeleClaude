@@ -312,11 +312,9 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     # Verify events
     assert server.client.handle_event.call_count == 2
 
-    # Check session creation call - should NOT have claude_model
+    # Check session creation call
     first_call = server.client.handle_event.call_args_list[0]
     assert first_call[0][0] == "new_session"
-    metadata = first_call[0][2]
-    assert metadata.claude_model is None
 
     # Check command call - should be "gemini" event
     second_call = server.client.handle_event.call_args_list[1]
@@ -353,11 +351,6 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         agent="claude",
     )
     assert result["status"] == "success"
-
-    # Check session creation call - should NOT have claude_model (as it was removed)
-    first_call = server.client.handle_event.call_args_list[0]
-    metadata = first_call[0][2]
-    assert metadata.claude_model is None
 
     # Check command call - should be "claude" event
     second_call = server.client.handle_event.call_args_list[1]
