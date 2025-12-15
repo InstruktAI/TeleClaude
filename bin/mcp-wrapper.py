@@ -159,8 +159,13 @@ class McpProxy:
 
     def run(self):
         """Main event loop."""
-        # Initial connection
+        # Initial connection with timeout
+        start_time = time.time()
         while not self.connect():
+            if time.time() - start_time > 5.0:
+                # Fail gracefully so agent can continue (albeit without this tool)
+                sys.stderr.write("Error: Could not connect to TeleClaude daemon within 5 seconds.\n")
+                sys.exit(1)
             time.sleep(RECONNECT_DELAY)
 
         while True:
