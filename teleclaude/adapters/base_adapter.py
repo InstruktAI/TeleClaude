@@ -5,7 +5,16 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
 
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
@@ -22,7 +31,7 @@ class _HasSessionId(Protocol):
     session_id: str
 
 
-def with_error_feedback(func: Callable[..., object]) -> Callable[..., object]:  # type: ignore[explicit-any]
+def with_error_feedback(func: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:  # type: ignore[explicit-any, misc]
     """Decorator to send adapter-specific error feedback on exceptions.
 
     Extracts session_id from first argument (str or Session.session_id) and
@@ -30,20 +39,20 @@ def with_error_feedback(func: Callable[..., object]) -> Callable[..., object]:  
     """
 
     @wraps(func)  # type: ignore[misc]
-    async def wrapper(self: object, *args: object, **kwargs: object) -> object:  # type: ignore[misc]
+    async def wrapper(self: Any, *args: object, **kwargs: object) -> Any:  # type: ignore[explicit-any, misc]
         session_id: str | None = None
         if args:
             first_arg: object = args[0]
             if isinstance(first_arg, str):
                 session_id = first_arg
             elif isinstance(first_arg, _HasSessionId):
-                session_id = first_arg.session_id  # type: ignore[union-attr]
+                session_id = first_arg.session_id
 
         try:
-            return await func(self, *args, **kwargs)  # type: ignore[misc]
+            return await func(self, *args, **kwargs)
         except Exception as e:
             if session_id and hasattr(self, "send_error_feedback"):
-                await self.send_error_feedback(session_id, str(e))  # type: ignore[misc]
+                await self.send_error_feedback(session_id, str(e))
             raise
 
     return wrapper  # type: ignore[misc]

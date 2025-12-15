@@ -60,15 +60,15 @@ async def test_feedback_messages_cleaned_on_new_feedback(daemon_with_mocked_tele
     await daemon.client.send_feedback(session, "New summary message", MessageMetadata())
 
     # Verify delete_message was called for old feedback
-    assert (
-        telegram_adapter.delete_message.call_count > initial_delete_calls
-    ), "delete_message should have been called to clean up old feedback"
+    assert telegram_adapter.delete_message.call_count > initial_delete_calls, (
+        "delete_message should have been called to clean up old feedback"
+    )
 
     # Verify our old feedback message was deleted
     delete_calls = [call[0] for call in telegram_adapter.delete_message.call_args_list]
-    assert any(
-        old_feedback_msg_id in str(call) for call in delete_calls
-    ), f"Old feedback message {old_feedback_msg_id} should have been deleted"
+    assert any(old_feedback_msg_id in str(call) for call in delete_calls), (
+        f"Old feedback message {old_feedback_msg_id} should have been deleted"
+    )
 
 
 @pytest.mark.integration

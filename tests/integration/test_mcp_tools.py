@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -143,7 +143,6 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 @pytest.mark.integration
 async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
     """Test teleclaude__send_message sends via request/response (no streaming)."""
-    daemon = daemon_with_mocked_telegram
 
     # Remote session ID (no local session needed)
     remote_session_id = "remote-uuid-123"

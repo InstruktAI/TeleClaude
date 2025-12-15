@@ -1,0 +1,14 @@
+{
+  "include": ["teleclaude"],
+  "exclude": [".venv", "venv", "**/__pycache__", ".mypy_cache", ".pytest_cache"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownVariableType": "none",
+  "reportPrivateUsage": "none"
+}

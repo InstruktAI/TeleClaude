@@ -2,11 +2,9 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from teleclaude.core.models import PeerInfo
 
 
 @pytest.mark.asyncio

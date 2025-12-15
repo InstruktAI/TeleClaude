@@ -1,7 +1,6 @@
 """Unit tests for UiAdapter base class."""
 
 import time
-from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

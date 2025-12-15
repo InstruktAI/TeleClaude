@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from teleclaude.core.system_stats import (
     get_all_stats,
     get_cpu_percent,

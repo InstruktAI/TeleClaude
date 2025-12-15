@@ -94,7 +94,7 @@ def get_short_project_name(project_path: str) -> str:
 # Decorator to inject session from context (removes boilerplate)
 def with_session(
     func: Callable[..., Awaitable[None]],
-) -> Callable[..., Awaitable[None]]:  # type: ignore[explicit-any]
+) -> Callable[..., Awaitable[None]]:
     """Decorator that extracts and injects session from context.
 
     Removes boilerplate from command handlers:
@@ -118,25 +118,21 @@ def with_session(
     async def wrapper(context: EventContext, *args: object, **kwargs: object) -> None:  # type: ignore[misc]
         # Extract session_id (let it crash if missing - our code emitted this event)
         # SystemCommandContext doesn't have session_id, but @with_session is only used for session-based commands
-        assert hasattr(context, "session_id"), (
-            f"Context {type(context).__name__} missing session_id"
-        )
+        assert hasattr(context, "session_id"), f"Context {type(context).__name__} missing session_id"
         session_id: str = str(context.session_id)  # type: ignore[misc]
 
         # Get session (let it crash if None - session should exist)
         session = await db.get_session(session_id)
         if session is None:
-            raise RuntimeError(
-                f"Session {session_id} not found - this should not happen"
-            )
+            raise RuntimeError(f"Session {session_id} not found - this should not happen")
 
         # Call handler with session injected as first parameter
         await func(session, context, *args, **kwargs)
 
-    return wrapper  # type: ignore[misc]
+    return wrapper
 
 
-async def _execute_control_key(  # type: ignore[explicit-any]  # terminal_action has varying signatures
+async def _execute_control_key(
     terminal_action: Callable[..., Awaitable[bool]],
     session: Session,
     *terminal_args: object,
@@ -213,9 +209,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         if args and len(args) > 0:
             base_title = f"AI:${initiator} > ${computer_name}[{short_project}] - {' '.join(args)}"
         else:
-            base_title = (
-                f"AI:${initiator} > ${computer_name}[{short_project}] - New session"
-            )
+            base_title = f"AI:${initiator} > ${computer_name}[{short_project}] - New session"
     else:
         # Human-initiated (Telegram): "$RasPi[apps/TeleClaude] - New session"
         if args and len(args) > 0:
@@ -361,9 +355,7 @@ async def handle_get_computer_info() -> dict[str, object]:
 
     # Build info from config - design by contract: these fields are required
     if not config.computer.user or not config.computer.role or not config.computer.host:
-        raise ValueError(
-            "Computer configuration is incomplete - user, role, and host are required"
-        )
+        raise ValueError("Computer configuration is incomplete - user, role, and host are required")
 
     # Gather system stats
     memory = psutil.virtual_memory()  # type: ignore[misc]  # psutil has incomplete type stubs
@@ -480,9 +472,7 @@ async def handle_get_session_data(
         "project_dir": session.working_directory,
         "messages": markdown_content,
         "created_at": session.created_at.isoformat() if session.created_at else None,
-        "last_activity": session.last_activity.isoformat()
-        if session.last_activity
-        else None,
+        "last_activity": session.last_activity.isoformat() if session.last_activity else None,
     }
 
 
@@ -592,9 +582,7 @@ async def handle_escape_command(  # type: ignore[misc]
             await asyncio.sleep(0.1)
             success = await terminal_bridge.send_escape(session.tmux_session_name)
             if not success:
-                logger.error(
-                    "Failed to send second ESCAPE to session %s", session.session_id[:8]
-                )
+                logger.error("Failed to send second ESCAPE to session %s", session.session_id[:8])
                 return
 
         # Wait briefly for ESCAPE to register
@@ -633,9 +621,7 @@ async def handle_escape_command(  # type: ignore[misc]
 
         # Start polling if needed (pass marker_id for exit detection)
         if not is_process_running:
-            await start_polling(
-                session.session_id, session.tmux_session_name, marker_id
-            )
+            await start_polling(session.session_id, session.tmux_session_name, marker_id)
 
         logger.info(
             "Sent %s ESCAPE + '%s' to session %s",
@@ -728,9 +714,7 @@ async def handle_ctrl_command(  # type: ignore[misc]
     if success:
         logger.info("Sent CTRL+%s to session %s", key.upper(), session.session_id[:8])
     else:
-        logger.error(
-            "Failed to send CTRL+%s to session %s", key.upper(), session.session_id[:8]
-        )
+        logger.error("Failed to send CTRL+%s to session %s", key.upper(), session.session_id[:8])
 
 
 @with_session  # type: ignore[misc]
@@ -970,12 +954,8 @@ async def handle_rename_session(  # type: ignore[misc]
                 session.session_id[:8],
             )
     else:
-        logger.error(
-            "Failed to update channel title for session %s", session.session_id[:8]
-        )
-        error_msg_id = await client.send_message(
-            session, "Failed to update channel title", metadata=MessageMetadata()
-        )
+        logger.error("Failed to update channel title for session %s", session.session_id[:8])
+        error_msg_id = await client.send_message(session, "Failed to update channel title", metadata=MessageMetadata())
         if error_msg_id:
             await db.add_pending_deletion(session.session_id, error_msg_id)
 
@@ -986,9 +966,7 @@ async def handle_cd_session(  # type: ignore[misc]  # pylint: disable=too-many-l
     context: EventContext,
     args: list[str],
     client: "AdapterClient",
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Change directory in session or list trusted directories.
 
@@ -1010,11 +988,7 @@ async def handle_cd_session(  # type: ignore[misc]  # pylint: disable=too-many-l
         lines = ["**Trusted Directories:**\n"]
         for idx, trusted_dir in enumerate(all_trusted_dirs, 1):
             # Show name - desc (if desc available)
-            display_text = (
-                f"{trusted_dir.name} - {trusted_dir.desc}"
-                if trusted_dir.desc
-                else trusted_dir.name
-            )
+            display_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
             lines.append(f"{idx}. {display_text}")
 
         response = "\n".join(lines)
@@ -1033,9 +1007,7 @@ async def handle_cd_session(  # type: ignore[misc]  # pylint: disable=too-many-l
 
     # Execute command WITHOUT polling (cd is instant)
     message_id = str(getattr(context, "message_id", ""))  # type: ignore[misc]
-    success = await execute_terminal_command(
-        session.session_id, cd_command, message_id, False
-    )
+    success = await execute_terminal_command(session.session_id, cd_command, message_id, False)
 
     # Save working directory to DB if successful
     if success:
@@ -1131,9 +1103,7 @@ async def handle_claude_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
     args: list[str],
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Claude Code in session with optional arguments.
 
@@ -1145,11 +1115,7 @@ async def handle_claude_session(  # type: ignore[misc]
     """
     # Get base command from config with fallback to constant
     # Strip whitespace to handle YAML literal blocks with trailing newlines
-    base_cmd = (
-        config.mcp.claude_command.strip()
-        if config.mcp.claude_command
-        else DEFAULT_CLAUDE_COMMAND
-    )
+    base_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
 
     # Prepend --model flag if session has claude_model set (AI-initiated sessions)
     if session.claude_model:
@@ -1172,9 +1138,7 @@ async def handle_claude_session(  # type: ignore[misc]
 async def handle_claude_resume_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Claude Code session using explicit session ID from metadata.
 
@@ -1185,25 +1149,15 @@ async def handle_claude_resume_session(  # type: ignore[misc]
     """
     # Check if session has stored Claude session ID and project_dir
     # Use getattr with default since not all adapter metadata types have these fields
-    origin_meta = cast(
-        object, getattr(session.adapter_metadata, session.origin_adapter, None)
-    )
-    claude_session_id = (
-        cast(Optional[str], getattr(origin_meta, "claude_session_id", None))
-        if origin_meta
-        else None
-    )
+    origin_meta = cast(object, getattr(session.adapter_metadata, session.origin_adapter, None))
+    claude_session_id = cast(Optional[str], getattr(origin_meta, "claude_session_id", None)) if origin_meta else None
     project_dir_value = cast(
         Optional[str], getattr(origin_meta, "project_dir", None)
     ) or await terminal_bridge.get_current_directory(session.tmux_session_name)
 
     # Get base command from config with fallback to constant
     # Strip whitespace to handle YAML literal blocks with trailing newlines
-    claude_cmd = (
-        config.mcp.claude_command.strip()
-        if config.mcp.claude_command
-        else DEFAULT_CLAUDE_COMMAND
-    )
+    claude_cmd = config.mcp.claude_command.strip() if config.mcp.claude_command else DEFAULT_CLAUDE_COMMAND
 
     # Build command
     if claude_session_id:
@@ -1224,9 +1178,7 @@ async def handle_gemini_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
     args: list[str],
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Gemini in session with optional arguments.
 
@@ -1237,11 +1189,7 @@ async def handle_gemini_session(  # type: ignore[misc]
         execute_terminal_command: Function to execute terminal command
     """
     # Get base command from config with fallback to constant
-    base_cmd = (
-        config.mcp.gemini_command.strip()
-        if config.mcp.gemini_command
-        else DEFAULT_GEMINI_COMMAND
-    )
+    base_cmd = config.mcp.gemini_command.strip() if config.mcp.gemini_command else DEFAULT_GEMINI_COMMAND
 
     # Build command with args (properly quoted for shell)
     if args:
@@ -1260,9 +1208,7 @@ async def handle_gemini_session(  # type: ignore[misc]
 async def handle_gemini_resume_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Gemini session.
 
@@ -1272,11 +1218,7 @@ async def handle_gemini_resume_session(  # type: ignore[misc]
         execute_terminal_command: Function to execute terminal command
     """
     # Get base command from config with fallback to constant
-    gemini_cmd = (
-        config.mcp.gemini_command.strip()
-        if config.mcp.gemini_command
-        else DEFAULT_GEMINI_COMMAND
-    )
+    gemini_cmd = config.mcp.gemini_command.strip() if config.mcp.gemini_command else DEFAULT_GEMINI_COMMAND
 
     # Assumption: Gemini supports --resume latest
     logger.info("Starting fresh gemini session with --resume latest")
@@ -1292,9 +1234,7 @@ async def handle_codex_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
     args: list[str],
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Start Codex in session with optional arguments.
 
@@ -1305,11 +1245,7 @@ async def handle_codex_session(  # type: ignore[misc]
         execute_terminal_command: Function to execute terminal command
     """
     # Get base command from config with fallback to constant
-    base_cmd = (
-        config.mcp.codex_command.strip()
-        if config.mcp.codex_command
-        else DEFAULT_CODEX_COMMAND
-    )
+    base_cmd = config.mcp.codex_command.strip() if config.mcp.codex_command else DEFAULT_CODEX_COMMAND
 
     # Build command with args (properly quoted for shell)
     if args:
@@ -1328,9 +1264,7 @@ async def handle_codex_session(  # type: ignore[misc]
 async def handle_codex_resume_session(  # type: ignore[misc]
     session: Session,
     context: EventContext,
-    execute_terminal_command: Callable[
-        [str, str, Optional[str], bool], Awaitable[bool]
-    ],
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
 ) -> None:
     """Resume Codex session.
 
@@ -1340,11 +1274,7 @@ async def handle_codex_resume_session(  # type: ignore[misc]
         execute_terminal_command: Function to execute terminal command
     """
     # Get base command from config with fallback to constant
-    codex_cmd = (
-        config.mcp.codex_command.strip()
-        if config.mcp.codex_command
-        else DEFAULT_CODEX_COMMAND
-    )
+    codex_cmd = config.mcp.codex_command.strip() if config.mcp.codex_command else DEFAULT_CODEX_COMMAND
 
     # Assumption: Codex supports resume --last
     logger.info("Starting fresh codex session with resume --last")

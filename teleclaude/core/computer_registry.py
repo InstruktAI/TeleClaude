@@ -265,7 +265,8 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         Filters for /pong commands. Commands ARE visible to all bots (unlike regular messages).
         """
         messages = await self.telegram_adapter.get_topic_messages(
-            topic_id=self.registry_topic_id, limit=100  # Support up to 100 computers
+            topic_id=self.registry_topic_id,
+            limit=100,  # Support up to 100 computers
         )
 
         now = datetime.now()

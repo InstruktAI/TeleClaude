@@ -163,7 +163,7 @@ class TeleClaudeMCPServer:
                     name="teleclaude__start_session",
                     title="TeleClaude: Start Session",
                     description=(
-                        "Start a new Claude Code session on a remote computer in a specific project. "
+                        "Start a new session (Claude Code, Gemini, or Codex) on a remote computer in a specific project. "
                         "**REQUIRED WORKFLOW:** "
                         "1) Call teleclaude__list_projects FIRST to discover available projects "
                         "2) Match and select the correct project from the results "
@@ -178,6 +178,12 @@ class TeleClaudeMCPServer:
                             "computer": {
                                 "type": "string",
                                 "description": "Target computer name (e.g., 'workstation', 'server')",
+                            },
+                            "agent": {
+                                "type": "string",
+                                "enum": ["claude", "gemini", "codex"],
+                                "default": "claude",
+                                "description": "Which AI agent to start in the session. Defaults to 'claude'.",
                             },
                             "project_dir": {
                                 "type": "string",
@@ -197,7 +203,7 @@ class TeleClaudeMCPServer:
                             "message": {
                                 "type": "string",
                                 "description": (
-                                    "The initial task or prompt to send to Claude Code "
+                                    "The initial task or prompt to send to the agent "
                                     "(e.g., 'Read README and summarize', 'Trace message flow from Telegram to session'). "
                                     "Session starts immediately processing this message."
                                 ),
@@ -205,9 +211,8 @@ class TeleClaudeMCPServer:
                             "model": {
                                 "type": "string",
                                 "description": (
-                                    "Optional Claude model to use for this session ('opus', 'sonnet', 'haiku'). "
-                                    "Defaults to opus if not specified. Use sonnet for routine delegated tasks, "
-                                    "opus for complex reasoning or architectural work."
+                                    "Optional model to use (e.g., 'opus', 'sonnet', 'haiku' for Claude). "
+                                    "Defaults to opus for Claude if not specified."
                                 ),
                             },
                         },
@@ -463,8 +468,13 @@ class TeleClaudeMCPServer:
                 project_dir = str(arguments["project_dir"])
                 title = str(arguments["title"])
                 message = str(arguments["message"])
+                agent = str(arguments.get("agent", "claude"))
+                model_obj = arguments.get("model")
+                model = str(model_obj) if model_obj else None
                 # caller_session_id extracted at top of call_tool for completion notifications
-                result = await self.teleclaude__start_session(computer, project_dir, title, message, caller_session_id)
+                result = await self.teleclaude__start_session(
+                    computer, project_dir, title, message, caller_session_id, model, agent
+                )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
@@ -483,6 +493,7 @@ class TeleClaudeMCPServer:
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 since_timestamp_obj = arguments.get("since_timestamp") if arguments else None
                 since_timestamp = str(since_timestamp_obj) if since_timestamp_obj else None
+                until_timestamp_obj = arguments.get("until_timestamp") if arguments else None
                 until_timestamp = str(until_timestamp_obj) if until_timestamp_obj else None
                 tail_chars_obj = arguments.get("tail_chars") if arguments else None
                 if isinstance(tail_chars_obj, (int, str)):
@@ -729,6 +740,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         model: str | None = None,
+        agent: str = "claude",
     ) -> dict[str, object]:
         """Create session on local or remote computer.
 
@@ -740,16 +752,17 @@ class TeleClaudeMCPServer:
             project_dir: Absolute path to project directory on target computer
                 (from teleclaude__list_projects)
             title: Session title describing the task (use "TEST: {description}" for testing sessions)
-            message: Initial task or prompt to send to Claude Code
+            message: Initial task or prompt to send to the agent
             caller_session_id: Optional caller's session ID for completion notifications
-            model: Optional Claude model ('opus', 'sonnet', 'haiku'). Defaults to opus if not specified.
+            model: Optional model ('opus', 'sonnet', 'haiku' for Claude). Defaults to opus if not specified.
+            agent: Which AI agent to start ('claude', 'gemini', 'codex'). Defaults to 'claude'.
 
         Returns:
             dict with session_id and status
         """
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message, caller_session_id, model)
-        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, model)
+            return await self._start_local_session(project_dir, title, message, caller_session_id, model, agent)
+        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, model, agent)
 
     async def _start_local_session(
         self,
@@ -758,15 +771,17 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         model: str | None = None,
+        agent: str = "claude",
     ) -> dict[str, object]:
         """Create session on local computer directly via handle_event.
 
         Args:
             project_dir: Absolute path to project directory
             title: Session title
-            message: Initial prompt for Claude Code
+            message: Initial prompt for agent
             caller_session_id: Optional caller's session ID for completion notifications
-            model: Optional Claude model ('opus', 'sonnet', 'haiku')
+            model: Optional model ('opus', 'sonnet', 'haiku')
+            agent: Agent to start ('claude', 'gemini', 'codex')
 
         Returns:
             dict with session_id and status
@@ -781,7 +796,7 @@ class TeleClaudeMCPServer:
                 adapter_type="redis",
                 project_dir=project_dir,
                 title=title,
-                claude_model=model,
+                claude_model=model if agent == "claude" else None,
                 channel_metadata={"target_computer": self.computer_name},
             ),
         )
@@ -817,13 +832,20 @@ class TeleClaudeMCPServer:
             effective_caller_id if effective_caller_id != "unknown" else None,
         )
 
-        # Send /claude command with prefixed message to start Claude Code
+        # Determine which event to fire based on agent
+        event_type = TeleClaudeEvents.CLAUDE
+        if agent == "gemini":
+            event_type = TeleClaudeEvents.GEMINI
+        elif agent == "codex":
+            event_type = TeleClaudeEvents.CODEX
+
+        # Send command with prefixed message to start the agent
         await self.client.handle_event(
-            TeleClaudeEvents.CLAUDE,
+            event_type,
             {"session_id": session_id, "args": [prefixed_message]},
             MessageMetadata(adapter_type="redis"),
         )
-        logger.debug("Sent /claude command with message to local session %s", session_id[:8])
+        logger.debug("Sent /%s command with message to local session %s", agent, session_id[:8])
 
         return {"session_id": session_id, "status": "success"}
 
@@ -835,6 +857,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         model: str | None = None,
+        agent: str = "claude",
     ) -> dict[str, object]:
         """Create session on remote computer via Redis transport.
 
@@ -842,9 +865,10 @@ class TeleClaudeMCPServer:
             computer: Target computer name
             project_dir: Absolute path to project directory on remote computer
             title: Session title
-            message: Initial prompt for Claude Code
+            message: Initial prompt for agent
             caller_session_id: Optional caller's session ID for completion notifications
-            model: Optional Claude model ('opus', 'sonnet', 'haiku')
+            model: Optional model ('opus', 'sonnet', 'haiku')
+            agent: Agent to start ('claude', 'gemini', 'codex')
 
         Returns:
             dict with session_id and status
@@ -858,7 +882,12 @@ class TeleClaudeMCPServer:
 
         # Send new_session command to remote - uses standardized handle_create_session
         # Transport layer generates request_id from Redis message ID
-        metadata = MessageMetadata(project_dir=project_dir, title=title, claude_model=model)
+        # Only pass claude_model if agent is claude (as it's stored in session)
+        metadata = MessageMetadata(
+            project_dir=project_dir,
+            title=title,
+            claude_model=model if agent == "claude" else None,
+        )
 
         message_id = await self.client.send_request(
             computer_name=computer,
@@ -944,17 +973,18 @@ class TeleClaudeMCPServer:
             else:
                 logger.debug("Skipping listener registration: no caller_session_id")
 
-            # Send /claude command with prefixed message to start Claude Code
+            # Send agent start command with prefixed message
             # Use shlex.quote for proper escaping (handles ', ", !, $, etc.)
             quoted_message = shlex.quote(prefixed_message)
             await self.client.send_request(
                 computer_name=computer,
-                command=f"/claude {quoted_message}",
+                command=f"/{agent} {quoted_message}",
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
             logger.debug(
-                "Sent /claude command with message to remote session %s",
+                "Sent /%s command with message to remote session %s",
+                agent,
                 remote_session_id[:8],
             )
 

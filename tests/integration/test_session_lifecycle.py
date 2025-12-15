@@ -3,16 +3,12 @@
 Tests UC-S2: Close Session
 """
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from teleclaude.core import terminal_bridge
-from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.db import Db, db
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata
 
 
 @pytest.mark.integration

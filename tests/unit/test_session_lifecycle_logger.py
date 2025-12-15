@@ -3,8 +3,6 @@
 import json
 from unittest.mock import MagicMock, mock_open, patch
 
-import pytest
-
 
 def test_log_lifecycle_event_writes_json_line():
     """Test that log_lifecycle_event writes JSON to file."""

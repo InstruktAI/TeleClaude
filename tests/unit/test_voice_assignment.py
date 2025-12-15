@@ -5,10 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from teleclaude.core.voice_assignment import (
-    VOICES_CONFIG_PATH,
     VoiceConfig,
     get_random_voice,
     get_voice_env_vars,

@@ -74,11 +74,20 @@ def command_retry(
                             excluded_wait_time += retry_after  # type: ignore[misc]  # Don't count wait against timeout
                             last_exception = e
                         else:
-                            logger.error("%s: Rate limit exceeded after %d attempts", func.__name__, max_retries)
+                            logger.error(
+                                "%s: Rate limit exceeded after %d attempts",
+                                func.__name__,
+                                max_retries,
+                            )
                             raise
 
                     # Check for network errors
-                    elif type(e).__name__ in ("NetworkError", "TimedOut", "ConnectionError", "TimeoutError"):
+                    elif type(e).__name__ in (
+                        "NetworkError",
+                        "TimedOut",
+                        "ConnectionError",
+                        "TimeoutError",
+                    ):
                         if attempt < max_retries - 1:
                             delay = 2**attempt  # type: ignore[misc]  # 1s, 2s, 4s
                             logger.warning(
@@ -151,7 +160,11 @@ def format_size(size_bytes: int) -> str:
 
 
 def format_active_status_line(
-    status_color: str, started_time: str, last_active_time: str, size_str: str, is_truncated: bool
+    status_color: str,
+    started_time: str,
+    last_active_time: str,
+    size_str: str,
+    is_truncated: bool,
 ) -> str:
     """Format status line for active polling process.
 
@@ -284,7 +297,12 @@ def strip_exit_markers(text: str) -> str:
     text = re.sub(r';\s*\n?\s*echo\s+"__EXIT__\s*\$\?\s*__"', "", text)
 
     # Pattern 3: echo at start of line (with or without leading whitespace) - new format
-    text = re.sub(r'^\s*echo\s+"__EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"\s*\n?', "", text, flags=re.MULTILINE)
+    text = re.sub(
+        r'^\s*echo\s+"__EXIT__[a-zA-Z0-9]+__\s*\$\?\s*__"\s*\n?',
+        "",
+        text,
+        flags=re.MULTILINE,
+    )
 
     # Pattern 4: echo at start of line (with or without leading whitespace) - old format
     text = re.sub(r'^\s*echo\s+"__EXIT__\s*\$\?\s*__"\s*\n?', "", text, flags=re.MULTILINE)

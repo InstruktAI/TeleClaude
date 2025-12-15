@@ -12,12 +12,10 @@ Scenario:
 
 import asyncio
 import uuid
-from pathlib import Path
 
 import pytest
 
 from teleclaude.core import terminal_bridge
-from teleclaude.core.db import Db
 
 
 @pytest.mark.asyncio
@@ -82,7 +80,7 @@ async def test_polling_restarts_after_process_exits(daemon_with_mocked_telegram)
     # This is the bug: is_process_running should be False here
     # (because first process exited and unmark_polling was called)
     assert not is_process_running, (
-        "polling_active should be False after first process exits, " "so second command triggers polling restart"
+        "polling_active should be False after first process exits, so second command triggers polling restart"
     )
 
     # If this assertion fails, it means polling won't restart,

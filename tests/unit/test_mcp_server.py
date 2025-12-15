@@ -1,7 +1,5 @@
 """Unit tests for MCP server tools."""
 
-import json
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -299,9 +297,7 @@ async def test_teleclaude_start_session_with_model_parameter(mock_mcp_server):
     server = mock_mcp_server
 
     # Mock handle_event to return success with session_id
-    server.client.handle_event = AsyncMock(
-        return_value={"status": "success", "data": {"session_id": "model-test-789"}}
-    )
+    server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "model-test-789"}})
 
     result = await server.teleclaude__start_session(
         computer="local",
@@ -321,3 +317,77 @@ async def test_teleclaude_start_session_with_model_parameter(mock_mcp_server):
     first_call = server.client.handle_event.call_args_list[0]
     metadata = first_call[0][2]  # Third positional arg is MessageMetadata
     assert metadata.claude_model == "sonnet"
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
+    """Test that start_session dispatches correct agent event based on parameter."""
+    server = mock_mcp_server
+
+    # Mock handle_event to return success with session_id
+    server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "agent-test-123"}})
+
+    # Test 1: Gemini agent
+    result = await server.teleclaude__start_session(
+        computer="local",
+        project_dir="/home/user/project",
+        title="Gemini Session",
+        message="Hello Gemini",
+        agent="gemini",
+    )
+    assert result["status"] == "success"
+
+    # Verify events
+    assert server.client.handle_event.call_count == 2
+
+    # Check session creation call - should NOT have claude_model (since it's gemini)
+    first_call = server.client.handle_event.call_args_list[0]
+    assert first_call[0][0] == "new_session"
+    metadata = first_call[0][2]
+    assert metadata.claude_model is None
+
+    # Check command call - should be "gemini" event
+    second_call = server.client.handle_event.call_args_list[1]
+    assert second_call[0][0] == "gemini"
+
+    # Reset mock
+    server.client.handle_event.reset_mock()
+    server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-456"}}
+
+    # Test 2: Codex agent
+    result = await server.teleclaude__start_session(
+        computer="local",
+        project_dir="/home/user/project",
+        title="Codex Session",
+        message="Hello Codex",
+        agent="codex",
+    )
+    assert result["status"] == "success"
+
+    # Check command call - should be "codex" event
+    second_call = server.client.handle_event.call_args_list[1]
+    assert second_call[0][0] == "codex"
+
+    # Reset mock
+    server.client.handle_event.reset_mock()
+    server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-789"}}
+
+    # Test 3: Claude agent (explicit) with model
+    result = await server.teleclaude__start_session(
+        computer="local",
+        project_dir="/home/user/project",
+        title="Claude Session",
+        message="Hello Claude",
+        agent="claude",
+        model="sonnet",
+    )
+    assert result["status"] == "success"
+
+    # Check session creation call - SHOULD have claude_model
+    first_call = server.client.handle_event.call_args_list[0]
+    metadata = first_call[0][2]
+    assert metadata.claude_model == "sonnet"
+
+    # Check command call - should be "claude" event
+    second_call = server.client.handle_event.call_args_list[1]
+    assert second_call[0][0] == "claude"

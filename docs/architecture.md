@@ -723,6 +723,7 @@ terminal:
 
 polling:
   idle_notification_seconds: 60
+
 ```
 
 ### Daemon Management

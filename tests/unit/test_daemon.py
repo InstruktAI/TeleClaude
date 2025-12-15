@@ -22,7 +22,6 @@ def mock_daemon():
         patch("teleclaude.daemon.TeleClaudeMCPServer") as mock_mcp,
         patch.object(config_module, "_config", None),
     ):  # Reset config before each test
-
         # Create daemon instance
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
@@ -314,5 +313,5 @@ def test_all_events_have_handlers():
 
     # Report missing handlers
     assert not missing_handlers, (
-        f"Events missing handlers: {missing_handlers}\n" f"Add to COMMAND_EVENTS in daemon.py or create handler method"
+        f"Events missing handlers: {missing_handlers}\nAdd to COMMAND_EVENTS in daemon.py or create handler method"
     )

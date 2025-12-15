@@ -39,9 +39,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RedisAdapter(
-    BaseAdapter, RemoteExecutionProtocol
-):  # pylint: disable=too-many-instance-attributes  # Redis adapter requires many connection and state attributes
+class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too-many-instance-attributes  # Redis adapter requires many connection and state attributes
     """Adapter for AI-to-AI communication via Redis Streams.
 
     Uses Redis Streams for reliable, ordered message delivery between computers.
@@ -694,7 +692,9 @@ class RedisAdapter(
                 # Process commands
                 for stream_name, stream_messages in messages:  # type: ignore[misc, attr-defined]  # stream_name/stream_messages are Any from Redis, messages is object
                     # stream_name and stream_messages come from Redis xread() - types are Any
-                    stream_name_str: str = stream_name.decode("utf-8") if isinstance(stream_name, bytes) else str(stream_name)  # type: ignore[misc]  # stream_name is Any
+                    stream_name_str: str = (
+                        stream_name.decode("utf-8") if isinstance(stream_name, bytes) else str(stream_name)
+                    )  # type: ignore[misc]  # stream_name is Any
                     logger.debug(
                         "Stream %s has %d message(s)",
                         stream_name_str,

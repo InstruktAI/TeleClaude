@@ -86,7 +86,7 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
     assert stored_id == "msg-456"
 
     # Simulate daemon restart - create new manager with same database
-    from teleclaude.core.db import Db, db
+    from teleclaude.core.db import Db
 
     db_path = daemon.db.db_path
     new_manager = Db(db_path)

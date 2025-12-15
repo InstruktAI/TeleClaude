@@ -100,7 +100,7 @@ def unregister_listener(target_session_id: str, caller_session_id: str) -> bool:
     # Find and remove the specific caller's listener
     original_len = len(_listeners[target_session_id])
     _listeners[target_session_id] = [
-        l for l in _listeners[target_session_id] if l.caller_session_id != caller_session_id
+        listener for listener in _listeners[target_session_id] if listener.caller_session_id != caller_session_id
     ]
 
     # Check if we actually removed one
@@ -166,7 +166,7 @@ def cleanup_caller_listeners(caller_session_id: str) -> int:
 
     for target_id, listeners in _listeners.items():
         original_len = len(listeners)
-        _listeners[target_id] = [l for l in listeners if l.caller_session_id != caller_session_id]
+        _listeners[target_id] = [listener for listener in listeners if listener.caller_session_id != caller_session_id]
         removed = original_len - len(_listeners[target_id])
         count += removed
 

@@ -1,9 +1,8 @@
 """Unit tests for file upload handler."""
 
-import asyncio
 from pathlib import Path
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -209,7 +208,9 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024),
+                context=FileEventContext(
+                    session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024
+                ),
                 send_feedback=mock_send_feedback,
             )
 
@@ -242,7 +243,9 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024),
+                context=FileEventContext(
+                    session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024
+                ),
                 send_feedback=mock_send_feedback,
             )
 
@@ -275,7 +278,9 @@ class TestHandleFile:
                 session_id="test123",
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
-                context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=2097152),
+                context=FileEventContext(
+                    session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=2097152
+                ),
                 send_feedback=mock_send_feedback,
             )
 

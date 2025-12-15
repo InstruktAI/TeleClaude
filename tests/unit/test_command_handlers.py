@@ -1,7 +1,6 @@
 """Unit tests for command handlers."""
 
 import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -471,9 +470,7 @@ async def test_handle_create_session_stores_claude_model():
         mock_tb.create_tmux_session = AsyncMock(return_value=True)
         mock_unique.return_value = "$TestComputer[user] - AI Session"
 
-        await command_handlers.handle_create_session(
-            mock_context, ["AI", "Session"], mock_metadata, mock_client
-        )
+        await command_handlers.handle_create_session(mock_context, ["AI", "Session"], mock_metadata, mock_client)
 
     # Verify db.create_session was called with claude_model="sonnet"
     mock_db.create_session.assert_called_once()
@@ -499,9 +496,7 @@ async def test_handle_claude_session_prepends_model_flag():
     with patch.object(command_handlers, "config") as mock_config:
         mock_config.mcp.claude_command = "claude"
 
-        await command_handlers.handle_claude_session.__wrapped__(
-            mock_session, mock_context, [], mock_execute
-        )
+        await command_handlers.handle_claude_session.__wrapped__(mock_session, mock_context, [], mock_execute)
 
     # Verify execute_terminal_command was called with --model=haiku prepended
     mock_execute.assert_called_once()
@@ -528,9 +523,7 @@ async def test_handle_claude_session_no_model_flag_when_not_set():
     with patch.object(command_handlers, "config") as mock_config:
         mock_config.mcp.claude_command = "claude"
 
-        await command_handlers.handle_claude_session.__wrapped__(
-            mock_session, mock_context, [], mock_execute
-        )
+        await command_handlers.handle_claude_session.__wrapped__(mock_session, mock_context, [], mock_execute)
 
     # Verify execute_terminal_command was called without --model flag
     mock_execute.assert_called_once()

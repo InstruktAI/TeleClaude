@@ -22,18 +22,15 @@ jobs:
       - name: Install tmux
         run: sudo apt-get update && sudo apt-get install -y tmux
 
-      - name: Create venv
-        run: python -m venv .venv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
 
       - name: Install dependencies
         run: |
-          source .venv/bin/activate
-          pip install -r requirements.txt
-          pip install -r requirements-test.txt
+          uv sync --extra test
 
       - name: Run checks
         run: |
-          bin/format.sh
           bin/lint.sh
           bin/test.sh
         env:

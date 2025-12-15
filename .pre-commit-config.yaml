@@ -13,14 +13,9 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      - id: guardrails
-        name: Guardrails
-        entry: python3 scripts/guardrails.py
-        language: system
-        pass_filenames: false
-      - id: pyright
-        name: Pyright
-        entry: pyright
+      - id: lint
+        name: Lint (make lint)
+        entry: make lint
         language: system
         pass_filenames: false
       - id: test

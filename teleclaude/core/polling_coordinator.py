@@ -183,7 +183,10 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     # Session died - check if it was user-closed before sending exit message
                     if session and session.closed:
                         # Session was intentionally closed by user - don't send exit message
-                        logger.debug("Session %s was closed by user, skipping exit message", event.session_id[:8])
+                        logger.debug(
+                            "Session %s was closed by user, skipping exit message",
+                            event.session_id[:8],
+                        )
                     elif session:
                         # Tmux session died unexpectedly - notify user
                         try:
@@ -194,13 +197,20 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                             )
                         except Exception as e:
                             # Handle errors gracefully (e.g., message too long, topic closed)
-                            logger.warning("Failed to send exit message for %s: %s", event.session_id[:8], e)
+                            logger.warning(
+                                "Failed to send exit message for %s: %s",
+                                event.session_id[:8],
+                                e,
+                            )
 
                     # Delete output file on session death
                     try:
                         if output_file.exists():
                             output_file.unlink()
-                            logger.debug("Deleted output file for exited session %s", event.session_id[:8])
+                            logger.debug(
+                                "Deleted output file for exited session %s",
+                                event.session_id[:8],
+                            )
                     except Exception as e:
                         logger.warning("Failed to delete output file: %s", e)
 

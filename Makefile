@@ -11,8 +11,8 @@ help:
 	@echo "  make certs        Generate SSL certificates for REST API"
 	@echo ""
 	@echo "Code Quality:"
-	@echo "  make format       Format code with black and isort"
-	@echo "  make lint         Run linting checks (pylint, mypy)"
+	@echo "  make format       Format code with ruff"
+	@echo "  make lint         Run linting checks (ruff, pyright)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-unit        Run unit tests only"
@@ -37,10 +37,8 @@ help:
 
 install:
 	@echo "Installing dependencies..."
-	python3 -m venv .venv
-	. .venv/bin/activate && pip install -r requirements.txt
-	. .venv/bin/activate && pip install -r requirements-test.txt
-	. .venv/bin/activate && pip install -e .
+	@if ! command -v uv >/dev/null; then echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; fi
+	uv sync --extra test
 	@echo "✓ Dependencies and package installed"
 	@echo ""
 	@echo "Next step: Run 'make init' to set up the service (or 'make init ARGS=-y' for unattended mode)"

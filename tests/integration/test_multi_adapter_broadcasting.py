@@ -4,7 +4,7 @@ Tests UC-M1: Telegram User with Redis Observer
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

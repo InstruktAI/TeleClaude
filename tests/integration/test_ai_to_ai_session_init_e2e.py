@@ -3,12 +3,11 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.core import terminal_bridge
-from teleclaude.core.events import TeleClaudeEvents
 
 
 @pytest.mark.asyncio

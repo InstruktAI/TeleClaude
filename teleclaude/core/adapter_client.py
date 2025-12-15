@@ -381,8 +381,7 @@ class AdapterClient:
         # Check if adapter is a UI adapter (type-safe check)
         if not isinstance(origin_adapter, UiAdapter):
             raise AttributeError(
-                f"send_exit_message requires UiAdapter, but {session.origin_adapter} "
-                f"is {type(origin_adapter).__name__}"
+                f"send_exit_message requires UiAdapter, but {session.origin_adapter} is {type(origin_adapter).__name__}"
             )
 
         # Type checker now knows this is UiAdapter
