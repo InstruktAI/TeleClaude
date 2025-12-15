@@ -34,9 +34,6 @@ EventType = Literal[
     "agent",
     "agent_restart",
     "agent_resume",
-    "claude",
-    "gemini",
-    "codex",
     "message",
     "voice",
     "file",
@@ -122,9 +119,6 @@ class TeleClaudeEvents:
     AGENT_START: Literal["agent"] = "agent"
     AGENT_RESTART: Literal["agent_restart"] = "agent_restart"
     AGENT_RESUME: Literal["agent_resume"] = "agent_resume"
-    CLAUDE: Literal["claude"] = "claude"
-    GEMINI: Literal["gemini"] = "gemini"
-    CODEX: Literal["codex"] = "codex"
 
     # User input
     MESSAGE: Literal["message"] = "message"  # Messages to long-running processes
@@ -317,7 +311,4 @@ COMMAND_EVENTS: set[EventType] = {
     "agent",
     "agent_restart",
     "agent_resume",
-    "claude",
-    "gemini",
-    "codex",
 }

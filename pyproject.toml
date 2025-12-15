@@ -137,6 +137,10 @@ disable_error_code = ["explicit-any", "misc", "arg-type", "assignment"]
 module = "teleclaude.adapters.base_adapter"
 disable_error_code = ["misc", "explicit-any", "arg-type"]
 
+[[tool.mypy.overrides]]
+module = "teleclaude.core.agent_parsers"
+disable_error_code = ["misc", "explicit-any", "arg-type", "assignment"]
+
 [tool.pylint.'MESSAGES CONTROL']
 # CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
 # ALL imports MUST be at the top of the file

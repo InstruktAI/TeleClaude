@@ -5,7 +5,8 @@ from teleclaude.core.agent_parsers import CodexParser
 
 def test_codex_parser_stop():
     parser = CodexParser()
-    line = '{"role": "model", "content": [{"type": "text", "text": "Done."}]}'
+    # Schema: {"type": "response_item", "payload": {"role": "model", "content": [...]}}
+    line = '{"type": "response_item", "payload": {"role": "model", "content": [{"type": "text", "text": "Done."}]}}'
 
     events = list(parser.parse_line(line))
     assert len(events) == 1
@@ -14,7 +15,7 @@ def test_codex_parser_stop():
 
 def test_codex_parser_notification():
     parser = CodexParser()
-    line = '{"role": "model", "content": [{"type": "tool_use", "name": "AskQuestion", "input": {}}]}'
+    line = '{"type": "response_item", "payload": {"role": "model", "content": [{"type": "tool_use", "name": "AskQuestion", "input": {}}]}}'
 
     events = list(parser.parse_line(line))
     # Should yield stop (as it's a model message) AND notification
