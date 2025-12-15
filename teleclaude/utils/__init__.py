@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from typing import Awaitable, Callable, List, ParamSpec, TypeVar
+from typing import Awaitable, Callable, ParamSpec, TypeVar
 
 T = TypeVar("T")
 P = ParamSpec("P")

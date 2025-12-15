@@ -29,14 +29,6 @@ _ANSI_ESCAPE_RE = re.compile("\x1b\\[[0-?]*[ -/]*[@-~]")
 _EXIT_MARKER_RE = re.compile(r"__EXIT__\d+__\n?")
 
 
-def _filter_for_ui(raw: str) -> str:
-    raw = raw.replace('; echo "__EXIT__$?__"', "")
-    raw = _ANSI_ESCAPE_RE.sub("", raw)
-    raw = _EXIT_MARKER_RE.sub("", raw)
-    raw = re.sub(r"\n{2,}", "\n", raw)
-    return raw
-
-
 async def restore_active_pollers(
     adapter_client: "AdapterClient",
     output_poller: OutputPoller,

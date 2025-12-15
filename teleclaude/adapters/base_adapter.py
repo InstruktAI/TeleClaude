@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional, Protocol, runtime_checkable
 
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
@@ -15,6 +15,11 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class _HasSessionId(Protocol):
+    session_id: str
 
 
 def with_error_feedback(func: Callable[..., object]) -> Callable[..., object]:  # type: ignore[explicit-any]
@@ -31,8 +36,8 @@ def with_error_feedback(func: Callable[..., object]) -> Callable[..., object]:  
             first_arg: object = args[0]
             if isinstance(first_arg, str):
                 session_id = first_arg
-            elif hasattr(first_arg, "session_id"):
-                session_id = first_arg.session_id
+            elif isinstance(first_arg, _HasSessionId):
+                session_id = first_arg.session_id  # type: ignore[union-attr]
 
         try:
             return await func(self, *args, **kwargs)  # type: ignore[misc]

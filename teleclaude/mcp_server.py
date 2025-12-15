@@ -8,7 +8,7 @@ import shlex
 import types
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -92,7 +92,7 @@ class TeleClaudeMCPServer:
         """Register MCP tools with the server."""
 
         @self.server.list_tools()
-        async def list_tools() -> list[Tool]:
+        async def list_tools() -> list[Tool]:  # pyright: ignore[reportUnusedFunction]
             """List available MCP tools."""
             return [
                 Tool(
@@ -417,7 +417,9 @@ class TeleClaudeMCPServer:
             ]
 
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent]:
+        async def call_tool(  # pyright: ignore[reportUnusedFunction]
+            name: str, arguments: dict[str, object]
+        ) -> list[TextContent]:
             """Handle tool calls.
 
             Context variables (injected by mcp-wrapper.py from tmux env):
@@ -446,7 +448,8 @@ class TeleClaudeMCPServer:
                 projects = await self.teleclaude__list_projects(computer)
                 return [TextContent(type="text", text=json.dumps(projects, default=str))]
             elif name == "teleclaude__list_sessions":
-                computer = arguments.get("computer", "local") if arguments else "local"
+                computer_obj = arguments.get("computer", "local") if arguments else "local"
+                computer: str | None = None if computer_obj is None else str(computer_obj)
                 sessions = await self.teleclaude__list_sessions(computer)
                 return [TextContent(type="text", text=json.dumps(sessions, default=str))]
             elif name == "teleclaude__start_session":
@@ -480,7 +483,10 @@ class TeleClaudeMCPServer:
                 until_timestamp_obj = arguments.get("until_timestamp") if arguments else None
                 until_timestamp = str(until_timestamp_obj) if until_timestamp_obj else None
                 tail_chars_obj = arguments.get("tail_chars") if arguments else None
-                tail_chars = int(tail_chars_obj) if tail_chars_obj is not None else 5000
+                if isinstance(tail_chars_obj, (int, str)):
+                    tail_chars = int(cast(int | str, tail_chars_obj))
+                else:
+                    tail_chars = 5000
                 # caller_session_id extracted at top of call_tool for stop notifications (observer pattern)
                 result = await self.teleclaude__get_session_data(
                     computer, session_id, since_timestamp, until_timestamp, tail_chars, caller_session_id
@@ -545,13 +551,22 @@ class TeleClaudeMCPServer:
         logger.info("New MCP client connected")
         try:
             # Create memory streams like stdio_server does
-            read_stream_writer: MemoryObjectSendStream
-            read_stream: MemoryObjectReceiveStream
-            write_stream: MemoryObjectSendStream
-            write_stream_reader: MemoryObjectReceiveStream
+            read_stream_writer: MemoryObjectSendStream[SessionMessage | Exception]
+            read_stream: MemoryObjectReceiveStream[SessionMessage | Exception]
+            write_stream: MemoryObjectSendStream[SessionMessage]
+            write_stream_reader: MemoryObjectReceiveStream[SessionMessage]
 
-            read_stream_writer, read_stream = anyio.create_memory_object_stream(0)
-            write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
+            read_stream_writer, read_stream = cast(
+                tuple[
+                    MemoryObjectSendStream[SessionMessage | Exception],
+                    MemoryObjectReceiveStream[SessionMessage | Exception],
+                ],
+                anyio.create_memory_object_stream(0),
+            )
+            write_stream, write_stream_reader = cast(
+                tuple[MemoryObjectSendStream[SessionMessage], MemoryObjectReceiveStream[SessionMessage]],
+                anyio.create_memory_object_stream(0),
+            )
 
             async def socket_reader() -> None:
                 """Read from socket and parse JSON-RPC messages."""
@@ -972,10 +987,11 @@ class TeleClaudeMCPServer:
         Returns:
             List of session dicts with computer field added
         """
-        redis_adapter = self.client.adapters.get("redis")
-        if not redis_adapter:
+        redis_adapter_base = self.client.adapters.get("redis")
+        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
             logger.warning("Redis adapter not available - cannot query remote sessions")
             return []
+        redis_adapter: RedisAdapter = redis_adapter_base
 
         try:
             message_id = await redis_adapter.send_request(computer, "list_sessions", MessageMetadata())
@@ -1004,10 +1020,11 @@ class TeleClaudeMCPServer:
         all_sessions.extend(local_sessions)
 
         # Get all online remote computers
-        redis_adapter = self.client.adapters.get("redis")
-        if not redis_adapter:
+        redis_adapter_base = self.client.adapters.get("redis")
+        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
             logger.warning("Redis adapter not available - returning local sessions only")
             return all_sessions
+        redis_adapter: RedisAdapter = redis_adapter_base
 
         computers_to_query = await redis_adapter._get_online_computers()
 
