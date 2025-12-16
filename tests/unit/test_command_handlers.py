@@ -557,11 +557,12 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 
 
 @pytest.mark.asyncio
-async def test_handle_agent_resume_executes_command_with_args(mock_initialized_db):
-    """Test that handle_agent_resume executes agent's command with provided arguments."""
+async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock_initialized_db):
+    """Test that handle_agent_resume uses native_session_id from database and resume template."""
     from teleclaude.config import AgentConfig
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
+    from teleclaude.core.ux_state import SessionUXState
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -572,19 +573,29 @@ async def test_handle_agent_resume_executes_command_with_args(mock_initialized_d
     mock_client = MagicMock()
 
     mock_agent_config = MagicMock(spec=AgentConfig)
-    mock_agent_config.command = "gemini"
+    mock_agent_config.command = "gemini --yolo"
 
-    with patch.object(command_handlers, "config") as mock_config:
+    # Mock UX state with native session ID
+    mock_ux_state = MagicMock(spec=SessionUXState)
+    mock_ux_state.native_session_id = "native-123-abc"
+
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+    ):
         mock_config.agents.get.return_value = mock_agent_config
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+        mock_db.update_ux_state = AsyncMock()
 
         await command_handlers.handle_agent_resume.__wrapped__(
-            mock_session, mock_context, "gemini", ["--resume", "latest"], mock_client, mock_execute
+            mock_session, mock_context, "gemini", [], mock_client, mock_execute
         )
 
     mock_execute.assert_called_once()
     call_args = mock_execute.call_args[0]
     command = call_args[1]
 
-    assert "gemini" in command
+    # Gemini uses --resume flag with session ID from database
+    assert "gemini --yolo" in command
     assert "--resume" in command
-    assert "latest" in command
+    assert "native-123-abc" in command

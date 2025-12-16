@@ -22,7 +22,7 @@ async def test_db():
     await test_db_instance.close()
     try:
         os.unlink(db_path)
-    except:
+    except OSError:
         pass
 
 
@@ -298,7 +298,7 @@ class TestCountSessions:
     @pytest.mark.asyncio
     async def test_count_sessions_by_status(self, test_db):
         """Test counting sessions by closed status."""
-        s1 = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
+        await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
         s2 = await test_db.create_session("PC1", "session-2", "telegram", "Test Session")
         await test_db.update_session(s2.session_id, closed=True)
 
@@ -332,7 +332,7 @@ class TestGetSessionsByAdapterMetadata:
             "Test Session",
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=123)),
         )
-        s2 = await test_db.create_session(
+        await test_db.create_session(
             "PC1",
             "session-2",
             "telegram",

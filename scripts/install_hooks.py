@@ -118,7 +118,8 @@ def configure_claude(repo_root: Path) -> None:
 
     os.chmod(receiver_script, 0o755)
 
-    settings_path = Path.home() / ".claude.json"
+    # Claude Code hooks go in ~/.claude/settings.json (NOT ~/.claude.json)
+    settings_path = Path.home() / ".claude" / "settings.json"
 
     settings = {}
     if settings_path.exists():

@@ -39,9 +39,9 @@ class TestPollAndSendOutput:
         db.get_session = AsyncMock(return_value=mock_session)
         db.get_output_message_id = AsyncMock(return_value=None)
 
-        adapter = Mock()
+        Mock()
 
-        output_file = Path("/tmp/output.txt")
+        Path("/tmp/output.txt")
 
         # Mock poller to yield OutputChanged event
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
@@ -74,9 +74,9 @@ class TestPollAndSendOutput:
         db.get_output_message_id = AsyncMock(return_value=None)
         db.set_output_message_id = AsyncMock()
 
-        adapter = Mock()
+        Mock()
 
-        output_file = Path("/tmp/output.txt")
+        Path("/tmp/output.txt")
 
         # Mock poller to yield ProcessExited event with exit code
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
@@ -109,7 +109,7 @@ class TestPollAndSendOutput:
         db.get_output_message_id = AsyncMock(return_value=None)
         db.set_output_message_id = AsyncMock()
 
-        adapter = Mock()
+        Mock()
 
         # Create real temp file
         output_file = tmp_path / "output.txt"
@@ -145,9 +145,9 @@ class TestPollAndSendOutput:
         db.get_session = AsyncMock(return_value=mock_session)
         db.get_output_message_id = AsyncMock(return_value=None)
 
-        adapter = Mock()
+        Mock()
 
-        output_file = Path("/tmp/output.txt")
+        Path("/tmp/output.txt")
 
         # Mock poller to raise exception
         async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):

@@ -36,7 +36,7 @@ async def test_polling_restarts_after_process_exits(daemon_with_mocked_telegram)
     session_id = str(uuid.uuid4())
     tmux_session_name = f"test-{session_id[:8]}"
 
-    session = await test_db.create_session(
+    await test_db.create_session(
         session_id=session_id,
         tmux_session_name=tmux_session_name,
         origin_adapter="test",
@@ -98,7 +98,7 @@ async def test_polling_guard_prevents_duplicate_polling(daemon_with_mocked_teleg
     test_db = daemon.db
 
     session_id = str(uuid.uuid4())
-    session = await test_db.create_session(
+    await test_db.create_session(
         session_id=session_id,
         tmux_session_name=f"test-{session_id[:8]}",
         origin_adapter="test",

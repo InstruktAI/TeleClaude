@@ -41,6 +41,10 @@ install:
 	PATH="$$HOME/.local/bin:$$PATH" uv sync --extra test
 	@echo "✓ Dependencies and package installed"
 	@echo ""
+	@echo "Installing agent hooks..."
+	@PATH="$$HOME/.local/bin:$$PATH" .venv/bin/python scripts/install_hooks.py
+	@echo "✓ Agent hooks configured"
+	@echo ""
 	@echo "Next step: Run 'make init' to set up the service (or 'make init ARGS=-y' for unattended mode)"
 
 init:

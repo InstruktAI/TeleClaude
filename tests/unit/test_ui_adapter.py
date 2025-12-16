@@ -9,6 +9,7 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import Db
 from teleclaude.core.models import (
     MessageMetadata,
+    Session,
     SessionAdapterMetadata,
     TelegramAdapterMetadata,
 )
@@ -34,13 +35,13 @@ class MockUiAdapter(UiAdapter):
     async def stop(self):
         pass
 
-    async def send_message(self, session: "Session", text: str, metadata=None) -> str:  # type: ignore[name-defined]
+    async def send_message(self, session: Session, text: str, metadata: MessageMetadata | None = None) -> str:
         return await self._send_message_mock(session, text, metadata)
 
-    async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:  # type: ignore[name-defined]
+    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
         return await self._edit_message_mock(session, message_id, text, metadata)
 
-    async def delete_message(self, session: "Session", message_id: str) -> bool:  # type: ignore[name-defined]
+    async def delete_message(self, session: Session, message_id: str) -> bool:
         return await self._delete_message_mock(session, message_id)
 
     async def close_channel(self, session_id: str) -> bool:

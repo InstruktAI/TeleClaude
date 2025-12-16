@@ -167,7 +167,7 @@ class TestGetListenersForCaller:
         listeners = get_listeners_for_caller("caller-A")
 
         assert len(listeners) == 2
-        assert all(l.caller_session_id == "caller-A" for l in listeners)
+        assert all(listener.caller_session_id == "caller-A" for listener in listeners)
 
     def test_get_listeners_for_nonexistent_caller(self):
         """Should return empty list for nonexistent caller."""

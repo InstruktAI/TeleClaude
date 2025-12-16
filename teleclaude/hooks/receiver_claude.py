@@ -16,7 +16,9 @@ sys.path.append(str(Path(__file__).parent))
 from utils.file_log import append_line
 from utils.mcp_send import mcp_send
 
-LOG_DIR = Path.home() / ".teleclaude" / "logs"
+# Log to project's logs directory (hooks are in teleclaude/hooks/, so go up 2 levels)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+LOG_DIR = PROJECT_ROOT / "logs"
 LOG_FILE = LOG_DIR / "receiver_claude.log"
 
 

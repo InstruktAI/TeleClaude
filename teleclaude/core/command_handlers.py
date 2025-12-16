@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 import psutil
 
 from teleclaude.config import config
+from teleclaude.constants import AGENT_RESUME_TEMPLATES
 from teleclaude.core import terminal_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
@@ -1167,11 +1168,14 @@ async def handle_agent_resume(
 ) -> None:
     """Resume a generic AI agent session.
 
+    Looks up the native session ID from the database and uses agent-specific
+    resume command template to build the correct command.
+
     Args:
         session: Session object (injected by @with_session)
         context: Command context with message_id
         agent_name: The name of the agent to resume
-        args: Command arguments (passed to agent command, e.g., --session-id XXX)
+        args: Command arguments (currently unused - session ID comes from database)
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
@@ -1180,14 +1184,21 @@ async def handle_agent_resume(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    # Build the command from agent's base command and provided arguments
-    cmd_parts = [agent_config.command.strip()]
-    if args:
-        quoted_args = [shlex.quote(arg) for arg in args]
-        cmd_parts.extend(quoted_args)
+    base_cmd = agent_config.command.strip()
 
-    cmd = " ".join(cmd_parts)
-    logger.info("Executing agent resume command for %s: %s", agent_name, cmd)
+    # Get native session ID from UX state
+    ux_state = await db.get_ux_state(session.session_id)
+    native_session_id = ux_state.native_session_id if ux_state else None
+
+    if native_session_id:
+        # Use agent-specific resume template
+        template = AGENT_RESUME_TEMPLATES.get(agent_name, "{base_cmd} --resume {session_id}")
+        cmd = template.format(base_cmd=base_cmd, session_id=native_session_id)
+        logger.info("Resuming %s session %s (from database)", agent_name, native_session_id[:8])
+    else:
+        # No session ID - just start fresh
+        cmd = base_cmd
+        logger.info("Starting fresh %s session (no native session ID in database)", agent_name)
 
     # Save active agent to UX state
     await db.update_ux_state(session.session_id, active_agent=agent_name)

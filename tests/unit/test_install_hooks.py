@@ -31,13 +31,13 @@ def test_merge_hooks_replaces_existing_hook_definition():
 
 
 def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
-    """Claude hook configuration writes to ~/.claude.json."""
+    """Claude hook configuration writes to ~/.claude/settings.json."""
     monkeypatch.setenv("HOME", str(tmp_path))
     repo_root = Path(__file__).resolve().parents[2]
 
     install_hooks.configure_claude(repo_root)
 
-    claude_config = tmp_path / ".claude.json"
+    claude_config = tmp_path / ".claude" / "settings.json"
     assert claude_config.exists()
 
     data = json.loads(claude_config.read_text())

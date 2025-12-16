@@ -109,7 +109,7 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
    - Runs `systemctl restart teleclaude` (proper systemd restart)
    - Daemon restarts in ~1-2 seconds
 3. **Verify**: `make status`
-4. **Monitor logs**: `tail -f /var/log/teleclaude.log`
+4. **Monitor logs**: `tail -f logs/teleclaude.log`
 
 **Never stop the service to check logs** - use `tail -f` instead.
 
@@ -177,7 +177,7 @@ Replace `{user}` with the user field and `{host}` with the host field from the c
 ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make status'
 
 # View recent logs
-ssh -A morriz@raspberrypi.local 'tail -50 /var/log/teleclaude.log'
+ssh -A morriz@raspberrypi.local 'tail -50 ~/apps/TeleClaude/logs/teleclaude.log'
 
 # Restart daemon
 ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart'

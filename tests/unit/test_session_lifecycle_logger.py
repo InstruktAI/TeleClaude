@@ -8,7 +8,7 @@ def test_log_lifecycle_event_writes_json_line():
     """Test that log_lifecycle_event writes JSON to file."""
     from teleclaude.core.session_lifecycle_logger import log_lifecycle_event
 
-    m = mock_open()
+    mock_open()
     with patch("teleclaude.core.session_lifecycle_logger.LIFECYCLE_LOG_PATH") as mock_path:
         mock_file = MagicMock()
         mock_path.open.return_value.__enter__.return_value = mock_file

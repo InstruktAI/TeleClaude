@@ -130,6 +130,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.client = AdapterClient()
 
         # Initialize session watcher for file-based hooks (Universal Hooks)
+        # NOTE: Only Codex needs the watcher - Claude and Gemini have native hooks
         self.session_watcher = SessionWatcher(self.client)
         self.session_watcher.register_parser("codex", CodexParser())
 

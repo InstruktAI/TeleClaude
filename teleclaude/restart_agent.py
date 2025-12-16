@@ -19,6 +19,7 @@ import sys
 from typing import Optional
 
 from teleclaude.config import config
+from teleclaude.constants import AGENT_RESUME_TEMPLATES
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import Db
 from teleclaude.core.models import Session
@@ -88,11 +89,9 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
     # Build restart command
     # If we have a native session ID, resume it WITHOUT sending a message (just attach)
     if native_session_id:
-        # TODO: Generic resume flag? Claude uses --resume <id>.
-        # Gemini/Codex might differ. For now assuming Claude-like CLI or handled by base_cmd wrapper.
-        # Ideally agent config should have a resume_template.
-        # But for now, we assume standard CLI pattern: cmd --resume ID
-        restart_cmd = f"{base_cmd} --resume {native_session_id}"
+        # Use agent-specific resume template from constants
+        template = AGENT_RESUME_TEMPLATES.get(target_agent, "{base_cmd} --resume {session_id}")
+        restart_cmd = template.format(base_cmd=base_cmd, session_id=native_session_id)
         logger.info("Resuming %s session %s (from database)", target_agent, native_session_id[:8])
     else:
         # No session ID - just start fresh (or resume default if agent handles it)

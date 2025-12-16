@@ -50,7 +50,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
         }
 
         initiator_computer = "WorkstationA"
-        command_data = {
+        {
             b"title": b"Test AI-to-AI Session",
             b"project_dir": project_dir.encode("utf-8"),
             b"initiator": initiator_computer.encode("utf-8"),
@@ -149,12 +149,6 @@ async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram)
     with patch.object(daemon.client, "handle_event", side_effect=track_handle_event):
         # Simulate create_session command WITHOUT project_dir
         request_id = "test-request-456"
-        command_data = {
-            b"title": b"Test Session No Project",
-            b"project_dir": b"",  # Empty project_dir
-            b"initiator": b"WorkStation",
-            b"channel_metadata": b"{}",
-        }
 
         response_sent = None
 
@@ -222,7 +216,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     # Create session
     request_id = "test-request-789"
     project_dir = "/tmp/test-project"
-    command_data = {
+    {
         b"title": b"Test Tmux Execution",
         b"project_dir": project_dir.encode("utf-8"),
         b"initiator": b"TestComputer",

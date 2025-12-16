@@ -16,6 +16,16 @@ DEFAULT_GEMINI_COMMAND = "gemini --yolo"
 # Default Codex command
 DEFAULT_CODEX_COMMAND = "codex --dangerously-bypass-approvals-and-sandbox --search"
 
+# Resume command templates for agents (used when restarting sessions)
+# {base_cmd} = agent's base command with flags, {session_id} = native session ID
+# Claude/Gemini: append --resume flag to base command
+# Codex: uses subcommand "resume" instead of flag (no additional flags needed)
+AGENT_RESUME_TEMPLATES = {
+    "claude": "{base_cmd} --resume {session_id}",
+    "gemini": "{base_cmd} --resume {session_id}",
+    "codex": "codex resume {session_id}",
+}
+
 # Session directories for agents (standard locations)
 AGENT_SESSION_DIRS = {
     "claude": "~/.claude/sessions",

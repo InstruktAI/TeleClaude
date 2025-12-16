@@ -14,7 +14,9 @@ from typing import Any, Dict
 from utils.file_log import append_line
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
-LOG_DIR = Path.home() / ".teleclaude" / "logs"
+# Log to project's logs directory (utils are in teleclaude/hooks/utils/, so go up 3 levels)
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+LOG_DIR = PROJECT_ROOT / "logs"
 LOG_FILE = LOG_DIR / "mcp_send.log"
 
 
