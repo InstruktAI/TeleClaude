@@ -1283,11 +1283,12 @@ class TeleClaudeMCPServer:
         Returns:
             dict with session_id and status
         """
-        # Normalize command: strip leading / if present
+        # Normalize command and args
         normalized_cmd = command.lstrip("/")
+        normalized_args = args.strip()
 
         # Build full command string
-        full_command = f"/{normalized_cmd} {args}".rstrip() if args.strip() else f"/{normalized_cmd}"
+        full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
 
         if session_id:
             # Mode 1: Send command to existing session
