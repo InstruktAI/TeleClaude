@@ -13,7 +13,10 @@ from typing import Any, Dict
 
 
 def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Dict[str, Any]:
-    """Idempotently merge new hooks into existing hooks configuration."""
+    """Idempotently merge new hooks into existing hooks configuration.
+
+    Deduplicates by command path - if a hook with the same command exists, it's replaced.
+    """
     merged = existing_hooks.copy()
 
     for event, hook_def in new_hooks.items():
@@ -35,8 +38,9 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
         # Update specific hook within the block
         hooks_list = target_block.get("hooks", [])
 
-        # Remove existing hook with same name to replace it
-        hooks_list = [h for h in hooks_list if h.get("name") != hook_def["name"]]
+        # Remove existing hook with same command to replace it (idempotent)
+        new_command = hook_def.get("command", "")
+        hooks_list = [h for h in hooks_list if h.get("command") != new_command]
 
         # Add new hook definition
         hooks_list.append(hook_def)
@@ -47,9 +51,36 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
     return merged
 
 
-def _teleclaude_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
-    """Return TeleClaude hook definitions pointing to the receiver script."""
+def _claude_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
+    """Return TeleClaude hook definitions for Claude Code.
 
+    Claude valid events: PreToolUse, PostToolUse, PostToolUseFailure, Notification,
+    UserPromptSubmit, SessionStart, SessionEnd, Stop, SubagentStart, SubagentStop,
+    PreCompact, PermissionRequest
+
+    Note: Claude hooks only use 'type' and 'command' - no 'name' or 'description'.
+    """
+    return {
+        "SessionStart": {
+            "type": "command",
+            "command": f"{receiver_script} session_start",
+        },
+        "Notification": {
+            "type": "command",
+            "command": f"{receiver_script} notification",
+        },
+        "Stop": {
+            "type": "command",
+            "command": f"{receiver_script} stop",
+        },
+    }
+
+
+def _gemini_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
+    """Return TeleClaude hook definitions for Gemini CLI.
+
+    Gemini uses AfterModel for turn completion (not Stop like Claude).
+    """
     return {
         "SessionStart": {
             "name": "teleclaude-session-start",
@@ -94,9 +125,8 @@ def configure_gemini(repo_root: Path) -> None:
         except Exception as e:
             print(f"Warning: Failed to load Gemini settings: {e}")
 
-    # Define hooks
-    # We pass event name as argument
-    hooks_map = _teleclaude_hook_map(receiver_script)
+    # Define hooks (Gemini-specific event names)
+    hooks_map = _gemini_hook_map(receiver_script)
 
     # Merge
     current_hooks = settings.get("hooks", {})
@@ -129,7 +159,8 @@ def configure_claude(repo_root: Path) -> None:
         except Exception as e:
             print(f"Warning: Failed to load Claude settings: {e}")
 
-    hooks_map = _teleclaude_hook_map(receiver_script)
+    # Define hooks (Claude-specific event names)
+    hooks_map = _claude_hook_map(receiver_script)
 
     current_hooks = settings.get("hooks", {})
     settings["hooks"] = merge_hooks(current_hooks, hooks_map)

@@ -7,17 +7,15 @@ from scripts import install_hooks
 
 
 def test_merge_hooks_replaces_existing_hook_definition():
-    """Existing hooks for the same event are replaced by the new definition."""
+    """Existing hooks for the same event are replaced by the new definition (deduped by command)."""
     existing_hooks = {
-        "SessionStart": [{"matcher": "*", "hooks": [{"name": "teleclaude-session-start", "command": "old"}]}],
+        "SessionStart": [{"matcher": "*", "hooks": [{"type": "command", "command": "/tmp/new-hook"}]}],
     }
 
     new_hooks = {
         "SessionStart": {
-            "name": "teleclaude-session-start",
             "type": "command",
             "command": "/tmp/new-hook",
-            "description": "Notify TeleClaude of session start",
         }
     }
 
@@ -26,6 +24,7 @@ def test_merge_hooks_replaces_existing_hook_definition():
     assert "SessionStart" in merged
     block = merged["SessionStart"][0]
     assert block["matcher"] == "*"
+    # Should deduplicate - only one hook with same command
     assert len(block["hooks"]) == 1
     assert block["hooks"][0]["command"] == "/tmp/new-hook"
 
@@ -45,4 +44,7 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
     assert "SessionStart" in data["hooks"]
     hooks_block = data["hooks"]["SessionStart"][0]
     assert hooks_block["matcher"] == "*"
-    assert hooks_block["hooks"][0]["name"] == "teleclaude-session-start"
+    # Claude hooks only have type and command (no name/description)
+    hook = hooks_block["hooks"][0]
+    assert hook["type"] == "command"
+    assert "receiver_claude.py session_start" in hook["command"]
