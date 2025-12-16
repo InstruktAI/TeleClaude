@@ -18,15 +18,9 @@ computer:
         - name: projects
           desc: coding projects
           path: ${HOME}/Projects
-        # Old format (list of strings) still supported for backward compatibility:
-        # - ${HOME}/Documents
-        # - ${HOME}/Projects
 
 database:
     path: ${WORKING_DIR}/teleclaude.db
-
-polling:
-    directory_check_interval: 5 # Check for directory changes every N seconds (0 to disable, default: 5)
 
 telegram:
     # Whitelist of trusted bots (security for AI-to-AI communication)
@@ -42,25 +36,12 @@ agents:
     claude:
         command: "claude --dangerously-skip-permissions --settings '{\"forceLoginMethod\": \"claudeai\"}'"
     gemini:
-        command: "gemini --yolo --model=gemini-3-pro-preview" # Example for Gemini
+        command: "gemini --yolo --model=gemini-3-pro-preview"
     codex:
-        command: "codex --dangerously-bypass-approvals-and-sandbox --search" # Example for Codex
+        command: "codex --dangerously-bypass-approvals-and-sandbox --search"
 
 # Redis Configuration (for AI-to-AI communication)
 redis:
     enabled: true  # Enable Redis adapter for cross-computer messaging
-
-    # Redis connection URL
     url: redis://redis.srv.instrukt.ai:6379
-
-    # Optional password (set in .env as REDIS_PASSWORD)
-    password: ${REDIS_PASSWORD}
-
-    # Connection pool settings
-    max_connections: 10
-    socket_timeout: 5
-
-    # Stream settings
-    message_stream_maxlen: 10000  # Max messages to keep per computer
-    output_stream_maxlen: 10000   # Max output messages per session
-    output_stream_ttl: 3600       # Auto-expire output streams after 1 hour
+    password: ${REDIS_PASSWORD}  # Set in .env

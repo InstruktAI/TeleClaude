@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
-from teleclaude.config import config
+from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.utils import strip_ansi_codes, strip_exit_markers
@@ -79,7 +79,7 @@ class OutputPoller:
         # Configuration
         poll_interval = 1.0
         global_update_interval = 3  # Global update interval (seconds) - first update after 1s
-        directory_check_interval = config.polling.directory_check_interval
+        directory_check_interval = DIRECTORY_CHECK_INTERVAL
 
         # State tracking
         idle_ticks = 0

@@ -16,6 +16,11 @@ from teleclaude.constants import (
     DEFAULT_CLAUDE_COMMAND,
     DEFAULT_CODEX_COMMAND,
     DEFAULT_GEMINI_COMMAND,
+    REDIS_MAX_CONNECTIONS,
+    REDIS_MESSAGE_STREAM_MAXLEN,
+    REDIS_OUTPUT_STREAM_MAXLEN,
+    REDIS_OUTPUT_STREAM_TTL,
+    REDIS_SOCKET_TIMEOUT,
 )
 from teleclaude.utils import expand_env_vars
 
@@ -101,11 +106,6 @@ class ComputerConfig:  # pylint: disable=too-many-instance-attributes  # Config 
 
 
 @dataclass
-class PollingConfig:
-    directory_check_interval: int = 5  # Seconds between directory change checks
-
-
-@dataclass
 class AgentConfig:
     """Configuration for a specific AI agent."""
 
@@ -113,15 +113,33 @@ class AgentConfig:
 
 
 @dataclass
-class RedisConfig:  # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
+class RedisConfig:
+    """Redis configuration with user-configurable and internal settings."""
+
     enabled: bool
     url: str
     password: str | None
-    max_connections: int
-    socket_timeout: int
-    message_stream_maxlen: int
-    output_stream_maxlen: int
-    output_stream_ttl: int
+
+    # Internal settings exposed as properties (not configurable by user)
+    @property
+    def max_connections(self) -> int:
+        return REDIS_MAX_CONNECTIONS
+
+    @property
+    def socket_timeout(self) -> int:
+        return REDIS_SOCKET_TIMEOUT
+
+    @property
+    def message_stream_maxlen(self) -> int:
+        return REDIS_MESSAGE_STREAM_MAXLEN
+
+    @property
+    def output_stream_maxlen(self) -> int:
+        return REDIS_OUTPUT_STREAM_MAXLEN
+
+    @property
+    def output_stream_ttl(self) -> int:
+        return REDIS_OUTPUT_STREAM_TTL
 
 
 @dataclass
@@ -133,7 +151,6 @@ class TelegramConfig:
 class Config:
     database: DatabaseConfig
     computer: ComputerConfig
-    polling: PollingConfig
     redis: RedisConfig
     telegram: TelegramConfig
     agents: Dict[str, AgentConfig]
@@ -154,18 +171,10 @@ DEFAULT_CONFIG: dict[str, object] = {
         "trusted_dirs": [],
         "host": None,
     },
-    "polling": {
-        "directory_check_interval": 5,
-    },
     "redis": {
         "enabled": False,
         "url": "redis://localhost:6379",
         "password": None,
-        "max_connections": 10,
-        "socket_timeout": 5,
-        "message_stream_maxlen": 10000,
-        "output_stream_maxlen": 10000,
-        "output_stream_ttl": 3600,
     },
     "telegram": {
         "trusted_bots": [],
@@ -253,7 +262,6 @@ def _build_config(raw: dict[str, object]) -> Config:
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
     comp_raw = raw["computer"]
-    poll_raw = raw["polling"]
     redis_raw = raw["redis"]
     tg_raw = raw["telegram"]
     agents_raw = raw.get("agents", {})
@@ -280,18 +288,10 @@ def _build_config(raw: dict[str, object]) -> Config:
             trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
             host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
         ),
-        polling=PollingConfig(
-            directory_check_interval=int(poll_raw["directory_check_interval"]),  # type: ignore[index,misc]
-        ),
         redis=RedisConfig(
             enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]
             url=str(redis_raw["url"]),  # type: ignore[index,misc]
             password=str(redis_raw["password"]) if redis_raw["password"] else None,  # type: ignore[index,misc]
-            max_connections=int(redis_raw["max_connections"]),  # type: ignore[index,misc]
-            socket_timeout=int(redis_raw["socket_timeout"]),  # type: ignore[index,misc]
-            message_stream_maxlen=int(redis_raw["message_stream_maxlen"]),  # type: ignore[index,misc]
-            output_stream_maxlen=int(redis_raw["output_stream_maxlen"]),  # type: ignore[index,misc]
-            output_stream_ttl=int(redis_raw["output_stream_ttl"]),  # type: ignore[index,misc]
         ),
         telegram=TelegramConfig(
             trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]

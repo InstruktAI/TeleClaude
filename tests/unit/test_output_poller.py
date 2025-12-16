@@ -437,9 +437,7 @@ class TestOutputPollerPoll:
         """Test poll sends periodic updates with exponential backoff."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.config") as mock_config:
-            mock_config.polling.directory_check_interval = 0  # Disable directory checking
-
+        with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
                 with patch("teleclaude.core.output_poller.db") as mock_db:
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -503,10 +501,7 @@ class TestOutputPollerPoll:
         """Test poll detects directory changes and yields DirectoryChanged events."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.config") as mock_config:
-            # Set directory check interval to 3 seconds
-            mock_config.polling.directory_check_interval = 3
-
+        with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 3):  # Check every 3 seconds
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
                 with patch("teleclaude.core.output_poller.db") as mock_db:
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -549,10 +544,7 @@ class TestOutputPollerPoll:
         """Test poll skips directory checks when interval is 0."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.config") as mock_config:
-            # Disable directory checking
-            mock_config.polling.directory_check_interval = 0
-
+        with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
                 with patch("teleclaude.core.output_poller.db") as mock_db:
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):

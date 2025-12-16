@@ -29,5 +29,9 @@
     <true/>
     <key>AbandonProcessGroup</key>
     <true/>
+    <key>WatchPaths</key>
+    <array>
+        <string>{{WORKING_DIR}}/config.yml</string>
+    </array>
 </dict>
 </plist>

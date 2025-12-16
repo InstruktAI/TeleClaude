@@ -470,6 +470,7 @@ install_service() {
 install_systemd_service() {
     local service_name="teleclaude"
     local service_file="/etc/systemd/system/${service_name}.service"
+    local path_file="/etc/systemd/system/${service_name}-config.path"
 
     # Create wrapper script for SSH agent support
     print_info "Creating daemon wrapper script..."
@@ -512,17 +513,36 @@ EOF
 
     print_success "Created systemd service file"
 
+    # Create path unit to watch config.yml and restart on changes
+    print_info "Creating config watcher..."
+
+    sudo tee "$path_file" > /dev/null <<EOF
+[Unit]
+Description=TeleClaude Config File Watcher
+
+[Path]
+PathModified=$INSTALL_DIR/config.yml
+Unit=${service_name}.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    print_success "Created config watcher"
+
     # Reload systemd
     sudo systemctl daemon-reload
 
-    # Enable service
+    # Enable service and path watcher
     print_info "Enabling service to start on boot..."
     sudo systemctl enable "$service_name"
+    sudo systemctl enable "${service_name}-config.path"
     print_success "Service enabled"
 
-    # Start service
+    # Start service and path watcher
     print_info "Starting service..."
     sudo systemctl start "$service_name"
+    sudo systemctl start "${service_name}-config.path"
 
     sleep 2
 
