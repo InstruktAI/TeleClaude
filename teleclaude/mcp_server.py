@@ -229,7 +229,7 @@ class TeleClaudeMCPServer:
                     description=(
                         "Send message to an existing AI Agent session. "
                         "Use teleclaude__list_sessions to find session IDs. "
-                        "Messages are automatically prefixed with your session ID for AI-to-AI communication."
+                        "For slash commands, prefer teleclaude__run_agent_command instead."
                     ),
                     inputSchema={
                         "type": "object",
@@ -250,6 +250,66 @@ class TeleClaudeMCPServer:
                             },
                         },
                         "required": ["computer", "session_id", "message"],
+                    },
+                ),
+                Tool(
+                    name="teleclaude__run_agent_command",
+                    title="TeleClaude: Run Agent Command",
+                    description=(
+                        "Run a slash command on an AI agent session. "
+                        "Two modes: (1) If session_id provided, sends command to existing session. "
+                        "(2) If session_id not provided, starts a new session with the command. "
+                        "Supports all agent types (Claude, Gemini, Codex) and worktree subfolders. "
+                        "Commands are for AI slash commands (e.g., 'compact', 'next-work'), not shell commands."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "computer": {
+                                "type": "string",
+                                "description": "Target computer name",
+                            },
+                            "command": {
+                                "type": "string",
+                                "description": (
+                                    "Command name without leading / (e.g., 'next-work', 'compact', 'help')"
+                                ),
+                            },
+                            "args": {
+                                "type": "string",
+                                "description": "Optional arguments for the command",
+                                "default": "",
+                            },
+                            "session_id": {
+                                "type": "string",
+                                "description": (
+                                    "Optional: send command to existing session. "
+                                    "If omitted, starts a new session with the command."
+                                ),
+                            },
+                            "project": {
+                                "type": "string",
+                                "description": (
+                                    "Project directory path. Required when starting new session (no session_id). "
+                                    "Use teleclaude__list_projects to discover available projects."
+                                ),
+                            },
+                            "agent": {
+                                "type": "string",
+                                "enum": ["claude", "gemini", "codex"],
+                                "default": "claude",
+                                "description": "Agent type for new sessions. Default: claude",
+                            },
+                            "subfolder": {
+                                "type": "string",
+                                "description": (
+                                    "Optional subfolder within project (e.g., 'worktrees/my-feature'). "
+                                    "Working directory becomes project/subfolder."
+                                ),
+                                "default": "",
+                            },
+                        },
+                        "required": ["computer", "command"],
                     },
                 ),
                 Tool(
@@ -490,6 +550,27 @@ class TeleClaudeMCPServer:
                     chunks.append(chunk)
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__run_agent_command":
+                computer = str(arguments.get("computer", "")) if arguments else ""
+                command = str(arguments.get("command", "")) if arguments else ""
+                args = str(arguments.get("args", "")) if arguments else ""
+                session_id_arg = arguments.get("session_id") if arguments else None
+                session_id = str(session_id_arg) if session_id_arg else None
+                project_arg = arguments.get("project") if arguments else None
+                project = str(project_arg) if project_arg else None
+                agent = str(arguments.get("agent", "claude")) if arguments else "claude"
+                subfolder = str(arguments.get("subfolder", "")) if arguments else ""
+                result = await self.teleclaude__run_agent_command(
+                    computer=computer,
+                    command=command,
+                    args=args,
+                    session_id=session_id,
+                    project=project,
+                    agent=agent,
+                    subfolder=subfolder,
+                    caller_session_id=caller_session_id,
+                )
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__get_session_data":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -1121,10 +1202,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
     ) -> AsyncIterator[str]:
-        """Send message to session with AI-to-AI protocol prefix.
-
-        Automatically prefixes messages with sender identification so receiving AI
-        can reply back. Format: AI[sender_computer:sender_session] | message
+        """Send message to an AI agent session.
 
         For local computer: Sends message directly via handle_event.
         For remote computers: Sends via Redis transport.
@@ -1132,14 +1210,14 @@ class TeleClaudeMCPServer:
         Args:
             computer: Target computer name (or "local"/self.computer_name)
             session_id: Target session ID (from teleclaude__start_session)
-            message: Message/command to send to Claude Code
-            caller_session_id: Optional caller's session ID for message prefix
+            message: Message/command to send to the agent
+            caller_session_id: Optional caller's session ID for listener registration
 
         Yields:
-            str: Acknowledgment message with reply instructions
+            str: Acknowledgment message
         """
         try:
-            # Get caller's session_id - prefer parameter, fall back to env var (for backwards compatibility)
+            # Get caller's session_id for listener registration
             effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
             # Register as listener so we get notified when target session stops
@@ -1148,38 +1226,96 @@ class TeleClaudeMCPServer:
                 effective_caller_id if effective_caller_id != "unknown" else None,
             )
 
-            # Build AI-to-AI protocol prefix
-            # Use "local" for local targets, actual computer name for remote
-            # Format: AI[computer:session_id] | message
             is_local = self._is_local_computer(computer)
-            sender_computer = "local" if is_local else self.computer_name
-            prefixed_message = f"AI[{sender_computer}:{effective_caller_id}] | {message}"
 
             if is_local:
                 # Local session - send directly via handle_event
                 await self.client.handle_event(
                     TeleClaudeEvents.MESSAGE,
-                    {"session_id": session_id, "args": [], "text": prefixed_message},
+                    {"session_id": session_id, "args": [], "text": message},
                     MessageMetadata(adapter_type="mcp"),
                 )
             else:
                 # Remote session - send via Redis transport
                 await self.client.send_request(
                     computer_name=computer,
-                    command=f"message {prefixed_message}",
+                    command=f"message {message}",
                     session_id=session_id,
                     metadata=MessageMetadata(),
                 )
 
             yield (
                 f"Message sent to session {session_id[:8]} on {computer}. "
-                f"The receiving AI will see your sender info and can reply back. "
                 f"Use teleclaude__get_session_data to check for responses."
             )
 
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
             yield f"[Error: Failed to send message: {str(e)}]"
+
+    async def teleclaude__run_agent_command(
+        self,
+        computer: str,
+        command: str,
+        args: str = "",
+        session_id: str | None = None,
+        project: str | None = None,
+        agent: str = "claude",
+        subfolder: str = "",
+        caller_session_id: str | None = None,
+    ) -> dict[str, object]:
+        """Run a slash command on an AI agent session.
+
+        Two modes of operation:
+        1. If session_id is provided: Send command to existing session
+        2. If session_id is not provided: Start new session with command
+
+        Args:
+            computer: Target computer name
+            command: Command name (e.g., 'next-work', 'compact') - leading / stripped if present
+            args: Optional arguments for the command
+            session_id: Optional existing session ID to send command to
+            project: Project directory (required when starting new session)
+            agent: Agent type for new sessions ('claude', 'gemini', 'codex')
+            subfolder: Optional subfolder within project (e.g., 'worktrees/feat-x')
+            caller_session_id: Caller's session ID for listener registration
+
+        Returns:
+            dict with session_id and status
+        """
+        # Normalize command: strip leading / if present
+        normalized_cmd = command.lstrip("/")
+
+        # Build full command string
+        full_command = f"/{normalized_cmd} {args}".rstrip() if args.strip() else f"/{normalized_cmd}"
+
+        if session_id:
+            # Mode 1: Send command to existing session
+            chunks: list[str] = []
+            async for chunk in self.teleclaude__send_message(computer, session_id, full_command, caller_session_id):
+                chunks.append(chunk)
+            return {"status": "sent", "session_id": session_id, "message": "".join(chunks)}
+
+        # Mode 2: Start new session with command
+        if not project:
+            return {"status": "error", "message": "project required when session_id not provided"}
+
+        # Compute working directory
+        working_dir = f"{project}/{subfolder}".rstrip("/") if subfolder.strip() else project
+
+        # Use command as title
+        title = full_command
+
+        # Delegate to start_session
+        result = await self.teleclaude__start_session(
+            computer=computer,
+            project_dir=working_dir,
+            title=title,
+            message=full_command,
+            caller_session_id=caller_session_id,
+            agent=agent,
+        )
+        return result
 
     async def teleclaude__get_session_data(
         self,

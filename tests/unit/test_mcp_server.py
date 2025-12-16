@@ -128,21 +128,19 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_teleclaude_send_message_adds_ai_prefix(mock_mcp_server):
-    """Test that send_message adds AI-to-AI protocol prefix with sender info."""
+async def test_teleclaude_send_message_sends_raw_message(mock_mcp_server):
+    """Test that send_message sends the message as-is without prefixing."""
     server = mock_mcp_server
 
     server.client.handle_event = AsyncMock(return_value=None)
 
-    # Set caller's session_id in environment
-    with patch.dict("os.environ", {"TELECLAUDE_SESSION_ID": "caller-session-abc"}):
-        chunks = []
-        async for chunk in server.teleclaude__send_message(
-            computer="local", session_id="target-session-123", message="run tests"
-        ):
-            chunks.append(chunk)
+    chunks = []
+    async for chunk in server.teleclaude__send_message(
+        computer="local", session_id="target-session-123", message="run tests"
+    ):
+        chunks.append(chunk)
 
-    # Verify handle_event was called with prefixed message
+    # Verify handle_event was called with raw message (no prefix)
     server.client.handle_event.assert_called_once()
     call_args = server.client.handle_event.call_args
 
@@ -150,11 +148,9 @@ async def test_teleclaude_send_message_adds_ai_prefix(mock_mcp_server):
     event_data = call_args[0][1]  # Second positional arg is event_data
     message_text = event_data["text"]
 
-    # Verify AI prefix format: AI[local:session_id] | message
-    # Uses "local" for local targets (not computer name) for clarity
-    assert message_text.startswith("AI[local:caller-session-abc]")
-    assert " | " in message_text
-    assert "run tests" in message_text
+    # Message should be sent as-is, no AI prefix
+    assert message_text == "run tests"
+    assert "AI[" not in message_text
 
 
 @pytest.mark.asyncio
@@ -361,3 +357,144 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     assert second_call[0][0] == "agent"
     call_payload = second_call[0][1]
     assert call_payload["args"][0] == "claude"
+
+
+# --- run_agent_command tests ---
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_normalizes_leading_slash(mock_mcp_server):
+    """Test that run_agent_command strips leading / from command."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(return_value=None)
+
+    # Call with leading slash - should be normalized
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="/compact",
+        session_id="test-session-123",
+    )
+
+    assert result["status"] == "sent"
+    # Verify the message sent was /compact (single slash)
+    call_args = server.client.handle_event.call_args
+    event_data = call_args[0][1]
+    assert event_data["text"] == "/compact"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_without_leading_slash(mock_mcp_server):
+    """Test that run_agent_command adds / to command without leading slash."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(return_value=None)
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="compact",
+        session_id="test-session-123",
+    )
+
+    assert result["status"] == "sent"
+    call_args = server.client.handle_event.call_args
+    event_data = call_args[0][1]
+    assert event_data["text"] == "/compact"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_with_args(mock_mcp_server):
+    """Test that run_agent_command appends args to command."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(return_value=None)
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        args="my-feature",
+        session_id="test-session-123",
+    )
+
+    assert result["status"] == "sent"
+    call_args = server.client.handle_event.call_args
+    event_data = call_args[0][1]
+    assert event_data["text"] == "/next-work my-feature"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_starts_new_session(mock_mcp_server):
+    """Test that run_agent_command starts new session when session_id not provided."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(
+        return_value={"status": "success", "data": {"session_id": "new-session-789"}}
+    )
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        args="feature-x",
+        project="/home/user/myproject",
+    )
+
+    assert result["status"] == "success"
+    assert result["session_id"] == "new-session-789"
+
+    # Verify handle_event was called twice (new_session + agent)
+    assert server.client.handle_event.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_requires_project_for_new_session(mock_mcp_server):
+    """Test that run_agent_command returns error when project missing for new session."""
+    server = mock_mcp_server
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        # No session_id and no project
+    )
+
+    assert result["status"] == "error"
+    assert "project required" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_with_subfolder(mock_mcp_server):
+    """Test that run_agent_command computes working directory with subfolder."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(
+        return_value={"status": "success", "data": {"session_id": "worktree-session"}}
+    )
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        project="/home/user/myproject",
+        subfolder="worktrees/my-feature",
+    )
+
+    assert result["status"] == "success"
+
+    # Verify first call (new_session) has correct project_dir in metadata
+    first_call = server.client.handle_event.call_args_list[0]
+    metadata = first_call[0][2]  # Third arg is MessageMetadata
+    assert metadata.project_dir == "/home/user/myproject/worktrees/my-feature"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_with_agent_type(mock_mcp_server):
+    """Test that run_agent_command passes agent type for new sessions."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "gemini-session"}})
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="help",
+        project="/home/user/myproject",
+        agent="gemini",
+    )
+
+    assert result["status"] == "success"
+
+    # Verify second call (agent) has correct agent type
+    second_call = server.client.handle_event.call_args_list[1]
+    call_payload = second_call[0][1]
+    assert call_payload["args"][0] == "gemini"
