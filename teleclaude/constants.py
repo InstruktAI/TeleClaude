@@ -28,6 +28,25 @@ AGENT_RESUME_TEMPLATES = {
     "codex": "{base_cmd} resume {session_id}",
 }
 
+# Agent model mapping for slow, med, fast variants
+AGENT_MODEL_FLAGS = {
+    "claude": {
+        "fast": "-m haiku",
+        "med": "-m sonnet-4.5",
+        "slow": "-m opus-4.5",
+    },
+    "gemini": {
+        "fast": "-m gemini-2.5-flash-lite",
+        "med": "-m gemini-2.5-flash",
+        "slow": "-m gemini-3-pro-preview",
+    },
+    "codex": {
+        "fast": "-m gpt-5.1-codex-mini",
+        "med": "-m gpt-5.1-codex",
+        "slow": "-m gpt-5.2",
+    },
+}
+
 # Session directories for agents (standard locations)
 AGENT_SESSION_DIRS = {
     "claude": "~/.claude/sessions",

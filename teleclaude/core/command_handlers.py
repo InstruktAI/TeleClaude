@@ -119,7 +119,9 @@ def with_session(
         # Extract session_id (let it crash if missing - our code emitted this event)
         # SystemCommandContext doesn't have session_id, but @with_session is only used for session-based commands
         assert hasattr(context, "session_id"), f"Context {type(context).__name__} missing session_id"
-        session_id: str = str(context.session_id)  # pyright: ignore[reportAttributeAccessIssue]
+        session_id: str = str(
+            context.session_id  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         # Get session (let it crash if None - session should exist)
         session = await db.get_session(session_id)
@@ -487,7 +489,7 @@ async def handle_get_session_data(
         "project_dir": session.working_directory,
         "messages": markdown_content,
         "created_at": session.created_at.isoformat() if session.created_at else None,
-        "last_activity": session.last_activity.isoformat() if session.last_activity else None,
+        "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
     }
 
 
@@ -1197,7 +1199,7 @@ async def handle_agent_resume(
 
     if native_session_id:
         # Use agent-specific resume template
-        template = AGENT_RESUME_TEMPLATES.get(agent_name, "{base_cmd} --resume {session_id}")
+        template = AGENT_RESUME_TEMPLATES["agent_name"]
         cmd = template.format(base_cmd=base_cmd, session_id=native_session_id)
         logger.info("Resuming %s session %s (from database)", agent_name, native_session_id[:8])
     else:
