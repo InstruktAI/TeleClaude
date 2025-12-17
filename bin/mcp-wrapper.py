@@ -12,26 +12,77 @@ import logging
 import os
 import re
 import sys
+from logging.handlers import WatchedFileHandler
 from pathlib import Path
-from typing import MutableMapping
+from typing import MutableMapping, TypedDict
 
 # Configure logging to file (NEVER stdout/stderr - breaks MCP stdio transport)
-LOG_FILE = Path(__file__).parent.parent / "logs" / "mcp-wrapper.log"
-LOG_FILE.parent.mkdir(exist_ok=True)
-logging.basicConfig(
-    filename=str(LOG_FILE),
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+LOGS_DIR = Path(__file__).parent.parent / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOG_FILE = LOGS_DIR / "mcp-wrapper.log"
+
+# NOTE: We must never log to stdout/stderr because this process is the MCP stdio transport.
+_log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+_log_level = getattr(logging, _log_level_name, logging.INFO)
+# Use system log rotation (macOS: newsyslog, Linux: logrotate).
+# WatchedFileHandler notices external rotation and reopens the file automatically.
+_log_handler = WatchedFileHandler(
+    str(LOG_FILE),
+    encoding="utf-8",
 )
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+logging.root.setLevel(_log_level)
+logging.root.handlers = [_log_handler]
+
 logger = logging.getLogger(__name__)
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
 CONTEXT_TO_INJECT: dict[str, str] = {"caller_session_id": "TELECLAUDE_SESSION_ID"}
 RECONNECT_DELAY = 5
 CONNECTION_TIMEOUT = 10
+SEND_CONNECT_TIMEOUT = float(os.getenv("MCP_WRAPPER_SEND_CONNECT_TIMEOUT", "8"))
+OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
+# Keep logs human-friendly by default: no repeated spam while waiting for a restart
+# or when running in a restricted environment that can't connect to the socket.
+LOG_THROTTLE_S = 60.0
+_EPERM_BACKOFF_S = 60.0
 
 # If true, always proxy to backend (never use cached handshake)
 DISABLE_STATIC_HANDSHAKE = os.getenv("MCP_DISABLE_STATIC_HANDSHAKE", "false").lower() == "true"
+
+_ERR_BACKEND_UNAVAILABLE = -32000
+
+
+class _QueueItem(TypedDict):
+    raw: bytes
+    request_id: object | None
+    method: str | None
+    enqueued_at: float
+    attempts: int
+
+
+def _jsonrpc_error_response(request_id: object, message: str) -> bytes:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {
+            "code": _ERR_BACKEND_UNAVAILABLE,
+            "message": message,
+        },
+    }
+    return (json.dumps(payload) + "\n").encode("utf-8")
+
+
+def _extract_request_id_and_method(raw_line: bytes) -> tuple[object | None, str | None]:
+    """Best-effort parse of JSON-RPC request metadata (never raises)."""
+    try:
+        msg = json.loads(raw_line.decode("utf-8"))
+    except Exception:
+        return None, None
+    if not isinstance(msg, dict):
+        return None, None
+    return msg.get("id"), msg.get("method")
 
 
 def extract_tools_from_mcp_server() -> list[str]:
@@ -39,8 +90,7 @@ def extract_tools_from_mcp_server() -> list[str]:
 
     Excludes internal-only tools that should not be exposed to MCP clients.
     """
-    script_dir = Path(__file__).parent
-    mcp_server_path = script_dir.parent / "teleclaude" / "mcp_server.py"
+    mcp_server_path = _get_mcp_server_path()
 
     if not mcp_server_path.exists():
         logger.warning("mcp_server.py not found at %s", mcp_server_path)
@@ -79,9 +129,44 @@ def build_response_template(tool_names: list[str]) -> tuple[str, str]:
     return response_template, notification
 
 
-# Extract tools and pre-build templates at module load time (zero runtime overhead)
-TOOL_NAMES = extract_tools_from_mcp_server()
-RESPONSE_TEMPLATE, NOTIFICATION = build_response_template(TOOL_NAMES)
+def _get_mcp_server_path() -> Path:
+    script_dir = Path(__file__).parent
+    return script_dir.parent / "teleclaude" / "mcp_server.py"
+
+
+# Mutable cache so long-lived wrapper processes can refresh after code updates.
+_TOOL_CACHE_MTIME: float | None = None
+TOOL_NAMES: list[str] = []
+RESPONSE_TEMPLATE: str = ""
+NOTIFICATION: str = ""
+
+
+def refresh_tool_cache_if_needed(force: bool = False) -> None:
+    """Refresh cached tool names/templates if teleclaude/mcp_server.py changed.
+
+    This matters for long-lived MCP clients: if the wrapper serves a cached
+    handshake while the backend is restarting, the tool list must match the
+    current server code (not whatever was present when the wrapper first started).
+    """
+    global _TOOL_CACHE_MTIME, TOOL_NAMES, RESPONSE_TEMPLATE, NOTIFICATION  # pylint: disable=global-statement
+
+    try:
+        mcp_server_path = _get_mcp_server_path()
+        mtime = mcp_server_path.stat().st_mtime
+    except Exception:
+        mtime = None
+
+    if not force and mtime is not None and _TOOL_CACHE_MTIME is not None and mtime <= _TOOL_CACHE_MTIME:
+        return
+
+    TOOL_NAMES = extract_tools_from_mcp_server()
+    RESPONSE_TEMPLATE, NOTIFICATION = build_response_template(TOOL_NAMES)
+    _TOOL_CACHE_MTIME = mtime
+    logger.info("Tool cache refreshed (count=%d)", len(TOOL_NAMES))
+
+
+# Initialize cache at import time
+refresh_tool_cache_if_needed(force=True)
 
 
 def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, object]:
@@ -118,28 +203,127 @@ class MCPProxy:
         self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
         self.connected = asyncio.Event()
+        # Backend is a separate MCP server process. If it restarts, it requires a
+        # fresh initialize + notifications/initialized sequence even if the client
+        # remains connected to this wrapper process.
+        self._needs_backend_resync = False
+        self._suppress_backend_init_messages = False
+        self._backend_init_response = asyncio.Event()
+        self._backend_generation = 0
+
+        self._client_initialize_request: bytes | None = None
+        self._client_initialize_id: object | None = None
+        self._client_initialized_notification: bytes | None = None
+
         self.shutdown = asyncio.Event()
+        self._reconnect_task: asyncio.Task[None] | None = None
+        self._reconnect_lock = asyncio.Lock()
+        self._outbound: asyncio.Queue[_QueueItem] = asyncio.Queue(maxsize=OUTBOUND_QUEUE_MAX)
+        self._sender_task: asyncio.Task[None] | None = None
+        self._log_last_at: dict[str, float] = {}
+        self._log_throttle_s: float = LOG_THROTTLE_S
+        self._connect_hard_error_seen = False
+
+    def _log_throttled(self, key: str, level: int, message: str, *args: object) -> None:
+        """Log a message at most once per throttle window for a given key."""
+        now = asyncio.get_running_loop().time()
+        last_at = self._log_last_at.get(key)
+        if last_at is not None and (now - last_at) < self._log_throttle_s:
+            logger.debug("%s (throttled)", message % args if args else message)
+            return
+        self._log_last_at[key] = now
+        logger.log(level, message, *args)
+
+    def _schedule_reconnect(self, reason: str) -> None:
+        """Schedule a reconnect exactly once.
+
+        Without this guard, a backend EOF can cause a tight loop that spawns
+        unbounded reconnect tasks/logs, leading to runaway memory/disk usage.
+        """
+        if self.shutdown.is_set():
+            return
+
+        # Stop read/write loops from continuing while we reconnect.
+        if self.connected.is_set():
+            self.connected.clear()
+        self._backend_init_response.clear()
+        # The next backend connection will need a fresh MCP handshake even though
+        # the client doesn't re-initialize.
+        self._needs_backend_resync = True
+        self._suppress_backend_init_messages = True
+
+        existing = self._reconnect_task
+        if existing and not existing.done():
+            return
+
+        try:
+            self._log_throttled(f"reconnect:{reason}", logging.INFO, "Scheduling reconnect (%s)", reason)
+        except RuntimeError:
+            # No running loop yet; fall back to direct logging.
+            logger.info("Scheduling reconnect (%s)", reason)
+
+        async def _runner() -> None:
+            async with self._reconnect_lock:
+                try:
+                    await self.reconnect()
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.error("Reconnect task failed: %s", exc)
+
+        self._reconnect_task = asyncio.create_task(_runner())
 
     async def connect(self) -> bool:
         """Connect to backend socket with timeout."""
         while not self.shutdown.is_set():
             try:
-                logger.info("Connecting to %s...", MCP_SOCKET)
+                self._log_throttled("connect:attempt", logging.INFO, "Connecting to %s...", MCP_SOCKET)
                 self.reader, self.writer = await asyncio.wait_for(
                     asyncio.open_unix_connection(MCP_SOCKET),
                     timeout=CONNECTION_TIMEOUT,
                 )
                 self.connected.set()
+                self._backend_generation += 1
                 logger.info("Connected to backend")
+                self._connect_hard_error_seen = False
                 return True
             except FileNotFoundError:
-                logger.warning("Socket not found. Retrying in %ss...", RECONNECT_DELAY)
+                self._log_throttled(
+                    "connect:missing", logging.WARNING, "Socket not found. Retrying in %ss...", RECONNECT_DELAY
+                )
             except ConnectionRefusedError:
-                logger.warning("Connection refused. Retrying in %ss...", RECONNECT_DELAY)
+                self._log_throttled(
+                    "connect:refused", logging.WARNING, "Connection refused. Retrying in %ss...", RECONNECT_DELAY
+                )
             except asyncio.TimeoutError:
-                logger.warning("Connection timeout. Retrying in %ss...", RECONNECT_DELAY)
+                self._log_throttled(
+                    "connect:timeout", logging.WARNING, "Connection timeout. Retrying in %ss...", RECONNECT_DELAY
+                )
+            except PermissionError as e:
+                # In some environments, unix socket connects can be blocked (EPERM).
+                # Don't spam logs; back off longer and log at most once per throttle window.
+                if not self._connect_hard_error_seen:
+                    logger.error(
+                        "Permission denied connecting to %s (%s). Backing off for %ss.",
+                        MCP_SOCKET,
+                        e,
+                        int(_EPERM_BACKOFF_S),
+                    )
+                    self._connect_hard_error_seen = True
+                else:
+                    self._log_throttled(
+                        "connect:perm",
+                        logging.ERROR,
+                        "Permission denied connecting to %s (%s). Backing off for %ss.",
+                        MCP_SOCKET,
+                        e,
+                        int(_EPERM_BACKOFF_S),
+                    )
+                await asyncio.sleep(_EPERM_BACKOFF_S)
+                continue
             except Exception as e:
-                logger.error("Connection error: %s. Retrying in %ss...", e, RECONNECT_DELAY)
+                # EPERM can happen in sandboxed contexts; throttle to avoid log spam.
+                self._log_throttled(
+                    "connect:error", logging.ERROR, "Connection error: %s. Retrying in %ss...", e, RECONNECT_DELAY
+                )
 
             await asyncio.sleep(RECONNECT_DELAY)
         return False
@@ -147,6 +331,7 @@ class MCPProxy:
     async def reconnect(self):
         """Handle reconnection after disconnect."""
         self.connected.clear()
+        self._backend_init_response.clear()
         if self.writer:
             self.writer.close()
             try:
@@ -157,8 +342,63 @@ class MCPProxy:
         self.writer = None
         await self.connect()
 
+    async def _resync_backend_handshake(self) -> bool:
+        """Replay MCP handshake to backend after backend restart.
+
+        The MCP client does NOT re-send initialize after daemon restart; without
+        replaying the handshake, backend tool calls can hang or fail.
+        """
+        if not self._client_initialize_request or self._client_initialize_id is None:
+            logger.warning("Cannot resync backend: missing stored initialize request")
+            return False
+
+        if not self.writer:
+            return False
+
+        self._backend_init_response.clear()
+
+        try:
+            self.writer.write(self._client_initialize_request)
+            await self.writer.drain()
+        except Exception as exc:
+            logger.warning("Failed writing initialize to backend: %s", exc)
+            return False
+
+        try:
+            await asyncio.wait_for(self._backend_init_response.wait(), timeout=SEND_CONNECT_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning("Backend did not respond to initialize within %.1fs", SEND_CONNECT_TIMEOUT)
+            return False
+
+        # Per MCP sequence, send client's notifications/initialized after init response.
+        if self._client_initialized_notification:
+            try:
+                self.writer.write(self._client_initialized_notification)
+                await self.writer.drain()
+            except Exception as exc:
+                logger.warning("Failed writing notifications/initialized to backend: %s", exc)
+                return False
+
+        logger.info("Backend handshake resynced successfully")
+        return True
+
+    async def _send_error(self, request_id: object, message: str) -> None:
+        """Send an error response to the client (never raises)."""
+        try:
+            sys.stdout.buffer.write(_jsonrpc_error_response(request_id, message))
+            sys.stdout.buffer.flush()
+        except Exception:
+            # Never write to stderr; best-effort only.
+            pass
+
     async def stdin_to_socket(self, stdin_reader: asyncio.StreamReader):
-        """Forward stdin to backend socket."""
+        """Forward stdin to backend socket.
+
+        IMPORTANT: Never block the stdin reader waiting for backend connection.
+        If we block here, the OS pipe backpressures the client and tool calls "hang".
+        Instead, enqueue requests in a bounded queue and let the sender task handle
+        connection/retry/timeout behavior.
+        """
         try:
             while not self.shutdown.is_set():
                 line = await stdin_reader.readline()
@@ -166,26 +406,128 @@ class MCPProxy:
                     self.shutdown.set()
                     break
 
+                request_id, method = _extract_request_id_and_method(line)
+
                 # Process message (inject context)
                 try:
                     msg = json.loads(line.decode())
                     if isinstance(msg, MutableMapping):
+                        # Capture client handshake messages for replay across backend restarts.
+                        if msg.get("method") == "initialize":
+                            self._client_initialize_request = (json.dumps(msg) + "\n").encode("utf-8")
+                            self._client_initialize_id = msg.get("id")
+                        elif msg.get("method") == "notifications/initialized":
+                            self._client_initialized_notification = (json.dumps(msg) + "\n").encode("utf-8")
+
                         msg = process_message(msg)
                         line = (json.dumps(msg) + "\n").encode()
                 except json.JSONDecodeError:
                     pass
 
-                # Wait for connection and send
-                await self.connected.wait()
-                if self.writer and not self.shutdown.is_set():
-                    try:
-                        self.writer.write(line)
-                        await self.writer.drain()
-                    except (ConnectionResetError, BrokenPipeError):
-                        logger.warning("Backend disconnected, reconnecting...")
-                        asyncio.create_task(self.reconnect())
+                item: _QueueItem = {
+                    "raw": line,
+                    "request_id": request_id,
+                    "method": method,
+                    "enqueued_at": asyncio.get_running_loop().time(),
+                    "attempts": 0,
+                }
+
+                try:
+                    self._outbound.put_nowait(item)
+                except asyncio.QueueFull:
+                    # Bounded memory: if we can't queue, fail fast for requests.
+                    if request_id is not None:
+                        await self._send_error(
+                            request_id,
+                            "TeleClaude backend is restarting or busy (wrapper queue full). Please retry.",
+                        )
+                    else:
+                        logger.warning("Dropping notification due to full outbound queue")
         except Exception as e:
             logger.error("stdin_to_socket error: %s", e)
+
+    async def _socket_sender(self) -> None:
+        """Drain outbound queue and write to backend when available.
+
+        Provides bounded buffering + timeout-based failure instead of hanging clients.
+        """
+        while not self.shutdown.is_set():
+            item = await self._outbound.get()
+            if self.shutdown.is_set():
+                break
+
+            request_id = item.get("request_id")
+            method = item.get("method")
+
+            try:
+                await asyncio.wait_for(self.connected.wait(), timeout=SEND_CONNECT_TIMEOUT)
+            except asyncio.TimeoutError:
+                if request_id is not None:
+                    await self._send_error(
+                        request_id,
+                        "TeleClaude backend unavailable (restarting). Please retry.",
+                    )
+                continue
+
+            if not self.writer or self.shutdown.is_set():
+                if request_id is not None:
+                    await self._send_error(
+                        request_id,
+                        "TeleClaude backend unavailable. Please retry.",
+                    )
+                continue
+
+            # If backend restarted, it needs a fresh MCP handshake even though the
+            # client won't re-send initialize. Perform resync before forwarding
+            # ANY queued messages (including notifications/initialized).
+            if self._needs_backend_resync:
+                self._suppress_backend_init_messages = True
+                ok = await self._resync_backend_handshake()
+                self._needs_backend_resync = False
+                if not ok:
+                    if request_id is not None:
+                        await self._send_error(
+                            request_id,
+                            "TeleClaude backend restarted but handshake replay failed. Please retry.",
+                        )
+                    continue
+                self._suppress_backend_init_messages = False
+                # Avoid sending a duplicate notifications/initialized during
+                # startup when the client itself sends it right after initialize.
+                if method == "notifications/initialized" and request_id is None:
+                    continue
+
+            try:
+                self.writer.write(item["raw"])
+                await self.writer.drain()
+            except (ConnectionResetError, BrokenPipeError):
+                logger.warning("Backend disconnected while sending (method=%s)", method)
+                self._schedule_reconnect("send failure")
+                # Retry once by re-queueing; if it fails again, error out.
+                attempts = int(item.get("attempts", 0)) + 1
+                if attempts >= 2:
+                    if request_id is not None:
+                        await self._send_error(
+                            request_id,
+                            "TeleClaude backend disconnected during request. Please retry.",
+                        )
+                else:
+                    item["attempts"] = attempts
+                    try:
+                        self._outbound.put_nowait(item)
+                    except asyncio.QueueFull:
+                        if request_id is not None:
+                            await self._send_error(
+                                request_id,
+                                "TeleClaude backend restarting (queue full). Please retry.",
+                            )
+            except Exception as e:
+                logger.warning("Failed sending request to backend: %s", e)
+                if request_id is not None:
+                    await self._send_error(
+                        request_id,
+                        "TeleClaude backend error. Please retry.",
+                    )
 
     async def socket_to_stdout(self):
         """Forward backend socket to stdout, filtering internal tools from responses."""
@@ -198,9 +540,27 @@ class MCPProxy:
                 try:
                     line = await self.reader.readline()
                     if not line:
-                        logger.info("Backend closed connection")
-                        asyncio.create_task(self.reconnect())
+                        logger.info("Backend closed connection (EOF)")
+                        self._schedule_reconnect("backend EOF")
+                        # Wait before next iteration to prevent tight loop when
+                        # backend keeps accepting then closing connections
+                        await asyncio.sleep(RECONNECT_DELAY)
                         continue
+
+                    # Swallow backend initialize response during resync so the client
+                    # doesn't see a second initialize response after daemon restart.
+                    try:
+                        msg = json.loads(line.decode("utf-8"))
+                        if (
+                            self._suppress_backend_init_messages
+                            and isinstance(msg, dict)
+                            and msg.get("id") == self._client_initialize_id
+                            and "result" in msg
+                        ):
+                            self._backend_init_response.set()
+                            continue
+                    except json.JSONDecodeError:
+                        pass
 
                     # Filter internal tools from tools/list responses
                     try:
@@ -231,7 +591,8 @@ class MCPProxy:
                     sys.stdout.buffer.flush()
                 except (ConnectionResetError, BrokenPipeError):
                     logger.warning("Backend disconnected")
-                    asyncio.create_task(self.reconnect())
+                    self._schedule_reconnect("backend disconnect")
+                    await asyncio.sleep(RECONNECT_DELAY)
         except Exception as e:
             logger.error("socket_to_stdout error: %s", e)
 
@@ -250,6 +611,8 @@ class MCPProxy:
 
             if msg.get("method") == "initialize":
                 request_id = msg.get("id", 1)
+                self._client_initialize_request = line
+                self._client_initialize_id = request_id
 
                 # Determine timeout based on static handshake setting
                 timeout = None if DISABLE_STATIC_HANDSHAKE else 0.5
@@ -263,13 +626,19 @@ class MCPProxy:
                         self.writer.write(line)
                         await self.writer.drain()
                     # Don't send cached response - let backend handle it
+                    self._needs_backend_resync = False
+                    self._suppress_backend_init_messages = False
                 except asyncio.TimeoutError:
                     # Backend not ready yet, send cached response for zero-downtime
+                    refresh_tool_cache_if_needed()
                     logger.info("Backend not ready, using cached handshake (id=%s)", request_id)
                     response = RESPONSE_TEMPLATE.replace("__REQUEST_ID__", str(request_id))
                     combined = f"{response}\n{NOTIFICATION}\n"
                     sys.stdout.buffer.write(combined.encode())
                     sys.stdout.buffer.flush()
+                    # We still must initialize the backend once it comes back up.
+                    self._needs_backend_resync = True
+                    self._suppress_backend_init_messages = True
                 return True
 
         except json.JSONDecodeError as e:
@@ -286,7 +655,7 @@ class MCPProxy:
         await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
 
         # Try to connect to backend immediately (with short timeout for fast clients like Codex)
-        quick_connect = asyncio.create_task(self.connect())
+        self._schedule_reconnect("startup")
 
         # Handle MCP initialize request
         init_ok = await self.handle_initialize(stdin_reader)
@@ -297,9 +666,13 @@ class MCPProxy:
         # Start message pumps (connect task already running)
         stdin_task = asyncio.create_task(self.stdin_to_socket(stdin_reader))
         stdout_task = asyncio.create_task(self.socket_to_stdout())
+        self._sender_task = asyncio.create_task(self._socket_sender())
 
         try:
-            await asyncio.gather(quick_connect, stdin_task, stdout_task)
+            tasks = [stdin_task, stdout_task, self._sender_task]
+            if self._reconnect_task:
+                tasks.append(self._reconnect_task)
+            await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             pass
         finally:

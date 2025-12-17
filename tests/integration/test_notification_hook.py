@@ -85,5 +85,7 @@ def test_mcp_socket_notification_protocol():
         pytest.skip("Daemon not running - /tmp/teleclaude.sock not found")
     except ConnectionRefusedError:
         pytest.skip("Daemon not running - connection refused")
+    except PermissionError:
+        pytest.skip("MCP socket not accessible in this environment (permission denied)")
     except Exception as e:
         pytest.fail(f"MCP protocol test failed: {e}")

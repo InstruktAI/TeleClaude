@@ -12,7 +12,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, TextIO, cast
+from typing import Callable, Optional, TextIO, cast
 
 from dotenv import load_dotenv
 
@@ -179,6 +179,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
+
+    def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
+        """Return a done-callback that logs unexpected background task failures."""
+
+        def _on_done(task: asyncio.Task[object]) -> None:
+            try:
+                task.result()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error("Background task '%s' crashed: %s", task_name, e, exc_info=True)
+
+        return _on_done
 
     async def _handle_command_event(self, event: str, context: CommandEventContext) -> object:
         """Generic handler for all command events.
@@ -915,12 +928,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         logger.debug("MCP server object exists: %s", self.mcp_server is not None)
         if self.mcp_server:
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
+            self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
             logger.info("MCP server starting in background")
         else:
             logger.warning("MCP server not started - object is None")
 
         # Start periodic cleanup task (runs every hour)
         self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
+        self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
         # Restore polling for sessions that were active before restart

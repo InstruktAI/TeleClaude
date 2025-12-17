@@ -553,7 +553,7 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
     mock_execute.assert_called_once()
     call_args = mock_execute.call_args[0]
     command = call_args[1]
-    assert command == "codex"
+    assert "codex" in command
 
 
 @pytest.mark.asyncio

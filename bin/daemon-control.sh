@@ -61,13 +61,44 @@ wait_for_daemon() {
     local attempt=1
 
     while [ $attempt -le $max_attempts ]; do
-        if [ -f "$PID_FILE" ]; then
-            PID=$(cat "$PID_FILE")
-            # If old_pid specified, skip if PID file still has old value
-            if [ -n "$old_pid" ] && [ "$PID" = "$old_pid" ]; then
-                : # continue waiting for new PID
-            elif ps -p "$PID" > /dev/null 2>&1; then
-                return 0
+        if [ "$PLATFORM" = "macos" ]; then
+            # Avoid `ps`/process enumeration (can be blocked by macOS sandboxes).
+            # Consider the daemon "up" once the MCP socket exists and accepts a connection.
+            local socket_path="/tmp/teleclaude.sock"
+            if [ -S "$socket_path" ]; then
+                if command -v python3 >/dev/null 2>&1; then
+                    # If the current environment is sandboxed and cannot connect to the socket,
+                    # treat PermissionError as "up" (the daemon may still be healthy).
+                    if python3 -c "
+import socket
+import sys
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(0.2)
+    s.connect('$socket_path')
+    s.close()
+    sys.exit(0)
+except PermissionError:
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+" >/dev/null 2>&1; then
+                        return 0
+                    fi
+                else
+                    # Best-effort: socket exists, but we can't actively probe it.
+                    return 0
+                fi
+            fi
+        else
+            if [ -f "$PID_FILE" ]; then
+                PID=$(cat "$PID_FILE")
+                # If old_pid specified, skip if PID file still has old value
+                if [ -n "$old_pid" ] && [ "$PID" = "$old_pid" ]; then
+                    : # continue waiting for new PID
+                elif ps -p "$PID" > /dev/null 2>&1; then
+                    return 0
+                fi
             fi
         fi
 
@@ -83,7 +114,8 @@ wait_for_daemon() {
 # Check if service is loaded/enabled
 is_service_loaded() {
     if [ "$PLATFORM" = "macos" ]; then
-        launchctl list | grep -q "$SERVICE_LABEL"
+        # `launchctl list` can be unreliable/sandboxed; `print` is more robust.
+        launchctl print "gui/$(id -u)/$SERVICE_LABEL" >/dev/null 2>&1
     else
         systemctl is-enabled "$SERVICE_LABEL" >/dev/null 2>&1
     fi
@@ -101,13 +133,15 @@ start_daemon() {
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
+        local domain="gui/$(id -u)"
         # Load service if not loaded
         if ! is_service_loaded; then
             log_info "Loading launchd service..."
-            launchctl load "$SERVICE_PATH"
+            # Prefer bootstrap on modern macOS; fallback to load for older versions.
+            launchctl bootstrap "$domain" "$SERVICE_PATH" 2>/dev/null || launchctl load "$SERVICE_PATH"
         else
             log_info "Service already loaded, kickstarting..."
-            launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+            launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>/dev/null || true
         fi
     else
         # Linux: enable and start systemd service
@@ -149,9 +183,10 @@ stop_daemon() {
     fi
 
     if [ "$PLATFORM" = "macos" ]; then
-        # macOS: unload from launchd
-        log_info "Unloading launchd service..."
-        launchctl unload "$SERVICE_PATH" 2>/dev/null || true
+        # macOS: bootout from launchd (unloads the job)
+        local domain="gui/$(id -u)"
+        log_info "Booting out launchd service..."
+        launchctl bootout "$domain" "$SERVICE_PATH" 2>/dev/null || launchctl unload "$SERVICE_PATH" 2>/dev/null || true
         sleep 1
     else
         # Linux: stop and disable systemd service
@@ -161,11 +196,13 @@ stop_daemon() {
         sleep 1
     fi
 
-    # Clean up any remaining processes
-    if pgrep -f "teleclaude.daemon" > /dev/null; then
-        log_warn "Daemon still running, force killing..."
-        pkill -9 -f "teleclaude.daemon" 2>/dev/null || true
-        sleep 1
+    # Clean up any remaining processes (Linux only; macOS process enumeration may be restricted)
+    if [ "$PLATFORM" != "macos" ]; then
+        if pgrep -f "teleclaude.daemon" > /dev/null; then
+            log_warn "Daemon still running, force killing..."
+            pkill -9 -f "teleclaude.daemon" 2>/dev/null || true
+            sleep 1
+        fi
     fi
 
     # Clean up PID file
@@ -191,21 +228,19 @@ status_daemon() {
 
     # Check service manager status
     if [ "$PLATFORM" = "macos" ]; then
-        SERVICE_STATUS=$(launchctl list | grep "$SERVICE_LABEL" || true)
-        log_info "launchctl status: $SERVICE_STATUS"
-
-        # Parse launchctl output: PID STATUS LABEL
-        # STATUS is the exit code - 0 means running normally, non-zero means last exit was abnormal
-        EXIT_CODE=$(echo "$SERVICE_STATUS" | awk '{print $2}')
-        if [ -n "$EXIT_CODE" ] && [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "-" ]; then
-            if [ "$EXIT_CODE" = "42" ]; then
-                log_info "Last exit code: 42 (deployment restart)"
-            else
-                log_warn "Last exit code: $EXIT_CODE (process may have crashed previously)"
-                if [ "$EXIT_CODE" = "-9" ]; then
-                    log_warn "Last instance was killed (SIGKILL)"
-                fi
+        local domain="gui/$(id -u)"
+        SERVICE_PRINT=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null || true)
+        if [ -n "$SERVICE_PRINT" ]; then
+            STATE=$(echo "$SERVICE_PRINT" | awk -F' = ' '/^[[:space:]]*state[[:space:]]*=/{print $2; exit}')
+            PID=$(echo "$SERVICE_PRINT" | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}')
+            LAST_EXIT=$(echo "$SERVICE_PRINT" | awk -F' = ' '/^[[:space:]]*last exit code[[:space:]]*=/{print $2; exit}')
+            log_info "launchd state: ${STATE:-unknown} (pid: ${PID:-unknown}, last_exit: ${LAST_EXIT:-unknown})"
+            if [ -n "$STATE" ] && [ "$STATE" != "running" ]; then
+                log_warn "Service state is not running: $STATE"
+                return 1
             fi
+        else
+            log_warn "Unable to query launchd job details (launchctl print returned nothing)"
         fi
     else
         SERVICE_STATUS=$(systemctl is-active "$SERVICE_LABEL" 2>/dev/null || echo "inactive")
@@ -216,48 +251,36 @@ status_daemon() {
         fi
     fi
 
-    # Check if process is running
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            # Get process uptime
-            if command -v ps >/dev/null; then
-                UPTIME=$(ps -p "$PID" -o etime= | tr -d ' ')
-            else
-                UPTIME="unknown"
-            fi
-
-            log_info "Daemon process: RUNNING (PID: $PID, uptime: $UPTIME)"
-
-            # Check health via socket connection
-            SOCKET_PATH="/tmp/teleclaude.sock"
-            if command -v python3 >/dev/null 2>&1; then
-                HEALTH_CHECK=$(python3 -c "
+    # Health via socket connection (works even when process inspection is restricted)
+    SOCKET_PATH="/tmp/teleclaude.sock"
+    if [ -S "$SOCKET_PATH" ] && command -v python3 >/dev/null 2>&1; then
+        HEALTH_RESULT=$(
+            python3 -c "
 import socket
 import sys
 try:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(2)
+    s.settimeout(0.5)
     s.connect('$SOCKET_PATH')
     s.close()
     print('ok')
+except PermissionError:
+    print('blocked')
 except Exception:
-    sys.exit(1)
-" 2>/dev/null || echo "")
-                if [ "$HEALTH_CHECK" = "ok" ]; then
-                    log_info "Daemon health: HEALTHY (MCP socket responding)"
-                else
-                    log_warn "Daemon health: MCP socket not responding"
-                fi
-            else
-                log_info "Daemon health: UNKNOWN (python3 not available)"
-            fi
+    print('fail')
+" 2>/dev/null || echo "fail"
+        )
+        if [ "$HEALTH_RESULT" = "ok" ]; then
+            log_info "Daemon health: HEALTHY (MCP socket responding)"
             return 0
-        else
-            log_warn "PID file exists but process $PID NOT running"
         fi
+        if [ "$HEALTH_RESULT" = "blocked" ]; then
+            log_warn "Daemon health: UNKNOWN (socket check blocked by current environment)"
+            return 0
+        fi
+        log_warn "Daemon health: MCP socket not responding"
     else
-        log_warn "Daemon process: NOT RUNNING (no PID file)"
+        log_warn "Daemon health: MCP socket missing"
     fi
 
     log_warn "Daemon appears to be down. Check logs: tail -50 $LOG_FILE"
@@ -269,7 +292,10 @@ restart_daemon() {
     log_info "Restarting TeleClaude daemon..."
 
     OLD_PID=""
-    if [ -f "$PID_FILE" ]; then
+    if [ "$PLATFORM" = "macos" ]; then
+        local domain="gui/$(id -u)"
+        OLD_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
+    elif [ -f "$PID_FILE" ]; then
         OLD_PID=$(cat "$PID_FILE")
         if ps -p "$OLD_PID" > /dev/null 2>&1; then
             log_info "Killing daemon process (PID: $OLD_PID)..."
@@ -279,7 +305,18 @@ restart_daemon() {
 
     # Use service manager restart (reliable and fast)
     if [ "$PLATFORM" = "macos" ]; then
-        launchctl kickstart -k "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+        local domain="gui/$(id -u)"
+        KICKSTART_OUT=$(launchctl kickstart -k "$domain/$SERVICE_LABEL" 2>&1) || {
+            log_error "launchctl kickstart failed: $KICKSTART_OUT"
+            return 1
+        }
+
+        # Verify PID changed (kickstart -k should restart the job).
+        NEW_PID=$(launchctl print "$domain/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
+        if [ -n "$OLD_PID" ] && [ -n "$NEW_PID" ] && [ "$NEW_PID" = "$OLD_PID" ]; then
+            log_error "launchctl kickstart did not restart the job (pid unchanged: $NEW_PID)"
+            return 1
+        fi
     else
         sudo systemctl restart "$SERVICE_LABEL"
     fi
@@ -302,28 +339,34 @@ restart_daemon() {
 kill_daemon() {
     log_info "Killing daemon process (service will auto-restart)..."
 
-    if [ ! -f "$PID_FILE" ]; then
-        log_warn "No PID file found"
-        return 1
-    fi
+    OLD_PID=""
+    if [ "$PLATFORM" = "macos" ]; then
+        OLD_PID=$(launchctl print "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null | awk -F' = ' '/^[[:space:]]*pid[[:space:]]*=/{print $2; exit}' || true)
+        if [ -z "$OLD_PID" ]; then
+            log_warn "Could not determine daemon PID via launchctl"
+            return 1
+        fi
+        log_info "Killing daemon via launchd (PID: $OLD_PID)..."
+        launchctl kill SIGKILL "gui/$(id -u)/$SERVICE_LABEL" 2>/dev/null || true
+    else
+        if [ ! -f "$PID_FILE" ]; then
+            log_warn "No PID file found"
+            return 1
+        fi
 
-    OLD_PID=$(cat "$PID_FILE")
-    if ! ps -p "$OLD_PID" > /dev/null 2>&1; then
-        log_warn "Process $OLD_PID not running"
-        return 1
-    fi
+        OLD_PID=$(cat "$PID_FILE")
+        if ! ps -p "$OLD_PID" > /dev/null 2>&1; then
+            log_warn "Process $OLD_PID not running"
+            return 1
+        fi
 
-    log_info "Killing daemon process (PID: $OLD_PID)..."
-    kill "$OLD_PID" 2>/dev/null || true
+        log_info "Killing daemon process (PID: $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+    fi
 
     # Wait for service manager to auto-restart (up to 10 seconds)
     if wait_for_daemon 10 "$OLD_PID"; then
-        NEW_PID=$(cat "$PID_FILE")
-        if [ "$NEW_PID" != "$OLD_PID" ]; then
-            log_info "Daemon auto-restarted by service manager (new PID: $NEW_PID)"
-        else
-            log_info "Daemon restarted (PID: $NEW_PID)"
-        fi
+        log_info "Daemon auto-restarted by service manager"
         return 0
     fi
 

@@ -11,12 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
+from teleclaude.config import config
 from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.utils import strip_ansi_codes, strip_exit_markers
 
 logger = logging.getLogger(__name__)
+_CONFIG_FOR_TESTS = config
 
 
 @dataclass

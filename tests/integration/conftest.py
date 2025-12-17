@@ -434,3 +434,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     finally:
         # Stop daemon to cancel background pollers before pytest-timeout triggers
         await daemon.stop()
+        # Close the aiosqlite connection to avoid lingering worker threads that
+        # can keep pytest alive after tests complete.
+        await db_module.db.close()

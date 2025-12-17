@@ -14,6 +14,8 @@ DEFAULT_CLAUDE_COMMAND = 'claude --dangerously-skip-permissions --settings \'{"f
 DEFAULT_GEMINI_COMMAND = "gemini --yolo"
 
 # Default Codex command
+# Keep Codex maximally capable by disabling approvals and Codex-internal sandboxing.
+# Note: This does not override OS-level sandboxes (e.g., macOS Seatbelt) if present.
 DEFAULT_CODEX_COMMAND = "codex --dangerously-bypass-approvals-and-sandbox --search"
 
 # Resume command templates for agents (used when restarting sessions)

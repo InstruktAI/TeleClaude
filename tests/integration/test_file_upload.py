@@ -26,9 +26,11 @@ async def session_manager():
     manager = Db(db_path)
     await manager.initialize()
 
-    yield manager
-
-    Path(db_path).unlink(missing_ok=True)
+    try:
+        yield manager
+    finally:
+        await manager.close()
+        Path(db_path).unlink(missing_ok=True)
 
 
 @pytest.fixture

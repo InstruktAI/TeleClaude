@@ -316,6 +316,35 @@ See [docs/troubleshooting.md](docs/troubleshooting.md)
 
 - ALWAYS USE `make restart` to RESTART the daemon!
 
+## Out-of-Band Telegram Alerts (When TeleClaude Is Down)
+
+Sometimes you need to send a Telegram notification even when the TeleClaude daemon is down (no MCP socket, no adapters running). This repo includes **standalone** scripts for that purpose.
+
+**Scripts (repo-local):**
+
+- `bin/send_telegram.py` - Generic Telegram Bot API sender (uses `TELEGRAM_BOT_TOKEN` by default).
+- `bin/notify_agents.py` - Opinionated alert sender:
+  - Automatically creates (or reuses) a forum topic named **Agents** when possible
+  - Uses exponential backoff to avoid spam (max 1/hour)
+  - Persists state inside the repo at `logs/monitoring/`
+
+**Usage:**
+
+```bash
+# Send a one-off message (direct chat id, or @username/display-name if a local Telegram session is configured)
+python3 bin/send_telegram.py --chat-id -1001234567890 --text "Hello"
+
+# Send an alert with backoff + auto-topic
+python3 bin/notify_agents.py --prefix-host "Smoke test failed"
+
+# Reset backoff after a successful run
+python3 bin/notify_agents.py --reset
+```
+
+**MCP discovery helper:**
+
+If an AI has access to the TeleClaude MCP server but lacks context, it can call `teleclaude__help` to discover these scripts and how to use them.
+
 ## Development Workflow: Rsync for Fast Iteration
 
 **CRITICAL: Use rsync to sync changes during active development. Only commit when code is tested and working.**

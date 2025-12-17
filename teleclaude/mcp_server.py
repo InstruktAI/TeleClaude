@@ -32,16 +32,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def schedule_daemon_restart(delay_s: float = 0.2, exit_code: int = 42) -> None:
-    """Schedule a daemon restart by exiting after a short delay.
-
-    The delay allows the MCP response to be sent back to the caller before the
-    process exits and the service manager restarts it.
-    """
-    delay_s = max(0.0, float(delay_s))
-    asyncio.get_running_loop().call_later(delay_s, os._exit, int(exit_code))
-
-
 def _is_client_disconnect_exception(exc: BaseException) -> bool:
     """Return True if the exception indicates the client went away."""
     if isinstance(exc, ExceptionGroup):
@@ -123,22 +113,10 @@ class TeleClaudeMCPServer:
             """List available MCP tools."""
             return [
                 Tool(
-                    name="teleclaude__restart_daemon",
-                    title="TeleClaude: Restart Daemon",
-                    description=(
-                        "Restart the local TeleClaude daemon (exit 42 to trigger service manager restart). "
-                        "Returns immediately, then daemon restarts."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "delay_s": {
-                                "type": "number",
-                                "description": "Seconds to wait before exiting (default ~0.2s).",
-                                "default": 0.2,
-                            }
-                        },
-                    },
+                    name="teleclaude__help",
+                    title="TeleClaude: Help",
+                    description="Return a short, human-readable description of TeleClaude capabilities and local helper scripts.",
+                    inputSchema={"type": "object", "properties": {}},
                 ),
                 Tool(
                     name="teleclaude__list_computers",
@@ -538,6 +516,18 @@ class TeleClaudeMCPServer:
                 arguments,
                 caller_session_id,
             )
+            if name == "teleclaude__help":
+                text = (
+                    "TeleClaude MCP Server\n"
+                    "\n"
+                    "Local helper scripts:\n"
+                    "- `bin/notify_agents.py`: out-of-band Telegram alerts with exponential backoff (max 1/hour). "
+                    "State is stored in `logs/monitoring/`.\n"
+                    "- `bin/send_telegram.py`: Telegram Bot API sender (`sendMessage`). "
+                    "Supports `--chat-id` for direct IDs and `--to` for @username/display-name resolution "
+                    "if a local Telegram user session is configured.\n"
+                )
+                return [TextContent(type="text", text=text)]
             if name == "teleclaude__list_computers":
                 # Extract optional filter (currently unused by implementation)
                 # computer_names_obj = arguments.get("computer_names") if arguments else None
@@ -547,11 +537,6 @@ class TeleClaudeMCPServer:
 
                 computers = await self.teleclaude__list_computers()
                 return [TextContent(type="text", text=json.dumps(computers, default=str, indent=2))]
-            if name == "teleclaude__restart_daemon":
-                delay_s_obj = arguments.get("delay_s", 0.2) if arguments else 0.2
-                delay_s = float(delay_s_obj) if isinstance(delay_s_obj, (int, float, str)) else 0.2
-                message = await self.teleclaude__restart_daemon(delay_s=delay_s)
-                return [TextContent(type="text", text=message)]
             if name == "teleclaude__list_projects":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 projects = await self.teleclaude__list_projects(computer)
@@ -824,16 +809,6 @@ class TeleClaudeMCPServer:
         if self._is_local_computer(computer):
             return await self._list_local_projects()
         return await self._list_remote_projects(computer)
-
-    async def teleclaude__restart_daemon(self, delay_s: float = 0.2) -> str:
-        """Restart the local TeleClaude daemon (service manager will relaunch).
-
-        Args:
-            delay_s: Seconds to wait before exiting to allow response flush.
-        """
-        logger.warning("teleclaude__restart_daemon requested (delay_s=%s)", delay_s)
-        schedule_daemon_restart(delay_s=delay_s, exit_code=42)
-        return "Restarting TeleClaude daemon..."
 
     async def _list_local_projects(self) -> list[dict[str, str]]:
         """List projects from local config directly."""
