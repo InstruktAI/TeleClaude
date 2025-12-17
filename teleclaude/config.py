@@ -188,9 +188,9 @@ DEFAULT_CONFIG: dict[str, object] = {
             "session_dir": "~/.claude/sessions",
             "log_pattern": "*.jsonl",
             "model_flags": {
-                "fast": "-m haiku",
-                "med": "-m sonnet",
-                "slow": "-m opus",
+                "fast": "--model haiku",
+                "med": "--model sonnet",
+                "slow": "--model opus",
             },
             "exec_subcommand": "",
             "resume_template": "{base_cmd} --resume {session_id}",
@@ -293,18 +293,27 @@ def _build_config(raw: dict[str, object]) -> Config:
     tg_raw = raw["telegram"]
     agents_raw = raw.get("agents", {})
 
+    # Import AGENT_METADATA from constants
+    from teleclaude.constants import AGENT_METADATA
+
     agents_registry: Dict[str, AgentConfig] = {}
     if isinstance(agents_raw, dict):
         for name, agent_data in agents_raw.items():
             if isinstance(agent_data, dict):
+                # Get metadata from constants
+                metadata = AGENT_METADATA.get(name, {})
+                if not metadata:
+                    raise ValueError(f"Unknown agent '{name}' - no metadata in constants.AGENT_METADATA")
+
+                # Build AgentConfig from constants + user's command
                 agents_registry[name] = AgentConfig(
                     command=str(agent_data["command"]),
-                    session_dir=str(agent_data.get("session_dir", "")),
-                    log_pattern=str(agent_data.get("log_pattern", "")),
-                    model_flags=dict(agent_data.get("model_flags", {})),
-                    exec_subcommand=str(agent_data.get("exec_subcommand", "")),
-                    resume_template=str(agent_data.get("resume_template", "")),
-                    continue_template=str(agent_data.get("continue_template", "")),
+                    session_dir=str(metadata["session_dir"]),
+                    log_pattern=str(metadata["log_pattern"]),
+                    model_flags=dict(metadata["model_flags"]),  # type: ignore[arg-type]
+                    exec_subcommand=str(metadata["exec_subcommand"]),
+                    resume_template=str(metadata["resume_template"]),
+                    continue_template=str(metadata.get("continue_template", "")),  # Optional field
                 )
 
     return Config(

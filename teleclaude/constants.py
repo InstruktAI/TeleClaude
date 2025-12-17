@@ -16,3 +16,40 @@ REDIS_SOCKET_TIMEOUT = 60  # Increased to accommodate poor network conditions
 REDIS_MESSAGE_STREAM_MAXLEN = 10000  # Max messages to keep per computer
 REDIS_OUTPUT_STREAM_MAXLEN = 10000  # Max output messages per session
 REDIS_OUTPUT_STREAM_TTL = 3600  # Auto-expire output streams after 1 hour
+
+# Agent metadata (NOT user-configurable)
+AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
+    "claude": {
+        "session_dir": "~/.claude/projects",
+        "log_pattern": "*.jsonl",
+        "model_flags": {
+            "fast": "--model haiku",
+            "med": "--model sonnet",
+            "slow": "--model opus",
+        },
+        "exec_subcommand": "",
+        "resume_template": "{base_cmd} --resume {session_id}",
+    },
+    "gemini": {
+        "session_dir": "~/.gemini/sessions",
+        "log_pattern": "*.jsonl",
+        "model_flags": {
+            "fast": "--model=gemini-2-flash-lite",
+            "med": "--model=gemini-2-flash",
+            "slow": "--model=gemini-3-pro-preview",
+        },
+        "exec_subcommand": "",
+        "resume_template": "{base_cmd} --resume {session_id}",
+    },
+    "codex": {
+        "session_dir": "~/.codex/sessions",
+        "log_pattern": "*.jsonl",
+        "model_flags": {
+            "fast": "-m gpt-4.1",
+            "med": "-m gpt-5.1",
+            "slow": "-m gpt-5.2",
+        },
+        "exec_subcommand": "exec",
+        "resume_template": "{base_cmd} --resume {session_id}",
+    },
+}

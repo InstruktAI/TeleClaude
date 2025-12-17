@@ -567,9 +567,10 @@ class TeleClaudeMCPServer:
                 title = str(arguments["title"])
                 message = str(arguments["message"])
                 agent = str(arguments.get("agent", "claude"))
+                mode = str(arguments.get("mode", "slow"))
                 # caller_session_id extracted at top of call_tool for completion notifications
                 result = await self.teleclaude__start_session(
-                    computer, project_dir, title, message, caller_session_id, agent
+                    computer, project_dir, title, message, caller_session_id, agent, mode
                 )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
@@ -593,6 +594,7 @@ class TeleClaudeMCPServer:
                 project_arg = arguments.get("project") if arguments else None
                 project = str(project_arg) if project_arg else None
                 agent = str(arguments.get("agent", "claude")) if arguments else "claude"
+                mode = str(arguments.get("mode", "slow")) if arguments else "slow"
                 subfolder = str(arguments.get("subfolder", "")) if arguments else ""
                 result = await self.teleclaude__run_agent_command(
                     computer=computer,
@@ -601,6 +603,7 @@ class TeleClaudeMCPServer:
                     session_id=session_id,
                     project=project,
                     agent=agent,
+                    mode=mode,
                     subfolder=subfolder,
                     caller_session_id=caller_session_id,
                 )
