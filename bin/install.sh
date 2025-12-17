@@ -270,29 +270,42 @@ install_package() {
 setup_venv() {
     print_header "Setting Up Python Virtual Environment"
 
+    local recreate=false
     if [ -d "$INSTALL_DIR/.venv" ]; then
         print_warning "Virtual environment already exists"
         if confirm "Recreate virtual environment?" "n"; then
             rm -rf "$INSTALL_DIR/.venv"
+            recreate=true
         else
             print_info "Using existing virtual environment"
-            return 0
         fi
     fi
 
-    print_info "Creating virtual environment..."
-    "$PYTHON_CMD" -m venv "$INSTALL_DIR/.venv"
-    print_success "Virtual environment created"
+    # Ensure uv is available (matches Makefile install flow)
+    if ! command -v uv >/dev/null 2>&1; then
+        print_info "Installing uv package manager..."
+        if curl -LsSf https://astral.sh/uv/install.sh | sh >>"$LOG_FILE" 2>&1; then
+            print_success "uv installed"
+        else
+            print_error "Failed to install uv (see $LOG_FILE)"
+            exit 1
+        fi
+    fi
 
-    print_info "Upgrading pip..."
-    "$INSTALL_DIR/.venv/bin/pip" install --upgrade pip -q
+    # Use uv to create/refresh .venv and install deps from pyproject/uv.lock
+    print_info "Syncing Python environment with uv (including test extras)..."
+    PATH="$HOME/.local/bin:$PATH" uv sync --extra test
 
-    print_info "Installing Python dependencies..."
-    "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" -q
+    if [ ! -d "$INSTALL_DIR/.venv" ]; then
+        print_error "uv sync did not create .venv"
+        exit 1
+    fi
 
-    print_info "Installing TeleClaude package..."
-    "$INSTALL_DIR/.venv/bin/pip" install -e "$INSTALL_DIR" -q
-    print_success "Python dependencies and package installed"
+    if [ "$recreate" = true ]; then
+        print_success "Virtual environment recreated and dependencies installed"
+    else
+        print_success "Virtual environment ready and dependencies installed"
+    fi
 }
 
 # Setup configuration

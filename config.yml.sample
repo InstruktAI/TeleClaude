@@ -38,7 +38,9 @@ agents:
     gemini:
         command: "gemini --yolo --model=gemini-3-pro-preview"
     codex:
-        command: "codex --dangerously-bypass-approvals-and-sandbox --search"
+        # command: "codex --dangerously-bypass-approvals-and-sandbox --search"
+        # Speial build to allow full disk access on MacOS
+        command: "${WORKING_DIR}/bin/CodexLauncher.app/Contents/MacOS/codex-launcher --dangerously-bypass-approvals-and-sandbox --search"
 
 # Redis Configuration (for AI-to-AI communication)
 redis:
