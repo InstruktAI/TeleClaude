@@ -96,7 +96,7 @@ class Db:
         origin_adapter: str,
         title: str,
         adapter_metadata: Optional[SessionAdapterMetadata] = None,
-        terminal_size: str = "80x24",
+        terminal_size: str = "160x80",
         working_directory: str = "~",
         description: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -281,7 +281,8 @@ class Db:
             session_id: Session ID
         """
         await self.conn.execute(
-            "UPDATE sessions SET last_activity = ? WHERE session_id = ?", (datetime.now().isoformat(), session_id)
+            "UPDATE sessions SET last_activity = ? WHERE session_id = ?",
+            (datetime.now().isoformat(), session_id),
         )
         await self.conn.commit()
 
@@ -531,11 +532,13 @@ class Db:
         Returns:
             List of sessions with active polling
         """
-        cursor = await self.conn.execute("""
+        cursor = await self.conn.execute(
+            """
             SELECT * FROM sessions
             WHERE closed = 0
             ORDER BY last_activity DESC
-            """)
+            """
+        )
         rows = await cursor.fetchall()
         all_sessions = [Session.from_dict(dict(row)) for row in rows]
 
@@ -694,7 +697,13 @@ class Db:
                 openai_voice = excluded.openai_voice,
                 assigned_at = CURRENT_TIMESTAMP
             """,
-            (voice_id, voice.name, voice.elevenlabs_id, voice.macos_voice, voice.openai_voice),
+            (
+                voice_id,
+                voice.name,
+                voice.elevenlabs_id,
+                voice.macos_voice,
+                voice.openai_voice,
+            ),
         )
         await self.conn.commit()
         logger.debug("Assigned voice '%s' to %s", voice.name, voice_id[:8])
@@ -741,7 +750,11 @@ class Db:
         await self.conn.commit()
         deleted = cursor.rowcount
         if deleted > 0:
-            logger.info("Cleaned up %d stale voice assignments (older than %d days)", deleted, max_age_days)
+            logger.info(
+                "Cleaned up %d stale voice assignments (older than %d days)",
+                deleted,
+                max_age_days,
+            )
         return deleted
 
 

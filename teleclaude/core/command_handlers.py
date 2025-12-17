@@ -1151,11 +1151,6 @@ async def handle_agent_start(
     cmd = " ".join(cmd_parts)
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
-    # Best-effort maximize Codex capabilities: avoid inheriting env vars that can
-    # force Codex into an OS-level sandbox mode (e.g., macOS Seatbelt).
-    if agent_name == "codex":
-        cmd = f"env -u CODEX_SANDBOX -u CODEX_SANDBOX_NETWORK_DISABLED {cmd}"
-
     # Save active agent to UX state
     await db.update_ux_state(session.session_id, active_agent=agent_name)
 
