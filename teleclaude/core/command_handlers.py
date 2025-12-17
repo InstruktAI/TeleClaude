@@ -1138,10 +1138,15 @@ async def handle_agent_start(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    mode = "slow"
+    allowed_modes = {"fast", "med", "slow"}
     user_args = list(args)
-    if user_args and user_args[0] in {"fast", "med", "slow"}:
-        mode = user_args.pop(0)
+    if user_args:
+        candidate_mode = user_args.pop(0)
+        if candidate_mode not in allowed_modes:
+            raise ValueError(f"Invalid mode '{candidate_mode}'. Supported modes: fast, med, slow.")
+        mode = candidate_mode
+    else:
+        mode = "slow"
 
     base_cmd = get_agent_command(agent_name, mode=mode)
 
