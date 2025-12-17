@@ -19,11 +19,11 @@ DEFAULT_CODEX_COMMAND = "codex --dangerously-bypass-approvals-and-sandbox --sear
 # Resume command templates for agents (used when restarting sessions)
 # {base_cmd} = agent's base command with flags, {session_id} = native session ID
 # Claude/Gemini: append --resume flag to base command
-# Codex: uses subcommand "resume" instead of flag (no additional flags needed)
+# Codex: uses subcommand "resume" instead of flag (flags still required)
 AGENT_RESUME_TEMPLATES = {
     "claude": "{base_cmd} --resume {session_id}",
     "gemini": "{base_cmd} --resume {session_id}",
-    "codex": "codex resume {session_id}",
+    "codex": "{base_cmd} resume {session_id}",
 }
 
 # Session directories for agents (standard locations)
