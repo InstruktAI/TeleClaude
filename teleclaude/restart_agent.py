@@ -19,8 +19,8 @@ import sys
 from typing import Optional
 
 from teleclaude.config import config
-from teleclaude.constants import AGENT_RESUME_TEMPLATES
 from teleclaude.core import terminal_bridge
+from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import Db
 from teleclaude.core.models import Session
 from teleclaude.logging_config import setup_logging
@@ -88,22 +88,17 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
         logger.error("Unknown agent: %s", target_agent)
         return False
 
-    base_cmd = agent_config.command.strip()
+    restart_cmd = get_agent_command(
+        agent=target_agent,
+        mode="slow",
+        exec=False,
+        resume=not native_session_id,
+        native_session_id=native_session_id,
+    )
 
-    # Build restart command
-    # If we have a native session ID, resume it WITHOUT sending a message (just attach)
     if native_session_id:
-        # Use agent-specific resume template from constants
-        template = AGENT_RESUME_TEMPLATES[target_agent]
-        restart_cmd = template.format(base_cmd=base_cmd, session_id=native_session_id)
-        logger.info(
-            "Resuming %s session %s (from database)",
-            target_agent,
-            native_session_id[:8],
-        )
+        logger.info("Resuming %s session %s (from database)", target_agent, native_session_id[:8])
     else:
-        # No session ID - just start fresh (or resume default if agent handles it)
-        restart_cmd = base_cmd
         logger.info("Starting fresh %s session (no session ID in database)", target_agent)
 
     # Send restart command via tmux

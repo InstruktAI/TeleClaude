@@ -13,9 +13,6 @@ import yaml
 from dotenv import load_dotenv
 
 from teleclaude.constants import (
-    DEFAULT_CLAUDE_COMMAND,
-    DEFAULT_CODEX_COMMAND,
-    DEFAULT_GEMINI_COMMAND,
     REDIS_MAX_CONNECTIONS,
     REDIS_MESSAGE_STREAM_MAXLEN,
     REDIS_OUTPUT_STREAM_MAXLEN,
@@ -110,6 +107,12 @@ class AgentConfig:
     """Configuration for a specific AI agent."""
 
     command: str  # The full base command string, including fixed flags
+    session_dir: str
+    log_pattern: str
+    model_flags: dict[str, str]
+    exec_subcommand: str
+    resume_template: str
+    continue_template: str = ""
 
 
 @dataclass
@@ -181,7 +184,7 @@ DEFAULT_CONFIG: dict[str, object] = {
     },
     "agents": {
         "claude": {
-            "command": DEFAULT_CLAUDE_COMMAND,
+            "command": 'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
             "session_dir": "~/.claude/sessions",
             "log_pattern": "*.jsonl",
             "model_flags": {
@@ -189,11 +192,12 @@ DEFAULT_CONFIG: dict[str, object] = {
                 "med": "-m sonnet",
                 "slow": "-m opus",
             },
+            "exec_subcommand": "",
             "resume_template": "{base_cmd} --resume {session_id}",
             "continue_template": "{base_cmd} --resume last",
         },
         "gemini": {
-            "command": DEFAULT_GEMINI_COMMAND,
+            "command": "gemini --yolo",
             "session_dir": "~/.gemini/sessions",
             "log_pattern": "*.jsonl",
             "model_flags": {
@@ -201,11 +205,12 @@ DEFAULT_CONFIG: dict[str, object] = {
                 "med": "-m gemini-2.5-flash",
                 "slow": "-m gemini-3-pro-preview",
             },
+            "exec_subcommand": "",
             "resume_template": "{base_cmd} --resume {session_id}",
             "continue_template": "{base_cmd} --continue",
         },
         "codex": {
-            "command": DEFAULT_CODEX_COMMAND,
+            "command": "codex --dangerously-bypass-approvals-and-sandbox --search",
             "session_dir": "~/.codex/sessions",
             "log_pattern": "*.jsonl",
             "model_flags": {
@@ -294,6 +299,12 @@ def _build_config(raw: dict[str, object]) -> Config:
             if isinstance(agent_data, dict):
                 agents_registry[name] = AgentConfig(
                     command=str(agent_data["command"]),
+                    session_dir=str(agent_data.get("session_dir", "")),
+                    log_pattern=str(agent_data.get("log_pattern", "")),
+                    model_flags=dict(agent_data.get("model_flags", {})),
+                    exec_subcommand=str(agent_data.get("exec_subcommand", "")),
+                    resume_template=str(agent_data.get("resume_template", "")),
+                    continue_template=str(agent_data.get("continue_template", "")),
                 )
 
     return Config(

@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional
 
-from teleclaude.constants import AGENT_LOG_PATTERNS, AGENT_SESSION_DIRS
+from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
@@ -71,30 +71,21 @@ class SessionWatcher:
 
     async def _scan_directories(self) -> None:
         """Scan configured directories for new session files."""
-        for agent_name, dir_path_str in AGENT_SESSION_DIRS.items():
+        for agent_name, agent_cfg in config.agents.items():
             # Skip if no parser registered for this agent
             parser = self._parsers.get(agent_name)
             if not parser:
                 continue
 
-            dir_path = Path(dir_path_str).expanduser()
+            dir_path = Path(agent_cfg.session_dir).expanduser()
             if not dir_path.exists():
                 continue
 
-            pattern = AGENT_LOG_PATTERNS.get(agent_name, "*")
+            pattern = agent_cfg.log_pattern or "*"
 
             # Find all matching files
-            # Iterate recursively if needed, or just top level?
-            # Constants imply simple paths. Assuming glob handles it.
             try:
-                files = list(dir_path.glob(pattern))
-                # Also check recursive if pattern implies it? glob("**/*.jsonl")
-                # But constant is "*.jsonl".
-                # For codex: ~/.codex/sessions/2025/... -> needs recursive search!
-                # I should change pattern to "**/*.jsonl" for Codex if sessions are nested.
-                # But I'll assume glob recursive if needed.
-                if agent_name == "codex":
-                    files = list(dir_path.glob(f"**/{pattern}"))
+                files = list(dir_path.rglob(pattern))
 
                 for file_path in files:
                     if file_path not in self._watched_files:

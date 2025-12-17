@@ -7,60 +7,6 @@ This module defines shared constants to ensure consistency.
 MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 MCP_ENABLED = True
 
-# Default Claude Code command with all required flags
-DEFAULT_CLAUDE_COMMAND = 'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\''
-
-# Default Gemini command
-DEFAULT_GEMINI_COMMAND = "gemini --yolo"
-
-# Default Codex command
-# Keep Codex maximally capable by disabling approvals and Codex-internal sandboxing.
-# Note: This does not override OS-level sandboxes (e.g., macOS Seatbelt) if present.
-DEFAULT_CODEX_COMMAND = "codex --dangerously-bypass-approvals-and-sandbox --search"
-
-# Resume command templates for agents (used when restarting sessions)
-# {base_cmd} = agent's base command with flags, {session_id} = native session ID
-# Claude/Gemini: append --resume flag to base command
-# Codex: uses subcommand "resume" instead of flag (flags still required)
-AGENT_RESUME_TEMPLATES = {
-    "claude": "{base_cmd} --resume {session_id}",
-    "gemini": "{base_cmd} --resume {session_id}",
-    "codex": "{base_cmd} resume {session_id}",
-}
-
-# Agent model mapping for slow, med, fast variants
-AGENT_MODEL_FLAGS = {
-    "claude": {
-        "fast": "-m haiku",
-        "med": "-m sonnet-4.5",
-        "slow": "-m opus-4.5",
-    },
-    "gemini": {
-        "fast": "-m gemini-2.5-flash-lite",
-        "med": "-m gemini-2.5-flash",
-        "slow": "-m gemini-3-pro-preview",
-    },
-    "codex": {
-        "fast": "-m gpt-5.1-codex-mini",
-        "med": "-m gpt-5.1-codex",
-        "slow": "-m gpt-5.2",
-    },
-}
-
-# Session directories for agents (standard locations)
-AGENT_SESSION_DIRS = {
-    "claude": "~/.claude/sessions",
-    "gemini": "~/.gemini/tmp",
-    "codex": "~/.codex/sessions",
-}
-
-# Log file patterns for agents
-AGENT_LOG_PATTERNS = {
-    "claude": "*.jsonl",
-    "gemini": "*.jsonl",
-    "codex": "*.jsonl",
-}
-
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
 

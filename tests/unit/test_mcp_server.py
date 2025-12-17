@@ -317,6 +317,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     assert second_call[0][0] == "agent"  # TeleClaudeEvents.AGENT_START
     call_payload = second_call[0][1]
     assert call_payload["args"][0] == "gemini"
+    assert call_payload["args"][1] == "slow"
 
     # Reset mock
     server.client.handle_event.reset_mock()
@@ -337,6 +338,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     assert second_call[0][0] == "agent"
     call_payload = second_call[0][1]
     assert call_payload["args"][0] == "codex"
+    assert call_payload["args"][1] == "slow"
 
     # Reset mock
     server.client.handle_event.reset_mock()
@@ -357,6 +359,66 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     assert second_call[0][0] == "agent"
     call_payload = second_call[0][1]
     assert call_payload["args"][0] == "claude"
+    assert call_payload["args"][1] == "slow"
+
+    # Reset mock and test explicit fast mode
+    server.client.handle_event.reset_mock()
+    server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-fast"}}
+
+    result = await server.teleclaude__start_session(
+        computer="local",
+        project_dir="/home/user/project",
+        title="Fast Claude Session",
+        message="Hello Claude",
+        agent="claude",
+        mode="fast",
+    )
+    assert result["status"] == "success"
+    second_call = server.client.handle_event.call_args_list[1]
+    call_payload = second_call[0][1]
+    assert call_payload["args"][1] == "fast"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_mcp_server):
+    server = mock_mcp_server
+    server.teleclaude__start_session = AsyncMock(return_value={"status": "success", "session_id": "sess-123"})
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        args="",
+        project="/home/user/project",
+        agent="codex",
+        mode="med",
+    )
+
+    assert result["status"] == "success"
+    server.teleclaude__start_session.assert_awaited_once()
+    call_kwargs = server.teleclaude__start_session.await_args.kwargs  # type: ignore[attr-defined]
+    assert call_kwargs["mode"] == "med"
+    assert call_kwargs["agent"] == "codex"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_server):
+    server = mock_mcp_server
+
+    async def fake_send_message(*_args, **_kwargs):
+        yield "sent"
+
+    server.teleclaude__send_message = fake_send_message
+    server.teleclaude__start_session = AsyncMock()
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        session_id="existing-session",
+        mode="fast",
+    )
+
+    assert result["status"] == "sent"
+    server.teleclaude__start_session.assert_not_called()
 
 
 # --- run_agent_command tests ---

@@ -133,7 +133,7 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 
                 # Verify /agent claude call with message (includes AI prefix for reply routing)
                 claude_cmd = mock_send.call_args_list[2][1]["command"]
-                assert claude_cmd.startswith("/agent claude 'AI[")
+                assert claude_cmd.startswith("/agent claude slow 'AI[")
                 assert "| ls -la'" in claude_cmd
                 assert mock_send.call_args_list[2][1]["session_id"] == "remote-uuid-123"
 

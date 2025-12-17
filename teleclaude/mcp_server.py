@@ -206,6 +206,12 @@ class TeleClaudeMCPServer:
                                 "default": "claude",
                                 "description": "Which AI agent to start in the session. Defaults to 'claude'.",
                             },
+                            "mode": {
+                                "type": "string",
+                                "description": "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). Default: slow",
+                                "enum": ["fast", "med", "slow"],
+                                "default": "slow",
+                            },
                             "project_dir": {
                                 "type": "string",
                                 "description": (
@@ -309,6 +315,12 @@ class TeleClaudeMCPServer:
                                 "enum": ["claude", "gemini", "codex"],
                                 "default": "claude",
                                 "description": "Agent type for new sessions. Default: claude",
+                            },
+                            "mode": {
+                                "type": "string",
+                                "description": "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). Default: slow",
+                                "enum": ["fast", "med", "slow"],
+                                "default": "slow",
                             },
                             "subfolder": {
                                 "type": "string",
@@ -870,6 +882,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
+        mode: str = "slow",
     ) -> dict[str, object]:
         """Create session on local or remote computer.
 
@@ -889,8 +902,8 @@ class TeleClaudeMCPServer:
             dict with session_id and status
         """
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message, caller_session_id, agent)
-        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, agent)
+            return await self._start_local_session(project_dir, title, message, caller_session_id, agent, mode)
+        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, agent, mode)
 
     async def _start_local_session(
         self,
@@ -899,6 +912,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
+        mode: str = "slow",
     ) -> dict[str, object]:
         """Create session on local computer directly via handle_event.
 
@@ -961,7 +975,7 @@ class TeleClaudeMCPServer:
         # Send command with prefixed message to start the agent
         await self.client.handle_event(
             TeleClaudeEvents.AGENT_START,
-            {"session_id": session_id, "args": [agent, prefixed_message]},  # Pass agent name and message as args
+            {"session_id": session_id, "args": [agent, mode, prefixed_message]},
             MessageMetadata(adapter_type="redis"),
         )
         logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
@@ -976,6 +990,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
+        mode: str = "slow",
     ) -> dict[str, object]:
         """Create session on remote computer via Redis transport.
 
@@ -1094,7 +1109,7 @@ class TeleClaudeMCPServer:
             quoted_message = shlex.quote(prefixed_message)
             await self.client.send_request(
                 computer_name=computer,
-                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {quoted_message}",
+                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {mode} {quoted_message}",
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
@@ -1285,6 +1300,7 @@ class TeleClaudeMCPServer:
         agent: str = "claude",
         subfolder: str = "",
         caller_session_id: str | None = None,
+        mode: str = "slow",
     ) -> dict[str, object]:
         """Run a slash command on an AI agent session.
 
@@ -1337,6 +1353,7 @@ class TeleClaudeMCPServer:
             message=full_command,
             caller_session_id=caller_session_id,
             agent=agent,
+            mode=mode,
         )
         return result
 

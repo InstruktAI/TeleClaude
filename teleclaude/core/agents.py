@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Optional
+
+from teleclaude.config import AgentConfig, config
 
 
 class AgentName(str, Enum):
@@ -20,3 +23,72 @@ class AgentName(str, Enum):
             if member.value == normalized:
                 return member
         raise ValueError(f"Unknown agent '{value}'")
+
+
+def _get_agent_config(agent: str) -> AgentConfig:
+    """Fetch AgentConfig or raise clear error for unknown agent."""
+    cfg = config.agents.get(agent)
+    if not cfg:
+        raise ValueError(f"Unknown agent '{agent}'")
+    return cfg
+
+
+def get_agent_command(
+    agent: str,
+    mode: str = "slow",
+    exec: bool = False,  # noqa: A003 - follows public API naming
+    resume: bool = False,
+    native_session_id: Optional[str] = None,
+) -> str:
+    """
+    Build agent command string.
+
+    Consolidates all agent command assembly into a single function.
+    Handles both fresh starts and session resumption.
+
+    Args:
+        agent: Agent name ('claude', 'gemini', 'codex')
+        mode: Model tier ('fast', 'med', 'slow'). Default 'slow' (most capable).
+        exec: If True, include exec_subcommand after base command (e.g., 'exec' for Codex)
+        resume: If True and no native_session_id, adds --resume flag (CLI finds last session)
+        native_session_id: If provided, uses resume_template with this session ID (ignores resume flag)
+
+    Returns:
+        Assembled command string, ready for prompt to be appended.
+
+    Command assembly order:
+        - With native_session_id: resume_template.format(base_cmd=..., session_id=...)
+        - Without: {base_command} {exec_subcommand?} {model_flags} {--resume?}
+
+    Examples:
+        >>> get_agent_command("claude", mode="fast")
+        'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' -m haiku'
+
+        >>> get_agent_command("codex", mode="slow", exec=True)
+        'codex --dangerously-bypass-approvals-and-sandbox --search exec -m gpt-5.2'
+
+        >>> get_agent_command("claude", native_session_id="abc123")
+        'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' --resume abc123'
+    """
+    agent_cfg = _get_agent_config(agent)
+    base_cmd = agent_cfg.command.strip()
+
+    if native_session_id:
+        return agent_cfg.resume_template.format(base_cmd=base_cmd, session_id=native_session_id)
+
+    model_flag = agent_cfg.model_flags.get(mode)
+    if model_flag is None:
+        raise ValueError(f"Invalid mode '{mode}' for agent '{agent}'")
+
+    parts: list[str] = [base_cmd]
+
+    if exec and agent_cfg.exec_subcommand:
+        parts.append(agent_cfg.exec_subcommand)
+
+    if model_flag:
+        parts.append(model_flag)
+
+    if resume:
+        parts.append("--resume")
+
+    return " ".join(parts)

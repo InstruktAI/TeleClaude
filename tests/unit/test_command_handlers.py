@@ -502,9 +502,15 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
     mock_execute = AsyncMock()
     mock_client = MagicMock()
 
-    # Mock agent config with MagicMock to avoid TypeError
-    mock_agent_config = MagicMock(spec=AgentConfig)
-    mock_agent_config.command = "claude"
+    mock_agent_config = AgentConfig(
+        command="claude",
+        session_dir="~/.claude/sessions",
+        log_pattern="*.jsonl",
+        model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
+        exec_subcommand="",
+        resume_template="{base_cmd} --resume {session_id}",
+        continue_template="",
+    )
 
     with patch.object(command_handlers, "config") as mock_config:
         mock_config.agents.get.return_value = mock_agent_config
@@ -540,8 +546,15 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
     mock_execute = AsyncMock()
     mock_client = MagicMock()
 
-    mock_agent_config = MagicMock(spec=AgentConfig)
-    mock_agent_config.command = "codex"
+    mock_agent_config = AgentConfig(
+        command="codex",
+        session_dir="~/.codex/sessions",
+        log_pattern="*.jsonl",
+        model_flags={"fast": "-m gpt-5.1-codex-mini", "med": "-m gpt-5.1-codex", "slow": "-m gpt-5.2"},
+        exec_subcommand="exec",
+        resume_template="{base_cmd} resume {session_id}",
+        continue_template="",
+    )
 
     with patch.object(command_handlers, "config") as mock_config:
         mock_config.agents.get.return_value = mock_agent_config
@@ -572,8 +585,19 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     mock_execute = AsyncMock(return_value=True)
     mock_client = MagicMock()
 
-    mock_agent_config = MagicMock(spec=AgentConfig)
-    mock_agent_config.command = "gemini --yolo"
+    mock_agent_config = AgentConfig(
+        command="gemini --yolo",
+        session_dir="~/.gemini/sessions",
+        log_pattern="*.jsonl",
+        model_flags={
+            "fast": "-m gemini-2.5-flash-lite",
+            "med": "-m gemini-2.5-flash",
+            "slow": "-m gemini-3-pro-preview",
+        },
+        exec_subcommand="",
+        resume_template="{base_cmd} --resume {session_id}",
+        continue_template="",
+    )
 
     # Mock UX state with native session ID
     mock_ux_state = MagicMock(spec=SessionUXState)

@@ -16,9 +16,8 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 import psutil
 
 from teleclaude.config import config
-from teleclaude.constants import AGENT_RESUME_TEMPLATES
 from teleclaude.core import terminal_bridge
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
 from teleclaude.core.models import MessageMetadata, Session
@@ -1139,15 +1138,20 @@ async def handle_agent_start(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    full_command = agent_config.command
+    mode = "slow"
+    user_args = list(args)
+    if user_args and user_args[0] in {"fast", "med", "slow"}:
+        mode = user_args.pop(0)
 
-    cmd_parts = [full_command]
+    base_cmd = get_agent_command(agent_name, mode=mode)
 
-    # Add any additional arguments from the user
-    if args:
-        # Use shlex.quote for proper shell escaping
-        quoted_args = [shlex.quote(arg) for arg in args]
+    cmd_parts = [base_cmd]
+
+    # Add any additional arguments from the user (prompt or flags)
+    if user_args:
+        quoted_args = [shlex.quote(arg) for arg in user_args]
         cmd_parts.extend(quoted_args)
+
     cmd = " ".join(cmd_parts)
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
@@ -1186,20 +1190,21 @@ async def handle_agent_resume(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    base_cmd = agent_config.command.strip()
-
     # Get native session ID from UX state
     ux_state = await db.get_ux_state(session.session_id)
     native_session_id = ux_state.native_session_id if ux_state else None
 
+    cmd = get_agent_command(
+        agent=agent_name,
+        mode="slow",
+        exec=False,
+        resume=not native_session_id,
+        native_session_id=native_session_id,
+    )
+
     if native_session_id:
-        # Use agent-specific resume template
-        template = AGENT_RESUME_TEMPLATES["agent_name"]
-        cmd = template.format(base_cmd=base_cmd, session_id=native_session_id)
         logger.info("Resuming %s session %s (from database)", agent_name, native_session_id[:8])
     else:
-        # No session ID - just start fresh
-        cmd = base_cmd
         logger.info("Starting fresh %s session (no native session ID in database)", agent_name)
 
     # Save active agent to UX state
