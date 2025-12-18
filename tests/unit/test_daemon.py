@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from teleclaude import config as config_module
+from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
+from teleclaude.core.models import MessageMetadata
 from teleclaude.daemon import TeleClaudeDaemon
 
 
@@ -97,6 +99,35 @@ def mock_daemon():
         daemon._execute_terminal_command = AsyncMock(return_value=True)
 
         yield daemon
+
+
+@pytest.mark.asyncio
+async def test_get_session_data_parses_tail_chars_without_placeholders():
+    """GET_SESSION_DATA should accept '/get_session_data <tail_chars>' form.
+
+    Redis/MCP transport collapses empty placeholders, so callers can't reliably send
+    '/get_session_data <since> <until> <tail_chars>' with empty since/until values.
+    """
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    context = CommandEventContext(session_id="sess-123", args=[])
+
+    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new_callable=AsyncMock) as mock_handler:
+        mock_handler.return_value = {"status": "success"}
+        await daemon.handle_command(
+            TeleClaudeEvents.GET_SESSION_DATA,
+            ["2000"],
+            context,
+            MessageMetadata(adapter_type="redis"),
+        )
+
+        mock_handler.assert_awaited_once()
+        _, call_kwargs = mock_handler.call_args
+        assert call_kwargs == {}
+        call_args = mock_handler.call_args.args
+        assert call_args[0] is context
+        assert call_args[1] is None
+        assert call_args[2] is None
+        assert call_args[3] == 2000
 
 
 @pytest.mark.asyncio

@@ -1040,10 +1040,40 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects()
         elif command == TeleClaudeEvents.GET_SESSION_DATA:
-            # Parse args: [since_timestamp, until_timestamp, tail_chars]
-            since_timestamp = args[0] if len(args) > 0 and args[0] else None
-            until_timestamp = args[1] if len(args) > 1 and args[1] else None
-            tail_chars = int(args[2]) if len(args) > 2 and args[2] else 5000
+            # Parse args: [since_timestamp] [until_timestamp] [tail_chars]
+            #
+            # NOTE: When commands are sent over Redis as a space-separated string,
+            # empty placeholders collapse (multiple spaces become one) so callers
+            # cannot reliably send "" for since/until. Support flexible forms:
+            # - /get_session_data
+            # - /get_session_data 2000
+            # - /get_session_data <since> 2000
+            # - /get_session_data <since> <until> 2000
+            since_timestamp: Optional[str] = None
+            until_timestamp: Optional[str] = None
+            tail_chars = 5000
+
+            if len(args) == 1:
+                # Either tail_chars or since_timestamp
+                try:
+                    tail_chars = int(args[0])
+                except ValueError:
+                    since_timestamp = args[0] or None
+            elif len(args) == 2:
+                # Either since+tail_chars or since+until
+                try:
+                    tail_chars = int(args[1])
+                    since_timestamp = args[0] or None
+                except ValueError:
+                    since_timestamp = args[0] or None
+                    until_timestamp = args[1] or None
+            elif len(args) >= 3:
+                since_timestamp = args[0] or None
+                until_timestamp = args[1] or None
+                try:
+                    tail_chars = int(args[2]) if args[2] else 5000
+                except ValueError:
+                    tail_chars = 5000
             return await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
             logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
