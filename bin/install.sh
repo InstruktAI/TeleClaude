@@ -404,7 +404,6 @@ WORKING_DIR=${INSTALL_DIR}
 
 # Logging Configuration
 TELECLAUDE_LOG_LEVEL=INFO
-TELECLAUDE_LOG_FILE=${DAEMON_LOG_FILE}
 
 # OpenAI API Key (for voice transcription via Whisper)
 OPENAI_API_KEY=${OPENAI_KEY}

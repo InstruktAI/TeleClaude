@@ -123,7 +123,14 @@ The service automatically:
 
 - Starts on system boot
 - Restarts if it crashes
-- Logs to `logs/teleclaude.log`
+- Logs to `logs/teleclaude.log` (filtered operator log)
+
+Other useful logs:
+
+- `logs/telegram.log` — Telegram adapter details
+- `logs/redis.log` — Redis adapter details
+- `logs/mcp_server.log` — MCP backend tool calls
+- `logs/mcp-wrapper.log` — MCP wrapper connection / handshake details
 
 **Development mode** (run in foreground):
 
@@ -431,6 +438,10 @@ make start
 1. Check status: `make status`
 2. Restart daemon: `make restart`
 3. Check daemon logs: `tail -f logs/teleclaude.log`
+
+Log verbosity:
+
+- `TELECLAUDE_LOG_LEVEL` controls overall daemon log level (including component logs in `logs/`).
 
 ## Contributing
 4. Verify bot token is correct in `.env`

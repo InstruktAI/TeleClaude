@@ -99,7 +99,7 @@ class PathFormatter(logging.Formatter):
         return formatted
 
 
-def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -> None:
+def setup_logging(level: Optional[str] = None) -> None:
     """
     Setup logging with standardized format and rotation.
 
@@ -168,19 +168,17 @@ def setup_logging(level: Optional[str] = None, log_file: Optional[str] = None) -
                 handler.setFormatter(file_formatter)
                 actor_logger.addHandler(handler)
             except (PermissionError, OSError) as e:
-                print(f"Warning: Could not set up log for {logger_name}: {e}", file=sys.stderr)
+                print(
+                    f"Warning: Could not set up log for {logger_name}: {e}",
+                    file=sys.stderr,
+                )
 
     handlers: list[logging.Handler] = []
 
     # Main Log File (Root Logger)
-    # Use provided log_file OR default to logs/teleclaude.log
-    main_log_path = Path(log_file) if log_file else (logs_dir / "teleclaude.log")
+    main_log_path = logs_dir / "teleclaude.log"
 
     try:
-        # Ensure parent dir exists (if custom path provided)
-        if log_file:
-            main_log_path.parent.mkdir(parents=True, exist_ok=True)
-
         file_handler = RotatingFileHandler(
             main_log_path,
             maxBytes=1024 * 1024,  # 1MB

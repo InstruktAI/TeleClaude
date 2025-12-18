@@ -12,7 +12,7 @@ import logging
 import os
 import re
 import sys
-from logging.handlers import WatchedFileHandler
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import MutableMapping, TypedDict
 
@@ -23,14 +23,24 @@ LOGS_DIR.mkdir(exist_ok=True)
 LOG_FILE = LOGS_DIR / "mcp-wrapper.log"
 
 # NOTE: We must never log to stdout/stderr because this process is the MCP stdio transport.
-_log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+_log_level_name = (os.getenv("MCP_WRAPPER_LOG_LEVEL") or os.getenv("LOG_LEVEL") or "INFO").upper()
 _log_level = getattr(logging, _log_level_name, logging.INFO)
-# Use system log rotation (macOS: newsyslog, Linux: logrotate).
-# WatchedFileHandler notices external rotation and reopens the file automatically.
-_log_handler = WatchedFileHandler(
+# MCP wrapper logs can get noisy during reconnect loops. Always use internal
+# rotation to prevent runaway disk usage even when system logrotate isn't configured.
+_log_handler = RotatingFileHandler(
     str(LOG_FILE),
+    maxBytes=1024 * 1024,  # 1MB
+    backupCount=5,
     encoding="utf-8",
 )
+# If a previous run produced an oversized log file, roll it immediately so new
+# logs start fresh. This avoids appending into a multi-GB file indefinitely.
+try:
+    if LOG_FILE.exists() and LOG_FILE.stat().st_size > 1024 * 1024:
+        _log_handler.doRollover()
+except Exception:
+    # Best-effort only: never crash the wrapper because of logging.
+    pass
 _log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 logging.root.setLevel(_log_level)
 logging.root.handlers = [_log_handler]
@@ -442,7 +452,11 @@ class MCPProxy:
                             "TeleClaude backend is restarting or busy (wrapper queue full). Please retry.",
                         )
                     else:
-                        logger.warning("Dropping notification due to full outbound queue")
+                        self._log_throttled(
+                            "outbound:queue_full:notify",
+                            logging.WARNING,
+                            "Dropping notification due to full outbound queue",
+                        )
         except Exception as e:
             logger.error("stdin_to_socket error: %s", e)
 
@@ -501,7 +515,12 @@ class MCPProxy:
                 self.writer.write(item["raw"])
                 await self.writer.drain()
             except (ConnectionResetError, BrokenPipeError):
-                logger.warning("Backend disconnected while sending (method=%s)", method)
+                self._log_throttled(
+                    "backend:disconnect:send",
+                    logging.WARNING,
+                    "Backend disconnected while sending (method=%s)",
+                    method,
+                )
                 self._schedule_reconnect("send failure")
                 # Retry once by re-queueing; if it fails again, error out.
                 attempts = int(item.get("attempts", 0)) + 1
@@ -522,7 +541,7 @@ class MCPProxy:
                                 "TeleClaude backend restarting (queue full). Please retry.",
                             )
             except Exception as e:
-                logger.warning("Failed sending request to backend: %s", e)
+                self._log_throttled("backend:send:error", logging.WARNING, "Failed sending request to backend: %s", e)
                 if request_id is not None:
                     await self._send_error(
                         request_id,
@@ -540,7 +559,7 @@ class MCPProxy:
                 try:
                     line = await self.reader.readline()
                     if not line:
-                        logger.info("Backend closed connection (EOF)")
+                        self._log_throttled("backend:eof", logging.INFO, "Backend closed connection (EOF)")
                         self._schedule_reconnect("backend EOF")
                         # Wait before next iteration to prevent tight loop when
                         # backend keeps accepting then closing connections
@@ -590,7 +609,7 @@ class MCPProxy:
                     sys.stdout.buffer.write(line)
                     sys.stdout.buffer.flush()
                 except (ConnectionResetError, BrokenPipeError):
-                    logger.warning("Backend disconnected")
+                    self._log_throttled("backend:disconnect:read", logging.WARNING, "Backend disconnected")
                     self._schedule_reconnect("backend disconnect")
                     await asyncio.sleep(RECONNECT_DELAY)
         except Exception as e:
