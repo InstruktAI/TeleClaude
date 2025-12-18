@@ -17,6 +17,8 @@ from typing import Optional
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
 
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+
 
 def trace(self: logging.Logger, message: str, *args: object, **kwargs: object) -> None:
     """Log trace message."""

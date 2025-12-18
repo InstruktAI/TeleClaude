@@ -1203,18 +1203,28 @@ async def handle_agent_resume(
     Args:
         session: Session object (injected by @with_session)
         context: Command context with message_id
-        agent_name: The name of the agent to resume
+        agent_name: The name of the agent to resume (if empty, uses active_agent from UX state)
         args: Command arguments (currently unused - session ID comes from database)
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
+    # Get UX state first - needed for both active_agent fallback and native_session_id
+    ux_state = await db.get_ux_state(session.session_id)
+
+    # If no agent_name provided, use active_agent from session
+    if not agent_name:
+        active = ux_state.active_agent if ux_state else None
+        if not active:
+            await client.send_feedback(session, "No active agent to resume", MessageMetadata())
+            return
+        agent_name = active
+
     agent_config = config.agents.get(agent_name)
     if not agent_config:
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
     # Get native session ID from UX state
-    ux_state = await db.get_ux_state(session.session_id)
     native_session_id = ux_state.native_session_id if ux_state else None
 
     cmd = get_agent_command(

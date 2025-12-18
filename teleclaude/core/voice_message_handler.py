@@ -117,7 +117,9 @@ async def transcribe_voice(
 
         transcribed_text: str = str(transcript.text).strip()  # type: ignore[misc]
         logger.info(
-            "✓ Transcription successful: '%s' (length: %s chars)", transcribed_text[:100], len(transcribed_text)
+            "✓ Transcription successful: '%s' (length: %s chars)",
+            transcribed_text[:100],
+            len(transcribed_text),
         )
         return transcribed_text
 
@@ -209,7 +211,10 @@ async def handle_voice(
     adapter_metadata = getattr(session.adapter_metadata, session.origin_adapter, None)  # type: ignore[misc]
     current_message_id = adapter_metadata.output_message_id if adapter_metadata else None  # type: ignore[misc]
     if current_message_id is None:  # type: ignore[misc]
-        logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
+        logger.warning(
+            "No output message yet for session %s, polling may have just started",
+            session_id[:8],
+        )
         # Send rejection message
         await send_feedback(
             session_id,
@@ -259,12 +264,6 @@ async def handle_voice(
         )
         return
 
-    # Strip leading // and replace with / (Telegram workaround - only at start of input)
-    # Double slash bypasses Telegram command detection so raw command goes to Claude Code
-    if text.startswith("//"):
-        text = "/" + text[2:]
-        logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
-
     logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], text)
     success, _ = await terminal_bridge.send_keys(
         session.tmux_session_name,
@@ -284,4 +283,7 @@ async def handle_voice(
     await db.update_last_activity(session_id)
 
     # Voice input sent to running process - existing poll will capture output
-    logger.debug("Voice input sent to running process in session %s, existing poll will capture output", session_id[:8])
+    logger.debug(
+        "Voice input sent to running process in session %s, existing poll will capture output",
+        session_id[:8],
+    )

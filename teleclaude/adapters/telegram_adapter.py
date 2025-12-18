@@ -71,7 +71,14 @@ from .base_adapter import AdapterError
 from .ui_adapter import UiAdapter
 
 # Status emoji mapping
-STATUS_EMOJI = {"active": "🟢", "waiting": "🟡", "slow": "🟠", "stalled": "🔴", "idle": "⏸️", "dead": "❌"}
+STATUS_EMOJI = {
+    "active": "🟢",
+    "waiting": "🟡",
+    "slow": "🟠",
+    "stalled": "🔴",
+    "idle": "⏸️",
+    "dead": "❌",
+}
 
 
 # TypedDicts for JSON/dict structures with known schemas
@@ -240,7 +247,12 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         # Add download button if Agent session available
         if ux_state.native_log_file:
             keyboard = [
-                [InlineKeyboardButton("📎 Download Agent session", callback_data=f"download_full:{session.session_id}")]
+                [
+                    InlineKeyboardButton(
+                        "📎 Download Agent session",
+                        callback_data=f"download_full:{session.session_id}",
+                    )
+                ]
             ]
             return MessageMetadata(reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -352,7 +364,11 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
         # Get bot info for diagnostics
         bot_info = await self.bot.get_me()
-        logger.info("Telegram adapter started. Bot: @%s (ID: %s)", bot_info.username, bot_info.id)
+        logger.info(
+            "Telegram adapter started. Bot: @%s (ID: %s)",
+            bot_info.username,
+            bot_info.id,
+        )
         logger.info("Configured supergroup ID: %s", self.supergroup_id)
         logger.info("Whitelisted user IDs: %s", self.user_whitelist)
 
@@ -365,10 +381,17 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
                 # Set commands for the specific supergroup (not global)
                 scope = BotCommandScopeChat(chat_id=self.supergroup_id)
                 await self.bot.set_my_commands(commands, scope=scope)
-                logger.info("Registered %d bot commands with Telegram for supergroup (master computer)", len(commands))
+                logger.info(
+                    "Registered %d bot commands with Telegram for supergroup (master computer)",
+                    len(commands),
+                )
             except BadRequest as e:
                 # Don't crash the daemon if the bot isn't in the group yet / chat_id is wrong.
-                logger.error("Failed to register bot commands for supergroup %s: %s", self.supergroup_id, e)
+                logger.error(
+                    "Failed to register bot commands for supergroup %s: %s",
+                    self.supergroup_id,
+                    e,
+                )
         else:
             # Non-master: Clear all commands (both global and supergroup)
             # This removes old cached commands that cause @BotName autocomplete
@@ -378,7 +401,11 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
                 await self.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
                 logger.info("Cleared all bot commands (non-master computer)")
             except BadRequest as e:
-                logger.error("Failed to clear bot commands for supergroup %s: %s", self.supergroup_id, e)
+                logger.error(
+                    "Failed to clear bot commands for supergroup %s: %s",
+                    self.supergroup_id,
+                    e,
+                )
 
         # Try to get chat info to verify bot is in the group
         try:
@@ -399,7 +426,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             raise AdapterError("Database connection not available")
         if system_state.registry.ping_message_id:
             self.registry_message_id = system_state.registry.ping_message_id
-            logger.info("Restored registry_message_id from system UX state: %s", self.registry_message_id)
+            logger.info(
+                "Restored registry_message_id from system UX state: %s",
+                self.registry_message_id,
+            )
 
         # Start peer discovery heartbeat (advertisement only)
         logger.info("Starting peer discovery heartbeat loop")
@@ -434,12 +464,22 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _send_message_with_retry(
-        self, topic_id: int, formatted_text: str, reply_markup: object, parse_mode: Optional[str]
+        self,
+        topic_id: int,
+        formatted_text: str,
+        reply_markup: object,
+        parse_mode: Optional[str],
     ) -> Message:
         """Internal method with retry logic for sending messages."""
         # Type guard for reply_markup
         if reply_markup is not None and not isinstance(
-            reply_markup, (InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, ForceReply)
+            reply_markup,
+            (
+                InlineKeyboardMarkup,
+                ReplyKeyboardMarkup,
+                ReplyKeyboardRemove,
+                ForceReply,
+            ),
         ):
             reply_markup = None
         return await self.bot.send_message(
@@ -485,7 +525,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
         # CRITICAL: Handle None message_id (happens during daemon restart)
         if not message_id:
-            logger.warning("edit_message called with None message_id for session %s, ignoring", session.session_id[:8])
+            logger.warning(
+                "edit_message called with None message_id for session %s, ignoring",
+                session.session_id[:8],
+            )
             return False
 
         # Extract reply_markup from metadata
@@ -495,7 +538,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         # subsequent updates return True without actually sending, leading to stuck messages.
         # Instead, cancel the pending edit and start fresh with latest data.
         if message_id in self._pending_edits:
-            logger.debug("Cancelling stale edit for message %s, starting fresh with latest content", message_id)
+            logger.debug(
+                "Cancelling stale edit for message %s, starting fresh with latest content",
+                message_id,
+            )
             self._pending_edits.pop(message_id)  # Remove stale edit
 
         # Create new edit context (mutable)
@@ -507,19 +553,30 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             logger.debug("[TELEGRAM %s] Starting edit_message API call", session.session_id[:8])
             await self._edit_message_with_retry(session, ctx)
             elapsed = time.time() - start_time
-            logger.debug("[TELEGRAM %s] edit_message completed in %.2fs", session.session_id[:8], elapsed)
+            logger.debug(
+                "[TELEGRAM %s] edit_message completed in %.2fs",
+                session.session_id[:8],
+                elapsed,
+            )
             return True
         except BadRequest as e:
             # "Message is not modified" is benign - message exists, just unchanged
             # Return True to prevent clearing output_message_id (which would cause new messages)
             if "message is not modified" in str(e).lower():
-                logger.debug("[TELEGRAM %s] Message not modified (content unchanged)", session.session_id[:8])
+                logger.debug(
+                    "[TELEGRAM %s] Message not modified (content unchanged)",
+                    session.session_id[:8],
+                )
                 return True
             # Other BadRequest errors (e.g., "Message to edit not found") are real failures
             logger.error("[TELEGRAM %s] edit_message failed: %s", session.session_id[:8], e)
             return False
         except Exception as e:
-            logger.error("[TELEGRAM %s] edit_message failed after retries: %s", session.session_id[:8], e)
+            logger.error(
+                "[TELEGRAM %s] edit_message failed after retries: %s",
+                session.session_id[:8],
+                e,
+            )
             return False
         finally:
             # Remove from pending edits regardless of outcome
@@ -585,7 +642,11 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             for msg_id in pending:
                 try:
                     await self.delete_message(session, msg_id)
-                    logger.debug("Deleted pending message %s for session %s", msg_id, session.session_id[:8])
+                    logger.debug(
+                        "Deleted pending message %s for session %s",
+                        msg_id,
+                        session.session_id[:8],
+                    )
                 except Exception as e:
                     # Resilient to already-deleted messages
                     logger.warning("Failed to delete message %s: %s", msg_id, e)
@@ -622,7 +683,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
         with open(file_path, "rb") as f:
             message = await self.bot.send_document(
-                chat_id=self.supergroup_id, message_thread_id=topic_id, document=f, caption=caption
+                chat_id=self.supergroup_id,
+                message_thread_id=topic_id,
+                document=f,
+                caption=caption,
             )
 
         return str(message.message_id)
@@ -635,7 +699,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         parse_mode = metadata.parse_mode
 
         result = await self.bot.send_message(
-            chat_id=self.supergroup_id, message_thread_id=message_thread_id, text=text, parse_mode=parse_mode
+            chat_id=self.supergroup_id,
+            message_thread_id=message_thread_id,
+            text=text,
+            parse_mode=parse_mode,
         )
         return str(result.message_id)
 
@@ -1278,7 +1345,9 @@ Current size: {current_size}
         await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
         reply_markup = self._build_project_keyboard("cd")
         await self.send_feedback(
-            session, "**Select a directory:**", MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown")
+            session,
+            "**Select a directory:**",
+            MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown"),
         )
 
     async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:
@@ -1303,24 +1372,24 @@ Current size: {current_size}
             metadata=self._metadata(),
         )
 
-    async def _handle_agent_resume_command(
-        self, update: Update, _context: ContextTypes.DEFAULT_TYPE, agent_name: str
-    ) -> None:
-        """Generic handler for agent resume commands."""
+    async def _handle_agent_resume_command(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /agent_resume command - resume the last AI agent session.
+
+        Resumes the active agent from the session's UX state. No arguments needed.
+        """
         session = await self._get_session_from_topic(update)
         if not session:
             return
 
-        # After successful session fetch, effective_user and effective_message are guaranteed non-None
         assert update.effective_user is not None
         assert update.effective_message is not None
 
+        # Agent name comes from session's active_agent in UX state (handled by daemon)
         await self.client.handle_event(
             event=TeleClaudeEvents.AGENT_RESUME,
             payload={
-                "command": self._event_to_command(f"{agent_name}_resume"),
-                "agent_name": agent_name,
-                "args": [],
+                "command": "agent_resume",
+                "args": [],  # Empty - daemon gets agent from UX state
                 "session_id": session.session_id,
                 "message_id": str(update.effective_message.message_id),
             },
@@ -1338,18 +1407,6 @@ Current size: {current_size}
     async def _handle_codex(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /codex command - start Codex agent."""
         await self._handle_agent_command(update, context, "codex")
-
-    async def _handle_claude_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /claude_resume command - resume last Claude agent session."""
-        await self._handle_agent_resume_command(update, context, "claude")
-
-    async def _handle_gemini_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /gemini_resume command - resume last Gemini agent session."""
-        await self._handle_agent_resume_command(update, context, "gemini")
-
-    async def _handle_codex_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /codex_resume command - resume last Codex agent session."""
-        await self._handle_agent_resume_command(update, context, "codex")
 
     async def _handle_agent_restart(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /agent_restart command - restart Agent in this session."""
@@ -1423,7 +1480,10 @@ Current size: {current_size}
                 native_log_file = ux_state.native_log_file if ux_state else None
                 agent_value = ux_state.active_agent if ux_state else None
                 if not agent_value:
-                    await query.edit_message_text("❌ Active agent unknown for this session", parse_mode="Markdown")
+                    await query.edit_message_text(
+                        "❌ Active agent unknown for this session",
+                        parse_mode="Markdown",
+                    )
                     return
                 try:
                     agent_name = AgentName.from_str(agent_value)
@@ -1443,7 +1503,8 @@ Current size: {current_size}
                 # Convert transcript to markdown
                 if not native_log_file:
                     await query.edit_message_text(
-                        f"❌ No {parser_info.display_name} session file found", parse_mode="Markdown"
+                        f"❌ No {parser_info.display_name} session file found",
+                        parse_mode="Markdown",
                     )
                     return
                 markdown_content = parse_session_transcript(
@@ -1576,12 +1637,21 @@ Current size: {current_size}
             bot_info = await self.bot.get_me()
             keyboard: list[tuple[InlineKeyboardButton, ...]] = list(reply_markup.inline_keyboard)
             keyboard.append(
-                tuple([InlineKeyboardButton(text="❌ Cancel", callback_data=f"ccancel:{bot_info.username}")])
+                tuple(
+                    [
+                        InlineKeyboardButton(
+                            text="❌ Cancel",
+                            callback_data=f"ccancel:{bot_info.username}",
+                        )
+                    ]
+                )
             )
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(
-                f"**Select project for {mode_label}:**", reply_markup=reply_markup, parse_mode="Markdown"
+                f"**Select project for {mode_label}:**",
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
             )
 
         elif action == "ccancel":
@@ -1714,7 +1784,10 @@ Current size: {current_size}
                     reply_markup=reply_markup,
                 )
                 self.registry_message_id = msg.message_id
-                logger.info("Posted registry heartbeat with button: message_id=%s", self.registry_message_id)
+                logger.info(
+                    "Posted registry heartbeat with button: message_id=%s",
+                    self.registry_message_id,
+                )
 
                 # Persist to system UX state (for clean UX after restart)
                 if db._db:
@@ -1748,7 +1821,10 @@ Current size: {current_size}
                     m for m in self._topic_message_cache[topic_id] if m.message_id != self.registry_message_id
                 ]
                 self._topic_message_cache[topic_id].append(edited_message)
-                logger.debug("Updated registry heartbeat: message_id=%s", self.registry_message_id)
+                logger.debug(
+                    "Updated registry heartbeat: message_id=%s",
+                    self.registry_message_id,
+                )
             except Exception as e:
                 error_lower = str(e).lower()
                 # If message was deleted, post new one
@@ -1870,7 +1946,7 @@ Usage:
         if not session:
             logger.warning(
                 "Session lookup failed for message in topic %s (user: %s, text: %s)",
-                update.effective_message.message_thread_id if update.effective_message else None,
+                (update.effective_message.message_thread_id if update.effective_message else None),
                 update.effective_user.id if update.effective_user else None,
                 (
                     update.effective_message.text[:50]
@@ -1911,7 +1987,11 @@ Usage:
             return
 
         logger.info("=== VOICE MESSAGE HANDLER CALLED ===")
-        logger.info("Message ID: %s (edited: %s)", message.message_id, update.edited_message is not None)
+        logger.info(
+            "Message ID: %s (edited: %s)",
+            message.message_id,
+            update.edited_message is not None,
+        )
         logger.info("User: %s", update.effective_user.id)
         logger.info("Thread ID: %s", message.message_thread_id)
 
@@ -1933,7 +2013,10 @@ Usage:
 
         session = await self._get_session_from_topic(update)
         if not session:
-            logger.warning("No session found for voice message in thread %s", message.message_thread_id)
+            logger.warning(
+                "No session found for voice message in thread %s",
+                message.message_thread_id,
+            )
             return
 
         # Download voice file to temp location
@@ -1962,13 +2045,20 @@ Usage:
             # Emit voice event to daemon
             await self.client.handle_event(
                 event=TeleClaudeEvents.VOICE,
-                payload={"session_id": session.session_id, "file_path": str(temp_file_path)},
+                payload={
+                    "session_id": session.session_id,
+                    "file_path": str(temp_file_path),
+                },
                 metadata=self._metadata(),
             )
         except Exception as e:
             error_msg = str(e) if str(e).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
-            await self.send_feedback(session, f"❌ Failed to download voice message: {error_msg}", MessageMetadata())
+            await self.send_feedback(
+                session,
+                f"❌ Failed to download voice message: {error_msg}",
+                MessageMetadata(),
+            )
 
     async def _handle_file_attachment(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle file attachments (documents, photos) in topics - both new and edited messages."""
@@ -2022,7 +2112,7 @@ Usage:
                     "file_path": str(file_path),
                     "filename": file_name,
                     "file_type": file_type,
-                    "file_size": file_obj.file_size if hasattr(file_obj, "file_size") else 0,
+                    "file_size": (file_obj.file_size if hasattr(file_obj, "file_size") else 0),
                     "caption": message.caption.strip() if message.caption else None,
                 },
                 metadata=self._metadata(),
@@ -2054,7 +2144,11 @@ Usage:
             return
 
         session = sessions[0]
-        logger.info("Topic %s closed by user, closing session %s", topic_id, session.session_id[:8])
+        logger.info(
+            "Topic %s closed by user, closing session %s",
+            topic_id,
+            session.session_id[:8],
+        )
 
         # Emit session_closed event to daemon for cleanup
         await self.client.handle_event(
@@ -2078,7 +2172,11 @@ Usage:
             return
 
         session = sessions[0]
-        logger.info("Topic %s reopened by user, reopening session %s", topic_id, session.session_id[:8])
+        logger.info(
+            "Topic %s reopened by user, reopening session %s",
+            topic_id,
+            session.session_id[:8],
+        )
 
         # Emit session_reopened event to daemon
         await self.client.handle_event(

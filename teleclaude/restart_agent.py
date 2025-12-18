@@ -88,11 +88,19 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
         logger.error("Unknown agent: %s", target_agent)
         return False
 
+    if native_session_id:
+        logger.info(
+            "Resuming %s session %s (from database)",
+            target_agent,
+            native_session_id[:8],
+        )
+    else:
+        raise RuntimeError("No native session ID found for resuming session")
+
     restart_cmd = get_agent_command(
         agent=target_agent,
         mode="slow",
         exec=False,
-        resume=not native_session_id,
         native_session_id=native_session_id,
     )
 
