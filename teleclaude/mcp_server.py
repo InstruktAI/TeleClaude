@@ -206,9 +206,21 @@ class TeleClaudeMCPServer:
                                 "default": "claude",
                                 "description": "Which AI agent to start in the session. Defaults to 'claude'.",
                             },
+                            "thinking_mode": {
+                                "type": "string",
+                                "description": (
+                                    "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). "
+                                    "Default: slow"
+                                ),
+                                "enum": ["fast", "med", "slow"],
+                                "default": "slow",
+                            },
                             "mode": {
                                 "type": "string",
-                                "description": "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). Default: slow",
+                                "description": (
+                                    "[DEPRECATED] Use thinking_mode. Model tier: 'fast' (cheapest), 'med' (balanced), "
+                                    "'slow' (most capable). Default: slow"
+                                ),
                                 "enum": ["fast", "med", "slow"],
                                 "default": "slow",
                             },
@@ -316,9 +328,21 @@ class TeleClaudeMCPServer:
                                 "default": "claude",
                                 "description": "Agent type for new sessions. Default: claude",
                             },
+                            "thinking_mode": {
+                                "type": "string",
+                                "description": (
+                                    "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). "
+                                    "Default: slow"
+                                ),
+                                "enum": ["fast", "med", "slow"],
+                                "default": "slow",
+                            },
                             "mode": {
                                 "type": "string",
-                                "description": "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). Default: slow",
+                                "description": (
+                                    "[DEPRECATED] Use thinking_mode. Model tier: 'fast' (cheapest), 'med' (balanced), "
+                                    "'slow' (most capable). Default: slow"
+                                ),
                                 "enum": ["fast", "med", "slow"],
                                 "default": "slow",
                             },
@@ -567,10 +591,10 @@ class TeleClaudeMCPServer:
                 title = str(arguments["title"])
                 message = str(arguments["message"])
                 agent = str(arguments.get("agent", "claude"))
-                mode = str(arguments.get("mode", "slow"))
+                thinking_mode = str(arguments.get("thinking_mode") or arguments.get("mode") or "slow")
                 # caller_session_id extracted at top of call_tool for completion notifications
                 result = await self.teleclaude__start_session(
-                    computer, project_dir, title, message, caller_session_id, agent, mode
+                    computer, project_dir, title, message, caller_session_id, agent, thinking_mode
                 )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
@@ -594,7 +618,9 @@ class TeleClaudeMCPServer:
                 project_arg = arguments.get("project") if arguments else None
                 project = str(project_arg) if project_arg else None
                 agent = str(arguments.get("agent", "claude")) if arguments else "claude"
-                mode = str(arguments.get("mode", "slow")) if arguments else "slow"
+                thinking_mode = (
+                    str(arguments.get("thinking_mode") or arguments.get("mode") or "slow") if arguments else "slow"
+                )
                 subfolder = str(arguments.get("subfolder", "")) if arguments else ""
                 result = await self.teleclaude__run_agent_command(
                     computer=computer,
@@ -603,7 +629,7 @@ class TeleClaudeMCPServer:
                     session_id=session_id,
                     project=project,
                     agent=agent,
-                    mode=mode,
+                    thinking_mode=thinking_mode,
                     subfolder=subfolder,
                     caller_session_id=caller_session_id,
                 )
@@ -885,7 +911,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
-        mode: str = "slow",
+        thinking_mode: str = "slow",
     ) -> dict[str, object]:
         """Create session on local or remote computer.
 
@@ -900,13 +926,16 @@ class TeleClaudeMCPServer:
             message: Initial task or prompt to send to the agent
             caller_session_id: Optional caller's session ID for completion notifications
             agent: Which AI agent to start ('claude', 'gemini', 'codex'). Defaults to 'claude'.
+            thinking_mode: Model tier ('fast', 'med', 'slow'). Defaults to 'slow'.
 
         Returns:
             dict with session_id and status
         """
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message, caller_session_id, agent, mode)
-        return await self._start_remote_session(computer, project_dir, title, message, caller_session_id, agent, mode)
+            return await self._start_local_session(project_dir, title, message, caller_session_id, agent, thinking_mode)
+        return await self._start_remote_session(
+            computer, project_dir, title, message, caller_session_id, agent, thinking_mode
+        )
 
     async def _start_local_session(
         self,
@@ -915,7 +944,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
-        mode: str = "slow",
+        thinking_mode: str = "slow",
     ) -> dict[str, object]:
         """Create session on local computer directly via handle_event.
 
@@ -978,7 +1007,7 @@ class TeleClaudeMCPServer:
         # Send command with prefixed message to start the agent
         await self.client.handle_event(
             TeleClaudeEvents.AGENT_START,
-            {"session_id": session_id, "args": [agent, mode, prefixed_message]},
+            {"session_id": session_id, "args": [agent, thinking_mode, prefixed_message]},
             MessageMetadata(adapter_type="redis"),
         )
         logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
@@ -993,7 +1022,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
-        mode: str = "slow",
+        thinking_mode: str = "slow",
     ) -> dict[str, object]:
         """Create session on remote computer via Redis transport.
 
@@ -1112,7 +1141,7 @@ class TeleClaudeMCPServer:
             quoted_message = shlex.quote(prefixed_message)
             await self.client.send_request(
                 computer_name=computer,
-                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {mode} {quoted_message}",
+                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {thinking_mode} {quoted_message}",
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
@@ -1303,7 +1332,7 @@ class TeleClaudeMCPServer:
         agent: str = "claude",
         subfolder: str = "",
         caller_session_id: str | None = None,
-        mode: str = "slow",
+        thinking_mode: str = "slow",
     ) -> dict[str, object]:
         """Run a slash command on an AI agent session.
 
@@ -1318,6 +1347,7 @@ class TeleClaudeMCPServer:
             session_id: Optional existing session ID to send command to
             project: Project directory (required when starting new session)
             agent: Agent type for new sessions ('claude', 'gemini', 'codex')
+            thinking_mode: Model tier ('fast', 'med', 'slow') for the agent
             subfolder: Optional subfolder within project (e.g., 'worktrees/feat-x')
             caller_session_id: Caller's session ID for listener registration
 
@@ -1356,7 +1386,7 @@ class TeleClaudeMCPServer:
             message=full_command,
             caller_session_id=caller_session_id,
             agent=agent,
-            mode=mode,
+            thinking_mode=thinking_mode,
         )
         return result
 

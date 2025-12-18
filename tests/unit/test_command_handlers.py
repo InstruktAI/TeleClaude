@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.ux_state import SessionUXState
+
 
 @pytest.fixture
 async def mock_initialized_db(monkeypatch):
@@ -356,6 +358,7 @@ async def test_handle_list_sessions_formats_output():
 
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.list_sessions = AsyncMock(return_value=mock_sessions)
+        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState(thinking_mode="med"))
 
         result = await command_handlers.handle_list_sessions()
 
@@ -633,3 +636,56 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     assert "gemini --yolo" in command
     assert "--resume" in command
     assert "native-123-abc" in command
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_resume_uses_continue_template_when_no_native_session_id(mock_initialized_db):
+    """Test that handle_agent_resume continues latest conversation when no native_session_id is stored."""
+    from teleclaude.config import AgentConfig
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+    from teleclaude.core.ux_state import SessionUXState
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-continue-123"
+    mock_session.tmux_session_name = "tc_test"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_context.message_id = "msg-continue-123"
+    mock_execute = AsyncMock(return_value=True)
+    mock_client = MagicMock()
+
+    mock_agent_config = AgentConfig(
+        command="claude --dangerously-skip-permissions",
+        session_dir="~/.claude/sessions",
+        log_pattern="*.jsonl",
+        model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
+        exec_subcommand="",
+        resume_template="{base_cmd} --resume {session_id}",
+        continue_template="{base_cmd} --continue",
+    )
+
+    # Mock UX state without native session ID
+    mock_ux_state = MagicMock(spec=SessionUXState)
+    mock_ux_state.native_session_id = None
+
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+    ):
+        mock_config.agents.get.return_value = mock_agent_config
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+        mock_db.update_ux_state = AsyncMock()
+
+        await command_handlers.handle_agent_resume.__wrapped__(
+            mock_session, mock_context, "claude", [], mock_client, mock_execute
+        )
+
+    mock_execute.assert_called_once()
+    call_args = mock_execute.call_args[0]
+    command = call_args[1]
+
+    assert "claude --dangerously-skip-permissions" in command
+    assert command.endswith("--continue")
+    assert "--resume" not in command
+    assert "-m " not in command  # continue_template path skips model flag

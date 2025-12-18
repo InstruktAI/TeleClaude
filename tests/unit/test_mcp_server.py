@@ -371,7 +371,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         title="Fast Claude Session",
         message="Hello Claude",
         agent="claude",
-        mode="fast",
+        thinking_mode="fast",
     )
     assert result["status"] == "success"
     second_call = server.client.handle_event.call_args_list[1]
@@ -390,13 +390,13 @@ async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_m
         args="",
         project="/home/user/project",
         agent="codex",
-        mode="med",
+        thinking_mode="med",
     )
 
     assert result["status"] == "success"
     server.teleclaude__start_session.assert_awaited_once()
     call_kwargs = server.teleclaude__start_session.await_args.kwargs  # type: ignore[attr-defined]
-    assert call_kwargs["mode"] == "med"
+    assert call_kwargs["thinking_mode"] == "med"
     assert call_kwargs["agent"] == "codex"
 
 
@@ -414,7 +414,7 @@ async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_ser
         computer="local",
         command="next-work",
         session_id="existing-session",
-        mode="fast",
+        thinking_mode="fast",
     )
 
     assert result["status"] == "sent"

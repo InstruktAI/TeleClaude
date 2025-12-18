@@ -35,7 +35,7 @@ def _get_agent_config(agent: str) -> AgentConfig:
 
 def get_agent_command(
     agent: str,
-    mode: str = "slow",
+    thinking_mode: str = "slow",
     exec: bool = False,  # noqa: A003 - follows public API naming
     resume: bool = False,
     native_session_id: Optional[str] = None,
@@ -48,9 +48,9 @@ def get_agent_command(
 
     Args:
         agent: Agent name ('claude', 'gemini', 'codex')
-        mode: Model tier ('fast', 'med', 'slow'). Default 'slow' (most capable).
+        thinking_mode: Model tier ('fast', 'med', 'slow'). Default 'slow' (most capable).
         exec: If True, include exec_subcommand after base command (e.g., 'exec' for Codex)
-        resume: If True and no native_session_id, adds --resume flag (CLI finds last session)
+        resume: If True and no native_session_id, uses continue_template when available (agent-specific "continue latest")
         native_session_id: If provided, uses resume_template with this session ID (ignores resume flag)
 
     Returns:
@@ -61,10 +61,10 @@ def get_agent_command(
         - Without: {base_command} {exec_subcommand?} {model_flags} {--resume?}
 
     Examples:
-        >>> get_agent_command("claude", mode="fast")
+        >>> get_agent_command("claude", thinking_mode="fast")
         'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\' -m haiku'
 
-        >>> get_agent_command("codex", mode="slow", exec=True)
+        >>> get_agent_command("codex", thinking_mode="slow", exec=True)
         'codex --dangerously-bypass-approvals-and-sandbox --search exec -m gpt-5.2'
 
         >>> get_agent_command("claude", native_session_id="abc123")
@@ -76,9 +76,14 @@ def get_agent_command(
     if native_session_id:
         return agent_cfg.resume_template.format(base_cmd=base_cmd, session_id=native_session_id)
 
-    model_flag = agent_cfg.model_flags.get(mode)
+    if resume and agent_cfg.continue_template:
+        # Agent-specific continue semantics (e.g., `claude --continue`, `codex resume --latest`).
+        # Intentionally skips model flags to avoid overriding an existing conversation's settings.
+        return agent_cfg.continue_template.format(base_cmd=base_cmd)
+
+    model_flag = agent_cfg.model_flags.get(thinking_mode)
     if model_flag is None:
-        raise ValueError(f"Invalid mode '{mode}' for agent '{agent}'")
+        raise ValueError(f"Invalid thinking_mode '{thinking_mode}' for agent '{agent}'")
 
     parts: list[str] = [base_cmd]
 

@@ -29,7 +29,7 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         },
         "exec_subcommand": "",
         "resume_template": "{base_cmd} --resume {session_id}",
-        "continue_template": "{base_cmd} --resume last",
+        "continue_template": "{base_cmd} --continue",
     },
     "gemini": {
         "session_dir": "~/.gemini/sessions",
@@ -41,7 +41,7 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         },
         "exec_subcommand": "",
         "resume_template": "{base_cmd} --resume {session_id}",
-        "continue_template": "{base_cmd} --continue",
+        "continue_template": "{base_cmd} --resume latest",
     },
     "codex": {
         "session_dir": "~/.codex/sessions",
@@ -53,6 +53,6 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         },
         "exec_subcommand": "exec",
         "resume_template": "{base_cmd} resume {session_id}",
-        "continue_template": "{base_cmd} resume --latest",
+        "continue_template": "{base_cmd} resume --last",
     },
 }

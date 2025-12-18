@@ -254,6 +254,8 @@ def test_session_ux_state_to_dict_serializes_all_fields():
         notification_sent=True,
         native_session_id="claude-789",
         native_log_file="/path/to/session.jsonl",
+        active_agent="claude",
+        thinking_mode="fast",
     )
 
     data = state.to_dict()
@@ -265,3 +267,5 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     assert data["notification_sent"] is True
     assert data["native_session_id"] == "claude-789"
     assert data["native_log_file"] == "/path/to/session.jsonl"
+    assert data["active_agent"] == "claude"
+    assert data["thinking_mode"] == "fast"

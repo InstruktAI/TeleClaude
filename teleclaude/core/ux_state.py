@@ -51,6 +51,7 @@ class SessionUXState:
     native_session_id: Optional[str] = None  # Native agent session ID
     native_log_file: Optional[str] = None  # Path to native agent session .jsonl file
     active_agent: Optional[str] = None  # Name of the active agent (e.g. "claude", "gemini")
+    thinking_mode: Optional[str] = None  # Model tier: "fast", "med", "slow" (MCP terminology)
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "SessionUXState":
@@ -64,6 +65,7 @@ class SessionUXState:
         native_log_file_raw: object = data.get("native_log_file") or data.get("claude_session_file")
 
         active_agent_raw: object = data.get("active_agent")
+        thinking_mode_raw: object = data.get("thinking_mode")
 
         return cls(
             output_message_id=(str(output_message_id_raw) if output_message_id_raw else None),
@@ -76,6 +78,7 @@ class SessionUXState:
             native_session_id=(str(native_session_id_raw) if native_session_id_raw else None),
             native_log_file=str(native_log_file_raw) if native_log_file_raw else None,
             active_agent=str(active_agent_raw) if active_agent_raw else None,
+            thinking_mode=str(thinking_mode_raw) if thinking_mode_raw else None,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -89,6 +92,7 @@ class SessionUXState:
             "native_session_id": self.native_session_id,
             "native_log_file": self.native_log_file,
             "active_agent": self.active_agent,
+            "thinking_mode": self.thinking_mode,
         }
 
 
@@ -205,6 +209,7 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
     native_session_id: Optional[str] | object = _UNSET,
     native_log_file: Optional[str] | object = _UNSET,
     active_agent: Optional[str] | object = _UNSET,
+    thinking_mode: Optional[str] | object = _UNSET,
 ) -> None:
     """Update session UX state (merges with existing).
 
@@ -241,6 +246,8 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
             existing.native_log_file = native_log_file  # type: ignore
         if active_agent is not _UNSET:
             existing.active_agent = active_agent  # type: ignore
+        if thinking_mode is not _UNSET:
+            existing.thinking_mode = thinking_mode  # type: ignore
 
         # Store
         ux_state_json = json.dumps(existing.to_dict())

@@ -326,18 +326,23 @@ async def handle_list_sessions() -> list[dict[str, object]]:
     """
     sessions = await db.list_sessions(closed=False)
 
-    return [
-        {
-            "session_id": s.session_id,
-            "origin_adapter": s.origin_adapter,
-            "title": s.title,
-            "working_directory": s.working_directory,
-            "status": "closed" if s.closed else "active",
-            "created_at": s.created_at.isoformat() if s.created_at else None,
-            "last_activity": s.last_activity.isoformat() if s.last_activity else None,
-        }
-        for s in sessions
-    ]
+    results: list[dict[str, object]] = []
+    for s in sessions:
+        ux_state = await db.get_ux_state(s.session_id)
+        results.append(
+            {
+                "session_id": s.session_id,
+                "origin_adapter": s.origin_adapter,
+                "title": s.title,
+                "working_directory": s.working_directory,
+                "thinking_mode": ux_state.thinking_mode or "slow",
+                "status": "closed" if s.closed else "active",
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "last_activity": s.last_activity.isoformat() if s.last_activity else None,
+            }
+        )
+
+    return results
 
 
 async def handle_list_projects() -> list[dict[str, str]]:
@@ -1161,12 +1166,17 @@ async def handle_agent_start(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    mode = "slow"
+    # Prefer per-session stored thinking_mode if user didn't specify one.
+    ux_state = await db.get_ux_state(session.session_id)
+    thinking_mode = ux_state.thinking_mode if ux_state and ux_state.thinking_mode else "slow"
     user_args = list(args)
     if user_args and user_args[0] in {"fast", "med", "slow"}:
-        mode = user_args.pop(0)
+        thinking_mode = user_args.pop(0)
 
-    base_cmd = get_agent_command(agent_name, mode=mode)
+    # Persist chosen thinking_mode so subsequent MCP calls (or resumes) can reuse it.
+    await db.update_ux_state(session.session_id, thinking_mode=thinking_mode)
+
+    base_cmd = get_agent_command(agent_name, thinking_mode=thinking_mode)
 
     cmd_parts = [base_cmd]
 
@@ -1226,10 +1236,11 @@ async def handle_agent_resume(
 
     # Get native session ID from UX state
     native_session_id = ux_state.native_session_id if ux_state else None
+    thinking_mode = ux_state.thinking_mode if ux_state and ux_state.thinking_mode else "slow"
 
     cmd = get_agent_command(
         agent=agent_name,
-        mode="slow",
+        thinking_mode=thinking_mode,
         exec=False,
         resume=not native_session_id,
         native_session_id=native_session_id,
@@ -1238,7 +1249,7 @@ async def handle_agent_resume(
     if native_session_id:
         logger.info("Resuming %s session %s (from database)", agent_name, native_session_id[:8])
     else:
-        logger.info("Starting fresh %s session (no native session ID in database)", agent_name)
+        logger.info("Continuing latest %s session (no native session ID in database)", agent_name)
 
     # Save active agent to UX state
     await db.update_ux_state(session.session_id, active_agent=agent_name)

@@ -47,6 +47,7 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
     # Extract native session ID and active agent from ux_state
     native_session_id: Optional[str] = None
     active_agent: Optional[str] = None
+    thinking_mode: str = "slow"
 
     if session.ux_state:
         try:
@@ -60,6 +61,10 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
                 agent_val: object = ux_state_raw.get("active_agent")
                 if agent_val:
                     active_agent = str(agent_val)
+
+                thinking_val: object = ux_state_raw.get("thinking_mode")
+                if thinking_val:
+                    thinking_mode = str(thinking_val)
         except (json.JSONDecodeError, AttributeError) as e:
             logger.warning("Failed to parse ux_state for session %s: %s", session.session_id[:8], e)
 
@@ -99,7 +104,7 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
 
     restart_cmd = get_agent_command(
         agent=target_agent,
-        mode="slow",
+        thinking_mode=thinking_mode,
         exec=False,
         native_session_id=native_session_id,
     )

@@ -13,7 +13,7 @@ def _fake_config() -> dict[str, AgentConfig]:
             model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
             exec_subcommand="",
             resume_template="{base_cmd} --resume {session_id}",
-            continue_template="",
+            continue_template="{base_cmd} --continue",
         ),
         "gemini": AgentConfig(
             command="gemini --yolo",
@@ -66,19 +66,20 @@ def test_get_agent_command_defaults_to_slow_mode():
     ],
 )
 def test_get_agent_command_applies_model_flags(agent, mode, expected_flag):
-    cmd = agents.get_agent_command(agent, mode=mode)
+    cmd = agents.get_agent_command(agent, thinking_mode=mode)
     assert expected_flag in cmd
 
 
 def test_get_agent_command_exec_subcommand_for_codex():
-    cmd = agents.get_agent_command("codex", mode="slow", exec=True)
+    cmd = agents.get_agent_command("codex", thinking_mode="slow", exec=True)
     assert "exec" in cmd.split()
     assert cmd.index("exec") > cmd.index("codex")
 
 
 def test_get_agent_command_resume_flag_when_requested():
     cmd = agents.get_agent_command("claude", resume=True)
-    assert cmd.endswith("--resume")
+    assert cmd.endswith("--continue")
+    assert "-m opus" not in cmd  # continue_template path skips model flag
 
 
 def test_get_agent_command_native_session_id_uses_template():
@@ -89,4 +90,4 @@ def test_get_agent_command_native_session_id_uses_template():
 
 def test_get_agent_command_invalid_mode_raises():
     with pytest.raises(ValueError):
-        agents.get_agent_command("claude", mode="ultra")
+        agents.get_agent_command("claude", thinking_mode="ultra")
