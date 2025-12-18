@@ -108,7 +108,7 @@ class TeleClaudeMCPServer:
     def _setup_tools(self, server: Server) -> None:
         """Register MCP tools with the server."""
 
-        @server.list_tools()
+        @server.list_tools()  # type: ignore
         async def list_tools() -> list[Tool]:  # pyright: ignore[reportUnusedFunction]
             """List available MCP tools."""
             return [
@@ -507,7 +507,7 @@ class TeleClaudeMCPServer:
                 ),
             ]
 
-        @server.call_tool()
+        @server.call_tool()  # type: ignore
         async def call_tool(  # pyright: ignore[reportUnusedFunction]
             name: str, arguments: dict[str, object]
         ) -> list[TextContent]:
