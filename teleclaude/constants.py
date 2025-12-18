@@ -20,7 +20,7 @@ REDIS_OUTPUT_STREAM_TTL = 3600  # Auto-expire output streams after 1 hour
 # Agent metadata (NOT user-configurable)
 AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
     "claude": {
-        "session_dir": "~/.claude/projects",
+        "session_dir": "~/.claude/sessions",
         "log_pattern": "*.jsonl",
         "model_flags": {
             "fast": "--model haiku",
@@ -29,27 +29,30 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         },
         "exec_subcommand": "",
         "resume_template": "{base_cmd} --resume {session_id}",
+        "continue_template": "{base_cmd} --resume last",
     },
     "gemini": {
         "session_dir": "~/.gemini/sessions",
         "log_pattern": "*.jsonl",
         "model_flags": {
-            "fast": "--model=gemini-2-flash-lite",
-            "med": "--model=gemini-2-flash",
-            "slow": "--model=gemini-3-pro-preview",
+            "fast": "-m gemini-2.5-flash-lite",
+            "med": "-m gemini-2.5-flash",
+            "slow": "-m gemini-3-pro-preview",
         },
         "exec_subcommand": "",
         "resume_template": "{base_cmd} --resume {session_id}",
+        "continue_template": "{base_cmd} --continue",
     },
     "codex": {
         "session_dir": "~/.codex/sessions",
         "log_pattern": "*.jsonl",
         "model_flags": {
-            "fast": "-m gpt-4.1",
-            "med": "-m gpt-5.1",
+            "fast": "-m gpt-5.1-codex-mini",
+            "med": "-m gpt-5.1-codex",
             "slow": "-m gpt-5.2",
         },
         "exec_subcommand": "exec",
-        "resume_template": "{base_cmd} --resume {session_id}",
+        "resume_template": "{base_cmd} resume {session_id}",
+        "continue_template": "{base_cmd} resume --latest",
     },
 }

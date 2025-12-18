@@ -185,42 +185,12 @@ DEFAULT_CONFIG: dict[str, object] = {
     "agents": {
         "claude": {
             "command": 'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
-            "session_dir": "~/.claude/sessions",
-            "log_pattern": "*.jsonl",
-            "model_flags": {
-                "fast": "--model haiku",
-                "med": "--model sonnet",
-                "slow": "--model opus",
-            },
-            "exec_subcommand": "",
-            "resume_template": "{base_cmd} --resume {session_id}",
-            "continue_template": "{base_cmd} --resume last",
         },
         "gemini": {
             "command": "gemini --yolo",
-            "session_dir": "~/.gemini/sessions",
-            "log_pattern": "*.jsonl",
-            "model_flags": {
-                "fast": "-m gemini-2.5-flash-lite",
-                "med": "-m gemini-2.5-flash",
-                "slow": "-m gemini-3-pro-preview",
-            },
-            "exec_subcommand": "",
-            "resume_template": "{base_cmd} --resume {session_id}",
-            "continue_template": "{base_cmd} --continue",
         },
         "codex": {
             "command": "codex --dangerously-bypass-approvals-and-sandbox --search",
-            "session_dir": "~/.codex/sessions",
-            "log_pattern": "*.jsonl",
-            "model_flags": {
-                "fast": "-m gpt-5.1-codex-mini",
-                "med": "-m gpt-5.1-codex",
-                "slow": "-m gpt-5.2",
-            },
-            "exec_subcommand": "exec",
-            "resume_template": "{base_cmd} resume {session_id}",
-            "continue_template": "{base_cmd} resume --latest",
         },
     },
 }
