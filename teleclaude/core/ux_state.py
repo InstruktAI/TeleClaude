@@ -66,14 +66,14 @@ class SessionUXState:
         active_agent_raw: object = data.get("active_agent")
 
         return cls(
-            output_message_id=str(output_message_id_raw) if output_message_id_raw else None,
+            output_message_id=(str(output_message_id_raw) if output_message_id_raw else None),
             polling_active=bool(data.get("polling_active", False)),
-            pending_deletions=list(pending_deletions_raw) if isinstance(pending_deletions_raw, list) else [],
+            pending_deletions=(list(pending_deletions_raw) if isinstance(pending_deletions_raw, list) else []),
             pending_feedback_deletions=(
                 list(pending_feedback_deletions_raw) if isinstance(pending_feedback_deletions_raw, list) else []
             ),
             notification_sent=bool(data.get("notification_sent", False)),
-            native_session_id=str(native_session_id_raw) if native_session_id_raw else None,
+            native_session_id=(str(native_session_id_raw) if native_session_id_raw else None),
             native_log_file=str(native_log_file_raw) if native_log_file_raw else None,
             active_agent=str(active_agent_raw) if active_agent_raw else None,
         )
@@ -113,9 +113,13 @@ class SystemUXState:
         registry_data = data.get("registry", {})
         if isinstance(registry_data, dict):
             registry = RegistryState(
-                topic_id=int(registry_data["topic_id"]) if registry_data.get("topic_id") else None,
-                ping_message_id=int(registry_data["ping_message_id"]) if registry_data.get("ping_message_id") else None,
-                pong_message_id=int(registry_data["pong_message_id"]) if registry_data.get("pong_message_id") else None,
+                topic_id=(int(registry_data["topic_id"]) if registry_data.get("topic_id") else None),
+                ping_message_id=(
+                    int(registry_data["ping_message_id"]) if registry_data.get("ping_message_id") else None
+                ),
+                pong_message_id=(
+                    int(registry_data["pong_message_id"]) if registry_data.get("pong_message_id") else None
+                ),
             )
         else:
             registry = RegistryState()
@@ -152,7 +156,6 @@ async def get_session_ux_state(db: aiosqlite.Connection, session_id: str) -> Ses
                 logger.warning("Invalid ux_state format for session %s", session_id[:8])
                 return SessionUXState()
             data: dict[str, object] = data_raw
-            logger.debug("Loaded session UX state for %s: %s", session_id[:8], data)
             return SessionUXState.from_dict(data)
 
         return SessionUXState()
@@ -181,7 +184,6 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
                 logger.warning("Invalid system ux_state format")
                 return SystemUXState()
             data: dict[str, object] = data_raw
-            logger.debug("Loaded system UX state: %s", data)
             return SystemUXState.from_dict(data)
 
         return SystemUXState()

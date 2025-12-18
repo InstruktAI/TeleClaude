@@ -24,13 +24,7 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
-from teleclaude.core.models import (
-    ChannelMetadata,
-    MessageMetadata,
-    PeerInfo,
-    RedisAdapterMetadata,
-    Session,
-)
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, RedisAdapterMetadata, Session
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
@@ -667,23 +661,23 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         while self._running:
             try:
                 # Read messages from stream (blocking)
-                logger.debug(
-                    "About to XREAD from %s with last_id=%s, block=1000ms",
-                    message_stream,
-                    last_id,
-                )
+                # logger.debug(
+                #     "About to XREAD from %s with last_id=%s, block=1000ms",
+                #     message_stream,
+                #     last_id,
+                # )
 
                 redis_client = self._require_redis()
-                messages: object = await redis_client.xread(
+                messages: list[tuple[bytes, list[tuple[bytes, dict[bytes, bytes]]]]] = await redis_client.xread(
                     {message_stream.encode("utf-8"): last_id},
                     block=1000,  # Block for 1 second
                     count=5,
                 )
 
-                logger.debug(
-                    "XREAD returned %d stream(s) with messages",
-                    len(messages) if messages else 0,
-                )
+                # logger.debug(
+                #     "XREAD returned %d stream(s) with messages",
+                #     len(messages) if messages else 0,
+                # )
 
                 if not messages:
                     logger.debug("No messages received, continuing poll loop")
@@ -693,11 +687,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 for (
                     stream_name,
                     stream_messages,
-                ) in messages:  # stream_name/stream_messages are Any from Redis, messages is object
-                    # stream_name and stream_messages come from Redis xread() - types are Any
-                    stream_name_str: str = (
-                        stream_name.decode("utf-8") if isinstance(stream_name, bytes) else str(stream_name)
-                    )
+                ) in messages:
+                    stream_name_str: str = stream_name.decode("utf-8")
                     logger.debug(
                         "Stream %s has %d message(s)",
                         stream_name_str,
@@ -707,14 +698,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     for message_id, data in stream_messages:
                         logger.debug(
                             "Processing message %s with data keys: %s",
-                            message_id.decode("utf-8") if isinstance(message_id, bytes) else message_id,
-                            [k.decode("utf-8") if isinstance(k, bytes) else k for k in data.keys()],
+                            message_id.decode("utf-8"),
+                            [k.decode("utf-8") for k in data.keys()],
                         )
 
                         # Persist last_id BEFORE processing to prevent re-processing on restart
                         # This is critical for deploy commands that call os._exit(0)
                         last_id = message_id
-                        msg_id_str: str = last_id.decode("utf-8") if isinstance(last_id, bytes) else str(last_id)
+                        msg_id_str: str = last_id.decode("utf-8")
                         await self._set_last_processed_message_id(msg_id_str)
                         logger.debug("Saved last_id %s before processing", msg_id_str)
 

@@ -1,7 +1,7 @@
 {
   "recommendations": [
+    "charliermarsh.ruff",
     "esbenp.prettier-vscode",
-    "ms-python.pylint",
-    "ms-python.mypy-type-checker",
+    "ms-python.mypy-type-checker"
   ]
 }
