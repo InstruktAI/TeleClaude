@@ -615,6 +615,7 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     # Mock UX state with native session ID
     mock_ux_state = MagicMock(spec=SessionUXState)
     mock_ux_state.native_session_id = "native-123-abc"
+    mock_ux_state.thinking_mode = "slow"
 
     with (
         patch.object(command_handlers, "config") as mock_config,
@@ -668,6 +669,7 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     # Mock UX state without native session ID
     mock_ux_state = MagicMock(spec=SessionUXState)
     mock_ux_state.native_session_id = None
+    mock_ux_state.thinking_mode = "slow"
 
     with (
         patch.object(command_handlers, "config") as mock_config,

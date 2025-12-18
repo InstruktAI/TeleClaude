@@ -440,3 +440,21 @@ class SessionSummary:
             "created_at": self.created_at,
             "last_activity": self.last_activity,
         }
+
+
+@dataclass
+class AgentStartArgs:
+    """Typed arguments for agent start."""
+
+    agent_name: str
+    thinking_mode: ThinkingMode
+    user_args: list[str]
+
+
+@dataclass
+class AgentResumeArgs:
+    """Typed arguments for agent resume."""
+
+    agent_name: str
+    native_session_id: Optional[str]
+    thinking_mode: ThinkingMode

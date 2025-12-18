@@ -20,7 +20,14 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import (
+    AgentResumeArgs,
+    AgentStartArgs,
+    MessageMetadata,
+    Session,
+    SessionSummary,
+    ThinkingMode,
+)
 from teleclaude.core.session_cleanup import (
     TMUX_SESSION_PREFIX,
     cleanup_session_resources,
@@ -326,23 +333,23 @@ async def handle_list_sessions() -> list[dict[str, object]]:
     """
     sessions = await db.list_sessions(closed=False)
 
-    results: list[dict[str, object]] = []
+    summaries: list[SessionSummary] = []
     for s in sessions:
         ux_state = await db.get_ux_state(s.session_id)
-        results.append(
-            {
-                "session_id": s.session_id,
-                "origin_adapter": s.origin_adapter,
-                "title": s.title,
-                "working_directory": s.working_directory,
-                "thinking_mode": ux_state.thinking_mode or "slow",
-                "status": "closed" if s.closed else "active",
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-                "last_activity": s.last_activity.isoformat() if s.last_activity else None,
-            }
+        summaries.append(
+            SessionSummary(
+                session_id=s.session_id,
+                origin_adapter=s.origin_adapter,
+                title=s.title,
+                working_directory=s.working_directory,
+                thinking_mode=ux_state.thinking_mode or ThinkingMode.SLOW.value,
+                status="closed" if s.closed else "active",
+                created_at=s.created_at.isoformat() if s.created_at else None,
+                last_activity=s.last_activity.isoformat() if s.last_activity else None,
+            )
         )
 
-    return results
+    return [s.to_dict() for s in summaries]
 
 
 async def handle_list_projects() -> list[dict[str, str]]:
@@ -1168,21 +1175,30 @@ async def handle_agent_start(
 
     # Prefer per-session stored thinking_mode if user didn't specify one.
     ux_state = await db.get_ux_state(session.session_id)
-    thinking_mode = ux_state.thinking_mode if ux_state and ux_state.thinking_mode else "slow"
+    stored_mode_raw = ux_state.thinking_mode if ux_state and isinstance(ux_state.thinking_mode, str) else None
+    stored_mode = stored_mode_raw or ThinkingMode.SLOW.value
+
     user_args = list(args)
-    if user_args and user_args[0] in {"fast", "med", "slow"}:
+    thinking_mode = stored_mode
+    if user_args and user_args[0] in ThinkingMode._value2member_map_:
         thinking_mode = user_args.pop(0)
 
-    # Persist chosen thinking_mode so subsequent MCP calls (or resumes) can reuse it.
-    await db.update_ux_state(session.session_id, thinking_mode=thinking_mode)
+    start_args = AgentStartArgs(
+        agent_name=agent_name,
+        thinking_mode=ThinkingMode(thinking_mode),
+        user_args=user_args,
+    )
 
-    base_cmd = get_agent_command(agent_name, thinking_mode=thinking_mode)
+    # Persist chosen thinking_mode so subsequent MCP calls (or resumes) can reuse it.
+    await db.update_ux_state(session.session_id, thinking_mode=start_args.thinking_mode.value)
+
+    base_cmd = get_agent_command(start_args.agent_name, thinking_mode=start_args.thinking_mode.value)
 
     cmd_parts = [base_cmd]
 
     # Add any additional arguments from the user (prompt or flags)
-    if user_args:
-        quoted_args = [shlex.quote(arg) for arg in user_args]
+    if start_args.user_args:
+        quoted_args = [shlex.quote(arg) for arg in start_args.user_args]
         cmd_parts.extend(quoted_args)
 
     cmd = " ".join(cmd_parts)
@@ -1234,20 +1250,23 @@ async def handle_agent_resume(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    # Get native session ID from UX state
-    native_session_id = ux_state.native_session_id if ux_state else None
-    thinking_mode = ux_state.thinking_mode if ux_state and ux_state.thinking_mode else "slow"
-
-    cmd = get_agent_command(
-        agent=agent_name,
-        thinking_mode=thinking_mode,
-        exec=False,
-        resume=not native_session_id,
-        native_session_id=native_session_id,
+    thinking_raw = ux_state.thinking_mode if ux_state and isinstance(ux_state.thinking_mode, str) else None
+    resume_args = AgentResumeArgs(
+        agent_name=agent_name,
+        native_session_id=ux_state.native_session_id if ux_state else None,
+        thinking_mode=ThinkingMode(thinking_raw) if thinking_raw else ThinkingMode.SLOW,
     )
 
-    if native_session_id:
-        logger.info("Resuming %s session %s (from database)", agent_name, native_session_id[:8])
+    cmd = get_agent_command(
+        agent=resume_args.agent_name,
+        thinking_mode=resume_args.thinking_mode.value,
+        exec=False,
+        resume=not resume_args.native_session_id,
+        native_session_id=resume_args.native_session_id,
+    )
+
+    if resume_args.native_session_id:
+        logger.info("Resuming %s session %s (from database)", agent_name, resume_args.native_session_id[:8])
     else:
         logger.info("Continuing latest %s session (no native session ID in database)", agent_name)
 
