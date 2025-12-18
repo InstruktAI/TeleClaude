@@ -34,16 +34,3 @@ Implemented via `claude_model` field in sessions table. MCP tool `teleclaude__st
 
 Create `docs/ai-to-ai-protocol.md` with full specification, message format, example flows.
 
----
-
-## [>] Agent Learning
-
-Two-stage pipeline for autonomous preference learning from conversations.
-
-**Stage 1** (UserPromptSubmit, async): Fast, cheap LLM extracts novel facts from user messages. Filters against known-facts summary. Appends to ephemeral .learning-raw.jsonl.
-
-**Stage 2** (SessionStop, sync): Smart LLM deduplicates, merges, and updates learned.md. Regenerates known-facts summary. Deletes raw file.
-
-No human in loop. Non-blocking. Context-aware filtering. Plain markdown storage.
-
-See: `todos/agent-learning/requirements.md`

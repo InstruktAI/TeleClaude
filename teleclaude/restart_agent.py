@@ -97,7 +97,11 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
     )
 
     if native_session_id:
-        logger.info("Resuming %s session %s (from database)", target_agent, native_session_id[:8])
+        logger.info(
+            "Resuming %s session %s (from database)",
+            target_agent,
+            native_session_id[:8],
+        )
     else:
         logger.info("Starting fresh %s session (no session ID in database)", target_agent)
 
@@ -124,8 +128,7 @@ async def main() -> None:
     """Restart Agent in its TeleClaude session (standalone script)."""
     # Setup logging from environment variables
     log_level = os.getenv("TELECLAUDE_LOG_LEVEL", "INFO")
-    log_file = os.getenv("TELECLAUDE_LOG_FILE", "logs/teleclaude.log")
-    setup_logging(level=log_level, log_file=log_file)
+    setup_logging(level=log_level)
 
     # Get TeleClaude session ID from environment
     teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
