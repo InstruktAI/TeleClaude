@@ -494,6 +494,27 @@ class AgentResumeArgs:
     thinking_mode: ThinkingMode
 
 
+@dataclass
+class CdArgs:
+    """Typed arguments for cd command."""
+
+    path: Optional[str] = None  # None means list trusted dirs
+
+
+@dataclass
+class KillArgs:
+    """Typed arguments for kill command (no fields yet, placeholder)."""
+
+    pass
+
+
+@dataclass
+class SystemCommandArgs:
+    """Typed arguments for system commands."""
+
+    command: str
+
+
 # Event payloads
 
 

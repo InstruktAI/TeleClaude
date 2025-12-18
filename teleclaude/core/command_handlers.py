@@ -23,6 +23,7 @@ from teleclaude.core.events import EventContext
 from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
+    CdArgs,
     MessageMetadata,
     Session,
     SessionSummary,
@@ -1028,11 +1029,12 @@ async def handle_cd_session(
         execute_terminal_command: Function to execute terminal command
     """
 
-    # Strip whitespace from args and filter out empty strings
-    args = [arg.strip() for arg in args if arg.strip()]
+    # Normalize args to a single path or None
+    normalized = " ".join([arg.strip() for arg in args if arg.strip()])
+    cd_args = CdArgs(path=normalized or None)
 
     # If no args, list trusted directories
-    if not args:
+    if not cd_args.path:
         # Get all trusted dirs (includes TC WORKDIR from get_all_trusted_dirs)
         all_trusted_dirs = config.computer.get_all_trusted_dirs()
 
@@ -1049,7 +1051,7 @@ async def handle_cd_session(
         return
 
     # Change to specified directory
-    target_dir = " ".join(args)
+    target_dir = cd_args.path
 
     # Handle TC WORKDIR special case
     if target_dir == "TC WORKDIR":
