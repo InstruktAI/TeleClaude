@@ -215,15 +215,6 @@ class TeleClaudeMCPServer:
                                 "enum": ["fast", "med", "slow"],
                                 "default": "slow",
                             },
-                            "mode": {
-                                "type": "string",
-                                "description": (
-                                    "[DEPRECATED] Use thinking_mode. Model tier: 'fast' (cheapest), 'med' (balanced), "
-                                    "'slow' (most capable). Default: slow"
-                                ),
-                                "enum": ["fast", "med", "slow"],
-                                "default": "slow",
-                            },
                             "project_dir": {
                                 "type": "string",
                                 "description": (
@@ -333,15 +324,6 @@ class TeleClaudeMCPServer:
                                 "description": (
                                     "Model tier: 'fast' (cheapest), 'med' (balanced), 'slow' (most capable). "
                                     "Default: slow"
-                                ),
-                                "enum": ["fast", "med", "slow"],
-                                "default": "slow",
-                            },
-                            "mode": {
-                                "type": "string",
-                                "description": (
-                                    "[DEPRECATED] Use thinking_mode. Model tier: 'fast' (cheapest), 'med' (balanced), "
-                                    "'slow' (most capable). Default: slow"
                                 ),
                                 "enum": ["fast", "med", "slow"],
                                 "default": "slow",

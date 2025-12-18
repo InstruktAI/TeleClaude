@@ -322,14 +322,13 @@ class Recording:
 
 # ==================== Helper models / validators ====================
 
-THINKING_MODES = {"fast", "med", "slow"}
 
+class ThinkingMode(str, Enum):
+    """Model tier: fast/med/slow."""
 
-def normalize_thinking_mode(mode: Optional[str], default: str = "slow") -> str:
-    """Normalize thinking_mode, falling back to default if invalid/None."""
-    if mode and mode in THINKING_MODES:
-        return mode
-    return default
+    FAST = "fast"
+    MED = "med"
+    SLOW = "slow"
 
 
 @dataclass
@@ -341,7 +340,7 @@ class StartSessionArgs:
     title: str
     message: str
     agent: str = "claude"
-    thinking_mode: str = "slow"
+    thinking_mode: ThinkingMode = ThinkingMode.SLOW
     caller_session_id: Optional[str] = None
 
     @classmethod
@@ -353,7 +352,7 @@ class StartSessionArgs:
             raise ValueError(f"Arguments required for teleclaude__start_session: {', '.join(missing)}")
 
         agent = str(arguments.get("agent", "claude"))
-        thinking_mode = normalize_thinking_mode(str(arguments.get("thinking_mode") or arguments.get("mode") or "slow"))
+        thinking_mode = ThinkingMode(str(arguments.get("thinking_mode", ThinkingMode.SLOW)))
 
         return cls(
             computer=str(arguments["computer"]),
@@ -376,7 +375,7 @@ class RunAgentCommandArgs:
     session_id: Optional[str] = None
     project: Optional[str] = None
     agent: str = "claude"
-    thinking_mode: str = "slow"
+    thinking_mode: ThinkingMode = ThinkingMode.SLOW
     subfolder: str = ""
     caller_session_id: Optional[str] = None
 
@@ -386,7 +385,7 @@ class RunAgentCommandArgs:
         if not arguments or "computer" not in arguments or "command" not in arguments:
             raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
 
-        thinking_mode = normalize_thinking_mode(str(arguments.get("thinking_mode") or arguments.get("mode") or "slow"))
+        thinking_mode = ThinkingMode(str(arguments.get("thinking_mode", ThinkingMode.SLOW)))
 
         session_id_arg = arguments.get("session_id")
         project_arg = arguments.get("project")
@@ -402,3 +401,42 @@ class RunAgentCommandArgs:
             subfolder=str(arguments.get("subfolder", "")) if arguments.get("subfolder") else "",
             caller_session_id=caller_session_id,
         )
+
+
+@dataclass
+class RedisInboundMessage:
+    """Typed Redis message parsed from raw stream entry."""
+
+    msg_type: str
+    session_id: Optional[str]
+    command: str
+    channel_metadata: Optional[dict[str, object]] = None
+    initiator: Optional[str] = None
+    project_dir: Optional[str] = None
+    title: Optional[str] = None
+
+
+@dataclass
+class SessionSummary:
+    """Typed session summary for list_sessions output."""
+
+    session_id: str
+    origin_adapter: str
+    title: str
+    working_directory: str
+    thinking_mode: str
+    status: str
+    created_at: Optional[str]
+    last_activity: Optional[str]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "session_id": self.session_id,
+            "origin_adapter": self.origin_adapter,
+            "title": self.title,
+            "working_directory": self.working_directory,
+            "thinking_mode": self.thinking_mode,
+            "status": self.status,
+            "created_at": self.created_at,
+            "last_activity": self.last_activity,
+        }

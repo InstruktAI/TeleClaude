@@ -24,7 +24,14 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, RedisAdapterMetadata, Session
+from teleclaude.core.models import (
+    ChannelMetadata,
+    MessageMetadata,
+    PeerInfo,
+    RedisAdapterMetadata,
+    RedisInboundMessage,
+    Session,
+)
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
@@ -726,26 +733,20 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             data: Message data dict from Redis stream
         """
         try:
-            # Check if this is a system message
-            msg_type = data.get(b"type", b"").decode("utf-8")
-            if msg_type == "system":
+            parsed = self._parse_redis_message(data)
+
+            if parsed.msg_type == "system":
                 return await self._handle_system_message(data)
 
-            # Extract session_id if present (for session commands)
-            # Empty for ephemeral requests (list_projects, get_computer_info)
-            session_id = data.get(b"session_id", b"").decode("utf-8")
-            message_str = data.get(b"command", b"").decode(
-                "utf-8"
-            )  # Field name stays "command" for protocol compatibility
-
-            if not message_str:
+            if not parsed.command:
                 logger.warning("Invalid message data: %s", data)
                 return
 
-            logger.info("Received message for session %s: %s", session_id[:8], message_str[:50])
+            session_id = parsed.session_id or ""
+            logger.info("Received message for session %s: %s", session_id[:8], parsed.command[:50])
 
             # Parse message using centralized parser FIRST
-            cmd_name, args = parse_command_string(message_str)
+            cmd_name, args = parse_command_string(parsed.command)
             if not cmd_name:
                 logger.warning("Empty message received for session %s", session_id[:8])
                 return
@@ -779,43 +780,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 payload = {"session_id": session_id, "args": args}
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
-            # Build channel_metadata dict from message data
-            # This includes any existing channel_metadata AND the initiator computer
-            channel_metadata: dict[str, object] = {}
-            if b"channel_metadata" in data:
-                try:
-                    parsed: object = json.loads(data[b"channel_metadata"].decode("utf-8"))
-                    if isinstance(parsed, dict):
-                        channel_metadata = parsed
-                except json.JSONDecodeError:
-                    logger.warning("Invalid channel_metadata JSON in message")
-
-            # Extract initiator computer name and add to channel_metadata
-            # This enables forwarding stop events back to the caller's computer
-            if b"initiator" in data:
-                initiator = data[b"initiator"].decode("utf-8")
-                channel_metadata["target_computer"] = initiator
-                logger.info("Set initiator/target_computer in channel_metadata: %s", initiator)
-
-            # Build MessageMetadata from message data
-            # Messages received via Redis inherently have adapter_type="redis"
-            # channel_metadata must be on metadata (not payload) for handler to receive it
             metadata_to_send = MessageMetadata(
                 adapter_type="redis",
-                channel_metadata=channel_metadata if channel_metadata else None,
+                channel_metadata=parsed.channel_metadata,
+                project_dir=parsed.project_dir,
+                title=parsed.title,
             )
 
-            # Pass through optional session creation fields so handlers can build correct titles/working dirs
-            if b"project_dir" in data:
-                metadata_to_send.project_dir = data[b"project_dir"].decode("utf-8") or None
-            if b"title" in data:
-                metadata_to_send.title = data[b"title"].decode("utf-8") or None
+            if parsed.initiator:
+                # Ensure target_computer set for stop forwarding
+                metadata_to_send.channel_metadata = metadata_to_send.channel_metadata or {}
+                metadata_to_send.channel_metadata["target_computer"] = parsed.initiator
 
-            # Add session-level data to payload
-            if b"project_dir" in data:
-                payload["project_dir"] = data[b"project_dir"].decode("utf-8")
-            if b"title" in data:
-                payload["title"] = data[b"title"].decode("utf-8")
+            if parsed.project_dir:
+                payload["project_dir"] = parsed.project_dir
+            if parsed.title:
+                payload["title"] = parsed.title
 
             logger.info(">>> About to call handle_event for event_type: %s", event_type)
             result = await self.client.handle_event(
@@ -845,7 +825,36 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             logger.info(">>> send_response completed for message_id: %s", message_id[:8])
 
         except Exception as e:
-            logger.error("Failed to handle incoming message: %s", e)
+            logger.error("Failed to handle incoming message: %s", e, exc_info=True)
+
+    def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
+        """Decode raw Redis stream entry into typed RedisInboundMessage."""
+        msg_type = data.get(b"type", b"").decode("utf-8")
+        session_id = data.get(b"session_id", b"").decode("utf-8") or None
+        command = data.get(b"command", b"").decode("utf-8")
+
+        channel_metadata: dict[str, object] | None = None
+        if b"channel_metadata" in data:
+            try:
+                parsed = json.loads(data[b"channel_metadata"].decode("utf-8"))
+                if isinstance(parsed, dict):
+                    channel_metadata = parsed
+            except json.JSONDecodeError:
+                logger.warning("Invalid channel_metadata JSON in message")
+
+        initiator = data.get(b"initiator", b"").decode("utf-8") or None
+        project_dir = data.get(b"project_dir", b"").decode("utf-8") or None
+        title = data.get(b"title", b"").decode("utf-8") or None
+
+        return RedisInboundMessage(
+            msg_type=msg_type,
+            session_id=session_id,
+            command=command,
+            channel_metadata=channel_metadata,
+            initiator=initiator,
+            project_dir=project_dir,
+            title=title,
+        )
 
     async def _handle_system_message(self, data: dict[bytes, bytes]) -> None:
         """Handle incoming system message from Redis stream.
