@@ -962,11 +962,11 @@ class TeleClaudeMCPServer:
 
         logger.info("Local session created: %s", session_id[:8])
 
-        # Build AI-to-AI protocol prefix for the initial message
-        # Use "local" since this is a local session - receiving AI can reply with computer="local"
-        # Use parameter if provided, otherwise fall back to env var (for backwards compatibility)
+        # Pass the raw message; downstream UI adapters no longer need the AI[...] prefix
+        prefixed_message = message
+
+        # Preserve caller ID only for listener registration/notifications
         effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-        prefixed_message = f"AI[local:{effective_caller_id}] | {message}"
 
         # Register listener so we get notified when target session stops
         await self._maybe_register_listener(
@@ -1064,11 +1064,11 @@ class TeleClaudeMCPServer:
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
-            # Build AI-to-AI protocol prefix for the initial message
-            # This allows the receiving AI to reply back to the caller
-            # Use parameter if provided, otherwise fall back to env var (for backwards compatibility)
+            # Pass the raw message; downstream adapters no longer rely on AI[...] prefix
+            prefixed_message = message
+
+            # Preserve caller ID only for listener registration/notifications
             effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-            prefixed_message = f"AI[{self.computer_name}:{effective_caller_id}] | {message}"
 
             # Register listener so we get notified when target session stops
             # Note: For remote sessions, the Stop event comes via Redis transport

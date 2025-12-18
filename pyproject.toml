@@ -114,7 +114,6 @@ disable_error_code = [
     "misc",
     "explicit-any",
     "no-untyped-call",
-    "untyped-decorator",
     "assignment",
     "call-overload",
     "type-arg",

@@ -90,32 +90,40 @@ async def test_handle_new_session_creates_session():
     mock_session.session_id = "test-session-123"
     mock_session.tmux_session_name = "tc_test-ses"
 
-    with (
-        patch.object(command_handlers, "config") as mock_config,
-        patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_bridge") as mock_tb,
-        patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
-    ):
-        mock_config.computer.name = "TestComputer"
-        mock_config.computer.default_working_dir = "/home/user"
-        mock_db.create_session = AsyncMock(return_value=mock_session)
-        mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_db.assign_voice = AsyncMock()  # Voice assignment
-        mock_tb.create_tmux_session = AsyncMock(return_value=True)
-        mock_unique.return_value = "$TestComputer[user] - Test Title"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "terminal_bridge") as mock_tb,
+            patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = AsyncMock(return_value=mock_session)
+            mock_db.get_session = AsyncMock(return_value=mock_session)
+            mock_db.assign_voice = AsyncMock()  # Voice assignment
+            mock_tb.create_tmux_session = AsyncMock(return_value=True)
+            mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-        result = await command_handlers.handle_create_session(
-            mock_context, ["Test", "Title"], mock_metadata, mock_client
-        )
+            result = await command_handlers.handle_create_session(
+                mock_context, ["Test", "Title"], mock_metadata, mock_client
+            )
 
     assert "session_id" in result
     mock_db.create_session.assert_called_once()
     mock_tb.create_tmux_session.assert_called_once()
+    created_session_id = mock_db.create_session.call_args.kwargs.get("session_id")
+    _, call_kwargs = mock_tb.create_tmux_session.call_args
+    env_vars = call_kwargs.get("env_vars") or {}
+    assert env_vars.get("TELECLAUDE_SESSION_ID") == created_session_id
+    assert "TMPDIR" in env_vars
+    assert "TMP" in env_vars
+    assert "TEMP" in env_vars
 
 
 @pytest.mark.asyncio
 async def test_handle_new_session_validates_working_dir():
-    """Test that handle_new_session validates working directory."""
+    """Test that handle_new_session rejects non-existent working directories."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
     from teleclaude.core.models import MessageMetadata
@@ -143,11 +151,13 @@ async def test_handle_new_session_validates_working_dir():
         mock_db.get_session = AsyncMock(return_value=mock_session)
         mock_db.delete_session = AsyncMock()
         mock_db.assign_voice = AsyncMock()  # Voice assignment
-        mock_tb.create_tmux_session = AsyncMock(return_value=False)  # Fail
+        mock_tb.create_tmux_session = AsyncMock(return_value=True)
         mock_unique.return_value = "Test Title"
 
-        with pytest.raises(RuntimeError, match="Failed to create tmux session"):
+        with pytest.raises(ValueError, match="could not be created"):
             await command_handlers.handle_create_session(mock_context, [], mock_metadata, mock_client)
+
+        mock_tb.create_tmux_session.assert_not_called()
 
 
 @pytest.mark.asyncio

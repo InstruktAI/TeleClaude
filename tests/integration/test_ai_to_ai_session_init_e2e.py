@@ -12,7 +12,7 @@ from teleclaude.core import terminal_bridge
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_mocked_telegram):
+async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_mocked_telegram, tmp_path):
     """Test complete AI-to-AI session initialization flow.
 
     Verifies that when a remote computer receives a create_session command:
@@ -43,7 +43,9 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     with patch.object(daemon.client, "handle_event", side_effect=track_handle_event):
         # Simulate incoming create_session command from initiator (MozBook)
         request_id = "test-request-123"
-        project_dir = "/home/user/apps/TeleClaude"
+        project_dir = tmp_path / "apps" / "TeleClaude"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        project_dir = str(project_dir)
         channel_metadata = {
             "telegram": {"channel_id": "12345"},
             "redis": {"channel_id": "test-channel", "output_stream": "output:initiator-session-456"},

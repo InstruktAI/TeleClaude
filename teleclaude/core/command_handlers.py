@@ -182,13 +182,27 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         raise ValueError("Metadata missing adapter_type")
 
     computer_name = config.computer.name
-    working_dir = os.path.expanduser(config.computer.default_working_dir)
+    working_dir = os.path.expanduser(os.path.expandvars(config.computer.default_working_dir))
     terminal_size = "120x40"  # Default terminal size
 
     # For AI-to-AI sessions, use project_dir from metadata
     project_dir = metadata.project_dir
     if project_dir:
-        working_dir = os.path.expanduser(project_dir)
+        working_dir = os.path.expanduser(os.path.expandvars(project_dir))
+
+    # tmux silently falls back to its own cwd if -c points at a non-existent directory.
+    # This shows up as sessions "starting in /tmp" (or similar) even though we asked for a project dir.
+    working_dir_path = Path(working_dir)
+    if not working_dir_path.is_absolute():
+        raise ValueError(f"Working directory must be an absolute path: {working_dir}")
+    if not working_dir_path.exists():
+        try:
+            working_dir_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise ValueError(f"Working directory does not exist and could not be created: {working_dir}") from e
+    if not working_dir_path.is_dir():
+        raise ValueError(f"Working directory is not a directory: {working_dir}")
+    working_dir = str(working_dir_path)
 
     # Generate tmux session name with prefix for TeleClaude ownership
     session_id = str(uuid.uuid4())
@@ -261,6 +275,15 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     # Inject TELECLAUDE_SESSION_ID so mcp-wrapper knows who it is
     env_vars = voice_env_vars.copy()
     env_vars["TELECLAUDE_SESSION_ID"] = session_id
+
+    # Claude Code uses file watchers and can crash on macOS when TMPDIR contains unix sockets
+    # (e.g., Docker Desktop creates docker_cli_* sockets under the default TMPDIR).
+    # Force a dedicated, socket-free temp directory for all commands in this tmux session.
+    safe_tmp_dir = Path(os.path.expanduser("~/.teleclaude/tmp"))
+    safe_tmp_dir.mkdir(parents=True, exist_ok=True)
+    env_vars["TMPDIR"] = str(safe_tmp_dir)
+    env_vars["TMP"] = str(safe_tmp_dir)
+    env_vars["TEMP"] = str(safe_tmp_dir)
 
     success = await terminal_bridge.create_tmux_session(
         name=tmux_name,
