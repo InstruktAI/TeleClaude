@@ -492,3 +492,49 @@ class AgentResumeArgs:
     agent_name: str
     native_session_id: Optional[str]
     thinking_mode: ThinkingMode
+
+
+# Event payloads
+
+
+@dataclass
+class MessagePayload:
+    """Payload for MESSAGE events."""
+
+    session_id: str
+    text: str
+    project_dir: Optional[str] = None
+    title: Optional[str] = None
+
+
+@dataclass
+class AgentStartPayload:
+    """Payload for AGENT_START events."""
+
+    session_id: str
+    agent_name: str
+    args: list[str]
+    project_dir: Optional[str] = None
+    title: Optional[str] = None
+
+
+@dataclass
+class AgentResumePayload:
+    """Payload for AGENT_RESUME events."""
+
+    session_id: str
+    agent_name: str
+    args: list[str]
+    resume_latest: bool
+    project_dir: Optional[str] = None
+    title: Optional[str] = None
+
+
+@dataclass
+class CommandPayload:
+    """Generic command payload with args."""
+
+    session_id: str
+    args: list[str]
+    project_dir: Optional[str] = None
+    title: Optional[str] = None

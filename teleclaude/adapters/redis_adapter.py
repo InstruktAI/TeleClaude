@@ -16,7 +16,7 @@ import re
 import ssl
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, cast
 
 from redis.asyncio import Redis
 
@@ -25,8 +25,12 @@ from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.models import (
+    AgentResumePayload,
+    AgentStartPayload,
     ChannelMetadata,
+    CommandPayload,
     MessageMetadata,
+    MessagePayload,
     PeerInfo,
     RedisAdapterMetadata,
     RedisInboundMessage,
@@ -756,28 +760,31 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
             # MESSAGE and CLAUDE events use text in payload (keep message as single string)
             # Other commands use args list
-            payload: dict[str, object]
+            payload_obj: object
             if event_type == TeleClaudeEvents.MESSAGE:
-                payload = {"session_id": session_id, "text": " ".join(args) if args else ""}
-                logger.debug("Emitting MESSAGE event with text: %s", " ".join(args) if args else "(empty)")
+                payload_obj = MessagePayload(session_id=session_id, text=" ".join(args) if args else "")
+                logger.debug(
+                    "Emitting MESSAGE event with text: %s",
+                    payload_obj.text if payload_obj.text else "(empty)",
+                )
             elif cmd_name in ["claude", "gemini", "codex"]:
                 agent_name = cmd_name
                 event_type = TeleClaudeEvents.AGENT_START
-                payload = {"session_id": session_id, "agent_name": agent_name, "args": args}
+                payload_obj = AgentStartPayload(session_id=session_id, agent_name=agent_name, args=args)
                 logger.debug("Emitting AGENT_START event for %s with args: %s", agent_name, args)
             elif cmd_name in ["claude_resume", "gemini_resume", "codex_resume"]:
                 agent_name = cmd_name.replace("_resume", "")
                 event_type = TeleClaudeEvents.AGENT_RESUME
                 resume_latest = True if not args else False
-                payload = {
-                    "session_id": session_id,
-                    "agent_name": agent_name,
-                    "resume_latest": resume_latest,
-                    "args": args,
-                }
+                payload_obj = AgentResumePayload(
+                    session_id=session_id,
+                    agent_name=agent_name,
+                    resume_latest=resume_latest,
+                    args=args,
+                )
                 logger.debug("Emitting AGENT_RESUME event for %s", agent_name)
             else:
-                payload = {"session_id": session_id, "args": args}
+                payload_obj = CommandPayload(session_id=session_id, args=args)
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
             metadata_to_send = MessageMetadata(
@@ -792,15 +799,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 metadata_to_send.channel_metadata = metadata_to_send.channel_metadata or {}
                 metadata_to_send.channel_metadata["target_computer"] = parsed.initiator
 
-            if parsed.project_dir:
-                payload["project_dir"] = parsed.project_dir
-            if parsed.title:
-                payload["title"] = parsed.title
+            # Enrich payload with optional project/title if supported
+            if hasattr(payload_obj, "project_dir") and parsed.project_dir:
+                payload_obj.project_dir = parsed.project_dir
+            if hasattr(payload_obj, "title") and parsed.title:
+                payload_obj.title = parsed.title
 
             logger.info(">>> About to call handle_event for event_type: %s", event_type)
+            # Convert dataclass payloads to dict for handler
+            if hasattr(payload_obj, "__dict__"):
+                payload_dict = dict(payload_obj.__dict__)
+            else:
+                payload_dict = cast(dict[str, object], payload_obj)
+
             result = await self.client.handle_event(
                 event=event_type,
-                payload=payload,
+                payload=payload_dict,
                 metadata=metadata_to_send,
             )
             logger.info(
