@@ -143,6 +143,57 @@ class SessionAdapterMetadata:
     telegram: Optional[TelegramAdapterMetadata] = None
     redis: Optional[RedisAdapterMetadata] = None
 
+    def to_json(self) -> str:
+        """Serialize to JSON string, excluding None fields."""
+        return json.dumps(asdict_exclude_none(self))
+
+    @classmethod
+    def from_json(cls, raw: str) -> "SessionAdapterMetadata":
+        """Deserialize from JSON string, filtering unknown fields per adapter."""
+        data_obj: object = json.loads(raw)
+        telegram_metadata: Optional[TelegramAdapterMetadata] = None
+        redis_metadata: Optional[RedisAdapterMetadata] = None
+
+        if isinstance(data_obj, dict):
+            tg_raw = data_obj.get("telegram")
+            if isinstance(tg_raw, dict):
+                topic_id_val: object = tg_raw.get("topic_id")
+                output_msg_val: object = tg_raw.get("output_message_id")
+                tg_fields: dict[str, object | None] = {
+                    "topic_id": int(topic_id_val) if isinstance(topic_id_val, int) else None,
+                    "output_message_id": str(output_msg_val) if output_msg_val is not None else None,
+                }
+                telegram_metadata = TelegramAdapterMetadata(**tg_fields)  # type: ignore[arg-type]
+
+            redis_raw = data_obj.get("redis")
+            if isinstance(redis_raw, dict):
+
+                def _get_str(key: str) -> Optional[str]:
+                    val = redis_raw.get(key)
+                    return str(val) if val is not None else None
+
+                channel_meta_val = redis_raw.get("channel_metadata")
+                channel_meta_str: Optional[str]
+                if isinstance(channel_meta_val, dict):
+                    channel_meta_str = json.dumps(channel_meta_val)
+                elif channel_meta_val is not None:
+                    channel_meta_str = str(channel_meta_val)
+                else:
+                    channel_meta_str = None
+
+                redis_metadata = RedisAdapterMetadata(
+                    channel_id=_get_str("channel_id"),
+                    output_stream=_get_str("output_stream"),
+                    target_computer=_get_str("target_computer"),
+                    native_session_id=_get_str("native_session_id"),
+                    project_dir=_get_str("project_dir"),
+                    last_checkpoint_time=_get_str("last_checkpoint_time"),
+                    title=_get_str("title"),
+                    channel_metadata=channel_meta_str,
+                )
+
+        return cls(telegram=telegram_metadata, redis=redis_metadata)
+
 
 @dataclass
 class ChannelMetadata:
@@ -209,69 +260,47 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI
 
-    def to_dict(self) -> JsonDict:
+    def to_dict(self) -> dict[str, object]:
         """Convert session to dictionary for JSON serialization."""
-        data: JsonDict = asdict(self)  # asdict returns dict[str, Any]
+        data: dict[str, object] = asdict(self)  # asdict returns dict[str, Any]
         # Convert datetime to ISO format
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
             data["last_activity"] = self.last_activity.isoformat()
         # Convert SessionAdapterMetadata (dataclass) to JSON string for DB storage
-        data["adapter_metadata"] = json.dumps(asdict_exclude_none(self.adapter_metadata))
+        adapter_meta = self.adapter_metadata
+        if isinstance(adapter_meta, dict):
+            data["adapter_metadata"] = json.dumps(adapter_meta)
+        else:
+            data["adapter_metadata"] = adapter_meta.to_json()
         return data
 
     @classmethod
-    def from_dict(cls, data: JsonDict) -> "Session":
+    def from_dict(cls, data: dict[str, object]) -> "Session":
         """Create session from dictionary (from database/JSON)."""
-        # Parse datetime strings
-        if "created_at" in data and isinstance(data["created_at"], str):
-            data["created_at"] = datetime.fromisoformat(data["created_at"])  # type: ignore[assignment]
-        if "last_activity" in data and isinstance(data["last_activity"], str):
-            data["last_activity"] = datetime.fromisoformat(data["last_activity"])  # type: ignore[assignment]
+        created_at_raw = data.get("created_at")
+        created_at = datetime.fromisoformat(created_at_raw) if isinstance(created_at_raw, str) else created_at_raw
+
+        last_activity_raw = data.get("last_activity")
+        last_activity = (
+            datetime.fromisoformat(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
+        )
 
         # Parse adapter_metadata JSON to SessionAdapterMetadata
+        adapter_metadata: SessionAdapterMetadata
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
-            raw_metadata: dict[str, object] = json.loads(data["adapter_metadata"])
-            # Build SessionAdapterMetadata from dict with typed adapter metadata
-            telegram_metadata: Optional[TelegramAdapterMetadata] = None
-            redis_metadata: Optional[RedisAdapterMetadata] = None
-
-            for adapter_key, adapter_data in raw_metadata.items():
-                if adapter_data is None or not isinstance(adapter_data, dict):
-                    continue  # Skip None metadata or non-dict values
-                if adapter_key == "telegram":
-                    # Filter to only known fields (handles schema evolution)
-                    known_fields = {"topic_id", "output_message_id"}
-                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}  # type: ignore[misc]
-                    telegram_metadata = TelegramAdapterMetadata(**filtered)  # type: ignore[misc]
-                elif adapter_key == "redis":
-                    # Filter to only known fields (handles schema evolution)
-                    known_fields = {
-                        "channel_id",
-                        "output_stream",
-                        "target_computer",
-                        "native_session_id",
-                        "project_dir",
-                        "last_checkpoint_time",
-                        "title",
-                        "channel_metadata",
-                    }
-                    filtered = {k: v for k, v in adapter_data.items() if k in known_fields}
-                    redis_metadata = RedisAdapterMetadata(**filtered)  # type: ignore[misc]
-
-            data["adapter_metadata"] = SessionAdapterMetadata(telegram=telegram_metadata, redis=redis_metadata)  # type: ignore
-        elif "adapter_metadata" not in data:
-            # Ensure adapter_metadata always exists
-            data["adapter_metadata"] = SessionAdapterMetadata()  # type: ignore
+            adapter_metadata = SessionAdapterMetadata.from_json(data["adapter_metadata"])
+        else:
+            adapter_metadata = SessionAdapterMetadata()
 
         # Convert closed from SQLite integer (0/1) to Python bool
-        if "closed" in data and isinstance(data["closed"], int):
-            data["closed"] = bool(data["closed"])
+        closed_val = data.get("closed")
+        closed = bool(closed_val) if isinstance(closed_val, int) else closed_val
 
         # Convert initiated_by_ai from SQLite integer (0/1) to Python bool
-        if "initiated_by_ai" in data and isinstance(data["initiated_by_ai"], int):
-            data["initiated_by_ai"] = bool(data["initiated_by_ai"])
+        ia_val = data.get("initiated_by_ai")
+        initiated_by_ai = bool(ia_val) if isinstance(ia_val, int) else ia_val
 
         # Filter to only Session's known fields (handles schema evolution/deprecated columns)
         known_fields = {
@@ -291,8 +320,13 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "initiated_by_ai",
         }
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
+        filtered_data["adapter_metadata"] = adapter_metadata
+        filtered_data["created_at"] = created_at
+        filtered_data["last_activity"] = last_activity
+        filtered_data["closed"] = closed
+        filtered_data["initiated_by_ai"] = initiated_by_ai
 
-        return cls(**filtered_data)  # type: ignore[arg-type]  # DB deserialization
+        return cls(**filtered_data)  # type: ignore[arg-type]
 
 
 @dataclass

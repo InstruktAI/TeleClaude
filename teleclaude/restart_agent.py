@@ -12,7 +12,6 @@ Uses the db module properly with async initialization.
 """
 
 import asyncio
-import json
 import logging
 import os
 import sys
@@ -21,7 +20,7 @@ from typing import Optional
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
 from teleclaude.core.agents import get_agent_command
-from teleclaude.core.db import Db
+from teleclaude.core.db import Db, db
 from teleclaude.core.models import Session
 from teleclaude.logging_config import setup_logging
 
@@ -45,28 +44,10 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
     )
 
     # Extract native session ID and active agent from ux_state
-    native_session_id: Optional[str] = None
-    active_agent: Optional[str] = None
-    thinking_mode: str = "slow"
-
-    if session.ux_state:
-        try:
-            ux_state_raw: object = json.loads(session.ux_state)
-            if isinstance(ux_state_raw, dict):
-                # Try new field first, fallback to old for migration
-                val: object = ux_state_raw.get("native_session_id") or ux_state_raw.get("claude_session_id")
-                if val:
-                    native_session_id = str(val)
-
-                agent_val: object = ux_state_raw.get("active_agent")
-                if agent_val:
-                    active_agent = str(agent_val)
-
-                thinking_val: object = ux_state_raw.get("thinking_mode")
-                if thinking_val:
-                    thinking_mode = str(thinking_val)
-        except (json.JSONDecodeError, AttributeError) as e:
-            logger.warning("Failed to parse ux_state for session %s: %s", session.session_id[:8], e)
+    ux_state = await db.get_ux_state(session.session_id)
+    native_session_id: Optional[str] = ux_state.native_session_id if ux_state else None
+    active_agent: Optional[str] = ux_state.active_agent if ux_state else None
+    thinking_mode: str = ux_state.thinking_mode or "slow" if ux_state else "slow"
 
     # Determine agent name: argument > ux_state
     target_agent = agent_name or active_agent
