@@ -86,6 +86,9 @@ class SessionWatcher:
             # Find all matching files
             try:
                 files = list(dir_path.rglob(pattern))
+                if agent_name == "codex":
+                    # Codex keeps many historical session logs; always examine newest first.
+                    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)  # type: ignore[misc]
 
                 for file_path in files:
                     if file_path not in self._watched_files:
@@ -105,9 +108,16 @@ class SessionWatcher:
 
         # Filter for sessions running this agent and missing native_log_file
         candidates = []
+        file_mtime = file_path.stat().st_mtime
         for session in sessions:
             ux_state = await db.get_ux_state(session.session_id)
             if ux_state.active_agent == agent_name and not ux_state.native_log_file:
+                # Codex directories contain many old logs. Avoid adopting a historical
+                # file into a freshly created session by requiring temporal proximity.
+                if agent_name == "codex" and session.created_at:
+                    created_ts = session.created_at.timestamp()
+                    if abs(file_mtime - created_ts) > 600:
+                        continue
                 candidates.append(session)
 
         # Heuristic: Pick most recent candidate
