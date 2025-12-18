@@ -318,3 +318,87 @@ class Recording:
         if "timestamp" in data and isinstance(data["timestamp"], str):
             data["timestamp"] = datetime.fromisoformat(data["timestamp"])  # type: ignore[assignment]
         return cls(**data)  # type: ignore[arg-type]  # DB deserialization
+
+
+# ==================== Helper models / validators ====================
+
+THINKING_MODES = {"fast", "med", "slow"}
+
+
+def normalize_thinking_mode(mode: Optional[str], default: str = "slow") -> str:
+    """Normalize thinking_mode, falling back to default if invalid/None."""
+    if mode and mode in THINKING_MODES:
+        return mode
+    return default
+
+
+@dataclass
+class StartSessionArgs:
+    """Typed arguments for starting a session via MCP/Redis tools."""
+
+    computer: str
+    project_dir: str
+    title: str
+    message: str
+    agent: str = "claude"
+    thinking_mode: str = "slow"
+    caller_session_id: Optional[str] = None
+
+    @classmethod
+    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "StartSessionArgs":
+        """Build args from MCP tool call."""
+        required = ["computer", "project_dir", "title", "message"]
+        missing = [r for r in required if r not in arguments]
+        if missing:
+            raise ValueError(f"Arguments required for teleclaude__start_session: {', '.join(missing)}")
+
+        agent = str(arguments.get("agent", "claude"))
+        thinking_mode = normalize_thinking_mode(str(arguments.get("thinking_mode") or arguments.get("mode") or "slow"))
+
+        return cls(
+            computer=str(arguments["computer"]),
+            project_dir=str(arguments["project_dir"]),
+            title=str(arguments["title"]),
+            message=str(arguments["message"]),
+            agent=agent,
+            thinking_mode=thinking_mode,
+            caller_session_id=caller_session_id,
+        )
+
+
+@dataclass
+class RunAgentCommandArgs:
+    """Typed arguments for teleclaude__run_agent_command."""
+
+    computer: str
+    command: str
+    args: str = ""
+    session_id: Optional[str] = None
+    project: Optional[str] = None
+    agent: str = "claude"
+    thinking_mode: str = "slow"
+    subfolder: str = ""
+    caller_session_id: Optional[str] = None
+
+    @classmethod
+    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "RunAgentCommandArgs":
+        """Build args from MCP tool call."""
+        if not arguments or "computer" not in arguments or "command" not in arguments:
+            raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
+
+        thinking_mode = normalize_thinking_mode(str(arguments.get("thinking_mode") or arguments.get("mode") or "slow"))
+
+        session_id_arg = arguments.get("session_id")
+        project_arg = arguments.get("project")
+
+        return cls(
+            computer=str(arguments["computer"]),
+            command=str(arguments["command"]),
+            args=str(arguments.get("args", "")),
+            session_id=str(session_id_arg) if session_id_arg else None,
+            project=str(project_arg) if project_arg else None,
+            agent=str(arguments.get("agent", "claude")),
+            thinking_mode=thinking_mode,
+            subfolder=str(arguments.get("subfolder", "")) if arguments.get("subfolder") else "",
+            caller_session_id=caller_session_id,
+        )

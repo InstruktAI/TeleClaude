@@ -22,7 +22,7 @@ from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 from teleclaude.core.summarizer import summarizer
 
@@ -583,19 +583,8 @@ class TeleClaudeMCPServer:
                 sessions = await self.teleclaude__list_sessions(computer)
                 return [TextContent(type="text", text=json.dumps(sessions, default=str))]
             elif name == "teleclaude__start_session":
-                # All arguments required by MCP schema - no fallbacks needed
-                if not arguments:
-                    raise ValueError("Arguments required for teleclaude__start_session")
-                computer = str(arguments["computer"])
-                project_dir = str(arguments["project_dir"])
-                title = str(arguments["title"])
-                message = str(arguments["message"])
-                agent = str(arguments.get("agent", "claude"))
-                thinking_mode = str(arguments.get("thinking_mode") or arguments.get("mode") or "slow")
-                # caller_session_id extracted at top of call_tool for completion notifications
-                result = await self.teleclaude__start_session(
-                    computer, project_dir, title, message, caller_session_id, agent, thinking_mode
-                )
+                start_args = StartSessionArgs.from_mcp(arguments or {}, caller_session_id)
+                result = await self.teleclaude__start_session(**start_args.__dict__)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__send_message":
                 # Extract arguments explicitly
@@ -610,29 +599,8 @@ class TeleClaudeMCPServer:
                 result_text = "".join(chunks)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__run_agent_command":
-                computer = str(arguments.get("computer", "")) if arguments else ""
-                command = str(arguments.get("command", "")) if arguments else ""
-                args = str(arguments.get("args", "")) if arguments else ""
-                session_id_arg = arguments.get("session_id") if arguments else None
-                session_id = str(session_id_arg) if session_id_arg else None
-                project_arg = arguments.get("project") if arguments else None
-                project = str(project_arg) if project_arg else None
-                agent = str(arguments.get("agent", "claude")) if arguments else "claude"
-                thinking_mode = (
-                    str(arguments.get("thinking_mode") or arguments.get("mode") or "slow") if arguments else "slow"
-                )
-                subfolder = str(arguments.get("subfolder", "")) if arguments else ""
-                result = await self.teleclaude__run_agent_command(
-                    computer=computer,
-                    command=command,
-                    args=args,
-                    session_id=session_id,
-                    project=project,
-                    agent=agent,
-                    thinking_mode=thinking_mode,
-                    subfolder=subfolder,
-                    caller_session_id=caller_session_id,
-                )
+                run_args = RunAgentCommandArgs.from_mcp(arguments or {}, caller_session_id)
+                result = await self.teleclaude__run_agent_command(**run_args.__dict__)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__get_session_data":
                 computer = str(arguments.get("computer", "")) if arguments else ""
