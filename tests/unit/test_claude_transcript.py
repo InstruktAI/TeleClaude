@@ -303,6 +303,44 @@ def test_parse_codex_transcript(tmp_path):
     assert "codex assistant reply" in result
 
 
+def test_parse_codex_transcript_tail_chars_prefers_recent_sections(tmp_path):
+    """Codex tail truncation should keep the newest content visible."""
+    session_file = tmp_path / "codex-tail.jsonl"
+    entries = [
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:00.000Z",
+                "payload": {"role": "user", "content": "EARLY_MARKER this should be truncated away"},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:02.000Z",
+                "payload": {"role": "assistant", "content": [{"type": "text", "text": "middle content"}]},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "response_item",
+                "timestamp": "2025-12-15T21:00:04.000Z",
+                "payload": {"role": "user", "content": "LATEST_MARKER keep this visible"},
+            }
+        ),
+    ]
+    session_file.write_text("\n".join(entries), encoding="utf-8")
+
+    full = parse_codex_transcript(str(session_file), "Codex Tail Test", tail_chars=0)
+    assert "EARLY_MARKER" in full
+    assert "LATEST_MARKER" in full
+
+    truncated = parse_codex_transcript(str(session_file), "Codex Tail Test", tail_chars=200)
+    assert "truncated" in truncated.lower()
+    assert "LATEST_MARKER" in truncated
+    assert "EARLY_MARKER" not in truncated
+
+
 def test_parse_gemini_transcript(tmp_path):
     """Gemini sessions include thinking + tool blocks plus NORMAL text."""
     session_file = tmp_path / "gemini.json"

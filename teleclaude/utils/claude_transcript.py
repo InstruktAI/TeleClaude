@@ -67,6 +67,7 @@ def parse_codex_transcript(
             since_timestamp,
             until_timestamp,
             tail_chars,
+            tail_limit_fn=_apply_tail_limit_codex,
         )
     except Exception as e:
         return f"Error parsing transcript: {e}"
@@ -266,6 +267,32 @@ def _apply_tail_limit(result: str, tail_chars: int) -> str:
     return result
 
 
+def _apply_tail_limit_codex(result: str, tail_chars: int) -> str:
+    """Apply tail_chars limit for Codex transcripts.
+
+    Codex clients can truncate tool output from the start; for long transcripts
+    we prefer to start at a recent section boundary so the newest content
+    appears near the beginning of the returned text.
+    """
+    if not (0 < tail_chars < len(result)):
+        return result
+
+    truncated = result[-tail_chars:]
+
+    # Prefer the most recent section header ("\n## ") so we start at the newest
+    # readable boundary. This intentionally drops older sections even if they
+    # still fit within the last-N window.
+    last_header_pos = truncated.rfind("\n## ")
+    if last_header_pos >= 0:
+        truncated = truncated[last_header_pos + 1 :]
+    else:
+        first_header_pos = truncated.find("\n## ")
+        if 0 <= first_header_pos < 500:
+            truncated = truncated[first_header_pos + 1 :]
+
+    return f"[...truncated, showing last {tail_chars} chars...]\n\n{truncated}"
+
+
 def _parse_timestamp(ts: str) -> Optional[datetime]:
     """Parse ISO 8601 timestamp string to datetime.
 
@@ -348,6 +375,8 @@ def _render_transcript_from_entries(
     since_timestamp: Optional[str],
     until_timestamp: Optional[str],
     tail_chars: int,
+    *,
+    tail_limit_fn: Callable[[str, int], str] = _apply_tail_limit,
 ) -> str:
     """Render markdown from normalized transcript entries."""
 
@@ -364,7 +393,7 @@ def _render_transcript_from_entries(
         last_section = _process_entry(entry, lines, last_section)
 
     result = "\n".join(lines)
-    return _apply_tail_limit(result, tail_chars)
+    return tail_limit_fn(result, tail_chars)
 
 
 def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:
