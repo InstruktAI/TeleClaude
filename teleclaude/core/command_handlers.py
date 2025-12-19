@@ -284,15 +284,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     env_vars = voice_env_vars.copy()
     env_vars["TELECLAUDE_SESSION_ID"] = session_id
 
-    # Claude Code uses file watchers and can crash on macOS when TMPDIR contains unix sockets
-    # (e.g., Docker Desktop creates docker_cli_* sockets under the default TMPDIR).
-    # Force a dedicated, socket-free temp directory for all commands in this tmux session.
-    safe_tmp_dir = Path(os.path.expanduser("~/.teleclaude/tmp"))
-    safe_tmp_dir.mkdir(parents=True, exist_ok=True)
-    env_vars["TMPDIR"] = str(safe_tmp_dir)
-    env_vars["TMP"] = str(safe_tmp_dir)
-    env_vars["TEMP"] = str(safe_tmp_dir)
-
     success = await terminal_bridge.create_tmux_session(
         name=tmux_name,
         working_dir=working_dir,

@@ -118,9 +118,7 @@ async def test_handle_new_session_creates_session():
     _, call_kwargs = mock_tb.create_tmux_session.call_args
     env_vars = call_kwargs.get("env_vars") or {}
     assert env_vars.get("TELECLAUDE_SESSION_ID") == created_session_id
-    assert "TMPDIR" in env_vars
-    assert "TMP" in env_vars
-    assert "TEMP" in env_vars
+    assert call_kwargs.get("session_id") == created_session_id
 
 
 @pytest.mark.asyncio

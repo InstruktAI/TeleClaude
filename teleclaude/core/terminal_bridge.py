@@ -8,6 +8,8 @@ import hashlib
 import logging
 import os
 import pwd
+import re
+import shutil
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -19,6 +21,52 @@ logger = logging.getLogger(__name__)
 # User's shell basename, computed once at import
 # Used for shell readiness detection in send_keys()
 _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
+
+
+def _get_session_tmp_basedir() -> Path:
+    override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
+    if override:
+        return Path(override).expanduser()
+    return Path(os.path.expanduser("~/.teleclaude/tmp/sessions"))
+
+
+def _safe_path_component(value: str) -> str:
+    """Return a filesystem-safe path component derived from value."""
+    if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
+        return value
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+
+
+def _prepare_session_tmp_dir(session_id: str) -> Path:
+    """Create an empty per-session temp directory.
+
+    Claude Code (and other tools) may attempt to fs.watch() everything under TMPDIR.
+    If TMPDIR contains unix sockets (e.g. docker_cli_*), Node-based watchers can crash.
+    Using a dedicated, freshly created TMPDIR per tmux session avoids stray sockets.
+    """
+    safe_id = _safe_path_component(session_id)
+    base_dir = _get_session_tmp_basedir()
+    session_tmp = base_dir / safe_id
+
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure TMPDIR is empty: remove any previous contents (including unix sockets).
+    if session_tmp.exists():
+        try:
+            if session_tmp.is_dir() and not session_tmp.is_symlink():
+                shutil.rmtree(session_tmp)
+            else:
+                session_tmp.unlink()
+        except OSError:
+            # Best-effort cleanup; we'll try to reuse/create the dir below.
+            pass
+
+    session_tmp.mkdir(parents=True, exist_ok=True)
+    try:
+        session_tmp.chmod(0o700)
+    except OSError:
+        pass
+    return session_tmp
 
 
 async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Tmux session creation requires multiple parameters
@@ -46,6 +94,16 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
         True if successful, False otherwise
     """
     try:
+        effective_env_vars: Dict[str, str] = dict(env_vars) if env_vars else {}
+
+        # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
+        # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
+        if session_id:
+            session_tmp_dir = _prepare_session_tmp_dir(session_id)
+            effective_env_vars["TMPDIR"] = str(session_tmp_dir)
+            effective_env_vars["TMP"] = str(session_tmp_dir)
+            effective_env_vars["TEMP"] = str(session_tmp_dir)
+
         # Create tmux session in detached mode
         # tmux automatically uses $SHELL for the session's shell
         # No need for explicit shell command - tmux creates proper PTY with user's default shell
@@ -69,8 +127,8 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
             cmd.extend(["-e", f"TELECLAUDE_SESSION_ID={session_id}"])
 
         # Inject additional environment variables (e.g., TTS voice configuration)
-        if env_vars:
-            for var_name, var_value in env_vars.items():
+        if effective_env_vars:
+            for var_name, var_value in effective_env_vars.items():
                 cmd.extend(["-e", f"{var_name}={var_value}"])
 
         # Don't capture stdout/stderr - let tmux create its own PTY
