@@ -363,6 +363,7 @@ class ThinkingMode(str, Enum):
     FAST = "fast"
     MED = "med"
     SLOW = "slow"
+    DEEP = "deep"
 
 
 @dataclass

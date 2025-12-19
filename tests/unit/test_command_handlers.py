@@ -581,6 +581,42 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 
 
 @pytest.mark.asyncio
+async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
+    """Ensure /codex deep maps to the deep model flag."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+    from teleclaude.core.ux_state import SessionUXState
+
+    mock_session = MagicMock()
+    mock_session.session_id = "deep-session-123"
+    mock_session.tmux_session_name = "tc_test"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_context.message_id = "msg-deep"
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+    ):
+        mock_config.agents.get.return_value = MagicMock()
+        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState(thinking_mode="slow"))
+        mock_db.update_ux_state = AsyncMock()
+        mock_get_agent_command.return_value = "codex -m deep"
+
+        await command_handlers.handle_agent_start.__wrapped__(
+            mock_session, mock_context, "codex", ["deep"], mock_client, mock_execute
+        )
+
+    mock_execute.assert_called_once()
+    mock_get_agent_command.assert_called_once_with("codex", thinking_mode="deep")
+    command = mock_execute.call_args[0][1]
+    assert "codex -m deep" in command
+
+
+@pytest.mark.asyncio
 async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock_initialized_db):
     """Test that handle_agent_resume uses native_session_id from database and resume template."""
     from teleclaude.config import AgentConfig
