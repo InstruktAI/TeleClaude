@@ -49,6 +49,7 @@ EventType = Literal[
 UiCommands = {
     "cd": "Change directory or list trusted directories",
     "agent_restart": "Restart generic agent session",
+    "agent_resume": "Resume an AI agent session",
     "claude": "Start Claude (alias for /agent claude)",
     "claude_plan": "Navigate to Claude plan mode",
     "gemini": "Start Gemini (alias for /agent gemini)",

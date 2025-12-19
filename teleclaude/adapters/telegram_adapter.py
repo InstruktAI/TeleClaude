@@ -1396,6 +1396,10 @@ Current size: {current_size}
             metadata=self._metadata(),
         )
 
+    async def _handle_agent_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /agent_resume command - resume the last AI agent session."""
+        await self._handle_agent_resume_command(update, context)
+
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude command - start Claude agent."""
         await self._handle_agent_command(update, context, "claude")
