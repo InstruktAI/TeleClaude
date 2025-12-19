@@ -1372,29 +1372,6 @@ Current size: {current_size}
             metadata=self._metadata(),
         )
 
-    async def _handle_agent(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /agent command - start an AI agent (e.g., /agent claude)."""
-        if not context.args:
-            session = await self._get_session_from_topic(update)
-            if not session:
-                return
-
-            assert update.effective_user is not None
-            assert update.effective_message is not None
-
-            await self._pre_handle_user_input(session)
-            await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-            await self.send_feedback(
-                session,
-                "Usage: `/agent claude|gemini|codex` (or use `/claude`, `/gemini`, `/codex`).",
-                MessageMetadata(parse_mode="Markdown"),
-            )
-            return
-
-        agent_name = context.args[0].strip().lower()
-        context.args = context.args[1:]
-        await self._handle_agent_command(update, context, agent_name)
-
     async def _handle_agent_resume_command(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /agent_resume command - resume the last AI agent session.
 
@@ -1418,10 +1395,6 @@ Current size: {current_size}
             },
             metadata=self._metadata(),
         )
-
-    async def _handle_agent_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /agent_resume command - resume the last AI agent session."""
-        await self._handle_agent_resume_command(update, context)
 
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude command - start Claude agent."""
