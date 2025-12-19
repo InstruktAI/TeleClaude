@@ -268,6 +268,7 @@ async def handle_voice(
     success, _ = await terminal_bridge.send_keys(
         session.tmux_session_name,
         text,
+        session_id=session_id,
     )
 
     if not success:

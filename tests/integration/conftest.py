@@ -365,6 +365,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     async def mock_send_keys(
         session_name: str,
         text: str,
+        session_id: str | None = None,
         working_dir: str = "~",
         cols: int = 80,
         rows: int = 24,

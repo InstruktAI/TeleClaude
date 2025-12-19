@@ -189,7 +189,9 @@ class TestHandleFile:
         """Test @ prefix is added for Claude Code."""
         sent_keys = []
 
-        async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
+        async def mock_send_keys(
+            session_name: str, text: str, session_id: Optional[str] = None
+        ) -> tuple[bool, Optional[str]]:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
@@ -224,7 +226,9 @@ class TestHandleFile:
         """Test plain path is sent for non-Claude processes."""
         sent_keys = []
 
-        async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
+        async def mock_send_keys(
+            session_name: str, text: str, session_id: Optional[str] = None
+        ) -> tuple[bool, Optional[str]]:
             sent_keys.append((session_name, text))
             return (True, "marker123")
 
@@ -259,7 +263,9 @@ class TestHandleFile:
         """Test confirmation message includes file size."""
         sent_messages = []
 
-        async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
+        async def mock_send_keys(
+            session_name: str, text: str, session_id: Optional[str] = None
+        ) -> tuple[bool, Optional[str]]:
             return (True, "marker123")
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
@@ -293,7 +299,9 @@ class TestHandleFile:
         """Test error handling when send_keys fails."""
         sent_messages = []
 
-        async def mock_send_keys(session_name: str, text: str) -> tuple[bool, Optional[str]]:
+        async def mock_send_keys(
+            session_name: str, text: str, session_id: Optional[str] = None
+        ) -> tuple[bool, Optional[str]]:
             return (False, None)
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:

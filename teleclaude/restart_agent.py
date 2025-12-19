@@ -103,6 +103,7 @@ async def restart_agent_in_session(session: Session, agent_name: Optional[str] =
     success, _ = await terminal_bridge.send_keys(
         session_name=session.tmux_session_name,
         text=restart_cmd,
+        session_id=session.session_id,
         working_dir=session.working_directory,
         send_enter=True,
     )

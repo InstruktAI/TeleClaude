@@ -648,6 +648,7 @@ async def handle_escape_command(
         success, marker_id = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
+            session_id=session.session_id,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,

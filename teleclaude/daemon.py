@@ -856,6 +856,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         success, marker_id = await terminal_bridge.send_keys(
             session.tmux_session_name,
             command,
+            session_id=session.session_id,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
@@ -1184,6 +1185,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         success, marker_id = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
+            session_id=session.session_id,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,

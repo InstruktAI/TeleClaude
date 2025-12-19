@@ -115,6 +115,7 @@ class AgentCoordinator:
             await terminal_bridge.send_keys(
                 session_name=listener.caller_tmux_session,
                 text=notification,
+                session_id=listener.caller_session_id,
                 send_enter=True,
             )
             logger.info("Notified caller %s", listener.caller_session_id[:8])
@@ -160,6 +161,7 @@ class AgentCoordinator:
             await terminal_bridge.send_keys(
                 session_name=listener.caller_tmux_session,
                 text=notification,
+                session_id=listener.caller_session_id,
                 send_enter=True,
             )
 

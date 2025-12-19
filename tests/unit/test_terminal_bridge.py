@@ -104,6 +104,31 @@ class TestSendKeys:
                     assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker"
                     assert "echo hello" in text_arg, "Should include original command"
 
+    @pytest.mark.asyncio
+    async def test_recreates_session_with_session_id(self):
+        """Test that session recreation passes session_id for env var + TMPDIR injection."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.wait = AsyncMock()
+            mock_exec.return_value = mock_process
+
+            with (
+                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
+                patch.object(terminal_bridge, "create_tmux_session", new=AsyncMock(return_value=True)) as mock_create,
+                patch.object(terminal_bridge, "get_current_command", new=AsyncMock(return_value="zsh")),
+            ):
+                success, _ = await terminal_bridge.send_keys(
+                    session_name="test-session",
+                    text="echo hello",
+                    session_id="sid-123",
+                    working_dir="/tmp",
+                )
+
+        assert success is True
+        mock_create.assert_awaited_once()
+        assert mock_create.await_args.kwargs.get("session_id") == "sid-123"
+
 
 class TestSendCtrlKey:
     """Tests for send_ctrl_key() function."""

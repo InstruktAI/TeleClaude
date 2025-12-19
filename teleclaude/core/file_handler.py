@@ -127,6 +127,7 @@ async def handle_file(
     success, _ = await terminal_bridge.send_keys(
         session.tmux_session_name,
         input_text,
+        session_id=session_id,
     )
 
     if not success:

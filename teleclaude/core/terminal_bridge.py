@@ -186,6 +186,7 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
 async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Terminal control requires multiple parameters
     session_name: str,
     text: str,
+    session_id: Optional[str] = None,
     working_dir: str = "~",
     cols: int = 80,
     rows: int = 24,
@@ -204,6 +205,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
     Args:
         session_name: Session name
         text: Text to send
+        session_id: TeleClaude session ID (used for env var + TMPDIR injection on tmux recreation)
         working_dir: Working directory if creating new session (default: ~)
         cols: Terminal columns if creating new session (default: 80)
         rows: Terminal rows if creating new session (default: 24)
@@ -218,7 +220,13 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         # Check if session exists, create if not
         if not await session_exists(session_name):
             logger.info("Session %s not found, creating new session...", session_name)
-            success = await create_tmux_session(session_name, working_dir, cols, rows)
+            success = await create_tmux_session(
+                name=session_name,
+                working_dir=working_dir,
+                cols=cols,
+                rows=rows,
+                session_id=session_id,
+            )
             if not success:
                 logger.error("Failed to create session %s", session_name)
                 return False, None
