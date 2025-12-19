@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 
-def test_telegram_adapter_exposes_agent_resume_command() -> None:
+def test_ui_adapter_command_override_mapping() -> None:
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
     from teleclaude.core.events import UiCommands
 
     assert "agent_resume" in UiCommands
-    assert hasattr(TelegramAdapter, "_handle_agent_resume")
+    assert TelegramAdapter.COMMAND_HANDLER_OVERRIDES.get("agent_resume") == "_handle_agent_resume_command"

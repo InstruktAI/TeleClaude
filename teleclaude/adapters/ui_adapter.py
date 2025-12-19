@@ -53,6 +53,9 @@ class UiAdapter(BaseAdapter):
     # Adapter key for metadata storage (subclasses MUST override)
     ADAPTER_KEY: str = "unknown"
 
+    # Optional command handler overrides: command -> handler method name
+    COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
+
     # Platform message size limit (subclasses can override)
     # Default: 3900 chars (Telegram: 4096 limit - ~196 overhead)
     max_message_size: int = 3900
@@ -152,7 +155,7 @@ class UiAdapter(BaseAdapter):
         """
         handlers: list[tuple[str, object]] = []
         for command, _ in UiCommands.items():
-            handler_name = f"_handle_{command}"
+            handler_name = self.COMMAND_HANDLER_OVERRIDES.get(command, f"_handle_{command}")
             handler: object = getattr(self, handler_name, None)
             if handler:
                 handlers.append((command, handler))

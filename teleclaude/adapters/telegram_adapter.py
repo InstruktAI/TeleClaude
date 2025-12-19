@@ -127,6 +127,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
+    COMMAND_HANDLER_OVERRIDES = {"agent_resume": "_handle_agent_resume_command"}
 
     def __init__(self, client: "AdapterClient") -> None:
         """Initialize Telegram adapter.
@@ -1395,10 +1396,6 @@ Current size: {current_size}
             },
             metadata=self._metadata(),
         )
-
-    async def _handle_agent_resume(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /agent_resume command - resume the last AI agent session."""
-        await self._handle_agent_resume_command(update, context)
 
     async def _handle_claude(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /claude command - start Claude agent."""
