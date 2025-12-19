@@ -30,6 +30,7 @@ dependencies = [
     "mcp>=1.0.0",
     "redis>=5.0.0",
     "psutil>=5.9.0",
+    "instruktai-python-logger @ git+https://github.com/InstruktAI/python-logger.git@e005da50d596ba91d48e4ef0f696cac7ab825b92",
 ]
 
 [project.optional-dependencies]

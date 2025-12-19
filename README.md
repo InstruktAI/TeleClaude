@@ -33,8 +33,21 @@ TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your t
 
 - Python 3.11 or higher
 - tmux 3.0 or higher
+- `uv` (Python package manager; must be on `PATH`)
 - Telegram account
 - A Telegram bot token (from [@BotFather](https://t.me/botfather))
+
+**Install `uv`:**
+
+```bash
+# macOS
+brew install uv
+
+# Debian/Ubuntu (if your distro packages it)
+sudo apt-get update && sudo apt-get install uv
+```
+
+`make install` (and `make init`) will attempt to install `uv` for you (brew on macOS, apt-get on Linux) if it's missing.
 
 ### Installation
 
@@ -123,14 +136,7 @@ The service automatically:
 
 - Starts on system boot
 - Restarts if it crashes
-- Logs to `logs/teleclaude.log` (filtered operator log)
-
-Other useful logs:
-
-- `logs/telegram.log` — Telegram adapter details
-- `logs/redis.log` — Redis adapter details
-- `logs/mcp_server.log` — MCP backend tool calls
-- `logs/mcp-wrapper.log` — MCP wrapper connection / handshake details
+- Logs to `/var/log/instrukt-ai/teleclaude/teleclaude.log`
 
 **Development mode** (run in foreground):
 
@@ -437,11 +443,13 @@ make start
 
 1. Check status: `make status`
 2. Restart daemon: `make restart`
-3. Check daemon logs: `tail -f logs/teleclaude.log`
+3. Check daemon logs: `tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log` (or `instrukt-ai-logs teleclaude --since 10m`)
 
 Log verbosity:
 
-- `TELECLAUDE_LOG_LEVEL` controls overall daemon log level (including component logs in `logs/`).
+- `TELECLAUDE_LOG_LEVEL` controls TeleClaude logs.
+- `TELECLAUDE_THIRD_PARTY_LOG_LEVEL` controls third-party baseline verbosity.
+- `TELECLAUDE_THIRD_PARTY_LOGGERS` selectively enables third-party logger prefixes.
 
 ## Contributing
 4. Verify bot token is correct in `.env`

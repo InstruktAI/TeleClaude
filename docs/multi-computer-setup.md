@@ -217,7 +217,7 @@ make status      # Verify daemon is running
 **Verify daemon startup:**
 
 ```bash
-tail -f logs/teleclaude.log
+tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log
 ```
 
 You should see:
@@ -416,7 +416,7 @@ In your supergroup, you'll see:
 3. **Check logs** for heartbeat errors:
 
    ```bash
-   tail -100 logs/teleclaude.log | grep -i heartbeat
+   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i heartbeat
    ```
 
 4. **Verify supergroup ID** is same in all `.env` files:
@@ -471,7 +471,7 @@ In your supergroup, you'll see:
 
    ```bash
    # On target computer:
-   tail -100 logs/teleclaude.log
+   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log
    ```
 
 3. **Verify Claude Code is installed** on target computer:
@@ -498,12 +498,12 @@ In your supergroup, you'll see:
 2. **Verify polling is active** - check target computer logs:
 
    ```bash
-   tail -100 logs/teleclaude.log | grep -i polling
+   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i polling
    ```
 
 3. **Check for errors** in output formatting:
    ```bash
-   tail -100 logs/teleclaude.log | grep -i "ERROR"
+   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i "ERROR"
    ```
 
 ---
@@ -605,7 +605,7 @@ This prevents cross-team command execution while sharing the same Telegram super
 
 ```bash
 # On each computer:
-tail -100 logs/teleclaude.log | grep -E "(ERROR|WARNING)"
+tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -E "(ERROR|WARNING)"
 ```
 
 **Test MCP connectivity:**
@@ -623,13 +623,13 @@ Set up log rotation to prevent disk space issues:
 
 ```
 # Rotate teleclaude logs daily, keep 7 days
-logs/teleclaude.log 644 7 * @T00 GZ
+/var/log/instrukt-ai/teleclaude/teleclaude.log 644 7 * @T00 GZ
 ```
 
 **Linux** (`/etc/logrotate.d/teleclaude`):
 
 ```
-logs/teleclaude.log {
+/var/log/instrukt-ai/teleclaude/teleclaude.log {
     daily
     rotate 7
     compress
@@ -712,7 +712,7 @@ If you encounter issues not covered in this guide:
 2. **Check logs**:
 
    ```bash
-   tail -200 logs/teleclaude.log
+   tail -200 /var/log/instrukt-ai/teleclaude/teleclaude.log
    ```
 
 3. **Verify configuration**:

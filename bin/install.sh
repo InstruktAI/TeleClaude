@@ -21,7 +21,7 @@ LOG_FILE="${INSTALL_DIR}/install.log"
 PYTHON_MIN_VERSION="3.11"
 TMUX_MIN_VERSION="3.0"
 NON_INTERACTIVE=false
-DAEMON_LOG_FILE="${INSTALL_DIR}/logs/teleclaude.log"
+DAEMON_LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -281,20 +281,55 @@ setup_venv() {
         fi
     fi
 
-    # Ensure uv is available (matches Makefile install flow)
+    # Ensure uv is available (no PATH hacks; install via system package manager)
     if ! command -v uv >/dev/null 2>&1; then
-        print_info "Installing uv package manager..."
-        if curl -LsSf https://astral.sh/uv/install.sh | sh >>"$LOG_FILE" 2>&1; then
-            print_success "uv installed"
-        else
-            print_error "Failed to install uv (see $LOG_FILE)"
+        print_warning "uv not found on PATH"
+        case "$OS" in
+            macos)
+                if ! command -v brew >/dev/null 2>&1; then
+                    print_error "Homebrew not found, but uv is required"
+                    print_info "Install Homebrew from https://brew.sh, then re-run the installer."
+                    exit 1
+                fi
+                print_info "Installing uv via Homebrew..."
+                if brew install uv >>"$LOG_FILE" 2>&1; then
+                    print_success "uv installed via Homebrew"
+                else
+                    print_error "Failed to install uv via Homebrew (see $LOG_FILE)"
+                    exit 1
+                fi
+                ;;
+            linux)
+                if ! command -v apt-get >/dev/null 2>&1; then
+                    print_error "apt-get not found, but uv is required"
+                    print_info "Install uv with your system package manager, then re-run the installer."
+                    exit 1
+                fi
+                print_info "Installing uv via apt-get..."
+                if sudo apt-get update >>"$LOG_FILE" 2>&1 && sudo apt-get install -y uv >>"$LOG_FILE" 2>&1; then
+                    print_success "uv installed via apt-get"
+                else
+                    print_error "Failed to install uv via apt-get (see $LOG_FILE)"
+                    exit 1
+                fi
+                ;;
+            *)
+                print_error "Unsupported OS for automatic uv install: $OS"
+                print_info "Install uv and ensure it's on PATH, then re-run the installer."
+                exit 1
+                ;;
+        esac
+
+        if ! command -v uv >/dev/null 2>&1; then
+            print_error "uv installation completed but uv is still not on PATH"
+            print_info "Fix your PATH and re-run the installer."
             exit 1
         fi
     fi
 
     # Use uv to create/refresh .venv and install deps from pyproject/uv.lock
     print_info "Syncing Python environment with uv (including test extras)..."
-    PATH="$HOME/.local/bin:$PATH" uv sync --extra test
+    uv sync --extra test
 
     if [ ! -d "$INSTALL_DIR/.venv" ]; then
         print_error "uv sync did not create .venv"
@@ -404,6 +439,8 @@ WORKING_DIR=${INSTALL_DIR}
 
 # Logging Configuration
 TELECLAUDE_LOG_LEVEL=INFO
+TELECLAUDE_THIRD_PARTY_LOG_LEVEL=WARNING
+TELECLAUDE_THIRD_PARTY_LOGGERS=
 
 # OpenAI API Key (for voice transcription via Whisper)
 OPENAI_API_KEY=${OPENAI_KEY}
@@ -437,31 +474,21 @@ EOF
 setup_log_file() {
     print_header "Setting Up Log File"
 
-    local log_file="$DAEMON_LOG_FILE"
-
-    while true; do
-        if [ -f "$log_file" ]; then
-            print_success "Log file already exists: $log_file"
-            break
-        fi
-
-        print_info "Creating log file: $log_file"
-        if sudo touch "$log_file" 2>/dev/null && sudo chown "$USER" "$log_file" 2>/dev/null && sudo chmod 644 "$log_file" 2>/dev/null; then
-            print_success "Log file created and owned by $USER"
-            break
-        else
-            print_error "Could not create log file at $log_file"
-            print_info "Try a path you have write access to"
-            log_file=$(prompt "Log file path" "${INSTALL_DIR}/teleclaude.log")
-        fi
-    done
-
-    # Update .env with the working path
-    if [ "$log_file" != "$DAEMON_LOG_FILE" ]; then
-        sed -i.bak "s|TELECLAUDE_LOG_FILE=.*|TELECLAUDE_LOG_FILE=$log_file|" "$INSTALL_DIR/.env"
-        rm -f "$INSTALL_DIR/.env.bak"
-        print_info "Updated .env with new log path"
+    print_info "Provisioning canonical log path (sudo may prompt)..."
+    local log_file
+    local provision_args=("teleclaude" "--print-log-file")
+    if [ "$NON_INTERACTIVE" = true ]; then
+        provision_args+=("--non-interactive")
     fi
+
+    if ! log_file="$("$INSTALL_DIR/bin/provision-logs.sh" "${provision_args[@]}")"; then
+        print_error "Could not provision log file"
+        print_info "Re-run installer and approve sudo prompts."
+        exit 1
+    fi
+
+    DAEMON_LOG_FILE="$log_file"
+    print_success "Log file ready: $DAEMON_LOG_FILE"
 }
 
 # Install service
@@ -793,7 +820,7 @@ main() {
     print_info "The daemon is running as a system service and will:"
     echo "  • Start automatically on boot"
     echo "  • Restart automatically if it crashes"
-    echo "  • Log to: logs/teleclaude.log"
+    echo "  • Log to: $DAEMON_LOG_FILE"
     echo ""
     print_warning "IMPORTANT: Do NOT manually start the daemon!"
     print_warning "The service manages the daemon automatically."

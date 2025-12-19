@@ -103,7 +103,42 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Initialize redis client placeholder (actual connection established in start)
         self.redis: Redis = self._create_redis_client()
 
+        # Idle poll logging throttling (avoid tail spam at DEBUG level)
+        self._idle_poll_last_log_at: float | None = None
+        self._idle_poll_suppressed: int = 0
+
         logger.info("RedisAdapter initialized for computer: %s", self.computer_name)
+
+    def _reset_idle_poll_log_throttle(self) -> None:
+        self._idle_poll_last_log_at = None
+        self._idle_poll_suppressed = 0
+
+    def _maybe_log_idle_poll(self, *, message_stream: str, now: float | None = None) -> None:
+        """Throttle "idle" polling logs to avoid tail spam.
+
+        When Redis has no messages, the adapter polls every ~1s. Logging that fact every
+        iteration is high-noise, especially at DEBUG. Instead, emit at most once per 60s
+        and include how many idle polls were suppressed.
+        """
+        now = time.monotonic() if now is None else now
+
+        if self._idle_poll_last_log_at is None:
+            self._idle_poll_last_log_at = now
+
+        self._idle_poll_suppressed += 1
+
+        elapsed_s = now - self._idle_poll_last_log_at
+        if elapsed_s < 60.0:
+            return
+
+        cast(Any, logger).debug(
+            "No messages received, continuing poll loop",
+            stream=message_stream,
+            suppressed=self._idle_poll_suppressed,
+            interval_s=int(elapsed_s),
+        )
+        self._idle_poll_last_log_at = now
+        self._idle_poll_suppressed = 0
 
     async def start(self) -> None:
         """Initialize Redis connection and start background tasks."""
@@ -658,6 +693,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         """Background task: Poll messages:{computer_name} stream for incoming messages."""
 
         message_stream = f"messages:{self.computer_name}"
+        self._reset_idle_poll_log_throttle()
 
         # Load last processed message ID from database (prevents re-processing on restart)
         last_id_str = await self._get_last_processed_message_id()
@@ -691,8 +727,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 # )
 
                 if not messages:
-                    logger.debug("No messages received, continuing poll loop")
+                    self._maybe_log_idle_poll(message_stream=message_stream)
                     continue
+
+                self._reset_idle_poll_log_throttle()
 
                 # Process commands
                 for (

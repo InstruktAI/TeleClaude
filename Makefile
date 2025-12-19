@@ -36,14 +36,42 @@ help:
 	@echo ""
 
 install:
-	@echo "Installing dependencies..."
-	@if ! command -v uv >/dev/null; then echo "Installing uv..."; curl -LsSf https://astral.sh/uv/install.sh | sh; fi
-	PATH="$$HOME/.local/bin:$$PATH" uv sync --extra test
-	@echo "✓ Dependencies and package installed"
-	@echo ""
-	@echo "Installing agent hooks..."
-	@PATH="$$HOME/.local/bin:$$PATH" .venv/bin/python scripts/install_hooks.py
-	@echo "✓ Agent hooks configured"
+		@echo "Provisioning log directory (sudo may prompt)..."
+		@./bin/provision-logs.sh teleclaude
+		@echo "Ensuring 'uv' is installed..."
+		@if ! command -v uv >/dev/null 2>&1; then \
+			case "$$(uname -s)" in \
+				Darwin) \
+					if ! command -v brew >/dev/null 2>&1; then \
+						echo "ERROR: 'uv' is required but not found. Install Homebrew (https://brew.sh) or install uv manually, then re-run 'make install'."; \
+						exit 1; \
+					fi; \
+					echo "Installing uv via Homebrew..."; \
+					brew install uv; \
+					;; \
+				Linux) \
+					if command -v apt-get >/dev/null 2>&1; then \
+						echo "Installing uv via apt-get (sudo may prompt)..."; \
+						sudo apt-get update && sudo apt-get install -y uv; \
+					else \
+						echo "ERROR: 'uv' is required but not found, and apt-get is unavailable. Install uv via your system package manager and re-run 'make install'."; \
+						exit 1; \
+					fi; \
+					;; \
+				*) \
+					echo "ERROR: Unsupported OS ($$(uname -s)) and 'uv' not found. Install uv and re-run 'make install'."; \
+					exit 1; \
+					;; \
+			esac; \
+		fi
+		@echo "Installing dependencies..."
+		@command -v uv >/dev/null || (echo "ERROR: 'uv' is required on PATH but still not found after install attempt. Fix PATH and re-run 'make install'." && exit 1)
+		uv sync --extra test
+		@echo "✓ Dependencies and package installed"
+		@echo ""
+		@echo "Installing agent hooks..."
+		@.venv/bin/python scripts/install_hooks.py
+		@echo "✓ Agent hooks configured"
 	@echo ""
 	@echo "Next step: Run 'make init' to set up the service (or 'make init ARGS=-y' for unattended mode)"
 
