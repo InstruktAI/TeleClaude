@@ -8,6 +8,7 @@ The hooks point to the receiver scripts within this repository.
 
 import json
 import os
+import shlex
 from pathlib import Path
 from typing import Any, Dict
 
@@ -15,7 +16,7 @@ from typing import Any, Dict
 def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Dict[str, Any]:
     """Idempotently merge new hooks into existing hooks configuration.
 
-    Deduplicates by command path - if a hook with the same command exists, it's replaced.
+    Deduplicates by receiver script path so old hook entries are replaced.
     """
     merged = existing_hooks.copy()
 
@@ -38,12 +39,36 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
         # Update specific hook within the block
         hooks_list = target_block.get("hooks", [])
 
-        # Remove existing hook with same command to replace it (idempotent)
+        def _extract_receiver_script(command: str) -> str | None:
+            try:
+                parts = shlex.split(command)
+            except ValueError:
+                return None
+            for part in parts:
+                if part.endswith(".py") and "receiver_" in part:
+                    return part
+            return None
+
         new_command = hook_def.get("command", "")
-        hooks_list = [h for h in hooks_list if h.get("command") != new_command]
+        new_receiver = _extract_receiver_script(new_command)
+
+        filtered_hooks = []
+        for h in hooks_list:
+            cmd = h.get("command")
+            if not cmd:
+                filtered_hooks.append(h)
+                continue
+            if cmd == new_command:
+                continue
+            if new_receiver:
+                existing_receiver = _extract_receiver_script(cmd)
+                if existing_receiver == new_receiver:
+                    continue
+            filtered_hooks.append(h)
 
         # Add new hook definition
-        hooks_list.append(hook_def)
+        filtered_hooks.append(hook_def)
+        hooks_list = filtered_hooks
         target_block["hooks"] = hooks_list
 
         merged[event] = event_hooks

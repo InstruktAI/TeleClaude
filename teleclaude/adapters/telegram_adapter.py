@@ -1493,18 +1493,14 @@ Current size: {current_size}
             if result.returncode == 0:
                 await self.send_feedback(session, "✅ Agent restarted successfully", MessageMetadata())
             else:
-                # Combine stdout and stderr for complete error context
-                error_parts = []
-                if result.stdout and result.stdout.strip():
-                    error_parts.append(result.stdout.strip())
-                if result.stderr and result.stderr.strip():
-                    error_parts.append(result.stderr.strip())
-                error_msg = "\n".join(error_parts) if error_parts else f"Exit code: {result.returncode}"
-                await self.send_feedback(session, f"❌ Failed to restart:\n{error_msg}", MessageMetadata())
+                await self.send_feedback(
+                    session, "❌ Failed to restart agent. Check logs for details.", MessageMetadata()
+                )
         except subprocess.TimeoutExpired:
             await self.send_feedback(session, "⏱️ Restart script timed out", MessageMetadata())
         except Exception as e:
-            await self.send_feedback(session, f"❌ Error: {str(e)}", MessageMetadata())
+            logger.error("Agent restart exception for session %s: %s", session.session_id[:8], e, exc_info=True)
+            await self.send_feedback(session, "❌ Failed to restart agent. Check logs for details.", MessageMetadata())
 
     async def _handle_callback_query(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:  # pylint: disable=too-many-locals
         """Handle button clicks from inline keyboards."""

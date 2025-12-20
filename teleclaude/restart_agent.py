@@ -157,4 +157,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logger.error("Failed to restart agent: %s", e, exc_info=True)
+        sys.exit(1)
