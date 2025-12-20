@@ -169,6 +169,13 @@ def configure_gemini(repo_root: Path) -> None:
     current_hooks = settings.get("hooks", {})
     settings["hooks"] = merge_hooks(current_hooks, hooks_map)
 
+    # Ensure hooks are enabled (Gemini requires explicit flag).
+    tools_cfg = settings.get("tools")
+    if not isinstance(tools_cfg, dict):
+        tools_cfg = {}
+    tools_cfg["enableHooks"] = True
+    settings["tools"] = tools_cfg
+
     # Save
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
