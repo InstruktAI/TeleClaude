@@ -16,6 +16,7 @@ from typing import Any, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 from utils.mcp_send import mcp_send
+from utils.normalize import normalize_notification_payload, normalize_session_start_payload
 
 configure_logging("teleclaude")
 logger = cast(Any, get_logger("teleclaude.hooks.receiver_claude"))
@@ -80,13 +81,14 @@ def main() -> None:
             sys.exit(1)
 
         if event_type == "session_start":
-            native_session_id = data.get("session_id")
-            transcript_path = data.get("transcript_path")
+            native_session_id, transcript_path = normalize_session_start_payload(data)
             if not native_session_id or not transcript_path:
                 msg = "session_start missing required fields: session_id and transcript_path"
                 logger.error(msg, data_keys=list(data.keys()))
                 send_error(msg, {"data_keys": list(data.keys())})
                 sys.exit(1)
+        elif event_type == "notification":
+            normalize_notification_payload(data)
 
         # Forward to TeleClaude
         mcp_send(
