@@ -79,10 +79,41 @@ def main() -> None:
         if event_type == "session_start":
             native_session_id = data.get("session_id")
             transcript_path = data.get("transcript_path")
+
+            if isinstance(transcript_path, str) and transcript_path.strip():
+                transcript_path = transcript_path.strip()
+            else:
+                transcript_path = None
+
+            if isinstance(native_session_id, str) and native_session_id.strip():
+                native_session_id = native_session_id.strip()
+            else:
+                native_session_id = None
+
+            if not native_session_id and transcript_path:
+                native_session_id = Path(transcript_path).stem
+
+            if native_session_id:
+                data["session_id"] = native_session_id
+            if transcript_path:
+                data["transcript_path"] = transcript_path
+
             if not native_session_id or not transcript_path:
                 msg = "session_start missing required fields: session_id and transcript_path"
-                logger.error(msg, data_keys=list(data.keys()))
-                send_error(msg, {"data_keys": list(data.keys())})
+                logger.error(
+                    msg,
+                    data_keys=list(data.keys()),
+                    session_id=bool(native_session_id),
+                    transcript_path=bool(transcript_path),
+                )
+                send_error(
+                    msg,
+                    {
+                        "data_keys": list(data.keys()),
+                        "session_id_present": bool(native_session_id),
+                        "transcript_path_present": bool(transcript_path),
+                    },
+                )
                 sys.exit(1)
 
         # Forward to TeleClaude

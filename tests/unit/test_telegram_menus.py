@@ -72,7 +72,7 @@ class TestHeartbeatKeyboard:
         # Row 1: Terminal Session
         assert len(keyboard[0]) == 1
         assert "Terminal Session" in keyboard[0][0].text
-        assert keyboard[0][0].callback_data == f"ss:{bot_username}"
+        assert keyboard[0][0].callback_data == f"ssel:{bot_username}"
 
         # Row 2: Claude
         assert len(keyboard[1]) == 2
@@ -94,3 +94,18 @@ class TestHeartbeatKeyboard:
         assert keyboard[3][0].callback_data == f"cxsel:{bot_username}"
         assert "Resume Codex" in keyboard[3][1].text
         assert keyboard[3][1].callback_data == f"cxrsel:{bot_username}"
+
+
+class TestProjectKeyboard:
+    """Tests for project selection keyboard generation."""
+
+    def test_build_project_keyboard_uses_prefix(self, telegram_adapter):
+        """Project keyboard should use the provided prefix in callback_data."""
+        markup = telegram_adapter._build_project_keyboard("s")
+
+        assert isinstance(markup, InlineKeyboardMarkup)
+        keyboard = markup.inline_keyboard
+
+        # Ensure callback_data uses prefix with sequential indices
+        for idx, row in enumerate(keyboard):
+            assert row[0].callback_data == f"s:{idx}"

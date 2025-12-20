@@ -1593,10 +1593,10 @@ Current size: {current_size}
                 logger.error("Failed to send output file: %s", e)
                 await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")
 
-        elif action == "ss":
-            # Handle quick session start from heartbeat button
-            # Short code: ss = start session
-            if not query.from_user:
+        elif action == "ssel":
+            # Show project selection for Terminal Session
+            # Short code: ssel = session select
+            if not query.from_user or not query.message:
                 return
 
             # Check if authorized
@@ -1604,17 +1604,32 @@ Current size: {current_size}
                 await query.answer("❌ Not authorized", show_alert=True)
                 return
 
-            # Handle NEW_SESSION event directly (no visible command message)
-            await self.client.handle_event(
-                event=TeleClaudeEvents.NEW_SESSION,
-                payload={
-                    "args": [],
-                },
-                metadata=self._metadata(),
+            # Build keyboard with trusted directories using helper
+            reply_markup = self._build_project_keyboard("s")
+
+            # Add cancel button to return to original view
+            bot_info = await self.bot.get_me()
+            keyboard = cast(  # pyright: ignore[reportUnnecessaryCast]
+                list[tuple[InlineKeyboardButton, ...]],
+                list(reply_markup.inline_keyboard),
+            )
+            keyboard.append(
+                tuple(
+                    [
+                        InlineKeyboardButton(
+                            text="❌ Cancel",
+                            callback_data=f"ccancel:{bot_info.username}",
+                        )
+                    ]
+                )
             )
 
-            # Acknowledge the button click
-            await query.answer("Creating session...", show_alert=False)
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                "**Select project for Terminal Session:**",
+                reply_markup=reply_markup,
+                parse_mode="Markdown",
+            )
 
         elif action == "cd":
             # Find session from the message's thread
@@ -1683,7 +1698,10 @@ Current size: {current_size}
 
             # Add cancel button to return to original view
             bot_info = await self.bot.get_me()
-            keyboard: list[tuple[InlineKeyboardButton, ...]] = list(reply_markup.inline_keyboard)
+            keyboard = cast(  # pyright: ignore[reportUnnecessaryCast]
+                list[tuple[InlineKeyboardButton, ...]],
+                list(reply_markup.inline_keyboard),
+            )
             keyboard.append(
                 tuple(
                     [
@@ -1711,6 +1729,41 @@ Current size: {current_size}
             reply_markup = self._build_heartbeat_keyboard(bot_username)
             text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             await query.edit_message_text(text, reply_markup=reply_markup)
+
+        elif action == "s":
+            # Create Terminal Session in selected project
+            # Short code: s = session start
+            # Callback format: s:INDEX where INDEX is into trusted_dirs
+            if not query.from_user:
+                return
+
+            # Check if authorized
+            if query.from_user.id not in self.user_whitelist:
+                await query.answer("❌ Not authorized", show_alert=True)
+                return
+
+            # Get project by index
+            try:
+                project_idx = int(args[0]) if args else -1
+                if project_idx < 0 or project_idx >= len(self.trusted_dirs):
+                    await query.answer("❌ Invalid project", show_alert=True)
+                    return
+                project_path = self.trusted_dirs[project_idx].path
+            except (ValueError, IndexError):
+                await query.answer("❌ Invalid project selection", show_alert=True)
+                return
+
+            # Acknowledge immediately
+            await query.answer("Creating session...", show_alert=False)
+
+            # Emit NEW_SESSION event with project_dir in metadata
+            await self.client.handle_event(
+                event=TeleClaudeEvents.NEW_SESSION,
+                payload={
+                    "args": [],
+                },
+                metadata=self._metadata(project_dir=project_path),
+            )
 
         elif action in ("c", "cr", "g", "gr", "cx", "cxr"):
             # Create session in selected project and start AI tool
@@ -1783,12 +1836,12 @@ Current size: {current_size}
         """Build the standard heartbeat keyboard with session and Claude buttons.
 
         Using short callback codes to stay under Telegram's 64-byte limit:
-        - ss = start session
+        - ssel = session select
         - csel = claude select (new session)
         - crsel = claude resume select
         """
         keyboard = [
-            [InlineKeyboardButton(text="🚀 Terminal Session", callback_data=f"ss:{bot_username}")],
+            [InlineKeyboardButton(text="🚀 Terminal Session", callback_data=f"ssel:{bot_username}")],
             [
                 InlineKeyboardButton(text="🤖 New Claude", callback_data=f"csel:{bot_username}"),
                 InlineKeyboardButton(text="🔄 Resume Claude", callback_data=f"crsel:{bot_username}"),
