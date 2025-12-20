@@ -381,7 +381,7 @@ bin/rsync.sh <computer-name>
 ssh -A user@hostname 'cd $HOME/apps/TeleClaude && make restart'
 
 # Monitor remote logs
-ssh -A user@hostname cd $HOME/apps/TeleClaude && . .venv/bin/activate && instrukt-ai-logs teleclaude -f
+ssh -A user@hostname 'cd $HOME/apps/TeleClaude && . .venv/bin/activate && instrukt-ai-logs teleclaude -f'
 ```
 
 **3. Iterate quickly** - repeat steps 1-2 until feature works
