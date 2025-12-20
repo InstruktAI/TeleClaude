@@ -264,7 +264,7 @@ graph TB
   - `teleclaude__get_session_data` - Get session transcript
   - `teleclaude__stop_notifications` - Unsubscribe from session events
   - `teleclaude__end_session` - Gracefully terminate session
-  - `teleclaude__deploy_to_all_computers` - Deploy code everywhere
+  - `teleclaude__deploy` - Deploy code to remote computers (optional list; default all remotes)
   - `teleclaude__send_file` - Send file to session
 - Uses request/response pattern (not streaming) - client pulls data via `get_session_data()`
 - Uses AdapterClient for cross-computer messaging (no direct adapter references)

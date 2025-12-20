@@ -358,7 +358,7 @@ class Recording:
 
 
 class ThinkingMode(str, Enum):
-    """Model tier: fast/med/slow."""
+    """Model tier: fast/med/slow (deep is codex-only for Telegram)."""
 
     FAST = "fast"
     MED = "med"
@@ -387,7 +387,11 @@ class StartSessionArgs:
             raise ValueError(f"Arguments required for teleclaude__start_session: {', '.join(missing)}")
 
         agent = str(arguments.get("agent", "claude"))
-        thinking_mode = ThinkingMode(str(arguments.get("thinking_mode", ThinkingMode.SLOW)))
+        thinking_mode_raw = str(arguments.get("thinking_mode", ThinkingMode.SLOW))
+        allowed_modes = {ThinkingMode.FAST.value, ThinkingMode.MED.value, ThinkingMode.SLOW.value}
+        if thinking_mode_raw not in allowed_modes:
+            raise ValueError("thinking_mode must be one of: fast, med, slow")
+        thinking_mode = ThinkingMode(thinking_mode_raw)
 
         return cls(
             computer=str(arguments["computer"]),
@@ -420,7 +424,11 @@ class RunAgentCommandArgs:
         if not arguments or "computer" not in arguments or "command" not in arguments:
             raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
 
-        thinking_mode = ThinkingMode(str(arguments.get("thinking_mode", ThinkingMode.SLOW)))
+        thinking_mode_raw = str(arguments.get("thinking_mode", ThinkingMode.SLOW))
+        allowed_modes = {ThinkingMode.FAST.value, ThinkingMode.MED.value, ThinkingMode.SLOW.value}
+        if thinking_mode_raw not in allowed_modes:
+            raise ValueError("thinking_mode must be one of: fast, med, slow")
+        thinking_mode = ThinkingMode(thinking_mode_raw)
 
         session_id_arg = arguments.get("session_id")
         project_arg = arguments.get("project")

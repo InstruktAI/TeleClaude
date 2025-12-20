@@ -36,7 +36,7 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         "log_pattern": "*.jsonl",
         "model_flags": {
             "fast": "-m gemini-2.5-flash-lite",
-            "med": "-m gemini-2.5-flash",
+            "med": "-m gemini-3-flash-preview",
             "slow": "-m gemini-3-pro-preview",
         },
         "exec_subcommand": "",
@@ -47,9 +47,10 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         "session_dir": "~/.codex/sessions",
         "log_pattern": "*.jsonl",
         "model_flags": {
-            "fast": "-m gpt-5.1-codex-mini",
-            "med": "-m gpt-5.1-codex",
-            "slow": "-m gpt-5.2",
+            "fast": "-m gpt-5.2-codex --config model_reasoning_effort='low'",
+            "med": "-m gpt-5.2-codex --config model_reasoning_effort='medium'",
+            "slow": "-m gpt-5.2-codex --config model_reasoning_effort='high'",
+            "deep": "-m gpt-5.2-codex --config model_reasoning_effort='xhigh'",
         },
         "exec_subcommand": "exec",
         "resume_template": "{base_cmd} resume {session_id}",

@@ -329,7 +329,7 @@ claude
 - teleclaude__get_session_data - Get session transcript data
 - teleclaude__stop_notifications - Unsubscribe from session events without ending it
 - teleclaude__end_session - Gracefully terminate a session
-- teleclaude__deploy_to_all_computers - Deploy latest code to all computers
+- teleclaude__deploy - Deploy latest code to remote computers (optional list; default all remotes)
 - teleclaude__send_file - Send a file to a session
 ```
 

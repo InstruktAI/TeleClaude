@@ -49,7 +49,7 @@ MCP_DISABLE_STATIC_HANDSHAKE=true   # Always proxy to backend (testing mode)
 - `teleclaude__start_session` - Start a new AI session on a remote computer
 - `teleclaude__send_message` - Send message to an existing session
 - `teleclaude__get_session_data` - Retrieve session transcript and state
-- `teleclaude__deploy_to_all_computers` - Deploy latest code via git pull
+- `teleclaude__deploy` - Deploy latest code via git pull (optional list; default all remotes)
 - `teleclaude__send_file` - Send file to a session's Telegram chat
 - `teleclaude__stop_notifications` - Unsubscribe from session events
 - `teleclaude__end_session` - Gracefully terminate a session

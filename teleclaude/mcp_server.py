@@ -395,18 +395,25 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__deploy_to_all_computers",
-                    title="TeleClaude: Deploy to All Computers",
+                    name="teleclaude__deploy",
+                    title="TeleClaude: Deploy",
                     description=(
-                        "Deploy latest code to ALL remote computers (git pull + restart). "
-                        "Automatically discovers and deploys to all computers except self. "
-                        "Use this after committing changes to update all machines. "
+                        "Deploy latest code to remote computers (git pull + restart). "
+                        "Provide an optional list of computers; if omitted or empty, "
+                        "deploys to all remote computers except self. "
+                        "Use this after committing changes to update machines. "
                         "**Workflow**: commit changes → push to GitHub → call this tool. "
                         "Returns deployment status for each computer (success, deploying, error)."
                     ),
                     inputSchema={
                         "type": "object",
-                        "properties": {},
+                        "properties": {
+                            "computers": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional list of target computers. Omit/empty for all remotes.",
+                            },
+                        },
                     },
                 ),
                 Tool(
@@ -606,9 +613,12 @@ class TeleClaudeMCPServer:
                     caller_session_id,
                 )
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
-            elif name == "teleclaude__deploy_to_all_computers":
-                # No arguments - always deploys to ALL computers
-                deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy_to_all_computers()
+            elif name == "teleclaude__deploy":
+                computers_obj = arguments.get("computers") if arguments else None
+                target_computers: list[str] | None = None
+                if isinstance(computers_obj, list):
+                    target_computers = [c for c in computers_obj if isinstance(c, str)]
+                deploy_result: dict[str, dict[str, object]] = await self.teleclaude__deploy(target_computers)
                 return [TextContent(type="text", text=json.dumps(deploy_result, default=str))]
             elif name == "teleclaude__send_file":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -1462,11 +1472,11 @@ class TeleClaudeMCPServer:
                 "error": "Invalid JSON response from remote computer",
             }
 
-    async def teleclaude__deploy_to_all_computers(self) -> dict[str, dict[str, object]]:
-        """Deploy latest code to ALL remote computers via Redis.
+    async def teleclaude__deploy(self, computers: list[str] | None = None) -> dict[str, dict[str, object]]:
+        """Deploy latest code to remote computers via Redis.
 
-        Automatically discovers all computers and deploys to them (excluding self).
-        No arguments - always deploys to ALL computers.
+        Args:
+            computers: Optional list of target computers. Omit/empty to deploy to all remotes.
 
         Returns:
             Status for each computer: {computer: {status, timestamp, pid, error}}
@@ -1478,11 +1488,41 @@ class TeleClaudeMCPServer:
 
         redis_adapter: RedisAdapter = redis_adapter_base
 
-        # Discover ALL computers (excluding self)
+        # Discover peers (exclude self)
         all_peers = await redis_adapter.discover_peers()
-        computers = [str(peer.name) for peer in all_peers if peer.name != self.computer_name]
+        available = [str(peer.name) for peer in all_peers if peer.name != self.computer_name]
+        available_set = set(available)
 
-        if not computers:
+        requested = [str(name) for name in (computers or [])]
+        targets = list(available) if not requested else [name for name in requested if name in available_set]
+
+        # Preserve requested order and de-duplicate
+        if requested:
+            seen: set[str] = set()
+            ordered_targets: list[str] = []
+            for name in targets:
+                if name not in seen:
+                    seen.add(name)
+                    ordered_targets.append(name)
+            targets = ordered_targets
+
+        results: dict[str, dict[str, object]] = {}
+
+        # Report unknown computers if explicitly requested
+        if requested:
+            for name in requested:
+                if name == self.computer_name:
+                    results[name] = {
+                        "status": "skipped",
+                        "message": "Skipping self deployment",
+                    }
+                elif name not in available_set:
+                    results[name] = {
+                        "status": "error",
+                        "message": "Unknown or offline computer",
+                    }
+
+        if not targets:
             return {
                 "_message": {
                     "status": "success",
@@ -1490,11 +1530,11 @@ class TeleClaudeMCPServer:
                 }
             }
 
-        logger.info("Deploying to ALL computers: %s", computers)
+        logger.info("Deploying to computers: %s", targets)
 
         # Send deploy command to all computers
         verify_health = True  # Always verify health
-        for computer in computers:
+        for computer in targets:
             await redis_adapter.send_system_command(
                 computer_name=computer,
                 command="deploy",
@@ -1503,8 +1543,7 @@ class TeleClaudeMCPServer:
             logger.info("Sent deploy command to %s", computer)
 
         # Poll for completion (max 60 seconds per computer)
-        results: dict[str, dict[str, object]] = {}
-        for computer in computers:
+        for computer in targets:
             for _ in range(60):  # 60 attempts, 1 second apart
                 status = await redis_adapter.get_system_command_status(computer_name=computer, command="deploy")
 

@@ -1177,6 +1177,14 @@ async def handle_agent_start(
     if user_args and user_args[0] in ThinkingMode._value2member_map_:
         thinking_mode = user_args.pop(0)
 
+    if thinking_mode == ThinkingMode.DEEP.value and agent_name != AgentName.CODEX.value:
+        await client.send_feedback(
+            session,
+            "deep is only supported for codex. Use fast/med/slow for other agents.",
+            MessageMetadata(),
+        )
+        return
+
     start_args = AgentStartArgs(
         agent_name=agent_name,
         thinking_mode=ThinkingMode(thinking_mode),

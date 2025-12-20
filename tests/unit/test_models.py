@@ -3,7 +3,9 @@
 import json
 from datetime import datetime
 
-from teleclaude.core.models import Recording, Session
+import pytest
+
+from teleclaude.core.models import Recording, RunAgentCommandArgs, Session, StartSessionArgs
 
 
 class TestSession:
@@ -175,3 +177,31 @@ class TestRecording:
         assert restored.session_id == original.session_id
         assert restored.file_path == original.file_path
         assert restored.recording_type == original.recording_type
+
+
+class TestMcpArgs:
+    """Tests for MCP argument parsing."""
+
+    def test_start_session_args_rejects_deep(self):
+        """Deep is not allowed in MCP args."""
+        args = {
+            "computer": "local",
+            "project_dir": "/tmp/project",
+            "title": "Test",
+            "message": "Hello",
+            "thinking_mode": "deep",
+        }
+
+        with pytest.raises(ValueError, match="thinking_mode must be one of"):
+            StartSessionArgs.from_mcp(args, None)
+
+    def test_run_agent_command_args_rejects_deep(self):
+        """Deep is not allowed in MCP args."""
+        args = {
+            "computer": "local",
+            "command": "help",
+            "thinking_mode": "deep",
+        }
+
+        with pytest.raises(ValueError, match="thinking_mode must be one of"):
+            RunAgentCommandArgs.from_mcp(args, None)
