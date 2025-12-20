@@ -32,6 +32,9 @@ def test_merge_hooks_replaces_existing_hook_definition():
 def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
     """Claude hook configuration writes to ~/.claude/settings.json."""
     monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
     repo_root = Path(__file__).resolve().parents[2]
 
     install_hooks.configure_claude(repo_root)

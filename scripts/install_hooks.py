@@ -51,7 +51,18 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
     return merged
 
 
-def _claude_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
+def _resolve_hook_python(repo_root: Path) -> Path:
+    override = os.getenv("TELECLAUDE_HOOK_PYTHON")
+    if override:
+        return Path(override).expanduser()
+
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    if not venv_python.exists():
+        raise FileNotFoundError(f"Expected TeleClaude venv python at {venv_python}")
+    return venv_python
+
+
+def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
     """Return TeleClaude hook definitions for Claude Code.
 
     Claude valid events: PreToolUse, PostToolUse, PostToolUseFailure, Notification,
@@ -63,20 +74,20 @@ def _claude_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
     return {
         "SessionStart": {
             "type": "command",
-            "command": f"{receiver_script} session_start",
+            "command": f"{python_exe} {receiver_script} session_start",
         },
         "Notification": {
             "type": "command",
-            "command": f"{receiver_script} notification",
+            "command": f"{python_exe} {receiver_script} notification",
         },
         "Stop": {
             "type": "command",
-            "command": f"{receiver_script} stop",
+            "command": f"{python_exe} {receiver_script} stop",
         },
     }
 
 
-def _gemini_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
+def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
     """Return TeleClaude hook definitions for Gemini CLI.
 
     Gemini uses AfterModel for turn completion (not Stop like Claude).
@@ -85,19 +96,19 @@ def _gemini_hook_map(receiver_script: Path) -> Dict[str, Dict[str, str]]:
         "SessionStart": {
             "name": "teleclaude-session-start",
             "type": "command",
-            "command": f"{receiver_script} session_start",
+            "command": f"{python_exe} {receiver_script} session_start",
             "description": "Notify TeleClaude of session start",
         },
         "Notification": {
             "name": "teleclaude-notification",
             "type": "command",
-            "command": f"{receiver_script} notification",
+            "command": f"{python_exe} {receiver_script} notification",
             "description": "Notify TeleClaude of user input request",
         },
         "AfterModel": {
             "name": "teleclaude-stop",
             "type": "command",
-            "command": f"{receiver_script} stop",
+            "command": f"{python_exe} {receiver_script} stop",
             "description": "Notify TeleClaude of turn completion",
         },
     }
@@ -126,7 +137,8 @@ def configure_gemini(repo_root: Path) -> None:
             print(f"Warning: Failed to load Gemini settings: {e}")
 
     # Define hooks (Gemini-specific event names)
-    hooks_map = _gemini_hook_map(receiver_script)
+    python_exe = _resolve_hook_python(repo_root)
+    hooks_map = _gemini_hook_map(python_exe, receiver_script)
 
     # Merge
     current_hooks = settings.get("hooks", {})
@@ -160,7 +172,8 @@ def configure_claude(repo_root: Path) -> None:
             print(f"Warning: Failed to load Claude settings: {e}")
 
     # Define hooks (Claude-specific event names)
-    hooks_map = _claude_hook_map(receiver_script)
+    python_exe = _resolve_hook_python(repo_root)
+    hooks_map = _claude_hook_map(python_exe, receiver_script)
 
     current_hooks = settings.get("hooks", {})
     settings["hooks"] = merge_hooks(current_hooks, hooks_map)

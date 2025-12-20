@@ -20,7 +20,7 @@ from typing import Optional
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
 from teleclaude.core.agents import get_agent_command
-from teleclaude.core.db import Db, db
+from teleclaude.core.db import db
 from teleclaude.core.models import Session
 from teleclaude.logging_config import setup_logging
 
@@ -131,11 +131,10 @@ async def main() -> None:
         logger.debug("TELECLAUDE_SESSION_ID not set - not a TeleClaude session")
         sys.exit(1)
 
-    db_instance = Db(config.database.path)
-    await db_instance.initialize()
+    await db.initialize()
 
     try:
-        session = await db_instance.get_session(teleclaude_session_id)
+        session = await db.get_session(teleclaude_session_id)
         if not session:
             logger.error("No TeleClaude session found for session ID %s", teleclaude_session_id)
             sys.exit(1)
@@ -154,7 +153,7 @@ async def main() -> None:
             )
             sys.exit(1)
     finally:
-        await db_instance.close()
+        await db.close()
 
 
 if __name__ == "__main__":
