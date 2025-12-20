@@ -41,6 +41,7 @@ This file provides guidance to agents when working with code in this repository.
 **The MCP wrapper handles all reconnection automatically - clients never need to restart.**
 
 The resilient MCP wrapper (`bin/mcp-wrapper.py`) provides:
+
 - **Zero-downtime restarts** - Cached handshake response while backend reconnects
 - **Automatic reconnection** - Transparent backend connection recovery
 - **Tool filtering** - Internal tools (like `teleclaude__handle_agent_event`) hidden from clients
@@ -174,19 +175,19 @@ Replace `{user}` with the user field and `{host}` with the host field from the c
 
 ```bash
 # Check daemon status
-ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make status'
+ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && make status'
 
 # View recent logs
-ssh -A morriz@raspberrypi.local 'tail -50 /var/log/instrukt-ai/teleclaude/teleclaude.log'
+ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && . .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m'
 
 # Restart daemon
-ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && make restart'
+ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && make restart'
 
 # Check running processes
 ssh -A morriz@raspberrypi.local 'pgrep -f teleclaude.daemon'
 
 # Pull latest code
-ssh -A morriz@raspberrypi.local 'cd /home/morriz/apps/TeleClaude && git pull'
+ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && git pull'
 ```
 
 **When to use SSH vs MCP tools:**
@@ -240,7 +241,7 @@ telegram:
 
 # config.yml on non-master computers
 telegram:
-  is_master: false  # These bots clear their command lists
+  is_master: false  # These bots don't publish commands
 ```
 
 **Trailing Space Pattern:**
@@ -258,7 +259,6 @@ commands = [
 
 - Without trailing space: Telegram appends `@botname` in autocomplete → `"/new_session@masterbot"`
 - With trailing space: Commands are distributed to ALL bots → `"/new_session "` works for any bot
-- Prevents duplicate command entries when multiple bots are in the same group
 - Users can type commands without specifying which bot to use
 
 **DO NOT remove trailing spaces from BotCommand definitions** - this is intentional, not a bug!
@@ -381,7 +381,7 @@ bin/rsync.sh <computer-name>
 ssh -A user@hostname 'cd $HOME/apps/TeleClaude && make restart'
 
 # Monitor remote logs
-ssh -A user@hostname 'tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log'
+ssh -A user@hostname cd $HOME/apps/TeleClaude && . .venv/bin/activate && instrukt-ai-logs teleclaude -f
 ```
 
 **3. Iterate quickly** - repeat steps 1-2 until feature works
