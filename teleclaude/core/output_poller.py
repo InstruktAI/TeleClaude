@@ -19,6 +19,7 @@ from teleclaude.utils import strip_ansi_codes, strip_exit_markers
 
 logger = logging.getLogger(__name__)
 _CONFIG_FOR_TESTS = config
+IDLE_SUMMARY_INTERVAL_S = 60.0
 
 
 @dataclass
@@ -94,6 +95,9 @@ class OutputPoller:
         session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
         output_sent_at_least_once = False  # Ensure user sees output before exit
         previous_output = ""  # Track previous clean output for change detection
+        suppressed_idle_ticks = 0
+        last_summary_time: float | None = None
+        idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -101,7 +105,31 @@ class OutputPoller:
             started_at = time.time()
             last_output_changed_at = started_at
             last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
+            last_summary_time = started_at
             logger.debug("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
+
+            def maybe_log_idle_summary(force: bool = False) -> None:
+                nonlocal last_summary_time, suppressed_idle_ticks
+                if suppressed_idle_ticks <= 0:
+                    return
+                now = time.time()
+                if last_summary_time is None:
+                    last_summary_time = now
+                if not force and (now - last_summary_time) < idle_summary_interval:
+                    return
+                idle_for = 0.0
+                if last_output_changed_at is not None:
+                    idle_for = max(0.0, now - last_output_changed_at)
+                logger.debug(
+                    "[POLL %s] idle: unchanged for %.1fs (suppressed=%d, interval=%ds, idle_ticks=%d)",
+                    session_id[:8],
+                    idle_for,
+                    suppressed_idle_ticks,
+                    current_update_interval,
+                    idle_ticks,
+                )
+                suppressed_idle_ticks = 0
+                last_summary_time = now
 
             # Poll loop - EXPLICIT EXIT CONDITIONS
             while True:
@@ -177,6 +205,7 @@ class OutputPoller:
                 output_changed = current_cleaned != previous_output
 
                 if output_changed:
+                    maybe_log_idle_summary(force=True)
                     previous_output = current_cleaned
                     idle_ticks = 0
                     last_output_changed_at = time.time()
@@ -194,6 +223,7 @@ class OutputPoller:
                 # Send updates based on time interval only (enforce minimum 2s between updates)
                 # This prevents Telegram API rate limiting from excessive message edits
                 # Send FILTERED TMUX PANE (mirrors what user sees in terminal)
+                did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
                     logger.debug(
                         "[POLL %s] YIELDING OutputChanged: elapsed=%.1fs >= interval=%ds, idle_ticks=%d",
@@ -219,15 +249,10 @@ class OutputPoller:
 
                     # Update last yield time (ONLY after yielding, not on every change!)
                     last_yield_time = current_time
+                    did_yield = True
                 else:
-                    wait_time = current_update_interval - elapsed_since_last_yield
-                    logger.debug(
-                        "[POLL %s] SKIPPING yield: elapsed=%.1fs < interval=%ds (waiting %.1f more seconds)",
-                        session_id[:8],
-                        elapsed_since_last_yield,
-                        current_update_interval,
-                        wait_time,
-                    )
+                    # Skip per-tick logging; summarized in idle summaries.
+                    pass
 
                 # Exit condition 2: Exit code detected (EXACT MARKER MATCHING)
                 # Search for unique marker pattern - no counting, no baseline needed
@@ -277,12 +302,9 @@ class OutputPoller:
                 # Increment idle counter when no new content
                 if not output_changed:
                     idle_ticks += 1
-                    logger.debug(
-                        "[POLL %s] Output unchanged - idle_ticks=%d, current_interval=%ds",
-                        session_id[:8],
-                        idle_ticks,
-                        current_update_interval,
-                    )
+                    if not did_yield:
+                        suppressed_idle_ticks += 1
+                        maybe_log_idle_summary()
 
                 # Check for directory changes (if enabled)
                 if directory_check_interval > 0:

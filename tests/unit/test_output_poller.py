@@ -1,5 +1,6 @@
 """Unit tests for simplified OutputPoller."""
 
+import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -474,6 +475,41 @@ class TestOutputPollerPoll:
                     output_changed_events = [e for e in events if isinstance(e, OutputChanged)]
                     # Should have initial + periodic updates (at intervals 5, 10, etc.)
                     assert len(output_changed_events) >= 2
+
+    async def test_idle_summary_logging_suppresses_tick_noise(self, poller, tmp_path, caplog):
+        """Summarize idle ticks instead of per-tick spam."""
+        output_file = tmp_path / "output.txt"
+
+        caplog.set_level(logging.DEBUG, logger="teleclaude.core.output_poller")
+
+        with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
+            with patch("teleclaude.core.output_poller.IDLE_SUMMARY_INTERVAL_S", 0.5):
+                with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                    with patch("teleclaude.core.output_poller.db") as mock_db:
+                        with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                            with patch(
+                                "teleclaude.core.output_poller.time.time",
+                                make_advancing_time_mock(increment=0.2),
+                            ):
+                                iteration_count = 0
+
+                                async def session_exists_mock(name, log_missing=True):
+                                    nonlocal iteration_count
+                                    iteration_count += 1
+                                    return iteration_count < 8
+
+                                mock_terminal.session_exists = session_exists_mock
+                                mock_terminal.capture_pane = AsyncMock(return_value="output\n")
+                                mock_db.get_session = AsyncMock(return_value=None)
+
+                                events = []
+                                async for event in poller.poll("test-idle", "test-tmux", output_file, marker_id=None):
+                                    events.append(event)
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("idle: unchanged for" in msg for msg in messages)
+        assert all("SKIPPING yield" not in msg for msg in messages)
+        assert all("Output unchanged" not in msg for msg in messages)
 
     async def test_file_write_error_handling(self, poller):
         """Test poll handles file write errors gracefully."""
