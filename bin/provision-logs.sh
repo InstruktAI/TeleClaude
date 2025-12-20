@@ -105,9 +105,12 @@ provision_without_sudo() {
 }
 
 provision_with_sudo() {
+    local owner="${SUDO_USER:-$USER}"
+    local group
+    group="$(id -gn "$owner" 2>/dev/null || echo "$owner")"
     sudo mkdir -p "$log_dir"
     sudo touch "$log_file"
-    sudo chown "$USER:$(id -gn)" "$log_dir" "$log_file"
+    sudo chown "$owner:$group" "$log_dir" "$log_file"
     sudo chmod 755 "$log_dir"
     sudo chmod 644 "$log_file"
 }
