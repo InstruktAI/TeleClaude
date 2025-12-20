@@ -7,32 +7,29 @@ Receives events from Claude Code, normalizes them, and forwards to TeleClaude.
 import json
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # Add parent directory to path to find utils
 sys.path.append(str(Path(__file__).parent))
 
-from utils.file_log import append_line
+from typing import Any, cast
+
+from instrukt_ai_logging import configure_logging, get_logger
 from utils.mcp_send import mcp_send
 
-# Log to project's logs directory (hooks are in teleclaude/hooks/, so go up 2 levels)
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-LOG_DIR = PROJECT_ROOT / "logs"
-LOG_FILE = LOG_DIR / "receiver_claude.log"
-
-
-def log(message: str) -> None:
-    """Write log message to file."""
-    try:
-        append_line(LOG_FILE, f"[{datetime.now().isoformat()}] {message}")
-    except Exception:
-        pass
+configure_logging("teleclaude")
+logger = cast(Any, get_logger("teleclaude.hooks.receiver_claude"))
 
 
 def main() -> None:
     try:
-        log("=== Claude Receiver Triggered ===")
+        logger.info(
+            "receiver start",
+            argv=sys.argv,
+            cwd=os.getcwd(),
+            stdin_tty=sys.stdin.isatty(),
+            has_session_id="TELECLAUDE_SESSION_ID" in os.environ,
+        )
 
         # Read input from stdin
         try:
@@ -41,13 +38,13 @@ def main() -> None:
             else:
                 data = {}
         except json.JSONDecodeError:
-            log("Failed to parse JSON from stdin")
+            logger.error("Failed to parse JSON from stdin")
             data = {}
 
         # Get TeleClaude session ID
         teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
         if not teleclaude_session_id:
-            log("No TELECLAUDE_SESSION_ID, ignoring")
+            logger.info("No TELECLAUDE_SESSION_ID, ignoring")
             sys.exit(0)
 
         def send_error(message: str, details: dict[str, object] | None = None) -> None:
@@ -69,12 +66,16 @@ def main() -> None:
         if event_type == "sessionstart":
             event_type = "session_start"
 
-        log(f"Event: {event_type}, Session: {teleclaude_session_id[:8]}")
+        logger.info(
+            "receiver event",
+            event_type=event_type,
+            session_id=teleclaude_session_id,
+        )
 
         allowed_events = {"session_start", "notification", "stop"}
         if event_type not in allowed_events:
             msg = f"Unknown hook event_type '{event_type}'"
-            log(msg)
+            logger.error(msg, event_type=event_type)
             send_error(msg, {"event_type": event_type})
             sys.exit(1)
 
@@ -83,7 +84,7 @@ def main() -> None:
             transcript_path = data.get("transcript_path")
             if not native_session_id or not transcript_path:
                 msg = "session_start missing required fields: session_id and transcript_path"
-                log(msg)
+                logger.error(msg, data_keys=list(data.keys()))
                 send_error(msg, {"data_keys": list(data.keys())})
                 sys.exit(1)
 
@@ -94,7 +95,7 @@ def main() -> None:
         )
 
     except Exception as e:
-        log(f"ERROR: {e}")
+        logger.error("Receiver error", error=str(e), exc_info=True)
         sys.exit(1)
 
 
