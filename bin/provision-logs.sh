@@ -98,10 +98,10 @@ log_dir="$log_root/$FS_APP_NAME"
 log_file="$log_dir/$FS_APP_NAME.log"
 
 provision_without_sudo() {
-    mkdir -p "$log_dir"
-    touch "$log_file"
-    chmod 755 "$log_dir" || true
-    chmod 644 "$log_file" || true
+    mkdir -p "$log_dir" || return 1
+    touch "$log_file" || return 1
+    chmod 755 "$log_dir" || return 1
+    chmod 644 "$log_file" || return 1
 }
 
 provision_with_sudo() {
