@@ -35,7 +35,7 @@ class AgentCoordinator:
         native_log_file = context.data.get("transcript_path")
 
         if not native_session_id or not native_log_file:
-            return
+            raise ValueError("session_start missing required fields: session_id and transcript_path")
 
         await db.update_ux_state(
             context.session_id,

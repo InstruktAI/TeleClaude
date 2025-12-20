@@ -37,6 +37,7 @@ from teleclaude.core.events import (
     AgentEventContext,
     CommandEventContext,
     DeployArgs,
+    ErrorEventContext,
     EventContext,
     EventType,
     FileEventContext,
@@ -423,6 +424,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self.agent_coordinator.handle_stop(context)
         elif agent_event_type == "notification":
             await self.agent_coordinator.handle_notification(context)
+
+    async def _handle_error(self, _event: str, context: EventContext) -> None:
+        """Handle error events (fail-fast contract violations, hook issues)."""
+        if not isinstance(context, ErrorEventContext):
+            return
+
+        session = await db.get_session(context.session_id)
+        if not session:
+            logger.error("Error event for unknown session %s: %s", context.session_id[:8], context.message)
+            return
+
+        source = f" ({context.source})" if context.source else ""
+        message = f"Error{source}: {context.message}"
+        await self.client.send_feedback(session, message, MessageMetadata(adapter_type="internal"))
 
     async def _update_session_title(self, session_id: str, title: str) -> None:
         """Update session title in DB and UI."""

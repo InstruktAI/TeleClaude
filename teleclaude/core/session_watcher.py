@@ -140,6 +140,24 @@ class SessionWatcher:
 
             # Extract native session ID if possible
             native_id = parser.extract_session_id(file_path)
+            if not native_id:
+                logger.error(
+                    "Failed to extract native_session_id from %s for session %s (agent: %s)",
+                    file_path,
+                    target_session.session_id[:8],
+                    agent_name,
+                )
+                await self.client.handle_event(
+                    TeleClaudeEvents.ERROR,
+                    {
+                        "session_id": target_session.session_id,
+                        "message": "Session watcher could not extract native_session_id from log file.",
+                        "source": "session_watcher",
+                        "details": {"file_path": str(file_path), "agent": agent_name},
+                    },
+                    MessageMetadata(adapter_type="watcher"),
+                )
+                return
 
             # Update DB
             await db.update_ux_state(

@@ -41,6 +41,7 @@ EventType = Literal[
     "session_reopened",
     "system_command",
     "agent_event",
+    "error",
     "session_updated",
 ]
 
@@ -135,6 +136,9 @@ class TeleClaudeEvents:
 
     # Agent events (from hooks)
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
+
+    # Error events (from hooks or internal validation)
+    ERROR: Literal["error"] = "error"
 
     # Cross-computer notifications
     STOP_NOTIFICATION: Literal["stop_notification"] = "stop_notification"  # Forwarded stop event from remote
@@ -270,6 +274,16 @@ class SessionUpdatedContext:
     updated_fields: dict[str, object]
 
 
+@dataclass
+class ErrorEventContext:
+    """Context for error events."""
+
+    session_id: str
+    message: str
+    source: Optional[str] = None
+    details: Optional[dict[str, object]] = None
+
+
 # Union of all event context types (for adapter_client handler signatures)
 EventContext = (
     CommandEventContext
@@ -279,6 +293,7 @@ EventContext = (
     | SessionLifecycleContext
     | SystemCommandContext
     | AgentEventContext
+    | ErrorEventContext
     | SessionUpdatedContext
 )
 

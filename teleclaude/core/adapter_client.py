@@ -19,6 +19,7 @@ from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
     CommandEventContext,
+    ErrorEventContext,
     EventContext,
     EventType,
     FileEventContext,
@@ -612,6 +613,12 @@ class AdapterClient:
             TeleClaudeEvents.SESSION_UPDATED: lambda: SessionUpdatedContext(
                 session_id=session_id,
                 updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),
+            ),
+            TeleClaudeEvents.ERROR: lambda: ErrorEventContext(
+                session_id=session_id,
+                message=cast(str, payload.get("message", "")),
+                source=cast(str | None, payload.get("source")),
+                details=cast(dict[str, object] | None, payload.get("details")),
             ),
             TeleClaudeEvents.MESSAGE: lambda: MessageEventContext(
                 session_id=session_id,

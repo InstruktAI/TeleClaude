@@ -1717,6 +1717,44 @@ class TeleClaudeMCPServer:
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
+        allowed_events = {"session_start", "stop", "notification", "error"}
+        if event_type not in allowed_events:
+            await self._emit_error_event(
+                session_id,
+                f"Unknown hook event_type '{event_type}'",
+                source="hook",
+                details={"event_type": event_type},
+            )
+            raise ValueError(f"Unknown hook event_type '{event_type}'")
+
+        if event_type == "error":
+            message = data.get("message")
+            if not message:
+                raise ValueError("error event requires 'message'")
+            await self.client.handle_event(
+                TeleClaudeEvents.ERROR,
+                {
+                    "session_id": session_id,
+                    "message": str(message),
+                    "source": str(data.get("source")) if data.get("source") else None,
+                    "details": data.get("details") if isinstance(data.get("details"), dict) else None,
+                },
+                MessageMetadata(adapter_type="internal"),
+            )
+            return "OK"
+
+        if event_type == "session_start":
+            native_session_id = data.get("session_id")
+            native_log_file = data.get("transcript_path")
+            if not native_session_id or not native_log_file:
+                await self._emit_error_event(
+                    session_id,
+                    "session_start missing required fields: session_id and transcript_path",
+                    source="hook",
+                    details={"data_keys": list(data.keys())},
+                )
+                raise ValueError("session_start missing required fields: session_id and transcript_path")
+
         # Enrich stop events with summary
         if event_type == "stop":
             try:
@@ -1726,11 +1764,36 @@ class TeleClaudeMCPServer:
                 logger.error("Failed to summarize session %s: %s", session_id[:8], e)
 
         # Emit event to registered listeners
-        await self.client.handle_event(
+        response = await self.client.handle_event(
             TeleClaudeEvents.AGENT_EVENT,
             {"session_id": session_id, "event_type": event_type, "data": data},  # type: ignore[dict-item]
             MessageMetadata(adapter_type="internal"),
         )
 
         logger.debug("Emitted Agent event: session=%s, type=%s", session_id[:8], event_type)
+        if isinstance(response, dict) and response.get("status") == "error":
+            raise ValueError(str(response.get("error")))
         return "OK"
+
+    async def _emit_error_event(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        source: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        """Emit an error event to notify the user via adapters."""
+        try:
+            await self.client.handle_event(
+                TeleClaudeEvents.ERROR,
+                {
+                    "session_id": session_id,
+                    "message": message,
+                    "source": source,
+                    "details": details,
+                },
+                MessageMetadata(adapter_type="internal"),
+            )
+        except Exception as e:
+            logger.error("Failed to emit error event for %s: %s", session_id[:8], e)

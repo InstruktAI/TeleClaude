@@ -892,30 +892,81 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         return InlineKeyboardMarkup(keyboard)
 
     async def _get_session_from_topic(self, update: Update) -> Optional[Session]:
-        """Get session from current topic.
+        """Get session from current topic (silent - no feedback on failure).
 
         Returns:
             Session object or None if not found/not authorized
         """
         # Check preconditions
         if not self._validate_update_for_command(update):
+            logger.debug("_get_session_from_topic: invalid update (no user or message)")
             return None
 
         # Check authorization
         user = update.effective_user
         if not user or user.id not in self.user_whitelist:
+            logger.debug("_get_session_from_topic: user %s not in whitelist", user.id if user else None)
             return None
 
         # Get message (handles both regular and edited messages)
         message = update.effective_message
         if not message or not message.message_thread_id:
+            logger.debug("_get_session_from_topic: no message_thread_id")
             return None
 
         thread_id = message.message_thread_id
 
         sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", thread_id)
 
-        return sessions[0] if sessions else None
+        if not sessions:
+            logger.debug("_get_session_from_topic: no session found for topic_id %s", thread_id)
+            return None
+
+        return sessions[0]
+
+    async def _require_session_from_topic(self, update: Update) -> Optional[Session]:
+        """Get session from topic, with error feedback if not found.
+
+        Use this for commands that MUST have a session context.
+        Sends error message to user if session not found.
+
+        Returns:
+            Session object or None (after sending error feedback)
+        """
+        session = await self._get_session_from_topic(update)
+        if session:
+            return session
+
+        # Determine the reason and give feedback
+        message = update.effective_message
+        if not message:
+            return None  # Can't send feedback without a message
+
+        chat_id = message.chat_id
+        thread_id = message.message_thread_id
+
+        if not thread_id:
+            # Command used outside of a session topic
+            error_msg = "❌ This command must be used in a session topic, not in General."
+            logger.warning(
+                "Command used outside session topic by user %s",
+                update.effective_user.id if update.effective_user else "unknown",
+            )
+        else:
+            # Session not found for this topic
+            error_msg = "❌ No session found for this topic. The session may have been closed."
+            logger.warning("No session found for topic_id %s", thread_id)
+
+        try:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                message_thread_id=thread_id,
+                text=error_msg,
+            )
+        except Exception as e:
+            logger.error("Failed to send session error feedback: %s", e)
+
+        return None
 
     # ==================== Message Handlers ====================
 
@@ -1378,7 +1429,7 @@ Current size: {current_size}
 
         Resumes the active agent from the session's UX state. No arguments needed.
         """
-        session = await self._get_session_from_topic(update)
+        session = await self._require_session_from_topic(update)
         if not session:
             return
 
@@ -1411,7 +1462,7 @@ Current size: {current_size}
 
     async def _handle_agent_restart(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /agent_restart command - restart Agent in this session."""
-        session = await self._get_session_from_topic(update)
+        session = await self._require_session_from_topic(update)
         if not session:
             return
 

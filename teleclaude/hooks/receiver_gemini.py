@@ -50,10 +50,39 @@ def main() -> None:
             log("No TELECLAUDE_SESSION_ID, ignoring")
             sys.exit(0)
 
+        def send_error(message: str, details: dict[str, object] | None = None) -> None:
+            mcp_send(
+                "teleclaude__handle_agent_event",
+                {
+                    "session_id": teleclaude_session_id,
+                    "event_type": "error",
+                    "data": {"message": message, "source": "gemini_hook", "details": details or {}},
+                },
+            )
+
         # Get event type from args (passed by setup_gemini_hooks.py)
         event_type = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+        event_type = event_type.lower()
+        if event_type == "sessionstart":
+            event_type = "session_start"
 
         log(f"Event: {event_type}, Session: {teleclaude_session_id[:8]}")
+
+        allowed_events = {"session_start", "notification", "stop"}
+        if event_type not in allowed_events:
+            msg = f"Unknown hook event_type '{event_type}'"
+            log(msg)
+            send_error(msg, {"event_type": event_type})
+            sys.exit(1)
+
+        if event_type == "session_start":
+            native_session_id = data.get("session_id")
+            transcript_path = data.get("transcript_path")
+            if not native_session_id or not transcript_path:
+                msg = "session_start missing required fields: session_id and transcript_path"
+                log(msg)
+                send_error(msg, {"data_keys": list(data.keys())})
+                sys.exit(1)
 
         # Forward to TeleClaude
         mcp_send(

@@ -26,6 +26,44 @@ def mock_mcp_server():
 
 
 @pytest.mark.asyncio
+async def test_handle_agent_event_rejects_bad_session_start(mock_mcp_server):
+    """session_start requires session_id + transcript_path."""
+    server = mock_mcp_server
+
+    with (
+        patch("teleclaude.mcp_server.db") as mock_db,
+        patch.object(server, "_emit_error_event", new=AsyncMock()) as mock_emit,
+    ):
+        mock_db.get_session = AsyncMock(return_value=MagicMock())
+
+        with pytest.raises(ValueError, match="session_start missing required fields"):
+            await server.teleclaude__handle_agent_event("sess-1", "session_start", {"session_id": "native"})
+
+        mock_emit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_event_error_dispatches_error_event(mock_mcp_server):
+    """error event routes to TeleClaude error handler."""
+    from teleclaude.core.events import TeleClaudeEvents
+
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(return_value={"status": "success"})
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=MagicMock())
+
+        result = await server.teleclaude__handle_agent_event(
+            "sess-2", "error", {"message": "boom", "source": "hook", "details": {"x": 1}}
+        )
+
+    assert result == "OK"
+    server.client.handle_event.assert_awaited_once()
+    called_event = server.client.handle_event.call_args.args[0]
+    assert called_event == TeleClaudeEvents.ERROR
+
+
+@pytest.mark.asyncio
 async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_server):
     """Test that list_computers returns online computers from heartbeat."""
     server = mock_mcp_server
