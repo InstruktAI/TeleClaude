@@ -109,7 +109,7 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
    - Runs `systemctl restart teleclaude` (proper systemd restart)
    - Daemon restarts in ~1-2 seconds
 3. **Verify**: `make status`
-4. **Monitor logs**: `instrukt-ai-logs teleclaude --since 10m`
+4. **Monitor logs**: `instrukt-ai-logs teleclaude --since 10m` (single log file; do not pass `log_filename` in code)
 
 **Never stop the service to check logs** - use `tail -f` instead.
 
