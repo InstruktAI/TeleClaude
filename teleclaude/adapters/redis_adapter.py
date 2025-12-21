@@ -578,7 +578,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             # Find all heartbeat keys
             keys: object = await redis_client.keys(b"computer:*:heartbeat")
             keys_list = cast(list[bytes], keys)
-            logger.debug(
+            logger.trace(
                 "Redis heartbeat keys discovered",
                 count=len(keys_list),
                 keys=keys_list,
