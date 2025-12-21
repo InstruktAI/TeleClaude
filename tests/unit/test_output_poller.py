@@ -436,6 +436,57 @@ class TestOutputPollerPoll:
                 # Last event is ProcessExited
                 assert isinstance(events[-1], ProcessExited)
 
+    async def test_output_change_emits_after_interval_even_if_stable(self, poller, tmp_path):
+        """Output changes should emit after interval even if output stops changing."""
+        output_file = tmp_path / "output.txt"
+
+        def time_mock():
+            call_count = 0
+
+            def _time():
+                nonlocal call_count
+                call_count += 1
+                if call_count < 10:
+                    return 1000.0 + (call_count * 0.2)
+                return 1004.0 + (call_count - 10) * 0.1
+
+            return _time
+
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.db") as mock_db:
+                with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                    with patch("teleclaude.core.output_poller.time.time", new=time_mock()):
+                        call_count = 0
+
+                        async def session_exists_mock(name, log_missing=True):
+                            nonlocal call_count
+                            call_count += 1
+                            return call_count < 3
+
+                        mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
+                        mock_terminal.is_process_running = AsyncMock(return_value=True)
+                        mock_db.get_session = AsyncMock(return_value=None)
+
+                        outputs = ["output 1\n", "output 1\n"]
+                        output_index = 0
+
+                        async def capture_mock(name):
+                            nonlocal output_index
+                            result = outputs[min(output_index, len(outputs) - 1)]
+                            output_index += 1
+                            return result
+
+                        mock_terminal.capture_pane = capture_mock
+
+                        events = []
+                        async for event in poller.poll("test-stable", "test-tmux", output_file, marker_id=None):
+                            events.append(event)
+
+                assert isinstance(events[0], OutputChanged)
+                assert "output 1" in events[0].output
+                assert isinstance(events[-1], ProcessExited)
+
     async def test_markerless_exit_forces_final_update(self, poller, tmp_path):
         """Markerless exit should force a final OutputChanged even if interval hasn't elapsed."""
         output_file = tmp_path / "output.txt"

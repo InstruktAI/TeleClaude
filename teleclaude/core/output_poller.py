@@ -97,6 +97,7 @@ class OutputPoller:
         output_sent_at_least_once = False  # Ensure user sees output before exit
         last_sent_output: str | None = None
         previous_output = ""  # Track previous clean output for change detection
+        pending_output = False  # Output changed since last yield
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
         idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
@@ -221,6 +222,7 @@ class OutputPoller:
                     idle_ticks = 0
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
+                    pending_output = True
 
                 # Check if enough time elapsed since last yield (wall-clock, not tick-based)
                 current_time = time.time()
@@ -230,7 +232,7 @@ class OutputPoller:
                 # (or when we have never sent output yet). This avoids UI spam when idle.
                 did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
-                    if output_changed or not output_sent_at_least_once:
+                    if pending_output or not output_sent_at_least_once:
                         # Send clean output to UI (current_cleaned already has markers stripped)
                         yield OutputChanged(
                             session_id=session_id,
@@ -242,6 +244,7 @@ class OutputPoller:
                         # Mark that we've sent at least one update
                         output_sent_at_least_once = True
                         last_sent_output = current_cleaned
+                        pending_output = False
 
                         # Update last yield time (ONLY after yielding, not on every change!)
                         last_yield_time = current_time
@@ -288,7 +291,7 @@ class OutputPoller:
                 if marker_id is None and not await terminal_bridge.is_process_running(tmux_session_name):
                     # Force a final snapshot if output changed since last yield (or nothing was sent yet).
                     # This bypasses the normal update interval to ensure the last screen state is visible.
-                    if output_changed or not output_sent_at_least_once:
+                    if pending_output or output_changed or not output_sent_at_least_once:
                         yield OutputChanged(
                             session_id=session_id,
                             output=current_cleaned,
