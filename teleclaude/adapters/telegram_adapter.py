@@ -563,7 +563,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             # "Message is not modified" is benign - message exists, just unchanged
             # Return True to prevent clearing output_message_id (which would cause new messages)
             if "message is not modified" in str(e).lower():
-                logger.debug(
+                logger.trace(
                     "[TELEGRAM %s] Message not modified (content unchanged)",
                     session.session_id[:8],
                 )

@@ -354,7 +354,7 @@ class AdapterClient:
                     missing_thread_error = result
             elif isinstance(result, str) and not first_success:
                 first_success = result
-                logger.debug("Sent output update via %s for session %s", adapter_type, session.session_id[:8])
+                logger.debug("Output update sent", adapter=adapter_type, session=session.session_id[:8])
 
         if missing_thread_error:
             await self._handle_missing_telegram_thread(session, missing_thread_error)
@@ -590,7 +590,7 @@ class AdapterClient:
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = cast(str | None, payload.get("message_id"))
-        logger.debug(
+        logger.trace(
             "Pre-handler check: session=%s, message_id=%s, event=%s",
             session.session_id[:8] if session else None,
             message_id,

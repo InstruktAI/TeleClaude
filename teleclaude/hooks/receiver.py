@@ -97,8 +97,8 @@ def _get_adapter(agent: str) -> NormalizeFn:
 def main() -> None:
     args = _parse_args()
 
-    logger.info(
-        "receiver start",
+    logger.trace(
+        "Hook receiver start",
         argv=sys.argv,
         cwd=os.getcwd(),
         stdin_tty=sys.stdin.isatty(),
@@ -112,7 +112,7 @@ def main() -> None:
 
     teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
     if not teleclaude_session_id:
-        logger.info("No TELECLAUDE_SESSION_ID, ignoring")
+        logger.debug("Hook receiver skipped: missing session id")
         sys.exit(0)
 
     normalize_payload = _get_adapter(args.agent)
@@ -131,8 +131,8 @@ def main() -> None:
         )
         sys.exit(1)
 
-    logger.info(
-        "receiver event",
+    logger.debug(
+        "Hook event received",
         event_type=event_type,
         session_id=teleclaude_session_id,
         agent=args.agent,

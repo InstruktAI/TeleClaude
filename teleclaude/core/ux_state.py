@@ -248,7 +248,7 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
             (ux_state_json, session_id),
         )
         await db.commit()
-        logger.debug("Updated session %s UX state", session_id[:8])
+        logger.trace("Updated session %s UX state", session_id[:8])
 
     except Exception as e:
         logger.error("Failed to update session UX state: %s", e)

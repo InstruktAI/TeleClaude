@@ -537,15 +537,15 @@ class TeleClaudeMCPServer:
             if name == "teleclaude__handle_agent_event":
                 event_type = str(arguments.get("event_type", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
-                logger.info(
-                    "MCP call_tool() invoked: name=%s, session=%s, event=%s, caller=%s",
-                    name,
-                    session_id[:8],
-                    event_type,
-                    caller_session_id,
+                logger.debug(
+                    "MCP tool call",
+                    tool=name,
+                    session=session_id[:8],
+                    event=event_type,
+                    caller=caller_session_id,
                 )
             else:
-                logger.trace("MCP call_tool() invoked: name=%s, caller=%s", name, caller_session_id)
+                logger.trace("MCP tool call", tool=name, caller=caller_session_id)
             if name == "teleclaude__help":
                 text = (
                     "TeleClaude MCP Server\n"
@@ -1737,7 +1737,7 @@ class TeleClaudeMCPServer:
             MessageMetadata(adapter_type="internal"),
         )
 
-        logger.debug("Emitted Agent event: session=%s, type=%s", session_id[:8], event_type)
+        logger.trace("Agent event emitted", session=session_id[:8], event=event_type)
         if isinstance(response, dict) and response.get("status") == "error":
             raise ValueError(str(response.get("error")))
         return "OK"
