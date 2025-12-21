@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import re
 import tempfile
@@ -16,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, TypedDict, cast
 
 import httpx
+from instrukt_ai_logging import get_logger
 
 if TYPE_CHECKING:
     from telegram import Message as TelegramMessage
@@ -106,7 +106,7 @@ TelegramApp = Application[  # type: ignore[misc]
     JobQueue[ContextTypes.DEFAULT_TYPE],  # Job queue (created by builder.build())
 ]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -1895,7 +1895,7 @@ Current size: {current_size}
                     m for m in self._topic_message_cache[topic_id] if m.message_id != self.registry_message_id
                 ]
                 self._topic_message_cache[topic_id].append(edited_message)
-                logger.debug(
+                logger.trace(
                     "Updated registry heartbeat: message_id=%s",
                     self.registry_message_id,
                 )
