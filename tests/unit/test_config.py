@@ -4,31 +4,17 @@ from teleclaude.config import ComputerConfig, TrustedDir, _parse_trusted_dirs
 
 
 class TestParseTrustedDirs:
-    """Tests for _parse_trusted_dirs backward compatibility."""
+    """Tests for _parse_trusted_dirs."""
 
-    def test_parse_old_format_strings(self):
-        """Test parsing old format (list of strings) converts correctly."""
+    def test_parse_old_format_strings_rejected(self):
+        """Old string-only format is rejected."""
         raw_dirs = ["/home/user/projects", "/tmp/workspace", "/var/data"]
 
-        result = _parse_trusted_dirs(raw_dirs)
-
-        assert len(result) == 3
-        assert all(isinstance(d, TrustedDir) for d in result)
-
-        # Check first entry
-        assert result[0].name == "projects"
-        assert result[0].desc == ""
-        assert result[0].path == "/home/user/projects"
-
-        # Check second entry
-        assert result[1].name == "workspace"
-        assert result[1].desc == ""
-        assert result[1].path == "/tmp/workspace"
-
-        # Check third entry (trailing slash should be stripped for name)
-        assert result[2].name == "data"
-        assert result[2].desc == ""
-        assert result[2].path == "/var/data"
+        try:
+            _parse_trusted_dirs(raw_dirs)
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            assert "Invalid trusted_dirs entry type" in str(e)
 
     def test_parse_new_format_dicts(self):
         """Test parsing new format (list of dicts) works correctly."""
@@ -62,26 +48,18 @@ class TestParseTrustedDirs:
         assert result[0].desc == ""
         assert result[0].path == "/home/user/project"
 
-    def test_parse_mixed_format(self):
-        """Test parsing mixed old and new formats (edge case)."""
+    def test_parse_mixed_format_rejected(self):
+        """Mixed formats are rejected."""
         raw_dirs = [
             "/home/user/old",
             {"name": "new", "desc": "new format", "path": "/home/user/new"},
         ]
 
-        result = _parse_trusted_dirs(raw_dirs)
-
-        assert len(result) == 2
-
-        # Old format entry
-        assert result[0].name == "old"
-        assert result[0].desc == ""
-        assert result[0].path == "/home/user/old"
-
-        # New format entry
-        assert result[1].name == "new"
-        assert result[1].desc == "new format"
-        assert result[1].path == "/home/user/new"
+        try:
+            _parse_trusted_dirs(raw_dirs)
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            assert "Invalid trusted_dirs entry type" in str(e)
 
     def test_parse_empty_list(self):
         """Test parsing empty list returns empty list."""

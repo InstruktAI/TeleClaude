@@ -8,12 +8,19 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 
 import base64
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.core.events import AgentEventContext
+from teleclaude.core.events import (
+    AgentEventContext,
+    AgentHookEvents,
+    AgentNotificationPayload,
+    AgentSessionEndPayload,
+    AgentSessionStartPayload,
+    AgentStopPayload,
+)
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_listeners import get_listeners
 
@@ -31,17 +38,16 @@ class AgentCoordinator:
 
     async def handle_session_start(self, context: AgentEventContext) -> None:
         """Handle session_start event - store native session details."""
-        native_session_id = context.data.get("session_id")
-        native_log_file = context.data.get("transcript_path")
+        payload = cast(AgentSessionStartPayload, context.data)
+        native_session_id = payload.session_id
+        native_log_file = payload.transcript_path
 
-        if not native_session_id or not native_log_file:
-            raise ValueError("session_start missing required fields: session_id and transcript_path")
+        update_kwargs: dict[str, object] = {
+            "native_session_id": str(native_session_id),
+            "native_log_file": str(native_log_file),
+        }
 
-        await db.update_ux_state(
-            context.session_id,
-            native_session_id=str(native_session_id),
-            native_log_file=str(native_log_file),
-        )
+        await db.update_ux_state(context.session_id, **update_kwargs)
 
         # Copy voice assignment if available
         voice = await db.get_voice(context.session_id)
@@ -61,9 +67,8 @@ class AgentCoordinator:
         Assumes context.data is already enriched with title/summary by the Daemon.
         """
         session_id = context.session_id
-        data = context.data
-
-        title = str(data.get("title", "")) if data.get("title") else None
+        payload = cast(AgentStopPayload, context.data)
+        title = payload.title
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",
@@ -80,19 +85,22 @@ class AgentCoordinator:
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""
         session_id = context.session_id
-        original_message = context.data.get("original_message")
-
-        if not original_message:
-            return
+        payload = cast(AgentNotificationPayload, context.data)
+        message = payload.message
 
         # 1. Notify local listeners
-        await self._forward_notification_to_listeners(session_id, str(original_message))
+        await self._forward_notification_to_listeners(session_id, str(message))
 
         # 2. Forward to remote initiator
-        await self._forward_notification_to_initiator(session_id, str(original_message))
+        await self._forward_notification_to_initiator(session_id, str(message))
 
         # Update notification flag
         await db.set_notification_flag(session_id, True)
+
+    async def handle_session_end(self, context: AgentEventContext) -> None:
+        """Handle session_end event - agent session ended."""
+        _payload = cast(AgentSessionEndPayload, context.data)
+        logger.info("Agent %s for session %s", AgentHookEvents.AGENT_SESSION_END, context.session_id[:8])
 
     # === Helper Methods (extracted from UiAdapter) ===
 

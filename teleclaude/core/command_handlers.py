@@ -35,7 +35,7 @@ from teleclaude.core.session_cleanup import (
 )
 from teleclaude.core.session_utils import ensure_unique_title
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
-from teleclaude.utils.claude_transcript import (
+from teleclaude.utils.transcript import (
     get_transcript_parser_info,
     parse_session_transcript,
 )
@@ -302,7 +302,7 @@ Working directory: {working_dir}
 
 You can now send commands to this session.
 """
-        await client.send_feedback(session, welcome, MessageMetadata())
+        await client.send_feedback(session, welcome, MessageMetadata(), persistent=True)
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id}
 
@@ -640,7 +640,7 @@ async def handle_escape_command(
                 pass
 
         # Check if process is running for exit marker logic
-        is_process_running = await db.is_polling(session.session_id)
+        is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
 
         # Generate unique marker_id for exit detection (if appending marker)
         marker_id = None
@@ -1162,8 +1162,21 @@ async def handle_agent_start(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
+    logger.debug(
+        "handle_agent_start: session=%s agent_name=%r args=%s config_agents=%s",
+        session.session_id[:8],
+        agent_name,
+        args,
+        list(config.agents.keys()),
+    )
     agent_config = config.agents.get(agent_name)
     if not agent_config:
+        logger.error(
+            "Unknown agent requested: %r (session=%s, available=%s)",
+            agent_name,
+            session.session_id[:8],
+            list(config.agents.keys()),
+        )
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
@@ -1206,8 +1219,13 @@ async def handle_agent_start(
     cmd = " ".join(cmd_parts)
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
-    # Save active agent to UX state
-    await db.update_ux_state(session.session_id, active_agent=agent_name)
+    # Save active agent and clear previous native session bindings.
+    await db.update_ux_state(
+        session.session_id,
+        active_agent=agent_name,
+        native_session_id=None,
+        native_log_file=None,
+    )
 
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))
@@ -1278,6 +1296,79 @@ async def handle_agent_resume(
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))
     await execute_terminal_command(session.session_id, cmd, message_id, True)
+
+
+@with_session
+async def handle_agent_restart(
+    session: Session,
+    context: EventContext,
+    agent_name: str,
+    args: list[str],
+    client: "AdapterClient",
+    execute_terminal_command: Callable[[str, str, Optional[str], bool], Awaitable[bool]],
+) -> None:
+    """Restart an AI agent in the session by resuming the native session.
+
+    Requires native_session_id to be present (fail fast otherwise).
+    """
+    _ = args  # unused (kept for parity with other agent handlers)
+    ux_state = await db.get_ux_state(session.session_id)
+    active_agent = ux_state.active_agent if ux_state else None
+    native_session_id = ux_state.native_session_id if ux_state else None
+
+    target_agent = agent_name or active_agent
+    if not target_agent:
+        await client.send_feedback(
+            session,
+            "❌ Cannot restart agent: no active agent for this session.",
+            MessageMetadata(),
+        )
+        return
+
+    if not native_session_id:
+        await client.send_feedback(
+            session,
+            "❌ Cannot restart agent: no native session ID stored. Start the agent first.",
+            MessageMetadata(),
+        )
+        return
+
+    if not config.agents.get(target_agent):
+        await client.send_feedback(session, f"❌ Unknown agent: {target_agent}", MessageMetadata())
+        return
+
+    logger.info(
+        "Restarting agent %s in session %s (tmux: %s)",
+        target_agent,
+        session.session_id[:8],
+        session.tmux_session_name,
+    )
+
+    # Kill any existing process (send CTRL+C twice).
+    sent = await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+    if sent:
+        await asyncio.sleep(0.2)
+        await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+        await asyncio.sleep(0.5)
+
+    ready = await terminal_bridge.wait_for_shell_ready(session.tmux_session_name)
+    if not ready:
+        await client.send_feedback(
+            session,
+            "❌ Agent did not exit after SIGINT. Restart aborted.",
+            MessageMetadata(),
+        )
+        return
+
+    restart_cmd = get_agent_command(
+        agent=target_agent,
+        thinking_mode=(ux_state.thinking_mode if ux_state and ux_state.thinking_mode else "slow"),
+        exec=False,
+        native_session_id=native_session_id,
+    )
+
+    message_id = str(getattr(context, "message_id", ""))
+    await execute_terminal_command(session.session_id, restart_cmd, message_id, True)
 
 
 @with_session

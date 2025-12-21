@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Notify the "Agents" topic (out-of-band) for smoke tests.
 
 This script is meant to be called from cron/launchd. It sends via Telegram Bot API
@@ -20,8 +24,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,9 +125,6 @@ def _save_destination(dest: DestinationState) -> None:
 
 
 def _telegram_api_post(method: str, payload: dict[str, str], timeout_s: float = 10.0) -> dict:
-    import urllib.parse
-    import urllib.request
-
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         return {"ok": False, "description": "Missing TELEGRAM_BOT_TOKEN"}
@@ -177,8 +181,11 @@ def _run_send_telegram(chat_id: str, thread_id: str | None, text: str) -> int:
         print(f"ERROR: missing {send_script}", file=sys.stderr)
         return 2
 
-    args = [
-        sys.executable,
+    # Prefer `uv run` so `send_telegram.py`'s inline deps are honored even when
+    # this script is executed by cron/launchd with a minimal environment.
+    args: list[str] = [
+        "uv",
+        "run",
         str(send_script),
         "--chat-id",
         str(chat_id),
@@ -188,10 +195,17 @@ def _run_send_telegram(chat_id: str, thread_id: str | None, text: str) -> int:
     if thread_id:
         args += ["--thread-id", str(thread_id)]
 
-    import subprocess
-
-    result = subprocess.run(args, check=False)  # noqa: S603
-    return int(result.returncode)
+    try:
+        result = subprocess.run(args, check=False)  # noqa: S603
+        return int(result.returncode)
+    except FileNotFoundError:
+        # Fall back to direct execution (relies on shebang), then plain python.
+        try:
+            result = subprocess.run([str(send_script), *args[3:]], check=False)  # noqa: S603
+            return int(result.returncode)
+        except Exception:
+            result = subprocess.run([sys.executable, str(send_script), *args[3:]], check=False)  # noqa: S603
+            return int(result.returncode)
 
 
 def main(argv: list[str] | None = None) -> int:

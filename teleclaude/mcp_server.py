@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import os
 import shlex
 import types
@@ -12,6 +11,7 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+from instrukt_ai_logging import get_logger
 from mcp.server import Server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
@@ -21,15 +21,14 @@ from teleclaude.config import config
 from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
-from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
+from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
 from teleclaude.core.session_listeners import register_listener, unregister_listener
-from teleclaude.core.summarizer import summarizer
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _is_client_disconnect_exception(exc: BaseException) -> bool:
@@ -535,12 +534,18 @@ class TeleClaudeMCPServer:
             # Extract context (injected by wrapper) - handlers don't need to parse this
             caller_session_id = str(arguments.pop("caller_session_id")) if arguments.get("caller_session_id") else None
 
-            logger.debug(
-                "MCP call_tool() invoked: name=%s, arguments=%s, caller=%s",
-                name,
-                arguments,
-                caller_session_id,
-            )
+            if name == "teleclaude__handle_agent_event":
+                event_type = str(arguments.get("event_type", "")) if arguments else ""
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                logger.info(
+                    "MCP call_tool() invoked: name=%s, session=%s, event=%s, caller=%s",
+                    name,
+                    session_id[:8],
+                    event_type,
+                    caller_session_id,
+                )
+            else:
+                logger.trace("MCP call_tool() invoked: name=%s, caller=%s", name, caller_session_id)
             if name == "teleclaude__help":
                 text = (
                     "TeleClaude MCP Server\n"
@@ -712,12 +717,13 @@ class TeleClaudeMCPServer:
                             try:
                                 message = JSONRPCMessage.model_validate_json(line.decode("utf-8"))
                                 dump = message.model_dump()
-                                logger.debug(
-                                    "MCP reader received: method=%s id=%s params=%s",
-                                    dump.get("method"),
-                                    dump.get("id"),
-                                    dump.get("params"),
-                                )
+                                method = dump.get("method")
+                                if method != "notifications/initialized":
+                                    logger.trace(
+                                        "MCP reader received: method=%s id=%s",
+                                        method,
+                                        dump.get("id"),
+                                    )
                                 await read_stream_writer.send(SessionMessage(message))
                             except Exception as exc:
                                 await read_stream_writer.send(exc)
@@ -951,9 +957,6 @@ class TeleClaudeMCPServer:
 
         logger.info("Local session created: %s", session_id[:8])
 
-        # Pass the raw message; downstream UI adapters no longer need the AI[...] prefix
-        prefixed_message = message
-
         # Preserve caller ID only for listener registration/notifications
         effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
@@ -967,7 +970,7 @@ class TeleClaudeMCPServer:
         # Send command with prefixed message to start the agent
         await self.client.handle_event(
             TeleClaudeEvents.AGENT_START,
-            {"session_id": session_id, "args": [agent, thinking_mode, prefixed_message]},
+            {"session_id": session_id, "args": [agent, thinking_mode, message]},
             MessageMetadata(adapter_type="redis"),
         )
         logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
@@ -1053,9 +1056,6 @@ class TeleClaudeMCPServer:
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
-            # Pass the raw message; downstream adapters no longer rely on AI[...] prefix
-            prefixed_message = message
-
             # Preserve caller ID only for listener registration/notifications
             effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
 
@@ -1098,7 +1098,7 @@ class TeleClaudeMCPServer:
 
             # Send agent start command with prefixed message
             # The remote handle_command expects: /agent {agent_name} {message}
-            quoted_message = shlex.quote(prefixed_message)
+            quoted_message = shlex.quote(message)
             await self.client.send_request(
                 computer_name=computer,
                 command=f"/{TeleClaudeEvents.AGENT_START} {agent} {thinking_mode} {quoted_message}",
@@ -1717,51 +1717,18 @@ class TeleClaudeMCPServer:
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
-        allowed_events = {"session_start", "stop", "notification", "error"}
-        if event_type not in allowed_events:
-            await self._emit_error_event(
-                session_id,
-                f"Unknown hook event_type '{event_type}'",
-                source="hook",
-                details={"event_type": event_type},
-            )
-            raise ValueError(f"Unknown hook event_type '{event_type}'")
-
-        if event_type == "error":
-            message = data.get("message")
-            if not message:
-                raise ValueError("error event requires 'message'")
+        if event_type == AgentHookEvents.AGENT_ERROR:
             await self.client.handle_event(
                 TeleClaudeEvents.ERROR,
                 {
                     "session_id": session_id,
-                    "message": str(message),
-                    "source": str(data.get("source")) if data.get("source") else None,
-                    "details": data.get("details") if isinstance(data.get("details"), dict) else None,
+                    "message": str(data["message"]),
+                    "source": str(data["source"]) if "source" in data else None,
+                    "details": cast(dict[str, object] | None, data["details"]) if "details" in data else None,
                 },
                 MessageMetadata(adapter_type="internal"),
             )
             return "OK"
-
-        if event_type == "session_start":
-            native_session_id = data.get("session_id")
-            native_log_file = data.get("transcript_path")
-            if not native_session_id or not native_log_file:
-                await self._emit_error_event(
-                    session_id,
-                    "session_start missing required fields: session_id and transcript_path",
-                    source="hook",
-                    details={"data_keys": list(data.keys())},
-                )
-                raise ValueError("session_start missing required fields: session_id and transcript_path")
-
-        # Enrich stop events with summary
-        if event_type == "stop":
-            try:
-                summary_data = await summarizer.summarize_session(session_id)
-                data.update(summary_data)  # Add summary/title to payload
-            except Exception as e:
-                logger.error("Failed to summarize session %s: %s", session_id[:8], e)
 
         # Emit event to registered listeners
         response = await self.client.handle_event(
@@ -1774,26 +1741,3 @@ class TeleClaudeMCPServer:
         if isinstance(response, dict) and response.get("status") == "error":
             raise ValueError(str(response.get("error")))
         return "OK"
-
-    async def _emit_error_event(
-        self,
-        session_id: str,
-        message: str,
-        *,
-        source: str | None = None,
-        details: dict[str, object] | None = None,
-    ) -> None:
-        """Emit an error event to notify the user via adapters."""
-        try:
-            await self.client.handle_event(
-                TeleClaudeEvents.ERROR,
-                {
-                    "session_id": session_id,
-                    "message": message,
-                    "source": source,
-                    "details": details,
-                },
-                MessageMetadata(adapter_type="internal"),
-            )
-        except Exception as e:
-            logger.error("Failed to emit error event for %s: %s", session_id[:8], e)

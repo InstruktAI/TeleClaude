@@ -25,8 +25,6 @@ from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.models import (
-    AgentResumePayload,
-    AgentStartPayload,
     ChannelMetadata,
     CommandPayload,
     MessageMetadata,
@@ -808,18 +806,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             elif cmd_name in ["claude", "gemini", "codex"]:
                 agent_name = cmd_name
                 event_type = TeleClaudeEvents.AGENT_START
-                payload_obj = AgentStartPayload(session_id=session_id, agent_name=agent_name, args=args)
+                payload_obj = CommandPayload(session_id=session_id, args=[agent_name] + args)
                 logger.debug("Emitting AGENT_START event for %s with args: %s", agent_name, args)
             elif cmd_name in ["claude_resume", "gemini_resume", "codex_resume"]:
                 agent_name = cmd_name.replace("_resume", "")
                 event_type = TeleClaudeEvents.AGENT_RESUME
-                resume_latest = True if not args else False
-                payload_obj = AgentResumePayload(
-                    session_id=session_id,
-                    agent_name=agent_name,
-                    resume_latest=resume_latest,
-                    args=args,
-                )
+                payload_obj = CommandPayload(session_id=session_id, args=[agent_name] + args)
                 logger.debug("Emitting AGENT_RESUME event for %s", agent_name)
             else:
                 payload_obj = CommandPayload(session_id=session_id, args=args)
@@ -961,8 +953,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
     async def _send_heartbeat(self) -> None:
         """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
-        logger.debug("_send_heartbeat called for %s", self.computer_name)
-
+        logger.debug("Sent heartbeat for %s", self.computer_name)
         key = f"computer:{self.computer_name}:heartbeat"
 
         # Minimal payload - just alive ping
@@ -978,8 +969,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self.heartbeat_ttl,
             json.dumps(payload),
         )
-
-        logger.debug("Sent heartbeat: %s", key)
 
     # === AI-to-AI Session Output Stream Listeners ===
 

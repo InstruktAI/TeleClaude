@@ -50,4 +50,4 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
     # Claude hooks only have type and command (no name/description)
     hook = hooks_block["hooks"][0]
     assert hook["type"] == "command"
-    assert "receiver_claude.py session_start" in hook["command"]
+    assert "receiver.py --agent claude session_start" in hook["command"]

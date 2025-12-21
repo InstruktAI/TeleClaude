@@ -5,7 +5,7 @@ Provides type-safe event definitions for adapter-daemon communication.
 
 import shlex
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
@@ -44,6 +44,73 @@ EventType = Literal[
     "error",
     "session_updated",
 ]
+
+# Agent hook event types (payload event_type values from agents)
+AgentHookEventType = Literal["session_start", "stop", "session_end", "notification", "error"]
+
+
+class AgentHookEvents:
+    """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
+
+    AGENT_SESSION_START: AgentHookEventType = "session_start"
+    AGENT_STOP: AgentHookEventType = "stop"
+    AGENT_SESSION_END: AgentHookEventType = "session_end"
+    AGENT_NOTIFICATION: AgentHookEventType = "notification"
+    AGENT_ERROR: AgentHookEventType = "error"
+    ALL: set[AgentHookEventType] = {
+        AGENT_SESSION_START,
+        AGENT_STOP,
+        AGENT_SESSION_END,
+        AGENT_NOTIFICATION,
+        AGENT_ERROR,
+    }
+
+
+@dataclass
+class AgentSessionStartPayload:
+    """Internal payload for agent session_start hook."""
+
+    session_id: str
+    transcript_path: str
+    raw: dict[str, object]
+
+
+@dataclass
+class AgentStopPayload:
+    """Internal payload for agent stop hook."""
+
+    session_id: str
+    transcript_path: str
+    raw: dict[str, object]
+    summary: str | None = None
+    title: str | None = None
+
+
+@dataclass
+class AgentNotificationPayload:
+    """Internal payload for agent notification hook."""
+
+    session_id: str
+    transcript_path: str
+    message: str
+    raw: dict[str, object]
+
+
+@dataclass
+class AgentSessionEndPayload:
+    """Internal payload for agent session_end hook."""
+
+    session_id: str
+    raw: dict[str, object]
+
+
+AgentEventPayload = Union[
+    AgentSessionStartPayload,
+    AgentStopPayload,
+    AgentNotificationPayload,
+    AgentSessionEndPayload,
+]
+
 
 # UI commands mapping (intentionally lowercase - not a constant despite dict type)
 # pylint: disable=invalid-name  # UiCommands is a module-level mapping, not a constant
@@ -139,10 +206,6 @@ class TeleClaudeEvents:
 
     # Error events (from hooks or internal validation)
     ERROR: Literal["error"] = "error"
-
-    # Cross-computer notifications
-    STOP_NOTIFICATION: Literal["stop_notification"] = "stop_notification"  # Forwarded stop event from remote
-    INPUT_NOTIFICATION: Literal["input_notification"] = "input_notification"  # Forwarded input request from remote
 
     # Internal events
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
@@ -262,8 +325,8 @@ class AgentEventContext:
     """Context for Agent events (from hooks)."""
 
     session_id: str
-    data: dict[str, object]
-    event_type: Optional[str] = None
+    data: AgentEventPayload
+    event_type: AgentHookEventType
 
 
 @dataclass

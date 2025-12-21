@@ -9,6 +9,7 @@ MCP_ENABLED = True
 
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
+UI_MESSAGE_MAX_CHARS = 3900  # Telegram limit minus formatting overhead
 
 # Redis internal settings
 REDIS_MAX_CONNECTIONS = 10

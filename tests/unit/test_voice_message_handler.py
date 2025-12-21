@@ -172,7 +172,9 @@ async def test_handle_voice_rejects_no_active_process():
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.voice_message_handler.db.is_polling", new_callable=AsyncMock) as mock_polling,
+            patch(
+                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+            ) as mock_polling,
         ):
             mock_get.return_value = mock_session
             mock_polling.return_value = False  # No active process
@@ -213,7 +215,9 @@ async def test_handle_voice_rejects_no_output_message():
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.voice_message_handler.db.is_polling", new_callable=AsyncMock) as mock_polling,
+            patch(
+                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+            ) as mock_polling,
         ):
             mock_get.return_value = mock_session
             mock_polling.return_value = True  # Polling active
@@ -253,7 +257,9 @@ async def test_handle_voice_forwards_transcription_to_process():
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.voice_message_handler.db.is_polling", new_callable=AsyncMock) as mock_polling,
+            patch(
+                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+            ) as mock_polling,
             patch("teleclaude.core.voice_message_handler.db.update_last_activity", new_callable=AsyncMock),
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
@@ -304,7 +310,9 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.voice_message_handler.db.is_polling", new_callable=AsyncMock) as mock_polling,
+            patch(
+                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+            ) as mock_polling,
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
                 new_callable=AsyncMock,

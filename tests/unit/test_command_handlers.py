@@ -760,3 +760,150 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     assert command.endswith("--continue")
     assert "--resume" not in command
     assert "-m " not in command  # continue_template path skips model flag
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_db):
+    """Restart should fail fast when no active agent is stored."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-123"
+    mock_session.tmux_session_name = "tc_test"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.send_feedback = AsyncMock()
+
+    mock_ux_state = MagicMock()
+    mock_ux_state.active_agent = None
+    mock_ux_state.native_session_id = None
+    mock_ux_state.thinking_mode = "slow"
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "terminal_bridge") as mock_terminal_bridge,
+    ):
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+        mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
+
+        await command_handlers.handle_agent_restart.__wrapped__(
+            mock_session, mock_context, "", [], mock_client, mock_execute
+        )
+
+    mock_client.send_feedback.assert_awaited_once()
+    mock_execute.assert_not_called()
+    mock_terminal_bridge.send_signal.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_fails_without_native_session_id(mock_initialized_db):
+    """Restart should fail fast when native_session_id is missing."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-456"
+    mock_session.tmux_session_name = "tc_test"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.send_feedback = AsyncMock()
+
+    mock_ux_state = MagicMock()
+    mock_ux_state.active_agent = "claude"
+    mock_ux_state.native_session_id = None
+    mock_ux_state.thinking_mode = "slow"
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+
+        await command_handlers.handle_agent_restart.__wrapped__(
+            mock_session, mock_context, "", [], mock_client, mock_execute
+        )
+
+    mock_client.send_feedback.assert_awaited_once()
+    mock_execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_resumes_with_native_session_id(mock_initialized_db):
+    """Restart should send SIGINTs and resume using stored native_session_id."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-789"
+    mock_session.tmux_session_name = "tc_test"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+
+    mock_ux_state = MagicMock()
+    mock_ux_state.active_agent = "claude"
+    mock_ux_state.native_session_id = "native-abc"
+    mock_ux_state.thinking_mode = "slow"
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "terminal_bridge") as mock_terminal_bridge,
+        patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
+        patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
+        patch.object(command_handlers, "config") as mock_config,
+    ):
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+        mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
+        mock_terminal_bridge.wait_for_shell_ready = AsyncMock(return_value=True)
+        mock_get_agent_command.return_value = "claude --resume native-abc"
+        mock_config.agents.get.return_value = MagicMock()
+
+        await command_handlers.handle_agent_restart.__wrapped__(
+            mock_session, mock_context, "", [], mock_client, mock_execute
+        )
+
+    assert mock_terminal_bridge.send_signal.await_count == 2
+    mock_execute.assert_called_once()
+    command = mock_execute.call_args[0][1]
+    assert "claude --resume native-abc" in command
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized_db):
+    """Restart should abort if the foreground process does not exit."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "restart-session-999"
+    mock_session.tmux_session_name = "tc_test"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_execute = AsyncMock()
+    mock_client = MagicMock()
+    mock_client.send_feedback = AsyncMock()
+
+    mock_ux_state = MagicMock()
+    mock_ux_state.active_agent = "claude"
+    mock_ux_state.native_session_id = "native-xyz"
+    mock_ux_state.thinking_mode = "slow"
+
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "terminal_bridge") as mock_terminal_bridge,
+        patch.object(command_handlers, "config") as mock_config,
+    ):
+        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
+        mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
+        mock_terminal_bridge.wait_for_shell_ready = AsyncMock(return_value=False)
+        mock_config.agents.get.return_value = MagicMock()
+
+        await command_handlers.handle_agent_restart.__wrapped__(
+            mock_session, mock_context, "", [], mock_client, mock_execute
+        )
+
+    mock_client.send_feedback.assert_awaited_once()
+    mock_execute.assert_not_called()

@@ -118,13 +118,8 @@ def extract_tools_from_mcp_server() -> list[str]:
     return list(dict.fromkeys(tools))  # Dedupe while preserving order
 
 
-def build_response_template(tool_names: list[str]) -> tuple[str, str]:
-    """Pre-build response templates with placeholder for request ID.
-
-    Returns:
-        Tuple of (response_template, notification) where response_template
-        contains __REQUEST_ID__ placeholder for string replacement.
-    """
+def build_response_template(tool_names: list[str]) -> str:
+    """Pre-build response template with placeholder for request ID."""
     # Pre-serialize response structure for maximum speed
     # Use string template with unique placeholder to avoid JSON parsing overhead at runtime
     tools_json = json.dumps(tool_names)
@@ -135,8 +130,7 @@ def build_response_template(tool_names: list[str]) -> tuple[str, str]:
         '"capabilities":{"tools":{}},'
         '"serverInfo":{"name":"TeleClaude","version":"1.0.0","tools_available":' + tools_json + "}}}"
     )
-    notification = '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
-    return response_template, notification
+    return response_template
 
 
 def _get_mcp_server_path() -> Path:
@@ -148,7 +142,6 @@ def _get_mcp_server_path() -> Path:
 _TOOL_CACHE_MTIME: float | None = None
 TOOL_NAMES: list[str] = []
 RESPONSE_TEMPLATE: str = ""
-NOTIFICATION: str = ""
 
 
 def refresh_tool_cache_if_needed(force: bool = False) -> None:
@@ -158,7 +151,7 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
     handshake while the backend is restarting, the tool list must match the
     current server code (not whatever was present when the wrapper first started).
     """
-    global _TOOL_CACHE_MTIME, TOOL_NAMES, RESPONSE_TEMPLATE, NOTIFICATION  # pylint: disable=global-statement
+    global _TOOL_CACHE_MTIME, TOOL_NAMES, RESPONSE_TEMPLATE  # pylint: disable=global-statement
 
     try:
         mcp_server_path = _get_mcp_server_path()
@@ -170,7 +163,7 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
         return
 
     TOOL_NAMES = extract_tools_from_mcp_server()
-    RESPONSE_TEMPLATE, NOTIFICATION = build_response_template(TOOL_NAMES)
+    RESPONSE_TEMPLATE = build_response_template(TOOL_NAMES)
     _TOOL_CACHE_MTIME = mtime
     logger.info("Tool cache refreshed (count=%d)", len(TOOL_NAMES))
 
@@ -652,8 +645,7 @@ class MCPProxy:
                     refresh_tool_cache_if_needed()
                     logger.info("Backend not ready, using cached handshake (id=%s)", request_id)
                     response = RESPONSE_TEMPLATE.replace("__REQUEST_ID__", str(request_id))
-                    combined = f"{response}\n{NOTIFICATION}\n"
-                    sys.stdout.buffer.write(combined.encode())
+                    sys.stdout.buffer.write((response + "\n").encode())
                     sys.stdout.buffer.flush()
                     # We still must initialize the backend once it comes back up.
                     self._needs_backend_resync = True

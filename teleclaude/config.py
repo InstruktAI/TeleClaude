@@ -216,31 +216,19 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
 
 
 def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
-    """Parse trusted_dirs from config, handling both old and new formats.
+    """Parse trusted_dirs from config.
 
-    Supports backward compatibility:
-    - Old format: list[str] - converts to TrustedDir with name=basename, desc=""
-    - New format: list[dict] - creates TrustedDir from dict fields
+    Expects list[dict] entries with name/desc/path.
 
     Args:
-        raw_dirs: List of strings (old format) or dicts (new format)
+        raw_dirs: List of dicts with trusted dir metadata
 
     Returns:
         List of TrustedDir objects
     """
     trusted_dirs = []
     for item in raw_dirs:
-        if isinstance(item, str):
-            # Old format: just a path string
-            # Convert to new format with auto-generated name
-            trusted_dirs.append(
-                TrustedDir(
-                    name=os.path.basename(item.rstrip("/")),
-                    desc="",
-                    path=item,
-                )
-            )
-        elif isinstance(item, dict):
+        if isinstance(item, dict):
             # New format: dict with name, desc, path
             trusted_dirs.append(
                 TrustedDir(

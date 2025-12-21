@@ -1,134 +1,104 @@
-"""Session summarizer service.
+"""Summary utilities for agent stop payloads."""
 
-Generates summaries and titles from session logs using LLMs.
-"""
-
-import logging
+import json
 import os
-from pathlib import Path
+from typing import Any, cast
 
-from teleclaude.core.agent_parsers import ClaudeParser, CodexParser, GeminiParser
-from teleclaude.core.db import db
-from teleclaude.core.parsers import LogParser
+from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
+from openai.types.shared_params.response_format_json_schema import ResponseFormatJSONSchema
 
-# Optional imports for LLM clients
-try:
-    from anthropic import AsyncAnthropic  # type: ignore
-except ImportError:
-    AsyncAnthropic = None  # type: ignore
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.core.agents import AgentName
+from teleclaude.utils.transcript import parse_session_transcript
 
-try:
-    from openai import AsyncOpenAI  # type: ignore
-except ImportError:
-    AsyncOpenAI = None  # type: ignore
+SUMMARY_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
+SUMMARY_MODEL_OPENAI = "gpt-5-nano-2025-08-07"
+SUMMARY_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "title": {"type": "string"},
+    },
+    "required": ["summary", "title"],
+    "additionalProperties": False,
+}
 
-logger = logging.getLogger(__name__)
 
+async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str]:
+    """Summarize an agent session transcript and return (title, summary)."""
+    transcript = parse_session_transcript(
+        transcript_path,
+        title="",
+        agent_name=agent_name,
+        tail_chars=UI_MESSAGE_MAX_CHARS,
+    )
+    if transcript.startswith("Transcript file not found:") or transcript.startswith("Error parsing transcript:"):
+        raise ValueError(transcript)
 
-class SessionSummarizer:
-    """Service to summarize session logs."""
-
-    def __init__(self) -> None:
-        self.parsers: dict[str, LogParser] = {
-            "claude": ClaudeParser(),
-            "codex": CodexParser(),
-            "gemini": GeminiParser(),
-        }
-
-    async def summarize_session(self, session_id: str) -> dict[str, str | None]:
-        """Generate summary and title for a session.
-
-        Args:
-            session_id: TeleClaude session ID
-
-        Returns:
-            Dict with "summary" and "title" keys.
-        """
-        # Get session info
-        ux_state = await db.get_ux_state(session_id)
-        if not ux_state.native_log_file:
-            logger.warning("No native_log_file for session %s, skipping summary", session_id[:8])
-            return {"summary": "Work complete!", "title": None}
-
-        agent_name = ux_state.active_agent or "claude"
-        parser = self.parsers.get(agent_name)
-
-        if not parser:
-            logger.warning("No parser for agent %s", agent_name)
-            return {"summary": "Work complete!", "title": None}
-
-        # Extract content
-        log_path = Path(ux_state.native_log_file)
-        if not log_path.exists():
-            return {"summary": "Work complete!", "title": None}
-
-        content = parser.extract_last_turn(log_path)
-        if not content:
-            return {"summary": "Work complete!", "title": None}
-
-        # Generate summary via LLM
-        return await self._generate_summary(content)
-
-    async def _generate_summary(self, content: str) -> dict[str, str | None]:
-        """Generate summary using available LLM API."""
-        prompt = f"""Summarize what an AI assistant reported in its last messages. Write for humans tracking progress.
+    prompt = f"""Summarize what an AI assistant reported in its recent transcript. Write for humans tracking progress.
 
 Rules:
-- First person ("I...")
+- First person (\"I...\")
 - 1-2 sentences
 - Accurately reflect what the AI said it did or observed
 - Preserve the subject
 - Also provide a short title (max 50 chars)
 
-Format:
-SUMMARY: <your summary>
-TITLE: <short title>
+Transcript:
+{transcript}"""
 
-AI's recent messages:
-{content}"""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if api_key:
+        anthropic_client = AsyncAnthropic(api_key=api_key)
+        response = await anthropic_client.beta.messages.create(
+            model=SUMMARY_MODEL_ANTHROPIC,
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
+            betas=["structured-outputs-2025-11-13"],
+            output_format={
+                "type": "json_schema",
+                "schema": {
+                    "type": SUMMARY_SCHEMA["type"],
+                    "properties": SUMMARY_SCHEMA["properties"],
+                    "required": SUMMARY_SCHEMA["required"],
+                    "additionalProperties": SUMMARY_SCHEMA["additionalProperties"],
+                },
+            },
+        )
+        text = response.content[0].text  # type: ignore[union-attr]
+        return _parse_response(text)
 
-        # Try Anthropic
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key and AsyncAnthropic:
-            try:
-                client = AsyncAnthropic(api_key=api_key)
-                response = await client.messages.create(
-                    model="claude-3-5-haiku-20241022",
-                    max_tokens=200,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                text = response.content[0].text  # type: ignore
-                return self._parse_response(text)
-            except Exception as e:
-                logger.error("Anthropic summary failed: %s", e)
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        openai_client = AsyncOpenAI(api_key=openai_key)
+        response_format: ResponseFormatJSONSchema = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "summary",
+                "schema": SUMMARY_SCHEMA,
+                "strict": True,
+            },
+        }
+        response = await openai_client.chat.completions.create(
+            model=SUMMARY_MODEL_OPENAI,
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
+            response_format=response_format,
+        )
+        response_any = cast(Any, response)
+        text = response_any.choices[0].message.content or ""
+        return _parse_response(text)
 
-        # Try OpenAI
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key and AsyncOpenAI is not None:
-            try:
-                client = AsyncOpenAI(api_key=openai_key)
-                response = await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    max_tokens=200,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                text = response.choices[0].message.content or ""  # type: ignore[misc]
-                return self._parse_response(text)
-            except Exception as e:
-                logger.error("OpenAI summary failed: %s", e)
-
-        return {"summary": "Work complete!", "title": None}
-
-    def _parse_response(self, text: str) -> dict[str, str | None]:
-        summary = "Work complete!"
-        title = None
-        for line in text.strip().split("\n"):
-            if line.startswith("SUMMARY:"):
-                summary = line[8:].strip()
-            elif line.startswith("TITLE:"):
-                title = line[6:].strip()[:50]
-        return {"summary": summary, "title": title}
+    raise RuntimeError("No summarizer available (missing API key)")
 
 
-# Singleton
-summarizer = SessionSummarizer()
+def _parse_response(text: str) -> tuple[str | None, str]:
+    data = json.loads(text.strip())
+    summary_value = data["summary"]
+    title_value = data.get("title")
+    summary = str(summary_value).strip()
+    title = str(title_value).strip()[:50] if title_value else None
+    if not summary:
+        raise ValueError("Summary missing in model response")
+    return title, summary

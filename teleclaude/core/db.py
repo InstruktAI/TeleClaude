@@ -54,13 +54,6 @@ class Db:
         await self._db.executescript(schema_sql)
         await self._db.commit()
 
-        # NOTE: We do NOT reset polling_active flags here!
-        # The daemon's restore_active_pollers() function handles this correctly by:
-        # 1. Checking if tmux session still exists
-        # 2. If yes: restart polling
-        # 3. If no: mark as inactive
-        # Resetting here would prevent automatic polling restoration.
-
     @property
     def conn(self) -> aiosqlite.Connection:
         """Get database connection, asserting it's initialized.
@@ -184,7 +177,7 @@ class Db:
         """Get session by ux_state field value.
 
         Args:
-            field: UX state field name (e.g., "claude_session_id", "output_message_id")
+            field: UX state field name (e.g., "native_session_id", "output_message_id")
             value: Value to match
 
         Returns:
@@ -287,36 +280,6 @@ class Db:
         await self.conn.commit()
 
     # State management functions (DB-backed via ux_state)
-
-    async def is_polling(self, session_id: str) -> bool:
-        """Check if session has active polling.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            True if polling is active for this session
-        """
-        ux_state = await self.get_ux_state(session_id)
-        return ux_state.polling_active
-
-    async def mark_polling(self, session_id: str) -> None:
-        """Mark session as having active polling.
-
-        Args:
-            session_id: Session identifier
-        """
-
-        await self.update_ux_state(session_id, polling_active=True)
-
-    async def unmark_polling(self, session_id: str) -> None:
-        """Mark session as no longer polling.
-
-        Args:
-            session_id: Session identifier
-        """
-
-        await self.update_ux_state(session_id, polling_active=False)
 
     async def get_output_message_id(self, session_id: str) -> Optional[str]:
         """Get output message ID for session.
@@ -524,13 +487,10 @@ class Db:
         return [Session.from_dict(dict(row)) for row in rows]
 
     async def get_active_sessions(self) -> list[Session]:
-        """Get all sessions with active polling.
-
-        Returns sessions where ux_state.polling_active=True and closed=False.
-        Used during daemon startup to restore polling for interrupted sessions.
+        """Get all open sessions (closed=False).
 
         Returns:
-            List of sessions with active polling
+            List of open sessions
         """
         cursor = await self.conn.execute(
             """
@@ -542,24 +502,7 @@ class Db:
         rows = await cursor.fetchall()
         all_sessions = [Session.from_dict(dict(row)) for row in rows]
 
-        # Filter by polling_active in ux_state
-        active_sessions = []
-        for session in all_sessions:
-            ux_state_data = await self.get_ux_state(session.session_id)
-            if ux_state_data.polling_active:
-                active_sessions.append(session)
-
-        return active_sessions
-
-    async def set_polling_inactive(self, session_id: str) -> None:
-        """Mark polling as inactive for a session.
-
-        Used when tmux session no longer exists during restoration.
-
-        Args:
-            session_id: Session ID
-        """
-        await self.update_ux_state(session_id, polling_active=False)
+        return all_sessions
 
     async def get_ux_state(self, session_id: str) -> SessionUXState:
         """Get UX state for session.
@@ -577,7 +520,6 @@ class Db:
         session_id: str,
         *,
         output_message_id: Optional[str] | object = ux_state._UNSET,
-        polling_active: bool | object = ux_state._UNSET,
         pending_deletions: list[str] | object = ux_state._UNSET,
         pending_feedback_deletions: list[str] | object = ux_state._UNSET,
         notification_sent: bool | object = ux_state._UNSET,
@@ -591,10 +533,9 @@ class Db:
         Args:
             session_id: Session ID
             output_message_id: Output message ID (optional)
-            polling_active: Whether polling is active (optional)
-            pending_deletions: List of user input message IDs pending deletion (optional)
-            pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
-            notification_sent: Whether Agent notification was sent (optional)
+        pending_deletions: List of user input message IDs pending deletion (optional)
+        pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
+        notification_sent: Whether Agent notification was sent (optional)
             native_session_id: Native agent session ID (optional)
             native_log_file: Path to native agent log file (optional)
             active_agent: Name of the active agent (optional)
@@ -603,7 +544,6 @@ class Db:
             self.conn,
             session_id,
             output_message_id=output_message_id,
-            polling_active=polling_active,
             pending_deletions=pending_deletions,
             pending_feedback_deletions=pending_feedback_deletions,
             notification_sent=notification_sent,

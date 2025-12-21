@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Generator, Optional, cast
 
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.parsers import LogEvent, LogParser
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,17 @@ class CodexParser(LogParser):
 
     def extract_session_id(self, file_path: Path) -> Optional[str]:
         """Extract native session ID from file."""
-        # Try reading first line for session_meta
+        # Scan for session_meta to avoid missing it if not the first line yet.
         try:
             with open(file_path, "r", encoding="utf-8") as f:
-                first_line = f.readline()
-                if first_line:
-                    data = json.loads(first_line)
+                for line in f:
+                    if not line.strip():
+                        continue
+                    data = json.loads(line)
                     if isinstance(data, dict) and data.get("type") == "session_meta":
                         payload = data.get("payload")
                         if isinstance(payload, dict):
-                            return str(payload.get("id"))
+                            return str(payload["id"])
         except Exception:
             pass
 
@@ -47,164 +49,84 @@ class CodexParser(LogParser):
 
     def parse_line(self, line: str) -> Generator[LogEvent, None, None]:
         """Parse a single line from Codex log."""
-        try:
-            entry_raw = json.loads(line)
-        except json.JSONDecodeError:
-            return
-
-        if not isinstance(entry_raw, dict):
-            return
-
+        entry_raw = json.loads(line)
         entry = cast(dict[str, object], entry_raw)
 
+        entry_type = entry["type"]
+        if entry_type == "event_msg":
+            payload = cast(dict[str, object], entry["payload"])
+            payload_type = payload["type"]
+            if payload_type == "agent_message":
+                yield LogEvent(
+                    event_type="stop",
+                    data={},
+                    timestamp=time.time(),
+                )
+                return
+
         # Handle response_item
-        entry_type = entry.get("type")
-        if isinstance(entry_type, str) and entry_type == "response_item":
-            payload_raw = entry.get("payload")
-            if isinstance(payload_raw, dict):
-                payload = cast(dict[str, object], payload_raw)
-                role = payload.get("role")
+        if entry_type == "response_item":
+            payload = cast(dict[str, object], entry["payload"])
+            if payload["type"] != "message":
+                return
+            role = cast(str, payload["role"])
+            content = cast(list[object], payload["content"])
 
-                if role == "assistant" or role == "model":
-                    # Check for completion/stop
-                    yield LogEvent(
-                        event_type="stop",
-                        data={},
-                        timestamp=time.time(),
-                    )
-
-                    # Check for tool use / notifications
-                    content = payload.get("content")
-                    if isinstance(content, list):
-                        for block_raw in content:
-                            if isinstance(block_raw, dict):
-                                block = cast(dict[str, object], block_raw)
-                                if block.get("type") == "tool_use":
-                                    tool_name = str(block.get("name", ""))
-                                    # Generic input request detection
-                                    if "question" in tool_name.lower() or "input" in tool_name.lower():
-                                        yield LogEvent(
-                                            event_type="notification",
-                                            data={"message": "Codex requests input", "original_message": str(block)},
-                                            timestamp=time.time(),
-                                        )
+            if role in ("assistant", "model"):
+                # Check for tool use / notifications
+                for block_raw in content:
+                    block = cast(dict[str, object], block_raw)
+                    if block["type"] == "tool_use":
+                        tool_name = str(block["name"])
+                        # Generic input request detection
+                        if "question" in tool_name.lower() or "input" in tool_name.lower():
+                            yield LogEvent(
+                                event_type="notification",
+                                data={"message": str(block)},
+                                timestamp=time.time(),
+                            )
 
     def extract_last_turn(self, file_path: Path) -> str:
         """Extract text content of last model turn."""
-        assistant_texts: list[str] = []
-        try:
-            with open(file_path) as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
+        last_assistant_texts: list[str] = []
+        with open(file_path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
 
-                    if entry.get("type") != "response_item":
-                        continue
+                if entry["type"] != "response_item":
+                    continue
 
-                    payload = entry.get("payload", {})
-                    role = payload.get("role")
-                    content = payload.get("content", [])
+                payload = cast(dict[str, object], entry["payload"])
+                if payload["type"] != "message":
+                    continue
+                role = cast(str, payload["role"])
+                content = cast(list[object], payload["content"])
 
-                    if not role:
-                        continue
+                if role in ("assistant", "model"):
+                    assistant_texts: list[str] = []
+                    for block_raw in content:
+                        block = cast(dict[str, object], block_raw)
+                        if block["type"] == "output_text":
+                            text = cast(str, block["text"])
+                            if text:
+                                assistant_texts.append(text)
+                    if assistant_texts:
+                        last_assistant_texts = assistant_texts
 
-                    if role == "user":
-                        assistant_texts = []  # Reset on user input
-                    elif role in ("assistant", "model"):
-                        for block in content:
-                            if (
-                                isinstance(block, dict) and block.get("type") == "input_text"
-                            ):  # Codex uses input_text or text?
-                                # Check schema from earlier: {"type":"input_text","text":"..."} in user msg
-                                # Assuming model uses similar or "text"
-                                text = block.get("text", "")
-                                if text:
-                                    assistant_texts.append(text)
-        except Exception:
-            return ""
-
-        combined = "\n\n".join(assistant_texts)
-        if len(combined) > 3000:
-            combined = combined[-3000:]
+        combined = "\n\n".join(last_assistant_texts)
+        if len(combined) > UI_MESSAGE_MAX_CHARS:
+            combined = combined[-UI_MESSAGE_MAX_CHARS:]
         return combined
 
-
-class ClaudeParser(LogParser):
-    """Parser for Claude Code logs."""
-
-    def can_parse(self, file_path: Path) -> bool:
-        return file_path.suffix == ".jsonl"
-
-    def extract_session_id(self, file_path: Path) -> Optional[str]:
-        # Heuristic: if filename is UUID-like
-        stem = file_path.stem
-        if len(stem) > 8:
-            return stem
-        return None
-
-    def parse_line(self, line: str) -> Generator[LogEvent, None, None]:
-        # Implement full parsing if needed for watcher, otherwise minimal
-        # For now we only use this for extract_last_turn in Daemon
-        yield from ()
-
-    def extract_last_turn(self, file_path: Path) -> str:
-        """Extract text content of last assistant turn."""
-        assistant_texts: list[str] = []
-        try:
-            with open(file_path) as f:
-                for line in f:
-                    if not line.strip():
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    if entry.get("type") == "summary":
-                        continue
-
-                    message = entry.get("message", {})
-                    role = message.get("role")
-                    content = message.get("content", [])
-
-                    if not role:
-                        continue
-
-                    if role == "user":
-                        assistant_texts = []
-                    elif role == "assistant":
-                        for block in content:
-                            if isinstance(block, dict) and block.get("type") == "text":
-                                text = block.get("text", "")
-                                if text:
-                                    assistant_texts.append(text)
-        except Exception:
-            return ""
-
-        combined = "\n\n".join(assistant_texts)
-        if len(combined) > 3000:
-            combined = combined[-3000:]
-        return combined
-
-
-class GeminiParser(LogParser):
-    """Parser for Gemini logs."""
-
-    def can_parse(self, file_path: Path) -> bool:
-        return file_path.suffix == ".jsonl"
-
-    def extract_session_id(self, file_path: Path) -> Optional[str]:
-        return file_path.stem
-
-    def parse_line(self, line: str) -> Generator[LogEvent, None, None]:
-        yield from ()
-
-    def extract_last_turn(self, file_path: Path) -> str:
-        """Extract text content of last model turn."""
-        # Reuse generic logic or adapt
-        # For now assume same structure as Claude/Codex generic
-        return ClaudeParser().extract_last_turn(file_path)
+    @staticmethod
+    def _extract_output_text(content: list[object]) -> str:
+        texts: list[str] = []
+        for block_raw in content:
+            block = cast(dict[str, object], block_raw)
+            if block["type"] == "output_text":
+                text = cast(str, block["text"])
+                if text:
+                    texts.append(text)
+        return "\n\n".join(texts)

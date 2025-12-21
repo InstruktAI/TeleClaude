@@ -188,12 +188,13 @@ async def cleanup_orphan_tmux_sessions() -> int:
 
 
 async def cleanup_orphan_workspaces() -> int:
-    """Remove workspace directories that have no corresponding DB entry.
+    """Remove workspace directories that have no corresponding active DB entry.
 
     Orphan workspaces can occur when:
     - Database is cleared but workspace directories remain
     - Session cleanup fails to remove workspace
     - Manual intervention or crashes leave directories behind
+    - Sessions are closed but workspace cleanup didn't happen
 
     Returns:
         Number of orphan workspace directories removed
@@ -202,9 +203,9 @@ async def cleanup_orphan_workspaces() -> int:
         logger.debug("Workspace directory does not exist")
         return 0
 
-    # Get all session IDs from DB
+    # Get all active session IDs from DB
     all_sessions = await db.get_all_sessions()
-    known_session_ids = {s.session_id for s in all_sessions}
+    known_session_ids = {s.session_id for s in all_sessions if not s.closed}
 
     removed_count = 0
     for workspace_dir in OUTPUT_DIR.iterdir():
@@ -213,7 +214,7 @@ async def cleanup_orphan_workspaces() -> int:
 
         session_id = workspace_dir.name
         if session_id not in known_session_ids:
-            logger.warning("Found orphan workspace: %s (not in DB), removing", session_id[:8])
+            logger.warning("Found orphan workspace: %s (not active in DB), removing", session_id[:8])
             try:
                 shutil.rmtree(workspace_dir)
                 removed_count += 1

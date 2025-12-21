@@ -67,12 +67,10 @@ class TestFileUploadFlow:
             sent_messages.append((sid, msg))
             return "msg_123"
 
-        await session_manager.mark_polling(test_session.session_id)
-        # output_message_id is already set in adapter_metadata by the fixture
-
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
@@ -112,12 +110,10 @@ class TestFileUploadFlow:
         async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             return "msg_123"
 
-        await session_manager.mark_polling(test_session.session_id)
-        # output_message_id is already set in adapter_metadata by the fixture
-
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=False),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
@@ -147,9 +143,10 @@ class TestFileUploadFlow:
             sent_messages.append((sid, msg))
             return "msg_123"
 
-        await session_manager.set_polling_inactive(test_session.session_id)
-
-        with patch("teleclaude.core.file_handler.db", session_manager):
+        with (
+            patch("teleclaude.core.file_handler.db", session_manager),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=False),
+        ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,
                 file_path="/tmp/file.pdf",

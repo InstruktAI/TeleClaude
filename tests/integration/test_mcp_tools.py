@@ -189,7 +189,11 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
     result = await mcp_server.teleclaude__handle_agent_event(
         session_id=session.session_id,
         event_type="notification",
-        data={"original_message": "Claude is ready for action!"},
+        data={
+            "session_id": "native-123",
+            "transcript_path": "/tmp/native-123.jsonl",
+            "message": "Claude is ready for action!",
+        },
     )
 
     # Verify result

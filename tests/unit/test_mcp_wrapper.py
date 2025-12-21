@@ -121,3 +121,40 @@ async def test_socket_to_stdout_swallows_backend_initialize_response(monkeypatch
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+
+
+@pytest.mark.asyncio
+async def test_cached_handshake_emits_single_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    dummy_stdout = _DummyStdout()
+    monkeypatch.setattr(sys, "stdout", dummy_stdout)
+
+    async def _never_ready() -> None:
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(proxy.connected, "wait", _never_ready)
+
+    reader = asyncio.StreamReader()
+    init = {
+        "jsonrpc": "2.0",
+        "id": 42,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "pytest", "version": "0"},
+        },
+    }
+    reader.feed_data((json.dumps(init) + "\n").encode("utf-8"))
+    reader.feed_eof()
+
+    ok = await proxy.handle_initialize(reader)
+    assert ok is True
+
+    output = dummy_stdout.buffer.getvalue().decode("utf-8")
+    lines = [line for line in output.splitlines() if line.strip()]
+    assert len(lines) == 1
+    message = json.loads(lines[0])
+    assert message.get("id") == 42

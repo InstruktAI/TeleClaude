@@ -16,9 +16,6 @@ class TestPollAndSendOutput:
 
     async def test_duplicate_polling_prevention(self):
         """Test polling request ignored when already polling."""
-        db.is_polling = AsyncMock(return_value=False)
-        db.mark_polling = AsyncMock()
-        db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
 
     async def test_output_changed_event(self):
@@ -32,9 +29,6 @@ class TestPollAndSendOutput:
             title="Test Session",  # Not matching $X > $Y pattern
         )
 
-        db.is_polling = AsyncMock(return_value=False)
-        db.mark_polling = AsyncMock()
-        db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
         db.get_session = AsyncMock(return_value=mock_session)
         db.get_output_message_id = AsyncMock(return_value=None)
@@ -66,9 +60,6 @@ class TestPollAndSendOutput:
             title="Test Session",
         )
 
-        db.is_polling = AsyncMock(return_value=False)
-        db.mark_polling = AsyncMock()
-        db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
         db.get_session = AsyncMock(return_value=mock_session)
         db.get_output_message_id = AsyncMock(return_value=None)
@@ -101,9 +92,6 @@ class TestPollAndSendOutput:
             title="Test Session",
         )
 
-        db.is_polling = AsyncMock(return_value=False)
-        db.mark_polling = AsyncMock()
-        db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
         db.get_session = AsyncMock(return_value=mock_session)
         db.get_output_message_id = AsyncMock(return_value=None)
@@ -138,9 +126,6 @@ class TestPollAndSendOutput:
             title="Test Session",
         )
 
-        db.is_polling = AsyncMock(return_value=False)
-        db.mark_polling = AsyncMock()
-        db.unmark_polling = AsyncMock()
         db.clear_pending_deletions = AsyncMock()
         db.get_session = AsyncMock(return_value=mock_session)
         db.get_output_message_id = AsyncMock(return_value=None)

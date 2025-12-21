@@ -594,10 +594,7 @@ async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
         stdout, stderr = await result.communicate()
 
         if result.returncode == 0:
-            output: str = stdout.decode("utf-8", errors="replace")
-            if not output.strip():
-                logger.debug("Captured empty pane from session %s", session_name)
-            return output
+            return stdout.decode("utf-8", errors="replace")
 
         logger.warning(
             "Failed to capture pane from session %s: returncode=%d, stderr=%s",
@@ -713,10 +710,6 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                     )
                 except Exception as diag_error:
                     logger.warning("Failed to capture diagnostics: %s", diag_error)
-            else:
-                logger.debug("Session %s does not exist (expected)", session_name)
-        else:
-            logger.debug("Session %s exists", session_name)
 
         return result.returncode == 0
 
@@ -754,12 +747,38 @@ async def get_current_command(session_name: str) -> Optional[str]:
             return None
 
         command: str = stdout.decode().strip()
-        logger.debug("Current command in %s: %s", session_name, command)
+        # logger.debug("Current command in %s: %s", session_name, command)
         return command
 
     except Exception as e:
         logger.error("Exception in get_current_command for %s: %s", session_name, e)
         return None
+
+
+async def wait_for_shell_ready(
+    session_name: str,
+    timeout_s: float = 8.0,
+    poll_interval_s: float = 0.2,
+) -> bool:
+    """Wait until the tmux pane returns to the user's shell.
+
+    Returns True when the shell is in the foreground, False on timeout.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        current = await get_current_command(session_name)
+        if current and current.lower() == _SHELL_NAME:
+            return True
+        await asyncio.sleep(poll_interval_s)
+    return False
+
+
+async def is_process_running(session_name: str) -> bool:
+    """Return True if tmux foreground command is not the user's shell."""
+    current = await get_current_command(session_name)
+    if not current:
+        return False
+    return current.lower() != _SHELL_NAME
 
 
 async def rename_session(old_name: str, new_name: str) -> bool:

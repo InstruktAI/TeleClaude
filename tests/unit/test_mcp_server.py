@@ -26,23 +26,6 @@ def mock_mcp_server():
 
 
 @pytest.mark.asyncio
-async def test_handle_agent_event_rejects_bad_session_start(mock_mcp_server):
-    """session_start requires session_id + transcript_path."""
-    server = mock_mcp_server
-
-    with (
-        patch("teleclaude.mcp_server.db") as mock_db,
-        patch.object(server, "_emit_error_event", new=AsyncMock()) as mock_emit,
-    ):
-        mock_db.get_session = AsyncMock(return_value=MagicMock())
-
-        with pytest.raises(ValueError, match="session_start missing required fields"):
-            await server.teleclaude__handle_agent_event("sess-1", "session_start", {"session_id": "native"})
-
-        mock_emit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
 async def test_handle_agent_event_error_dispatches_error_event(mock_mcp_server):
     """error event routes to TeleClaude error handler."""
     from teleclaude.core.events import TeleClaudeEvents
@@ -166,32 +149,6 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_teleclaude_send_message_sends_raw_message(mock_mcp_server):
-    """Test that send_message sends the message as-is without prefixing."""
-    server = mock_mcp_server
-
-    server.client.handle_event = AsyncMock(return_value=None)
-
-    chunks = []
-    async for chunk in server.teleclaude__send_message(
-        computer="local", session_id="target-session-123", message="run tests"
-    ):
-        chunks.append(chunk)
-
-    # Verify handle_event was called with raw message (no prefix)
-    server.client.handle_event.assert_called_once()
-    call_args = server.client.handle_event.call_args
-
-    # Extract the event_data from the call
-    event_data = call_args[0][1]  # Second positional arg is event_data
-    message_text = event_data["text"]
-
-    # Message should be sent as-is, no AI prefix
-    assert message_text == "run tests"
-    assert "AI[" not in message_text
-
-
-@pytest.mark.asyncio
 async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
     """Test that handle_agent_event sends event to session."""
     server = mock_mcp_server
@@ -207,7 +164,11 @@ async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
         result = await server.teleclaude__handle_agent_event(
             session_id="test-session-123",
             event_type="notification",
-            data={"message": "Test notification"},
+            data={
+                "session_id": "native-123",
+                "transcript_path": "/tmp/native-123.jsonl",
+                "message": "Test notification",
+            },
         )
 
         assert result == "OK"

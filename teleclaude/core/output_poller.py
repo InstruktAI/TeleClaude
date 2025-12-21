@@ -4,12 +4,13 @@ Polls tmux and yields output events. Daemon handles all message sending.
 """
 
 import asyncio
-import logging
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Optional
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
@@ -17,7 +18,7 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.utils import strip_ansi_codes, strip_exit_markers
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
 
@@ -120,7 +121,7 @@ class OutputPoller:
                 idle_for = 0.0
                 if last_output_changed_at is not None:
                     idle_for = max(0.0, now - last_output_changed_at)
-                logger.debug(
+                logger.trace(
                     "[POLL %s] idle: unchanged for %.1fs (suppressed=%d, interval=%ds, idle_ticks=%d)",
                     session_id[:8],
                     idle_for,
@@ -145,22 +146,21 @@ class OutputPoller:
                     if session and session.closed:
                         # Expected closure - user closed the topic
                         logger.debug(
-                            "Session %s disappeared (user closed topic)",
+                            "Session %s disappeared (user closed topic) session=%s",
                             tmux_session_name,
-                            extra={"session_id": session_id[:8]},
+                            session_id[:8],
                         )
                     else:
                         # Unexpected death - log as critical with diagnostics
                         age_seconds = time.time() - started_at
                         logger.critical(
-                            "Session %s disappeared between polls (watchdog triggered)",
+                            "Session %s disappeared between polls (watchdog triggered) "
+                            "session=%s age=%.2fs poll_iteration=%d seconds_since_last_poll=%.1f",
                             tmux_session_name,
-                            extra={
-                                "session_id": session_id[:8],
-                                "age_seconds": round(age_seconds, 2),
-                                "poll_iteration": poll_iteration,
-                                "seconds_since_last_poll": poll_interval,
-                            },
+                            session_id[:8],
+                            age_seconds,
+                            poll_iteration,
+                            poll_interval,
                         )
 
                 if not session_exists_now:
@@ -210,11 +210,6 @@ class OutputPoller:
                     idle_ticks = 0
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
-                    logger.debug(
-                        "[POLL %s] Output CHANGED - reset interval to %ds, idle_ticks=0",
-                        session_id[:8],
-                        global_update_interval,
-                    )
 
                 # Check if enough time elapsed since last yield (wall-clock, not tick-based)
                 current_time = time.time()
@@ -225,23 +220,12 @@ class OutputPoller:
                 # Send FILTERED TMUX PANE (mirrors what user sees in terminal)
                 did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
-                    logger.debug(
-                        "[POLL %s] YIELDING OutputChanged: elapsed=%.1fs >= interval=%ds, idle_ticks=%d",
-                        session_id[:8],
-                        elapsed_since_last_yield,
-                        current_update_interval,
-                        idle_ticks,
-                    )
                     # Send clean output to UI (current_cleaned already has markers stripped)
                     yield OutputChanged(
                         session_id=session_id,
                         output=current_cleaned,  # Already clean (markers stripped at line 175)
                         started_at=started_at,
                         last_changed_at=last_output_changed_at,
-                    )
-                    logger.debug(
-                        "[POLL %s] Resumed after yield, consumer processed event",
-                        session_id[:8],
                     )
 
                     # Mark that we've sent at least one update
@@ -287,17 +271,23 @@ class OutputPoller:
                         )
                         break
 
+                # Exit condition 3: marker-less process returned to shell
+                if marker_id is None and not await terminal_bridge.is_process_running(tmux_session_name):
+                    # Force a final snapshot if output changed since last yield (or nothing was sent yet).
+                    # This bypasses the normal update interval to ensure the last screen state is visible.
+                    if output_changed or not output_sent_at_least_once:
+                        yield OutputChanged(
+                            session_id=session_id,
+                            output=current_cleaned,
+                            started_at=started_at,
+                            last_changed_at=last_output_changed_at,
+                        )
+                    logger.info("Process returned to shell for %s, stopping poll", session_id[:8])
+                    break
+
                 # Apply exponential backoff when idle: 3s -> 6s -> 9s -> 12s -> 15s
                 if idle_ticks >= current_update_interval:
-                    old_interval = current_update_interval
                     current_update_interval = min(current_update_interval + 3, 15)
-                    logger.debug(
-                        "[POLL %s] BACK-OFF APPLIED: idle_ticks=%d, interval %ds → %ds",
-                        session_id[:8],
-                        idle_ticks,
-                        old_interval,
-                        current_update_interval,
-                    )
 
                 # Increment idle counter when no new content
                 if not output_changed:

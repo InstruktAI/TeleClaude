@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     terminal_size TEXT DEFAULT '80x24',
     working_directory TEXT DEFAULT '~',
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
-    ux_state TEXT,  -- JSON blob: {output_message_id, polling_active, native_log_file, ...}
+    ux_state TEXT,  -- JSON blob: {output_message_id, native_log_file, ...}
     initiated_by_ai BOOLEAN DEFAULT 0,  -- 0 = human-initiated (Opus), 1 = AI-initiated (Sonnet)
     UNIQUE(computer_name, tmux_session_name)
 );

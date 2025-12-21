@@ -50,45 +50,11 @@ See [docs/mcp-architecture.md](docs/mcp-architecture.md) for implementation deta
 
 ### Rule #3: AI-TO-AI COLLABORATION PROTOCOL
 
-**CRITICAL**: Messages from other AIs are prefixed with sender identification.
-
-**Message Format:**
-
-```
-AI[computer:session_id] | message content here
-```
-
-- `computer` - Either `"local"` (same computer) or a remote computer name
-- `session_id` - The sender's session UUID (for reference)
-- `|` - Separator between header and message
-- `message` - The actual request/content
-
-**When you receive a message starting with `AI[...]`:**
-
-1. **Recognize it's from another AI**, not a human
-2. **Complete the requested task**
-3. **Just finish your work** - the caller is notified automatically when you stop
-
-**Automatic completion notification:**
-
-The calling AI gets notified automatically when your session stops (via PUB-SUB listeners).
-You do NOT need to explicitly call `send_message` to report completion.
-
-**Health checks for long-running work:**
-
-If you're working for more than 10 minutes, you may receive a health check message asking for status.
-In that case, use `teleclaude__send_message` to report progress, then continue your work.
-
-**Why this matters:**
-
-- The calling AI is automatically notified when you finish
-- No manual callback needed - just complete your task
-- For long work, periodic status updates help the caller know you're still working
-
 **Session lifecycle management tools:**
 
 When orchestrating multiple AI workers, the master AI can manage session lifecycles:
 
+- `teleclaude__get_session_data(computer, session_id)` - Get session data from a worker session.
 - `teleclaude__stop_notifications(computer, session_id)` - Stop receiving events from a session without ending it. Use when you're done monitoring a completed worker.
 - `teleclaude__end_session(computer, session_id)` - Gracefully terminate a session (kills tmux, marks closed, cleans up resources). Use when a worker has filled its context or needs replacement.
 
@@ -111,8 +77,6 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
    - Daemon restarts in ~1-2 seconds
 3. **Verify**: `make status`
 4. **Monitor logs**: `instrukt-ai-logs teleclaude --since 10m` (single log file; do not pass `log_filename` in code)
-
-**Never stop the service to check logs** - use `tail -f` instead.
 
 ### Service Lifecycle Commands
 
@@ -332,13 +296,13 @@ Sometimes you need to send a Telegram notification even when the TeleClaude daem
 
 ```bash
 # Send a one-off message (direct chat id, or @username/display-name if a local Telegram session is configured)
-python3 bin/send_telegram.py --chat-id -1001234567890 --text "Hello"
+./bin/send_telegram.py --chat-id -1001234567890 --text "Hello"
 
 # Send an alert with backoff + auto-topic
-python3 bin/notify_agents.py --prefix-host "Smoke test failed"
+./bin/notify_agents.py --prefix-host "Smoke test failed"
 
 # Reset backoff after a successful run
-python3 bin/notify_agents.py --reset
+./bin/notify_agents.py --reset
 ```
 
 **MCP discovery helper:**
@@ -371,9 +335,12 @@ The wrapper automatically uses `.rsyncignore` to protect `config.yml`, `.env`, d
 
 **1. Make changes locally** (on development machine)
 
-**2. Sync to remote computer** (use shorthand from config.yml):
+**2. Sync to remote computer** (use shorthand from config.yml)
 
 ```bash
+# First see if remote has pending changes (might need stashing):
+ssh -A user@hostname 'cd $HOME/apps/TeleClaude && git status'
+
 # Sync to target computer (shorthand from config.yml)
 bin/rsync.sh <computer-name>
 
@@ -389,7 +356,6 @@ ssh -A user@hostname 'cd $HOME/apps/TeleClaude && . .venv/bin/activate && instru
 **4. Test thoroughly**:
 
 ```bash
-make test        # Run all tests
 make lint        # Verify code quality
 ```
 

@@ -14,10 +14,17 @@ from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
+from teleclaude.core import session_cleanup, terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
+    AgentHookEvents,
+    AgentHookEventType,
+    AgentNotificationPayload,
+    AgentSessionEndPayload,
+    AgentSessionStartPayload,
+    AgentStopPayload,
     CommandEventContext,
     ErrorEventContext,
     EventContext,
@@ -30,12 +37,7 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     VoiceEventContext,
 )
-from teleclaude.core.models import (
-    ChannelMetadata,
-    MessageMetadata,
-    RedisAdapterMetadata,
-    TelegramAdapterMetadata,
-)
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, RedisAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
@@ -338,6 +340,7 @@ class AdapterClient:
 
         # Log failures and return first success
         first_success: Optional[str] = None
+        missing_thread_error: Optional[Exception] = None
         for (adapter_type, _), result in zip(tasks, results):
             if isinstance(result, Exception):
                 logger.warning(
@@ -346,11 +349,47 @@ class AdapterClient:
                     session.session_id[:8],
                     result,
                 )
+                if adapter_type == "telegram" and self._is_missing_thread_error(result):
+                    missing_thread_error = result
             elif isinstance(result, str) and not first_success:
                 first_success = result
                 logger.debug("Sent output update via %s for session %s", adapter_type, session.session_id[:8])
 
+        if missing_thread_error:
+            await self._handle_missing_telegram_thread(session, missing_thread_error)
+
         return first_success
+
+    @staticmethod
+    def _is_missing_thread_error(error: Exception) -> bool:
+        return "message thread not found" in str(error).lower()
+
+    async def _handle_missing_telegram_thread(self, session: "Session", error: Exception) -> None:
+        if session.origin_adapter != "telegram":
+            return
+
+        current = await db.get_session(session.session_id)
+        if not current or current.closed:
+            return
+
+        logger.warning(
+            "Telegram topic missing for session %s; closing session (error: %s)",
+            session.session_id[:8],
+            error,
+        )
+
+        await db.update_session(session.session_id, closed=True)
+
+        try:
+            killed = await terminal_bridge.kill_session(current.tmux_session_name)
+            if killed:
+                logger.info("Killed tmux session %s", current.tmux_session_name)
+            else:
+                logger.warning("Failed to kill tmux session %s", current.tmux_session_name)
+        except Exception as exc:
+            logger.warning("Failed to kill tmux session %s: %s", current.tmux_session_name, exc)
+
+        await session_cleanup.cleanup_session_resources(current, self)
 
     async def send_exit_message(
         self,
@@ -468,7 +507,7 @@ class AdapterClient:
             logger.debug("Calling discover_peers() on %s adapter", adapter_type)
             try:
                 peers = await adapter.discover_peers()  # Returns list[PeerInfo]
-                # Convert PeerInfo dataclass to dict for backward compatibility
+                # Convert PeerInfo dataclass to dict for transport
                 for peer_info in peers:
                     peer_dict: dict[str, object] = {
                         "name": peer_info.name,
@@ -602,41 +641,44 @@ class AdapterClient:
         metadata: MessageMetadata,
     ) -> EventContext:
         """Build typed context dataclass based on event type."""
-        session_id = str(payload.get("session_id"))
-
         context_builders: dict[str, Callable[[], EventContext]] = {
             TeleClaudeEvents.AGENT_EVENT: lambda: AgentEventContext(
-                session_id=session_id,
-                event_type=cast(str, payload.get("event_type")),
-                data=cast(dict[str, object], payload.get("data", {})),
+                session_id=str(payload["session_id"]),
+                event_type=cast(AgentHookEventType, payload["event_type"]),
+                data=self._build_agent_payload(
+                    cast(AgentHookEventType, payload["event_type"]),
+                    cast(dict[str, object], payload["data"]),
+                ),
             ),
             TeleClaudeEvents.SESSION_UPDATED: lambda: SessionUpdatedContext(
-                session_id=session_id,
+                session_id=str(payload.get("session_id")),
                 updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),
             ),
             TeleClaudeEvents.ERROR: lambda: ErrorEventContext(
-                session_id=session_id,
+                session_id=str(payload.get("session_id")),
                 message=cast(str, payload.get("message", "")),
                 source=cast(str | None, payload.get("source")),
                 details=cast(dict[str, object] | None, payload.get("details")),
             ),
             TeleClaudeEvents.MESSAGE: lambda: MessageEventContext(
-                session_id=session_id,
+                session_id=str(payload.get("session_id")),
                 text=cast(str, payload.get("text", "")),
             ),
             TeleClaudeEvents.VOICE: lambda: VoiceEventContext(
-                session_id=session_id,
+                session_id=str(payload.get("session_id")),
                 file_path=cast(str, payload.get("file_path", "")),
             ),
             TeleClaudeEvents.FILE: lambda: FileEventContext(
-                session_id=session_id,
+                session_id=str(payload.get("session_id")),
                 file_path=cast(str, payload.get("file_path", "")),
                 filename=cast(str, payload.get("filename", "")),
                 caption=cast(str | None, payload.get("caption")),
                 file_size=cast(int, payload.get("file_size", 0)),
             ),
-            TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=session_id),
-            TeleClaudeEvents.SESSION_REOPENED: lambda: SessionLifecycleContext(session_id=session_id),
+            TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=str(payload.get("session_id"))),
+            TeleClaudeEvents.SESSION_REOPENED: lambda: SessionLifecycleContext(
+                session_id=str(payload.get("session_id"))
+            ),
             TeleClaudeEvents.SYSTEM_COMMAND: lambda: SystemCommandContext(
                 command=cast(str, payload.get("command", "")),
                 from_computer=cast(str, payload.get("from_computer", "")),
@@ -650,7 +692,7 @@ class AdapterClient:
         # Command events share the same context type
         if event in COMMAND_EVENTS:
             return CommandEventContext(
-                session_id=session_id,
+                session_id=str(payload.get("session_id")),
                 args=cast(list[str], payload.get("args", [])),
                 adapter_type=metadata.adapter_type,
                 message_thread_id=metadata.message_thread_id,
@@ -662,7 +704,47 @@ class AdapterClient:
 
         # Fallback - should not happen with EventType literal
         logger.warning("Unknown event type %s, using empty CommandEventContext", event)
-        return CommandEventContext(session_id=session_id, args=cast(list[str], payload.get("args", [])))
+        return CommandEventContext(
+            session_id=str(payload.get("session_id")), args=cast(list[str], payload.get("args", []))
+        )
+
+    def _build_agent_payload(
+        self,
+        event_type: AgentHookEventType,
+        data: dict[str, object],
+    ) -> AgentSessionStartPayload | AgentStopPayload | AgentNotificationPayload | AgentSessionEndPayload:
+        """Build typed agent payload from normalized hook data."""
+        if event_type == AgentHookEvents.AGENT_SESSION_START:
+            return AgentSessionStartPayload(
+                session_id=str(data["session_id"]),
+                transcript_path=str(data["transcript_path"]),
+                raw=data,
+            )
+
+        if event_type == AgentHookEvents.AGENT_STOP:
+            return AgentStopPayload(
+                session_id=str(data["session_id"]),
+                transcript_path=str(data["transcript_path"]),
+                raw=data,
+                summary=str(data["summary"]) if "summary" in data else None,
+                title=str(data["title"]) if "title" in data else None,
+            )
+
+        if event_type == AgentHookEvents.AGENT_NOTIFICATION:
+            return AgentNotificationPayload(
+                session_id=str(data["session_id"]),
+                transcript_path=str(data["transcript_path"]),
+                message=str(data["message"]),
+                raw=data,
+            )
+
+        if event_type == AgentHookEvents.AGENT_SESSION_END:
+            return AgentSessionEndPayload(
+                session_id=str(data["session_id"]),
+                raw=data,
+            )
+
+        raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 
     async def _call_pre_handler(self, session: "Session", event: EventType) -> None:
         """Call origin adapter's pre-handler for UI cleanup."""
@@ -676,11 +758,8 @@ class AdapterClient:
         if not pre_handler or not callable(pre_handler):
             return
 
-        try:
-            await pre_handler(session)
-            logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
-        except Exception as e:
-            logger.warning("Pre-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+        await pre_handler(session)
+        logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
 
     async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:
         """Dispatch event to registered handler."""
@@ -698,7 +777,7 @@ class AdapterClient:
             return {"status": "success", "data": result}
         except Exception as e:
             logger.error("Handler failed for event %s: %s", event, e, exc_info=True)
-            return {"status": "error", "error": str(e), "code": type(e).__name__}
+            raise
 
     async def _call_post_handler(self, session: "Session", event: EventType, message_id: str) -> None:
         """Call origin adapter's post-handler for UI state tracking."""
@@ -712,11 +791,8 @@ class AdapterClient:
         if not post_handler or not callable(post_handler):
             return
 
-        try:
-            await post_handler(session, message_id)
-            logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
-        except Exception as e:
-            logger.warning("Post-handler failed for %s on %s: %s", session.origin_adapter, event, e)
+        await post_handler(session, message_id)
+        logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
 
     async def _broadcast_lifecycle(self, session: "Session", event: EventType) -> None:
         """Broadcast session lifecycle events (close/reopen) to observer adapters."""
@@ -827,7 +903,7 @@ class AdapterClient:
             target_computer: Initiator computer name for AI-to-AI sessions (for stop event forwarding)
 
         Returns:
-            channel_id from origin adapter (for backward compatibility)
+            channel_id from origin adapter
 
         Raises:
             ValueError: If origin adapter not found or channel creation failed

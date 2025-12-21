@@ -316,3 +316,193 @@ async def test_adapter_client_discover_peers_redis_disabled():
     assert peers == []
     # Adapter should NOT have been called
     mock_adapter.discover_peers.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_output_update_closes_missing_telegram_thread():
+    """Missing Telegram topic should close origin session and cleanup."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.adapters.ui_adapter import UiAdapter
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
+
+    client = AdapterClient()
+
+    class DummyTelegramAdapter(UiAdapter):
+        ADAPTER_KEY = "telegram"
+
+        def __init__(self, adapter_client: AdapterClient, error: Exception) -> None:
+            super().__init__(adapter_client)
+            self._error = error
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+        async def create_channel(self, _session, _title, _metadata) -> str:
+            return "topic"
+
+        async def update_channel_title(self, _session, _title) -> bool:
+            return True
+
+        async def close_channel(self, _session) -> bool:
+            return True
+
+        async def reopen_channel(self, _session) -> bool:
+            return True
+
+        async def delete_channel(self, _session) -> bool:
+            return True
+
+        async def send_message(self, _session, _text, _metadata) -> str:
+            return "msg"
+
+        async def edit_message(self, _session, _message_id, _text, _metadata) -> bool:
+            return True
+
+        async def delete_message(self, _session, _message_id) -> bool:
+            return True
+
+        async def send_file(self, _session, _file_path, _metadata, _caption=None) -> str:
+            return "file"
+
+        async def discover_peers(self):
+            return []
+
+        async def poll_output_stream(self, _session, timeout: float = 300.0):
+            if False:  # pragma: no cover - generator shape
+                yield timeout
+
+        def get_max_message_length(self) -> int:
+            return 4096
+
+        def get_ai_session_poll_interval(self) -> float:
+            return 1.0
+
+        async def send_output_update(self, *_args, **_kwargs):  # type: ignore[override]
+            raise self._error
+
+    client.register_adapter("telegram", DummyTelegramAdapter(client, Exception("Message thread not found")))
+
+    session = Session(
+        session_id="session-123",
+        computer_name="test",
+        tmux_session_name="tc_session",
+        origin_adapter="telegram",
+        title="Test Session",
+    )
+
+    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
+        with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
+            with patch(
+                "teleclaude.core.adapter_client.terminal_bridge.kill_session",
+                new=AsyncMock(return_value=True),
+            ) as kill_session:
+                with patch(
+                    "teleclaude.core.adapter_client.session_cleanup.cleanup_session_resources",
+                    new=AsyncMock(),
+                ) as cleanup_resources:
+                    await client.send_output_update(session, "output", 0.0, 0.0)
+
+    get_session.assert_called_once_with("session-123")
+    update_session.assert_called_once_with("session-123", closed=True)
+    kill_session.assert_called_once_with("tc_session")
+    cleanup_resources.assert_called_once_with(session, client)
+
+
+@pytest.mark.asyncio
+async def test_send_output_update_missing_thread_non_telegram_origin_no_close():
+    """Missing Telegram topic should not close non-telegram origin sessions."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.adapters.ui_adapter import UiAdapter
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session
+
+    client = AdapterClient()
+
+    class DummyTelegramAdapter(UiAdapter):
+        ADAPTER_KEY = "telegram"
+
+        def __init__(self, adapter_client: AdapterClient, error: Exception) -> None:
+            super().__init__(adapter_client)
+            self._error = error
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+        async def create_channel(self, _session, _title, _metadata) -> str:
+            return "topic"
+
+        async def update_channel_title(self, _session, _title) -> bool:
+            return True
+
+        async def close_channel(self, _session) -> bool:
+            return True
+
+        async def reopen_channel(self, _session) -> bool:
+            return True
+
+        async def delete_channel(self, _session) -> bool:
+            return True
+
+        async def send_message(self, _session, _text, _metadata) -> str:
+            return "msg"
+
+        async def edit_message(self, _session, _message_id, _text, _metadata) -> bool:
+            return True
+
+        async def delete_message(self, _session, _message_id) -> bool:
+            return True
+
+        async def send_file(self, _session, _file_path, _metadata, _caption=None) -> str:
+            return "file"
+
+        async def discover_peers(self):
+            return []
+
+        async def poll_output_stream(self, _session, timeout: float = 300.0):
+            if False:  # pragma: no cover - generator shape
+                yield timeout
+
+        def get_max_message_length(self) -> int:
+            return 4096
+
+        def get_ai_session_poll_interval(self) -> float:
+            return 1.0
+
+        async def send_output_update(self, *_args, **_kwargs):  # type: ignore[override]
+            raise self._error
+
+    client.register_adapter("telegram", DummyTelegramAdapter(client, Exception("Message thread not found")))
+
+    session = Session(
+        session_id="session-456",
+        computer_name="test",
+        tmux_session_name="tc_session_456",
+        origin_adapter="redis",
+        title="Test Session",
+    )
+
+    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
+        with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
+            with patch(
+                "teleclaude.core.adapter_client.terminal_bridge.kill_session",
+                new=AsyncMock(return_value=True),
+            ) as kill_session:
+                with patch(
+                    "teleclaude.core.adapter_client.session_cleanup.cleanup_session_resources",
+                    new=AsyncMock(),
+                ) as cleanup_resources:
+                    await client.send_output_update(session, "output", 0.0, 0.0)
+
+    get_session.assert_not_called()
+    update_session.assert_not_called()
+    kill_session.assert_not_called()
+    cleanup_resources.assert_not_called()

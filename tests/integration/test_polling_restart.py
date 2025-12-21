@@ -1,34 +1,17 @@
-"""Integration test for polling restart after process exits.
-
-Tests the critical bug: when a process exits and polling stops, starting a new
-process should restart polling. Currently fails - screen doesn't refresh.
-
-Scenario:
-1. Start first command (e.g., `sleep 2`) → polling starts
-2. Process exits → polling stops, polling_active=False
-3. Start second command (e.g., `/claude`) → polling MUST restart
-4. Verify output is being polled and displayed
-"""
+"""Integration test for polling lifecycle with in-memory guard."""
 
 import asyncio
 import uuid
 
 import pytest
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import polling_coordinator
+from teleclaude.core.output_poller import ProcessExited
 
 
 @pytest.mark.asyncio
-async def test_polling_restarts_after_process_exits(daemon_with_mocked_telegram):
-    """Test that polling restarts when new command issued after previous process exited.
-
-    This test verifies the fix for the critical bug where:
-    - User runs command A (e.g., sleep 2) → polling works
-    - Command A exits → polling stops
-    - User runs command B (e.g., /claude) → screen freezes, no output
-
-    Root cause: polling_active not correctly managed after exit.
-    """
+async def test_polling_registry_clears_after_exit(daemon_with_mocked_telegram):
+    """Polling registry should clear after poller completes."""
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
 
@@ -45,55 +28,40 @@ async def test_polling_restarts_after_process_exits(daemon_with_mocked_telegram)
         adapter_metadata={},
     )
 
-    # Phase 1: Run first command that exits quickly
-    command1 = "echo 'First command' && sleep 1"
-    success, marker_id = await terminal_bridge.send_keys(
-        tmux_session_name,
-        command1,
+    # Mock poller that exits immediately
+    completed = asyncio.Event()
+
+    async def mock_poll(*_args, **_kwargs):
+        yield ProcessExited(
+            session_id=session_id,
+            final_output="done",
+            exit_code=0,
+            started_at=1000.0,
+        )
+        completed.set()
+
+    output_poller = type("Poller", (), {"poll": mock_poll})()
+
+    # Schedule polling
+    scheduled = await polling_coordinator.schedule_polling(
+        session_id=session_id,
+        tmux_session_name=tmux_session_name,
+        output_poller=output_poller,
+        adapter_client=daemon.client,
+        get_output_file=daemon._get_output_file_path,
     )
-    assert success, "Failed to send first command"
+    assert scheduled is True
+    assert await polling_coordinator.is_polling(session_id) is True
 
-    # Simulate polling start
-    await test_db.mark_polling(session_id)
-    assert await test_db.is_polling(session_id), "Polling should be active after first command"
-
-    # Wait for command to complete
+    await completed.wait()
+    # Allow unregister to run
     await asyncio.sleep(0.01)
-
-    # Simulate polling stop (what finally block does)
-    await test_db.unmark_polling(session_id)
-    assert not await test_db.is_polling(session_id), "Polling should be inactive after first command exits"
-
-    # Phase 2: Run second command
-    command2 = "echo 'Second command' && sleep 1"
-    success, marker_id = await terminal_bridge.send_keys(
-        tmux_session_name,
-        command2,
-    )
-    assert success, "Failed to send second command"
-
-    # CRITICAL: Polling should restart
-    # Check if daemon would restart polling
-    ux_state = await test_db.get_ux_state(session_id)
-    is_process_running = ux_state.polling_active
-
-    # This is the bug: is_process_running should be False here
-    # (because first process exited and unmark_polling was called)
-    assert not is_process_running, (
-        "polling_active should be False after first process exits, so second command triggers polling restart"
-    )
-
-    # If this assertion fails, it means polling won't restart,
-    # causing the screen freeze bug the user reported
+    assert await polling_coordinator.is_polling(session_id) is False
 
 
 @pytest.mark.asyncio
 async def test_polling_guard_prevents_duplicate_polling(daemon_with_mocked_telegram):
-    """Test that polling guard prevents duplicate polling instances.
-
-    Verify that if polling is already active, trying to start it again
-    is ignored (guard on line 150 of polling_coordinator.py).
-    """
+    """Test that polling guard prevents duplicate polling instances."""
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
 
@@ -107,14 +75,32 @@ async def test_polling_guard_prevents_duplicate_polling(daemon_with_mocked_teleg
         adapter_metadata={},
     )
 
-    # Mark polling as active
-    await test_db.mark_polling(session_id)
-    assert await test_db.is_polling(session_id), "Polling should be active"
+    block = asyncio.Event()
 
-    # Try to start polling again - should be ignored by guard
-    # (This test verifies the guard works, preventing double-polling)
-    assert await test_db.is_polling(session_id), "Guard should detect active polling"
+    async def mock_poll(*_args, **_kwargs):
+        await block.wait()
+        if False:  # pragma: no cover - generator shape
+            yield
 
-    # Cleanup
-    await test_db.unmark_polling(session_id)
-    assert not await test_db.is_polling(session_id), "Polling should be inactive after unmark"
+    output_poller = type("Poller", (), {"poll": mock_poll})()
+
+    scheduled = await polling_coordinator.schedule_polling(
+        session_id=session_id,
+        tmux_session_name=f"test-{session_id[:8]}",
+        output_poller=output_poller,
+        adapter_client=daemon.client,
+        get_output_file=daemon._get_output_file_path,
+    )
+    assert scheduled is True
+
+    scheduled_again = await polling_coordinator.schedule_polling(
+        session_id=session_id,
+        tmux_session_name=f"test-{session_id[:8]}",
+        output_poller=output_poller,
+        adapter_client=daemon.client,
+        get_output_file=daemon._get_output_file_path,
+    )
+    assert scheduled_again is False
+
+    block.set()
+    await asyncio.sleep(0.01)

@@ -371,6 +371,7 @@ class TestOutputPollerPoll:
 
                         mock_terminal.capture_pane = capture_mock
                         mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.is_process_running = AsyncMock(return_value=True)
 
                         # Collect events
                         events = []
@@ -406,6 +407,7 @@ class TestOutputPollerPoll:
 
                         mock_terminal.session_exists = session_exists_mock
                         mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
+                        mock_terminal.is_process_running = AsyncMock(return_value=True)
                         mock_db.get_session = AsyncMock(return_value=None)
 
                         # Output accumulates over time
@@ -434,6 +436,46 @@ class TestOutputPollerPoll:
                 # Last event is ProcessExited
                 assert isinstance(events[-1], ProcessExited)
 
+    async def test_markerless_exit_forces_final_update(self, poller, tmp_path):
+        """Markerless exit should force a final OutputChanged even if interval hasn't elapsed."""
+        output_file = tmp_path / "output.txt"
+
+        def time_mock():
+            times = [1000.0, 1002.0, 1004.0, 1004.5, 1005.0, 1005.0]
+            for t in times:
+                yield t
+            while True:
+                yield times[-1]
+
+        time_iter = time_mock()
+
+        with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
+            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                with patch("teleclaude.core.output_poller.db") as mock_db:
+                    with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                        with patch("teleclaude.core.output_poller.time.time", new=lambda: next(time_iter)):
+                            mock_terminal.session_exists = AsyncMock(return_value=True)
+                            mock_terminal.is_process_running = AsyncMock(side_effect=[True, False])
+                            mock_db.get_session = AsyncMock(return_value=None)
+
+                            outputs = ["first output\n", "second output\n"]
+                            output_index = 0
+
+                            async def capture_mock(name):
+                                nonlocal output_index
+                                result = outputs[min(output_index, len(outputs) - 1)]
+                                output_index += 1
+                                return result
+
+                            mock_terminal.capture_pane = capture_mock
+
+                            events = []
+                            async for event in poller.poll("test-final", "test-tmux", output_file, marker_id=None):
+                                events.append(event)
+
+        assert len(events) == 2
+        assert all(isinstance(event, OutputChanged) for event in events)
+
     async def test_periodic_updates_with_exponential_backoff(self, poller, tmp_path):
         """Test poll sends periodic updates with exponential backoff."""
         output_file = tmp_path / "output.txt"
@@ -452,6 +494,7 @@ class TestOutputPollerPoll:
                                 return iteration_count < 20
 
                             mock_terminal.session_exists = session_exists_mock
+                            mock_terminal.is_process_running = AsyncMock(return_value=True)
                             mock_db.get_session = AsyncMock(return_value=None)
 
                             # Output doesn't change after first
@@ -480,7 +523,8 @@ class TestOutputPollerPoll:
         """Summarize idle ticks instead of per-tick spam."""
         output_file = tmp_path / "output.txt"
 
-        caplog.set_level(logging.DEBUG, logger="teleclaude.core.output_poller")
+        trace_level = getattr(logging, "TRACE", logging.DEBUG)
+        caplog.set_level(trace_level, logger="teleclaude.core.output_poller")
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
             with patch("teleclaude.core.output_poller.IDLE_SUMMARY_INTERVAL_S", 0.5):
@@ -499,6 +543,7 @@ class TestOutputPollerPoll:
                                     return iteration_count < 8
 
                                 mock_terminal.session_exists = session_exists_mock
+                                mock_terminal.is_process_running = AsyncMock(return_value=True)
                                 mock_terminal.capture_pane = AsyncMock(return_value="output\n")
                                 mock_db.get_session = AsyncMock(return_value=None)
 
@@ -521,6 +566,7 @@ class TestOutputPollerPoll:
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     # Session dies immediately
                     mock_terminal.session_exists = AsyncMock(return_value=False)
+                    mock_terminal.is_process_running = AsyncMock(return_value=False)
                     # Mock db.get_session to return None
                     mock_db.get_session = AsyncMock(return_value=None)
 
@@ -551,6 +597,7 @@ class TestOutputPollerPoll:
                             return iteration_count < 10
 
                         mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.is_process_running = AsyncMock(return_value=True)
                         mock_db.get_session = AsyncMock(return_value=None)
                         mock_terminal.capture_pane = AsyncMock(return_value="output\n")
 
@@ -592,6 +639,7 @@ class TestOutputPollerPoll:
                             return iteration_count < 5
 
                         mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.is_process_running = AsyncMock(return_value=True)
                         mock_db.get_session = AsyncMock(return_value=None)
                         mock_terminal.capture_pane = AsyncMock(return_value="output\n")
                         mock_terminal.get_current_directory = AsyncMock(return_value="/home/user")

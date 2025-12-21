@@ -30,11 +30,14 @@ from teleclaude.core import (
 )
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
-from teleclaude.core.agent_parsers import CodexParser
+from teleclaude.core.agents import AgentName
+from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
+    AgentHookEvents,
+    AgentStopPayload,
     CommandEventContext,
     DeployArgs,
     ErrorEventContext,
@@ -51,14 +54,9 @@ from teleclaude.core.events import (
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_listeners import (
-    cleanup_caller_listeners,
-    get_listeners,
-    pop_listeners,
-)
+from teleclaude.core.session_listeners import cleanup_caller_listeners, get_listeners, pop_listeners
 from teleclaude.core.session_utils import get_output_file
-from teleclaude.core.session_watcher import SessionWatcher
-from teleclaude.core.summarizer import summarizer
+from teleclaude.core.summarizer import summarize
 from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
@@ -130,10 +128,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
 
-        # Initialize session watcher for file-based hooks (Universal Hooks)
-        # NOTE: Only Codex needs the watcher - Claude and Gemini have native hooks
-        self.session_watcher = SessionWatcher(self.client)
-        self.session_watcher.register_parser("codex", CodexParser())
+        # Initialize Codex watcher for file-based hooks
+        self.codex_watcher = CodexWatcher(self.client, db_handle=db)
 
         # Initialize AgentCoordinator for agent events and cross-computer orchestration
         self.agent_coordinator = AgentCoordinator(self.client)
@@ -402,28 +398,35 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         agent_event_type = context.event_type
         session_id = context.session_id
 
-        # Enrich STOP event with summary if missing
-        if agent_event_type == "stop":
-            # If not already present
-            if not context.data.get("title") and not context.data.get("summary"):
-                try:
-                    summary_data = await summarizer.summarize_session(session_id)
-                    context.data.update(summary_data)
-                except Exception as e:
-                    logger.error("Failed to summarize session %s: %s", session_id[:8], e)
+        if agent_event_type == AgentHookEvents.AGENT_STOP:
+            payload = cast(AgentStopPayload, context.data)
+            ux_state = await db.get_ux_state(session_id)
+            if not ux_state.active_agent:
+                raise ValueError(f"Session {session_id[:8]} missing active_agent metadata")
+            agent_name = AgentName.from_str(ux_state.active_agent)
+            title, summary = await summarize(agent_name, payload.transcript_path)
+            payload.summary = summary
+            payload.title = title
+            payload.raw["summary"] = payload.summary
+            payload.raw["title"] = payload.title
 
-        # Handle title updates (from enrichment OR direct title_update event)
-        title = str(context.data.get("title", ""))
-        if title:
-            await self._update_session_title(session_id, title)
+            if payload.title:
+                await self._update_session_title(session_id, payload.title)
+
+            session = await db.get_session(session_id)
+            if not session:
+                raise ValueError(f"Summary feedback requires active session: {session_id}")
+            await self.client.send_feedback(session, summary, MessageMetadata(adapter_type="internal"))
 
         # Dispatch to coordinator
-        if agent_event_type == "session_start":
+        if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.agent_coordinator.handle_session_start(context)
-        elif agent_event_type == "stop":
+        elif agent_event_type == AgentHookEvents.AGENT_STOP:
             await self.agent_coordinator.handle_stop(context)
-        elif agent_event_type == "notification":
+        elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
             await self.agent_coordinator.handle_notification(context)
+        elif agent_event_type == AgentHookEvents.AGENT_SESSION_END:
+            await self.agent_coordinator.handle_session_end(context)
 
     async def _handle_error(self, _event: str, context: EventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
@@ -597,7 +600,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         target_session_id = context.args[0]
         # Second arg is optional source computer name (for actionable notifications)
         source_computer = context.args[1] if len(context.args) > 1 else "remote"
-        # Third arg is optional base64-encoded title from summarizer
+        # Third arg is optional base64-encoded title from stop payload
         title: str | None = None
         if len(context.args) > 2:
             try:
@@ -954,15 +957,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
         logger.info("Periodic cleanup task started (72h session lifecycle)")
 
-        # Restore polling for sessions that were active before restart
-        await polling_coordinator.restore_active_pollers(
-            adapter_client=self.client,
-            output_poller=self.output_poller,
-            get_output_file=self._get_output_file_path,
-        )
+        # Start polling watcher (keeps pollers aligned with tmux foreground state)
+        self.poller_watch_task = asyncio.create_task(self._poller_watch_loop())
+        self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
+        logger.info("Poller watch task started")
 
         # Start session watcher
-        await self.session_watcher.start()
+        await self.codex_watcher.start()
         logger.info("Session watcher started")
 
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
@@ -989,9 +990,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
             logger.info("Periodic cleanup task stopped")
 
+        # Stop poller watch task
+        if hasattr(self, "poller_watch_task"):
+            self.poller_watch_task.cancel()
+            try:
+                await self.poller_watch_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Poller watch task stopped")
+
         # Stop session watcher
-        if hasattr(self, "session_watcher"):
-            await self.session_watcher.stop()
+        if hasattr(self, "codex_watcher"):
+            await self.codex_watcher.stop()
             logger.info("Session watcher stopped")
 
         # Stop all adapters
@@ -1158,6 +1168,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_agent_resume(
                 context, agent_name, args, self.client, self._execute_terminal_command
             )
+        elif command == TeleClaudeEvents.AGENT_RESTART:
+            agent_name = args.pop(0) if args else ""
+            return await command_handlers.handle_agent_restart(
+                context, agent_name, args, self.client, self._execute_terminal_command
+            )
         elif command == "exit":
             return await command_handlers.handle_exit_session(context, self.client)
 
@@ -1249,6 +1264,35 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except Exception as e:
                 logger.error("Error in periodic cleanup: %s", e)
 
+    async def _poller_watch_loop(self) -> None:
+        """Watch tmux foreground commands and ensure pollers are running when needed."""
+        while True:
+            try:
+                sessions = await db.get_active_sessions()
+                for session in sessions:
+                    if session.closed:
+                        continue
+                    if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
+                        continue
+                    if not await terminal_bridge.is_process_running(session.tmux_session_name):
+                        continue
+                    if await polling_coordinator.is_polling(session.session_id):
+                        continue
+
+                    await polling_coordinator.schedule_polling(
+                        session_id=session.session_id,
+                        tmux_session_name=session.tmux_session_name,
+                        output_poller=self.output_poller,
+                        adapter_client=self.client,
+                        get_output_file=self._get_output_file_path,
+                        marker_id=None,
+                    )
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Error in poller watch loop: %s", e)
+            await asyncio.sleep(1.0)
+
     async def _cleanup_inactive_sessions(self) -> None:
         """Clean up sessions inactive for 72+ hours."""
         try:
@@ -1285,22 +1329,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _poll_and_send_output(
         self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None
     ) -> None:
-        """Wrapper around polling_coordinator.poll_and_send_output (creates background task).
+        """Wrapper around polling_coordinator.schedule_polling (creates background task).
 
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
             marker_id: Unique marker ID for exit detection (None = no exit marker)
         """
-        asyncio.create_task(
-            polling_coordinator.poll_and_send_output(
-                session_id=session_id,
-                tmux_session_name=tmux_session_name,
-                output_poller=self.output_poller,
-                adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
-                get_output_file=self._get_output_file_path,
-                marker_id=marker_id,
-            )
+        await polling_coordinator.schedule_polling(
+            session_id=session_id,
+            tmux_session_name=tmux_session_name,
+            output_poller=self.output_poller,
+            adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
+            get_output_file=self._get_output_file_path,
+            marker_id=marker_id,
         )
 
 

@@ -187,8 +187,8 @@ async def handle_voice(
         logger.warning("Session %s not found", session_id)
         return
 
-    # Check if a process is currently running (polling active)
-    is_process_running = await db.is_polling(session_id)
+    # Check if a process is currently running (foreground command != shell)
+    is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
 
     # Reject voice messages if no active process to send them to
     if not is_process_running:

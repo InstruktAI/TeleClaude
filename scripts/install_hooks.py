@@ -13,6 +13,24 @@ from pathlib import Path
 from typing import Any, Dict
 
 
+def _extract_receiver_script(command: str) -> str | None:
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return None
+    for part in parts:
+        if part.endswith(".py") and "receiver" in part:
+            # Normalize legacy receiver_claude/receiver_gemini to receiver.py family
+            if (
+                part.endswith("receiver.py")
+                or part.endswith("receiver_claude.py")
+                or part.endswith("receiver_gemini.py")
+            ):
+                return "receiver"
+            return part
+    return None
+
+
 def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Dict[str, Any]:
     """Idempotently merge new hooks into existing hooks configuration.
 
@@ -38,16 +56,6 @@ def merge_hooks(existing_hooks: Dict[str, Any], new_hooks: Dict[str, Any]) -> Di
 
         # Update specific hook within the block
         hooks_list = target_block.get("hooks", [])
-
-        def _extract_receiver_script(command: str) -> str | None:
-            try:
-                parts = shlex.split(command)
-            except ValueError:
-                return None
-            for part in parts:
-                if part.endswith(".py") and "receiver_" in part:
-                    return part
-            return None
 
         new_command = hook_def.get("command", "")
         new_receiver = _extract_receiver_script(new_command)
@@ -99,15 +107,15 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
     return {
         "SessionStart": {
             "type": "command",
-            "command": f"{python_exe} {receiver_script} session_start",
+            "command": f"{python_exe} {receiver_script} --agent claude session_start",
         },
         "Notification": {
             "type": "command",
-            "command": f"{python_exe} {receiver_script} notification",
+            "command": f"{python_exe} {receiver_script} --agent claude notification",
         },
         "Stop": {
             "type": "command",
-            "command": f"{python_exe} {receiver_script} stop",
+            "command": f"{python_exe} {receiver_script} --agent claude stop",
         },
     }
 
@@ -115,25 +123,25 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
     """Return TeleClaude hook definitions for Gemini CLI.
 
-    Gemini uses AfterModel for turn completion (not Stop like Claude).
+    Gemini uses AfterAgent for turn completion (not Stop like Claude).
     """
     return {
         "SessionStart": {
             "name": "teleclaude-session-start",
             "type": "command",
-            "command": f"{python_exe} {receiver_script} session_start",
+            "command": f"{python_exe} {receiver_script} --agent gemini session_start",
             "description": "Notify TeleClaude of session start",
         },
         "Notification": {
             "name": "teleclaude-notification",
             "type": "command",
-            "command": f"{python_exe} {receiver_script} notification",
+            "command": f"{python_exe} {receiver_script} --agent gemini notification",
             "description": "Notify TeleClaude of user input request",
         },
-        "AfterModel": {
+        "AfterAgent": {
             "name": "teleclaude-stop",
             "type": "command",
-            "command": f"{python_exe} {receiver_script} stop",
+            "command": f"{python_exe} {receiver_script} --agent gemini stop",
             "description": "Notify TeleClaude of turn completion",
         },
     }
@@ -141,7 +149,7 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 
 def configure_gemini(repo_root: Path) -> None:
     """Configure Gemini CLI hooks."""
-    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver_gemini.py"
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
     if not receiver_script.exists():
         print(f"Warning: Gemini receiver not found at {receiver_script}")
         return
@@ -165,6 +173,34 @@ def configure_gemini(repo_root: Path) -> None:
     python_exe = _resolve_hook_python(repo_root)
     hooks_map = _gemini_hook_map(python_exe, receiver_script)
 
+    # Remove legacy AfterModel receiver hook (Gemini emits multiple AfterModel events per turn).
+    existing_hooks = settings.get("hooks", {})
+    after_model_hooks = existing_hooks.get("AfterModel")
+    if isinstance(after_model_hooks, list):
+        updated_blocks = []
+        for block in after_model_hooks:
+            if not isinstance(block, dict):
+                continue
+            hooks_list = block.get("hooks", [])
+            if not isinstance(hooks_list, list):
+                continue
+            filtered = []
+            for hook in hooks_list:
+                if not isinstance(hook, dict):
+                    continue
+                cmd = hook.get("command", "")
+                if _extract_receiver_script(cmd) == "receiver":
+                    continue
+                filtered.append(hook)
+            if filtered:
+                block["hooks"] = filtered
+                updated_blocks.append(block)
+        if updated_blocks:
+            existing_hooks["AfterModel"] = updated_blocks
+        else:
+            existing_hooks.pop("AfterModel", None)
+    settings["hooks"] = existing_hooks
+
     # Merge
     current_hooks = settings.get("hooks", {})
     settings["hooks"] = merge_hooks(current_hooks, hooks_map)
@@ -185,7 +221,7 @@ def configure_gemini(repo_root: Path) -> None:
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
-    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver_claude.py"
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
     if not receiver_script.exists():
         print(f"Warning: Claude receiver not found at {receiver_script}")
         return

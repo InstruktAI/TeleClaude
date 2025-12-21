@@ -42,7 +42,6 @@ def mock_daemon():
         # Set up async methods on session_manager
         daemon.db.get_session = AsyncMock(return_value=None)
         daemon.db.update_last_activity = AsyncMock()
-        daemon.db.is_polling = AsyncMock(return_value=False)
         daemon.db.cleanup_messages_after_success = AsyncMock()
         daemon.db.list_sessions = AsyncMock(return_value=[])
         daemon.db.create_session = AsyncMock()

@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 import re
-import subprocess
 import tempfile
 import time
 import traceback
@@ -62,7 +61,7 @@ from teleclaude.core.ux_state import (
     update_system_ux_state,
 )
 from teleclaude.utils import command_retry
-from teleclaude.utils.claude_transcript import (
+from teleclaude.utils.transcript import (
     get_transcript_parser_info,
     parse_session_transcript,
 )
@@ -1415,9 +1414,7 @@ Current size: {current_size}
         await self.client.handle_event(
             event=TeleClaudeEvents.AGENT_START,
             payload={
-                "command": self._event_to_command(agent_name),
-                "agent_name": agent_name,
-                "args": context.args or [],
+                "args": [agent_name] + (context.args or []),
                 "session_id": session.session_id,
                 "message_id": str(update.effective_message.message_id),
             },
@@ -1440,7 +1437,6 @@ Current size: {current_size}
         await self.client.handle_event(
             event=TeleClaudeEvents.AGENT_RESUME,
             payload={
-                "command": "agent_resume",
                 "args": [],  # Empty - daemon gets agent from UX state
                 "session_id": session.session_id,
                 "message_id": str(update.effective_message.message_id),
@@ -1466,41 +1462,18 @@ Current size: {current_size}
         if not session:
             return
 
-        # After successful session fetch, effective_user and effective_message are guaranteed non-None
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        # Track user's command message for deletion (cleanup old pending first)
-        await self._pre_handle_user_input(session)
-        await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-
-        # native_session_id is optional - restart script handles missing ID by starting fresh
-
-        try:
-            # Execute restart script via Python module
-            project_root = Path(__file__).parent.parent.parent
-            python_path = project_root / ".venv" / "bin" / "python"
-
-            result = subprocess.run(
-                [str(python_path), "-m", "teleclaude.restart_agent"],
-                env={**os.environ, "TELECLAUDE_SESSION_ID": session.session_id},
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-            )
-
-            if result.returncode == 0:
-                await self.send_feedback(session, "✅ Agent restarted successfully", MessageMetadata())
-            else:
-                await self.send_feedback(
-                    session, "❌ Failed to restart agent. Check logs for details.", MessageMetadata()
-                )
-        except subprocess.TimeoutExpired:
-            await self.send_feedback(session, "⏱️ Restart script timed out", MessageMetadata())
-        except Exception as e:
-            logger.error("Agent restart exception for session %s: %s", session.session_id[:8], e, exc_info=True)
-            await self.send_feedback(session, "❌ Failed to restart agent. Check logs for details.", MessageMetadata())
+        await self.client.handle_event(
+            event=TeleClaudeEvents.AGENT_RESTART,
+            payload={
+                "args": [],  # Restart uses stored native_session_id; no args expected.
+                "session_id": session.session_id,
+                "message_id": str(update.effective_message.message_id),
+            },
+            metadata=self._metadata(),
+        )
 
     async def _handle_callback_query(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:  # pylint: disable=too-many-locals
         """Handle button clicks from inline keyboards."""

@@ -133,7 +133,7 @@ class TestHandleFile:
 
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
-            patch("teleclaude.core.file_handler.db.is_polling", return_value=False),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=False),
         ):
             await file_handler.handle_file(
                 session_id="test123",
@@ -170,7 +170,7 @@ class TestHandleFile:
 
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=session_no_output),
-            patch("teleclaude.core.file_handler.db.is_polling", return_value=True),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -200,7 +200,7 @@ class TestHandleFile:
 
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
-            patch("teleclaude.core.file_handler.db.is_polling", return_value=True),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
@@ -237,7 +237,7 @@ class TestHandleFile:
 
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
-            patch("teleclaude.core.file_handler.db.is_polling", return_value=True),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=False),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
@@ -274,7 +274,7 @@ class TestHandleFile:
 
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
-            patch("teleclaude.core.file_handler.db.is_polling", return_value=True),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
@@ -310,7 +310,7 @@ class TestHandleFile:
 
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
-            patch("teleclaude.core.file_handler.db.is_polling", return_value=True),
+            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),

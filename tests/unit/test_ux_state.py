@@ -42,7 +42,6 @@ async def test_get_session_ux_state_loads_from_db(test_db):
     # Insert session with UX state
     ux_data = {
         "output_message_id": "msg-123",
-        "polling_active": True,
         "notification_sent": True,
     }
     await test_db.execute(
@@ -54,7 +53,6 @@ async def test_get_session_ux_state_loads_from_db(test_db):
     state = await get_session_ux_state(test_db, "test-session-123")
 
     assert state.output_message_id == "msg-123"
-    assert state.polling_active is True
     assert state.notification_sent is True
 
 
@@ -73,7 +71,6 @@ async def test_get_session_ux_state_returns_defaults_when_missing(test_db):
     state = await get_session_ux_state(test_db, "test-session-123")
 
     assert state.output_message_id is None
-    assert state.polling_active is False
     assert state.notification_sent is False
     assert state.pending_deletions == []
 
@@ -94,7 +91,7 @@ async def test_get_session_ux_state_handles_invalid_json(test_db):
     state = await get_session_ux_state(test_db, "test-session-123")
 
     assert state.output_message_id is None
-    assert state.polling_active is False
+    assert state.notification_sent is False
 
 
 @pytest.mark.asyncio
@@ -105,7 +102,6 @@ async def test_update_session_ux_state_merges_with_existing(test_db):
     # Insert session with existing state
     existing_data = {
         "output_message_id": "msg-123",
-        "polling_active": True,
         "notification_sent": False,
     }
     await test_db.execute(
@@ -120,7 +116,6 @@ async def test_update_session_ux_state_merges_with_existing(test_db):
     # Verify other fields preserved
     state = await get_session_ux_state(test_db, "test-session-123")
     assert state.output_message_id == "msg-123"  # Preserved
-    assert state.polling_active is True  # Preserved
     assert state.notification_sent is True  # Updated
 
 
@@ -132,7 +127,7 @@ async def test_update_session_ux_state_respects_sentinel_value(test_db):
     # Insert session with existing state
     existing_data = {
         "output_message_id": "msg-123",
-        "polling_active": True,
+        "notification_sent": True,
     }
     await test_db.execute(
         "INSERT INTO sessions (session_id, ux_state) VALUES (?, ?)",
@@ -140,12 +135,12 @@ async def test_update_session_ux_state_respects_sentinel_value(test_db):
     )
     await test_db.commit()
 
-    # Update with only polling_active (output_message_id not provided = _UNSET)
-    await update_session_ux_state(test_db, "test-session-123", polling_active=False)
+    # Update with only notification_sent (output_message_id not provided = _UNSET)
+    await update_session_ux_state(test_db, "test-session-123", notification_sent=False)
 
     state = await get_session_ux_state(test_db, "test-session-123")
     assert state.output_message_id == "msg-123"  # Not touched
-    assert state.polling_active is False  # Updated
+    assert state.notification_sent is False  # Updated
 
 
 @pytest.mark.asyncio
@@ -231,13 +226,12 @@ def test_session_ux_state_from_dict_handles_missing_fields():
     # Partial dict with only some fields
     partial_data = {
         "output_message_id": "msg-123",
-        # Missing: polling_active, notification_sent, etc.
+        # Missing: notification_sent, etc.
     }
 
     state = SessionUXState.from_dict(partial_data)
 
     assert state.output_message_id == "msg-123"
-    assert state.polling_active is False  # Default
     assert state.notification_sent is False  # Default
     assert state.pending_deletions == []  # Default
 
@@ -248,7 +242,6 @@ def test_session_ux_state_to_dict_serializes_all_fields():
 
     state = SessionUXState(
         output_message_id="msg-123",
-        polling_active=True,
         pending_deletions=["del-1", "del-2"],
         pending_feedback_deletions=["fb-1"],
         notification_sent=True,
@@ -261,7 +254,6 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     data = state.to_dict()
 
     assert data["output_message_id"] == "msg-123"
-    assert data["polling_active"] is True
     assert data["pending_deletions"] == ["del-1", "del-2"]
     assert data["pending_feedback_deletions"] == ["fb-1"]
     assert data["notification_sent"] is True

@@ -18,6 +18,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+
 
 def _post_form(url: str, data: dict[str, str], timeout_s: float) -> dict:
     encoded = urllib.parse.urlencode(data).encode("utf-8")
@@ -49,11 +52,6 @@ def _resolve_chat_id_via_telethon(target: str) -> str | None:
     - ~/.config/telegram_search/config.json
     - ~/.config/telegram_search/session.txt
     """
-    try:
-        from telethon import TelegramClient
-        from telethon.sessions import StringSession
-    except Exception:
-        return None
 
     config_path = Path.home() / ".config" / "telegram_search" / "config.json"
     session_path = Path.home() / ".config" / "telegram_search" / "session.txt"

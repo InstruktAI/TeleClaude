@@ -8,7 +8,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Any, Dict, cast
+from typing import Any, Dict
 
 from instrukt_ai_logging import configure_logging, get_logger
 
@@ -18,7 +18,7 @@ MCP_WRAPPER = PROJECT_ROOT / "bin" / "mcp-wrapper.py"
 HOOK_SEND_TIMEOUT_S = 20.0
 
 configure_logging("teleclaude")
-logger = cast(Any, get_logger("teleclaude.hooks.mcp_send"))
+logger = get_logger("teleclaude.hooks.mcp_send")
 
 
 def mcp_send(tool: str, payload: Dict[str, Any]) -> None:
@@ -28,15 +28,11 @@ def mcp_send(tool: str, payload: Dict[str, Any]) -> None:
         tool: TeleClaude tool name to invoke
         payload: Arguments for the tool call, MUST contain 'session_id' key
     """
-    logger.info(
+    logger.trace(
         "mcp_send called",
         tool=tool,
         session_id=payload.get("session_id"),
     )
-    logger.debug("mcp_send payload", payload=payload)
-
-    if not MCP_WRAPPER.exists():
-        raise FileNotFoundError(f"MCP wrapper not found: {MCP_WRAPPER}")
 
     deadline = time.monotonic() + HOOK_SEND_TIMEOUT_S
     backoffs = [0.5, 1.0, 2.0, 4.0]
@@ -52,8 +48,7 @@ def mcp_send(tool: str, payload: Dict[str, Any]) -> None:
             result = response.get("result")
             if isinstance(result, dict) and result.get("isError"):
                 raise RuntimeError(str(result.get("content")))
-            logger.debug("mcp_send response", response=response)
-            logger.info("mcp_send finished", tool=tool)
+            logger.debug("mcp_send finished", tool=tool)
             return
         except Exception as e:
             last_error = e
@@ -61,6 +56,7 @@ def mcp_send(tool: str, payload: Dict[str, Any]) -> None:
                 "mcp_send attempt failed",
                 attempt=attempt + 1,
                 error=str(e),
+                payload=payload,
                 traceback=traceback.format_exc(),
             )
             if time.monotonic() >= deadline:
@@ -105,8 +101,11 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
             },
         }
         _send_line(proc.stdin, init_request)
-        init_response = _read_json_line(proc.stdout, timeout_s - (time.monotonic() - start))
-        logger.debug("mcp_send initialize response", response=init_response)
+        _read_json_response(
+            proc.stdout,
+            timeout_s - (time.monotonic() - start),
+            expected_id=init_request["id"],
+        )
 
         # 2. Send initialized notification
         initialized_notif = {
@@ -123,7 +122,11 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
             "params": {"name": tool, "arguments": payload},
         }
         _send_line(proc.stdin, tool_request)
-        response = _read_json_line(proc.stdout, timeout_s - (time.monotonic() - start))
+        response = _read_json_response(
+            proc.stdout,
+            timeout_s - (time.monotonic() - start),
+            expected_id=tool_request["id"],
+        )
         return response
     finally:
         try:
@@ -147,7 +150,7 @@ def _send_line(stream: Any, message: Dict[str, Any]) -> None:
     stream.flush()
 
 
-def _read_json_line(stream: Any, timeout_s: float) -> Dict[str, Any]:
+def _read_json_response(stream: Any, timeout_s: float, expected_id: object) -> Dict[str, Any]:
     if timeout_s <= 0:
         raise TimeoutError("Timeout waiting for MCP wrapper response")
     deadline = time.monotonic() + timeout_s
@@ -158,5 +161,19 @@ def _read_json_line(stream: Any, timeout_s: float) -> Dict[str, Any]:
             line = stream.readline()
             if not line:
                 raise TimeoutError("MCP wrapper closed stdout")
-            return json.loads(line)
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"Invalid JSON from MCP wrapper: {line!r}") from exc
+
+            if not isinstance(message, dict):
+                raise RuntimeError(f"Invalid MCP wrapper response: {message!r}")
+
+            if "id" not in message:
+                # Notifications may arrive at any time; ignore and keep reading.
+                continue
+
+            if message.get("id") != expected_id:
+                raise RuntimeError(f"Unexpected MCP response id {message.get('id')!r} (expected {expected_id!r})")
+            return message
     raise TimeoutError("Timeout waiting for MCP wrapper response")

@@ -135,6 +135,8 @@ class TestDaemonStartupRetryIntegration:
                 # Setup mocks
                 mock_db.initialize = AsyncMock()
                 mock_db.set_client = MagicMock()
+                mock_db.get_active_sessions = AsyncMock(return_value=[])
+                mock_db.get_ux_state = AsyncMock()
                 mock_config.mcp.enabled = False
 
                 # Create daemon
@@ -176,6 +178,8 @@ class TestDaemonStartupRetryIntegration:
                 # Setup mocks
                 mock_db.initialize = AsyncMock()
                 mock_db.set_client = MagicMock()
+                mock_db.get_active_sessions = AsyncMock(return_value=[])
+                mock_db.get_ux_state = AsyncMock()
                 mock_config.mcp.enabled = False
                 mock_polling.restore_active_pollers = AsyncMock()
 

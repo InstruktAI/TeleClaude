@@ -18,12 +18,9 @@ from zoneinfo import ZoneInfo
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
+from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
-from teleclaude.core.events import (
-    SessionUpdatedContext,
-    TeleClaudeEvents,
-    UiCommands,
-)
+from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
@@ -57,8 +54,7 @@ class UiAdapter(BaseAdapter):
     COMMAND_HANDLER_OVERRIDES: dict[str, str] = {}
 
     # Platform message size limit (subclasses can override)
-    # Default: 3900 chars (Telegram: 4096 limit - ~196 overhead)
-    max_message_size: int = 3900
+    max_message_size: int = UI_MESSAGE_MAX_CHARS
 
     def __init__(self, client: "AdapterClient") -> None:
         """Initialize UiAdapter and register event listeners.
@@ -303,19 +299,14 @@ class UiAdapter(BaseAdapter):
         Returns:
             message_id of sent feedback message
         """
-        # Only cleanup previous feedback if not persistent
-        # Notifications (persistent=True) don't trigger cleanup but still get added to deletion list
-        # Summary (persistent=False) cleans up notifications, then adds itself
-        if not persistent:
-            await self.cleanup_feedback_messages(session)
+        await self.cleanup_feedback_messages(session)
 
         # Send feedback message (plain text by default)
         message_id = await self.send_message(session, message, metadata=metadata or MessageMetadata(parse_mode=""))
 
         if message_id:
-            # Always add to pending_feedback_deletions (even persistent messages)
-            # This ensures next non-persistent feedback will clean them up
-            await db.add_pending_feedback_deletion(session.session_id, message_id)
+            if not persistent:
+                await db.add_pending_feedback_deletion(session.session_id, message_id)
             logger.debug(
                 "Sent feedback message %s for session %s (marked for feedback deletion)",
                 message_id,
@@ -431,7 +422,7 @@ class UiAdapter(BaseAdapter):
         """Handle session_updated event - update channel title when fields change.
 
         Handles:
-        - title: Direct title update (from summary) → sync to Telegram
+        - title: Direct title update (from summary) → sync to UiAdapter instances
         - working_directory: Path change → update path portion in title
 
         Args:

@@ -61,23 +61,20 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         # Simulate /exit command handling
         # (In real code, this is in daemon.py handle_command("exit"))
 
-        # 1. Stop polling if active
-        await test_db.unmark_polling(session.session_id)
-
-        # 2. Kill tmux session (MOCKED)
+        # 1. Kill tmux session (MOCKED)
         await terminal_bridge.kill_session(tmux_session_name)
 
-        # 3. Delete output file
+        # 2. Delete output file
         if output_file_path.exists():
             output_file_path.unlink()
 
-        # 4. Mark session as closed
+        # 3. Mark session as closed
         await test_db.update_session(session.session_id, closed=True)
 
-        # 5. Delete channel (mocked)
+        # 4. Delete channel (mocked)
         await adapter_client.delete_channel(session)
 
-        # 6. Send confirmation message (mocked)
+        # 5. Send confirmation message (mocked)
         await adapter_client.send_message(session, "Session closed", MessageMetadata())
 
         # Verify tmux session killed (MOCKED)
@@ -132,24 +129,12 @@ async def test_close_session_with_active_polling(daemon_with_mocked_telegram):
         rows=24,
     )
 
-    # Mark as polling (simulate active polling)
-    await test_db.mark_polling(session.session_id)
-    is_polling = await test_db.is_polling(session.session_id)
-    assert is_polling is True, "Session should be marked as polling"
-
     # Simulate /exit command
-    # 1. Unmark polling (stops polling loop)
-    await test_db.unmark_polling(session.session_id)
-
-    # 2. Kill tmux session (MOCKED)
+    # 1. Kill tmux session (MOCKED)
     await terminal_bridge.kill_session(tmux_session_name)
 
-    # 3. Mark session closed
+    # 2. Mark session closed
     await test_db.update_session(session.session_id, closed=True)
-
-    # Verify polling stopped
-    is_polling_after = await test_db.is_polling(session.session_id)
-    assert is_polling_after is False, "Polling should be stopped"
 
     # Verify tmux killed (MOCKED)
     exists = await terminal_bridge.session_exists(tmux_session_name)

@@ -5,13 +5,12 @@ Handles polling lifecycle orchestration and event routing to message manager.
 """
 
 import asyncio
-import logging
-import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
-from teleclaude.core import terminal_bridge
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.db import db
 from teleclaude.core.output_poller import (
     DirectoryChanged,
@@ -23,65 +22,64 @@ from teleclaude.core.output_poller import (
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
-_ANSI_ESCAPE_RE = re.compile("\x1b\\[[0-?]*[ -/]*[@-~]")
-_EXIT_MARKER_RE = re.compile(r"__EXIT__\d+__\n?")
+_active_pollers: set[str] = set()
+_poller_lock = asyncio.Lock()
 
 
-async def restore_active_pollers(
-    adapter_client: "AdapterClient",
+async def is_polling(session_id: str) -> bool:
+    """Check if a poller task is active for the session (in-memory only)."""
+    async with _poller_lock:
+        return session_id in _active_pollers
+
+
+async def _register_polling(session_id: str) -> bool:
+    """Register a poller task if one isn't active. Returns True if registered."""
+    async with _poller_lock:
+        if session_id in _active_pollers:
+            return False
+        _active_pollers.add(session_id)
+        return True
+
+
+async def _unregister_polling(session_id: str) -> None:
+    """Unregister a poller task."""
+    async with _poller_lock:
+        _active_pollers.discard(session_id)
+
+
+async def schedule_polling(
+    session_id: str,
+    tmux_session_name: str,
     output_poller: OutputPoller,
+    adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
-) -> None:
-    """Restore polling for sessions that were active before daemon restart.
+    marker_id: Optional[str] = None,
+) -> bool:
+    """Schedule polling in the background with an in-memory guard.
 
-    Called during daemon startup to resume polling for sessions with polling_active=True.
-    Prevents the "frozen session" bug where database says polling is active but no poller is running.
-
-    Args:
-        adapter_client: AdapterClient instance for message sending
-        output_poller: Output poller instance
-        get_output_file: Function to get output file path for session
+    Returns True if scheduled, False if a poller is already active.
     """
-    # Query sessions with polling_active=True
-    sessions = await db.get_active_sessions()
-    if not sessions:
-        logger.info("No active polling sessions to restore")
-        return
-
-    logger.info("Restoring polling for %d sessions...", len(sessions))
-
-    for session in sessions:
-        session_id = session.session_id
-        tmux_session_name = session.tmux_session_name
-
-        # Check if tmux session still exists
-        if not await terminal_bridge.session_exists(tmux_session_name):
-            logger.warning(
-                "Tmux session %s for session %s no longer exists, marking polling as inactive",
-                tmux_session_name,
-                session_id[:8],
-            )
-            await db.set_polling_inactive(session_id)
-            continue
-
-        # Reset polling flag before restarting (allows guard to pass)
-        logger.info("Restoring polling for session %s (%s)", session_id[:8], tmux_session_name)
-        await db.set_polling_inactive(session_id)
-
-        # Use create_task to avoid blocking startup
-        asyncio.create_task(
-            poll_and_send_output(
-                session_id=session_id,
-                tmux_session_name=tmux_session_name,
-                output_poller=output_poller,
-                adapter_client=adapter_client,
-                get_output_file=get_output_file,
-            )
+    if not await _register_polling(session_id):
+        logger.warning(
+            "Polling already active for session %s, ignoring duplicate request",
+            session_id[:8],
         )
+        return False
 
-    logger.info("Session restoration complete")
+    asyncio.create_task(
+        poll_and_send_output(
+            session_id=session_id,
+            tmux_session_name=tmux_session_name,
+            output_poller=output_poller,
+            adapter_client=adapter_client,
+            get_output_file=get_output_file,
+            marker_id=marker_id,
+            _skip_register=True,
+        )
+    )
+    return True
 
 
 async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
@@ -91,6 +89,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
     adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
     marker_id: Optional[str] = None,
+    _skip_register: bool = False,
 ) -> None:
     """Poll terminal output and send to all adapters for session.
 
@@ -105,19 +104,13 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         get_output_file: Function to get output file path for session
         marker_id: Unique marker ID for exit detection (None = no exit marker)
     """
-    # GUARD: Prevent duplicate polling (check and add atomically before any await)
-    if await db.is_polling(session_id):
-        logger.warning(
-            "Polling already active for session %s, ignoring duplicate request",
-            session_id[:8],
-        )
-        return
-
-    # Mark as active BEFORE any await (prevents race conditions)
-    await db.mark_polling(session_id)
-
-    # Update ux_state to persist polling status in DB
-    await db.update_ux_state(session_id, polling_active=True)
+    if not _skip_register:
+        if not await _register_polling(session_id):
+            logger.warning(
+                "Polling already active for session %s, ignoring duplicate request",
+                session_id[:8],
+            )
+            return
 
     # Get output file
     output_file = get_output_file(session_id)
@@ -126,7 +119,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         # Consume events from pure poller
         async for event in output_poller.poll(session_id, tmux_session_name, output_file, marker_id):
             if isinstance(event, OutputChanged):
-                logger.debug(
+                logger.trace(
                     "[COORDINATOR %s] Received OutputChanged event from poller",
                     session_id[:8],
                 )
@@ -138,7 +131,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
                 # Unified output handling - ALL sessions use send_output_update
                 start_time = time.time()
-                logger.debug("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
+                logger.trace("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
                 await adapter_client.send_output_update(
                     session,  # type: ignore[arg-type]
                     clean_output,
@@ -146,7 +139,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     event.last_changed_at,
                 )
                 elapsed = time.time() - start_time
-                logger.debug(
+                logger.trace(
                     "[COORDINATOR %s] send_output_update completed in %.2fs",
                     session_id[:8],
                     elapsed,
@@ -216,7 +209,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
     finally:
         # Cleanup state
-        await db.unmark_polling(session_id)
+        await _unregister_polling(session_id)
         # NOTE: Don't clear pending_deletions here - let _pre_handle_user_input handle deletion on next input
         # NOTE: Keep output_message_id in DB - it's reused for all commands in the session
         # Only cleared when session closes (/exit command)

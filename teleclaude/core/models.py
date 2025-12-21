@@ -220,7 +220,7 @@ class MessageMetadata:  # type: ignore[no-any-unimported]  # pylint: disable=too
 
     # Telegram-specific formatting
     reply_markup: Optional["InlineKeyboardMarkup"] = None  # type: ignore[no-any-unimported]
-    parse_mode: str = "Markdown"
+    parse_mode: str = ""
     message_thread_id: Optional[int] = None
 
     # Shared formatting options
@@ -533,29 +533,6 @@ class MessagePayload:
 
     session_id: str
     text: str
-    project_dir: Optional[str] = None
-    title: Optional[str] = None
-
-
-@dataclass
-class AgentStartPayload:
-    """Payload for AGENT_START events."""
-
-    session_id: str
-    agent_name: str
-    args: list[str]
-    project_dir: Optional[str] = None
-    title: Optional[str] = None
-
-
-@dataclass
-class AgentResumePayload:
-    """Payload for AGENT_RESUME events."""
-
-    session_id: str
-    agent_name: str
-    args: list[str]
-    resume_latest: bool
     project_dir: Optional[str] = None
     title: Optional[str] = None
 

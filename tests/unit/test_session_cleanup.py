@@ -57,6 +57,7 @@ async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
     # Mock db to return the known session
     mock_session = MagicMock()
     mock_session.session_id = known_session_id
+    mock_session.closed = False
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
@@ -69,6 +70,31 @@ async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
     assert removed == 1
     assert known_dir.exists()  # Should NOT be removed
     assert not orphan_dir.exists()  # Should be removed
+
+
+@pytest.mark.asyncio
+async def test_cleanup_orphan_workspaces_removes_closed_sessions(tmp_path: Path):
+    """Closed sessions should not keep workspace directories."""
+    closed_session_id = "closed-session-123"
+
+    closed_dir = tmp_path / closed_session_id
+    closed_dir.mkdir()
+    (closed_dir / "tmux.txt").write_text("closed output")
+
+    mock_session = MagicMock()
+    mock_session.session_id = closed_session_id
+    mock_session.closed = True
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
+        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
+    ):
+        mock_db.return_value = [mock_session]
+
+        removed = await cleanup_orphan_workspaces()
+
+    assert removed == 1
+    assert not closed_dir.exists()
 
 
 @pytest.mark.asyncio

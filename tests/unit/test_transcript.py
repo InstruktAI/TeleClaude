@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from teleclaude.core.agents import AgentName
-from teleclaude.utils.claude_transcript import (
+from teleclaude.utils.transcript import (
     get_transcript_parser_info,
     parse_claude_transcript,
     parse_codex_transcript,

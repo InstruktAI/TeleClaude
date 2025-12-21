@@ -85,7 +85,7 @@ async def handle_file(
         logger.warning("Session %s not found", session_id)
         return
 
-    is_process_running = await db.is_polling(session_id)
+    is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
 
     if not is_process_running:
         await send_feedback(
