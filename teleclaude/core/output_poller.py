@@ -95,6 +95,7 @@ class OutputPoller:
         poll_iteration = 0
         session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
         output_sent_at_least_once = False  # Ensure user sees output before exit
+        last_sent_output: str | None = None
         previous_output = ""  # Track previous clean output for change detection
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
@@ -166,6 +167,16 @@ class OutputPoller:
                 if not session_exists_now:
                     logger.info("Process exited for %s, stopping poll", session_id[:8])
 
+                    # Send a final snapshot if the last observed output wasn't emitted yet.
+                    if previous_output and previous_output != last_sent_output:
+                        yield OutputChanged(
+                            session_id=session_id,
+                            output=previous_output,
+                            started_at=started_at,
+                            last_changed_at=last_output_changed_at,
+                        )
+                        last_sent_output = previous_output
+
                     # Read final output from file
                     final_output = ""
                     if output_file.exists():
@@ -215,25 +226,26 @@ class OutputPoller:
                 current_time = time.time()
                 elapsed_since_last_yield = current_time - last_yield_time
 
-                # Send updates based on time interval only (enforce minimum 2s between updates)
-                # This prevents Telegram API rate limiting from excessive message edits
-                # Send FILTERED TMUX PANE (mirrors what user sees in terminal)
+                # Send updates based on time interval, but only when output changes
+                # (or when we have never sent output yet). This avoids UI spam when idle.
                 did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
-                    # Send clean output to UI (current_cleaned already has markers stripped)
-                    yield OutputChanged(
-                        session_id=session_id,
-                        output=current_cleaned,  # Already clean (markers stripped at line 175)
-                        started_at=started_at,
-                        last_changed_at=last_output_changed_at,
-                    )
+                    if output_changed or not output_sent_at_least_once:
+                        # Send clean output to UI (current_cleaned already has markers stripped)
+                        yield OutputChanged(
+                            session_id=session_id,
+                            output=current_cleaned,  # Already clean (markers stripped at line 175)
+                            started_at=started_at,
+                            last_changed_at=last_output_changed_at,
+                        )
 
-                    # Mark that we've sent at least one update
-                    output_sent_at_least_once = True
+                        # Mark that we've sent at least one update
+                        output_sent_at_least_once = True
+                        last_sent_output = current_cleaned
 
-                    # Update last yield time (ONLY after yielding, not on every change!)
-                    last_yield_time = current_time
-                    did_yield = True
+                        # Update last yield time (ONLY after yielding, not on every change!)
+                        last_yield_time = current_time
+                        did_yield = True
                 else:
                     # Skip per-tick logging; summarized in idle summaries.
                     pass
@@ -255,13 +267,14 @@ class OutputPoller:
                         )
 
                         # Ensure output is sent before exit
-                        if not output_sent_at_least_once:
+                        if not output_sent_at_least_once or current_cleaned != last_sent_output:
                             yield OutputChanged(
                                 session_id=session_id,
                                 output=current_cleaned,
                                 started_at=started_at,
                                 last_changed_at=last_output_changed_at,
                             )
+                            last_sent_output = current_cleaned
 
                         yield ProcessExited(
                             session_id=session_id,
@@ -282,6 +295,7 @@ class OutputPoller:
                             started_at=started_at,
                             last_changed_at=last_output_changed_at,
                         )
+                        last_sent_output = current_cleaned
                     logger.info("Process returned to shell for %s, stopping poll", session_id[:8])
                     break
 

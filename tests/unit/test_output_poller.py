@@ -477,7 +477,7 @@ class TestOutputPollerPoll:
         assert all(isinstance(event, OutputChanged) for event in events)
 
     async def test_periodic_updates_with_exponential_backoff(self, poller, tmp_path):
-        """Test poll sends periodic updates with exponential backoff."""
+        """Test poll does not send periodic updates when output is unchanged."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
@@ -514,10 +514,9 @@ class TestOutputPollerPoll:
                             async for event in poller.poll("test-periodic", "test-tmux", output_file, marker_id=None):
                                 events.append(event)
 
-                    # Verify periodic OutputChanged events sent
+                    # Verify only the initial OutputChanged event is sent
                     output_changed_events = [e for e in events if isinstance(e, OutputChanged)]
-                    # Should have initial + periodic updates (at intervals 5, 10, etc.)
-                    assert len(output_changed_events) >= 2
+                    assert len(output_changed_events) == 1
 
     async def test_idle_summary_logging_suppresses_tick_noise(self, poller, tmp_path, caplog):
         """Summarize idle ticks instead of per-tick spam."""
