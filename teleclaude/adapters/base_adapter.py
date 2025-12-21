@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import (
@@ -16,6 +15,8 @@ from typing import (
     runtime_checkable,
 )
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo
 
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @runtime_checkable

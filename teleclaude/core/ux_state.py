@@ -6,14 +6,14 @@ Provides unified interface for storing/retrieving UX state in either:
 """
 
 import json
-import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
 import aiosqlite
+from instrukt_ai_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Module-level DB connection (set by daemon on startup)
 _db: Optional[aiosqlite.Connection] = None

@@ -6,7 +6,6 @@ All handlers are stateless functions with explicit dependencies.
 
 import asyncio
 import functools
-import logging
 import os
 import shlex
 import uuid
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 
 import psutil
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
@@ -43,7 +43,7 @@ from teleclaude.utils.transcript import (
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # TypedDicts for structured data

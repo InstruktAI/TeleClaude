@@ -13,11 +13,11 @@ can access without manual configuration. All registry messages are prefixed with
 """
 
 import asyncio
-import logging
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
+from instrukt_ai_logging import get_logger
 from telegram import Message
 
 from teleclaude.core.db import db
@@ -29,7 +29,7 @@ from teleclaude.core.ux_state import (
 if TYPE_CHECKING:
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Registry manager needs state for heartbeat and discovery

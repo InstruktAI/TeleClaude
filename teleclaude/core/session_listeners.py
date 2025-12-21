@@ -8,11 +8,12 @@ Multiple callers can wait for the same target session (e.g., 4 AI workers waitin
 Only one listener per caller-target pair is allowed (deduped by caller, not by target).
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

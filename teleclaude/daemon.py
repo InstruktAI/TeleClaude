@@ -5,7 +5,6 @@ import atexit
 import base64
 import fcntl
 import json
-import logging
 import os
 import signal
 import sys
@@ -15,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Optional, TextIO, cast
 
 from dotenv import load_dotenv
+from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
@@ -69,7 +69,7 @@ DEFAULT_LOG_LEVEL = "INFO"
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _is_retryable_startup_error(error: Exception) -> bool:

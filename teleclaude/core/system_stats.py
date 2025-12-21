@@ -1,14 +1,15 @@
 """System statistics collection for computer monitoring."""
 
-import logging
 import shutil
+
+from instrukt_ai_logging import get_logger
 
 try:
     import psutil
 except ImportError:
     psutil = None  # type: ignore[assignment,unused-ignore]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_memory_stats() -> dict[str, float]:

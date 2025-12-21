@@ -5,7 +5,6 @@ All functions are stateless and use config imported from teleclaude.config.
 
 import asyncio
 import hashlib
-import logging
 import os
 import pwd
 import re
@@ -15,8 +14,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import psutil
+from instrukt_ai_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # User's shell basename, computed once at import
 # Used for shell readiness detection in send_keys()

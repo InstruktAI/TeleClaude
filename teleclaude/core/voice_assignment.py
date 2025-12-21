@@ -4,12 +4,13 @@ Assigns random TTS voices to new sessions for distinct AI personalities.
 """
 
 import json
-import logging
 import random
 from dataclasses import dataclass
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+from instrukt_ai_logging import get_logger
+
+logger = get_logger(__name__)
 
 VOICES_CONFIG_PATH = Path.home() / ".claude" / "config" / "voices.json"
 

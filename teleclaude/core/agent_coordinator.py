@@ -7,8 +7,9 @@ Handles agent lifecycle events (start, stop, notification) and routes them to:
 """
 
 import base64
-import logging
 from typing import TYPE_CHECKING, cast
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core import terminal_bridge
@@ -27,7 +28,7 @@ from teleclaude.core.session_listeners import get_listeners
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AgentCoordinator:

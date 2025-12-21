@@ -8,13 +8,14 @@ UI adapters provide:
 
 from __future__ import annotations
 
-import logging
 import re
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from zoneinfo import ZoneInfo
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
@@ -37,7 +38,7 @@ from teleclaude.utils import (
     format_terminal_message,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UiAdapter(BaseAdapter):

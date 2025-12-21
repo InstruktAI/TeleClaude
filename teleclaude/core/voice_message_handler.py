@@ -8,11 +8,11 @@ Extracted from daemon.py to reduce file size and improve organization.
 Refactored to be adapter-agnostic utility that accepts generic callbacks.
 """
 
-import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
+from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
 
 from teleclaude.core import terminal_bridge
@@ -23,7 +23,7 @@ from teleclaude.core.models import MessageMetadata
 if TYPE_CHECKING:
     pass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ============================================================================
 # LOW-LEVEL: OpenAI Whisper API Integration

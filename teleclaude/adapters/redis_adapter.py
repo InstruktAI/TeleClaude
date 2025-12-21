@@ -11,13 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import re
 import ssl
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, cast
 
+from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
@@ -39,7 +39,7 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too-many-instance-attributes  # Redis adapter requires many connection and state attributes
@@ -570,7 +570,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         Returns:
             List of PeerInfo instances with peer computer information
         """
-        logger.info(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
+        logger.trace(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
 
         redis_client = self._require_redis()
 

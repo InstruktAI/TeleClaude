@@ -2,10 +2,11 @@
 
 import asyncio
 import json
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, cast
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.agent_parsers import CodexParser
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 CODEX_BIND_BACKFILL_BYTES = 65536
 
 

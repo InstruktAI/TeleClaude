@@ -3,15 +3,16 @@
 # mypy: disable-error-code="misc"
 
 import json
-import logging
 import time
 from pathlib import Path
 from typing import Generator, Optional, cast
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.parsers import LogEvent, LogParser
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CodexParser(LogParser):

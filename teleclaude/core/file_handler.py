@@ -8,17 +8,18 @@ Provides file upload functionality:
 Extracted as adapter-agnostic utility following voice_message_handler.py pattern.
 """
 
-import logging
 import re
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import MessageMetadata
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def sanitize_filename(filename: str) -> str:

@@ -5,9 +5,10 @@ a clean, unified interface for the daemon and MCP server.
 """
 
 import asyncio
-import logging
 import os
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional, cast
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
@@ -43,7 +44,7 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AdapterClient:

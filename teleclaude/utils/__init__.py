@@ -1,7 +1,6 @@
 """Utility functions for TeleClaude."""
 
 import asyncio
-import logging
 import os
 import re
 import time
@@ -10,9 +9,11 @@ from functools import wraps
 from pathlib import Path
 from typing import Awaitable, Callable, ParamSpec, TypeVar
 
+from instrukt_ai_logging import get_logger
+
 T = TypeVar("T")
 P = ParamSpec("P")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def command_retry(

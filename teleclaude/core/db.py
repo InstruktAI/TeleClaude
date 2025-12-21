@@ -1,7 +1,6 @@
 """Database manager for TeleClaude - handles session persistence and retrieval."""
 
 import json
-import logging
 import uuid
 from dataclasses import asdict
 from datetime import datetime
@@ -9,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import aiosqlite
+from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 
@@ -21,7 +21,7 @@ from .voice_assignment import VoiceConfig
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Db:

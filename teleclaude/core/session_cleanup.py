@@ -10,9 +10,10 @@ This can happen when:
 - DB is cleared but tmux sessions remain
 """
 
-import logging
 import shutil
 from typing import TYPE_CHECKING
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
