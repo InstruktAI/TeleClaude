@@ -550,7 +550,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
         try:
             start_time = time.time()
-            logger.debug("[TELEGRAM %s] Starting edit_message API call", session.session_id[:8])
+            logger.trace("[TELEGRAM %s] Starting edit_message API call", session.session_id[:8])
             await self._edit_message_with_retry(session, ctx)
             elapsed = time.time() - start_time
             logger.debug(

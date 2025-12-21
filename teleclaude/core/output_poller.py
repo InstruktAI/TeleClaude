@@ -109,7 +109,7 @@ class OutputPoller:
             last_output_changed_at = started_at
             last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
             last_summary_time = started_at
-            logger.debug("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
+            logger.trace("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
 
             def maybe_log_idle_summary(force: bool = False) -> None:
                 nonlocal last_summary_time, suppressed_idle_ticks

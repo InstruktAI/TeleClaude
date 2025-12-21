@@ -764,7 +764,7 @@ class AdapterClient:
 
     async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:
         """Dispatch event to registered handler."""
-        logger.debug("Dispatching event: %s, handlers: %s", event, list(self._handlers.keys()))
+        logger.trace("Dispatching event: %s, handlers: %s", event, list(self._handlers.keys()))
 
         handler = self._handlers.get(event)
         if not handler:
@@ -772,7 +772,7 @@ class AdapterClient:
             return {"status": "error", "error": f"No handler registered for event: {event}", "code": "NO_HANDLER"}
 
         try:
-            logger.debug("Calling handler for event: %s", event)
+            logger.trace("Calling handler for event: %s", event)
             result = await handler(event, context)
             logger.debug("Handler completed for event: %s", event)
             return {"status": "success", "data": result}
