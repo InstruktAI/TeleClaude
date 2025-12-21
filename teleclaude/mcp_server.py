@@ -678,7 +678,7 @@ class TeleClaudeMCPServer:
 
     async def _handle_socket_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handle a single MCP client connection over Unix socket."""
-        logger.info("New MCP client connected")
+        logger.debug("New MCP client connected")
         try:
             # Create FRESH server instance for this connection
             # This ensures clean state (no stale initialization)
@@ -769,7 +769,7 @@ class TeleClaudeMCPServer:
         finally:
             writer.close()
             await writer.wait_closed()
-            logger.info("MCP client disconnected")
+            logger.debug("MCP client disconnected")
 
     async def teleclaude__list_computers(self) -> list[dict[str, object]]:
         """List available computers including local and remote.

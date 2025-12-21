@@ -552,7 +552,7 @@ class AdapterClient:
                     context is a typed dataclass (CommandEventContext, MessageEventContext, etc.)
         """
         self._handlers[event] = handler
-        logger.debug("Registered handler for event: %s", event)
+        logger.trace("Registered handler for event: %s", event)
 
     async def handle_event(
         self,

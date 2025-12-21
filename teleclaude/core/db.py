@@ -75,7 +75,6 @@ class Db:
             client: AdapterClient instance to handle events through
         """
         self._client = client
-        logger.info("Database wired to AdapterClient for event emission")
 
     async def close(self) -> None:
         """Close database connection."""

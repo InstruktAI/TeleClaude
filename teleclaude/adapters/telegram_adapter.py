@@ -1801,7 +1801,7 @@ Current size: {current_size}
             await asyncio.sleep(self.heartbeat_interval)
             try:
                 await self._send_heartbeat()
-                logger.debug("Heartbeat sent for %s", self.computer_name)
+                logger.trace("Heartbeat sent for %s", self.computer_name)
             except Exception as e:
                 logger.error("Heartbeat failed: %s", e)
 

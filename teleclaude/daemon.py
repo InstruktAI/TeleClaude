@@ -914,7 +914,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Wire DB to AdapterClient for UI updates
         db.set_client(self.client)
-        logger.info("Database wired to AdapterClient")
 
         # Start all adapters via AdapterClient (network operation - can fail)
         await self.client.start()

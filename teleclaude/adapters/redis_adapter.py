@@ -129,7 +129,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if elapsed_s < 60.0:
             return
 
-        cast(Any, logger).debug(
+        logger.trace(
             "No messages received, continuing poll loop",
             stream=message_stream,
             suppressed=self._idle_poll_suppressed,
@@ -577,7 +577,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         try:
             # Find all heartbeat keys
             keys: object = await redis_client.keys(b"computer:*:heartbeat")
-            logger.info(">>> discover_peers found %d heartbeat keys: %s", len(keys), keys)  # pyright: ignore[reportArgumentType]
+            keys_list = cast(list[bytes], keys)
+            logger.debug(
+                "Redis heartbeat keys discovered",
+                count=len(keys_list),
+                keys=keys_list,
+            )
 
             peers = []
             for key in keys:  # pyright: ignore[reportGeneralTypeIssues]  # pyright: ignore[reportGeneralTypeIssues]
@@ -601,17 +606,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                     # Skip self
                     if computer_name == self.computer_name:
-                        logger.debug("Skipping self: %s", computer_name)
+                        logger.trace("Skipping self heartbeat: %s", computer_name)
                         continue
-
-                    logger.debug("Requesting computer_info from %s", computer_name)
+                    logger.trace("Requesting computer_info from %s", computer_name)
 
                     # Request computer info via get_computer_info command
                     # Transport layer generates request_id from Redis message ID
                     computer_info = None
                     try:
                         message_id = await self.send_request(computer_name, "get_computer_info", MessageMetadata())
-                        logger.debug("Sent get_computer_info to %s, message_id=%s", computer_name, message_id[:15])
 
                         # Wait for response (short timeout) - use read_response for one-shot query
                         response_data = await self.client.read_response(message_id, timeout=3.0)
@@ -633,7 +636,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                             logger.warning("Invalid response data from %s: %s", computer_name, type(computer_info))
                             continue
 
-                        logger.debug("Received valid computer_info from %s", computer_name)
+                        logger.debug("Redis response accepted", target=computer_name, request_id=message_id[:15])
 
                     except (TimeoutError, Exception) as e:
                         logger.warning("Failed to get info from %s: %s", computer_name, e)
@@ -953,7 +956,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
     async def _send_heartbeat(self) -> None:
         """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
-        logger.debug("Sent heartbeat for %s", self.computer_name)
+        logger.trace("Sent heartbeat for %s", self.computer_name)
         key = f"computer:{self.computer_name}:heartbeat"
 
         # Minimal payload - just alive ping
@@ -1149,8 +1152,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         message_id_bytes: bytes = await redis_client.xadd(message_stream, data, maxlen=self.message_stream_maxlen)  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
         message_id = message_id_bytes.decode("utf-8")
 
-        logger.debug("XADD returned message_id=%s", message_id)
-        logger.info("Sent request to %s: message_id=%s, command=%s", computer_name, message_id[:15], command[:50])
+        logger.trace("Redis request enqueued", stream=message_stream, message_id=message_id)
+        logger.debug(
+            "Redis request sent",
+            target=computer_name,
+            request_id=message_id[:15],
+            command=command[:50],
+        )
         return message_id
 
     async def send_response(self, message_id: str, data: str) -> str:
@@ -1212,7 +1220,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         output_stream = f"output:{message_id}"
         start_time = time.time()
-        logger.debug("read_response() waiting for response on stream=%s, timeout=%s", output_stream, timeout)
+        logger.trace("Redis response wait", stream=output_stream, timeout_s=timeout)
 
         try:
             poll_count = 0
@@ -1230,26 +1238,27 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                 # Read from stream (blocking with 100ms timeout)
                 poll_count += 1
-                logger.debug(
-                    "read_response() poll #%d for message %s (elapsed=%.1fs)", poll_count, message_id[:8], elapsed
+                logger.trace(
+                    "Redis response poll",
+                    request_id=message_id[:8],
+                    poll=poll_count,
+                    elapsed_s=round(elapsed, 1),
                 )
                 redis_client = self._require_redis()
                 messages = await redis_client.xread({output_stream.encode("utf-8"): b"0"}, block=100, count=1)
 
                 if messages:
                     # Got response - extract and return
-                    logger.debug(
-                        "read_response() received response for message %s after %d polls", message_id[:8], poll_count
-                    )
                     for _stream_name, stream_messages in messages:
                         for _entry_id, data in stream_messages:
                             chunk_bytes: bytes = data.get(b"chunk", b"")
                             chunk: str = chunk_bytes.decode("utf-8")
                             if chunk:
                                 logger.debug(
-                                    "read_response() returning response for message %s (length=%d)",
-                                    message_id[:8],
-                                    len(chunk),
+                                    "Redis response received",
+                                    request_id=message_id[:8],
+                                    polls=poll_count,
+                                    length=len(chunk),
                                 )
                                 return chunk
 
