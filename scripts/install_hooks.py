@@ -123,7 +123,7 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
     """Return TeleClaude hook definitions for Gemini CLI.
 
-    Gemini uses AfterAgent for turn completion (not Stop like Claude).
+    Gemini uses BeforeUserInput for turn completion (not Stop like Claude).
     """
     return {
         "SessionStart": {
@@ -138,7 +138,7 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
             "command": f"{python_exe} {receiver_script} --agent gemini notification",
             "description": "Notify TeleClaude of user input request",
         },
-        "AfterAgent": {
+        "BeforeUserInput": {
             "name": "teleclaude-stop",
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent gemini stop",
@@ -173,9 +173,9 @@ def configure_gemini(repo_root: Path) -> None:
     python_exe = _resolve_hook_python(repo_root)
     hooks_map = _gemini_hook_map(python_exe, receiver_script)
 
-    # Remove legacy AfterModel receiver hook (Gemini emits multiple AfterModel events per turn).
+    # Remove legacy BeforeUserInput receiver hook
     existing_hooks = settings.get("hooks", {})
-    after_model_hooks = existing_hooks.get("AfterModel")
+    after_model_hooks = existing_hooks.get("BeforeUserInput")
     if isinstance(after_model_hooks, list):
         updated_blocks = []
         for block in after_model_hooks:
@@ -196,9 +196,9 @@ def configure_gemini(repo_root: Path) -> None:
                 block["hooks"] = filtered
                 updated_blocks.append(block)
         if updated_blocks:
-            existing_hooks["AfterModel"] = updated_blocks
+            existing_hooks["BeforeUserInput"] = updated_blocks
         else:
-            existing_hooks.pop("AfterModel", None)
+            existing_hooks.pop("BeforeUserInput", None)
     settings["hooks"] = existing_hooks
 
     # Merge
