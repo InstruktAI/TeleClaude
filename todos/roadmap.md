@@ -7,7 +7,7 @@
 
 ## MCP Tools
 
-### [>] Send Result Tool
+### [x] Send Result Tool
 
 Add `teleclaude__send_result` MCP tool to allow AI agents to send formatted results (markdown tables, reports, analysis) as separate messages to the user, instead of only showing output in the streaming terminal message.
 
@@ -16,6 +16,8 @@ Add `teleclaude__send_result` MCP tool to allow AI agents to send formatted resu
 - Strip outer backticks from AI content, re-wrap with proper formatting
 - Messages persist (not auto-deleted like feedback)
 - Session ID auto-injected from `TELECLAUDE_SESSION_ID`
+
+**Delivered**: 2025-12-23 | Archive: `done/002-send-result`
 
 ---
 
