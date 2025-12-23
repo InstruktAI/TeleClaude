@@ -82,7 +82,7 @@ async def test_backend_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch)
 
     asyncio.create_task(_signal_backend_init())
 
-    ok = await proxy._resync_backend_handshake()
+    ok = await proxy._resync_backend_handshake(1.0)
     assert ok is True
     assert proxy.writer.writes[0] == proxy._client_initialize_request
     assert proxy.writer.writes[1] == proxy._client_initialized_notification

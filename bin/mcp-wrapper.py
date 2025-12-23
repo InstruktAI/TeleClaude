@@ -51,7 +51,12 @@ MCP_SOCKET = "/tmp/teleclaude.sock"
 CONTEXT_TO_INJECT: dict[str, str] = {"caller_session_id": "TELECLAUDE_SESSION_ID"}
 RECONNECT_DELAY = 5
 CONNECTION_TIMEOUT = 10
-SEND_CONNECT_TIMEOUT = float(os.getenv("MCP_WRAPPER_SEND_CONNECT_TIMEOUT", "8"))
+REQUEST_TIMEOUT = float(
+    os.getenv(
+        "MCP_WRAPPER_REQUEST_TIMEOUT",
+        os.getenv("MCP_WRAPPER_SEND_CONNECT_TIMEOUT", "20"),
+    )
+)
 OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
 # Keep logs human-friendly by default: no repeated spam while waiting for a restart
 # or when running in a restricted environment that can't connect to the socket.
@@ -342,12 +347,14 @@ class MCPProxy:
         self.writer = None
         await self.connect()
 
-    async def _resync_backend_handshake(self) -> bool:
+    async def _resync_backend_handshake(self, timeout_s: float) -> bool:
         """Replay MCP handshake to backend after backend restart.
 
         The MCP client does NOT re-send initialize after daemon restart; without
         replaying the handshake, backend tool calls can hang or fail.
         """
+        if timeout_s <= 0:
+            return False
         if not self._client_initialize_request or self._client_initialize_id is None:
             logger.warning("Cannot resync backend: missing stored initialize request")
             return False
@@ -365,9 +372,9 @@ class MCPProxy:
             return False
 
         try:
-            await asyncio.wait_for(self._backend_init_response.wait(), timeout=SEND_CONNECT_TIMEOUT)
+            await asyncio.wait_for(self._backend_init_response.wait(), timeout=timeout_s)
         except asyncio.TimeoutError:
-            logger.warning("Backend did not respond to initialize within %.1fs", SEND_CONNECT_TIMEOUT)
+            logger.warning("Backend did not respond to initialize within %.1fs", timeout_s)
             return False
 
         # Per MCP sequence, send client's notifications/initialized after init response.
@@ -462,9 +469,13 @@ class MCPProxy:
 
             request_id = item.get("request_id")
             method = item.get("method")
+            deadline = item["enqueued_at"] + REQUEST_TIMEOUT
 
             try:
-                await asyncio.wait_for(self.connected.wait(), timeout=SEND_CONNECT_TIMEOUT)
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError
+                await asyncio.wait_for(self.connected.wait(), timeout=remaining)
             except asyncio.TimeoutError:
                 if request_id is not None:
                     await self._send_error(
@@ -486,7 +497,8 @@ class MCPProxy:
             # ANY queued messages (including notifications/initialized).
             if self._needs_backend_resync:
                 self._suppress_backend_init_messages = True
-                ok = await self._resync_backend_handshake()
+                remaining = deadline - asyncio.get_running_loop().time()
+                ok = await self._resync_backend_handshake(remaining)
                 self._needs_backend_resync = False
                 if not ok:
                     if request_id is not None:
