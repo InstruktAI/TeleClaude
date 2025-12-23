@@ -42,7 +42,7 @@ MCP_DISABLE_STATIC_HANDSHAKE=true   # Always proxy to backend (testing mode)
 
 **Purpose**: Actual MCP tool implementation using `mcp` library.
 
-**Provides 10 public tools**:
+**Provides 11 public tools**:
 - `teleclaude__list_computers` - List available remote computers
 - `teleclaude__list_projects` - List trusted project directories on a computer
 - `teleclaude__list_sessions` - List active AI sessions
@@ -51,6 +51,7 @@ MCP_DISABLE_STATIC_HANDSHAKE=true   # Always proxy to backend (testing mode)
 - `teleclaude__get_session_data` - Retrieve session transcript and state
 - `teleclaude__deploy` - Deploy latest code via git pull (optional list; default all remotes)
 - `teleclaude__send_file` - Send file to a session's Telegram chat
+- `teleclaude__send_result` - Send formatted results as separate message (MarkdownV2)
 - `teleclaude__stop_notifications` - Unsubscribe from session events
 - `teleclaude__end_session` - Gracefully terminate a session
 

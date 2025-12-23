@@ -45,15 +45,15 @@
   - Test successful send returns message_id
   - Mock adapter_client.send_message
 
-- [ ] **DEPENDS: Group 2** Run full test suite: `make test`
+- [x] **DEPENDS: Group 2** Run full test suite: `make test`
 
 ### Group 4: Documentation & Polish
 
-- [ ] **DEPENDS: Group 3** Update `docs/mcp-architecture.md`:
+- [x] **DEPENDS: Group 3** Update `docs/mcp-architecture.md`:
   - Add `teleclaude__send_result` to the list of public tools
   - Add brief description
 
-- [ ] **DEPENDS: Group 3** Final lint/format check: `make lint && make format`
+- [x] **DEPENDS: Group 3** Final lint/format check: `make lint && make format`
 
 ## Groups 5-6: Review & Finalize (handled by other commands)
 
