@@ -1,64 +1,27 @@
 #!/usr/bin/env bash
 #
-# TeleClaude Installation Script
-# Installs dependencies, creates service, and configures TeleClaude daemon
+# TeleClaude Install Script
+# Installs system binaries and Python dependencies only.
+# Run 'make init' after this for first-time setup.
 #
 
-set -e  # Exit on error
+set -e
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Installation directory (where script is located)
 INSTALL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_FILE="${INSTALL_DIR}/install.log"
 
-# Configuration
 PYTHON_MIN_VERSION="3.11"
-TMUX_MIN_VERSION="3.0"
-NON_INTERACTIVE=false
-DAEMON_LOG_FILE="/var/log/instrukt-ai/teleclaude/teleclaude.log"
-
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -y|--yes)
-            NON_INTERACTIVE=true
-            shift
-            ;;
-        -h|--help)
-            echo "TeleClaude Installer"
-            echo ""
-            echo "Usage: $0 [options]"
-            echo ""
-            echo "Options:"
-            echo "  -y, --yes    Non-interactive mode (use defaults)"
-            echo "  -h, --help   Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
-done
 
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
-}
-
-# Print functions
-print_header() {
-    echo ""
-    echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  $1${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
-    echo ""
 }
 
 print_success() {
@@ -81,39 +44,12 @@ print_info() {
     log "INFO: $1"
 }
 
-# Prompt for input
-prompt() {
-    local prompt_text="$1"
-    local default_value="$2"
-    local result
-
-    if [ "$NON_INTERACTIVE" = true ]; then
-        echo "$default_value"
-        return
-    fi
-
-    if [ -n "$default_value" ]; then
-        read -p "$prompt_text [$default_value]: " result
-        echo "${result:-$default_value}"
-    else
-        read -p "$prompt_text: " result
-        echo "$result"
-    fi
-}
-
-# Confirm action
-confirm() {
-    local prompt_text="$1"
-    local default="${2:-n}"
-
-    if [ "$NON_INTERACTIVE" = true ]; then
-        [ "$default" = "y" ] && return 0 || return 1
-    fi
-
-    local response
-    read -p "$prompt_text (y/n) [$default]: " response
-    response="${response:-$default}"
-    [[ "$response" =~ ^[Yy]$ ]]
+print_header() {
+    echo ""
+    echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  $1${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════${NC}"
+    echo ""
 }
 
 # Detect OS
@@ -138,100 +74,7 @@ detect_os() {
             exit 1
             ;;
     esac
-
     print_info "Detected OS: $OS ($DISTRO)"
-}
-
-# Check Python version
-check_python() {
-    print_info "Checking Python version..."
-
-    # Try python3, python3.11, python3.12, etc.
-    for cmd in python3.12 python3.11 python3; do
-        if command -v "$cmd" &> /dev/null; then
-            PYTHON_CMD="$cmd"
-            PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
-
-            # Compare versions
-            if [ "$(printf '%s\n' "$PYTHON_MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" = "$PYTHON_MIN_VERSION" ]; then
-                print_success "Found Python $PYTHON_VERSION at $(command -v $cmd)"
-                return 0
-            fi
-        fi
-    done
-
-    print_error "Python $PYTHON_MIN_VERSION or higher not found"
-    print_info "Please install Python $PYTHON_MIN_VERSION+ first"
-    exit 1
-}
-
-# Check Node.js (required for Claude Code)
-check_node() {
-    print_info "Checking Node.js..."
-
-    if ! command -v node &> /dev/null; then
-        print_error "Node.js not found"
-        print_info "Node.js is required for Claude Code"
-        print_info ""
-        print_info "Install Node.js:"
-        print_info "  macOS:  brew install node"
-        print_info "  Ubuntu: sudo apt install nodejs npm"
-        print_info "  Fedora: sudo dnf install nodejs npm"
-        print_info ""
-        print_info "Or visit: https://nodejs.org/"
-        exit 1
-    fi
-
-    if ! command -v npm &> /dev/null; then
-        print_error "npm not found"
-        print_info "npm is required for installing Claude Code"
-        exit 1
-    fi
-
-    NODE_VERSION=$(node --version 2>&1)
-    NPM_VERSION=$(npm --version 2>&1)
-    print_success "Found Node.js $NODE_VERSION and npm $NPM_VERSION"
-}
-
-# Install system dependencies
-install_system_deps() {
-    print_header "Installing System Dependencies"
-
-    # Check and install tmux
-    if command -v tmux &> /dev/null; then
-        TMUX_VERSION=$(tmux -V | awk '{print $2}')
-        print_success "tmux $TMUX_VERSION already installed"
-    else
-        print_info "Installing tmux..."
-        install_package tmux
-    fi
-
-    # Check and install ffmpeg (for voice transcription)
-    if command -v ffmpeg &> /dev/null; then
-        print_success "ffmpeg already installed"
-    else
-        print_info "Installing ffmpeg..."
-        install_package ffmpeg
-    fi
-
-    # Check and install jq (for JSON manipulation)
-    if command -v jq &> /dev/null; then
-        print_success "jq already installed"
-    else
-        print_info "Installing jq..."
-        install_package jq
-    fi
-
-    # Check and install socat (for MCP socket bridge)
-    if command -v socat &> /dev/null; then
-        print_success "socat already installed"
-    else
-        print_info "Installing socat..."
-        install_package socat
-    fi
-
-    # Install Claude Code
-    install_claude_code
 }
 
 # Install package based on OS
@@ -266,69 +109,148 @@ install_package() {
     print_success "Installed $package"
 }
 
-# Setup Python virtual environment
-setup_venv() {
-    print_header "Setting Up Python Virtual Environment"
+# Check Python version
+check_python() {
+    print_info "Checking Python version..."
 
-    local recreate=false
-    if [ -d "$INSTALL_DIR/.venv" ]; then
-        print_warning "Virtual environment already exists"
-        if confirm "Recreate virtual environment?" "n"; then
-            rm -rf "$INSTALL_DIR/.venv"
-            recreate=true
-        else
-            print_info "Using existing virtual environment"
+    for cmd in python3.12 python3.11 python3; do
+        if command -v "$cmd" &> /dev/null; then
+            PYTHON_CMD="$cmd"
+            PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')
+
+            if [ "$(printf '%s\n' "$PYTHON_MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" = "$PYTHON_MIN_VERSION" ]; then
+                print_success "Found Python $PYTHON_VERSION at $(command -v $cmd)"
+                return 0
+            fi
         fi
+    done
+
+    print_error "Python $PYTHON_MIN_VERSION or higher not found"
+    exit 1
+}
+
+# Check Node.js
+check_node() {
+    print_info "Checking Node.js..."
+
+    if ! command -v node &> /dev/null; then
+        print_error "Node.js not found (required for Claude Code)"
+        print_info "Install: brew install node (macOS) or apt install nodejs npm (Linux)"
+        exit 1
     fi
 
-    # Ensure uv is available (no PATH hacks; install via system package manager)
-    if ! command -v uv >/dev/null 2>&1; then
-        print_warning "uv not found on PATH"
-        case "$OS" in
-            macos)
-                if ! command -v brew >/dev/null 2>&1; then
-                    print_error "Homebrew not found, but uv is required"
-                    print_info "Install Homebrew from https://brew.sh, then re-run the installer."
-                    exit 1
-                fi
-                print_info "Installing uv via Homebrew..."
-                if brew install uv >>"$LOG_FILE" 2>&1; then
-                    print_success "uv installed via Homebrew"
-                else
-                    print_error "Failed to install uv via Homebrew (see $LOG_FILE)"
-                    exit 1
-                fi
-                ;;
-            linux)
-                if ! command -v apt-get >/dev/null 2>&1; then
-                    print_error "apt-get not found, but uv is required"
-                    print_info "Install uv with your system package manager, then re-run the installer."
-                    exit 1
-                fi
-                print_info "Installing uv via apt-get..."
-                if sudo apt-get update >>"$LOG_FILE" 2>&1 && sudo apt-get install -y uv >>"$LOG_FILE" 2>&1; then
-                    print_success "uv installed via apt-get"
-                else
-                    print_error "Failed to install uv via apt-get (see $LOG_FILE)"
-                    exit 1
-                fi
-                ;;
-            *)
-                print_error "Unsupported OS for automatic uv install: $OS"
-                print_info "Install uv and ensure it's on PATH, then re-run the installer."
+    if ! command -v npm &> /dev/null; then
+        print_error "npm not found"
+        exit 1
+    fi
+
+    NODE_VERSION=$(node --version 2>&1)
+    NPM_VERSION=$(npm --version 2>&1)
+    print_success "Found Node.js $NODE_VERSION and npm $NPM_VERSION"
+}
+
+# Install system dependencies
+install_system_deps() {
+    print_header "Installing System Dependencies"
+
+    # tmux
+    if command -v tmux &> /dev/null; then
+        TMUX_VERSION=$(tmux -V | awk '{print $2}')
+        print_success "tmux $TMUX_VERSION already installed"
+    else
+        print_info "Installing tmux..."
+        install_package tmux
+    fi
+
+    # ffmpeg (for voice transcription)
+    if command -v ffmpeg &> /dev/null; then
+        print_success "ffmpeg already installed"
+    else
+        print_info "Installing ffmpeg..."
+        install_package ffmpeg
+    fi
+
+    # jq (for JSON manipulation)
+    if command -v jq &> /dev/null; then
+        print_success "jq already installed"
+    else
+        print_info "Installing jq..."
+        install_package jq
+    fi
+
+    # socat (for MCP socket bridge)
+    if command -v socat &> /dev/null; then
+        print_success "socat already installed"
+    else
+        print_info "Installing socat..."
+        install_package socat
+    fi
+
+    # Claude Code
+    install_claude_code
+}
+
+# Install Claude Code
+install_claude_code() {
+    if command -v claude &> /dev/null; then
+        CLAUDE_VERSION=$(claude --version 2>&1 || echo "unknown")
+        print_success "Claude Code already installed ($CLAUDE_VERSION)"
+        return 0
+    fi
+
+    print_info "Installing Claude Code globally via npm..."
+    if npm install -g @anthropic-ai/claude-code >> "$LOG_FILE" 2>&1; then
+        print_success "Claude Code installed"
+    else
+        print_warning "Failed to install Claude Code (see $LOG_FILE)"
+        print_info "You can install manually: npm install -g @anthropic-ai/claude-code"
+    fi
+}
+
+# Install uv if needed
+install_uv() {
+    if command -v uv >/dev/null 2>&1; then
+        print_success "uv already installed"
+        return 0
+    fi
+
+    print_info "Installing uv..."
+    case "$OS" in
+        macos)
+            if ! command -v brew >/dev/null 2>&1; then
+                print_error "Homebrew not found. Install from https://brew.sh"
                 exit 1
-                ;;
-        esac
-
-        if ! command -v uv >/dev/null 2>&1; then
-            print_error "uv installation completed but uv is still not on PATH"
-            print_info "Fix your PATH and re-run the installer."
+            fi
+            brew install uv
+            ;;
+        linux)
+            if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update -qq && sudo apt-get install -y uv
+            else
+                print_error "apt-get not found. Install uv manually."
+                exit 1
+            fi
+            ;;
+        *)
+            print_error "Unsupported OS for uv install"
             exit 1
-        fi
-    fi
+            ;;
+    esac
 
-    # Use uv to create/refresh .venv and install deps from pyproject/uv.lock
-    print_info "Syncing Python environment with uv (including test extras)..."
+    if ! command -v uv >/dev/null 2>&1; then
+        print_error "uv installation failed"
+        exit 1
+    fi
+    print_success "uv installed"
+}
+
+# Install Python dependencies
+install_python_deps() {
+    print_header "Installing Python Dependencies"
+
+    install_uv
+
+    print_info "Syncing Python environment with uv..."
     uv sync --extra test
 
     if [ ! -d "$INSTALL_DIR/.venv" ]; then
@@ -336,498 +258,36 @@ setup_venv() {
         exit 1
     fi
 
-    if [ "$recreate" = true ]; then
-        print_success "Virtual environment recreated and dependencies installed"
-    else
-        print_success "Virtual environment ready and dependencies installed"
-    fi
+    print_success "Python dependencies installed"
 }
 
-# Setup configuration
-setup_config() {
-    print_header "Configuration Setup"
-
-    # Setup .env
-    if [ -f "$INSTALL_DIR/.env" ]; then
-        print_warning ".env file already exists"
-        if ! confirm "Overwrite existing .env?" "n"; then
-            print_info "Keeping existing .env file"
-            return 0
-        fi
-    fi
-
-    # Copy templates
-    if [ ! -f "$INSTALL_DIR/.env.sample" ]; then
-        print_error ".env.sample not found"
-        exit 1
-    fi
-
-    if [ ! -f "$INSTALL_DIR/config.yml.sample" ]; then
-        print_error "config.yml.sample not found"
-        exit 1
-    fi
-
-    # Interactive configuration
-    if [ "$NON_INTERACTIVE" = false ]; then
-        echo ""
-        print_info "Please provide the following information:"
-        echo ""
-
-        # Computer name
-        DEFAULT_COMPUTER_NAME=$(hostname | cut -d. -f1)
-        COMPUTER_NAME=$(prompt "Computer name (shown in session titles)" "$DEFAULT_COMPUTER_NAME")
-
-        # Bot token
-        echo ""
-        print_info "Get your bot token from @BotFather on Telegram"
-        print_info "Visit: https://t.me/botfather"
-        BOT_TOKEN=$(prompt "Telegram bot token" "")
-        while [ -z "$BOT_TOKEN" ]; do
-            print_error "Bot token is required"
-            BOT_TOKEN=$(prompt "Telegram bot token" "")
-        done
-
-        # User ID
-        echo ""
-        print_info "Get your Telegram user ID from @userinfobot"
-        print_info "Visit: https://t.me/userinfobot"
-        USER_ID=$(prompt "Your Telegram user ID" "")
-        while [ -z "$USER_ID" ]; do
-            print_error "User ID is required"
-            USER_ID=$(prompt "Your Telegram user ID" "")
-        done
-
-        # Supergroup ID
-        echo ""
-        print_info "To get supergroup ID:"
-        print_info "1. Add your bot to the supergroup"
-        print_info "2. Send a message in the group"
-        print_info "3. Visit: https://api.telegram.org/bot<TOKEN>/getUpdates"
-        print_info "4. Look for 'chat':{id':-1234567890...} (negative number)"
-        SUPERGROUP_ID=$(prompt "Telegram supergroup ID (including minus sign)" "")
-        while [ -z "$SUPERGROUP_ID" ]; do
-            print_error "Supergroup ID is required"
-            SUPERGROUP_ID=$(prompt "Telegram supergroup ID" "")
-        done
-
-        # Optional: OpenAI API key
-        echo ""
-        OPENAI_KEY=$(prompt "OpenAI API key (for voice transcription, optional)" "")
-
-    else
-        # Non-interactive defaults
-        COMPUTER_NAME=$(hostname | cut -d. -f1)
-        BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
-        USER_ID="${TELEGRAM_USER_ID:-}"
-        SUPERGROUP_ID="${TELEGRAM_SUPERGROUP_ID:-}"
-        OPENAI_KEY="${OPENAI_API_KEY:-}"
-
-        if [ -z "$BOT_TOKEN" ] || [ -z "$USER_ID" ] || [ -z "$SUPERGROUP_ID" ]; then
-            print_error "Non-interactive mode requires environment variables:"
-            print_error "  TELEGRAM_BOT_TOKEN"
-            print_error "  TELEGRAM_USER_ID"
-            print_error "  TELEGRAM_SUPERGROUP_ID"
-            exit 1
-        fi
-    fi
-
-    # Create .env
-    cat > "$INSTALL_DIR/.env" <<EOF
-# TeleClaude Configuration
-# Generated by install.sh on $(date)
-WORKING_DIR=${INSTALL_DIR}
-
-# Logging Configuration
-TELECLAUDE_LOG_LEVEL=INFO
-TELECLAUDE_THIRD_PARTY_LOG_LEVEL=WARNING
-TELECLAUDE_THIRD_PARTY_LOGGERS=
-
-# OpenAI API Key (for voice transcription via Whisper)
-OPENAI_API_KEY=${OPENAI_KEY}
-
-# Telegram Configuration
-TELEGRAM_BOT_TOKEN=${BOT_TOKEN}
-TELEGRAM_USER_IDS=${USER_ID}
-TELEGRAM_SUPERGROUP_ID=${SUPERGROUP_ID}
-EOF
-
-    print_success "Created .env file"
-
-    # Create config.yml if needed
-    if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-        cp "$INSTALL_DIR/config.yml.sample" "$INSTALL_DIR/config.yml"
-
-        # Update computer name and user in config.yml
-        if command -v sed &> /dev/null; then
-            sed -i.bak "s/name: .*/name: $COMPUTER_NAME/" "$INSTALL_DIR/config.yml"
-            sed -i.bak "s/user: {USER}/user: $USER/" "$INSTALL_DIR/config.yml"
-            rm -f "$INSTALL_DIR/config.yml.bak"
-        fi
-
-        print_success "Created config.yml"
-    else
-        print_info "config.yml already exists"
-    fi
+# Provision log directory
+provision_logs() {
+    print_info "Provisioning log directory..."
+    "$INSTALL_DIR/bin/provision-logs.sh" teleclaude
+    print_success "Log directory provisioned"
 }
 
-# Setup log file
-setup_log_file() {
-    print_header "Setting Up Log File"
-
-    print_info "Provisioning canonical log path (sudo may prompt)..."
-    local log_file
-    local provision_args=("teleclaude" "--print-log-file")
-    if [ "$NON_INTERACTIVE" = true ]; then
-        provision_args+=("--non-interactive")
-    fi
-
-    if ! log_file="$("$INSTALL_DIR/bin/provision-logs.sh" "${provision_args[@]}")"; then
-        print_error "Could not provision log file"
-        print_info "Re-run installer and approve sudo prompts."
-        exit 1
-    fi
-
-    DAEMON_LOG_FILE="$log_file"
-    print_success "Log file ready: $DAEMON_LOG_FILE"
-}
-
-# Install service
-install_service() {
-    print_header "Installing System Service"
-
-    case "$OS" in
-        linux)
-            install_systemd_service
-            ;;
-        macos)
-            install_launchd_service
-            ;;
-    esac
-}
-
-# Install systemd service (Linux)
-install_systemd_service() {
-    local service_name="teleclaude"
-    local service_file="/etc/systemd/system/${service_name}.service"
-    local path_file="/etc/systemd/system/${service_name}-config.path"
-
-    # Create wrapper script for SSH agent support
-    print_info "Creating daemon wrapper script..."
-    cat > "$INSTALL_DIR/bin/teleclaude-wrapper.sh" <<'EOF'
-#!/bin/bash
-# Source keychain SSH agent environment
-if [ -f ~/.keychain/$(hostname)-sh ]; then
-    source ~/.keychain/$(hostname)-sh
-fi
-# Execute daemon
-exec $INSTALL_DIR/.venv/bin/python -m teleclaude.daemon
-EOF
-    chmod +x "$INSTALL_DIR/bin/teleclaude-wrapper.sh"
-    print_success "Created daemon wrapper script"
-
-    # Create service file
-    print_info "Creating systemd service..."
-
-    sudo tee "$service_file" > /dev/null <<EOF
-[Unit]
-Description=TeleClaude Terminal Bridge Daemon
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$INSTALL_DIR
-Environment="PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
-# SSH_AUTH_SOCK sourced from keychain in wrapper
-ExecStart=$INSTALL_DIR/bin/teleclaude-wrapper.sh
-Restart=on-failure
-RestartSec=10
-StandardOutput=null
-StandardError=null
-KillMode=process
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    print_success "Created systemd service file"
-
-    # Create path unit to watch config.yml and restart on changes
-    print_info "Creating config watcher..."
-
-    sudo tee "$path_file" > /dev/null <<EOF
-[Unit]
-Description=TeleClaude Config File Watcher
-
-[Path]
-PathModified=$INSTALL_DIR/config.yml
-Unit=${service_name}.service
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    print_success "Created config watcher"
-
-    # Reload systemd
-    sudo systemctl daemon-reload
-
-    # Enable service and path watcher
-    print_info "Enabling service to start on boot..."
-    sudo systemctl enable "$service_name"
-    sudo systemctl enable "${service_name}-config.path"
-    print_success "Service enabled"
-
-    # Start service and path watcher
-    print_info "Starting service..."
-    sudo systemctl start "$service_name"
-    sudo systemctl start "${service_name}-config.path"
-
-    sleep 2
-
-    # Check status
-    if sudo systemctl is-active --quiet "$service_name"; then
-        print_success "Service started successfully"
-        print_info "Service commands:"
-        print_info "  Status:  sudo systemctl status $service_name"
-        print_info "  Stop:    sudo systemctl stop $service_name"
-        print_info "  Restart: sudo systemctl restart $service_name"
-        print_info "  Logs:    sudo journalctl -u $service_name -f"
-    else
-        print_error "Service failed to start"
-        print_info "Check logs: sudo journalctl -u $service_name -n 50"
-        exit 1
-    fi
-}
-
-# Install launchd service (macOS)
-install_launchd_service() {
-    local service_name="ai.instrukt.teleclaude.daemon"
-    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
-    local template_file="$INSTALL_DIR/config/ai.instrukt.teleclaude.daemon.plist.template"
-
-    # Create LaunchAgents directory if needed
-    mkdir -p "$HOME/Library/LaunchAgents"
-
-    # Create plist file from template
-    print_info "Creating launchd service from template..."
-
-    if [ ! -f "$template_file" ]; then
-        print_error "Template file not found: $template_file"
-        exit 1
-    fi
-
-    # Detect current PATH to ensure brew and other tools are accessible
-    # Priority: /opt/homebrew/bin (M1/ARM Macs), /usr/local/bin (Intel Macs), system paths
-    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-
-    # Add brew paths if they exist
-    if [ -d "/opt/homebrew/bin" ]; then
-        launchd_path="/opt/homebrew/bin:$launchd_path"
-    fi
-    if [ -d "/usr/local/bin" ]; then
-        launchd_path="/usr/local/bin:$launchd_path"
-    fi
-
-    # Remove duplicates from PATH
-    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
-
-    # Generate plist from template
-    sed -e "s|{{PYTHON_PATH}}|$INSTALL_DIR/.venv/bin/python|g" \
-        -e "s|{{WORKING_DIR}}|$INSTALL_DIR|g" \
-        -e "s|{{PATH}}|$launchd_path|g" \
-        "$template_file" > "$plist_file"
-
-    print_success "Created launchd plist file"
-
-    # Load service
-    print_info "Loading service..."
-    launchctl unload "$plist_file" 2>/dev/null || true
-    launchctl load "$plist_file"
-
-    sleep 2
-
-    # Check if running
-    if launchctl list | grep -q "$service_name"; then
-        print_success "Service loaded successfully"
-        print_info "Service commands:"
-        print_info "  Status:  launchctl list | grep teleclaude"
-        print_info "  Stop:    launchctl unload $plist_file"
-        print_info "  Start:   launchctl load $plist_file"
-        print_info "  Logs:    tail -f $DAEMON_LOG_FILE"
-    else
-        print_error "Service failed to load"
-        print_info "Check logs: tail -n 50 $DAEMON_LOG_FILE"
-        exit 1
-    fi
-}
-
-# Install Claude Code
-install_claude_code() {
-    print_header "Installing Claude Code"
-
-    if command -v claude &> /dev/null; then
-        CLAUDE_VERSION=$(claude --version 2>&1 || echo "unknown")
-        print_warning "Claude Code already installed ($CLAUDE_VERSION)"
-        if ! confirm "Reinstall Claude Code?" "n"; then
-            return 0
-        fi
-    fi
-
-    print_info "Installing Claude Code globally via npm..."
-    if npm install -g @anthropic-ai/claude-code &> "$LOG_FILE"; then
-        print_success "Claude Code installed successfully"
-        print_info "Note: You may need to restart your shell for 'claude' command to be available"
-    else
-        print_error "Failed to install Claude Code"
-        print_info "Check log: $LOG_FILE"
-        print_warning "You can install manually: npm install -g @anthropic-ai/claude-code"
-        # Don't exit - not critical for TeleClaude
-    fi
-}
-
-# Setup MCP integration for all agents
-setup_mcp_config() {
-    print_header "Configuring MCP Integration"
-
-    local mcp_template="$INSTALL_DIR/mcp.json"
-
-    if [ ! -f "$mcp_template" ]; then
-        print_warning "MCP template not found: $mcp_template"
-        return 0
-    fi
-
-    # Read MCP template and substitute INSTALL_DIR placeholder
-    local mcp_config
-    mcp_config=$(sed "s|{{INSTALL_DIR}}|$INSTALL_DIR|g" "$mcp_template")
-
-    # --- Claude Code (JSON) ---
-    local claude_config="$HOME/.claude.json"
-    if command -v claude &> /dev/null || [ -f "$claude_config" ]; then
-        print_info "Configuring Claude Code..."
-        local existing
-        existing=$(cat "$claude_config" 2>/dev/null || echo '{}')
-
-        echo "$existing" | jq --argjson mcp "$mcp_config" \
-            '.mcpServers.teleclaude = $mcp.mcpServers.teleclaude' > "$claude_config"
-
-        print_success "MCP server added to: $claude_config"
-    fi
-
-    # --- Gemini (JSON) ---
-    local gemini_dir="$HOME/.gemini"
-    local gemini_config="$gemini_dir/settings.json"
-    if [ -d "$gemini_dir" ]; then
-        print_info "Configuring Gemini..."
-        if [ ! -f "$gemini_config" ]; then
-            echo '{}' > "$gemini_config"
-        fi
-
-        local gemini_existing
-        gemini_existing=$(cat "$gemini_config" 2>/dev/null || echo '{}')
-
-        echo "$gemini_existing" | jq --argjson mcp "$mcp_config" \
-            '.mcpServers.teleclaude = $mcp.mcpServers.teleclaude' > "$gemini_config"
-
-        print_success "MCP server added to: $gemini_config"
-    fi
-
-    # --- Codex (TOML) ---
-    local codex_dir="$HOME/.codex"
-    local codex_config="$codex_dir/config.toml"
-    if [ -d "$codex_dir" ]; then
-        print_info "Configuring Codex..."
-        if [ ! -f "$codex_config" ]; then
-            touch "$codex_config"
-        fi
-
-        # Check if teleclaude is already configured
-        if ! grep -q "\[mcp_servers.teleclaude\]" "$codex_config"; then
-            echo "" >> "$codex_config"
-            echo "# TeleClaude MCP Server" >> "$codex_config"
-            echo "[mcp_servers.teleclaude]" >> "$codex_config"
-            echo "command = \"python3\"" >> "$codex_config"
-            echo "args = [\"$INSTALL_DIR/bin/mcp-wrapper.py\"]" >> "$codex_config"
-            print_success "MCP server appended to: $codex_config"
-        else
-            # Update existing config (simple replacement of args line if path changed)
-            # This is a naive update, assuming standard formatting
-            # For robustness, we could use a python script, but grep/sed is fast for now
-            print_info "Codex MCP config already present, ensuring path is correct..."
-            # TODO: Implement robust TOML update if needed
-        fi
-    fi
-
-    print_info "Using mcp-wrapper.py at: $INSTALL_DIR/bin/mcp-wrapper.py"
-}
-
-# Setup agent hooks
-setup_agent_hooks() {
-    print_header "Configuring Agent Hooks"
-    print_info "Running scripts/install_hooks.py..."
-    
-    if "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/scripts/install_hooks.py"; then
-        print_success "Agent hooks configured"
-    else
-        print_error "Failed to configure agent hooks"
-        # Don't exit, might be partial failure
-    fi
-}
-
-# Main installation flow
+# Main
 main() {
-    print_header "TeleClaude Installation"
+    print_header "TeleClaude Install"
+    log "Install started in $INSTALL_DIR"
 
-    log "Installation started in $INSTALL_DIR"
-
-    # Pre-flight checks
     detect_os
     check_python
     check_node
 
-    # Install dependencies
     install_system_deps
+    install_python_deps
+    provision_logs
 
-    # Setup Python environment
-    setup_venv
-
-    # Configuration
-    setup_config
-
-    # Setup log file
-    setup_log_file
-
-    # Install service
-    install_service
-
-    # Configure MCP integration
-    setup_mcp_config
-
-    # Configure Agent Hooks
-    setup_agent_hooks
-
-    # Success message
-    print_header "Installation Complete!"
-
+    print_header "Install Complete"
+    print_success "Binaries and Python dependencies installed"
     echo ""
-    print_success "TeleClaude has been installed successfully!"
-    echo ""
-    print_info "Next steps:"
-    echo "  1. Go to your Telegram supergroup"
-    echo "  2. Send: /new_session"
-    echo "  3. Start sending commands!"
-    echo ""
-    print_info "The daemon is running as a system service and will:"
-    echo "  • Start automatically on boot"
-    echo "  • Restart automatically if it crashes"
-    echo "  • Log to: $DAEMON_LOG_FILE"
-    echo ""
-    print_warning "IMPORTANT: Do NOT manually start the daemon!"
-    print_warning "The service manages the daemon automatically."
+    print_info "Next step: Run 'make init' for first-time setup"
     echo ""
 
-    log "Installation completed successfully"
+    log "Install completed"
 }
 
-# Run main
 main "$@"

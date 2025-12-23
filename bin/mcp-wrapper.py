@@ -58,9 +58,6 @@ OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
 LOG_THROTTLE_S = 60.0
 _EPERM_BACKOFF_S = 60.0
 
-# If true, always proxy to backend (never use cached handshake)
-DISABLE_STATIC_HANDSHAKE = os.getenv("MCP_DISABLE_STATIC_HANDSHAKE", "false").lower() == "true"
-
 _ERR_BACKEND_UNAVAILABLE = -32000
 
 
@@ -625,9 +622,7 @@ class MCPProxy:
                 request_id = msg.get("id", 1)
                 self._client_initialize_request = line
                 self._client_initialize_id = request_id
-
-                # Determine timeout based on static handshake setting
-                timeout = None if DISABLE_STATIC_HANDSHAKE else 0.5
+                timeout = 0.5
 
                 # Wait for backend - if it connects, proxy the real handshake
                 try:
