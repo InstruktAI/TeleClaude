@@ -19,7 +19,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.constants import MCP_ENABLED
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -163,16 +162,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Initialize MCP server (if enabled)
         self.mcp_server: Optional[TeleClaudeMCPServer] = None
-        logger.debug("MCP enabled: %s", MCP_ENABLED)
-        if MCP_ENABLED:
-            try:
-                self.mcp_server = TeleClaudeMCPServer(
-                    adapter_client=self.client,
-                    terminal_bridge=terminal_bridge,
-                )
-                logger.info("MCP server object created successfully")
-            except Exception as e:
-                logger.error("Failed to create MCP server: %s", e, exc_info=True)
+        try:
+            self.mcp_server = TeleClaudeMCPServer(
+                adapter_client=self.client,
+                terminal_bridge=terminal_bridge,
+            )
+            logger.info("MCP server object created successfully")
+        except Exception as e:
+            logger.error("Failed to create MCP server: %s", e, exc_info=True)
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
@@ -396,15 +393,34 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         agent_event_type = context.event_type
-        session_id = context.session_id
 
+        # Handle STOP event in background to prevent hook timeout during summarization
         if agent_event_type == AgentHookEvents.AGENT_STOP:
-            payload = cast(AgentStopPayload, context.data)
+            task = asyncio.create_task(self._process_agent_stop(context))
+            task.add_done_callback(self._log_background_task_exception("process_agent_stop"))
+            return
+
+        # Dispatch other events synchronously
+        if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
+            await self.agent_coordinator.handle_session_start(context)
+        elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
+            await self.agent_coordinator.handle_notification(context)
+        elif agent_event_type == AgentHookEvents.AGENT_SESSION_END:
+            await self.agent_coordinator.handle_session_end(context)
+
+    async def _process_agent_stop(self, context: AgentEventContext) -> None:
+        """Process agent stop event (summarization + coordination)."""
+        session_id = context.session_id
+        payload = cast(AgentStopPayload, context.data)
+
+        try:
             ux_state = await db.get_ux_state(session_id)
             if not ux_state.active_agent:
                 raise ValueError(f"Session {session_id[:8]} missing active_agent metadata")
+
             agent_name = AgentName.from_str(ux_state.active_agent)
             title, summary = await summarize(agent_name, payload.transcript_path)
+
             payload.summary = summary
             payload.title = title
             payload.raw["summary"] = payload.summary
@@ -418,15 +434,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 raise ValueError(f"Summary feedback requires active session: {session_id}")
             await self.client.send_feedback(session, summary, MessageMetadata(adapter_type="internal"))
 
-        # Dispatch to coordinator
-        if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
-            await self.agent_coordinator.handle_session_start(context)
-        elif agent_event_type == AgentHookEvents.AGENT_STOP:
+            # Dispatch to coordinator
             await self.agent_coordinator.handle_stop(context)
-        elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
-            await self.agent_coordinator.handle_notification(context)
-        elif agent_event_type == AgentHookEvents.AGENT_SESSION_END:
-            await self.agent_coordinator.handle_session_end(context)
+
+        except Exception as e:
+            logger.error("Failed to process agent stop event for session %s: %s", session_id[:8], e)
+            # Try to report error to user
+            try:
+                session = await db.get_session(session_id)
+                if session:
+                    await self.client.send_feedback(
+                        session,
+                        f"Error processing session summary: {e}",
+                        MessageMetadata(adapter_type="internal"),
+                    )
+            except Exception:
+                pass
 
     async def _handle_error(self, _event: str, context: EventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
