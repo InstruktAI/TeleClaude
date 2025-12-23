@@ -79,7 +79,7 @@ async def test_send_result_with_missing_session(mock_mcp_server):
 
 @pytest.mark.asyncio
 async def test_send_result_strips_outer_codeblock(mock_mcp_server):
-    """Test that outer code block is stripped."""
+    """Test that outer code block is stripped and re-wrapped with md."""
     server = mock_mcp_server
 
     mock_session = MagicMock()
@@ -91,16 +91,38 @@ async def test_send_result_strips_outer_codeblock(mock_mcp_server):
         # Content wrapped in code block
         await server.teleclaude__send_result("test-session-123", "```\nActual content\n```")
 
-    # Check that send_message was called with stripped content
+    # Check that send_message was called with re-wrapped content
     call_args = server.client.send_message.call_args
     sent_text = call_args.kwargs["text"]
     assert "Actual content" in sent_text
-    assert not sent_text.startswith("```")
+    # Should be wrapped in ```md ... ```
+    assert sent_text.startswith("```md")
+    assert sent_text.endswith("```")
+
+
+@pytest.mark.asyncio
+async def test_send_result_wraps_content_in_markdown_codeblock(mock_mcp_server):
+    """Test that content is wrapped in ```md code block."""
+    server = mock_mcp_server
+
+    mock_session = MagicMock()
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        await server.teleclaude__send_result("test-session-123", "# Title\n\nSome content")
+
+    call_args = server.client.send_message.call_args
+    sent_text = call_args.kwargs["text"]
+    # Content should be wrapped in markdown code block
+    assert sent_text.startswith("```md\n")
+    assert sent_text.endswith("\n```")
+    assert "# Title" in sent_text
 
 
 @pytest.mark.asyncio
 async def test_send_result_applies_markdown_escaping(mock_mcp_server):
-    """Test that MarkdownV2 escaping is applied."""
+    """Test that MarkdownV2 escaping is applied outside code blocks."""
     server = mock_mcp_server
 
     mock_session = MagicMock()
@@ -110,12 +132,12 @@ async def test_send_result_applies_markdown_escaping(mock_mcp_server):
 
         await server.teleclaude__send_result("test-session-123", "Text with . and !")
 
-    # Check that send_message was called with escaped content
+    # Check that send_message was called with content in code block
     call_args = server.client.send_message.call_args
     sent_text = call_args.kwargs["text"]
-    # Special characters should be escaped
-    assert "\\." in sent_text
-    assert "\\!" in sent_text
+    # Content is inside code block, so special chars should NOT be escaped
+    assert "```md" in sent_text
+    assert "Text with . and !" in sent_text
 
 
 @pytest.mark.asyncio

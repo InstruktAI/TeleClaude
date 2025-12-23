@@ -1660,6 +1660,9 @@ class TeleClaudeMCPServer:
         # Strip outer codeblock if present (AI often wraps output)
         processed_content = strip_outer_codeblock(content)
 
+        # Wrap in markdown code block for Telegram rendering
+        processed_content = f"```md\n{processed_content}\n```"
+
         # Apply MarkdownV2 escaping
         formatted_content = escape_markdown_v2(processed_content)
 
