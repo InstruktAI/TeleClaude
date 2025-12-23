@@ -251,12 +251,21 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
             )
 
         # Send command with marker (no pipes - don't leak file descriptors)
-        cmd_text = ["tmux", "send-keys", "-t", session_name, command_text]
-        result = await asyncio.create_subprocess_exec(*cmd_text)
-        await result.wait()
+        # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
+        # start a long-lived process that would inherit the pipe, so this is safe.
+        cmd_text = ["tmux", "send-keys", "-t", session_name, "--", command_text]
+        result = await asyncio.create_subprocess_exec(
+            *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await result.communicate()
 
         if result.returncode != 0:
-            logger.error("Failed to send text to session %s: returncode=%d", session_name, result.returncode)
+            logger.error(
+                "Failed to send text to session %s: returncode=%d, stderr=%s",
+                session_name,
+                result.returncode,
+                stderr.decode().strip(),
+            )
             return False, None
 
         # Small delay to let text be processed
@@ -265,11 +274,18 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         # Send Enter key if requested (skip for arrow keys, etc.)
         if send_enter:
             cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
-            result = await asyncio.create_subprocess_exec(*cmd_enter)
-            await result.wait()
+            result = await asyncio.create_subprocess_exec(
+                *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await result.communicate()
 
             if result.returncode != 0:
-                logger.error("Failed to send Enter to session %s: returncode=%d", session_name, result.returncode)
+                logger.error(
+                    "Failed to send Enter to session %s: returncode=%d, stderr=%s",
+                    session_name,
+                    result.returncode,
+                    stderr.decode().strip(),
+                )
                 return False, None
 
         return True, marker_id
