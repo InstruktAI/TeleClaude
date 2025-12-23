@@ -1,7 +1,21 @@
 # Roadmap
 
-> **Last Updated**: 2025-12-17
-> **Status Legend**: `[ ]` = Todo | `[~]` = In Progress | `[x]` = Done
+> **Last Updated**: 2025-12-23
+> **Status Legend**: `[ ]` = Todo | `[>]` = In Progress | `[x]` = Done
+
+---
+
+## MCP Tools
+
+### [>] Send Result Tool
+
+Add `teleclaude__send_result` MCP tool to allow AI agents to send formatted results (markdown tables, reports, analysis) as separate messages to the user, instead of only showing output in the streaming terminal message.
+
+**Key decisions:**
+- Use MarkdownV2 formatting (modern, better escaping)
+- Strip outer backticks from AI content, re-wrap with proper formatting
+- Messages persist (not auto-deleted like feedback)
+- Session ID auto-injected from `TELECLAUDE_SESSION_ID`
 
 ---
 

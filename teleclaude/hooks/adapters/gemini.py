@@ -36,7 +36,7 @@ def _with_transcript(data: dict[str, object]) -> dict[str, object]:
 
 def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:
     handlers: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
-        AgentHookEvents.AGENT_SESSION_START: _with_transcript,
+        AgentHookEvents.AGENT_SESSION_START: _passthrough,  # Transcript doesn't exist yet
         AgentHookEvents.AGENT_STOP: _with_transcript,
         AgentHookEvents.AGENT_NOTIFICATION: _passthrough,
         AgentHookEvents.AGENT_SESSION_END: _passthrough,
