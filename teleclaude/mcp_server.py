@@ -24,6 +24,7 @@ from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
 from teleclaude.core.session_listeners import register_listener, unregister_listener
+from teleclaude.utils.markdown import escape_markdown_v2, strip_outer_codeblock
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -443,6 +444,41 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
+                    name="teleclaude__send_result",
+                    title="TeleClaude: Send Result",
+                    description=(
+                        "Send formatted results to the user as a separate message (not in the streaming terminal output).\n"
+                        "\n"
+                        "Use this tool when:\n"
+                        "- User asks for analysis, reports, or structured output\n"
+                        "- You have results to present (tables, lists, summaries)\n"
+                        '- User explicitly asks to "show results" or "display findings"\n'
+                        "- Output would be cleaner as a standalone message vs terminal stream\n"
+                        "\n"
+                        "Content MUST be valid Markdown. Examples:\n"
+                        "- Tables: | Col1 | Col2 |\\n|------|------|\\n| val1 | val2 |\n"
+                        "- Code blocks: ```python\\ncode here\\n```\n"
+                        "- Lists, headers, bold/italic text\n"
+                        "\n"
+                        "The message appears as a separate chat message, persists until session ends, "
+                        "and renders with full Markdown formatting."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "session_id": {
+                                "type": "string",
+                                "description": "TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "Markdown-formatted content to display",
+                            },
+                        },
+                        "required": ["session_id", "content"],
+                    },
+                ),
+                Tool(
                     name="teleclaude__stop_notifications",
                     title="TeleClaude: Stop Notifications",
                     description=(
@@ -632,6 +668,11 @@ class TeleClaudeMCPServer:
                 caption = str(caption_obj) if caption_obj else None
                 result_text = await self.teleclaude__send_file(session_id, file_path, caption)
                 return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__send_result":
+                session_id = str(arguments.get("session_id", "")) if arguments else ""
+                content = str(arguments.get("content", "")) if arguments else ""
+                result = await self.teleclaude__send_result(session_id, content)
+                return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__stop_notifications":
                 computer = str(arguments.get("computer", "")) if arguments else ""
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
@@ -1596,6 +1637,58 @@ class TeleClaudeMCPServer:
         except Exception as e:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"
+
+    async def teleclaude__send_result(self, session_id: str, content: str) -> dict[str, object]:
+        """Send formatted result to user as separate message.
+
+        Args:
+            session_id: TeleClaude session UUID
+            content: Markdown-formatted content
+
+        Returns:
+            Success dict with message_id or error dict
+        """
+        # Validate content
+        if not content or not content.strip():
+            return {"status": "error", "message": "Content cannot be empty"}
+
+        # Get session
+        session = await db.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": f"Session {session_id} not found"}
+
+        # Strip outer codeblock if present (AI often wraps output)
+        processed_content = strip_outer_codeblock(content)
+
+        # Apply MarkdownV2 escaping
+        formatted_content = escape_markdown_v2(processed_content)
+
+        # Handle Telegram 4096 char limit
+        if len(formatted_content) > 4096:
+            formatted_content = formatted_content[:4090] + "\n..."
+
+        # Send message with MarkdownV2 formatting
+        metadata = MessageMetadata(parse_mode="MarkdownV2")
+
+        try:
+            message_id = await self.client.send_message(session=session, text=formatted_content, metadata=metadata)
+            return {"status": "success", "message_id": message_id}
+        except Exception as e:
+            # Fallback to plain text if MarkdownV2 parsing fails
+            logger.warning("MarkdownV2 send failed, falling back to plain text: %s", e)
+            try:
+                metadata_plain = MessageMetadata(parse_mode="")
+                message_id = await self.client.send_message(
+                    session=session, text=processed_content[:4096], metadata=metadata_plain
+                )
+                return {
+                    "status": "success",
+                    "message_id": message_id,
+                    "warning": "Sent as plain text due to formatting error",
+                }
+            except Exception as fallback_error:
+                logger.error("Failed to send result: %s", fallback_error)
+                return {"status": "error", "message": f"Failed to send result: {fallback_error}"}
 
     async def teleclaude__stop_notifications(
         self,
