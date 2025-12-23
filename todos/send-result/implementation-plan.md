@@ -21,25 +21,25 @@
 
 ### Group 2: Message Handling
 
-- [ ] **DEPENDS: Group 1** Add `send_result` method to `TelegramAdapter`:
-  - Accept session and markdown content
-  - Apply MarkdownV2 escaping
-  - Handle Telegram 4096 char limit (truncate with indicator)
-  - Fallback to plain text if MarkdownV2 parsing fails
-  - Return message_id
+- [x] **DEPENDS: Group 1** ~~Add `send_result` method to `TelegramAdapter`~~ (Not needed - implemented in MCP server using AdapterClient.send_message):
+  - ~~Accept session and markdown content~~
+  - ~~Apply MarkdownV2 escaping~~
+  - ~~Handle Telegram 4096 char limit (truncate with indicator)~~
+  - ~~Fallback to plain text if MarkdownV2 parsing fails~~
+  - ~~Return message_id~~
 
-- [ ] **DEPENDS: Group 1** Update `bin/mcp-wrapper.py` TOOL_NAMES list:
-  - Add "teleclaude__send_result" to the list of public tools
-  - Ensure it's not filtered out from clients
+- [x] **DEPENDS: Group 1** Update `bin/mcp-wrapper.py` TOOL_NAMES list:
+  - Tool auto-discovered via grep pattern (no manual update needed)
+  - Verified not in exclusion list
 
 ### Group 3: Testing
 
-- [ ] **DEPENDS: Group 2** Add unit tests in `tests/unit/test_markdown_utils.py`:
+- [x] **DEPENDS: Group 2** Add unit tests in `tests/unit/test_markdown_utils.py`:
   - Test `escape_markdown_v2()` with various inputs
   - Test `strip_outer_codeblock()` preserves inner content
   - Test edge cases: empty string, no backticks, nested code blocks
 
-- [ ] **DEPENDS: Group 2** Add unit tests in `tests/unit/test_mcp_send_result.py`:
+- [x] **DEPENDS: Group 2** Add unit tests in `tests/unit/test_mcp_send_result.py`:
   - Test tool returns error for empty content
   - Test tool returns error for missing session
   - Test successful send returns message_id
