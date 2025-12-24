@@ -214,3 +214,29 @@ async def test_send_result_error_on_complete_failure(mock_mcp_server):
 
     assert result["status"] == "error"
     assert "Network error" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_send_result_handles_nested_backticks_in_code_blocks(mock_mcp_server):
+    """Test that nested ``` inside code blocks are properly escaped."""
+    server = mock_mcp_server
+
+    mock_session = MagicMock()
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        # Content with nested code block example
+        content = "Here's a code example:\n```python\nprint('```')\n```"
+        await server.teleclaude__send_result("test-session-123", content)
+
+    call_args = server.client.send_message.call_args
+    sent_text = call_args.kwargs["text"]
+    # Library escapes backticks inside code blocks as \` - verify they're escaped
+    # The raw ``` should NOT appear inside the code block (would break markdown)
+    # Instead it should be escaped as \`\`\` or `\u200b``
+    assert "print" in sent_text
+    # The triple backtick inside should be escaped (not raw)
+    code_block_content = sent_text.split("```python\n")[1].split("\n```")[0]
+    # Should not have raw unescaped ``` inside the code block
+    assert "```" not in code_block_content or "\\`" in code_block_content or "\u200b" in code_block_content

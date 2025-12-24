@@ -1662,9 +1662,20 @@ class TeleClaudeMCPServer:
         # This handles: bold (**→*), italic (*→_), code blocks, tables, escaping
         formatted_content = markdownify(content)
 
+        # Escape nested ``` inside code blocks to prevent markdown breaking
+        # Uses zero-width space to break the sequence (same approach as edit_message)
+        def escape_nested_backticks(match: re.Match[str]) -> str:
+            lang = match.group(1) or ""
+            block_content = match.group(2)
+            escaped = block_content.replace("```", "`\u200b``")
+            return f"```{lang}\n{escaped}```"
+
+        formatted_content = re.sub(r"```(\w*)\n(.*?)```", escape_nested_backticks, formatted_content, flags=re.DOTALL)
+
         # Add 'md' language to plain code blocks (library leaves them without language)
         # This ensures proper syntax highlighting in Telegram instead of just "copy" button
-        formatted_content = re.sub(r"^```\n", "```md\n", formatted_content, flags=re.MULTILINE)
+        # Only match OPENING ``` (followed by content), not CLOSING (followed by blank line/end)
+        formatted_content = re.sub(r"^```\n(?!\n|$)", "```md\n", formatted_content, flags=re.MULTILINE)
 
         # Handle Telegram 4096 char limit
         if len(formatted_content) > 4096:
