@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from mcp.server import Server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
+from telegramify_markdown import markdownify
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
@@ -24,7 +25,6 @@ from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
 from teleclaude.core.session_listeners import register_listener, unregister_listener
-from teleclaude.utils.markdown import escape_markdown_v2, strip_outer_codeblock
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -1657,14 +1657,9 @@ class TeleClaudeMCPServer:
         if not session:
             return {"status": "error", "message": f"Session {session_id} not found"}
 
-        # Strip outer codeblock if present (AI often wraps output)
-        processed_content = strip_outer_codeblock(content)
-
-        # Wrap in markdown code block for Telegram rendering
-        processed_content = f"```md\n{processed_content}\n```"
-
-        # Apply MarkdownV2 escaping
-        formatted_content = escape_markdown_v2(processed_content)
+        # Convert GitHub-style markdown to Telegram MarkdownV2
+        # This handles: bold (**→*), italic (*→_), code blocks, tables, escaping
+        formatted_content = markdownify(content)
 
         # Handle Telegram 4096 char limit
         if len(formatted_content) > 4096:
@@ -1682,7 +1677,7 @@ class TeleClaudeMCPServer:
             try:
                 metadata_plain = MessageMetadata(parse_mode="")
                 message_id = await self.client.send_message(
-                    session=session, text=processed_content[:4096], metadata=metadata_plain
+                    session=session, text=content[:4096], metadata=metadata_plain
                 )
                 return {
                     "status": "success",
