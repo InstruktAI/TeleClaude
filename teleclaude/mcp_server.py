@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import shlex
 import types
 from datetime import datetime
@@ -1660,6 +1661,10 @@ class TeleClaudeMCPServer:
         # Convert GitHub-style markdown to Telegram MarkdownV2
         # This handles: bold (**→*), italic (*→_), code blocks, tables, escaping
         formatted_content = markdownify(content)
+
+        # Add 'md' language to plain code blocks (library leaves them without language)
+        # This ensures proper syntax highlighting in Telegram instead of just "copy" button
+        formatted_content = re.sub(r"^```\n", "```md\n", formatted_content, flags=re.MULTILINE)
 
         # Handle Telegram 4096 char limit
         if len(formatted_content) > 4096:

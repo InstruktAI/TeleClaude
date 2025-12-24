@@ -118,6 +118,27 @@ async def test_send_result_converts_headers(mock_mcp_server):
 
 
 @pytest.mark.asyncio
+async def test_send_result_adds_md_language_to_plain_code_blocks(mock_mcp_server):
+    """Test that plain code blocks get 'md' language added."""
+    server = mock_mcp_server
+
+    mock_session = MagicMock()
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        # Tables get wrapped in plain ``` by the library
+        await server.teleclaude__send_result("test-session-123", "| A | B |\n|---|---|\n| 1 | 2 |")
+
+    call_args = server.client.send_message.call_args
+    sent_text = call_args.kwargs["text"]
+    # Plain code blocks should have 'md' language added
+    assert "```md\n" in sent_text
+    # Should not have plain ``` without language
+    assert "\n```\n" not in sent_text or sent_text.count("```") == 2  # opening and closing only
+
+
+@pytest.mark.asyncio
 async def test_send_result_truncates_long_content(mock_mcp_server):
     """Test that content longer than 4096 chars is truncated."""
     server = mock_mcp_server
