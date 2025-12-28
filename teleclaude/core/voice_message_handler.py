@@ -265,7 +265,7 @@ async def handle_voice(
         return
 
     logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], text)
-    success, _ = await terminal_bridge.send_keys(
+    success = await terminal_bridge.send_keys(
         session.tmux_session_name,
         text,
         session_id=session_id,

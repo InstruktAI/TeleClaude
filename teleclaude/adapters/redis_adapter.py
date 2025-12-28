@@ -1030,8 +1030,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                         if not chunk:
                             continue
 
-                        # Skip exit markers and system messages
-                        if "__EXIT__" in chunk or chunk.startswith("[") or "⏳" in chunk:
+                        # Skip system messages
+                        if chunk.startswith("[") or "⏳" in chunk:
                             continue
 
                         # This is a message from the initiator - trigger MESSAGE event

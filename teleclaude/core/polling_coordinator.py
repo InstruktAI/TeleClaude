@@ -7,7 +7,7 @@ Handles polling lifecycle orchestration and event routing to message manager.
 import asyncio
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 
@@ -55,7 +55,6 @@ async def schedule_polling(
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
-    marker_id: Optional[str] = None,
 ) -> bool:
     """Schedule polling in the background with an in-memory guard.
 
@@ -75,7 +74,6 @@ async def schedule_polling(
             output_poller=output_poller,
             adapter_client=adapter_client,
             get_output_file=get_output_file,
-            marker_id=marker_id,
             _skip_register=True,
         )
     )
@@ -88,7 +86,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
     output_poller: OutputPoller,
     adapter_client: "AdapterClient",
     get_output_file: Callable[[str], Path],
-    marker_id: Optional[str] = None,
     _skip_register: bool = False,
 ) -> None:
     """Poll terminal output and send to all adapters for session.
@@ -102,7 +99,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         output_poller: Output poller instance
         adapter_client: AdapterClient instance (broadcasts to all adapters)
         get_output_file: Function to get output file path for session
-        marker_id: Unique marker ID for exit detection (None = no exit marker)
     """
     if not _skip_register:
         if not await _register_polling(session_id):
@@ -117,7 +113,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
     try:
         # Consume events from pure poller
-        async for event in output_poller.poll(session_id, tmux_session_name, output_file, marker_id):
+        async for event in output_poller.poll(session_id, tmux_session_name, output_file):
             if isinstance(event, OutputChanged):
                 logger.trace(
                     "[COORDINATOR %s] Received OutputChanged event from poller",

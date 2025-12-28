@@ -19,7 +19,7 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 # User's shell basename, computed once at import
-# Used for shell readiness detection in send_keys()
+# Used for shell readiness detection in is_process_running()/wait_for_shell_ready()
 _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
 
 
@@ -191,12 +191,8 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
     cols: int = 80,
     rows: int = 24,
     send_enter: bool = True,
-) -> tuple[bool, Optional[str]]:
+) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
-
-    Exit markers are automatically appended when shell is ready. Automatic detection:
-    - Shell ready (current_command matches user's shell): append marker
-    - Process running (current_command is NOT shell): no marker (sending input)
 
     If the session doesn't exist (crashed or never created), creates a fresh
     session with the same name. Previous state is lost - this is NOT recovery,
@@ -212,9 +208,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
 
     Returns:
-        tuple[bool, Optional[str]]: (success, marker_id)
-        - success: True if command sent successfully, False on failure
-        - marker_id: marker ID if exit marker was appended, None if no marker (process running)
+        bool: True if command sent successfully, False on failure
     """
     try:
         # Check if session exists, create if not
@@ -229,28 +223,12 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
             )
             if not success:
                 logger.error("Failed to create session %s", session_name)
-                return False, None
+                return False
             logger.info("Created fresh session %s", session_name)
 
-        # Automatic exit marker decision: check if shell is ready
-        current_command = await get_current_command(session_name)
-        append_exit_marker = not current_command or current_command.lower() == _SHELL_NAME
+        command_text = text
 
-        marker_id = None
-        if not append_exit_marker:
-            # Sending input to running process - no marker
-            command_text = text
-            logger.debug("Sending input WITHOUT exit marker to %s (process running: %s)", session_name, current_command)
-        else:
-            # Append exit marker with unique ID for reliable completion detection
-            # Hash-based marker_id ensures each command has unique marker (immune to old scrollback)
-            marker_id = hashlib.md5(f"{text}:{time.time()}".encode()).hexdigest()[:8]
-            command_text = f'{text}; echo "__EXIT__{marker_id}__$?__"'
-            logger.debug(
-                "Sending command WITH exit marker %s to %s (shell ready: %s)", marker_id, session_name, current_command
-            )
-
-        # Send command with marker (no pipes - don't leak file descriptors)
+        # Send command (no pipes - don't leak file descriptors)
         # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
         # start a long-lived process that would inherit the pipe, so this is safe.
         cmd_text = ["tmux", "send-keys", "-t", session_name, "--", command_text]
@@ -266,7 +244,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
                 result.returncode,
                 stderr.decode().strip(),
             )
-            return False, None
+            return False
 
         # Small delay to let text be processed
         await asyncio.sleep(0.1)
@@ -286,13 +264,13 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
                     result.returncode,
                     stderr.decode().strip(),
                 )
-                return False, None
+                return False
 
-        return True, marker_id
+        return True
 
     except Exception as e:
         logger.exception("Error sending keys to tmux session %s: %s", session_name, e)
-        return False, None
+        return False
 
 
 async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:

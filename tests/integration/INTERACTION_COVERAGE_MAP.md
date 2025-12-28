@@ -168,7 +168,7 @@ Map component interactions covered by each e2e test to identify:
 ### test_process_exit_detection.py
 **Tests:** 2
 **Interactions Covered:**
-- Polling → exit marker detection
+- Polling → shell-return detection
 - Database → UX state (process state tracking)
 - Daemon restart → state persistence
 

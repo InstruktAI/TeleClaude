@@ -657,7 +657,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
 
             # Inject into caller's tmux session
-            success, error = await send_keys(
+            success = await send_keys(
                 session_name=listener.caller_tmux_session,
                 text=notification,
                 send_enter=True,
@@ -671,9 +671,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 )
             else:
                 logger.warning(
-                    "Failed to notify caller %s: %s",
+                    "Failed to notify caller %s",
                     listener.caller_session_id[:8],
-                    error,
                 )
 
     async def _handle_input_notification(self, _event: str, context: SessionCommandContext) -> None:
@@ -727,7 +726,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
 
             # Inject into caller's tmux session
-            success, error = await send_keys(
+            success = await send_keys(
                 session_name=listener.caller_tmux_session,
                 text=notification,
                 send_enter=True,
@@ -741,9 +740,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 )
             else:
                 logger.warning(
-                    "Failed to forward input request to listener %s: %s",
+                    "Failed to forward input request to listener %s",
                     listener.caller_session_id[:8],
-                    error,
                 )
 
     def _get_output_file_path(self, session_id: str) -> Path:
@@ -867,8 +865,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     ) -> bool:
         """Execute command in terminal and start polling if needed.
 
-        Exit markers are automatically appended based on shell readiness.
-
         Args:
             session_id: Session ID
             command: Command to execute
@@ -892,9 +888,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except ValueError:
                 pass
 
-        # Send command (automatic exit marker decision based on shell readiness)
-        # Returns (success, marker_id) tuple
-        success, marker_id = await terminal_bridge.send_keys(
+        # Send command
+        success = await terminal_bridge.send_keys(
             session.tmux_session_name,
             command,
             session_id=session.session_id,
@@ -922,7 +917,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Start polling only if requested by handler
         # Handlers know whether their commands need polling (cd=instant, claude=long-running)
         if start_polling:
-            await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id)
+            await self._poll_and_send_output(session_id, session.tmux_session_name)
 
         logger.info("Executed command in session %s: %s (polling=%s)", session_id[:8], command, start_polling)
         return True
@@ -1232,9 +1227,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
 
         # Send command to terminal (will create fresh session if needed)
-        # Automatic exit marker decision based on shell readiness
-        # Returns (success, marker_id) tuple
-        success, marker_id = await terminal_bridge.send_keys(
+        success = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
             session_id=session.session_id,
@@ -1255,10 +1248,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Update activity
         await db.update_last_activity(session_id)
 
-        # Start polling with marker_id for exit detection
-        # send_keys() already decided whether to append marker based on shell readiness
-        await self._poll_and_send_output(session_id, session.tmux_session_name, marker_id=marker_id)
-        logger.debug("Started polling for session %s with marker_id=%s", session_id[:8], marker_id)
+        # Start polling for output updates
+        await self._poll_and_send_output(session_id, session.tmux_session_name)
+        logger.debug("Started polling for session %s", session_id[:8])
 
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up inactive sessions (72h lifecycle) and orphaned tmux sessions."""
@@ -1307,7 +1299,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         output_poller=self.output_poller,
                         adapter_client=self.client,
                         get_output_file=self._get_output_file_path,
-                        marker_id=None,
                     )
             except asyncio.CancelledError:
                 break
@@ -1348,15 +1339,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         except Exception as e:
             logger.error("Error cleaning up inactive sessions: %s", e)
 
-    async def _poll_and_send_output(
-        self, session_id: str, tmux_session_name: str, marker_id: Optional[str] = None
-    ) -> None:
+    async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None:
         """Wrapper around polling_coordinator.schedule_polling (creates background task).
 
         Args:
             session_id: Session ID
             tmux_session_name: tmux session name
-            marker_id: Unique marker ID for exit detection (None = no exit marker)
         """
         await polling_coordinator.schedule_polling(
             session_id=session_id,
@@ -1364,7 +1352,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             output_poller=self.output_poller,
             adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
             get_output_file=self._get_output_file_path,
-            marker_id=marker_id,
         )
 
 

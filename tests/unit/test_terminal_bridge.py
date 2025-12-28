@@ -19,90 +19,27 @@ class TestSendKeys:
     """Tests for send_keys() function."""
 
     @pytest.mark.asyncio
-    async def test_append_exit_marker_when_shell_ready(self):
-        """Test that exit marker is appended when shell is ready (current_command is 'zsh')."""
+    async def test_send_keys_sends_text(self):
+        """Test that send_keys sends the provided text as-is."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
             # Mock subprocess
             mock_process = MagicMock()
             mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
+            mock_process.communicate = AsyncMock(return_value=(b"", b""))
             mock_exec.return_value = mock_process
 
-            # Mock session exists and get_current_command returns shell
-            with patch.object(terminal_bridge, "session_exists", return_value=True):
-                with patch.object(terminal_bridge, "get_current_command", return_value="zsh"):
-                    # Execute - should automatically append marker
-                    success, marker_id = await terminal_bridge.send_keys(session_name="test-session", text="ls -la")
+            # Mock session exists
+            with patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)):
+                success = await terminal_bridge.send_keys(session_name="test-session", text="ls -la")
 
-                    assert success is True
-                    assert marker_id is not None, "Should return auto-generated marker_id"
+                assert success is True
 
-                    # Verify send_keys command includes exit marker
-                    call_args_list = mock_exec.call_args_list
-                    # Find the send-keys call (not Enter)
-                    send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
-                    assert len(send_keys_call) > 0
-
-                    # Check that the command includes exit marker with marker_id
-                    text_arg = send_keys_call[0][0][4]  # 5th argument is the text
-                    assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker with marker_id"
-                    assert "ls -la" in text_arg, "Should include original command"
-
-    @pytest.mark.asyncio
-    async def test_no_exit_marker_when_process_running(self):
-        """Test that exit marker is NOT appended when a process is running (e.g., vim)."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Mock session exists and get_current_command returns 'vim'
-            with patch.object(terminal_bridge, "session_exists", return_value=True):
-                with patch.object(terminal_bridge, "get_current_command", return_value="vim"):
-                    # Execute - should NOT append marker (process running)
-                    success, marker_id = await terminal_bridge.send_keys(session_name="test-session", text="some input")
-
-                    assert success is True
-                    assert marker_id is None, "Should not return marker_id when no marker appended"
-
-                    # Verify send_keys command does NOT include exit marker
-                    call_args_list = mock_exec.call_args_list
-                    send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
-                    assert len(send_keys_call) > 0
-
-                    text_arg = send_keys_call[0][0][4]
-                    assert "__EXIT__" not in text_arg, "Should NOT include exit marker"
-                    assert text_arg == "some input", "Should include only original text"
-
-    @pytest.mark.asyncio
-    async def test_append_exit_marker_when_no_command(self):
-        """Test that exit marker is appended when no command is running (None)."""
-        with patch("asyncio.create_subprocess_exec") as mock_exec:
-            # Mock subprocess
-            mock_process = MagicMock()
-            mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
-            mock_exec.return_value = mock_process
-
-            # Mock session exists and get_current_command returns None
-            with patch.object(terminal_bridge, "session_exists", return_value=True):
-                with patch.object(terminal_bridge, "get_current_command", return_value=None):
-                    # Execute - should append marker (shell ready)
-                    success, marker_id = await terminal_bridge.send_keys(session_name="test-session", text="echo hello")
-
-                    assert success is True
-                    assert marker_id is not None, "Should return marker_id when marker appended"
-
-                    # Verify send_keys command includes exit marker
-                    call_args_list = mock_exec.call_args_list
-                    send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
-                    assert len(send_keys_call) > 0
-
-                    text_arg = send_keys_call[0][0][4]
-                    assert f"__EXIT__{marker_id}__" in text_arg, "Should include exit marker"
-                    assert "echo hello" in text_arg, "Should include original command"
+                # Verify send_keys command uses the original text
+                call_args_list = mock_exec.call_args_list
+                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                assert len(send_keys_call) > 0
+                text_arg = send_keys_call[0][0][-1]
+                assert text_arg == "ls -la"
 
     @pytest.mark.asyncio
     async def test_recreates_session_with_session_id(self):
@@ -110,15 +47,14 @@ class TestSendKeys:
         with patch("asyncio.create_subprocess_exec") as mock_exec:
             mock_process = MagicMock()
             mock_process.returncode = 0
-            mock_process.wait = AsyncMock()
+            mock_process.communicate = AsyncMock(return_value=(b"", b""))
             mock_exec.return_value = mock_process
 
             with (
                 patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
                 patch.object(terminal_bridge, "create_tmux_session", new=AsyncMock(return_value=True)) as mock_create,
-                patch.object(terminal_bridge, "get_current_command", new=AsyncMock(return_value="zsh")),
             ):
-                success, _ = await terminal_bridge.send_keys(
+                success = await terminal_bridge.send_keys(
                     session_name="test-session",
                     text="echo hello",
                     session_id="sid-123",

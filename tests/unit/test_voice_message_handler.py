@@ -273,7 +273,7 @@ async def test_handle_voice_forwards_transcription_to_process():
             mock_get.return_value = mock_session
             mock_polling.return_value = True
             mock_transcribe.return_value = "Transcribed text"
-            mock_send_keys.return_value = (True, "")
+            mock_send_keys.return_value = True
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
             await handle_voice("test-session-123", audio_path, context, mock_send_feedback)

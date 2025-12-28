@@ -521,11 +521,10 @@ else:
 2. **Poll interval**: Poll tmux output every 1 second
 3. **Unified output handling**: ALL sessions use `send_output_update()` - no special cases
 4. **Observer pattern**: Telegram adapter receives updates via `send_output_update()`, edits single message
-5. **Exit code detection** (PRIMARY stop condition):
-   - Append `; echo "__EXIT__$?__"` to every command
-   - Parse exit code marker from output
-   - Strip marker before showing to user
-   - **ONLY condition that stops polling**
+5. **Shell-return detection** (PRIMARY stop condition):
+   - Check tmux `pane_current_command` against the user's shell
+   - Stop when the foreground command returns to the shell
+   - **PRIMARY condition that stops polling**
 6. **Idle notification** (informational only):
    - After 60s of no output change
    - Send ephemeral notification (auto-deleted when output resumes)

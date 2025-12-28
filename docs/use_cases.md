@@ -96,8 +96,8 @@ sequenceDiagram
     Daemon->>DB: get_session(session_id)
     DB-->>Daemon: Session (origin_adapter="telegram")
 
-    Note over Daemon: Send to terminal with exit marker
-    Daemon->>tmux: send_keys("ls -la; echo __EXIT__$?__")
+    Note over Daemon: Send to terminal
+    Daemon->>tmux: send_keys("ls -la")
 
     Note over Daemon: Start output polling
     Daemon->>Poller: poll_and_send_output(session_id)
@@ -113,14 +113,14 @@ sequenceDiagram
         TG-->>User: Shows live output
     end
 
-    Note over Poller: Detect exit code marker
+    Note over Poller: Detect shell return
     Poller->>tmux: capture_pane()
-    tmux-->>Poller: "...files...\n__EXIT__0__"
+    tmux-->>Poller: "...files..."
 
-    Note over Poller: Strip marker, send final
-    Poller->>Client: send_output_update(is_final=True, exit_code=0)
+    Note over Poller: Send final status
+    Poller->>Client: send_output_update(is_final=True)
     Client->>TG: edit_message(message_id, final_output)
-    TG-->>User: "✅ Exit code: 0"
+    TG-->>User: "✅ Completed"
 ```
 
 **Key Behaviors (Human Mode):**
@@ -128,7 +128,7 @@ sequenceDiagram
 - First 10 seconds: Edit same message in-place (clean UX)
 - After 10 seconds: Send new messages (preserve history)
 - Output formatted with status line: `⏱️ Running 2m 34s | 📊 145KB`
-- Exit code shown in final message
+- Completion status shown in final message
 - Idle notification after 60s (auto-deleted when output resumes)
 
 ---
@@ -384,7 +384,7 @@ sequenceDiagram
     RedisDB-->>Redis_B: {command: "git status"}
 
     Redis_B->>Daemon_B: handle_event(MESSAGE, text="git status")
-    Daemon_B->>tmux_B: send_keys("git status; echo __EXIT__$?__")
+    Daemon_B->>tmux_B: send_keys("git status")
 
     Note over Poller_B: AI mode - send RAW chunks
     Poller_B->>tmux_B: capture_pane()
@@ -400,9 +400,9 @@ sequenceDiagram
     Redis_A-->>MCP_A: yield chunk_1
     MCP_A-->>AI: chunk_1 (raw text, NO backticks)
 
-    Note over Poller_B: Continue until exit code
+    Note over Poller_B: Continue until shell returns
     Poller_B->>tmux_B: capture_pane()
-    tmux_B-->>Poller_B: "...files...\n__EXIT__0__"
+    tmux_B-->>Poller_B: "...files..."
 
     Poller_B->>Redis_B: send_message("[Output Complete]")
     Redis_B->>RedisDB: XADD output {marker: "[Output Complete]"}

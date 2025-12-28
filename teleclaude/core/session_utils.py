@@ -71,9 +71,9 @@ def get_output_file(session_id: str) -> Path:
     """Get output file for a session, creating it if needed.
 
     Creates workspace/{session_id} directory and tmux.txt file if they don't exist.
-    Output file stores RAW terminal output (with exit markers) for:
-    1. Delta calculation (ignore old markers in scrollback)
-    2. Download functionality (markers stripped on-the-fly)
+    Output file stores RAW terminal output for:
+    1. Delta calculation (ignore old scrollback noise)
+    2. Download functionality
     3. Daemon restart recovery (checkpoint)
 
     Args:

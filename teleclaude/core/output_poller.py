@@ -16,7 +16,7 @@ from teleclaude.config import config
 from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.utils import strip_ansi_codes, strip_exit_markers
+from teleclaude.utils import strip_ansi_codes
 
 logger = get_logger(__name__)
 _CONFIG_FOR_TESTS = config
@@ -67,7 +67,6 @@ class OutputPoller:
         session_id: str,
         tmux_session_name: str,
         output_file: Path,
-        marker_id: Optional[str],
     ) -> AsyncIterator[OutputEvent]:
         """Poll terminal output and yield events.
 
@@ -75,7 +74,6 @@ class OutputPoller:
             session_id: Session ID
             tmux_session_name: tmux session name
             output_file: Path to output file
-            marker_id: Unique marker ID for exit detection (None = no exit marker)
 
         Yields:
             OutputEvent subclasses (OutputChanged, ProcessExited, DirectoryChanged)
@@ -109,7 +107,7 @@ class OutputPoller:
             last_output_changed_at = started_at
             last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
             last_summary_time = started_at
-            logger.trace("Polling started for %s with marker_id=%s", session_id[:8], marker_id)
+            logger.trace("Polling started for %s", session_id[:8])
 
             def maybe_log_idle_summary(force: bool = False) -> None:
                 nonlocal last_summary_time, suppressed_idle_ticks
@@ -183,9 +181,8 @@ class OutputPoller:
                     if output_file.exists():
                         try:
                             raw_output = output_file.read_text(encoding="utf-8")
-                            # Clean the output (strip ANSI and exit markers)
+                            # Clean the output (strip ANSI)
                             final_output = strip_ansi_codes(raw_output)
-                            final_output = strip_exit_markers(final_output)
                         except Exception as e:
                             logger.warning("Failed to read final output: %s", e)
 
@@ -206,12 +203,12 @@ class OutputPoller:
                     await asyncio.sleep(poll_interval)
                     continue
 
-                # Strip ANSI codes and collapse whitespace, but KEEP markers (for exit detection)
-                current_with_markers = strip_ansi_codes(current_output)
-                current_with_markers = re.sub(r"\n\n+", "\n", current_with_markers)
+                # Strip ANSI codes and collapse whitespace
+                current_raw = strip_ansi_codes(current_output)
+                current_raw = re.sub(r"\n\n+", "\n", current_raw)
 
-                # Also create clean version (markers stripped) for UI
-                current_cleaned = strip_exit_markers(current_with_markers)
+                # Also create clean version for UI
+                current_cleaned = current_raw
 
                 # Detect output changes (for idle tracking)
                 output_changed = current_cleaned != previous_output
@@ -233,10 +230,10 @@ class OutputPoller:
                 did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
                     if pending_output or not output_sent_at_least_once:
-                        # Send clean output to UI (current_cleaned already has markers stripped)
+                        # Send clean output to UI (current_cleaned already stripped)
                         yield OutputChanged(
                             session_id=session_id,
-                            output=current_cleaned,  # Already clean (markers stripped at line 175)
+                            output=current_cleaned,  # Already cleaned for UI
                             started_at=started_at,
                             last_changed_at=last_output_changed_at,
                         )
@@ -253,42 +250,8 @@ class OutputPoller:
                     # Skip per-tick logging; summarized in idle summaries.
                     pass
 
-                # Exit condition 2: Exit code detected (EXACT MARKER MATCHING)
-                # Search for unique marker pattern - no counting, no baseline needed
-                # Check AFTER periodic update so user always sees output before exit
-                if marker_id:
-                    marker_pattern = f"__EXIT__{marker_id}__(\\d+)__"
-                    marker_match = re.search(marker_pattern, current_with_markers)
-
-                    if marker_match:
-                        exit_code = int(marker_match.group(1))
-                        logger.info(
-                            "Exit code %d detected for %s (marker_id=%s)",
-                            exit_code,
-                            session_id[:8],
-                            marker_id,
-                        )
-
-                        # Ensure output is sent before exit
-                        if not output_sent_at_least_once or current_cleaned != last_sent_output:
-                            yield OutputChanged(
-                                session_id=session_id,
-                                output=current_cleaned,
-                                started_at=started_at,
-                                last_changed_at=last_output_changed_at,
-                            )
-                            last_sent_output = current_cleaned
-
-                        yield ProcessExited(
-                            session_id=session_id,
-                            exit_code=exit_code,
-                            final_output=current_cleaned,
-                            started_at=started_at,
-                        )
-                        break
-
-                # Exit condition 3: marker-less process returned to shell
-                if marker_id is None and not await terminal_bridge.is_process_running(tmux_session_name):
+                # Exit condition 2: process returned to shell
+                if not await terminal_bridge.is_process_running(tmux_session_name):
                     # Force a final snapshot if output changed since last yield (or nothing was sent yet).
                     # This bypasses the normal update interval to ensure the last screen state is visible.
                     if pending_output or output_changed or not output_sent_at_least_once:
@@ -299,6 +262,13 @@ class OutputPoller:
                             last_changed_at=last_output_changed_at,
                         )
                         last_sent_output = current_cleaned
+
+                    yield ProcessExited(
+                        session_id=session_id,
+                        exit_code=0,
+                        final_output=current_cleaned,
+                        started_at=started_at,
+                    )
                     logger.info("Process returned to shell for %s, stopping poll", session_id[:8])
                     break
 
@@ -343,25 +313,3 @@ class OutputPoller:
 
         finally:
             logger.debug("Polling ended for session %s", session_id[:8])
-
-    def _extract_exit_code(self, output: str, marker_id: Optional[str]) -> Optional[int]:
-        """Extract exit code from output using exact marker matching.
-
-        Args:
-            output: Terminal output
-            marker_id: Unique marker ID (None = no exit marker)
-
-        Returns:
-            Exit code from matching marker, or None
-        """
-        if not marker_id:
-            return None
-
-        # Search for exact marker with marker_id
-        # Pattern: __EXIT__{marker_id}__\d+__
-        pattern = f"__EXIT__{marker_id}__(\\d+)__"
-        match = re.search(pattern, output)
-        if match:
-            return int(match.group(1))
-
-        return None

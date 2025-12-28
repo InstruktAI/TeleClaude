@@ -240,3 +240,44 @@ async def test_send_result_handles_nested_backticks_in_code_blocks(mock_mcp_serv
     code_block_content = sent_text.split("```python\n")[1].split("\n```")[0]
     # Should not have raw unescaped ``` inside the code block
     assert "```" not in code_block_content or "\\`" in code_block_content or "\u200b" in code_block_content
+
+
+@pytest.mark.asyncio
+async def test_send_result_html_mode_uses_html_parse_mode(mock_mcp_server):
+    """Test that HTML output_format uses HTML parse mode without conversion."""
+    server = mock_mcp_server
+
+    mock_session = MagicMock()
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        # HTML content with link
+        content = '<a href="message://test">Click me</a>'
+        await server.teleclaude__send_result("test-session-123", content, "html")
+
+    call_args = server.client.send_message.call_args
+    sent_text = call_args.kwargs["text"]
+    metadata = call_args.kwargs["metadata"]
+    # HTML content should be sent as-is
+    assert sent_text == content
+    # Parse mode should be HTML
+    assert metadata.parse_mode == "HTML"
+
+
+@pytest.mark.asyncio
+async def test_send_result_default_output_format_is_markdown(mock_mcp_server):
+    """Test that default output_format uses MarkdownV2."""
+    server = mock_mcp_server
+
+    mock_session = MagicMock()
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        # Call without output_format - should default to markdown
+        await server.teleclaude__send_result("test-session-123", "**bold**")
+
+    call_args = server.client.send_message.call_args
+    metadata = call_args.kwargs["metadata"]
+    assert metadata.parse_mode == "MarkdownV2"

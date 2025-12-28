@@ -189,11 +189,9 @@ class TestHandleFile:
         """Test @ prefix is added for Claude Code."""
         sent_keys = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None
-        ) -> tuple[bool, Optional[str]]:
+        async def mock_send_keys(session_name: str, text: str, session_id: Optional[str] = None) -> bool:
             sent_keys.append((session_name, text))
-            return (True, "marker123")
+            return True
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             return "msg_id"
@@ -226,11 +224,9 @@ class TestHandleFile:
         """Test plain path is sent for non-Claude processes."""
         sent_keys = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None
-        ) -> tuple[bool, Optional[str]]:
+        async def mock_send_keys(session_name: str, text: str, session_id: Optional[str] = None) -> bool:
             sent_keys.append((session_name, text))
-            return (True, "marker123")
+            return True
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             return "msg_id"
@@ -263,10 +259,8 @@ class TestHandleFile:
         """Test confirmation message includes file size."""
         sent_messages = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None
-        ) -> tuple[bool, Optional[str]]:
-            return (True, "marker123")
+        async def mock_send_keys(session_name: str, text: str, session_id: Optional[str] = None) -> bool:
+            return True
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
@@ -299,10 +293,8 @@ class TestHandleFile:
         """Test error handling when send_keys fails."""
         sent_messages = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None
-        ) -> tuple[bool, Optional[str]]:
-            return (False, None)
+        async def mock_send_keys(session_name: str, text: str, session_id: Optional[str] = None) -> bool:
+            return False
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))

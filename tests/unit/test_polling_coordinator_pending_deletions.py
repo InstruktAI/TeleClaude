@@ -44,7 +44,7 @@ async def test_polling_does_not_clear_pending_deletions():
     adapter_client.send_output_update = AsyncMock()
 
     # Mock output poller to yield ProcessExited event immediately
-    async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+    async def mock_poll(session_id, tmux_session_name, output_file):
         from teleclaude.core.output_poller import ProcessExited
 
         yield ProcessExited(

@@ -349,7 +349,6 @@ class TeleClaudeMCPServer:
                         "Reads from the claude_session_file which contains complete session history. "
                         "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
                         "**Use this to check on delegated work** after teleclaude__send_message. "
-                        "**Replaces**: teleclaude__get_session_status (use this instead for new code). "
                         "**Supervising Worker AI Sessions:** When managing/monitoring another AI session, "
                         "use `tail_chars=0` to see the FULL decision trail - not just recent output. "
                         "You need to observe: what choices the AI made and why, whether it followed the proper workflow, "
@@ -474,6 +473,15 @@ class TeleClaudeMCPServer:
                             "content": {
                                 "type": "string",
                                 "description": "Markdown-formatted content to display",
+                            },
+                            "output_format": {
+                                "type": "string",
+                                "enum": ["markdown", "html", "text"],
+                                "default": "markdown",
+                                "description": (
+                                    "Output format: 'markdown' (default) converts GitHub markdown to Telegram MarkdownV2, "
+                                    "'html' sends raw HTML, 'text' sends plain text without any parsing"
+                                ),
                             },
                         },
                         "required": ["session_id", "content"],
@@ -672,7 +680,9 @@ class TeleClaudeMCPServer:
             elif name == "teleclaude__send_result":
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 content = str(arguments.get("content", "")) if arguments else ""
-                result = await self.teleclaude__send_result(session_id, content)
+                output_format_obj = arguments.get("output_format") if arguments else None
+                output_format = str(output_format_obj) if output_format_obj else "markdown"
+                result = await self.teleclaude__send_result(session_id, content, output_format)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
             elif name == "teleclaude__stop_notifications":
                 computer = str(arguments.get("computer", "")) if arguments else ""
@@ -1639,12 +1649,15 @@ class TeleClaudeMCPServer:
             logger.error("Failed to send file %s: %s", file_path, e)
             return f"Error sending file: {e}"
 
-    async def teleclaude__send_result(self, session_id: str, content: str) -> dict[str, object]:
+    async def teleclaude__send_result(
+        self, session_id: str, content: str, output_format: str = "markdown"
+    ) -> dict[str, object]:
         """Send formatted result to user as separate message.
 
         Args:
             session_id: TeleClaude session UUID
-            content: Markdown-formatted content
+            content: Markdown or HTML formatted content
+            output_format: 'markdown' (default) or 'html'
 
         Returns:
             Success dict with message_id or error dict
@@ -1658,31 +1671,43 @@ class TeleClaudeMCPServer:
         if not session:
             return {"status": "error", "message": f"Session {session_id} not found"}
 
-        # Convert GitHub-style markdown to Telegram MarkdownV2
-        # This handles: bold (**→*), italic (*→_), code blocks, tables, escaping
-        formatted_content = markdownify(content)
+        if output_format == "text":
+            # Text mode: send content as-is without any parse mode
+            formatted_content = content
+            parse_mode = ""
+        elif output_format == "html":
+            # HTML mode: send content as-is with HTML parse mode
+            formatted_content = content
+            parse_mode = "HTML"
+        else:
+            # Markdown mode: convert GitHub markdown to Telegram MarkdownV2
+            # This handles: bold (**→*), italic (*→_), code blocks, tables, escaping
+            formatted_content = markdownify(content)
 
-        # Escape nested ``` inside code blocks to prevent markdown breaking
-        # Uses zero-width space to break the sequence (same approach as edit_message)
-        def escape_nested_backticks(match: re.Match[str]) -> str:
-            lang = match.group(1) or ""
-            block_content = match.group(2)
-            escaped = block_content.replace("```", "`\u200b``")
-            return f"```{lang}\n{escaped}```"
+            # Escape nested ``` inside code blocks to prevent markdown breaking
+            # Uses zero-width space to break the sequence (same approach as edit_message)
+            def escape_nested_backticks(match: re.Match[str]) -> str:
+                lang = match.group(1) or ""
+                block_content = match.group(2)
+                escaped = block_content.replace("```", "`\u200b``")
+                return f"```{lang}\n{escaped}```"
 
-        formatted_content = re.sub(r"```(\w*)\n(.*?)```", escape_nested_backticks, formatted_content, flags=re.DOTALL)
+            formatted_content = re.sub(
+                r"```(\w*)\n(.*?)```", escape_nested_backticks, formatted_content, flags=re.DOTALL
+            )
 
-        # Add 'md' language to plain code blocks (library leaves them without language)
-        # This ensures proper syntax highlighting in Telegram instead of just "copy" button
-        # Only match OPENING ``` (followed by content), not CLOSING (followed by blank line/end)
-        formatted_content = re.sub(r"^```\n(?!\n|$)", "```md\n", formatted_content, flags=re.MULTILINE)
+            # Add 'md' language to plain code blocks (library leaves them without language)
+            # This ensures proper syntax highlighting in Telegram instead of just "copy" button
+            # Only match OPENING ``` (followed by content), not CLOSING (followed by blank line/end)
+            formatted_content = re.sub(r"^```\n(?!\n|$)", "```md\n", formatted_content, flags=re.MULTILINE)
+            parse_mode = "MarkdownV2"
 
         # Handle Telegram 4096 char limit
         if len(formatted_content) > 4096:
             formatted_content = formatted_content[:4090] + "\n..."
 
-        # Send message with MarkdownV2 formatting
-        metadata = MessageMetadata(parse_mode="MarkdownV2")
+        # Send message with appropriate formatting
+        metadata = MessageMetadata(parse_mode=parse_mode)
 
         try:
             message_id = await self.client.send_message(session=session, text=formatted_content, metadata=metadata)

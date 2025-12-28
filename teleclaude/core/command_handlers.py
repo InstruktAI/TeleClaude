@@ -80,7 +80,7 @@ class SystemStats(TypedDict):
 
 
 # Type alias for start_polling function
-StartPollingFunc = Callable[[str, str, Optional[str]], Awaitable[None]]
+StartPollingFunc = Callable[[str, str], Awaitable[None]]
 
 
 def get_short_project_name(project_path: str) -> str:
@@ -639,13 +639,11 @@ async def handle_escape_command(
             except ValueError:
                 pass
 
-        # Check if process is running for exit marker logic
+        # Check if process is running for polling decision
         is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
 
-        # Generate unique marker_id for exit detection (if appending marker)
-        marker_id = None
-        # Send text + ENTER (automatic exit marker decision)
-        success, marker_id = await terminal_bridge.send_keys(
+        # Send text + ENTER
+        success = await terminal_bridge.send_keys(
             session.tmux_session_name,
             text,
             session_id=session.session_id,
@@ -663,9 +661,9 @@ async def handle_escape_command(
 
         # NOTE: Message cleanup now handled by AdapterClient.handle_event()
 
-        # Start polling if needed (pass marker_id for exit detection)
+        # Start polling if needed
         if not is_process_running:
-            await start_polling(session.session_id, session.tmux_session_name, marker_id)
+            await start_polling(session.session_id, session.tmux_session_name)
 
         logger.info(
             "Sent %s ESCAPE + '%s' to session %s",

@@ -38,7 +38,7 @@ class TestPollAndSendOutput:
         Path("/tmp/output.txt")
 
         # Mock poller to yield OutputChanged event
-        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+        async def mock_poll(session_id, tmux_session_name, output_file):
             yield OutputChanged(
                 session_id="test-123",
                 output="test output",
@@ -70,7 +70,7 @@ class TestPollAndSendOutput:
         Path("/tmp/output.txt")
 
         # Mock poller to yield ProcessExited event with exit code
-        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+        async def mock_poll(session_id, tmux_session_name, output_file):
             yield ProcessExited(
                 session_id="test-123",
                 final_output="command output",
@@ -104,7 +104,7 @@ class TestPollAndSendOutput:
         output_file.write_text("test output")
 
         # Mock poller to yield ProcessExited event without exit code
-        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+        async def mock_poll(session_id, tmux_session_name, output_file):
             yield ProcessExited(
                 session_id="test-123",
                 final_output="partial output",
@@ -135,7 +135,7 @@ class TestPollAndSendOutput:
         Path("/tmp/output.txt")
 
         # Mock poller to raise exception
-        async def mock_poll(session_id, tmux_session_name, output_file, has_exit_marker):
+        async def mock_poll(session_id, tmux_session_name, output_file):
             raise RuntimeError("Polling error")
             yield  # Never reached
 
@@ -150,14 +150,14 @@ class TestFilterForUI:
         """Helper to apply UI filtering (mimics OutputPoller logic)."""
         import re
 
-        from teleclaude.utils import strip_ansi_codes, strip_exit_markers
+        from teleclaude.utils import strip_ansi_codes
 
-        # Strip ANSI codes and collapse whitespace, but KEEP markers (for exit detection)
-        current_with_markers = strip_ansi_codes(text)
-        current_with_markers = re.sub(r"\n\n+", "\n", current_with_markers)
+        # Strip ANSI codes and collapse whitespace
+        current_raw = strip_ansi_codes(text)
+        current_raw = re.sub(r"\n\n+", "\n", current_raw)
 
-        # Also create clean version (markers stripped) for UI
-        return strip_exit_markers(current_with_markers)
+        # Also create clean version (legacy markers stripped) for UI
+        return current_raw
 
     def test_collapses_multiple_blank_lines(self):
         """Test that multiple consecutive newlines are collapsed to single newline."""
@@ -178,34 +178,20 @@ class TestFilterForUI:
         result = self._filter_for_ui(raw)
         assert result == "green text"
 
-    def test_strips_exit_markers(self):
-        """Test that exit markers are removed."""
-        raw = "command output\n__EXIT__0__\n"
-        result = self._filter_for_ui(raw)
-        assert result == "command output\n"
-
-    def test_strips_echo_command(self):
-        """Test that echo command is removed."""
-        raw = '; echo "__EXIT__$?__"'
-        result = self._filter_for_ui(raw)
-        assert result == ""
-
     def test_combined_filtering(self):
         """Test all filters working together."""
-        # Realistic terminal output with ANSI codes, exit markers, and excessive blank lines
+        # Realistic terminal output with ANSI codes and excessive blank lines
         raw = (
             "\x1b[32mcommand\x1b[0m\n"
             "\n\n\n"  # Excessive blank lines
             "output line 1\n"
             "output line 2\n"
             "\n\n"  # More blank lines
-            "__EXIT__0__\n"
         )
         result = self._filter_for_ui(raw)
 
-        # Should have ANSI stripped, exit marker removed, blank lines collapsed
+        # Should have ANSI stripped, blank lines collapsed
         assert "\x1b[" not in result
-        assert "__EXIT__" not in result
         assert "\n\n" not in result  # No consecutive blank lines
         assert "command" in result
         assert "output line 1" in result
