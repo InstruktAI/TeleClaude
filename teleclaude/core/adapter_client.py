@@ -609,7 +609,7 @@ class AdapterClient:
         # 7. Broadcast to observers (lifecycle events and user actions)
         if session:
             await self._broadcast_lifecycle(session, event)
-            await self._broadcast_action(session, event, payload)
+            await self._broadcast_action(session, event, payload, metadata.adapter_type)
 
         return response
 
@@ -819,14 +819,21 @@ class AdapterClient:
         session: "Session",
         event: EventType,
         payload: dict[str, object],
+        source_adapter: str | None = None,
     ) -> None:
-        """Broadcast user actions to UI observer adapters."""
+        """Broadcast user actions to UI observer adapters.
+
+        Skips both the origin adapter and the source adapter (where message came from)
+        to prevent echoing messages back to the sender.
+        """
         action_text = self._format_event_for_observers(event, payload)
         if not action_text:
             return
 
         for adapter_type, adapter in self.adapters.items():
             if adapter_type == session.origin_adapter:
+                continue
+            if adapter_type == source_adapter:
                 continue
             if not isinstance(adapter, UiAdapter):
                 continue
