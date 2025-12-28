@@ -100,6 +100,12 @@ class CodexWatcher:
         if not codex_sessions:
             return
 
+        # Sort by creation time so earlier sessions get first pick of files
+        def get_created_at(item: tuple["Session", SessionUXState]) -> datetime:
+            return item[0].created_at if item[0].created_at else datetime.min
+
+        codex_sessions.sort(key=get_created_at)
+
         # Build map of files claimed by each session
         claimed_files: dict[str, str] = {}  # file_path -> session_id
         for session, ux_state in codex_sessions:
