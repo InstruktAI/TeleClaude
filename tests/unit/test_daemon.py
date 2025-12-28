@@ -130,6 +130,42 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
 
 
 @pytest.mark.asyncio
+async def test_process_agent_stop_uses_registered_transcript_when_payload_missing():
+    """Agent STOP should use stored transcript path when payload omits it."""
+    from teleclaude.core.agents import AgentName
+    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+    from teleclaude.core.ux_state import SessionUXState
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.send_feedback = AsyncMock()
+    daemon.agent_coordinator = MagicMock()
+    daemon.agent_coordinator.handle_stop = AsyncMock()
+    daemon._update_session_title = AsyncMock()
+
+    payload = AgentStopPayload(
+        session_id="native-123",
+        transcript_path="",
+        raw={},
+    )
+    context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+    ):
+        mock_db.get_ux_state = AsyncMock(
+            return_value=SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json")
+        )
+        mock_db.get_session = AsyncMock(return_value=MagicMock())
+        mock_summarize.return_value = ("title", "summary")
+
+        await daemon._process_agent_stop(context)
+
+        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
+
+
+@pytest.mark.asyncio
 class TestSessionCloseReopen:
     """Test session close and reopen functionality."""
 
