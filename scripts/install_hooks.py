@@ -125,7 +125,7 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 
     Gemini uses BeforeUserInput for turn completion (not Stop like Claude).
     """
-    return {
+    hooks: Dict[str, Dict[str, str]] = {
         "SessionStart": {
             "name": "teleclaude-session-start",
             "type": "command",
@@ -144,7 +144,33 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
             "command": f"{python_exe} {receiver_script} --agent gemini stop",
             "description": "Notify TeleClaude of turn completion",
         },
+        "SessionEnd": {
+            "name": "teleclaude-session-end",
+            "type": "command",
+            "command": f"{python_exe} {receiver_script} --agent gemini session_end",
+            "description": "Notify TeleClaude of session end",
+        },
     }
+
+    # Capture transcript_path as soon as it appears (no fallback resolution).
+    for event in (
+        "BeforeAgent",
+        "AfterAgent",
+        "BeforeModel",
+        "AfterModel",
+        "BeforeToolSelection",
+        "BeforeTool",
+        "AfterTool",
+        "PreCompress",
+    ):
+        hooks[event] = {
+            "name": f"teleclaude-transcript-{event.lower()}",
+            "type": "command",
+            "command": f"{python_exe} {receiver_script} --agent gemini {event}",
+            "description": "Capture transcript path when available",
+        }
+
+    return hooks
 
 
 def configure_gemini(repo_root: Path) -> None:

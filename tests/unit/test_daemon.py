@@ -126,7 +126,7 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
         assert call_args[0] is context
         assert call_args[1] is None
         assert call_args[2] is None
-        assert call_args[3] == 2000
+    assert call_args[3] == 2000
 
 
 @pytest.mark.asyncio

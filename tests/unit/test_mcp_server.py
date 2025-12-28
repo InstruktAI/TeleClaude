@@ -159,6 +159,7 @@ async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
 
     with patch("teleclaude.mcp_server.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.update_ux_state = AsyncMock()
         server.client.handle_event = AsyncMock(return_value=None)
 
         result = await server.teleclaude__handle_agent_event(
@@ -172,7 +173,35 @@ async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
         )
 
         assert result == "OK"
+        mock_db.update_ux_state.assert_awaited_once_with("test-session-123", native_log_file="/tmp/native-123.jsonl")
         server.client.handle_event.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_handle_agent_event_ignores_unknown_events_but_persists_transcript(mock_mcp_server):
+    """Unknown agent events should be ignored but still persist transcript_path when provided."""
+    server = mock_mcp_server
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-123"
+
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.update_ux_state = AsyncMock()
+        server.client.handle_event = AsyncMock(return_value=None)
+
+        result = await server.teleclaude__handle_agent_event(
+            session_id="test-session-123",
+            event_type="after_model",
+            data={
+                "session_id": "native-123",
+                "transcript_path": "/tmp/native-123.jsonl",
+            },
+        )
+
+        assert result == "OK"
+        mock_db.update_ux_state.assert_awaited_once_with("test-session-123", native_log_file="/tmp/native-123.jsonl")
+        server.client.handle_event.assert_not_called()
 
 
 @pytest.mark.asyncio

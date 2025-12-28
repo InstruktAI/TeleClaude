@@ -449,19 +449,9 @@ class TeleClaudeMCPServer:
                     description=(
                         "Send formatted results to the user as a separate message (not in the streaming terminal output).\n"
                         "\n"
-                        "Use this tool when:\n"
-                        "- User asks for analysis, reports, or structured output\n"
-                        "- You have results to present (tables, lists, summaries)\n"
-                        '- User explicitly asks to "show results" or "display findings"\n'
-                        "- Output would be cleaner as a standalone message vs terminal stream\n"
+                        "Use this tool when the user explicitly asks to send results.\n"
                         "\n"
-                        "Content MUST be valid Markdown. Examples:\n"
-                        "- Tables: | Col1 | Col2 |\\n|------|------|\\n| val1 | val2 |\n"
-                        "- Code blocks: ```python\\ncode here\\n```\n"
-                        "- Lists, headers, bold/italic text\n"
-                        "\n"
-                        "The message appears as a separate chat message, persists until session ends, "
-                        "and renders with full Markdown formatting."
+                        "Content can be text, markdown or html."
                     ),
                     inputSchema={
                         "type": "object",
@@ -472,16 +462,13 @@ class TeleClaudeMCPServer:
                             },
                             "content": {
                                 "type": "string",
-                                "description": "Markdown-formatted content to display",
+                                "description": "Content to display",
                             },
                             "output_format": {
                                 "type": "string",
                                 "enum": ["markdown", "html", "text"],
                                 "default": "markdown",
-                                "description": (
-                                    "Output format: 'markdown' (default) converts GitHub markdown to Telegram MarkdownV2, "
-                                    "'html' sends raw HTML, 'text' sends plain text without any parsing"
-                                ),
+                                "description": "Content format. Defaults to 'markdown'.",
                             },
                         },
                         "required": ["session_id", "content"],
@@ -1848,6 +1835,14 @@ class TeleClaudeMCPServer:
         session = await db.get_session(session_id)
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
+
+        transcript_path = data.get("transcript_path")
+        if isinstance(transcript_path, str) and transcript_path:
+            await db.update_ux_state(session_id, native_log_file=transcript_path)
+
+        if event_type not in AgentHookEvents.ALL:
+            logger.debug("Ignoring unknown agent hook event", event=event_type, session=session_id[:8])
+            return "OK"
 
         if event_type == AgentHookEvents.AGENT_ERROR:
             await self.client.handle_event(
