@@ -187,7 +187,7 @@ DEFAULT_CONFIG: dict[str, object] = {
             "command": 'claude --dangerously-skip-permissions --settings \'{"forceLoginMethod": "claudeai"}\'',
         },
         "gemini": {
-            "command": "gemini --yolo",
+            "command": "gemini --yolo -i",
         },
         "codex": {
             "command": "codex --dangerously-bypass-approvals-and-sandbox --search",

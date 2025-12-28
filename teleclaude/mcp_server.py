@@ -1840,8 +1840,9 @@ class TeleClaudeMCPServer:
         if isinstance(transcript_path, str) and transcript_path:
             await db.update_ux_state(session_id, native_log_file=transcript_path)
 
+        # Unknown events (e.g., Gemini's BeforeAgent) - transcript_path already saved above, just return
         if event_type not in AgentHookEvents.ALL:
-            logger.debug("Ignoring unknown agent hook event", event=event_type, session=session_id[:8])
+            logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
             return "OK"
 
         if event_type == AgentHookEvents.AGENT_ERROR:
