@@ -86,8 +86,8 @@ class CodexWatcher:
         """Scan the Codex session directory for new session files."""
         agent_cfg = config.agents["codex"]
         dir_path = Path(agent_cfg.session_dir).expanduser()
-        pattern = agent_cfg.log_pattern or "*"
-        files = list(dir_path.rglob(pattern))
+        pattern = agent_cfg.log_pattern or "*.jsonl"
+        files = [f for f in dir_path.rglob(pattern) if f.is_file()]
         if not files:
             return
 
@@ -100,48 +100,50 @@ class CodexWatcher:
         if not codex_sessions:
             return
 
-        if len(codex_sessions) == 1:
-            session, ux_state = codex_sessions[0]
-            best_file = self._select_best_log(files, session)
+        # Build map of files claimed by each session
+        claimed_files: dict[str, str] = {}  # file_path -> session_id
+        for session, ux_state in codex_sessions:
+            if ux_state.native_log_file:
+                claimed_files[ux_state.native_log_file] = session.session_id
+
+        # Process each session with exclusive file selection
+        for session, ux_state in codex_sessions:
             current_file = ux_state.native_log_file
-            if current_file != str(best_file):
+
+            # Get files available to this session (not claimed by OTHER sessions)
+            available_files = [
+                f for f in files if str(f) not in claimed_files or claimed_files[str(f)] == session.session_id
+            ]
+            if not available_files:
+                continue
+
+            best_file = self._select_best_log(available_files, session)
+
+            if not current_file:
+                logger.info(
+                    "CodexWatcher scan: binding session %s to %s",
+                    session.session_id[:8],
+                    best_file,
+                )
+                await self._bind_session_log(session, best_file, emit_start=True)
+                claimed_files[str(best_file)] = session.session_id
+            elif current_file != str(best_file):
                 logger.info(
                     "CodexWatcher scan: rebinding session %s from %s to %s",
                     session.session_id[:8],
                     current_file,
                     best_file,
                 )
-                await self._bind_session_log(
-                    session,
-                    best_file,
-                    emit_start=not current_file,
-                )
+                claimed_files.pop(current_file, None)
+                await self._bind_session_log(session, best_file, emit_start=False)
+                claimed_files[str(best_file)] = session.session_id
             elif best_file not in self._watched_files:
                 logger.info(
                     "CodexWatcher scan: attaching session %s to %s",
                     session.session_id[:8],
                     best_file,
                 )
-                await self._bind_session_log(
-                    session,
-                    best_file,
-                    emit_start=False,
-                )
-            return
-
-        pending_sessions = [(session, ux_state) for session, ux_state in codex_sessions if not ux_state.native_log_file]
-        if not pending_sessions:
-            return
-
-        available_files = [file_path for file_path in files if file_path not in self._watched_files]
-        for session, _ux_state in pending_sessions:
-            best_file = self._select_best_log(available_files, session)
-            await self._bind_session_log(
-                session,
-                best_file,
-                emit_start=True,
-            )
-            available_files.remove(best_file)
+                await self._bind_session_log(session, best_file, emit_start=False)
 
     def _select_best_log(self, files: list[Path], session: "Session") -> Path:
         """Select the best Codex log file for a session based on session start time."""
@@ -286,27 +288,29 @@ class CodexWatcher:
                             payload = cast(dict[str, object], entry.get("payload", {}))
                             payload_type = str(payload.get("type"))
                             event_msg_counts[payload_type] = event_msg_counts.get(payload_type, 0) + 1
-                    except Exception:
+
+                        # Parse and emit events (only if JSON parsing succeeded)
+                        for event in self._parser.parse_line(line):
+                            payload_data = event.data.copy()
+                            ux_state = await self._db.get_ux_state(session.session_id)
+                            if not ux_state.native_session_id:
+                                raise ValueError(f"Session {session.session_id[:8]} missing native_session_id")
+                            payload_data["session_id"] = ux_state.native_session_id
+                            payload_data["transcript_path"] = str(file_path)
+
+                            await self.client.handle_event(
+                                TeleClaudeEvents.AGENT_EVENT,
+                                {
+                                    "event_type": event.event_type,
+                                    "session_id": session.session_id,
+                                    "data": payload_data,
+                                },
+                                MessageMetadata(adapter_type="watcher"),
+                            )
+                            emitted += 1
+                    except json.JSONDecodeError:
+                        # Expected for partial lines after backfill seek
                         entry_type_counts["parse_error"] = entry_type_counts.get("parse_error", 0) + 1
-
-                    for event in self._parser.parse_line(line):
-                        payload_data = event.data.copy()
-                        ux_state = await self._db.get_ux_state(session.session_id)
-                        if not ux_state.native_session_id:
-                            raise ValueError(f"Session {session.session_id[:8]} missing native_session_id")
-                        payload_data["session_id"] = ux_state.native_session_id
-                        payload_data["transcript_path"] = str(file_path)
-
-                        await self.client.handle_event(
-                            TeleClaudeEvents.AGENT_EVENT,
-                            {
-                                "event_type": event.event_type,
-                                "session_id": session.session_id,
-                                "data": payload_data,
-                            },
-                            MessageMetadata(adapter_type="watcher"),
-                        )
-                        emitted += 1
 
                 if emitted:
                     logger.info(
