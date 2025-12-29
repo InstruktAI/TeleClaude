@@ -135,7 +135,7 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
 {transcript}
 
 ## Output:
-1. **title** (max 50 chars): What the USER is trying to accomplish. Focus on user intent, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode").
+1. **title** (max 7 words, max 70 chars): What the USER is trying to accomplish. Focus on user intent, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode").
 2. **summary** (1-2 sentences, first person "I..."): What the agent just did based on its responses above.
 """
 
@@ -189,7 +189,7 @@ def _parse_response(text: str) -> tuple[str | None, str]:
     summary_value = data["summary"]
     title_value = data.get("title")
     summary = str(summary_value).strip()
-    title = str(title_value).strip()[:50] if title_value else None
+    title = str(title_value).strip()[:70] if title_value else None
     if not summary:
         raise ValueError("Summary missing in model response")
     return title, summary
