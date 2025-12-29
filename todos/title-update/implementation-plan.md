@@ -4,20 +4,19 @@
 
 ### Group 1: Core Helper Function
 
-- [ ] **PARALLEL** Create `extract_user_intent_context()` in `teleclaude/core/summarizer.py`:
-  - Add helper that parses transcript to find last N user messages
-  - For each user message, extract immediate text-only agent response
-  - Filter out `tool_use`, `tool_result`, `thinking` blocks - only `text` type
-  - Return formatted context string for title generation
+- [ ] **PARALLEL** Create `extract_recent_exchanges()` in `teleclaude/core/summarizer.py`:
+  - Parse transcript to find last N user messages + their agent text responses
+  - Filter out `tool_use`, `tool_result`, `thinking` blocks - only `text` type content
+  - Return formatted string of recent exchanges for LLM prompt
   - Use existing `_iter_*_entries()` functions from `teleclaude/utils/transcript.py`
 
 ### Group 2: Summarizer Integration
 
 - [ ] **DEPENDS: Group 1** Update `summarize()` function prompt:
-  - Call `extract_user_intent_context()` to get user intent context
-  - Update prompt to separate title (user intent) from summary (agent action)
-  - Title prompt: "What the USER is trying to accomplish based on their messages"
-  - Summary prompt: "What the agent just did" (unchanged behavior)
+  - Call `extract_recent_exchanges()` to get recent user↔agent exchanges
+  - Update prompt to generate BOTH title and summary from same context
+  - Title: "What the USER is trying to accomplish" (derived from user messages)
+  - Summary: "What the agent just did" (derived from agent text responses)
 
 - [ ] **DEPENDS: Group 1** Remove title update guard in `teleclaude/daemon.py`:
   - Delete the regex check in `_update_session_title()` that prevents updates
@@ -26,7 +25,7 @@
 
 ### Group 3: Testing
 
-- [ ] **DEPENDS: Group 2** Add unit tests for `extract_user_intent_context()`:
+- [ ] **DEPENDS: Group 2** Add unit tests for `extract_recent_exchanges()`:
   - Test extraction of last 2 user messages with text responses
   - Test filtering of tool_use/tool_result blocks
   - Test edge case: no user messages
@@ -64,20 +63,20 @@
 
 ## Implementation Details
 
-### Extract User Intent Context (Group 1)
+### Extract Recent Exchanges (Group 1)
 
 Location: `teleclaude/core/summarizer.py`
 
 ```python
-def extract_user_intent_context(
+def extract_recent_exchanges(
     transcript_path: str,
     agent_name: AgentName,
-    n_messages: int = 2,
+    n_exchanges: int = 2,
 ) -> str:
     """Extract last N user messages with their text-only agent responses.
 
     Filters out tool_use, tool_result, and thinking blocks from agent responses.
-    Only includes actual text responses for cleaner title generation context.
+    Only includes actual text responses.
 
     Returns formatted string:
     User: <user message>
@@ -89,29 +88,21 @@ def extract_user_intent_context(
 ### Updated Prompt (Group 2)
 
 ```
-You are analyzing an AI assistant session to generate a title and summary.
+Analyze this AI assistant session to generate a title and summary.
 
-## Recent User Requests and Agent Responses:
-{user_intent_context}
+## Recent Exchanges:
+{exchanges}
 
-## Latest Agent Output (for summary):
-{transcript_tail}
-
-## Output Requirements:
-1. **title** (max 50 chars): Summarize what the USER is trying to accomplish based on their messages above. Focus on USER INTENT, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode toggle").
-2. **summary** (1-2 sentences, first person "I..."): What the agent just did or reported in its latest output. This describes AGENT ACTION.
-
-Rules:
-- Title captures USER goal
-- Summary captures AGENT action
-- Both should be concise and specific
+## Output:
+1. **title** (max 50 chars): What the USER is trying to accomplish. Focus on user intent, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode").
+2. **summary** (1-2 sentences, first person "I..."): What the agent just did based on its responses above.
 ```
 
 ### Files Modified
 
 | File | Changes |
 |------|---------|
-| `teleclaude/core/summarizer.py` | Add `extract_user_intent_context()`, update prompt |
+| `teleclaude/core/summarizer.py` | Add `extract_recent_exchanges()`, update prompt |
 | `teleclaude/daemon.py` | Remove "New session" guard (~line 485) |
-| `tests/unit/test_summarizer.py` | New tests for context extraction |
+| `tests/unit/test_summarizer.py` | New tests for exchange extraction |
 | `tests/unit/test_daemon.py` | Update title update tests |
