@@ -381,3 +381,36 @@ def test_all_events_have_handlers():
     assert not missing_handlers, (
         f"Events missing handlers: {missing_handlers}\nAdd to COMMAND_EVENTS in daemon.py or create handler method"
     )
+
+
+@pytest.mark.asyncio
+class TestTitleUpdate:
+    """Test session title updates."""
+
+    async def test_update_session_title_always_updates(self):
+        """Title should update even if it doesn't end with 'New session'."""
+        from unittest.mock import AsyncMock, patch
+
+        from teleclaude.core.models import Session
+        from teleclaude.daemon import TeleClaudeDaemon
+
+        daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+
+        session = Session(
+            session_id="sess-1",
+            computer_name="TestMac",
+            tmux_session_name="tmux-1",
+            origin_adapter="telegram",
+            title="$TestMac[apps/TeleClaude] - Existing Title",
+            closed=False,
+        )
+
+        with patch("teleclaude.daemon.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+
+            # Execute
+            await daemon._update_session_title("sess-1", "Updated Title")
+
+            # Verify
+            mock_db.update_session.assert_called_once_with("sess-1", title="$TestMac[apps/TeleClaude] - Updated Title")

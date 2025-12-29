@@ -4,7 +4,7 @@
 
 ### Group 1: Core Helper Function
 
-- [ ] **PARALLEL** Create `extract_recent_exchanges()` in `teleclaude/core/summarizer.py`:
+- [x] **PARALLEL** Create `extract_recent_exchanges()` in `teleclaude/core/summarizer.py`:
   - Parse transcript to find last N user messages + their agent text responses
   - Filter out `tool_use`, `tool_result`, `thinking` blocks - only `text` type content
   - Return formatted string of recent exchanges for LLM prompt
@@ -12,40 +12,40 @@
 
 ### Group 2: Summarizer Integration
 
-- [ ] **DEPENDS: Group 1** Update `summarize()` function prompt:
+- [x] **DEPENDS: Group 1** Update `summarize()` function prompt:
   - Call `extract_recent_exchanges()` to get recent user↔agent exchanges
   - Update prompt to generate BOTH title and summary from same context
   - Title: "What the USER is trying to accomplish" (derived from user messages)
   - Summary: "What the agent just did" (derived from agent text responses)
 
-- [ ] **DEPENDS: Group 1** Remove title update guard in `teleclaude/daemon.py`:
+- [x] **DEPENDS: Group 1** Remove title update guard in `teleclaude/daemon.py`:
   - Delete the regex check in `_update_session_title()` that prevents updates
   - Line ~485: `if not re.search(r"New session( \(\d+\))?$", session.title): return`
   - Title should update on EVERY `agent_stop` event
 
 ### Group 3: Testing
 
-- [ ] **DEPENDS: Group 2** Add unit tests for `extract_recent_exchanges()`:
+- [x] **DEPENDS: Group 2** Add unit tests for `extract_recent_exchanges()`:
   - Test extraction of last 2 user messages with text responses
   - Test filtering of tool_use/tool_result blocks
   - Test edge case: no user messages
   - Test edge case: user message without agent response
   - Test edge case: agent response is tool-only (no text)
 
-- [ ] **DEPENDS: Group 2** Update existing summarizer tests:
+- [x] **DEPENDS: Group 2** Update existing summarizer tests:
   - Verify title reflects user intent (not agent action)
   - Verify summary still describes agent action
 
-- [ ] **DEPENDS: Group 2** Update daemon tests for title updates:
+- [x] **DEPENDS: Group 2** Update daemon tests for title updates:
   - Test title updates on every stop event (no "New session" guard)
   - Test title prefix preservation
 
-- [ ] **SEQUENTIAL** Run full test suite: `make test`
+- [x] **SEQUENTIAL** Run full test suite: `make test`
 
 ### Group 4: Verification
 
-- [ ] **DEPENDS: Group 3** Run linting: `make lint`
-- [ ] **DEPENDS: Group 3** Verify daemon restarts cleanly: `make restart && make status`
+- [x] **DEPENDS: Group 3** Run linting: `make lint`
+- [x] **DEPENDS: Group 3** Verify daemon restarts cleanly: `make restart && make status`
 
 ## Groups 5-6: Review & Finalize (handled by other commands)
 

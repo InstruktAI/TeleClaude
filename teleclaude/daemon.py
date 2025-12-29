@@ -473,16 +473,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _update_session_title(self, session_id: str, title: str) -> None:
         """Update session title in DB and UI.
 
-        Replaces "New session" suffix with the AI-generated title.
+        Updates the title description while preserving the prefix.
         """
-        import re
-
         session = await db.get_session(session_id)
         if not session:
-            return
-
-        # Only update if title still has "New session" suffix
-        if not re.search(r"New session( \(\d+\))?$", session.title):
             return
 
         # Parse the title to extract prefix and description
