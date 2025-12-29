@@ -597,14 +597,14 @@ class AdapterClient:
             event,
         )
         if session and message_id:
-            await self._call_pre_handler(session, event)
+            await self._call_pre_handler(session, event, metadata.adapter_type)
 
         # 5. Dispatch to registered handler
         response = await self._dispatch(event, context)
 
         # 6. Post-handler (UI state tracking after processing)
         if session and message_id:
-            await self._call_post_handler(session, event, str(message_id))
+            await self._call_post_handler(session, event, str(message_id), metadata.adapter_type)
 
         # 7. Broadcast to observers (lifecycle events and user actions)
         if session:
@@ -747,20 +747,23 @@ class AdapterClient:
 
         raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 
-    async def _call_pre_handler(self, session: "Session", event: EventType) -> None:
-        """Call origin adapter's pre-handler for UI cleanup."""
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter or not isinstance(origin_adapter, UiAdapter):
+    async def _call_pre_handler(self, session: "Session", event: EventType, source_adapter: str | None = None) -> None:
+        """Call source adapter's pre-handler for UI cleanup.
+
+        Uses source adapter (where message came from) rather than origin adapter,
+        so AI-to-AI sessions can still have UI cleanup on Telegram.
+        """
+        adapter_type = source_adapter or session.origin_adapter
+        adapter = self.adapters.get(adapter_type)
+        if not adapter or not isinstance(adapter, UiAdapter):
             return
 
-        pre_handler = cast(
-            Callable[[object], Awaitable[None]] | None, getattr(origin_adapter, "_pre_handle_user_input", None)
-        )
+        pre_handler = cast(Callable[[object], Awaitable[None]] | None, getattr(adapter, "_pre_handle_user_input", None))
         if not pre_handler or not callable(pre_handler):
             return
 
         await pre_handler(session)
-        logger.debug("Pre-handler executed for %s on event %s", session.origin_adapter, event)
+        logger.debug("Pre-handler executed for %s on event %s", adapter_type, event)
 
     async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:
         """Dispatch event to registered handler."""
@@ -780,20 +783,27 @@ class AdapterClient:
             logger.error("Handler failed for event %s: %s", event, e, exc_info=True)
             raise
 
-    async def _call_post_handler(self, session: "Session", event: EventType, message_id: str) -> None:
-        """Call origin adapter's post-handler for UI state tracking."""
-        origin_adapter = self.adapters.get(session.origin_adapter)
-        if not origin_adapter or not isinstance(origin_adapter, UiAdapter):
+    async def _call_post_handler(
+        self, session: "Session", event: EventType, message_id: str, source_adapter: str | None = None
+    ) -> None:
+        """Call source adapter's post-handler for UI state tracking.
+
+        Uses source adapter (where message came from) rather than origin adapter,
+        so AI-to-AI sessions can still have UI state tracking on Telegram.
+        """
+        adapter_type = source_adapter or session.origin_adapter
+        adapter = self.adapters.get(adapter_type)
+        if not adapter or not isinstance(adapter, UiAdapter):
             return
 
         post_handler = cast(
-            Callable[[object, str], Awaitable[None]] | None, getattr(origin_adapter, "_post_handle_user_input", None)
+            Callable[[object, str], Awaitable[None]] | None, getattr(adapter, "_post_handle_user_input", None)
         )
         if not post_handler or not callable(post_handler):
             return
 
         await post_handler(session, message_id)
-        logger.debug("Post-handler executed for %s on event %s", session.origin_adapter, event)
+        logger.debug("Post-handler executed for %s on event %s", adapter_type, event)
 
     async def _broadcast_lifecycle(self, session: "Session", event: EventType) -> None:
         """Broadcast session lifecycle events (close/reopen) to observer adapters."""
