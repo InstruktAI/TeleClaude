@@ -289,6 +289,62 @@ async def test_handle_voice_forwards_transcription_to_process():
 
 
 @pytest.mark.asyncio
+async def test_handle_voice_transcribes_without_feedback_channel():
+    """Test that handle_voice still transcribes when feedback can't be sent."""
+    from teleclaude.core.events import VoiceEventContext
+    from teleclaude.core.voice_message_handler import handle_voice
+
+    # Create temp audio file
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".ogg", delete=False) as f:
+        f.write(b"fake audio data")
+        audio_path = f.name
+
+    try:
+        mock_send_feedback = AsyncMock(return_value=None)
+
+        # Mock session with output_message_id
+        mock_session = MagicMock()
+        mock_session.session_id = "test-session-123"
+        mock_session.origin_adapter = "redis"
+        mock_session.tmux_session_name = "tc_test"
+        mock_session.adapter_metadata.telegram.output_message_id = "output-456"
+
+        with (
+            patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
+            patch(
+                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+            ) as mock_polling,
+            patch("teleclaude.core.voice_message_handler.db.update_last_activity", new_callable=AsyncMock),
+            patch(
+                "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
+                new_callable=AsyncMock,
+            ) as mock_transcribe,
+            patch(
+                "teleclaude.core.voice_message_handler.terminal_bridge.send_keys",
+                new_callable=AsyncMock,
+            ) as mock_send_keys,
+        ):
+            mock_get.return_value = mock_session
+            mock_polling.return_value = True
+            mock_transcribe.return_value = "Transcribed text"
+            mock_send_keys.return_value = True
+
+            context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
+            await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+
+        # Verify transcription forwarded to terminal even without feedback
+        mock_send_keys.assert_called_once()
+        call_args = mock_send_keys.call_args[0]
+        assert call_args[0] == "tc_test"
+        assert call_args[1] == "Transcribed text"
+
+        # Verify temp file cleaned up
+        assert not Path(audio_path).exists()
+    finally:
+        Path(audio_path).unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
 async def test_handle_voice_cleans_up_temp_file_on_error():
     """Test that handle_voice cleans up temp file on transcription failure."""
     from teleclaude.core.events import VoiceEventContext

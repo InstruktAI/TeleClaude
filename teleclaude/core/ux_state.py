@@ -46,6 +46,7 @@ class SessionUXState:
     output_message_id: Optional[str] = None
     pending_deletions: list[str] = field(default_factory=list)  # User input messages
     pending_feedback_deletions: list[str] = field(default_factory=list)  # Feedback messages
+    last_input_adapter: Optional[str] = None  # Adapter that last received user input
     notification_sent: bool = False  # Agent notification hook flag
     native_session_id: Optional[str] = None  # Native agent session ID
     native_log_file: Optional[str] = None  # Path to native agent session .jsonl file
@@ -58,6 +59,7 @@ class SessionUXState:
         output_message_id_raw: object = data.get("output_message_id")
         pending_deletions_raw: object = data.get("pending_deletions", [])
         pending_feedback_deletions_raw: object = data.get("pending_feedback_deletions", [])
+        last_input_adapter_raw: object = data.get("last_input_adapter")
 
         native_session_id_raw: object = data.get("native_session_id")
         native_log_file_raw: object = data.get("native_log_file")
@@ -71,6 +73,7 @@ class SessionUXState:
             pending_feedback_deletions=(
                 list(pending_feedback_deletions_raw) if isinstance(pending_feedback_deletions_raw, list) else []
             ),
+            last_input_adapter=(str(last_input_adapter_raw) if last_input_adapter_raw else None),
             notification_sent=bool(data.get("notification_sent", False)),
             native_session_id=(str(native_session_id_raw) if native_session_id_raw else None),
             native_log_file=str(native_log_file_raw) if native_log_file_raw else None,
@@ -84,6 +87,7 @@ class SessionUXState:
             "output_message_id": self.output_message_id,
             "pending_deletions": self.pending_deletions,
             "pending_feedback_deletions": self.pending_feedback_deletions,
+            "last_input_adapter": self.last_input_adapter,
             "notification_sent": self.notification_sent,
             "native_session_id": self.native_session_id,
             "native_log_file": self.native_log_file,
@@ -200,6 +204,7 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
     output_message_id: Optional[str] | object = _UNSET,
     pending_deletions: list[str] | object = _UNSET,
     pending_feedback_deletions: list[str] | object = _UNSET,
+    last_input_adapter: Optional[str] | object = _UNSET,
     notification_sent: bool | object = _UNSET,
     native_session_id: Optional[str] | object = _UNSET,
     native_log_file: Optional[str] | object = _UNSET,
@@ -214,6 +219,7 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
         output_message_id: Output message ID (optional)
         pending_deletions: List of user input message IDs pending deletion (optional)
         pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
+        last_input_adapter: Adapter that last received user input (optional)
         notification_sent: Whether Agent notification was sent (optional)
         native_session_id: Native agent session ID (optional)
         native_log_file: Path to native agent log file (optional)
@@ -230,6 +236,8 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
             existing.pending_deletions = pending_deletions  # type: ignore
         if pending_feedback_deletions is not _UNSET:
             existing.pending_feedback_deletions = pending_feedback_deletions  # type: ignore
+        if last_input_adapter is not _UNSET:
+            existing.last_input_adapter = last_input_adapter  # type: ignore
         if notification_sent is not _UNSET:
             existing.notification_sent = notification_sent  # type: ignore
         if native_session_id is not _UNSET:

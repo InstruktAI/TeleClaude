@@ -202,9 +202,12 @@ class AdapterClient:
         metadata: MessageMetadata,
         persistent: bool = False,
     ) -> Optional[str]:
-        """Send feedback message via origin adapter ONLY (ephemeral UI notification).
+        """Send feedback message via most recent input adapter (ephemeral UI notification).
 
-        Feedback goes to origin adapter only - NOT broadcast to observers.
+        Routes feedback to:
+        1) Explicit adapter_type in metadata (if UI adapter)
+        2) last_input_adapter from UX state (if UI adapter)
+        3) origin adapter (if UI adapter)
 
         Args:
             session: Session object
@@ -215,11 +218,35 @@ class AdapterClient:
         Returns:
             message_id if sent (UI adapter), None if transport adapter
         """
-        origin_adapter = self.adapters[session.origin_adapter]
-        message_id = await origin_adapter.send_feedback(session, message, metadata, persistent)
+        target_adapter_type: Optional[str] = None
+
+        if metadata.adapter_type and metadata.adapter_type in self.adapters:
+            candidate = self.adapters[metadata.adapter_type]
+            if isinstance(candidate, UiAdapter):
+                target_adapter_type = metadata.adapter_type
+
+        if target_adapter_type is None:
+            ux_state = await db.get_ux_state(session.session_id)
+            last_input_adapter = ux_state.last_input_adapter
+            if last_input_adapter and last_input_adapter in self.adapters:
+                candidate = self.adapters[last_input_adapter]
+                if isinstance(candidate, UiAdapter):
+                    target_adapter_type = last_input_adapter
+
+        if target_adapter_type is None:
+            origin_adapter_type = session.origin_adapter
+            origin_adapter = self.adapters.get(origin_adapter_type)
+            if isinstance(origin_adapter, UiAdapter):
+                target_adapter_type = origin_adapter_type
+
+        if target_adapter_type is None:
+            return None
+
+        target_adapter = self.adapters[target_adapter_type]
+        message_id = await target_adapter.send_feedback(session, message, metadata, persistent)
 
         if message_id:
-            logger.debug("Sent feedback via %s for session %s", session.origin_adapter, session.session_id[:8])
+            logger.debug("Sent feedback via %s for session %s", target_adapter_type, session.session_id[:8])
 
         return message_id
 
@@ -587,6 +614,15 @@ class AdapterClient:
 
         # 3. Get session for adapter operations
         session = await db.get_session(str(session_id)) if session_id else None
+
+        # 3.5 Track last input adapter for routing feedback
+        if session and metadata.adapter_type and metadata.adapter_type in self.adapters:
+            if event in COMMAND_EVENTS or event in (
+                TeleClaudeEvents.MESSAGE,
+                TeleClaudeEvents.VOICE,
+                TeleClaudeEvents.FILE,
+            ):
+                await db.update_ux_state(session.session_id, last_input_adapter=metadata.adapter_type)
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = cast(str | None, payload.get("message_id"))

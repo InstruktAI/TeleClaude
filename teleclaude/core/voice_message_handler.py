@@ -19,6 +19,7 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.models import MessageMetadata
+from teleclaude.utils.markdown import escape_markdown_v2
 
 if TYPE_CHECKING:
     pass
@@ -229,21 +230,17 @@ async def handle_voice(
             logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
         return
 
-    # Send transcribing status (append to existing output)
+    # Send transcribing status if feedback channel is available
     msg_id = await send_feedback(
         session_id,
         "🎤 Transcribing...",
         MessageMetadata(),
     )
     if msg_id is None:
-        logger.info("Topic deleted for session %s, skipping transcription", session_id[:8])
-        # Clean up temp file before returning
-        try:
-            Path(audio_path).unlink()
-            logger.debug("Cleaned up voice file: %s", audio_path)
-        except Exception as e:
-            logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
-        return
+        logger.info(
+            "Feedback not sent for session %s (non-UI adapter or topic unavailable); continuing transcription",
+            session_id[:8],
+        )
 
     # Transcribe audio using Whisper
     text = await transcribe_voice_with_retry(audio_path)
@@ -263,6 +260,15 @@ async def handle_voice(
             MessageMetadata(),
         )
         return
+
+    # Send transcribed text back to UI (quoted + italics)
+    escaped_text = escape_markdown_v2(text)
+    transcribed_message = f'*Transcribed text:*\n\n_"{escaped_text}"_'
+    await send_feedback(
+        session_id,
+        transcribed_message,
+        MessageMetadata(parse_mode="MarkdownV2"),
+    )
 
     logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], text)
     success = await terminal_bridge.send_keys(

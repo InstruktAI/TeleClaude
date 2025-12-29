@@ -234,6 +234,7 @@ def test_session_ux_state_from_dict_handles_missing_fields():
     assert state.output_message_id == "msg-123"
     assert state.notification_sent is False  # Default
     assert state.pending_deletions == []  # Default
+    assert state.last_input_adapter is None  # Default
 
 
 def test_session_ux_state_to_dict_serializes_all_fields():
@@ -244,6 +245,7 @@ def test_session_ux_state_to_dict_serializes_all_fields():
         output_message_id="msg-123",
         pending_deletions=["del-1", "del-2"],
         pending_feedback_deletions=["fb-1"],
+        last_input_adapter="telegram",
         notification_sent=True,
         native_session_id="claude-789",
         native_log_file="/path/to/session.jsonl",
@@ -256,6 +258,7 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     assert data["output_message_id"] == "msg-123"
     assert data["pending_deletions"] == ["del-1", "del-2"]
     assert data["pending_feedback_deletions"] == ["fb-1"]
+    assert data["last_input_adapter"] == "telegram"
     assert data["notification_sent"] is True
     assert data["native_session_id"] == "claude-789"
     assert data["native_log_file"] == "/path/to/session.jsonl"
