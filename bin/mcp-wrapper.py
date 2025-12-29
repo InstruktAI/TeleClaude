@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import signal
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -665,6 +666,15 @@ class MCPProxy:
 
         return True
 
+    async def _parent_watchdog(self) -> None:
+        """Exit if parent process dies (orphan detection)."""
+        while not self.shutdown.is_set():
+            if not _check_parent_alive():
+                logger.info("Parent process died (PPID changed), forcing exit")
+                # Force immediate exit - other tasks may be blocked on I/O
+                os._exit(0)
+            await asyncio.sleep(5.0)
+
     async def run(self):
         """Main proxy loop."""
         # Setup stdin reader
@@ -685,9 +695,10 @@ class MCPProxy:
         stdin_task = asyncio.create_task(self.stdin_to_socket(stdin_reader))
         stdout_task = asyncio.create_task(self.socket_to_stdout())
         self._sender_task = asyncio.create_task(self._socket_sender())
+        watchdog_task = asyncio.create_task(self._parent_watchdog())
 
         try:
-            tasks = [stdin_task, stdout_task, self._sender_task]
+            tasks = [stdin_task, stdout_task, self._sender_task, watchdog_task]
             if self._reconnect_task:
                 tasks.append(self._reconnect_task)
             await asyncio.gather(*tasks)
@@ -699,8 +710,31 @@ class MCPProxy:
                 self.writer.close()
 
 
+_PARENT_PID = os.getppid()
+
+
+def _handle_signal(signum: int, _frame: object) -> None:
+    """Handle termination signals by exiting immediately."""
+    sig_name = signal.Signals(signum).name
+    logger.info("Received %s, exiting", sig_name)
+    sys.exit(0)
+
+
+def _check_parent_alive() -> bool:
+    """Check if our parent process is still alive.
+
+    Returns False if parent died (PPID changed to 1 on Unix).
+    """
+    return os.getppid() == _PARENT_PID
+
+
 def main():
     """Entry point."""
+    # Exit cleanly on signals (especially SIGHUP when parent dies)
+    signal.signal(signal.SIGHUP, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
     logger.info("MCP wrapper starting. Extracted tools: %s", TOOL_NAMES)
     proxy = MCPProxy()
     asyncio.run(proxy.run())
