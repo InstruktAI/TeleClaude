@@ -1643,8 +1643,8 @@ class TeleClaudeMCPServer:
 
         Args:
             session_id: TeleClaude session UUID
-            content: Markdown or HTML formatted content
-            output_format: 'markdown' (default) or 'html'
+            content: Content to display (text, markdown, or HTML)
+            output_format: 'markdown' (default), 'html', or 'text'
 
         Returns:
             Success dict with message_id or error dict
