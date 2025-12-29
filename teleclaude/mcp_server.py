@@ -451,7 +451,7 @@ class TeleClaudeMCPServer:
                         "\n"
                         "Use this tool when the user explicitly asks to send results.\n"
                         "\n"
-                        "Content can be text, markdown or html."
+                        "Content can be markdown or html."
                     ),
                     inputSchema={
                         "type": "object",
