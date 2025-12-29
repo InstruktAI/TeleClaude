@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 from typing import Any, cast
 
 from anthropic import AsyncAnthropic
@@ -10,7 +11,12 @@ from openai.types.shared_params.response_format_json_schema import ResponseForma
 
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.agents import AgentName
-from teleclaude.utils.transcript import parse_session_transcript
+from teleclaude.utils.transcript import (
+    _iter_claude_entries,
+    _iter_codex_entries,
+    _iter_gemini_entries,
+    parse_session_transcript,
+)
 
 SUMMARY_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
 SUMMARY_MODEL_OPENAI = "gpt-5-nano-2025-08-07"
@@ -25,6 +31,88 @@ SUMMARY_SCHEMA: dict[str, object] = {
 }
 
 
+def extract_recent_exchanges(
+    transcript_path: str,
+    agent_name: AgentName,
+    n_exchanges: int = 2,
+) -> str:
+    """Extract last N user messages with their text-only agent responses."""
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return ""
+
+    if agent_name == AgentName.CLAUDE:
+        entries = _iter_claude_entries(path)
+    elif agent_name == AgentName.CODEX:
+        entries = _iter_codex_entries(path)
+    elif agent_name == AgentName.GEMINI:
+        entries = _iter_gemini_entries(path)
+    else:
+        return ""
+
+    exchanges: list[dict[str, str]] = []
+
+    for entry in entries:
+        message = entry.get("message")
+        # Handle response_item payload wrapper
+        if not isinstance(message, dict) and entry.get("type") == "response_item":
+            payload = entry.get("payload")
+            if isinstance(payload, dict):
+                message = payload
+
+        if not isinstance(message, dict):
+            continue
+
+        role = message.get("role")
+        content = message.get("content")
+
+        if role == "user":
+            user_text = ""
+            if isinstance(content, str):
+                user_text = content
+            elif isinstance(content, list):
+                texts: list[str] = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") in ("input_text", "text"):
+                        texts.append(str(block.get("text", "")))
+                user_text = "\n".join(texts)
+
+            exchanges.append({"user": user_text, "assistant": ""})
+
+        elif role == "assistant":
+            if not exchanges:
+                continue
+
+            assistant_text = ""
+            if isinstance(content, str):
+                assistant_text = content
+            elif isinstance(content, list):
+                texts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        texts.append(str(block.get("text", "")))
+                assistant_text = "\n".join(texts)
+
+            if assistant_text:
+                if exchanges[-1]["assistant"]:
+                    exchanges[-1]["assistant"] += "\n" + assistant_text
+                else:
+                    exchanges[-1]["assistant"] = assistant_text
+
+    # Take last N exchanges
+    recent = exchanges[-n_exchanges:]
+
+    # Format output
+    output_lines = []
+    for ex in recent:
+        output_lines.append(f"User: {ex['user']}")
+        if ex["assistant"]:
+            output_lines.append(f"Assistant: {ex['assistant']}")
+        output_lines.append("")
+
+    return "\n".join(output_lines).strip()
+
+
 async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | None, str]:
     """Summarize an agent session transcript and return (title, summary)."""
     transcript = parse_session_transcript(
@@ -36,17 +124,20 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
     if transcript.startswith("Transcript file not found:") or transcript.startswith("Error parsing transcript:"):
         raise ValueError(transcript)
 
-    prompt = f"""Summarize what an AI assistant reported in its recent transcript. Write for humans tracking progress.
+    recent_exchanges = extract_recent_exchanges(transcript_path, agent_name)
 
-Rules:
-- First person (\"I...\")
-- 1-2 sentences
-- Accurately reflect what the AI said it did or observed
-- Preserve the subject
-- Also provide a short title (max 50 chars)
+    prompt = f"""Analyze this AI assistant session to generate a title and summary.
 
-Transcript:
-{transcript}"""
+## Recent Exchanges (User intent context):
+{recent_exchanges}
+
+## Latest Agent Output (Execution details):
+{transcript}
+
+## Output:
+1. **title** (max 50 chars): What the USER is trying to accomplish. Focus on user intent, not agent actions. Use imperative form (e.g., "Fix login bug", "Add dark mode").
+2. **summary** (1-2 sentences, first person "I..."): What the agent just did based on its responses above.
+"""
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if api_key:
