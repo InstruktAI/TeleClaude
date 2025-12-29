@@ -249,22 +249,23 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         # Small delay to let text be processed
         await asyncio.sleep(0.1)
 
-        # Send Enter key if requested (skip for arrow keys, etc.)
+        # Send Enter key twice if requested (second press ensures it registers for voice input)
         if send_enter:
-            cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
-            result = await asyncio.create_subprocess_exec(
-                *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            _, stderr = await result.communicate()
-
-            if result.returncode != 0:
-                logger.error(
-                    "Failed to send Enter to session %s: returncode=%d, stderr=%s",
-                    session_name,
-                    result.returncode,
-                    stderr.decode().strip(),
+            for _ in range(2):
+                cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
+                result = await asyncio.create_subprocess_exec(
+                    *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
-                return False
+                _, stderr = await result.communicate()
+
+                if result.returncode != 0:
+                    logger.error(
+                        "Failed to send Enter to session %s: returncode=%d, stderr=%s",
+                        session_name,
+                        result.returncode,
+                        stderr.decode().strip(),
+                    )
+                    return False
 
         return True
 
