@@ -112,7 +112,7 @@ How will we know this is successful?
 - [ ] Invalid mode values return clear error message
 - [ ] `get_agent_command()` helper used by `handle_agent_start()`, `handle_agent_resume()`, `restart_agent.py`
 - [ ] Codex commands include "exec" subcommand in correct position
-- [ ] DEFAULT_*_COMMAND and AGENT_RESUME_TEMPLATES removed from constants.py
+- [ ] DEFAULT\_\*\_COMMAND and AGENT_RESUME_TEMPLATES removed from constants.py
 - [ ] Unit tests cover mode parameter, exec_subcommand, resume, and helper function
 - [ ] Zero regressions in existing functionality
 
@@ -131,7 +131,7 @@ None - config structure defined (commands inlined, no separate constants):
         "resume_template": "{base_cmd} --resume {session_id}",
     },
     "gemini": {
-        "command": "gemini --yolo",
+        "command": "gemini --yolo -i",
         "session_dir": "~/.gemini/sessions",
         "log_pattern": "*.jsonl",
         "model_flags": {"fast": "-m gemini-2.5-flash-lite", "med": "-m gemini-2.5-flash", "slow": "-m gemini-3-pro-preview"},
@@ -153,7 +153,7 @@ None - config structure defined (commands inlined, no separate constants):
 
 - Affected files:
   - `teleclaude/config.py` - inline commands + add `model_flags`, `exec_subcommand`, `resume_template` to AgentConfig
-  - `teleclaude/constants.py` - remove DEFAULT_*_COMMAND and AGENT_RESUME_TEMPLATES
+  - `teleclaude/constants.py` - remove DEFAULT\_\*\_COMMAND and AGENT_RESUME_TEMPLATES
   - `teleclaude/core/agents.py` - add `get_agent_command()` helper (handles start + resume)
   - `teleclaude/mcp_server.py` - add mode parameter to tools and method implementations
   - `teleclaude/core/command_handlers.py` - refactor `handle_agent_start()` + `handle_agent_resume()` to use helper

@@ -16,7 +16,7 @@ def _fake_config() -> dict[str, AgentConfig]:
             continue_template="{base_cmd} --continue",
         ),
         "gemini": AgentConfig(
-            command="gemini --yolo",
+            command="gemini --yolo -i",
             session_dir="~/.gemini/sessions",
             log_pattern="*.jsonl",
             model_flags={

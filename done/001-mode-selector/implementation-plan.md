@@ -243,7 +243,7 @@ _These tasks must run sequentially. Each follows checkbox discipline: mark in-pr
         "resume_template": "{base_cmd} --resume {session_id}",
     },
     "gemini": {
-        "command": "gemini --yolo",
+        "command": "gemini  -i",
         "session_dir": "~/.gemini/sessions",
         "log_pattern": "*.jsonl",
         "model_flags": {"fast": "-m gemini-2.5-flash-lite", "med": "-m gemini-2.5-flash", "slow": "-m gemini-3-pro-preview"},

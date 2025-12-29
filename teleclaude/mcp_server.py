@@ -348,6 +348,7 @@ class TeleClaudeMCPServer:
                         "Retrieve session data from a remote computer's Claude Code session. "
                         "Reads from the claude_session_file which contains complete session history. "
                         "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
+                        "Returns `status: 'closed'` if session has ended (no transcript returned). "
                         "**Use this to check on delegated work** after teleclaude__send_message. "
                         "**Supervising Worker AI Sessions:** When managing/monitoring another AI session, "
                         "use `tail_chars=0` to see the FULL decision trail - not just recent output. "

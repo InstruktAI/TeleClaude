@@ -382,6 +382,7 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session.working_directory = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
+    mock_session.closed = False  # Session must be active
 
     mock_ux_state = MagicMock()
     mock_ux_state.native_log_file = None  # No file yet
@@ -414,6 +415,7 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
     mock_session.working_directory = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
+    mock_session.closed = False  # Session must be active to return data
 
     nested_path = tmp_path / "session.json"
     gemini_payload = {
@@ -451,6 +453,29 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
     assert "Markdown Session" in result["messages"]
     assert "hi" in result["messages"]
     assert "hello" in result["messages"]
+
+
+@pytest.mark.asyncio
+async def test_handle_get_session_data_returns_closed_for_closed_session():
+    """Test that handle_get_session_data returns 'closed' status for closed sessions."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-closed"
+    mock_session.closed = True
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_context.session_id = "test-session-closed"
+
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=mock_session)
+
+        result = await command_handlers.handle_get_session_data(mock_context)
+
+    assert result["status"] == "closed"
+    assert result["session_id"] == "test-session-closed"
+    assert "messages" not in result  # No transcript for closed sessions
 
 
 @pytest.mark.asyncio
@@ -668,7 +693,7 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="gemini --yolo",
+        command="gemini --yolo -i",
         session_dir="~/.gemini/sessions",
         log_pattern="*.jsonl",
         model_flags={

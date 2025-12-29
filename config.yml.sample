@@ -36,7 +36,7 @@ agents:
     claude:
         command: "claude --dangerously-skip-permissions --settings '{\"forceLoginMethod\": \"claudeai\"}'"
     gemini:
-        command: "gemini --yolo --model=gemini-3-pro-preview"
+        command: "gemini --yolo -i"
     codex:
         # command: "codex --dangerously-bypass-approvals-and-sandbox --search"
         # Speial build to allow full disk access on MacOS

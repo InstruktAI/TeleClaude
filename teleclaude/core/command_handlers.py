@@ -465,6 +465,10 @@ async def handle_get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
+    if session.closed:
+        logger.info("Session %s is closed", session_id[:8])
+        return {"status": "closed", "session_id": session_id, "error": "Session is closed"}
+
     # Get ux_state to get native_log_file
     ux_state = await db.get_ux_state(session_id)
     if not ux_state or not ux_state.native_log_file:
