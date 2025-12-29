@@ -387,8 +387,8 @@ def test_all_events_have_handlers():
 class TestTitleUpdate:
     """Test session title updates."""
 
-    async def test_update_session_title_always_updates(self):
-        """Title should update even if it doesn't end with 'New session'."""
+    async def test_update_session_title_updates_new_session(self):
+        """Title should update when description is 'New session'."""
         from unittest.mock import AsyncMock, patch
 
         from teleclaude.core.models import Session
@@ -401,7 +401,7 @@ class TestTitleUpdate:
             computer_name="TestMac",
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
-            title="$TestMac[apps/TeleClaude] - Existing Title",
+            title="$TestMac[apps/TeleClaude] - New session",
             closed=False,
         )
 
@@ -409,8 +409,59 @@ class TestTitleUpdate:
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
 
-            # Execute
-            await daemon._update_session_title("sess-1", "Updated Title")
+            await daemon._update_session_title("sess-1", "Fix login bug")
 
-            # Verify
-            mock_db.update_session.assert_called_once_with("sess-1", title="$TestMac[apps/TeleClaude] - Updated Title")
+            mock_db.update_session.assert_called_once_with("sess-1", title="$TestMac[apps/TeleClaude] - Fix login bug")
+
+    async def test_update_session_title_updates_new_session_with_counter(self):
+        """Title should update when description is 'New session (N)'."""
+        from unittest.mock import AsyncMock, patch
+
+        from teleclaude.core.models import Session
+        from teleclaude.daemon import TeleClaudeDaemon
+
+        daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+
+        session = Session(
+            session_id="sess-1",
+            computer_name="TestMac",
+            tmux_session_name="tmux-1",
+            origin_adapter="telegram",
+            title="$TestMac[apps/TeleClaude] - New session (2)",
+            closed=False,
+        )
+
+        with patch("teleclaude.daemon.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+
+            await daemon._update_session_title("sess-1", "Add dark mode")
+
+            mock_db.update_session.assert_called_once_with("sess-1", title="$TestMac[apps/TeleClaude] - Add dark mode")
+
+    async def test_update_session_title_skips_already_updated(self):
+        """Title should NOT update when already has LLM-generated title."""
+        from unittest.mock import AsyncMock, patch
+
+        from teleclaude.core.models import Session
+        from teleclaude.daemon import TeleClaudeDaemon
+
+        daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+
+        session = Session(
+            session_id="sess-1",
+            computer_name="TestMac",
+            tmux_session_name="tmux-1",
+            origin_adapter="telegram",
+            title="$TestMac[apps/TeleClaude] - Fix login bug",  # Already updated
+            closed=False,
+        )
+
+        with patch("teleclaude.daemon.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+
+            await daemon._update_session_title("sess-1", "Different Title")
+
+            # Should NOT update - title was already set
+            mock_db.update_session.assert_not_called()

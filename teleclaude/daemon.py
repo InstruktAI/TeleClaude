@@ -6,6 +6,7 @@ import base64
 import fcntl
 import json
 import os
+import re
 import signal
 import sys
 import time
@@ -473,20 +474,27 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _update_session_title(self, session_id: str, title: str) -> None:
         """Update session title in DB and UI.
 
-        Updates the title description while preserving the prefix.
+        Only updates once - when description is still "New session".
+        Subsequent agent_stop events preserve the first LLM-generated title.
         """
         session = await db.get_session(session_id)
         if not session:
             return
 
         # Parse the title to extract prefix and description
-        prefix, _ = parse_session_title(session.title)
-        if prefix:
-            new_title = f"{prefix}{title}"
-            await db.update_session(session_id, title=new_title)
-            # db.update_session emits SESSION_UPDATED, which adapters listen to.
-            # So UI updates automatically!
-            logger.info("Updated title: %s", new_title)
+        prefix, description = parse_session_title(session.title)
+        if not prefix:
+            return
+
+        # Only update if description is still "New session" (or "New session (N)")
+        if not description or not re.search(r"^New session( \(\d+\))?$", description):
+            return  # Already has LLM-generated title - skip
+
+        new_title = f"{prefix}{title}"
+        await db.update_session(session_id, title=new_title)
+        # db.update_session emits SESSION_UPDATED, which adapters listen to.
+        # So UI updates automatically!
+        logger.info("Updated title: %s", new_title)
 
     async def _handle_deploy(self, _args: DeployArgs) -> None:  # pylint: disable=too-many-locals  # Deployment requires multiple state variables
         """Execute deployment: git pull + restart daemon via service manager.
