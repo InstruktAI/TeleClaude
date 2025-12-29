@@ -59,7 +59,7 @@ def get_agent_command(
         Assembled command string, ready for prompt to be appended.
 
     Command assembly order:
-        - With native_session_id: resume_template.format(base_cmd=..., session_id=...)
+        - With native_session_id: resume_template.format(base_cmd=<base + model_flag>, session_id=...)
         - Without: {base_command} {exec_subcommand?} {model_flags} {--resume?} {interactive_flag?}
 
     Examples:
@@ -79,7 +79,10 @@ def get_agent_command(
     base_cmd = agent_cfg.command.strip()
 
     if native_session_id:
-        return agent_cfg.resume_template.format(base_cmd=base_cmd, session_id=native_session_id)
+        # Include model flag when resuming with explicit session ID
+        resume_model_flag = agent_cfg.model_flags.get(thinking_mode, "")
+        base_with_model = f"{base_cmd} {resume_model_flag}" if resume_model_flag else base_cmd
+        return agent_cfg.resume_template.format(base_cmd=base_with_model, session_id=native_session_id)
 
     if resume and agent_cfg.continue_template:
         # Agent-specific continue semantics (e.g., `claude --continue`, `codex resume --latest`).

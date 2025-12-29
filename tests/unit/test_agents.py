@@ -89,9 +89,9 @@ def test_get_agent_command_resume_flag_when_requested():
 
 
 def test_get_agent_command_native_session_id_uses_template():
-    cmd = agents.get_agent_command("gemini", native_session_id="abc123")
+    cmd = agents.get_agent_command("gemini", native_session_id="abc123", thinking_mode="slow")
     assert "--resume abc123" in cmd
-    assert "-m gemini" not in cmd  # resume_template path skips model flag
+    assert "-m gemini-3-pro-preview" in cmd  # model flag included for explicit session resume
 
 
 def test_get_agent_command_invalid_mode_raises():
