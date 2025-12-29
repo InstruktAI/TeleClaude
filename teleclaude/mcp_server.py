@@ -466,7 +466,7 @@ class TeleClaudeMCPServer:
                             },
                             "output_format": {
                                 "type": "string",
-                                "enum": ["markdown", "html", "text"],
+                                "enum": ["markdown", "html"],
                                 "default": "markdown",
                                 "description": "Content format. Defaults to 'markdown'.",
                             },
@@ -1643,8 +1643,8 @@ class TeleClaudeMCPServer:
 
         Args:
             session_id: TeleClaude session UUID
-            content: Content to display (text, markdown, or HTML)
-            output_format: 'markdown' (default), 'html', or 'text'
+            content: Content to display (markdown or HTML)
+            output_format: 'markdown' (default) or 'html'
 
         Returns:
             Success dict with message_id or error dict
@@ -1658,11 +1658,7 @@ class TeleClaudeMCPServer:
         if not session:
             return {"status": "error", "message": f"Session {session_id} not found"}
 
-        if output_format == "text":
-            # Text mode: send content as-is without any parse mode
-            formatted_content = content
-            parse_mode = ""
-        elif output_format == "html":
+        if output_format == "html":
             # HTML mode: send content as-is with HTML parse mode
             formatted_content = content
             parse_mode = "HTML"
