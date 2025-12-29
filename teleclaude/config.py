@@ -111,6 +111,8 @@ class AgentConfig:
     log_pattern: str
     model_flags: dict[str, str]
     exec_subcommand: str
+    interactive_flag: str  # Flag to add before prompt for interactive mode (e.g., "-i")
+    non_interactive_flag: str  # Flag for non-interactive/pipe mode (e.g., "-p")
     resume_template: str
     continue_template: str = ""
 
@@ -270,6 +272,8 @@ def _build_config(raw: dict[str, object]) -> Config:
                     log_pattern=str(metadata["log_pattern"]),
                     model_flags=dict(metadata["model_flags"]),  # type: ignore[arg-type]
                     exec_subcommand=str(metadata["exec_subcommand"]),
+                    interactive_flag=str(metadata["interactive_flag"]),
+                    non_interactive_flag=str(metadata["non_interactive_flag"]),
                     resume_template=str(metadata["resume_template"]),
                     continue_template=str(metadata.get("continue_template", "")),  # Optional field
                 )

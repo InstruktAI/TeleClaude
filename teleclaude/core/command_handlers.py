@@ -1209,7 +1209,13 @@ async def handle_agent_start(
     # Persist chosen thinking_mode so subsequent MCP calls (or resumes) can reuse it.
     await db.update_ux_state(session.session_id, thinking_mode=start_args.thinking_mode.value)
 
-    base_cmd = get_agent_command(start_args.agent_name, thinking_mode=start_args.thinking_mode.value)
+    # Include interactive flag when there's a prompt (user_args contains the prompt)
+    has_prompt = bool(start_args.user_args)
+    base_cmd = get_agent_command(
+        start_args.agent_name,
+        thinking_mode=start_args.thinking_mode.value,
+        interactive=has_prompt,
+    )
 
     cmd_parts = [base_cmd]
 

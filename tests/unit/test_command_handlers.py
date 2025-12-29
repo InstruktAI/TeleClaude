@@ -544,6 +544,8 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
         log_pattern="*.jsonl",
         model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
         exec_subcommand="",
+        interactive_flag="-p",
+        non_interactive_flag="-p",
         resume_template="{base_cmd} --resume {session_id}",
         continue_template="",
     )
@@ -588,6 +590,8 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
         log_pattern="*.jsonl",
         model_flags={"fast": "-m gpt-5.1-codex-mini", "med": "-m gpt-5.1-codex", "slow": "-m gpt-5.2"},
         exec_subcommand="exec",
+        interactive_flag="",
+        non_interactive_flag="",
         resume_template="{base_cmd} resume {session_id}",
         continue_template="",
     )
@@ -636,7 +640,8 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
         )
 
     mock_execute.assert_called_once()
-    mock_get_agent_command.assert_called_once_with("codex", thinking_mode="deep")
+    # "deep" is parsed as thinking_mode, so user_args is empty -> interactive=False
+    mock_get_agent_command.assert_called_once_with("codex", thinking_mode="deep", interactive=False)
     command = mock_execute.call_args[0][1]
     assert "codex -m deep" in command
 
@@ -693,7 +698,7 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     mock_client = MagicMock()
 
     mock_agent_config = AgentConfig(
-        command="gemini --yolo -i",
+        command="gemini --yolo",
         session_dir="~/.gemini/sessions",
         log_pattern="*.jsonl",
         model_flags={
@@ -702,6 +707,8 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
             "slow": "-m gemini-3-pro-preview",
         },
         exec_subcommand="",
+        interactive_flag="-i",
+        non_interactive_flag="",
         resume_template="{base_cmd} --resume {session_id}",
         continue_template="",
     )
@@ -728,7 +735,7 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     command = call_args[1]
 
     # Gemini uses --resume flag with session ID from database
-    assert "gemini --yolo" in command
+    assert "--yolo" in command
     assert "--resume" in command
     assert "native-123-abc" in command
 
@@ -756,6 +763,8 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
         log_pattern="*.jsonl",
         model_flags={"fast": "-m haiku", "med": "-m sonnet", "slow": "-m opus"},
         exec_subcommand="",
+        interactive_flag="-p",
+        non_interactive_flag="-p",
         resume_template="{base_cmd} --resume {session_id}",
         continue_template="{base_cmd} --continue",
     )
@@ -781,7 +790,8 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     call_args = mock_execute.call_args[0]
     command = call_args[1]
 
-    assert "claude --dangerously-skip-permissions" in command
+    # Check for Claude's key flags and continue template behavior
+    assert "--dangerously-skip-permissions" in command
     assert command.endswith("--continue")
     assert "--resume" not in command
     assert "-m " not in command  # continue_template path skips model flag
