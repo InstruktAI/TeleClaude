@@ -33,7 +33,7 @@ from teleclaude.core.session_cleanup import (
     TMUX_SESSION_PREFIX,
     cleanup_session_resources,
 )
-from teleclaude.core.session_utils import ensure_unique_title
+from teleclaude.core.session_utils import build_session_title, ensure_unique_title, update_title_with_agent
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.utils.transcript import (
     get_transcript_parser_info,
@@ -222,23 +222,21 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     # Extract initiator from channel_metadata if present
     initiator = None
     if metadata.channel_metadata:
-        initiator = metadata.channel_metadata.get("target_computer")
+        initiator_raw = metadata.channel_metadata.get("target_computer")
+        initiator = str(initiator_raw) if initiator_raw else None
 
-    # Create topic first with custom title if provided
-    # For AI-to-AI sessions (initiator present), use "initiator > computer[project]" format
-    # For human sessions, use "computer[project]" format
-    if initiator:
-        # AI-to-AI: "AI:$MozBook > $RasPi[apps/TeleClaude] - New session"
-        if args and len(args) > 0:
-            base_title = f"AI:${initiator} > ${computer_name}[{short_project}] - {' '.join(args)}"
-        else:
-            base_title = f"AI:${initiator} > ${computer_name}[{short_project}] - New session"
-    else:
-        # Human-initiated (Telegram): "$RasPi[apps/TeleClaude] - New session"
-        if args and len(args) > 0:
-            base_title = f"${computer_name}[{short_project}] - {' '.join(args)}"
-        else:
-            base_title = f"${computer_name}[{short_project}] - New session"
+    # Build session title using standard format
+    # Agent info not yet known at session creation time (will be updated when agent starts)
+    description = " ".join(args) if args else "New session"
+    base_title = build_session_title(
+        computer_name=computer_name,
+        short_project=short_project,
+        description=description,
+        initiator_computer=initiator,
+        # Agent info unknown at creation time - will be updated when agent starts
+        agent_name=None,
+        thinking_mode=None,
+    )
 
     # Ensure title is unique (appends counter if needed)
     title = await ensure_unique_title(base_title)
@@ -1231,9 +1229,21 @@ async def handle_agent_start(
     await db.update_ux_state(
         session.session_id,
         active_agent=agent_name,
+        thinking_mode=start_args.thinking_mode.value,
         native_session_id=None,
         native_log_file=None,
     )
+
+    # Update session title to include agent info (replaces $Computer with Agent-mode@Computer)
+    new_title = update_title_with_agent(
+        session.title,
+        agent_name,
+        start_args.thinking_mode.value,
+        config.computer.name,
+    )
+    if new_title:
+        await db.update_session(session.session_id, title=new_title)
+        logger.info("Updated session title with agent info: %s", new_title)
 
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))

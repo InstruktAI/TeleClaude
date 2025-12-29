@@ -24,6 +24,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_listeners import get_listeners
+from teleclaude.core.session_utils import update_title_with_agent
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -38,7 +39,7 @@ class AgentCoordinator:
         self.client = client
 
     async def handle_session_start(self, context: AgentEventContext) -> None:
-        """Handle session_start event - store native session details."""
+        """Handle session_start event - store native session details and update title if needed."""
         payload = cast(AgentSessionStartPayload, context.data)
         native_session_id = payload.session_id
         native_log_file = payload.transcript_path
@@ -61,6 +62,36 @@ class AgentCoordinator:
             context.session_id[:8],
             str(native_session_id)[:8],
         )
+
+        # Update session title if it still uses old $Computer format but we have agent info
+        await self._update_title_if_needed(context.session_id)
+
+    async def _update_title_if_needed(self, session_id: str) -> None:
+        """Update session title to include agent info if it uses old format."""
+        session = await db.get_session(session_id)
+        if not session:
+            return
+
+        # Check if title still uses old $Computer format
+        if f"${config.computer.name}" not in session.title:
+            return  # Already has new format or different computer
+
+        # Get agent info from UX state
+        ux_state = await db.get_ux_state(session_id)
+        if not ux_state or not ux_state.active_agent or not ux_state.thinking_mode:
+            return  # No agent info available
+
+        # Build new title with agent info
+        new_title = update_title_with_agent(
+            session.title,
+            ux_state.active_agent,
+            ux_state.thinking_mode,
+            config.computer.name,
+        )
+
+        if new_title and new_title != session.title:
+            await db.update_session(session_id, title=new_title)
+            logger.info("Updated session title with agent info: %s", new_title)
 
     async def handle_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped.

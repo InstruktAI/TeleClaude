@@ -19,21 +19,15 @@ _None currently - all blockers fixed._
 **Expected:** Agent session starts with the specified agent type
 **Actual:** Immediate feedback message: "unknown agent"
 
-### 2. Session title doesn't show active agent and mode
+### ~~2. Session title doesn't show active agent and mode~~ ✅ FIXED
 
-**Current behavior:**
+**Fixed:** Session titles now show agent info when known:
 
-- Human session: `$MozMini[InstruktAI/TeleClaude] - {title}`
-- AI-to-AI: `AI:$MozBook > $RasPi[apps/TeleClaude] - {title}`
+- Agent unknown: `$Computer[project] - {title}` (uses `$` prefix)
+- Agent known: `{Agent}-{mode}@Computer[project] - {title}` (e.g., `Claude-slow@MozMini`)
+- AI-to-AI with agents: `{Initiator} > {Target}[project] - {title}`
 
-**Expected behavior:**
-
-- Human, agent unknown: `$MozMini[InstruktAI/TeleClaude] - {title}` (keep `$` prefix)
-- Human, agent known: `Claude-slow@MozMini[InstruktAI/TeleClaude] - {title}`
-- AI-to-AI, agents unknown: `AI:$MozBook > $RasPi[apps/TeleClaude] - {title}`
-- AI-to-AI, agents known: `AI:Claude-slow@MozBook > Gemini-med@RasPi[apps/TeleClaude] - {title}`
-
-Format: `{Agent}-{mode}@{Computer}[{Project}] - {title}` when agent known, `${Computer}` when unknown
+Removed `AI:` prefix from AI-to-AI session titles. Title updates automatically when agent starts.
 
 ---
 

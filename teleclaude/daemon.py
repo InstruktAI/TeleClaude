@@ -54,7 +54,7 @@ from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_listeners import cleanup_caller_listeners, get_listeners, pop_listeners
-from teleclaude.core.session_utils import get_output_file
+from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
 from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
@@ -471,21 +471,24 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         await self.client.send_feedback(session, message, MessageMetadata(adapter_type="internal"))
 
     async def _update_session_title(self, session_id: str, title: str) -> None:
-        """Update session title in DB and UI."""
+        """Update session title in DB and UI.
+
+        Replaces "New session" suffix with the AI-generated title.
+        """
+        import re
+
         session = await db.get_session(session_id)
         if not session:
             return
 
-        import re
-
+        # Only update if title still has "New session" suffix
         if not re.search(r"New session( \(\d+\))?$", session.title):
             return
 
-        title_pattern = r"^(\$\w+\[[^\]]+\] - ).*$"
-        match = re.match(title_pattern, session.title)
-
-        if match:
-            new_title = f"{match.group(1)}{title}"
+        # Parse the title to extract prefix and description
+        prefix, _ = parse_session_title(session.title)
+        if prefix:
+            new_title = f"{prefix}{title}"
             await db.update_session(session_id, title=new_title)
             # db.update_session emits SESSION_UPDATED, which adapters listen to.
             # So UI updates automatically!

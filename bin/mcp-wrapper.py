@@ -13,40 +13,12 @@ import os
 import re
 import signal
 import sys
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import MutableMapping, TypedDict
 
-# Configure logging to file (NEVER stdout/stderr - breaks MCP stdio transport)
-LOGS_DIR = Path(__file__).parent.parent / "logs"
-LOGS_DIR.mkdir(exist_ok=True)
+from instrukt_ai_logging import get_logger
 
-LOG_FILE = LOGS_DIR / "mcp-wrapper.log"
-
-# NOTE: We must never log to stdout/stderr because this process is the MCP stdio transport.
-_log_level_name = (os.getenv("MCP_WRAPPER_LOG_LEVEL") or os.getenv("LOG_LEVEL") or "INFO").upper()
-_log_level = getattr(logging, _log_level_name, logging.INFO)
-# MCP wrapper logs can get noisy during reconnect loops. Always use internal
-# rotation to prevent runaway disk usage even when system logrotate isn't configured.
-_log_handler = RotatingFileHandler(
-    str(LOG_FILE),
-    maxBytes=1024 * 1024,  # 1MB
-    backupCount=5,
-    encoding="utf-8",
-)
-# If a previous run produced an oversized log file, roll it immediately so new
-# logs start fresh. This avoids appending into a multi-GB file indefinitely.
-try:
-    if LOG_FILE.exists() and LOG_FILE.stat().st_size > 1024 * 1024:
-        _log_handler.doRollover()
-except Exception:
-    # Best-effort only: never crash the wrapper because of logging.
-    pass
-_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-logging.root.setLevel(_log_level)
-logging.root.handlers = [_log_handler]
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
 CONTEXT_TO_INJECT: dict[str, str] = {"caller_session_id": "TELECLAUDE_SESSION_ID"}
