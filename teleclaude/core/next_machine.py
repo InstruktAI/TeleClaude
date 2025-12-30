@@ -350,7 +350,17 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     # 1. Resolve slug
     resolved_slug, _ = resolve_slug(cwd, slug)
     if not resolved_slug:
-        return format_error("NO_WORK", "No pending items in roadmap.")
+        # Empty roadmap - dispatch next-prepare for roadmap grooming
+        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+        return format_tool_call(
+            command="next-prepare",
+            args="",
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder="",
+            note="Roadmap is empty. Start with roadmap grooming to add work items.",
+        )
 
     # 2. Check requirements
     if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
