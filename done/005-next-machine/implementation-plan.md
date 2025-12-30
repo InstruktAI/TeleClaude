@@ -45,9 +45,9 @@ bin/mcp-wrapper.py                 # Context injection
 
 ## Group 1: Dependencies & Module Scaffold
 
-- [ ] **Add GitPython dependency:** Add `GitPython>=3.1.0` to `pyproject.toml` dependencies
-- [ ] **Create module file:** Create `teleclaude/core/next_machine.py` with imports
-- [ ] **Define fallback matrices:** Create `PREPARE_FALLBACK` and `WORK_FALLBACK` dicts mapping task types to agent preferences
+- [x] **Add GitPython dependency:** Add `GitPython>=3.1.0` to `pyproject.toml` dependencies
+- [x] **Create module file:** Create `teleclaude/core/next_machine.py` with imports
+- [x] **Define fallback matrices:** Create `PREPARE_FALLBACK` and `WORK_FALLBACK` dicts mapping task types to agent preferences
 
 ```python
 # Example structure
@@ -68,7 +68,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
 
 ## Group 2: Database & Agent Availability
 
-- [ ] **Add table schema:** In `db.py`, add `agent_availability` table to `_ensure_tables()`:
+- [x] **Add table schema:** In `db.py`, add `agent_availability` table to `_ensure_tables()`:
   ```sql
   CREATE TABLE IF NOT EXISTS agent_availability (
       agent TEXT PRIMARY KEY,
@@ -78,7 +78,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
   )
   ```
 
-- [ ] **Implement get_agent_availability():** Query single agent's availability status
+- [x] **Implement get_agent_availability():** Query single agent's availability status
   ```python
   async def get_agent_availability(self, agent: str) -> dict[str, Any] | None:
       cursor = await self.conn.execute(
@@ -89,7 +89,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       # Return dict with available, unavailable_until, reason or None if not found
   ```
 
-- [ ] **Implement mark_agent_unavailable():** Insert or update unavailability
+- [x] **Implement mark_agent_unavailable():** Insert or update unavailability
   ```python
   async def mark_agent_unavailable(
       self, agent: str, unavailable_until: str, reason: str
@@ -104,7 +104,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       await self.conn.commit()
   ```
 
-- [ ] **Implement clear_expired_availability():** Reset agents whose TTL has passed
+- [x] **Implement clear_expired_availability():** Reset agents whose TTL has passed
   ```python
   async def clear_expired_availability(self) -> None:
       now = datetime.now(timezone.utc).isoformat()
@@ -121,7 +121,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
 
 ## Group 3: Shared Helper Functions
 
-- [ ] **Implement resolve_slug():**
+- [x] **Implement resolve_slug():**
   ```python
   def resolve_slug(cwd: str, slug: str | None) -> str | None:
       """
@@ -135,7 +135,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       """
   ```
 
-- [ ] **Implement get_available_agent():**
+- [x] **Implement get_available_agent():**
   ```python
   async def get_available_agent(
       db: Database, task_type: str, fallback_matrix: dict[str, list[tuple[str, str]]]
@@ -150,13 +150,13 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       """
   ```
 
-- [ ] **Implement check_file_exists():**
+- [x] **Implement check_file_exists():**
   ```python
   def check_file_exists(cwd: str, relative_path: str) -> bool:
       return (Path(cwd) / relative_path).exists()
   ```
 
-- [ ] **Implement get_archive_path():**
+- [x] **Implement get_archive_path():**
   ```python
   def get_archive_path(cwd: str, slug: str) -> str | None:
       """
@@ -172,7 +172,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       return None
   ```
 
-- [ ] **Implement parse_impl_plan_done():**
+- [x] **Implement parse_impl_plan_done():**
   ```python
   def parse_impl_plan_done(cwd: str, slug: str) -> bool:
       """
@@ -183,7 +183,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       """
   ```
 
-- [ ] **Implement check_review_status():**
+- [x] **Implement check_review_status():**
   ```python
   def check_review_status(cwd: str, slug: str) -> str:
       """
@@ -195,7 +195,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
       """
   ```
 
-- [ ] **Implement response builders (return plain text, not JSON):**
+- [x] **Implement response builders (return plain text, not JSON):**
   ```python
   def format_tool_call(
       command: str, args: str, project: str, agent: str,
@@ -234,7 +234,7 @@ Delivered to {archive_path}/"""
 
 ## Group 4: Git Operations
 
-- [ ] **Implement has_uncommitted_changes():**
+- [x] **Implement has_uncommitted_changes():**
   ```python
   def has_uncommitted_changes(repo: Repo, worktree_path: str) -> bool:
       """
@@ -243,7 +243,7 @@ Delivered to {archive_path}/"""
       """
   ```
 
-- [ ] **Implement ensure_worktree():**
+- [x] **Implement ensure_worktree():**
   ```python
   def ensure_worktree(repo: Repo, cwd: str, slug: str) -> None:
       """
@@ -261,7 +261,7 @@ The `get_archive_path()` helper (Group 3) detects when finalize completed.
 
 ## Group 5: Main Functions
 
-- [ ] **Implement next_prepare():**
+- [x] **Implement next_prepare():**
   ```python
   async def next_prepare(
       db: Database, slug: str | None, cwd: str
@@ -300,7 +300,7 @@ The `get_archive_path()` helper (Group 3) detects when finalize completed.
       """
   ```
 
-- [ ] **Implement next_work():**
+- [x] **Implement next_work():**
   ```python
   async def next_work(
       db: Database, slug: str | None, cwd: str
@@ -389,7 +389,7 @@ The `get_archive_path()` helper (Group 3) detects when finalize completed.
 
 ## Group 6: MCP Tools & Wrapper
 
-- [ ] **Implement teleclaude__next_prepare MCP tool:**
+- [x] **Implement teleclaude__next_prepare MCP tool:**
   ```python
   @mcp.tool()
   async def teleclaude__next_prepare(
@@ -406,7 +406,7 @@ The `get_archive_path()` helper (Group 3) detects when finalize completed.
       return await next_prepare(db, slug, cwd)
   ```
 
-- [ ] **Implement teleclaude__next_work MCP tool:**
+- [x] **Implement teleclaude__next_work MCP tool:**
   ```python
   @mcp.tool()
   async def teleclaude__next_work(
@@ -423,7 +423,7 @@ The `get_archive_path()` helper (Group 3) detects when finalize completed.
       return await next_work(db, slug, cwd)
   ```
 
-- [ ] **Implement teleclaude__mark_agent_unavailable MCP tool:**
+- [x] **Implement teleclaude__mark_agent_unavailable MCP tool:**
   ```python
   @mcp.tool()
   async def teleclaude__mark_agent_unavailable(
@@ -440,7 +440,7 @@ The `get_archive_path()` helper (Group 3) detects when finalize completed.
       return f"OK: {agent} marked unavailable until {unavailable_until} ({reason})"
   ```
 
-- [ ] **Update MCP wrapper for cwd injection:**
+- [x] **Update MCP wrapper for cwd injection:**
   In `bin/mcp-wrapper.py`, update `CONTEXT_TO_INJECT` and injection logic:
   ```python
   # Special handling for cwd - use os.getcwd() instead of env var

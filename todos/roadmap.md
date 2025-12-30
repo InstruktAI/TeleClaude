@@ -7,7 +7,7 @@
 
 ## Development Process
 
-### [>] next-machine - Deterministic workflow state machine
+### [x] next-machine - Deterministic workflow state machine
 
 Create `teleclaude__next_step` MCP tool that returns exact commands to execute for the build/review/finalize cycle. Eliminates interpretation from orchestration - the tool tells you exactly what to dispatch next based on file state.
 

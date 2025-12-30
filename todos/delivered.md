@@ -6,3 +6,4 @@
 | 2025-12-17 | mode-selector | Mode Selector for Agent Model Variants | DELIVERED | d1f28ba | done/001-mode-selector |
 | 2025-12-16 | run-agent-command | Run Agent Command MCP Tool | DELIVERED | - | done/003-run-agent-command |
 | 2025-12-15 | universal-hooks | Universal File-Watcher Hook System | DELIVERED | - | done/004-universal-hooks |
+| 2025-12-30 | next-machine | Deterministic Workflow State Machine | DELIVERED | 89ec189 | done/005-next-machine |
