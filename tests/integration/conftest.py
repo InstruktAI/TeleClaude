@@ -375,6 +375,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         cols: int = 80,
         rows: int = 24,
         send_enter: bool = True,
+        active_agent: str | None = None,
     ):
         """Mock send_keys to simulate command execution and output."""
 

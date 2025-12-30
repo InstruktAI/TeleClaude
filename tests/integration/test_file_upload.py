@@ -57,7 +57,9 @@ class TestFileUploadFlow:
         sent_keys = []
         sent_messages = []
 
-        async def mock_send_keys(session_name: str, text: str, session_id: Optional[str] = None) -> bool:
+        async def mock_send_keys(
+            session_name: str, text: str, session_id: Optional[str] = None, **kwargs: object
+        ) -> bool:
             sent_keys.append((session_name, text))
             return True
 
@@ -99,7 +101,9 @@ class TestFileUploadFlow:
         """Test file upload flow with generic process."""
         sent_keys = []
 
-        async def mock_send_keys(session_name: str, text: str, session_id: Optional[str] = None) -> bool:
+        async def mock_send_keys(
+            session_name: str, text: str, session_id: Optional[str] = None, **kwargs: object
+        ) -> bool:
             sent_keys.append((session_name, text))
             return True
 
