@@ -34,13 +34,12 @@ class TestSendKeys:
 
                 assert success is True
 
-                # Verify send_keys command wraps text in bracketed paste sequences
-                # This prevents apps like Gemini CLI from treating '!' as shell mode trigger
+                # Verify send_keys command sends text as-is (no bracketed paste)
                 call_args_list = mock_exec.call_args_list
                 send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
                 assert len(send_keys_call) > 0
                 text_arg = send_keys_call[0][0][-1]
-                assert text_arg == "\x1b[200~ls -la\x1b[201~"
+                assert text_arg == "ls -la"
 
     @pytest.mark.asyncio
     async def test_recreates_session_with_session_id(self):
@@ -65,6 +64,56 @@ class TestSendKeys:
         assert success is True
         mock_create.assert_awaited_once()
         assert mock_create.await_args.kwargs.get("session_id") == "sid-123"
+
+    @pytest.mark.asyncio
+    async def test_escapes_exclamation_for_gemini(self):
+        """Test that exclamation marks are escaped for Gemini agent."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.communicate = AsyncMock(return_value=(b"", b""))
+            mock_exec.return_value = mock_process
+
+            with patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)):
+                success = await terminal_bridge.send_keys(
+                    session_name="test-session",
+                    text="Hello! World!",
+                    active_agent="gemini",
+                )
+
+                assert success is True
+
+                # Verify exclamation marks are escaped for Gemini
+                call_args_list = mock_exec.call_args_list
+                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                assert len(send_keys_call) > 0
+                text_arg = send_keys_call[0][0][-1]
+                assert text_arg == r"Hello\! World\!"
+
+    @pytest.mark.asyncio
+    async def test_no_escaping_for_non_gemini(self):
+        """Test that exclamation marks are NOT escaped for non-Gemini agents."""
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = MagicMock()
+            mock_process.returncode = 0
+            mock_process.communicate = AsyncMock(return_value=(b"", b""))
+            mock_exec.return_value = mock_process
+
+            with patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)):
+                success = await terminal_bridge.send_keys(
+                    session_name="test-session",
+                    text="Hello! World!",
+                    active_agent="claude",
+                )
+
+                assert success is True
+
+                # Verify exclamation marks are NOT escaped for Claude
+                call_args_list = mock_exec.call_args_list
+                send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
+                assert len(send_keys_call) > 0
+                text_arg = send_keys_call[0][0][-1]
+                assert text_arg == "Hello! World!"
 
 
 class TestSendCtrlKey:

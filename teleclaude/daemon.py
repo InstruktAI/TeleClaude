@@ -1249,6 +1249,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except ValueError:
                 pass
 
+        # Get active agent for agent-specific escaping
+        ux_state = await db.get_ux_state(session_id)
+        active_agent = ux_state.active_agent if ux_state else None
+
         # Send command to terminal (will create fresh session if needed)
         success = await terminal_bridge.send_keys(
             session.tmux_session_name,
@@ -1257,6 +1261,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
+            active_agent=active_agent,
         )
 
         if not success:

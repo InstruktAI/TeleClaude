@@ -644,6 +644,10 @@ async def handle_escape_command(
         # Check if process is running for polling decision
         is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
 
+        # Get active agent for agent-specific escaping
+        ux_state = await db.get_ux_state(session.session_id)
+        active_agent = ux_state.active_agent if ux_state else None
+
         # Send text + ENTER
         success = await terminal_bridge.send_keys(
             session.tmux_session_name,
@@ -652,6 +656,7 @@ async def handle_escape_command(
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
+            active_agent=active_agent,
         )
 
         if not success:

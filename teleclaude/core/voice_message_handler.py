@@ -270,11 +270,16 @@ async def handle_voice(
         MessageMetadata(parse_mode="MarkdownV2"),
     )
 
+    # Get active agent for agent-specific escaping
+    ux_state = await db.get_ux_state(session_id)
+    active_agent = ux_state.active_agent if ux_state else None
+
     logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], text)
     success = await terminal_bridge.send_keys(
         session.tmux_session_name,
         text,
         session_id=session_id,
+        active_agent=active_agent,
     )
 
     if not success:

@@ -191,6 +191,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
     cols: int = 80,
     rows: int = 24,
     send_enter: bool = True,
+    active_agent: Optional[str] = None,
 ) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
 
@@ -206,6 +207,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         cols: Terminal columns if creating new session (default: 80)
         rows: Terminal rows if creating new session (default: 24)
         send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
+        active_agent: Active agent name (e.g., "gemini") for agent-specific escaping
 
     Returns:
         bool: True if command sent successfully, False on failure
@@ -226,16 +228,15 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
                 return False
             logger.info("Created fresh session %s", session_name)
 
-        # Wrap text in bracketed paste escape sequences so terminal apps (like Gemini CLI)
-        # treat special chars (e.g., '!') as literal text, not command triggers.
+        # Gemini CLI can't handle '!' character - escape it
         # See: https://github.com/google-gemini/gemini-cli/issues/4454
-        bracketed_text = f"\x1b[200~{text}\x1b[201~"
+        send_text = text.replace("!", r"\!") if active_agent == "gemini" else text
 
         # Send command (no pipes - don't leak file descriptors)
         # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
         # start a long-lived process that would inherit the pipe, so this is safe.
-        # -l flag sends keys literally (required for escape sequences)
-        cmd_text = ["tmux", "send-keys", "-t", session_name, "-l", "--", bracketed_text]
+        # -l flag sends keys literally
+        cmd_text = ["tmux", "send-keys", "-t", session_name, "-l", "--", send_text]
         result = await asyncio.create_subprocess_exec(
             *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
