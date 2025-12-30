@@ -1,15 +1,8 @@
 # Roadmap
 
 > **Last Updated**: 2025-12-30
-> **Status Legend**: `[ ]` = Todo | `[>]` = In Progress | `[x]` = Done
-
----
-
-## Development Process
-
-### [x] next-machine - Deterministic workflow state machine
-
-Create `teleclaude__next_step` MCP tool that returns exact commands to execute for the build/review/finalize cycle. Eliminates interpretation from orchestration - the tool tells you exactly what to dispatch next based on file state.
+> **Status Legend**: `[ ]` = Todo | `[>]` = In Progress
+> (DONE work is tracked in [delivered.md](./delivered.md))
 
 ---
 
