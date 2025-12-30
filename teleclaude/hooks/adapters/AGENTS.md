@@ -67,9 +67,11 @@ Mapping rules (Gemini):
 - `SessionStart` → `event_type = "session_start"`
   - Requires `data.session_id` (native session id).
   - Requires `data.transcript_path` (native transcript path).
-- `BeforeUserInput` → `event_type = "stop"`
+- `AfterAgent` → `event_type = "stop"` (fires when agent loop ends = turn completion)
 - `Notification` → `event_type = "notification"`
 - `SessionEnd` → `event_type = "session_end"` (reserved; no handler logic yet)
+
+Note: `BeforeUserInput` does NOT exist in Gemini CLI. Use `AfterAgent` for turn completion.
 
 ## Internal typed payloads
 

@@ -123,7 +123,8 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
     """Return TeleClaude hook definitions for Gemini CLI.
 
-    Gemini uses BeforeUserInput for turn completion (not Stop like Claude).
+    Gemini uses AfterAgent for turn completion (equivalent to Claude's Stop hook).
+    Note: BeforeUserInput does NOT exist in Gemini CLI.
     """
     hooks: Dict[str, Dict[str, str]] = {
         "SessionStart": {
@@ -138,7 +139,8 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
             "command": f"{python_exe} {receiver_script} --agent gemini notification",
             "description": "Notify TeleClaude of user input request",
         },
-        "BeforeUserInput": {
+        # AfterAgent fires when agent loop ends = turn completion = stop event
+        "AfterAgent": {
             "name": "teleclaude-stop",
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent gemini stop",
@@ -153,9 +155,9 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
     }
 
     # Capture transcript_path as soon as it appears (no fallback resolution).
+    # Note: AfterAgent is handled above as the stop event, not here.
     for event in (
         "BeforeAgent",
-        "AfterAgent",
         "BeforeModel",
         "AfterModel",
         "BeforeToolSelection",
