@@ -408,7 +408,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if has_uncommitted_changes(cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "commit", WORK_FALLBACK)
         return format_tool_call(
-            command="commit-pending",
+            command="next-commit",
             args=resolved_slug,
             project=cwd,
             agent=agent,
