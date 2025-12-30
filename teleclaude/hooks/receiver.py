@@ -26,6 +26,17 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
 
+# Only these events are forwarded to MCP. All others are silently dropped.
+# This prevents zombie mcp-wrapper processes from intermediate hooks.
+_HANDLED_EVENTS: frozenset[str] = frozenset(
+    {
+        "session_start",
+        "stop",
+        "notification",
+        "session_end",
+    }
+)
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="TeleClaude hook receiver")
@@ -115,8 +126,14 @@ def main() -> None:
         logger.debug("Hook receiver skipped: missing session id")
         sys.exit(0)
 
-    normalize_payload = _get_adapter(args.agent)
     event_type = cast(str, args.event_type)
+
+    # Early exit for unhandled events - don't spawn mcp-wrapper
+    if event_type not in _HANDLED_EVENTS:
+        logger.trace("Hook receiver skipped: unhandled event", event_type=event_type)
+        sys.exit(0)
+
+    normalize_payload = _get_adapter(args.agent)
     try:
         data = normalize_payload(event_type, data)
     except Exception as e:
