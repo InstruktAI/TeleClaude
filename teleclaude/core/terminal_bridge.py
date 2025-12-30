@@ -226,12 +226,16 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
                 return False
             logger.info("Created fresh session %s", session_name)
 
-        command_text = text
+        # Wrap text in bracketed paste escape sequences so terminal apps (like Gemini CLI)
+        # treat special chars (e.g., '!') as literal text, not command triggers.
+        # See: https://github.com/google-gemini/gemini-cli/issues/4454
+        bracketed_text = f"\x1b[200~{text}\x1b[201~"
 
         # Send command (no pipes - don't leak file descriptors)
         # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
         # start a long-lived process that would inherit the pipe, so this is safe.
-        cmd_text = ["tmux", "send-keys", "-t", session_name, "--", command_text]
+        # -l flag sends keys literally (required for escape sequences)
+        cmd_text = ["tmux", "send-keys", "-t", session_name, "-l", "--", bracketed_text]
         result = await asyncio.create_subprocess_exec(
             *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )

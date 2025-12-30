@@ -20,7 +20,7 @@ class TestSendKeys:
 
     @pytest.mark.asyncio
     async def test_send_keys_sends_text(self):
-        """Test that send_keys sends the provided text as-is."""
+        """Test that send_keys wraps text in bracketed paste escape sequences."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
             # Mock subprocess
             mock_process = MagicMock()
@@ -34,12 +34,13 @@ class TestSendKeys:
 
                 assert success is True
 
-                # Verify send_keys command uses the original text
+                # Verify send_keys command wraps text in bracketed paste sequences
+                # This prevents apps like Gemini CLI from treating '!' as shell mode trigger
                 call_args_list = mock_exec.call_args_list
                 send_keys_call = [call for call in call_args_list if "send-keys" in call[0]]
                 assert len(send_keys_call) > 0
                 text_arg = send_keys_call[0][0][-1]
-                assert text_arg == "ls -la"
+                assert text_arg == "\x1b[200~ls -la\x1b[201~"
 
     @pytest.mark.asyncio
     async def test_recreates_session_with_session_id(self):
