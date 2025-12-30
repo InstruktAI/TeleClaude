@@ -1,8 +1,10 @@
 ---
-description: Push to GitHub and deploy to all TeleClaude machines
+description: Deploy to TeleClaude computers
 ---
 
-You are now in **deploy mode**. This commits any changes, pushes to GitHub, and deploys to all machines.
+You are now in **deploy mode**. This commits any changes, pushes to GitHub, and deploys to selected machines or ALL if none selected.
+
+Computers selected": "$ARGUMENTS"
 
 ## Step 1: Commit Changes (if needed)
 

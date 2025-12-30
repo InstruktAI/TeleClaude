@@ -6,4 +6,4 @@ Look at [roadmap.md](roadmap.md) to find work to do. Use the `commands/next-*.md
 
 ## Bugs
 
-Looka at [bugs.md](bugs.md) to find known bugs and issues.
+Look at [bugs.md](bugs.md) to find known bugs and issues.
