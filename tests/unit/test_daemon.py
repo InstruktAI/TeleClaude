@@ -142,6 +142,8 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     daemon.agent_coordinator = MagicMock()
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
+    daemon._last_stop_time = {}
+    daemon._stop_debounce_seconds = 5.0
 
     payload = AgentStopPayload(
         session_id="native-123",

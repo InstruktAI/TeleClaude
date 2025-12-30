@@ -135,6 +135,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.agent_coordinator = AgentCoordinator(self.client)
         self.client.on(cast(EventType, TeleClaudeEvents.AGENT_EVENT), self._handle_agent_event)
 
+        # Debounce stop events (Gemini fires AfterAgent multiple times per turn)
+        self._last_stop_time: dict[str, float] = {}
+        self._stop_debounce_seconds = 5.0
+
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
             if attr_name.startswith("_"):
@@ -413,6 +417,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Process agent stop event (summarization + coordination)."""
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
+
+        # Debounce: skip if we processed a stop event for this session recently
+        # Gemini's AfterAgent fires multiple times per turn (after each agent step)
+        now = time.monotonic()
+        last_stop = self._last_stop_time.get(session_id, 0.0)
+        if now - last_stop < self._stop_debounce_seconds:
+            logger.debug("Debouncing stop event for session %s (%.1fs since last)", session_id[:8], now - last_stop)
+            return
+        self._last_stop_time[session_id] = now
 
         try:
             ux_state = await db.get_ux_state(session_id)
