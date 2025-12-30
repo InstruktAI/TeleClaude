@@ -154,23 +154,9 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
         },
     }
 
-    # Capture transcript_path as soon as it appears (no fallback resolution).
-    # Note: AfterAgent is handled above as the stop event, not here.
-    for event in (
-        "BeforeAgent",
-        "BeforeModel",
-        "AfterModel",
-        "BeforeToolSelection",
-        "BeforeTool",
-        "AfterTool",
-        "PreCompress",
-    ):
-        hooks[event] = {
-            "name": f"teleclaude-transcript-{event.lower()}",
-            "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent gemini {event}",
-            "description": "Capture transcript path when available",
-        }
+    # Note: We don't need intermediate hooks (BeforeAgent, BeforeModel, etc.)
+    # The _discover_transcript_path fallback in gemini.py adapter resolves
+    # transcript_path from cwd + session_id, so we only need the core events.
 
     return hooks
 
