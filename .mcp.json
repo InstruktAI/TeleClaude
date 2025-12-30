@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "teleclaude": {
-      "command": "python3",
-      "args": ["bin/mcp-wrapper.py"]
-    }
-  }
-}

@@ -248,7 +248,7 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
             return_value={
                 "status": "success",
                 "session_id": "test-session-123",
-                "messages": [{"type": "user", "text": "Hello"}],
+                "messages": "Hello",
             }
         )
 
@@ -259,7 +259,38 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
 
         assert result["status"] == "success"
         assert result["session_id"] == "test-session-123"
-        assert len(result["messages"]) == 1
+        assert result["messages"] == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_teleclaude_get_session_data_caps_large_transcripts(mock_mcp_server):
+    """Test that get_session_data caps oversized transcripts."""
+    server = mock_mcp_server
+    from teleclaude.mcp_server import MCP_SESSION_DATA_MAX_CHARS
+
+    oversized = "x" * (MCP_SESSION_DATA_MAX_CHARS + 100)
+
+    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+        mock_handlers.handle_get_session_data = AsyncMock(
+            return_value={
+                "status": "success",
+                "session_id": "test-session-123",
+                "messages": oversized,
+            }
+        )
+
+        result = await server.teleclaude__get_session_data(
+            computer="local",
+            session_id="test-session-123",
+            tail_chars=0,
+        )
+
+        assert result["status"] == "success"
+        assert result["truncated"] is True
+        assert result["max_chars"] == MCP_SESSION_DATA_MAX_CHARS
+        assert result["requested_tail_chars"] == 0
+        assert result["effective_tail_chars"] == MCP_SESSION_DATA_MAX_CHARS
+        assert len(result["messages"]) <= MCP_SESSION_DATA_MAX_CHARS
 
 
 @pytest.mark.asyncio

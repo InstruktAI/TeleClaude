@@ -532,7 +532,7 @@ setup_mcp_config() {
             echo "" >> "$codex_config"
             echo "# TeleClaude MCP Server" >> "$codex_config"
             echo "[mcp_servers.teleclaude]" >> "$codex_config"
-            echo "command = \"python3\"" >> "$codex_config"
+            echo "command = \"$INSTALL_DIR/.venv/bin/python\"" >> "$codex_config"
             echo "args = [\"$INSTALL_DIR/bin/mcp-wrapper.py\"]" >> "$codex_config"
             print_success "MCP server appended to: $codex_config"
         else

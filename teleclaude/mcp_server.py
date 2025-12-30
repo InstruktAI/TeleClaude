@@ -6,7 +6,7 @@ import os
 import re
 import shlex
 import types
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
@@ -31,6 +31,8 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+MCP_SESSION_DATA_MAX_CHARS = int(os.getenv("MCP_SESSION_DATA_MAX_CHARS", "48000"))
 
 
 def _is_client_disconnect_exception(exc: BaseException) -> bool:
@@ -350,12 +352,10 @@ class TeleClaudeMCPServer:
                         "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
                         "Returns `status: 'closed'` if session has ended (no transcript returned). "
                         "**Use this to check on delegated work** after teleclaude__send_message. "
-                        "**Supervising Worker AI Sessions:** When managing/monitoring another AI session, "
-                        "use `tail_chars=0` to see the FULL decision trail - not just recent output. "
-                        "You need to observe: what choices the AI made and why, whether it followed the proper workflow, "
-                        "if it took shortcuts or blamed external factors, the reasoning behind implementation decisions. "
-                        "The tail only shows recent activity. Full transcript reveals the decision-making process "
-                        "throughout the entire session."
+                        "**Supervising Worker AI Sessions:** Responses are capped at 48,000 chars to keep MCP "
+                        "transport stable. Use `since_timestamp` / `until_timestamp` to page through history. "
+                        "If you need full coverage, repeatedly call with a time window and stitch results. "
+                        "The tail only shows recent activity; use timestamps for the full decision trail."
                     ),
                     inputSchema={
                         "type": "object",
@@ -388,7 +388,8 @@ class TeleClaudeMCPServer:
                                 "type": "integer",
                                 "description": (
                                     "Max characters to return from end of transcript. "
-                                    "Default: 5000. Set to 0 for unlimited (full transcript)."
+                                    "Default: 5000. Set to 0 for unlimited request, but responses are capped at "
+                                    "48,000 chars. Use since_timestamp / until_timestamp to fetch more."
                                 ),
                             },
                         },
@@ -1419,9 +1420,46 @@ class TeleClaudeMCPServer:
         # Enables "master orchestrator" pattern - check multiple sessions, get notified when any stops
         await self._maybe_register_listener(session_id, caller_session_id)
 
+        requested_tail_chars = tail_chars
+        if tail_chars <= 0 or tail_chars > MCP_SESSION_DATA_MAX_CHARS:
+            tail_chars = MCP_SESSION_DATA_MAX_CHARS
+
         if self._is_local_computer(computer):
-            return await self._get_local_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
-        return await self._get_remote_session_data(computer, session_id, since_timestamp, until_timestamp, tail_chars)
+            result = await self._get_local_session_data(session_id, since_timestamp, until_timestamp, tail_chars)
+        else:
+            result = await self._get_remote_session_data(
+                computer, session_id, since_timestamp, until_timestamp, tail_chars
+            )
+
+        if result.get("status") != "success":
+            return result
+
+        messages = result.get("messages")
+        if isinstance(messages, str):
+            capped_messages, truncated = self._cap_session_messages(messages, MCP_SESSION_DATA_MAX_CHARS)
+            result["messages"] = capped_messages
+            if truncated or requested_tail_chars != tail_chars:
+                result["truncated"] = True
+                result["max_chars"] = MCP_SESSION_DATA_MAX_CHARS
+                result["requested_tail_chars"] = requested_tail_chars
+                result["effective_tail_chars"] = tail_chars
+                result["cap_notice"] = (
+                    "Response capped to 48,000 chars. Use since_timestamp/until_timestamp to page through history."
+                )
+        result["captured_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        return result
+
+    @staticmethod
+    def _cap_session_messages(messages: str, max_chars: int) -> tuple[str, bool]:
+        """Ensure transcript output stays within max_chars."""
+        if len(messages) <= max_chars:
+            return messages, False
+
+        notice = f"[...truncated to last {max_chars} chars; use since_timestamp/until_timestamp to page...]\n\n"
+        if len(notice) >= max_chars:
+            return notice[:max_chars], True
+        trimmed = messages[-(max_chars - len(notice)) :]
+        return f"{notice}{trimmed}", True
 
     async def _get_local_session_data(
         self,
