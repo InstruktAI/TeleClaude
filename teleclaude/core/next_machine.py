@@ -25,6 +25,7 @@ PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
 }
 
 WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
+    "bugs": [("codex", "med"), ("claude", "med"), ("gemini", "med")],
     "build": [("gemini", "med"), ("claude", "med"), ("codex", "med")],
     "review": [("codex", "slow"), ("claude", "slow"), ("gemini", "slow")],
     "fix": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
@@ -145,6 +146,19 @@ def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool]:
 def check_file_exists(cwd: str, relative_path: str) -> bool:
     """Check if a file exists relative to cwd."""
     return (Path(cwd) / relative_path).exists()
+
+
+def has_pending_bugs(cwd: str) -> bool:
+    """Check if todos/bugs.md has unchecked items.
+
+    Returns:
+        True if bugs.md exists and contains unchecked checkboxes ([ ]).
+    """
+    bugs_path = Path(cwd) / "todos" / "bugs.md"
+    if not bugs_path.exists():
+        return False
+    content = bugs_path.read_text(encoding="utf-8")
+    return "[ ]" in content
 
 
 def get_archive_path(cwd: str, slug: str) -> str | None:
@@ -381,6 +395,19 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     Returns:
         Plain text instructions for the orchestrator to execute
     """
+    # 0. Bug check (only when no explicit slug - bugs are priority)
+    if not slug and has_pending_bugs(cwd):
+        agent, mode = await get_available_agent(db, "bugs", WORK_FALLBACK)
+        return format_tool_call(
+            command="next-bugs",
+            args="",
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder="",
+            note="Fix bugs in todos/bugs.md before proceeding with roadmap work.",
+        )
+
     # 1. Resolve slug
     resolved_slug, _ = resolve_slug(cwd, slug)
     if not resolved_slug:
