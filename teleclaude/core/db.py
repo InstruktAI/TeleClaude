@@ -3,7 +3,7 @@
 import json
 import uuid
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -699,6 +699,67 @@ class Db:
                 max_age_days,
             )
         return deleted
+
+    # Agent availability methods (for next-machine workflow)
+
+    async def get_agent_availability(self, agent: str) -> dict[str, bool | str | None] | None:
+        """Get agent availability status.
+
+        Args:
+            agent: Agent name (e.g., "claude", "gemini", "codex")
+
+        Returns:
+            Dict with 'available', 'unavailable_until', 'reason' or None if not found
+        """
+        cursor = await self.conn.execute(
+            "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
+            (agent,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "available": bool(row["available"]),  # type: ignore[misc]  # Row access is Any from aiosqlite
+            "unavailable_until": row["unavailable_until"],  # type: ignore[misc]
+            "reason": row["reason"],  # type: ignore[misc]
+        }
+
+    async def mark_agent_unavailable(self, agent: str, unavailable_until: str, reason: str) -> None:
+        """Mark an agent as unavailable until a specified time.
+
+        Args:
+            agent: Agent name (e.g., "claude", "gemini", "codex")
+            unavailable_until: ISO timestamp when agent becomes available again
+            reason: Reason for unavailability (e.g., "quota_exhausted", "rate_limited")
+        """
+        await self.conn.execute(
+            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
+               VALUES (?, 0, ?, ?)
+               ON CONFLICT(agent) DO UPDATE SET
+                 available = 0, unavailable_until = excluded.unavailable_until, reason = excluded.reason""",
+            (agent, unavailable_until, reason),
+        )
+        await self.conn.commit()
+        logger.info("Marked agent %s unavailable until %s (%s)", agent, unavailable_until, reason)
+
+    async def clear_expired_agent_availability(self) -> int:
+        """Reset agents whose unavailable_until time has passed.
+
+        Returns:
+            Number of agents reset to available
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = await self.conn.execute(
+            """UPDATE agent_availability
+               SET available = 1, unavailable_until = NULL, reason = NULL
+               WHERE unavailable_until IS NOT NULL AND unavailable_until < ?""",
+            (now,),
+        )
+        await self.conn.commit()
+        cleared = cursor.rowcount
+        if cleared > 0:
+            logger.info("Cleared availability for %d agents (TTL expired)", cleared)
+        return cleared
 
 
 # Module-level singleton instance (initialized on first import)

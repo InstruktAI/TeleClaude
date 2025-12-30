@@ -33,6 +33,7 @@ dependencies = [
     "psutil>=5.9.0",
     "instrukt-ai-logger @ git+https://github.com/InstruktAI/python-logger.git@v0.3.2",
     "telegramify-markdown>=0.5.4",
+    "GitPython>=3.1.0",
 ]
 
 [project.optional-dependencies]

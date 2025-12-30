@@ -42,3 +42,12 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Agent availability tracking for next-machine workflow
+-- Tracks temporary unavailability due to rate limits, quotas, or outages
+CREATE TABLE IF NOT EXISTS agent_availability (
+    agent TEXT PRIMARY KEY,           -- "codex", "claude", "gemini"
+    available INTEGER DEFAULT 1,      -- 0 = unavailable, 1 = available
+    unavailable_until TEXT,           -- ISO timestamp, NULL if available
+    reason TEXT                       -- "quota_exhausted", "rate_limited", "service_outage"
+);

@@ -25,6 +25,7 @@ from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
+from teleclaude.core.next_machine import next_prepare, next_work
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 
 if TYPE_CHECKING:
@@ -1904,3 +1905,73 @@ class TeleClaudeMCPServer:
         if isinstance(response, dict) and response.get("status") == "error":
             raise ValueError(str(response.get("error")))
         return "OK"
+
+    # =========================================================================
+    # Next Machine Tools - Deterministic workflow state machine
+    # =========================================================================
+
+    async def teleclaude__next_prepare(
+        self,
+        slug: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
+        """Phase A: Prepare work items for the build/review cycle.
+
+        Checks todos/{slug} for requirements.md and implementation-plan.md.
+        Returns plain text instructions for the orchestrator AI to execute literally.
+
+        Args:
+            slug: Optional work item slug (resolved from roadmap.md if not provided)
+            cwd: Working directory (auto-injected by MCP wrapper via os.getcwd())
+
+        Returns:
+            Plain text: TOOL_CALL (dispatch architect), PREPARED (ready for work), or ERROR
+        """
+        if not cwd:
+            return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
+
+        return await next_prepare(db, slug, cwd)
+
+    async def teleclaude__next_work(
+        self,
+        slug: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
+        """Phase B: Execute build/review/fix cycle on prepared work items.
+
+        Only operates on items that have requirements.md and implementation-plan.md.
+        Returns plain text instructions for the orchestrator AI to execute literally.
+
+        Args:
+            slug: Optional work item slug (resolved from roadmap.md if not provided)
+            cwd: Working directory (auto-injected by MCP wrapper via os.getcwd())
+
+        Returns:
+            Plain text: TOOL_CALL (dispatch worker), COMPLETE (finalized), or ERROR
+        """
+        if not cwd:
+            return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
+
+        return await next_work(db, slug, cwd)
+
+    async def teleclaude__mark_agent_unavailable(
+        self,
+        agent: str,
+        unavailable_until: str,
+        reason: str,
+    ) -> str:
+        """Mark an agent as unavailable until a specified time.
+
+        Called by orchestrator when a dispatch fails due to rate limits, quota
+        exhaustion, or service outages.
+
+        Args:
+            agent: Agent name ("codex", "claude", or "gemini")
+            unavailable_until: ISO 8601 timestamp when agent becomes available
+            reason: Reason for unavailability (e.g., "quota_exhausted", "rate_limited")
+
+        Returns:
+            Confirmation message
+        """
+        await db.mark_agent_unavailable(agent, unavailable_until, reason)
+        return f"OK: {agent} marked unavailable until {unavailable_until} ({reason})"

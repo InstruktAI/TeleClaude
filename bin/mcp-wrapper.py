@@ -21,7 +21,11 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
-CONTEXT_TO_INJECT: dict[str, str] = {"caller_session_id": "TELECLAUDE_SESSION_ID"}
+# Map parameter names to env var names. Special value None means use os.getcwd()
+CONTEXT_TO_INJECT: dict[str, str | None] = {
+    "caller_session_id": "TELECLAUDE_SESSION_ID",
+    "cwd": None,  # Special: inject os.getcwd() instead of env var
+}
 RECONNECT_DELAY = 5
 CONNECTION_TIMEOUT = 10
 REQUEST_TIMEOUT = float(
@@ -148,16 +152,24 @@ refresh_tool_cache_if_needed(force=True)
 
 
 def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, object]:
-    """Inject context from environment variables into tool call params."""
+    """Inject context from environment variables into tool call params.
+
+    Special handling for 'cwd': uses os.getcwd() instead of an env var.
+    """
     arguments = params.get("arguments", {})
     if not isinstance(arguments, MutableMapping):
         arguments = {}
 
     for param_name, env_var in CONTEXT_TO_INJECT.items():
         if param_name not in arguments:
-            env_value = os.environ.get(env_var)
-            if env_value:
-                arguments[param_name] = env_value
+            if env_var is None:
+                # Special case: cwd uses os.getcwd()
+                if param_name == "cwd":
+                    arguments[param_name] = os.getcwd()
+            else:
+                env_value = os.environ.get(env_var)
+                if env_value:
+                    arguments[param_name] = env_value
 
     params["arguments"] = arguments
     return params
