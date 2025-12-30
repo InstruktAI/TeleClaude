@@ -92,8 +92,7 @@ TeleClaude Daemon
 Monitor MCP operations:
 
 ```bash
-tail -f logs/mcp-wrapper.log    # Wrapper activity (handshakes, connections)
-tail -f logs/mcp_server.log     # Backend tool calls and responses
+. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
 ```
 
 ## Tool Filtering
@@ -114,7 +113,7 @@ This ensures internal tools remain functional for hooks while being invisible to
 ls -la /tmp/teleclaude.sock
 
 # Check wrapper logs
-tail -30 logs/mcp-wrapper.log
+. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
 
 # Check if backend is running
 make status
@@ -124,7 +123,7 @@ make status
 
 ```bash
 # Check backend logs
-tail -50 logs/mcp_server.log | grep ERROR
+. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-server
 
 # Check daemon health
 make status
