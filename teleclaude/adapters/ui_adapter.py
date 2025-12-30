@@ -211,8 +211,12 @@ class UiAdapter(BaseAdapter):
                 status_color, started_time, last_active_time, size_str, is_truncated
             )
 
+        # Build session ID lines for footer
+        session_id_lines = self._build_session_id_lines(session, ux_state)
+
         # Format message (base + platform-specific formatting)
-        display_output = self.format_message(terminal_output, status_line)
+        full_status = f"{session_id_lines}\n{status_line}" if session_id_lines else status_line
+        display_output = self.format_message(terminal_output, full_status)
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated, ux_state)
@@ -266,6 +270,35 @@ class UiAdapter(BaseAdapter):
             Platform-specific MessageMetadata
         """
         return MessageMetadata()  # Default: no extra metadata
+
+    def _build_session_id_lines(self, session: "Session", ux_state: "SessionUXState") -> str:
+        """Build session ID lines for status footer.
+
+        Shows TeleClaude session ID and native agent session ID (if available).
+
+        Args:
+            session: Session object
+            ux_state: UX state containing native_session_id
+
+        Returns:
+            Formatted session ID lines (may be empty string if no IDs)
+        """
+        lines: list[str] = []
+
+        # TeleClaude session ID (first 8 chars for brevity)
+        tc_id = session.session_id[:8] if session.session_id else None
+        if tc_id:
+            lines.append(f"📋 tc: {tc_id}")
+
+        # Native agent session ID (from ux_state - set when any agent starts)
+        native_id = ux_state.native_session_id if ux_state else None
+        if native_id:
+            # Truncate if too long (some native IDs can be very long)
+            display_id = native_id[:20] if len(native_id) > 20 else native_id
+            agent_name = ux_state.active_agent or "ai"
+            lines.append(f"🤖 {agent_name}: {display_id}")
+
+        return "\n".join(lines)
 
     async def send_exit_message(self, session: "Session", output: str, exit_text: str) -> None:
         """Send exit message when session dies - default implementation."""
