@@ -69,6 +69,11 @@ DEFAULT_LOG_LEVEL = "INFO"
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
 
+# Agent auto-command startup detection
+AGENT_START_TIMEOUT_S = 5.0
+AGENT_START_POLL_INTERVAL_S = 0.5
+AGENT_START_SETTLE_DELAY_S = 0.5
+
 logger = get_logger(__name__)
 
 
@@ -469,6 +474,49 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     )
             except Exception:
                 pass
+
+    async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
+        """Start agent, wait for tmux to leave shell, then inject message."""
+        if len(args) < 3:
+            return {"status": "error", "message": "agent_then_message requires agent, thinking_mode, message"}
+
+        agent_name = args[0]
+        thinking_mode = args[1]
+        message = " ".join(args[2:]).strip()
+        if not message:
+            return {"status": "error", "message": "agent_then_message requires a non-empty message"}
+
+        auto_context = CommandEventContext(session_id=session_id, args=[])
+        thinking_args: list[str] = [thinking_mode]
+        await command_handlers.handle_agent_start(
+            auto_context,
+            agent_name,
+            thinking_args,
+            self.client,
+            self._execute_terminal_command,
+        )
+
+        session = await db.get_session(session_id)
+        if not session:
+            return {"status": "error", "message": "Session not found after creation"}
+
+        deadline = time.monotonic() + AGENT_START_TIMEOUT_S
+        while time.monotonic() < deadline:
+            if await terminal_bridge.is_process_running(session.tmux_session_name):
+                await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
+                await self.handle_message(
+                    session_id,
+                    message,
+                    MessageEventContext(session_id=session_id, text=message),
+                )
+                return {"status": "success", "message": "Message injected after agent start"}
+            await asyncio.sleep(AGENT_START_POLL_INTERVAL_S)
+
+        logger.warning(
+            "agent_then_message timed out waiting for agent start (session=%s)",
+            session_id[:8],
+        )
+        return {"status": "error", "message": "Timeout waiting for agent to start"}
 
     async def _handle_error(self, _event: str, context: EventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
@@ -1080,13 +1128,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
             # Handle auto_command if specified (e.g., start Claude after session creation)
             if metadata.auto_command and result.get("session_id"):
-                session_id = result["session_id"]
+                session_id = str(result["session_id"])
                 auto_context = CommandEventContext(session_id=session_id, args=[])
 
                 # Parse auto_command (e.g., "agent claude --flag")
                 cmd_name, auto_args = parse_command_string(metadata.auto_command)
 
-                if cmd_name == TeleClaudeEvents.AGENT_START and auto_args:
+                if cmd_name == "agent_then_message":
+                    auto_result = await self._handle_agent_then_message(session_id, auto_args)
+                    result["auto_command_status"] = auto_result.get("status", "error")
+                    if auto_result.get("message"):
+                        result["auto_command_message"] = auto_result["message"]
+                elif cmd_name == TeleClaudeEvents.AGENT_START and auto_args:
                     agent_name = auto_args.pop(0)  # First arg is agent name
                     await command_handlers.handle_agent_start(
                         auto_context, agent_name, auto_args, self.client, self._execute_terminal_command

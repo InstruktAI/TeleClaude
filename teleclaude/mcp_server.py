@@ -6,7 +6,7 @@ import os
 import re
 import shlex
 import types
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
@@ -24,7 +24,7 @@ from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
-from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
+from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs, ThinkingMode
 from teleclaude.core.next_machine import next_prepare, next_work
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 
@@ -552,6 +552,74 @@ class TeleClaudeMCPServer:
                         "required": ["session_id", "event_type", "data"],
                     },
                 ),
+                Tool(
+                    name="teleclaude__next_prepare",
+                    title="TeleClaude: Next Prepare",
+                    description=(
+                        "Phase A state machine: Check preparation state and return instructions. "
+                        "Checks for requirements.md and implementation-plan.md, returns exact command to dispatch. "
+                        "If roadmap is empty, dispatches roadmap grooming. "
+                        "Call this to prepare a work item before building."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "slug": {
+                                "type": "string",
+                                "description": "Optional work item slug. If not provided, resolves from roadmap.",
+                            },
+                        },
+                    },
+                ),
+                Tool(
+                    name="teleclaude__next_work",
+                    title="TeleClaude: Next Work",
+                    description=(
+                        "Phase B state machine: Check build state and return instructions. "
+                        "Handles bugs → build → review → fix → finalize cycle. "
+                        "Returns exact command to dispatch based on file state. "
+                        "Call this to progress a prepared work item through the build cycle."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "slug": {
+                                "type": "string",
+                                "description": "Optional work item slug. If not provided, resolves from roadmap.",
+                            },
+                        },
+                    },
+                ),
+                Tool(
+                    name="teleclaude__mark_agent_unavailable",
+                    title="TeleClaude: Mark Agent Unavailable",
+                    description=(
+                        "Mark an agent as temporarily unavailable for task assignment. "
+                        "Used when dispatch fails due to rate limits, quota exhaustion, or outages. "
+                        "The agent will be skipped in fallback selection until the specified time."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "agent": {
+                                "type": "string",
+                                "description": "Agent name (e.g., 'claude', 'gemini', 'codex')",
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for marking unavailable (e.g., 'rate_limited', 'quota_exhausted')",
+                            },
+                            "unavailable_until": {
+                                "type": "string",
+                                "description": (
+                                    "ISO 8601 UTC datetime when agent becomes available "
+                                    "(e.g., '2025-01-01T12:30:00Z'). If omitted, defaults to 30 minutes from now."
+                                ),
+                            },
+                        },
+                        "required": ["agent", "reason"],
+                    },
+                ),
             ]
 
         @server.call_tool()  # type: ignore
@@ -691,6 +759,23 @@ class TeleClaudeMCPServer:
                 data_obj = arguments.get("data") if arguments else None
                 data = dict(data_obj) if isinstance(data_obj, dict) else {}
                 result_text = await self.teleclaude__handle_agent_event(session_id, event_type, data)
+                return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__next_prepare":
+                slug = str(arguments.get("slug", "")) if arguments and arguments.get("slug") else None
+                cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
+                result_text = await self.teleclaude__next_prepare(slug, cwd)
+                return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__next_work":
+                slug = str(arguments.get("slug", "")) if arguments and arguments.get("slug") else None
+                cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
+                result_text = await self.teleclaude__next_work(slug, cwd)
+                return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__mark_agent_unavailable":
+                agent = str(arguments.get("agent", "")) if arguments else ""
+                reason = str(arguments.get("reason", "")) if arguments else ""
+                until_raw = arguments.get("unavailable_until") if arguments else None
+                unavailable_until = str(until_raw) if until_raw else None
+                result_text = await self.teleclaude__mark_agent_unavailable(agent, reason, unavailable_until)
                 return [TextContent(type="text", text=result_text)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
@@ -919,7 +1004,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
-        thinking_mode: str = "slow",
+        thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> dict[str, object]:
         """Create session on local or remote computer.
 
@@ -952,7 +1037,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
-        thinking_mode: str = "slow",
+        thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> dict[str, object]:
         """Create session on local computer directly via handle_event.
 
@@ -1012,7 +1097,7 @@ class TeleClaudeMCPServer:
         # Send command with prefixed message to start the agent
         await self.client.handle_event(
             TeleClaudeEvents.AGENT_START,
-            {"session_id": session_id, "args": [agent, thinking_mode, message]},
+            {"session_id": session_id, "args": [agent, thinking_mode.value, message]},
             MessageMetadata(adapter_type="redis"),
         )
         logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
@@ -1027,7 +1112,7 @@ class TeleClaudeMCPServer:
         message: str,
         caller_session_id: str | None = None,
         agent: str = "claude",
-        thinking_mode: str = "slow",
+        thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> dict[str, object]:
         """Create session on remote computer via Redis transport.
 
@@ -1143,13 +1228,125 @@ class TeleClaudeMCPServer:
             quoted_message = shlex.quote(message)
             await self.client.send_request(
                 computer_name=computer,
-                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {thinking_mode} {quoted_message}",
+                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {thinking_mode.value} {quoted_message}",
                 metadata=MessageMetadata(),
                 session_id=str(remote_session_id),
             )
             logger.debug(
                 "Sent AGENT_START command with message to remote session %s",
                 remote_session_id[:8],
+            )
+
+            return {"session_id": remote_session_id, "status": "success"}
+
+        except TimeoutError:
+            return {
+                "status": "error",
+                "message": "Timeout waiting for remote session creation",
+            }
+        except Exception as e:
+            logger.error("Failed to create remote session: %s", e)
+            return {
+                "status": "error",
+                "message": f"Failed to create remote session: {str(e)}",
+            }
+
+    async def _start_local_session_with_auto_command(
+        self,
+        project_dir: str,
+        title: str,
+        auto_command: str,
+        caller_session_id: str | None = None,
+    ) -> dict[str, object]:
+        """Create local session and run auto_command via daemon."""
+        result: object = await self.client.handle_event(
+            TeleClaudeEvents.NEW_SESSION,
+            {"session_id": "", "args": [title]},
+            MessageMetadata(
+                adapter_type="redis",
+                project_dir=project_dir,
+                title=title,
+                channel_metadata={"target_computer": self.computer_name},
+                auto_command=auto_command,
+            ),
+        )
+
+        if not isinstance(result, dict) or result.get("status") != "success":
+            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
+            return {
+                "status": "error",
+                "message": f"Local session creation failed: {error_msg}",
+            }
+
+        data: object = result.get("data", {})
+        session_id: str | None = data.get("session_id") if isinstance(data, dict) else None
+
+        if not session_id:
+            return {
+                "status": "error",
+                "message": "Local session did not return session_id",
+            }
+
+        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+        await self._maybe_register_listener(
+            session_id,
+            effective_caller_id if effective_caller_id != "unknown" else None,
+        )
+
+        return {"session_id": session_id, "status": "success"}
+
+    async def _start_remote_session_with_auto_command(
+        self,
+        computer: str,
+        project_dir: str,
+        title: str,
+        auto_command: str,
+        caller_session_id: str | None = None,
+    ) -> dict[str, object]:
+        """Create remote session and run auto_command via daemon."""
+        peers = await self.client.discover_peers()
+        target_online = any(p["name"] == computer and p["status"] == "online" for p in peers)
+
+        if not target_online:
+            return {"status": "error", "message": f"Computer '{computer}' is offline"}
+
+        metadata = MessageMetadata(
+            project_dir=project_dir,
+            title=title,
+            auto_command=auto_command,
+        )
+
+        message_id = await self.client.send_request(
+            computer_name=computer,
+            command="/new_session",
+            metadata=metadata,
+        )
+
+        try:
+            response_data = await self.client.read_response(message_id, timeout=5.0)
+            envelope = json.loads(response_data.strip())
+
+            if envelope.get("status") == "error":
+                error_msg = envelope.get("error", "Unknown error")
+                return {
+                    "status": "error",
+                    "message": f"Remote session creation failed: {error_msg}",
+                }
+
+            data = envelope.get("data", {})
+            remote_session_id = data.get("session_id") if isinstance(data, dict) else None
+
+            if not remote_session_id:
+                return {
+                    "status": "error",
+                    "message": "Remote did not return session_id",
+                }
+
+            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
+
+            await self._maybe_register_listener(
+                str(remote_session_id),
+                effective_caller_id if effective_caller_id != "unknown" else None,
             )
 
             return {"session_id": remote_session_id, "status": "success"}
@@ -1334,7 +1531,7 @@ class TeleClaudeMCPServer:
         agent: str = "claude",
         subfolder: str = "",
         caller_session_id: str | None = None,
-        thinking_mode: str = "slow",
+        thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> dict[str, object]:
         """Run a slash command on an AI agent session.
 
@@ -1363,6 +1560,8 @@ class TeleClaudeMCPServer:
         # Build full command string
         full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
 
+        normalized_mode = thinking_mode.value
+
         if session_id:
             # Mode 1: Send command to existing session
             chunks: list[str] = []
@@ -1380,17 +1579,25 @@ class TeleClaudeMCPServer:
         # Use command as title
         title = full_command
 
-        # Delegate to start_session
-        result = await self.teleclaude__start_session(
+        # Build auto_command that starts agent, waits for tmux to leave shell, then injects command
+        quoted_command = shlex.quote(full_command)
+        auto_command = f"agent_then_message {agent} {normalized_mode} {quoted_command}"
+
+        if self._is_local_computer(computer):
+            return await self._start_local_session_with_auto_command(
+                project_dir=working_dir,
+                title=title,
+                auto_command=auto_command,
+                caller_session_id=caller_session_id,
+            )
+
+        return await self._start_remote_session_with_auto_command(
             computer=computer,
             project_dir=working_dir,
             title=title,
-            message=full_command,
+            auto_command=auto_command,
             caller_session_id=caller_session_id,
-            agent=agent,
-            thinking_mode=thinking_mode,
         )
-        return result
 
     async def teleclaude__get_session_data(
         self,
@@ -1957,21 +2164,25 @@ class TeleClaudeMCPServer:
     async def teleclaude__mark_agent_unavailable(
         self,
         agent: str,
-        unavailable_until: str,
         reason: str,
+        unavailable_until: str | None = None,
     ) -> str:
-        """Mark an agent as unavailable until a specified time.
+        """Mark an agent as temporarily unavailable for task assignment.
 
         Called by orchestrator when a dispatch fails due to rate limits, quota
-        exhaustion, or service outages.
+        exhaustion, or service outages. Agent will be skipped in fallback selection
+        until the specified time.
 
         Args:
             agent: Agent name ("codex", "claude", or "gemini")
-            unavailable_until: ISO 8601 timestamp when agent becomes available
             reason: Reason for unavailability (e.g., "quota_exhausted", "rate_limited")
+            unavailable_until: ISO 8601 UTC datetime when agent becomes available.
+                               If omitted, defaults to 30 minutes from now.
 
         Returns:
             Confirmation message
         """
+        if not unavailable_until:
+            unavailable_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
         await db.mark_agent_unavailable(agent, unavailable_until, reason)
         return f"OK: {agent} marked unavailable until {unavailable_until} ({reason})"

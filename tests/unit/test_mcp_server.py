@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.models import ThinkingMode
+
 
 @pytest.fixture
 def mock_mcp_server():
@@ -430,7 +432,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         title="Fast Claude Session",
         message="Hello Claude",
         agent="claude",
-        thinking_mode="fast",
+        thinking_mode=ThinkingMode.FAST,
     )
     assert result["status"] == "success"
     second_call = server.client.handle_event.call_args_list[1]
@@ -441,7 +443,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
 @pytest.mark.asyncio
 async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_mcp_server):
     server = mock_mcp_server
-    server.teleclaude__start_session = AsyncMock(return_value={"status": "success", "session_id": "sess-123"})
+    server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "sess-123"}})
 
     result = await server.teleclaude__run_agent_command(
         computer="local",
@@ -449,14 +451,15 @@ async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_m
         args="",
         project="/home/user/project",
         agent="codex",
-        thinking_mode="med",
+        thinking_mode=ThinkingMode.MED,
     )
 
     assert result["status"] == "success"
-    server.teleclaude__start_session.assert_awaited_once()
-    call_kwargs = server.teleclaude__start_session.await_args.kwargs  # type: ignore[attr-defined]
-    assert call_kwargs["thinking_mode"] == "med"
-    assert call_kwargs["agent"] == "codex"
+    server.client.handle_event.assert_awaited_once()
+    call_args = server.client.handle_event.call_args
+    metadata = call_args[0][2]
+    assert "codex" in metadata.auto_command
+    assert "med" in metadata.auto_command
 
 
 @pytest.mark.asyncio
@@ -473,7 +476,7 @@ async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_ser
         computer="local",
         command="next-work",
         session_id="existing-session",
-        thinking_mode="fast",
+        thinking_mode=ThinkingMode.FAST,
     )
 
     assert result["status"] == "sent"
@@ -558,8 +561,11 @@ async def test_run_agent_command_starts_new_session(mock_mcp_server):
     assert result["status"] == "success"
     assert result["session_id"] == "new-session-789"
 
-    # Verify handle_event was called twice (new_session + agent)
-    assert server.client.handle_event.call_count == 2
+    # Verify handle_event was called once for new_session with auto_command
+    assert server.client.handle_event.call_count == 1
+    call_args = server.client.handle_event.call_args
+    metadata = call_args[0][2]
+    assert metadata.auto_command
 
 
 @pytest.mark.asyncio
@@ -615,7 +621,7 @@ async def test_run_agent_command_with_agent_type(mock_mcp_server):
 
     assert result["status"] == "success"
 
-    # Verify second call (agent) has correct agent type
-    second_call = server.client.handle_event.call_args_list[1]
-    call_payload = second_call[0][1]
-    assert call_payload["args"][0] == "gemini"
+    # Verify auto_command includes agent type
+    call_args = server.client.handle_event.call_args
+    metadata = call_args[0][2]
+    assert "gemini" in metadata.auto_command

@@ -130,6 +130,43 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
 
 
 @pytest.mark.asyncio
+async def test_new_session_auto_command_agent_then_message():
+    """Auto-command agent_then_message starts agent then injects message."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon.handle_message = AsyncMock()
+
+    with (
+        patch("teleclaude.daemon.command_handlers.handle_create_session", new_callable=AsyncMock) as mock_create,
+        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock) as mock_start,
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
+    ):
+        mock_create.return_value = {"session_id": "sess-123"}
+        mock_db.get_session = AsyncMock(return_value=MagicMock(tmux_session_name="tc_123"))
+        mock_running.side_effect = [False, True]
+
+        context = CommandEventContext(session_id="sess-ctx", args=[])
+        metadata = MessageMetadata(
+            adapter_type="redis",
+            auto_command="agent_then_message codex slow /prompts:next-review next-machine",
+        )
+
+        result = await daemon.handle_command(
+            TeleClaudeEvents.NEW_SESSION,
+            [],
+            context,
+            metadata,
+        )
+
+        assert result["session_id"] == "sess-123"
+        assert result["auto_command_status"] == "success"
+        mock_start.assert_awaited_once()
+        daemon.handle_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_process_agent_stop_uses_registered_transcript_when_payload_missing():
     """Agent STOP should use stored transcript path when payload omits it."""
     from teleclaude.core.agents import AgentName

@@ -825,6 +825,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 channel_metadata=parsed.channel_metadata,
                 project_dir=parsed.project_dir,
                 title=parsed.title,
+                auto_command=parsed.auto_command,
             )
 
             if parsed.initiator:
@@ -892,6 +893,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         initiator = data.get(b"initiator", b"").decode("utf-8") or None
         project_dir = data.get(b"project_dir", b"").decode("utf-8") or None
         title = data.get(b"title", b"").decode("utf-8") or None
+        auto_command = data.get(b"auto_command", b"").decode("utf-8") or None
 
         return RedisInboundMessage(
             msg_type=msg_type,
@@ -901,6 +903,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             initiator=initiator,
             project_dir=project_dir,
             title=title,
+            auto_command=auto_command,
         )
 
     async def _handle_system_message(self, data: dict[bytes, bytes]) -> None:
@@ -1145,6 +1148,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             data[b"project_dir"] = metadata.project_dir.encode("utf-8")
         if metadata.channel_metadata:
             data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
+        if metadata.auto_command:
+            data[b"auto_command"] = metadata.auto_command.encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})

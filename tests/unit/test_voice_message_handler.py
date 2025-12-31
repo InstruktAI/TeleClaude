@@ -257,6 +257,7 @@ async def test_handle_voice_forwards_transcription_to_process():
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
+            patch("teleclaude.core.voice_message_handler.db.get_ux_state", new_callable=AsyncMock) as mock_get_ux,
             patch(
                 "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
@@ -271,6 +272,7 @@ async def test_handle_voice_forwards_transcription_to_process():
             ) as mock_send_keys,
         ):
             mock_get.return_value = mock_session
+            mock_get_ux.return_value = None
             mock_polling.return_value = True
             mock_transcribe.return_value = "Transcribed text"
             mock_send_keys.return_value = True
@@ -311,6 +313,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
+            patch("teleclaude.core.voice_message_handler.db.get_ux_state", new_callable=AsyncMock) as mock_get_ux,
             patch(
                 "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
@@ -325,6 +328,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
             ) as mock_send_keys,
         ):
             mock_get.return_value = mock_session
+            mock_get_ux.return_value = None
             mock_polling.return_value = True
             mock_transcribe.return_value = "Transcribed text"
             mock_send_keys.return_value = True

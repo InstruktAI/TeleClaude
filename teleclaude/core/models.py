@@ -457,6 +457,7 @@ class RedisInboundMessage:
     initiator: Optional[str] = None
     project_dir: Optional[str] = None
     title: Optional[str] = None
+    auto_command: Optional[str] = None
 
 
 @dataclass
