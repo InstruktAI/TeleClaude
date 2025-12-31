@@ -7,6 +7,7 @@ import pytest
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
+    format_tool_call,
     is_build_complete,
     is_review_approved,
     is_review_changes_requested,
@@ -181,3 +182,52 @@ def test_is_review_changes_requested_true():
         (state_dir / "state.json").write_text(json.dumps({"review": "changes_requested"}))
 
         assert is_review_changes_requested(tmpdir, slug) is True
+
+
+# =============================================================================
+# format_tool_call Tests
+# =============================================================================
+
+
+def test_format_tool_call_codex_adds_prompts_prefix():
+    """format_tool_call adds /prompts: prefix for codex agent."""
+    result = format_tool_call(
+        command="next-build",
+        args="test-slug",
+        project="/tmp/project",
+        agent="codex",
+        thinking_mode="med",
+        subfolder="trees/test-slug",
+        next_call="teleclaude__next_work",
+    )
+    assert 'command="/prompts:next-build"' in result
+
+
+def test_format_tool_call_claude_no_prefix():
+    """format_tool_call does not add prefix for claude agent."""
+    result = format_tool_call(
+        command="next-build",
+        args="test-slug",
+        project="/tmp/project",
+        agent="claude",
+        thinking_mode="med",
+        subfolder="trees/test-slug",
+        next_call="teleclaude__next_work",
+    )
+    assert 'command="next-build"' in result
+    assert "/prompts:" not in result
+
+
+def test_format_tool_call_gemini_no_prefix():
+    """format_tool_call does not add prefix for gemini agent."""
+    result = format_tool_call(
+        command="next-review",
+        args="test-slug",
+        project="/tmp/project",
+        agent="gemini",
+        thinking_mode="slow",
+        subfolder="trees/test-slug",
+        next_call="teleclaude__next_work",
+    )
+    assert 'command="next-review"' in result
+    assert "/prompts:" not in result

@@ -52,6 +52,9 @@ def format_tool_call(
     next_call: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
+    # Codex requires /prompts: prefix for custom commands
+    formatted_command = f"/prompts:{command}" if agent == "codex" else command
+
     result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
 
 Execute these steps in order:
@@ -59,7 +62,7 @@ Execute these steps in order:
 STEP 1 - DISPATCH:
 teleclaude__run_agent_command(
   computer="local",
-  command="{command}",
+  command="{formatted_command}",
   args="{args}",
   project="{project}",
   agent="{agent}",
