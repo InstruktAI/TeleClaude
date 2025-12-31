@@ -2176,16 +2176,45 @@ class TeleClaudeMCPServer:
             event_type_name = TeleClaudeEvents.AGENT_EVENT
 
         async def _emit() -> None:
-            response = await self.client.handle_event(
-                event_type_name,
-                event_payload,
-                MessageMetadata(adapter_type="internal"),
-            )
-            logger.trace("Agent event emitted", session=session_id[:8], event=event_type)
-            if isinstance(response, dict) and response.get("status") == "error":
-                raise ValueError(str(response.get("error")))
+            loop = asyncio.get_running_loop()
+            start = loop.time()
+            logger.debug("Agent event dispatch start", session=session_id[:8], event=event_type)
+            try:
+                response = await self.client.handle_event(
+                    event_type_name,
+                    event_payload,
+                    MessageMetadata(adapter_type="internal"),
+                )
+                elapsed = loop.time() - start
+                status = response.get("status") if isinstance(response, dict) else None
+                logger.debug(
+                    "Agent event dispatch done",
+                    session=session_id[:8],
+                    event=event_type,
+                    elapsed=round(elapsed, 3),
+                    status=status,
+                )
+                logger.trace("Agent event emitted", session=session_id[:8], event=event_type)
+                if isinstance(response, dict) and response.get("status") == "error":
+                    raise ValueError(str(response.get("error")))
+            except Exception as exc:
+                elapsed = loop.time() - start
+                logger.error(
+                    "Agent event dispatch failed",
+                    session=session_id[:8],
+                    event=event_type,
+                    elapsed=round(elapsed, 3),
+                    error=str(exc),
+                )
+                raise
 
         task = asyncio.create_task(_emit())
+        logger.debug(
+            "Agent event queued",
+            session=session_id[:8],
+            event=event_type,
+            pending_tasks=len(self._background_tasks) + 1,
+        )
         self._track_background_task(task, "agent_event")
         return "OK"
 

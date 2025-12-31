@@ -212,6 +212,7 @@ class MCPProxy:
         self._backend_generation = 0
         self._pending_requests: dict[object, float] = {}
         self._timed_out_requests: dict[object, float] = {}
+        self._pending_started: dict[object, float] = {}
 
         self._client_initialize_request: bytes | None = None
         self._client_initialize_id: object | None = None
@@ -400,6 +401,16 @@ class MCPProxy:
         now = asyncio.get_running_loop().time()
         self._pending_requests.pop(request_id, None)
         self._timed_out_requests[request_id] = now
+        started_at = self._pending_started.pop(request_id, None)
+        if started_at is not None:
+            logger.debug(
+                "Wrapper request failed",
+                request_id=request_id,
+                elapsed=round(now - started_at, 3),
+                reason=message,
+                queue_size=self._outbound.qsize(),
+                pending=len(self._pending_requests),
+            )
         await self._send_error(request_id, message)
 
     async def _response_timeout_watcher(self) -> None:
@@ -464,6 +475,14 @@ class MCPProxy:
                 }
                 if request_id is not None:
                     self._pending_requests[request_id] = asyncio.get_running_loop().time() + RESPONSE_TIMEOUT
+                    self._pending_started[request_id] = asyncio.get_running_loop().time()
+                    logger.debug(
+                        "Wrapper request queued",
+                        request_id=request_id,
+                        method=method,
+                        queue_size=self._outbound.qsize(),
+                        pending=len(self._pending_requests),
+                    )
 
                 try:
                     self._outbound.put_nowait(item)
@@ -547,6 +566,14 @@ class MCPProxy:
             try:
                 self.writer.write(item["raw"])
                 await self.writer.drain()
+                if request_id is not None:
+                    logger.debug(
+                        "Wrapper request sent",
+                        request_id=request_id,
+                        method=method,
+                        queue_size=self._outbound.qsize(),
+                        pending=len(self._pending_requests),
+                    )
             except (ConnectionResetError, BrokenPipeError):
                 self._log_throttled(
                     "backend:disconnect:send",
@@ -621,9 +648,23 @@ class MCPProxy:
                         response_id = msg.get("id")
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
+                            started_at = self._pending_started.pop(response_id, None)
+                            if started_at is not None:
+                                logger.debug(
+                                    "Wrapper response received",
+                                    request_id=response_id,
+                                    elapsed=round(asyncio.get_running_loop().time() - started_at, 3),
+                                )
                         elif response_id in self._timed_out_requests:
                             # Late response after we already errored out; drop it.
                             self._timed_out_requests.pop(response_id, None)
+                            started_at = self._pending_started.pop(response_id, None)
+                            if started_at is not None:
+                                logger.debug(
+                                    "Wrapper response dropped (late)",
+                                    request_id=response_id,
+                                    elapsed=round(asyncio.get_running_loop().time() - started_at, 3),
+                                )
                             continue
 
                     # Filter internal tools from tools/list responses

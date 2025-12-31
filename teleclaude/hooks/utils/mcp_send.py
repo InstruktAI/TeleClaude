@@ -130,6 +130,13 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
             timeout_s - (time.monotonic() - start),
             expected_id=tool_request["id"],
         )
+        logger.debug(
+            "mcp_send wrapper response",
+            tool=tool,
+            session_id=payload.get("session_id"),
+            pid=proc.pid,
+            elapsed=round(time.monotonic() - start, 3),
+        )
         return response
     finally:
         try:
@@ -139,6 +146,13 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
             pass
         try:
             proc.wait(timeout=1)
+            logger.debug(
+                "mcp_send wrapper exit",
+                tool=tool,
+                session_id=payload.get("session_id"),
+                pid=proc.pid,
+                returncode=proc.returncode,
+            )
         except Exception:
             try:
                 if proc.poll() is None:
