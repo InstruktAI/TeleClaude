@@ -59,10 +59,10 @@
 
 ## Group 4: Verification
 
-- [ ] Restart daemon: `make restart`
-- [ ] Verify daemon running: `make status`
-- [ ] Manual test: call `teleclaude__next_prepare()` with HITL=true, no slug
-- [ ] Manual test: call `teleclaude__next_prepare()` with HITL=false
+- [x] Restart daemon: `make restart`
+- [x] Verify daemon running: `make status`
+- [x] Manual test: call `teleclaude__next_prepare()` with HITL=true, no slug
+- [x] Manual test: call `teleclaude__next_prepare()` with HITL=false
 
 ## Files Changed
 
