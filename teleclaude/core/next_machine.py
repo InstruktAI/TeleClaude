@@ -63,12 +63,18 @@ teleclaude__run_agent_command(
 )
 
 AFTER DISPATCH:
-- Tell the user: "Dispatched. Waiting for completion notification."
-- STOP responding. Do NOT call any more tools.
-- You will automatically receive a notification when the worker completes.
-- Only use get_session_data(tail_chars=2000) if the USER asks you to check progress.
+1. Tell the user: "Dispatched session. Waiting for completion."
+2. STOP responding. Do NOT call any more tools.
+3. You will receive a notification when the worker completes.
 
-NEXT: When you receive the completion notification, call {next_call}() to check next step."""
+FALLBACK TIMER (if no notification after 5 minutes):
+Run this Bash command to set a timer, then check on the session:
+  Bash: sleep 300 && echo "Timer complete"
+After the sleep completes, call: teleclaude__get_session_data(computer="local", session_id="<id>", tail_chars=2000)
+
+IMPORTANT: Do NOT call get_session_data before the 5-minute timer completes or before receiving a notification.
+
+NEXT: When you receive the notification (or timer completes), call {next_call}() to check next step."""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
