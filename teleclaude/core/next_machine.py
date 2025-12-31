@@ -50,8 +50,9 @@ def format_tool_call(
     next_call: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
-    result = f"""Execute this tool call, then STOP your response entirely.
+    result = f"""Execute these steps in order:
 
+STEP 1 - DISPATCH:
 teleclaude__run_agent_command(
   computer="local",
   command="{command}",
@@ -61,20 +62,31 @@ teleclaude__run_agent_command(
   thinking_mode="{thinking_mode}",
   subfolder="{subfolder}"
 )
+Save the returned session_id.
 
-AFTER DISPATCH:
-1. Tell the user: "Dispatched session. Waiting for completion."
-2. STOP responding. Do NOT call any more tools.
-3. You will receive a notification when the worker completes.
+STEP 2 - START BACKGROUND TIMER:
+Bash(command="sleep 300", run_in_background=true)
+Save the returned task_id.
 
-FALLBACK TIMER (if no notification after 5 minutes):
-Run this Bash command to set a timer, then check on the session:
-  Bash: sleep 300 && echo "Timer complete"
-After the sleep completes, call: teleclaude__get_session_data(computer="local", session_id="<id>", tail_chars=2000)
+STEP 3 - STOP:
+Tell the user: "Dispatched session <session_id>. Waiting for completion."
+STOP responding. Do NOT call any more tools.
 
-IMPORTANT: Do NOT call get_session_data before the 5-minute timer completes or before receiving a notification.
+WHAT HAPPENS NEXT (one of these will occur):
 
-NEXT: When you receive the notification (or timer completes), call {next_call}() to check next step."""
+A) NOTIFICATION ARRIVES (worker completed):
+   - The timer is now irrelevant (let it expire or ignore it)
+   - Call {next_call}() to check the next step
+
+B) TIMER COMPLETES (no notification after 5 minutes):
+   - Use TaskOutput(task_id=<task_id>) to confirm timer finished
+   - Check on the session: teleclaude__get_session_data(computer="local", session_id="<session_id>", tail_chars=2000)
+   - Based on session status, decide next action
+
+C) YOU SEND ANOTHER MESSAGE TO THE AGENT:
+   - Cancel the old timer: KillShell(shell_id=<task_id>)
+   - Start a new 5-minute timer: Bash(command="sleep 300", run_in_background=true)
+   - Save the new task_id for the reset timer"""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
