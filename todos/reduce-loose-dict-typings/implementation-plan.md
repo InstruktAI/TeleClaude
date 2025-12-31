@@ -2,177 +2,107 @@
 
 ## Overview
 
-Add TypedDicts for known data structures while keeping `dict[str, object]` for truly dynamic JSON.
+Replace `dict[str, object]` with TypedDicts across the codebase, focusing on high-impact files first. Create a centralized `typed_dicts.py` module for all type definitions.
 
-**Target:** Reduce ~130 occurrences to ~65 (50% reduction)
+## Group 1a: Create TypedDict Catalog
 
----
+**Goal:** Define all TypedDicts upfront in a single, import-safe module.
 
-## Group 1: Core TypedDict Definitions
+**Files to create:**
+- `teleclaude/core/typed_dicts.py`
 
-Create the shared TypedDict definitions that will be reused across the codebase.
-
-### Task 1.1: Add TypedDicts to `teleclaude/core/types.py` (new file)
-
-Create new `types.py` module with TypedDicts:
+**Types to define:**
 
 ```python
-from typing import TypedDict, NotRequired
+# Existing (move from other files)
+SystemStats, MemoryStats, DiskStats, CpuStats  # from command_handlers.py
+HandleEventResult, HandleEventData  # from telegram_adapter.py
 
-class SystemStatsDict(TypedDict):
-    """System statistics for a computer."""
-    memory_percent: float
-    disk_percent: float
-    cpu_percent: float
+# MCP tool returns
+ComputerInfo  # list_computers item
+SessionInfo  # list_sessions item
+SessionDataResult  # get_session_data return
+StartSessionResult  # start_session return
+SendMessageResult  # send_message return
+DeployResult  # deploy return (per-computer)
+DeployAllResult  # deploy return (all computers)
 
-class ComputerInfoDict(TypedDict):
-    """Computer information returned by list_computers."""
-    name: str
-    status: str  # "local" | "online" | "offline"
-    last_seen: str  # ISO 8601
-    adapter_type: str
-    user: NotRequired[str]
-    host: NotRequired[str]
-    ip: NotRequired[str]
-    role: NotRequired[str]
-    system_stats: NotRequired[SystemStatsDict]
+# Daemon payloads
+DeployStatusPayload  # deployment status updates
 
-class SessionInfoDict(TypedDict):
-    """Session information returned by list_sessions."""
-    session_id: str
-    computer_name: str
-    title: str
-    status: str
-    closed: bool
-    created_at: NotRequired[str]
-    last_activity: NotRequired[str]
-    agent: NotRequired[str]
-
-class ToolSuccessResponse(TypedDict):
-    """Standard MCP tool success response."""
-    status: str  # "success"
-    session_id: NotRequired[str]
-    message: NotRequired[str]
-    data: NotRequired[object]
-
-class ToolErrorResponse(TypedDict):
-    """Standard MCP tool error response."""
-    status: str  # "error"
-    message: str
-    error: NotRequired[str]
-
-# Union for tool responses
-ToolResponse = ToolSuccessResponse | ToolErrorResponse
+# Models support
+SystemStatsDict  # for PeerInfo.system_stats
 ```
 
-- [ ] Create `teleclaude/core/types.py`
+**Constraints:**
+- Only import from `typing`, `typing_extensions`, stdlib
+- No imports from teleclaude modules (prevents circular imports)
 
-### Task 1.2: Update `teleclaude/core/models.py`
+## Group 1b: Update Imports
 
-Replace `dict[str, object]` in dataclass fields:
+**Goal:** Point existing code to new TypedDict locations.
 
-- [ ] `PeerInfo.system_stats: Optional[SystemStatsDict]`
-- [ ] `MessageMetadata.channel_metadata: Optional[dict[str, str]]` (values are strings)
-- [ ] Keep `to_dict()` returns as `dict[str, object]` (serialization output)
-- [ ] Keep `from_dict()` params as `dict[str, object]` (deserialization input)
+**Files to update:**
+- [ ] `teleclaude/core/command_handlers.py` - Remove type definitions, import from typed_dicts
+- [ ] `teleclaude/adapters/telegram_adapter.py` - Remove type definitions, import from typed_dicts
 
----
+## Group 2: Models
 
-## Group 2: MCP Server Tool Returns
+**Goal:** Tighten dataclass field types using TypedDicts.
 
-Update `teleclaude/mcp_server.py` to use TypedDicts for return types.
+**Files to update:**
+- [ ] `teleclaude/core/models.py`
 
-### Task 2.1: list_computers and related
+**Changes:**
+- `PeerInfo.system_stats: dict[str, object] | None` → `SystemStatsDict | None`
+- Other fields where structure is known
 
-- [ ] `teleclaude__list_computers() -> list[ComputerInfoDict]`
-- [ ] Update `local_computer` variable annotation
-- [ ] Update `remote_peers` variable annotation
+**Why before MCP Server:** Smaller file, validates TypedDict imports work without issues.
 
-### Task 2.2: Session tools
+## Group 3: MCP Server
 
-- [ ] `teleclaude__start_session() -> ToolResponse`
-- [ ] `teleclaude__run_agent_command() -> ToolResponse`
-- [ ] `teleclaude__send_message() -> ToolResponse`
-- [ ] `teleclaude__get_session_data() -> ToolResponse`
-- [ ] `teleclaude__list_sessions() -> list[SessionInfoDict]`
-- [ ] `teleclaude__end_session() -> ToolResponse`
-- [ ] `teleclaude__stop_notifications() -> ToolResponse`
+**Goal:** Type all MCP tool return values.
 
-### Task 2.3: Other tools
+**Files to update:**
+- [ ] `teleclaude/mcp_server.py`
 
-- [ ] `teleclaude__deploy() -> dict[str, ToolResponse]`
-- [ ] `teleclaude__handle_agent_event() -> str` (already specific)
-- [ ] `teleclaude__next_prepare() -> ToolResponse`
-- [ ] `teleclaude__next_work() -> ToolResponse`
+**Approach:**
+1. Identify common patterns (session results, list items, status payloads)
+2. Update method return types: `dict[str, object]` → specific TypedDict
+3. Update internal dict literals to match TypedDict structure
 
----
+**Categories (~26 occurrences):**
+- Tool return types (majority)
+- Internal helper returns
+- Peer/computer info structures
 
-## Group 3: Core Module Updates
+## Group 4: Secondary Cleanup
 
-### Task 3.1: `teleclaude/core/events.py`
+**Goal:** Clean up remaining high-value occurrences.
 
-Keep `raw: dict[str, object]` - these hold agent-specific hook payloads that vary by agent. Document why they stay loose.
+**Files to update:**
+- [ ] `teleclaude/daemon.py` (~8 occurrences) - Deployment status payloads
+- [ ] `teleclaude/core/command_handlers.py` (~5 remaining) - Handler returns
 
-- [ ] `UpdateSessionEvent.updated_fields` → `dict[str, str | bool | None]` (limited value types)
-- [ ] `ErrorEvent.details` → keep loose or create `ErrorDetailsDict`
-- [ ] `CreateSessionEvent.channel_metadata` → `dict[str, str]`
+## Keep Loose (No Changes)
 
-### Task 3.2: `teleclaude/core/adapter_client.py`
-
-- [ ] Review 14 occurrences - most are JSON parsing (keep loose)
-- [ ] `discover_peers() -> list[ComputerInfoDict]`
-
-### Task 3.3: `teleclaude/core/ux_state.py`
-
-- [ ] Review 6 occurrences - UX state is stored as JSON blob
-- [ ] Create `UxStateDict` if structure is stable
-
-### Task 3.4: `teleclaude/core/command_handlers.py`
-
-- [ ] `handle_get_computer_info() -> ComputerInfoDict`
-- [ ] `handle_list_projects() -> list[ProjectInfoDict]`
-
-### Task 3.5: `teleclaude/core/computer_registry.py`
-
-- [ ] 4 occurrences - computer discovery/status
-- [ ] Use `ComputerInfoDict` where applicable
-
----
-
-## Group 4: Keep Loose (Document Why)
-
-These files intentionally use `dict[str, object]` for external/dynamic data:
-
-### Task 4.1: Document in `teleclaude/utils/transcript.py` (23 occurrences)
-
-- All transcript parsing is external JSON from Claude/Gemini/Codex
-- Format varies by agent version - cannot be typed statically
-- Add module docstring explaining this
-
-### Task 4.2: Document in agent parser files
-
-- `teleclaude/core/agent_parsers.py` (7) - agent-specific JSON
-- `teleclaude/hooks/adapters/claude.py` (1) - Claude hook payloads
-- `teleclaude/hooks/adapters/gemini.py` (2) - Gemini hook payloads
-- `teleclaude/hooks/receiver.py` (4) - agent hook routing
-
----
+These files intentionally use loose typing:
+- `teleclaude/utils/transcript.py` - External JSONL parsing
+- `teleclaude/adapters/redis_adapter.py` - Excluded from scope
+- `teleclaude/core/events.py` - `raw` fields for agent hook data
+- All `from_dict` method parameters - Input validation pattern
+- All `asdict()` returns - Serialization output
 
 ## Testing Strategy
 
-1. Run `make lint` after each group - mypy will catch type errors
-2. Run `make test` after completing all groups
-3. No new tests needed - existing tests cover functionality
+After each group:
+1. Run `make lint` - Verify mypy passes
+2. Run `make test` - Verify no runtime breakage
+3. Commit the group
 
----
+## Success Metrics
 
-## Estimated Changes
-
-| Group | Files | Dict Replacements | New TypedDicts |
-|-------|-------|-------------------|----------------|
-| 1     | 2     | 3                 | 6              |
-| 2     | 1     | 26                | 0 (uses G1)    |
-| 3     | 5     | 20                | 1-2            |
-| 4     | 5     | 0 (documented)    | 0              |
-
-**Total reduction:** ~50 dict[str, object] → TypedDict = ~60 remaining (within target)
+- [ ] `dict[str, object]` count reduced from ~130 to ~65 (50%+ reduction)
+- [ ] `make lint` passes
+- [ ] `make test` passes
+- [ ] No new circular import warnings
