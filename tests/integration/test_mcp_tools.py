@@ -1,5 +1,6 @@
 """Integration tests for MCP tools."""
 
+import asyncio
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -198,6 +199,10 @@ async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_teleg
 
     # Verify result
     assert result == "OK"
+
+    # Wait for background agent event processing to complete
+    if getattr(mcp_server, "_background_tasks", None):
+        await asyncio.gather(*list(mcp_server._background_tasks))
 
     # Verify notification_sent flag was set
     updated_session = await daemon.db.get_session(session.session_id)

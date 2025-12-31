@@ -220,6 +220,57 @@ async def test_handle_initialize_schedules_reconnect(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
+async def test_response_timeout_sends_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    monkeypatch.setattr(wrapper, "RESPONSE_CHECK_INTERVAL", 0.01)
+    proxy = wrapper.MCPProxy()
+
+    now = asyncio.get_running_loop().time()
+    proxy._pending_requests = {123: now - 0.1}
+
+    sent: dict[str, object] = {}
+
+    async def _send_error(request_id: object, message: str) -> None:
+        sent["id"] = request_id
+        sent["message"] = message
+        proxy.shutdown.set()
+
+    proxy._send_error = _send_error  # type: ignore[assignment]
+
+    task = asyncio.create_task(proxy._response_timeout_watcher())
+    await asyncio.wait_for(proxy.shutdown.wait(), 1.0)
+    await asyncio.wait_for(task, 1.0)
+
+    assert sent["id"] == 123
+    assert 123 not in proxy._pending_requests
+    assert 123 in proxy._timed_out_requests
+
+
+@pytest.mark.asyncio
+async def test_socket_to_stdout_drops_late_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    dummy_stdout = _DummyStdout()
+    monkeypatch.setattr(sys, "stdout", dummy_stdout)
+
+    proxy.connected.set()
+    proxy.reader = asyncio.StreamReader()
+    proxy._timed_out_requests[5] = asyncio.get_running_loop().time()
+
+    task = asyncio.create_task(proxy.socket_to_stdout())
+    try:
+        response = {"jsonrpc": "2.0", "id": 5, "result": {"ok": True}}
+        proxy.reader.feed_data((json.dumps(response) + "\n").encode("utf-8"))
+        await asyncio.sleep(0.01)
+        assert dummy_stdout.buffer.getvalue() == b""
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
 async def test_socket_sender_exits_on_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()

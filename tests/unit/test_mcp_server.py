@@ -1,5 +1,6 @@
 """Unit tests for MCP server tools."""
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -43,6 +44,7 @@ async def test_handle_agent_event_error_dispatches_error_event(mock_mcp_server):
         )
 
     assert result == "OK"
+    await asyncio.sleep(0)
     server.client.handle_event.assert_awaited_once()
     called_event = server.client.handle_event.call_args.args[0]
     assert called_event == TeleClaudeEvents.ERROR
@@ -176,6 +178,7 @@ async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
 
         assert result == "OK"
         mock_db.update_ux_state.assert_awaited_once_with("test-session-123", native_log_file="/tmp/native-123.jsonl")
+        await asyncio.sleep(0)
         server.client.handle_event.assert_called_once()
 
 

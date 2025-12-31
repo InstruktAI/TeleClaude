@@ -78,6 +78,22 @@ class TeleClaudeMCPServer:
         self.terminal_bridge = terminal_bridge
 
         self.computer_name = config.computer.name
+        self._background_tasks: set[asyncio.Task[None]] = set()
+
+    def _track_background_task(self, task: asyncio.Task[None], label: str) -> None:
+        """Keep background tasks alive and log failures."""
+        self._background_tasks.add(task)
+
+        def _on_done(done: asyncio.Task[None]) -> None:
+            self._background_tasks.discard(done)
+            try:
+                exc = done.exception()
+            except asyncio.CancelledError:
+                return
+            if exc:
+                logger.error("Background task failed (%s): %s", label, exc, exc_info=exc)
+
+        task.add_done_callback(_on_done)
 
     def _is_local_computer(self, computer: str) -> bool:
         """Check if the target computer refers to the local machine.
@@ -2142,28 +2158,35 @@ class TeleClaudeMCPServer:
             return "OK"
 
         if event_type == AgentHookEvents.AGENT_ERROR:
-            await self.client.handle_event(
-                TeleClaudeEvents.ERROR,
+            event_payload = cast(
+                dict[str, object],
                 {
                     "session_id": session_id,
                     "message": str(data["message"]),
                     "source": str(data["source"]) if "source" in data else None,
                     "details": cast(dict[str, object] | None, data["details"]) if "details" in data else None,
                 },
+            )
+            event_type_name = TeleClaudeEvents.ERROR
+        else:
+            event_payload = cast(
+                dict[str, object],
+                {"session_id": session_id, "event_type": event_type, "data": data},
+            )
+            event_type_name = TeleClaudeEvents.AGENT_EVENT
+
+        async def _emit() -> None:
+            response = await self.client.handle_event(
+                event_type_name,
+                event_payload,
                 MessageMetadata(adapter_type="internal"),
             )
-            return "OK"
+            logger.trace("Agent event emitted", session=session_id[:8], event=event_type)
+            if isinstance(response, dict) and response.get("status") == "error":
+                raise ValueError(str(response.get("error")))
 
-        # Emit event to registered listeners
-        response = await self.client.handle_event(
-            TeleClaudeEvents.AGENT_EVENT,
-            {"session_id": session_id, "event_type": event_type, "data": data},  # type: ignore[dict-item]
-            MessageMetadata(adapter_type="internal"),
-        )
-
-        logger.trace("Agent event emitted", session=session_id[:8], event=event_type)
-        if isinstance(response, dict) and response.get("status") == "error":
-            raise ValueError(str(response.get("error")))
+        task = asyncio.create_task(_emit())
+        self._track_background_task(task, "agent_event")
         return "OK"
 
     # =========================================================================

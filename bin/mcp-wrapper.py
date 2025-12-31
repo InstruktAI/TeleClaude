@@ -13,6 +13,8 @@ import os
 import re
 import signal
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import MutableMapping, TypedDict
 
@@ -34,7 +36,13 @@ REQUEST_TIMEOUT = float(
         os.getenv("MCP_WRAPPER_SEND_CONNECT_TIMEOUT", "20"),
     )
 )
+RESPONSE_TIMEOUT = float(os.getenv("MCP_WRAPPER_RESPONSE_TIMEOUT", str(REQUEST_TIMEOUT)))
 INIT_TIMEOUT = float(os.getenv("MCP_WRAPPER_INIT_TIMEOUT", "15"))
+STDIN_CONNECT_TIMEOUT = float(os.getenv("MCP_WRAPPER_STDIN_CONNECT_TIMEOUT", "5"))
+STARTUP_TIMEOUT = float(os.getenv("MCP_WRAPPER_STARTUP_TIMEOUT", "20"))
+RESPONSE_CHECK_INTERVAL = float(os.getenv("MCP_WRAPPER_RESPONSE_CHECK_INTERVAL", "0.5"))
+TIMED_OUT_RETENTION = float(os.getenv("MCP_WRAPPER_TIMEOUT_RETENTION", "300"))
+GUARD_CHECK_INTERVAL = float(os.getenv("MCP_WRAPPER_GUARD_INTERVAL", "0.5"))
 OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
 # Keep logs human-friendly by default: no repeated spam while waiting for a restart
 # or when running in a restricted environment that can't connect to the socket.
@@ -42,6 +50,7 @@ LOG_THROTTLE_S = 60.0
 _EPERM_BACKOFF_S = 60.0
 
 _ERR_BACKEND_UNAVAILABLE = -32000
+_STARTUP_COMPLETE = threading.Event()
 
 
 class _QueueItem(TypedDict):
@@ -201,6 +210,8 @@ class MCPProxy:
         self._suppress_backend_init_messages = False
         self._backend_init_response = asyncio.Event()
         self._backend_generation = 0
+        self._pending_requests: dict[object, float] = {}
+        self._timed_out_requests: dict[object, float] = {}
 
         self._client_initialize_request: bytes | None = None
         self._client_initialize_id: object | None = None
@@ -384,6 +395,33 @@ class MCPProxy:
             # Never write to stderr; best-effort only.
             pass
 
+    async def _fail_request(self, request_id: object, message: str) -> None:
+        """Mark a request failed and send an error response."""
+        now = asyncio.get_running_loop().time()
+        self._pending_requests.pop(request_id, None)
+        self._timed_out_requests[request_id] = now
+        await self._send_error(request_id, message)
+
+    async def _response_timeout_watcher(self) -> None:
+        """Send timeout errors for requests that never receive a backend response."""
+        loop = asyncio.get_running_loop()
+        while not self.shutdown.is_set():
+            now = loop.time()
+            expired = [request_id for request_id, deadline in self._pending_requests.items() if deadline <= now]
+            for request_id in expired:
+                await self._fail_request(
+                    request_id,
+                    "TeleClaude backend did not respond in time. Please retry.",
+                )
+
+            if self._timed_out_requests:
+                cutoff = now - TIMED_OUT_RETENTION
+                self._timed_out_requests = {
+                    request_id: ts for request_id, ts in self._timed_out_requests.items() if ts >= cutoff
+                }
+
+            await asyncio.sleep(RESPONSE_CHECK_INTERVAL)
+
     async def stdin_to_socket(self, stdin_reader: asyncio.StreamReader):
         """Forward stdin to backend socket.
 
@@ -424,13 +462,15 @@ class MCPProxy:
                     "enqueued_at": asyncio.get_running_loop().time(),
                     "attempts": 0,
                 }
+                if request_id is not None:
+                    self._pending_requests[request_id] = asyncio.get_running_loop().time() + RESPONSE_TIMEOUT
 
                 try:
                     self._outbound.put_nowait(item)
                 except asyncio.QueueFull:
                     # Bounded memory: if we can't queue, fail fast for requests.
                     if request_id is not None:
-                        await self._send_error(
+                        await self._fail_request(
                             request_id,
                             "TeleClaude backend is restarting or busy (wrapper queue full). Please retry.",
                         )
@@ -469,7 +509,7 @@ class MCPProxy:
                 await asyncio.wait_for(self.connected.wait(), timeout=remaining)
             except asyncio.TimeoutError:
                 if request_id is not None:
-                    await self._send_error(
+                    await self._fail_request(
                         request_id,
                         "TeleClaude backend unavailable (restarting). Please retry.",
                     )
@@ -477,7 +517,7 @@ class MCPProxy:
 
             if not self.writer or self.shutdown.is_set():
                 if request_id is not None:
-                    await self._send_error(
+                    await self._fail_request(
                         request_id,
                         "TeleClaude backend unavailable. Please retry.",
                     )
@@ -493,7 +533,7 @@ class MCPProxy:
                 self._needs_backend_resync = False
                 if not ok:
                     if request_id is not None:
-                        await self._send_error(
+                        await self._fail_request(
                             request_id,
                             "TeleClaude backend restarted but handshake replay failed. Please retry.",
                         )
@@ -519,7 +559,7 @@ class MCPProxy:
                 attempts = int(item.get("attempts", 0)) + 1
                 if attempts >= 2:
                     if request_id is not None:
-                        await self._send_error(
+                        await self._fail_request(
                             request_id,
                             "TeleClaude backend disconnected during request. Please retry.",
                         )
@@ -529,14 +569,14 @@ class MCPProxy:
                         self._outbound.put_nowait(item)
                     except asyncio.QueueFull:
                         if request_id is not None:
-                            await self._send_error(
+                            await self._fail_request(
                                 request_id,
                                 "TeleClaude backend restarting (queue full). Please retry.",
                             )
             except Exception as e:
                 self._log_throttled("backend:send:error", logging.WARNING, "Failed sending request to backend: %s", e)
                 if request_id is not None:
-                    await self._send_error(
+                    await self._fail_request(
                         request_id,
                         "TeleClaude backend error. Please retry.",
                     )
@@ -575,11 +615,21 @@ class MCPProxy:
                             self._backend_init_response.set()
                             continue
                     except json.JSONDecodeError:
-                        pass
+                        msg = None
+
+                    if isinstance(msg, dict):
+                        response_id = msg.get("id")
+                        if response_id in self._pending_requests:
+                            self._pending_requests.pop(response_id, None)
+                        elif response_id in self._timed_out_requests:
+                            # Late response after we already errored out; drop it.
+                            self._timed_out_requests.pop(response_id, None)
+                            continue
 
                     # Filter internal tools from tools/list responses
                     try:
-                        msg = json.loads(line.decode())
+                        if msg is None:
+                            msg = json.loads(line.decode())
                         if (
                             isinstance(msg, dict)
                             and "result" in msg
@@ -678,18 +728,39 @@ class MCPProxy:
                 os._exit(0)
             await asyncio.sleep(5.0)
 
+    async def _connect_stdin(self, stdin_reader: asyncio.StreamReader) -> bool:
+        """Connect stdin reader with a bounded timeout to avoid startup hangs."""
+        protocol = asyncio.StreamReaderProtocol(stdin_reader)
+        loop = asyncio.get_running_loop()
+        try:
+            if STDIN_CONNECT_TIMEOUT > 0:
+                await asyncio.wait_for(
+                    loop.connect_read_pipe(lambda: protocol, sys.stdin),
+                    timeout=STDIN_CONNECT_TIMEOUT,
+                )
+            else:
+                await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+            return True
+        except asyncio.TimeoutError:
+            logger.warning("STDIN connect timed out after %.1fs, exiting wrapper", STDIN_CONNECT_TIMEOUT)
+        except Exception as exc:
+            logger.warning("STDIN connect failed, exiting wrapper: %s", exc)
+        return False
+
     async def run(self):
         """Main proxy loop."""
         # Setup stdin reader
         stdin_reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(stdin_reader)
-        await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
+        if not await self._connect_stdin(stdin_reader):
+            self.shutdown.set()
+            return
 
         # Start parent watchdog early so orphaned wrappers exit even before initialize.
         watchdog_task = asyncio.create_task(self._parent_watchdog())
 
         # Handle MCP initialize request
         init_ok = await self.handle_initialize(stdin_reader)
+        _STARTUP_COMPLETE.set()
         if not init_ok:
             logger.error("Initialize failed, shutting down")
             self.shutdown.set()
@@ -700,9 +771,10 @@ class MCPProxy:
         stdin_task = asyncio.create_task(self.stdin_to_socket(stdin_reader))
         stdout_task = asyncio.create_task(self.socket_to_stdout())
         self._sender_task = asyncio.create_task(self._socket_sender())
+        response_task = asyncio.create_task(self._response_timeout_watcher())
 
         try:
-            tasks = [stdin_task, stdout_task, self._sender_task, watchdog_task]
+            tasks = [stdin_task, stdout_task, self._sender_task, response_task, watchdog_task]
             if self._reconnect_task:
                 tasks.append(self._reconnect_task)
             await asyncio.gather(*tasks)
@@ -710,9 +782,10 @@ class MCPProxy:
             pass
         finally:
             self.shutdown.set()
+            _STARTUP_COMPLETE.set()
             if self.writer:
                 self.writer.close()
-            for task in (stdin_task, stdout_task, self._sender_task, watchdog_task):
+            for task in (stdin_task, stdout_task, self._sender_task, response_task, watchdog_task):
                 if task and not task.done():
                     task.cancel()
             if self._reconnect_task and not self._reconnect_task.done():
@@ -720,6 +793,28 @@ class MCPProxy:
 
 
 _PARENT_PID = os.getppid()
+
+
+def _start_guard_thread() -> None:
+    """Start a watchdog thread to catch early startup hangs and orphaned wrappers."""
+    if STARTUP_TIMEOUT <= 0 and GUARD_CHECK_INTERVAL <= 0:
+        return
+
+    interval = GUARD_CHECK_INTERVAL if GUARD_CHECK_INTERVAL > 0 else 0.5
+
+    def _guard() -> None:
+        deadline = time.monotonic() + STARTUP_TIMEOUT if STARTUP_TIMEOUT > 0 else None
+        while True:
+            if not _check_parent_alive():
+                logger.info("Parent process died (PPID changed), forcing exit")
+                os._exit(0)
+            if deadline and not _STARTUP_COMPLETE.is_set() and time.monotonic() > deadline:
+                logger.warning("Wrapper startup exceeded %.1fs, exiting", STARTUP_TIMEOUT)
+                os._exit(1)
+            time.sleep(interval)
+
+    thread = threading.Thread(target=_guard, name="mcp-wrapper-guard", daemon=True)
+    thread.start()
 
 
 def _handle_signal(signum: int, _frame: object) -> None:
@@ -745,6 +840,7 @@ def main():
     if os.getppid() == 1:
         logger.info("Orphan wrapper detected at startup (PPID=1), exiting")
         return
+    _start_guard_thread()
     # Exit cleanly on signals (especially SIGHUP when parent dies)
     signal.signal(signal.SIGHUP, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)

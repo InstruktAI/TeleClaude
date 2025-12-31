@@ -2,7 +2,9 @@
 """Send notification to TeleClaude via MCP wrapper (resilient transport)."""
 
 import json
+import os
 import select
+import signal
 import subprocess
 import sys
 import time
@@ -81,6 +83,7 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
+        start_new_session=True,
         text=True,
         bufsize=1,
     )
@@ -138,6 +141,11 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
             proc.wait(timeout=1)
         except Exception:
             try:
+                if proc.poll() is None:
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                    except Exception:
+                        pass
                 proc.terminate()
                 proc.wait(timeout=1)
             except Exception:
