@@ -8,8 +8,10 @@ Both derive state from files (stateless) and return plain text instructions
 for the orchestrator AI to execute literally.
 """
 
+import json
 import re
 from pathlib import Path
+from typing import Literal
 
 from git import Repo
 from git.exc import InvalidGitRepositoryError
@@ -134,6 +136,92 @@ def format_hitl_guidance(context: str) -> str:
 # =============================================================================
 # Shared Helper Functions
 # =============================================================================
+
+
+# Valid phases and statuses for state.json
+Phase = Literal["build", "review"]
+PhaseStatus = Literal["pending", "complete", "approved", "changes_requested"]
+
+DEFAULT_STATE: dict[str, str] = {
+    "build": "pending",
+    "review": "pending",
+}
+
+
+def get_state_path(cwd: str, slug: str) -> Path:
+    """Get path to state.json in worktree."""
+    return Path(cwd) / "todos" / slug / "state.json"
+
+
+def read_phase_state(cwd: str, slug: str) -> dict[str, str]:
+    """Read state.json from worktree.
+
+    Returns default state if file doesn't exist.
+    """
+    state_path = get_state_path(cwd, slug)
+    if not state_path.exists():
+        return DEFAULT_STATE.copy()
+
+    content = state_path.read_text(encoding="utf-8")
+    state: dict[str, str] = json.loads(content)
+    # Merge with defaults for any missing keys
+    return {**DEFAULT_STATE, **state}
+
+
+def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
+    """Write state.json and commit to git."""
+    state_path = get_state_path(cwd, slug)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+    # Commit the state change
+    try:
+        repo = Repo(cwd)
+        relative_path = state_path.relative_to(cwd)
+        repo.index.add([str(relative_path)])
+        # Create descriptive commit message
+        phases_done = [p for p, s in state.items() if s in ("complete", "approved")]
+        msg = f"state({slug}): {', '.join(phases_done) if phases_done else 'init'}"
+        repo.index.commit(msg)
+        logger.info("Committed state update for %s", slug)
+    except InvalidGitRepositoryError:
+        logger.warning("Cannot commit state: %s is not a git repository", cwd)
+
+
+def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str]:
+    """Mark a phase with a status and commit.
+
+    Args:
+        cwd: Worktree directory (not main repo)
+        slug: Work item slug
+        phase: Phase to update (build, review)
+        status: New status (pending, complete, approved, changes_requested)
+
+    Returns:
+        Updated state dict
+    """
+    state = read_phase_state(cwd, slug)
+    state[phase] = status
+    write_phase_state(cwd, slug, state)
+    return state
+
+
+def is_build_complete(cwd: str, slug: str) -> bool:
+    """Check if build phase is complete."""
+    state = read_phase_state(cwd, slug)
+    return state.get("build") == "complete"
+
+
+def is_review_approved(cwd: str, slug: str) -> bool:
+    """Check if review phase is approved."""
+    state = read_phase_state(cwd, slug)
+    return state.get("review") == "approved"
+
+
+def is_review_changes_requested(cwd: str, slug: str) -> bool:
+    """Check if review requested changes."""
+    state = read_phase_state(cwd, slug)
+    return state.get("review") == "changes_requested"
 
 
 def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool, str]:
@@ -553,8 +641,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call="teleclaude__next_work",
         )
 
-    # 6. Check build status (in worktree)
-    if not parse_impl_plan_done(worktree_cwd, resolved_slug):
+    # 6. Check build status (from state.json in worktree)
+    if not is_build_complete(worktree_cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "build", WORK_FALLBACK)
         return format_tool_call(
             command="next-build",
@@ -566,25 +654,24 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call="teleclaude__next_work",
         )
 
-    # 7. Check review status (in worktree)
-    review_status = check_review_status(worktree_cwd, resolved_slug)
-    if review_status == "missing":
+    # 7. Check review status (from state.json in worktree)
+    if not is_review_approved(worktree_cwd, resolved_slug):
+        # Check if review hasn't started yet or needs fixes
+        if is_review_changes_requested(worktree_cwd, resolved_slug):
+            agent, mode = await get_available_agent(db, "fix", WORK_FALLBACK)
+            return format_tool_call(
+                command="next-fix-review",
+                args=resolved_slug,
+                project=cwd,
+                agent=agent,
+                thinking_mode=mode,
+                subfolder=f"trees/{resolved_slug}",
+                next_call="teleclaude__next_work",
+            )
+        # Review not started or still pending
         agent, mode = await get_available_agent(db, "review", WORK_FALLBACK)
         return format_tool_call(
             command="next-review",
-            args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder=f"trees/{resolved_slug}",
-            next_call="teleclaude__next_work",
-        )
-
-    # 8. Check if review approved
-    if review_status == "changes_requested":
-        agent, mode = await get_available_agent(db, "fix", WORK_FALLBACK)
-        return format_tool_call(
-            command="next-fix-review",
             args=resolved_slug,
             project=cwd,
             agent=agent,

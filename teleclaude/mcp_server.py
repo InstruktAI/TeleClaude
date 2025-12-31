@@ -25,7 +25,7 @@ from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs, ThinkingMode
-from teleclaude.core.next_machine import next_prepare, next_work
+from teleclaude.core.next_machine import mark_phase, next_prepare, next_work
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 
 if TYPE_CHECKING:
@@ -588,7 +588,7 @@ class TeleClaudeMCPServer:
                     description=(
                         "Phase B state machine: Check build state and return instructions. "
                         "Handles bugs → build → review → fix → finalize cycle. "
-                        "Returns exact command to dispatch based on file state. "
+                        "Returns exact command to dispatch based on state.json. "
                         "Call this to progress a prepared work item through the build cycle."
                     ),
                     inputSchema={
@@ -599,6 +599,39 @@ class TeleClaudeMCPServer:
                                 "description": "Optional work item slug. If not provided, resolves from roadmap.",
                             },
                         },
+                    },
+                ),
+                Tool(
+                    name="teleclaude__mark_phase",
+                    title="TeleClaude: Mark Phase",
+                    description=(
+                        "Mark a work phase as complete/approved in state.json. "
+                        "Updates trees/{slug}/todos/{slug}/state.json and commits the change. "
+                        "Call this after a worker completes build or review phases."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "slug": {
+                                "type": "string",
+                                "description": "Work item slug",
+                            },
+                            "phase": {
+                                "type": "string",
+                                "enum": ["build", "review"],
+                                "description": "Phase to update",
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": ["complete", "approved", "changes_requested"],
+                                "description": "New status for the phase",
+                            },
+                            "cwd": {
+                                "type": "string",
+                                "description": "Working directory (auto-injected by MCP wrapper)",
+                            },
+                        },
+                        "required": ["slug", "phase", "status"],
                     },
                 ),
                 Tool(
@@ -782,6 +815,13 @@ class TeleClaudeMCPServer:
                 slug = str(arguments.get("slug", "")) if arguments and arguments.get("slug") else None
                 cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
                 result_text = await self.teleclaude__next_work(slug, cwd)
+                return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__mark_phase":
+                slug = str(arguments.get("slug", "")) if arguments else ""
+                phase = str(arguments.get("phase", "")) if arguments else ""
+                status = str(arguments.get("status", "")) if arguments else ""
+                cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
+                result_text = await self.teleclaude__mark_phase(slug, phase, status, cwd)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__mark_agent_unavailable":
                 agent = str(arguments.get("agent", "")) if arguments else ""
@@ -2145,7 +2185,7 @@ class TeleClaudeMCPServer:
         """Phase B: Execute build/review/fix cycle on prepared work items.
 
         Only operates on items that have requirements.md and implementation-plan.md.
-        Returns plain text instructions for the orchestrator AI to execute literally.
+        Returns plain text instructions for you to execute literally.
 
         Args:
             slug: Optional work item slug (resolved from roadmap.md if not provided)
@@ -2159,6 +2199,43 @@ class TeleClaudeMCPServer:
 
         return await next_work(db, slug, cwd)
 
+    async def teleclaude__mark_phase(
+        self,
+        slug: str,
+        phase: str,
+        status: str,
+        cwd: str | None = None,
+    ) -> str:
+        """Mark a work phase as complete/approved in state.json.
+
+        Updates trees/{slug}/todos/{slug}/state.json and commits the change.
+        Call this after a worker completes build or review phases.
+
+        Args:
+            slug: Work item slug
+            phase: Phase to update ("build" or "review")
+            status: New status ("complete", "approved", or "changes_requested")
+            cwd: Project root directory (auto-injected by MCP wrapper)
+
+        Returns:
+            Confirmation message with updated state
+        """
+        if not cwd:
+            return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
+        if phase not in ("build", "review"):
+            return f"ERROR: Invalid phase '{phase}'. Must be 'build' or 'review'."
+        if status not in ("complete", "approved", "changes_requested"):
+            return f"ERROR: Invalid status '{status}'. Must be 'complete', 'approved', or 'changes_requested'."
+
+        # Construct worktree path from project root
+        worktree_cwd = str(Path(cwd) / "trees" / slug)
+
+        if not Path(worktree_cwd).exists():
+            return f"ERROR: Worktree not found at {worktree_cwd}"
+
+        updated_state = mark_phase(worktree_cwd, slug, phase, status)
+        return f"OK: {slug} state updated - {phase}: {status}\nCurrent state: {updated_state}"
+
     async def teleclaude__mark_agent_unavailable(
         self,
         agent: str,
@@ -2167,9 +2244,9 @@ class TeleClaudeMCPServer:
     ) -> str:
         """Mark an agent as temporarily unavailable for task assignment.
 
-        Called by orchestrator when a dispatch fails due to rate limits, quota
-        exhaustion, or service outages. Agent will be skipped in fallback selection
-        until the specified time.
+        Call this when a dispatch fails due to rate limits, quota exhaustion, or
+        service outages. Agent will be skipped in fallback selection until the
+        specified time.
 
         Args:
             agent: Agent name ("codex", "claude", or "gemini")
