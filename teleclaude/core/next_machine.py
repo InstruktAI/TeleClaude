@@ -413,9 +413,8 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             subfolder="",
             note="""YOUR ROLE: You are the orchestrator driving this collaboration.
 The worker is your SPARRING PARTNER for analysis only - they do NOT write files.
-Discuss requirements until you agree, then YOU write todos/{slug}/requirements.md and commit.""".replace(
-                "{slug}", resolved_slug
-            ),
+Discuss until you have enough input. Do NOT thank or confirm agreement - once decided, just do the work.
+Write todos/{slug}/requirements.md yourself and commit.""".replace("{slug}", resolved_slug),
             next_call="teleclaude__next_prepare",
         )
 
@@ -431,9 +430,8 @@ Discuss requirements until you agree, then YOU write todos/{slug}/requirements.m
             subfolder="",
             note="""YOUR ROLE: You are the orchestrator driving this collaboration.
 The worker is your SPARRING PARTNER for analysis only - they do NOT write files.
-Discuss the implementation plan until you agree, then YOU write todos/{slug}/implementation-plan.md and commit.""".replace(
-                "{slug}", resolved_slug
-            ),
+Discuss until you have enough input. Do NOT thank or confirm agreement - once decided, just do the work.
+Write todos/{slug}/implementation-plan.md yourself and commit.""".replace("{slug}", resolved_slug),
             next_call="teleclaude__next_prepare",
         )
 

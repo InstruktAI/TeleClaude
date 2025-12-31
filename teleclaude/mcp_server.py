@@ -1514,7 +1514,7 @@ class TeleClaudeMCPServer:
 
             yield (
                 f"Message sent to session {session_id[:8]} on {computer}. "
-                f"Use teleclaude__get_session_data to check for responses."
+                f"Wait for the notification when the worker completes."
             )
 
         except Exception as e:
