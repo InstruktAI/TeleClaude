@@ -2,6 +2,10 @@
 
 ## Group 1: Core Logic Changes (`teleclaude/core/next_machine.py`)
 
+- [ ] Add `is_file_committed(cwd: str, relative_path: str) -> bool` helper function
+  - Uses `git ls-files` to check if file is tracked by git
+  - Returns True only if file exists AND is committed
+
 - [ ] Add `format_hitl_guidance(context: str) -> str` helper function after line 117
   - Prefixes context with "Before proceeding, read ~/.agents/commands/next-prepare.md if you haven't already."
 
@@ -31,6 +35,11 @@
   - HITL=true: return guidance to write implementation-plan.md
   - HITL=false: dispatch `next-prepare {slug}` (existing behavior)
 
+- [ ] Add check for uncommitted files before PREPARED
+  - Use `is_file_committed()` to verify both files are tracked by git
+  - If files exist but not committed: return guidance to commit them
+  - Only return PREPARED when both files exist AND are committed
+
 ## Group 2: MCP Server Integration (`teleclaude/mcp_server.py`)
 
 - [ ] Add `hitl` parameter to tool schema (around line 576)
@@ -53,7 +62,8 @@
   - Test HITL=true with no slug
   - Test HITL=true with slug, missing requirements
   - Test HITL=true with slug, missing impl-plan
-  - Test HITL=true with both files present
+  - Test HITL=true with both files present but uncommitted
+  - Test HITL=true with both files committed (PREPARED)
   - Test HITL=false dispatch behavior
 - [ ] Run `make test` to verify all tests pass
 

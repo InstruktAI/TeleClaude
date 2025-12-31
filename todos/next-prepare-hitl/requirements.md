@@ -24,6 +24,8 @@ The current `next_prepare` implementation has several issues:
 
 4. **No intermediate callbacks in HITL mode:** When human is in the loop, guidance includes ALL remaining work. The AI completes the full prepare phase in one conversation.
 
+5. **Files must be committed:** When checking if artifacts exist, they must be tracked by git (committed), not just exist on disk. This ensures worktrees created for `next_work` will have access to the files.
+
 ## New Parameter
 
 **`hitl`** (Human-In-The-Loop)
@@ -44,7 +46,8 @@ Return guidance for calling AI to work with user:
 | No slug provided | "Read next-prepare.md. Read todos/roadmap.md. Discuss with user, identify or propose slug, write requirements.md and implementation-plan.md." |
 | Slug provided, requirements.md missing | "Read next-prepare.md. Preparing: {slug}. Write requirements.md and implementation-plan.md." |
 | Slug provided, only implementation-plan.md missing | "Read next-prepare.md. Preparing: {slug}. Write implementation-plan.md." |
-| Both exist | "PREPARED: {slug} is ready for work." |
+| Both exist but not committed | "Read next-prepare.md. Preparing: {slug}. Commit requirements.md and implementation-plan.md." |
+| Both exist and committed | "PREPARED: {slug} is ready for work." |
 
 ### HITL = false
 
@@ -64,5 +67,6 @@ Dispatch "next-prepare" command to another AI:
 - [ ] Automatic slug resolution removed for HITL=true mode
 - [ ] HITL=true returns comprehensive guidance (no "call again" steps)
 - [ ] HITL=false dispatches to another AI
+- [ ] Files checked for git tracking before returning PREPARED
 - [ ] All tests pass
 - [ ] Lint passes
