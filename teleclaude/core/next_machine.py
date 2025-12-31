@@ -88,7 +88,12 @@ B) TIMER COMPLETES (no notification after 5 minutes):
 C) YOU SEND ANOTHER MESSAGE TO THE AGENT:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
    - Start a new 5-minute timer: Bash(command="sleep 300", run_in_background=true)
-   - Save the new task_id for the reset timer"""
+   - Save the new task_id for the reset timer
+
+ORCHESTRATION PRINCIPLE: Guide process, don't dictate implementation.
+You are an orchestrator, not a micromanager. If a worker is stuck, point them
+to requirements or docs - never tell them specific commands to run or how to
+implement something. They have full autonomy within their context."""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
@@ -521,6 +526,11 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     # 4. Ensure worktree exists
     ensure_worktree(cwd, resolved_slug)
 
+    # From here on, use worktree context for file checks
+    # The builder works in the worktree, so implementation-plan.md and
+    # review-findings.md are committed there, not in main repo
+    worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
+
     # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "commit", WORK_FALLBACK)
@@ -534,8 +544,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call="teleclaude__next_work",
         )
 
-    # 6. Check build status
-    if not parse_impl_plan_done(cwd, resolved_slug):
+    # 6. Check build status (in worktree)
+    if not parse_impl_plan_done(worktree_cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "build", WORK_FALLBACK)
         return format_tool_call(
             command="next-build",
@@ -547,8 +557,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call="teleclaude__next_work",
         )
 
-    # 7. Check review status
-    review_status = check_review_status(cwd, resolved_slug)
+    # 7. Check review status (in worktree)
+    review_status = check_review_status(worktree_cwd, resolved_slug)
     if review_status == "missing":
         agent, mode = await get_available_agent(db, "review", WORK_FALLBACK)
         return format_tool_call(
