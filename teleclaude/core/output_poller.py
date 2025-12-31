@@ -21,6 +21,7 @@ from teleclaude.utils import strip_ansi_codes
 logger = get_logger(__name__)
 _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
+PROCESS_START_GRACE_S = 3.0
 
 
 @dataclass
@@ -252,6 +253,9 @@ class OutputPoller:
 
                 # Exit condition 2: process returned to shell
                 if not await terminal_bridge.is_process_running(tmux_session_name):
+                    if not output_sent_at_least_once and (time.time() - started_at) < PROCESS_START_GRACE_S:
+                        await asyncio.sleep(poll_interval)
+                        continue
                     # Force a final snapshot if output changed since last yield (or nothing was sent yet).
                     # This bypasses the normal update interval to ensure the last screen state is visible.
                     if pending_output or output_changed or not output_sent_at_least_once:

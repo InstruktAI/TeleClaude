@@ -142,6 +142,11 @@ async def test_new_session_auto_command_agent_then_message():
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock) as mock_start,
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock) as mock_send_enter,
+        patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 2),
     ):
         mock_create.return_value = {"session_id": "sess-123"}
         mock_db.get_session = AsyncMock(return_value=MagicMock(tmux_session_name="tc_123"))
@@ -164,6 +169,7 @@ async def test_new_session_auto_command_agent_then_message():
         assert result["auto_command_status"] == "success"
         mock_start.assert_awaited_once()
         daemon.handle_message.assert_awaited_once()
+        assert mock_send_enter.await_count == 2
 
 
 @pytest.mark.asyncio

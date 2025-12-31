@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last Updated**: 2025-12-30
+> **Last Updated**: 2025-12-31
 > **Status Legend**: `[ ]` = Todo | `[>]` = In Progress
 > (DONE work is tracked in [delivered.md](./delivered.md))
 
@@ -8,9 +8,8 @@
 
 ## Typing Cleanup
 
-### [ ] Reduce loose dict typings (dict[str, object]/dict[str, Any])
-
-Needs proper inventorization but here's some initial findings:
+- [>] reduce-loose-dict-typings
+Reduce loose dict typings (`dict[str, object]` / `dict[str, Any]`) across the codebase.
 
 Inventory (excluding `teleclaude/adapters/redis_adapter.py`):
 
