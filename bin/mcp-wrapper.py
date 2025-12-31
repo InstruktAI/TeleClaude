@@ -34,6 +34,7 @@ REQUEST_TIMEOUT = float(
         os.getenv("MCP_WRAPPER_SEND_CONNECT_TIMEOUT", "20"),
     )
 )
+INIT_TIMEOUT = float(os.getenv("MCP_WRAPPER_INIT_TIMEOUT", "15"))
 OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
 # Keep logs human-friendly by default: no repeated spam while waiting for a restart
 # or when running in a restricted environment that can't connect to the socket.
@@ -607,7 +608,14 @@ class MCPProxy:
 
         Returns True if initialization succeeded, False otherwise.
         """
-        line = await stdin_reader.readline()
+        try:
+            if INIT_TIMEOUT > 0:
+                line = await asyncio.wait_for(stdin_reader.readline(), timeout=INIT_TIMEOUT)
+            else:
+                line = await stdin_reader.readline()
+        except asyncio.TimeoutError:
+            logger.warning("Initialize timed out after %.1fs, exiting wrapper", INIT_TIMEOUT)
+            return False
         if not line:
             return False
 
@@ -616,6 +624,9 @@ class MCPProxy:
             msg = json.loads(line_str)
 
             if msg.get("method") == "initialize":
+                # Delay backend connection until we know a real client is present.
+                # This prevents orphaned wrappers from consuming backend sockets.
+                self._schedule_reconnect("initialize")
                 request_id = msg.get("id", 1)
                 self._client_initialize_request = line
                 self._client_initialize_id = request_id
@@ -666,20 +677,21 @@ class MCPProxy:
         protocol = asyncio.StreamReaderProtocol(stdin_reader)
         await asyncio.get_event_loop().connect_read_pipe(lambda: protocol, sys.stdin)
 
-        # Try to connect to backend immediately (with short timeout for fast clients like Codex)
-        self._schedule_reconnect("startup")
+        # Start parent watchdog early so orphaned wrappers exit even before initialize.
+        watchdog_task = asyncio.create_task(self._parent_watchdog())
 
         # Handle MCP initialize request
         init_ok = await self.handle_initialize(stdin_reader)
         if not init_ok:
             logger.error("Initialize failed, shutting down")
+            self.shutdown.set()
+            watchdog_task.cancel()
             return
 
         # Start message pumps (connect task already running)
         stdin_task = asyncio.create_task(self.stdin_to_socket(stdin_reader))
         stdout_task = asyncio.create_task(self.socket_to_stdout())
         self._sender_task = asyncio.create_task(self._socket_sender())
-        watchdog_task = asyncio.create_task(self._parent_watchdog())
 
         try:
             tasks = [stdin_task, stdout_task, self._sender_task, watchdog_task]

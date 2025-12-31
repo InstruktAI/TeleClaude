@@ -1,5 +1,6 @@
 """Unit tests for session cleanup utilities."""
 
+import signal
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,6 +8,7 @@ import pytest
 
 from teleclaude.core.session_cleanup import (
     cleanup_all_stale_sessions,
+    cleanup_orphan_mcp_wrappers,
     cleanup_orphan_workspaces,
     cleanup_stale_session,
 )
@@ -136,6 +138,30 @@ async def test_cleanup_stale_session_detects_missing_tmux():
     assert result is True
     mock_update.assert_called_once_with("stale-session-123", closed=True)
     mock_adapter_client.delete_channel.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("teleclaude.core.session_cleanup.subprocess.run")
+@patch("teleclaude.core.session_cleanup.os.kill")
+async def test_cleanup_orphan_mcp_wrappers_kills_ppid1(mock_kill, mock_run):
+    mock_run.return_value = MagicMock(
+        stdout=" 111 1 /usr/bin/python /path/bin/mcp-wrapper.py\n 222 2 /usr/bin/python /path/bin/mcp-wrapper.py\n"
+    )
+
+    killed = await cleanup_orphan_mcp_wrappers()
+
+    assert killed == 1
+    mock_kill.assert_called_once_with(111, signal.SIGTERM)
+
+
+@pytest.mark.asyncio
+@patch("teleclaude.core.session_cleanup.subprocess.run")
+async def test_cleanup_orphan_mcp_wrappers_noop(mock_run):
+    mock_run.return_value = MagicMock(stdout=" 111 2 /usr/bin/python /path/bin/mcp-wrapper.py\n")
+
+    killed = await cleanup_orphan_mcp_wrappers()
+
+    assert killed == 0
 
 
 @pytest.mark.asyncio

@@ -1524,7 +1524,10 @@ class TeleClaudeMCPServer:
                     metadata=MessageMetadata(),
                 )
 
-            yield f"Message sent to session {session_id[:8]} on {computer}."
+            yield (
+                f"Message sent to session {session_id[:8]} on {computer}. "
+                "Use teleclaude__get_session_data to check status."
+            )
 
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)

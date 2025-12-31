@@ -158,3 +158,46 @@ async def test_cached_handshake_emits_single_response(monkeypatch: pytest.Monkey
     assert len(lines) == 1
     message = json.loads(lines[0])
     assert message.get("id") == 42
+
+
+@pytest.mark.asyncio
+async def test_handle_initialize_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_WRAPPER_INIT_TIMEOUT", "0.01")
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    reader = asyncio.StreamReader()
+
+    ok = await proxy.handle_initialize(reader)
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_handle_initialize_schedules_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    called = {"value": False}
+
+    def _schedule(_reason: str) -> None:
+        called["value"] = True
+
+    async def _ready() -> None:
+        return None
+
+    proxy._schedule_reconnect = _schedule
+    monkeypatch.setattr(proxy.connected, "wait", _ready)
+
+    reader = asyncio.StreamReader()
+    init = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "pytest"}},
+    }
+    reader.feed_data((json.dumps(init) + "\n").encode("utf-8"))
+    reader.feed_eof()
+
+    ok = await proxy.handle_initialize(reader)
+    assert ok is True
+    assert called["value"] is True

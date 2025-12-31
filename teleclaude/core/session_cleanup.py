@@ -10,7 +10,11 @@ This can happen when:
 - DB is cleared but tmux sessions remain
 """
 
+import asyncio
+import os
 import shutil
+import signal
+import subprocess
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -28,6 +32,7 @@ logger = get_logger(__name__)
 
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
+_MCP_WRAPPER_MATCH = "bin/mcp-wrapper.py"
 
 
 async def cleanup_session_resources(session: "Session", adapter_client: "AdapterClient") -> None:
@@ -141,6 +146,60 @@ async def cleanup_all_stale_sessions(adapter_client: "AdapterClient") -> int:
         logger.debug("No stale sessions found")
 
     return cleaned_count
+
+
+async def cleanup_orphan_mcp_wrappers() -> int:
+    """Kill orphaned MCP wrapper processes (ppid=1).
+
+    Returns:
+        Number of wrapper processes signaled.
+    """
+
+    def _collect_orphans() -> list[int]:
+        try:
+            result = subprocess.run(
+                ["ps", "-eo", "pid=,ppid=,command="],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Failed to list processes for MCP wrapper cleanup: %s", e)
+            return []
+
+        orphans: list[int] = []
+        for line in result.stdout.splitlines():
+            parts = line.strip().split(maxsplit=2)
+            if len(parts) < 3:
+                continue
+            pid_str, ppid_str, command = parts
+            if ppid_str != "1":
+                continue
+            if _MCP_WRAPPER_MATCH not in command:
+                continue
+            try:
+                orphans.append(int(pid_str))
+            except ValueError:
+                continue
+        return orphans
+
+    orphan_pids = await asyncio.to_thread(_collect_orphans)
+    if not orphan_pids:
+        return 0
+
+    killed = 0
+    for pid in orphan_pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except ProcessLookupError:
+            continue
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("Failed to terminate orphan MCP wrapper %s: %s", pid, e)
+
+    if killed:
+        logger.warning("Terminated %d orphan MCP wrapper process(es)", killed)
+    return killed
 
 
 async def cleanup_orphan_tmux_sessions() -> int:

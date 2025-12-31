@@ -72,7 +72,9 @@ STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
 AGENT_START_POLL_INTERVAL_S = 0.5
-AGENT_START_SETTLE_DELAY_S = 0.5
+AGENT_START_SETTLE_DELAY_S = 1.0
+AGENT_START_CONFIRM_ENTER_DELAY_S = 1.0
+AGENT_START_CONFIRM_ENTER_ATTEMPTS = 4
 
 logger = get_logger(__name__)
 
@@ -486,6 +488,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
 
+        logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
         auto_context = CommandEventContext(session_id=session_id, args=[])
         thinking_args: list[str] = [thinking_mode]
         await command_handlers.handle_agent_start(
@@ -502,13 +505,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         deadline = time.monotonic() + AGENT_START_TIMEOUT_S
         while time.monotonic() < deadline:
-            if await terminal_bridge.is_process_running(session.tmux_session_name):
+            is_running = await terminal_bridge.is_process_running(session.tmux_session_name)
+            if is_running:
                 await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
+                logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
                 await self.handle_message(
                     session_id,
                     message,
                     MessageEventContext(session_id=session_id, text=message),
                 )
+                for _ in range(AGENT_START_CONFIRM_ENTER_ATTEMPTS):
+                    await asyncio.sleep(AGENT_START_CONFIRM_ENTER_DELAY_S)
+                    await terminal_bridge.send_enter(session.tmux_session_name)
                 return {"status": "success", "message": "Message injected after agent start"}
             await asyncio.sleep(AGENT_START_POLL_INTERVAL_S)
 
@@ -1115,16 +1123,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         Note: Handlers decorated with @with_session have modified signatures (decorator injects session parameter).
         """
-        logger.info("Command received: %s %s", command, args)
-        logger.info("Command type: %s, value repr: %r", type(command).__name__, command)
-        logger.info(
-            "Checking against GET_COMPUTER_INFO: %r (match: %s)",
-            TeleClaudeEvents.GET_COMPUTER_INFO,
-            command == TeleClaudeEvents.GET_COMPUTER_INFO,
-        )
+        logger.debug("Command received: %s %s", command, args)
 
         if command == TeleClaudeEvents.NEW_SESSION:
             result = await command_handlers.handle_create_session(context, args, metadata, self.client)
+            logger.debug(
+                "NEW_SESSION result: session_id=%s, auto_command=%s",
+                result.get("session_id"),
+                metadata.auto_command,
+            )
 
             # Handle auto_command if specified (e.g., start Claude after session creation)
             if metadata.auto_command and result.get("session_id"):
@@ -1350,6 +1357,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
                 # Clean up orphan workspace directories (workspace exists but no DB entry)
                 await session_cleanup.cleanup_orphan_workspaces()
+
+                # Clean up orphan MCP wrappers (ppid=1) to avoid FD leaks
+                await session_cleanup.cleanup_orphan_mcp_wrappers()
 
                 # Clean up stale voice assignments (7 day TTL)
                 await db.cleanup_stale_voice_assignments()
