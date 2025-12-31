@@ -256,7 +256,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
 
         # Send Enter key twice if requested (second press ensures it registers for voice input)
         if send_enter:
-            for _ in range(2):
+            for i in range(2):
                 cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
                 result = await asyncio.create_subprocess_exec(
                     *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -271,6 +271,9 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
                         stderr.decode().strip(),
                     )
                     return False
+                if i == 0:
+                    # Small delay so TUI-based clients register the second Enter
+                    await asyncio.sleep(0.2)
 
         return True
 
