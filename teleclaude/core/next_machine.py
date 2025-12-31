@@ -443,7 +443,7 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
         return False
 
 
-def ensure_worktree(cwd: str, slug: str) -> None:
+def ensure_worktree(cwd: str, slug: str) -> bool:
     """Ensure worktree exists, creating it if needed.
 
     Creates: git worktree add trees/{slug} -b {slug}
@@ -451,10 +451,13 @@ def ensure_worktree(cwd: str, slug: str) -> None:
     Args:
         cwd: Project root directory
         slug: Work item slug
+
+    Returns:
+        True if a new worktree was created, False if it already existed
     """
     worktree_path = Path(cwd) / "trees" / slug
     if worktree_path.exists():
-        return
+        return False
 
     try:
         repo = Repo(cwd)
@@ -465,6 +468,7 @@ def ensure_worktree(cwd: str, slug: str) -> None:
         # Create worktree with new branch
         repo.git.worktree("add", str(worktree_path), "-b", slug)
         logger.info("Created worktree at %s", worktree_path)
+        return True
     except InvalidGitRepositoryError:
         logger.error("Cannot create worktree: %s is not a git repository", cwd)
         raise
@@ -621,7 +625,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     # 4. Ensure worktree exists
-    ensure_worktree(cwd, resolved_slug)
+    worktree_created = ensure_worktree(cwd, resolved_slug)
+    if worktree_created:
+        logger.info("Created new worktree for %s", resolved_slug)
 
     # From here on, use worktree context for file checks
     # The builder works in the worktree, so implementation-plan.md and
