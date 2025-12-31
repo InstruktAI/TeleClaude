@@ -6,13 +6,6 @@
 
 ---
 
-## Next Machine Improvements
-
-- [>] next-prepare-hitl
-Add HITL (human-in-the-loop) parameter to `teleclaude__next_prepare` tool. When true (default), returns guidance for interactive work with user. When false, dispatches to another AI for autonomous collaboration. Also removes incorrect `is_in_progress` check and `next-roadmap` dispatch.
-
----
-
 ## Typing Cleanup
 
 - [ ] reduce-loose-dict-typings

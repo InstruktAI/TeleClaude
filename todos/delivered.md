@@ -8,3 +8,4 @@
 | 2025-12-15 | universal-hooks   | Universal File-Watcher Hook System           | DELIVERED | -       | done/004-universal-hooks   |
 | 2025-12-30 | title-update      | Title Update fix                             | DELIVERED | 34da4d2 | done/005-title-update      |
 | 2025-12-30 | next-machine      | Deterministic Workflow State Machine         | DELIVERED | 89ec189 | done/006-next-machine      |
+| 2025-12-31 | next-prepare-hitl | HITL Support for next_prepare MCP Tool       | DELIVERED | 75ced1f | done/007-next-prepare-hitl |
