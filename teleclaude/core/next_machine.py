@@ -421,7 +421,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         if hitl:
             return format_hitl_guidance(
                 f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
-                "and todos/{resolved_slug}/implementation-plan.md yourself and commit."
+                f"and todos/{resolved_slug}/implementation-plan.md yourself and commit."
             )
 
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
