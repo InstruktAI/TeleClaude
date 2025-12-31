@@ -221,13 +221,16 @@ def get_archive_path(cwd: str, slug: str) -> str | None:
 
 
 def parse_impl_plan_done(cwd: str, slug: str) -> bool:
-    """Check if Groups 1-4 in implementation plan are all done.
+    """Check if implementation plan tasks are all done.
 
-    Reads todos/{slug}/implementation-plan.md and checks for unchecked
-    items (- [ ]) within Groups 1 through 4.
+    Reads todos/{slug}/implementation-plan.md and checks for unchecked items.
+
+    Supports two formats:
+    1. Group-based: `## Group N` headers - only checks Groups 1-4
+    2. Any other format - checks for ANY unchecked `- [ ]` items
 
     Returns:
-        True if NO unchecked items in Groups 1-4, False otherwise.
+        True if NO unchecked items found, False otherwise.
     """
     impl_plan_path = Path(cwd) / "todos" / slug / "implementation-plan.md"
     if not impl_plan_path.exists():
@@ -235,18 +238,24 @@ def parse_impl_plan_done(cwd: str, slug: str) -> bool:
 
     content = impl_plan_path.read_text(encoding="utf-8")
 
-    # Find sections: ## Group 1, ## Group 2, ## Group 3, ## Group 4
-    # Check for unchecked items within those sections
-    in_target_group = False
-    group_pattern = re.compile(r"^##\s+Group\s+(\d+)")
+    # Check if file uses Group-based format
+    group_pattern = re.compile(r"^##\s+Group\s+(\d+)", re.MULTILINE)
+    has_groups = bool(group_pattern.search(content))
 
-    for line in content.split("\n"):
-        group_match = group_pattern.match(line)
-        if group_match:
-            group_num = int(group_match.group(1))
-            in_target_group = 1 <= group_num <= 4
+    if has_groups:
+        # Group-based format: only check Groups 1-4
+        in_target_group = False
+        for line in content.split("\n"):
+            group_match = group_pattern.match(line)
+            if group_match:
+                group_num = int(group_match.group(1))
+                in_target_group = 1 <= group_num <= 4
 
-        if in_target_group and line.strip().startswith("- [ ]"):
+            if in_target_group and line.strip().startswith("- [ ]"):
+                return False
+    else:
+        # Any other format: check for ANY unchecked items
+        if "- [ ]" in content:
             return False
 
     return True
