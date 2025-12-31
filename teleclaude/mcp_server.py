@@ -35,6 +35,16 @@ logger = get_logger(__name__)
 
 MCP_SESSION_DATA_MAX_CHARS = int(os.getenv("MCP_SESSION_DATA_MAX_CHARS", "48000"))
 
+# Reusable instruction for AI-to-AI session management (appended to tool descriptions)
+REMOTE_AI_TIMER_INSTRUCTION = (
+    "**After dispatching:** "
+    '1) Start a 5-minute background timer: `Bash(command="sleep 300", run_in_background=true)`. '
+    "2) STOP responding and wait for the notification when the worker completes. "
+    "3) If you send another message to this agent, cancel the old timer with `KillShell(shell_id=<task_id>)` "
+    "and start a new 5-minute timer. "
+    "4) If the timer completes with no notification, use `teleclaude__get_session_data` to check status."
+)
+
 
 def _is_client_disconnect_exception(exc: BaseException) -> bool:
     """Return True if the exception indicates the client went away."""
@@ -195,7 +205,7 @@ class TeleClaudeMCPServer:
                         "1) Call teleclaude__list_projects FIRST to discover available projects "
                         "2) Match and select the correct project from the results "
                         "3) Use the exact project path from list_projects in the project_dir parameter here. "
-                        "Returns session_id. Wait 10 seconds then use teleclaude__get_session_data to check progress. "
+                        f"Returns session_id. {REMOTE_AI_TIMER_INSTRUCTION}"
                     ),
                     inputSchema={
                         "type": "object",
@@ -252,7 +262,8 @@ class TeleClaudeMCPServer:
                     description=(
                         "Send message to an existing AI Agent session. "
                         "Use teleclaude__list_sessions to find session IDs. "
-                        "For slash commands, prefer teleclaude__run_agent_command instead."
+                        "For slash commands, prefer teleclaude__run_agent_command instead. "
+                        f"{REMOTE_AI_TIMER_INSTRUCTION}"
                     ),
                     inputSchema={
                         "type": "object",
@@ -283,7 +294,8 @@ class TeleClaudeMCPServer:
                         "Two modes: (1) If session_id provided, sends command to existing session. "
                         "(2) If session_id not provided, starts a new session with the command. "
                         "Supports all agent types (Claude, Gemini, Codex) and worktree subfolders. "
-                        "Commands are for AI slash commands (e.g., 'compact', 'next-work'), not shell commands."
+                        "Commands are for AI slash commands (e.g., 'compact', 'next-work'), not shell commands. "
+                        f"{REMOTE_AI_TIMER_INSTRUCTION}"
                     ),
                     inputSchema={
                         "type": "object",
@@ -1512,10 +1524,7 @@ class TeleClaudeMCPServer:
                     metadata=MessageMetadata(),
                 )
 
-            yield (
-                f"Message sent to session {session_id[:8]} on {computer}. "
-                f"Wait for the notification when the worker completes."
-            )
+            yield f"Message sent to session {session_id[:8]} on {computer}."
 
         except Exception as e:
             logger.error("Failed to send message to session %s: %s", session_id[:8], e)
