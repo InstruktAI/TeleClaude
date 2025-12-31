@@ -50,9 +50,7 @@ def format_tool_call(
     next_call: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
-    result = f"""Execute this tool call, then STOP and wait for the session to complete.
-Do NOT do the work yourself - dispatch to a worker session.
-Set a 5-minute timer. If no response by then, check session status with teleclaude__get_session_data().
+    result = f"""Execute this tool call, then STOP your response entirely.
 
 teleclaude__run_agent_command(
   computer="local",
@@ -64,7 +62,13 @@ teleclaude__run_agent_command(
   subfolder="{subfolder}"
 )
 
-NEXT: When session completes successfully, call {next_call}() to check next step."""
+AFTER DISPATCH:
+- Tell the user: "Dispatched. Waiting for completion notification."
+- STOP responding. Do NOT call any more tools.
+- You will automatically receive a notification when the worker completes.
+- Only use get_session_data(tail_chars=2000) if the USER asks you to check progress.
+
+NEXT: When you receive the completion notification, call {next_call}() to check next step."""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
