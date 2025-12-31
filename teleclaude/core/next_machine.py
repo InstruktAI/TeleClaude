@@ -47,9 +47,13 @@ def format_tool_call(
     thinking_mode: str,
     subfolder: str,
     note: str = "",
+    next_call: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
-    result = f"""TOOL_CALL:
+    result = f"""Execute this tool call, then STOP and wait for the session to complete.
+Do NOT do the work yourself - dispatch to a worker session.
+Set a 5-minute timer. If no response by then, check session status with teleclaude__get_session_data().
+
 teleclaude__run_agent_command(
   computer="local",
   command="{command}",
@@ -58,29 +62,34 @@ teleclaude__run_agent_command(
   agent="{agent}",
   thinking_mode="{thinking_mode}",
   subfolder="{subfolder}"
-)"""
+)
+
+NEXT: When session completes successfully, call {next_call}() to check next step."""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
 
 
-def format_error(code: str, message: str) -> str:
-    """Format an error message."""
-    return f"ERROR: {code}\n{message}"
+def format_error(code: str, message: str, next_call: str = "") -> str:
+    """Format an error message with optional next step."""
+    result = f"ERROR: {code}\n{message}"
+    if next_call:
+        result += f"\n\nNEXT: {next_call}"
+    return result
 
 
 def format_prepared(slug: str) -> str:
     """Format a 'prepared' message indicating work item is ready."""
-    return f"""PREPARED:
-todos/{slug} is ready for work.
-Run teleclaude__next_work() to start the build/review cycle."""
+    return f"""PREPARED: todos/{slug} is ready for work.
+
+ASK USER: Do you want to continue with more preparation work, or start the build/review cycle with teleclaude__next_work()?"""
 
 
 def format_complete(slug: str, archive_path: str) -> str:
     """Format a 'complete' message indicating work item is finalized."""
-    return f"""COMPLETE:
-todos/{slug} has been finalized.
-Delivered to {archive_path}/"""
+    return f"""COMPLETE: todos/{slug} has been finalized and delivered to {archive_path}/
+
+NEXT: Call teleclaude__next_work() to continue with more work."""
 
 
 # =============================================================================
@@ -88,59 +97,56 @@ Delivered to {archive_path}/"""
 # =============================================================================
 
 
-def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool]:
+def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool, str]:
     """Resolve slug from argument or roadmap.
+
+    Roadmap format expected:
+        - [ ] my-slug   (pending)
+        - [>] my-slug   (in progress)
+        Description of the work item.
 
     Args:
         cwd: Current working directory (project root)
         slug: Optional explicit slug
 
     Returns:
-        Tuple of (resolved_slug, roadmap_modified).
-        If slug was provided, returns (slug, False).
-        If found in roadmap, returns (slug, True if [ ] was changed to [>]).
-        If no work found, returns (None, False).
+        Tuple of (slug, is_in_progress, description).
+        If slug provided, returns (slug, True, "").
+        If found in roadmap, returns (slug, True if [>], False if [ ], description).
+        If nothing found, returns (None, False, "").
     """
     if slug:
-        return slug, False
+        return slug, True, ""
 
     roadmap_path = Path(cwd) / "todos" / "roadmap.md"
     if not roadmap_path.exists():
-        return None, False
+        return None, False, ""
 
     content = roadmap_path.read_text(encoding="utf-8")
-    lines = content.split("\n")
 
-    # Pattern: ### [>] slug-name - Description  OR  ### [ ] slug-name - Description
-    pattern = re.compile(r"^###\s+\[([ >x])\]\s+(\S+)")
+    # Pattern: - [>] or - [ ] followed by slug
+    pattern = re.compile(r"^-\s+\[([ >])\]\s+(\S+)", re.MULTILINE)
+    match = pattern.search(content)
+    if match:
+        status: str = match.group(1)
+        found_slug: str = match.group(2)
+        is_in_progress: bool = status == ">"
 
-    # First pass: find [>] in-progress item
-    for line in lines:
-        match = pattern.match(line)
-        if match:
-            status: str = match.group(1)
-            if status == ">":
-                return match.group(2), False
+        # Extract description: everything after the slug line until next item or section
+        start_pos = match.end()
+        next_item = re.search(r"^-\s+\[", content[start_pos:], re.MULTILINE)
+        next_section = re.search(r"^##", content[start_pos:], re.MULTILINE)
 
-    # Second pass: find first [ ] pending item and mark it [>]
-    modified = False
-    resolved_slug = None
-    for i, line in enumerate(lines):
-        match = pattern.match(line)
-        if match:
-            status_char: str = match.group(1)
-            if status_char == " ":
-                resolved_slug = match.group(2)
-                # Mark as in-progress
-                lines[i] = line.replace("[ ]", "[>]", 1)
-                modified = True
-                break
+        end_pos = len(content)
+        if next_item:
+            end_pos = min(end_pos, start_pos + next_item.start())
+        if next_section:
+            end_pos = min(end_pos, start_pos + next_section.start())
 
-    if modified:
-        roadmap_path.write_text("\n".join(lines), encoding="utf-8")
-        logger.info("Marked roadmap item as in-progress: %s", resolved_slug)
+        description = content[start_pos:end_pos].strip()
+        return found_slug, is_in_progress, description
 
-    return resolved_slug, modified
+    return None, False, ""
 
 
 def check_file_exists(cwd: str, relative_path: str) -> bool:
@@ -348,18 +354,29 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         Plain text instructions for the orchestrator to execute
     """
     # 1. Resolve slug
-    resolved_slug, _ = resolve_slug(cwd, slug)
+    resolved_slug, is_in_progress, description = resolve_slug(cwd, slug)
     if not resolved_slug:
-        # Empty roadmap - dispatch next-prepare for roadmap grooming
+        # Dispatch roadmap grooming when roadmap is empty
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-prepare",
+            command="next-roadmap",
             args="",
             project=cwd,
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note="Roadmap is empty. Start with roadmap grooming to add work items.",
+            note="Roadmap is empty. Groom the roadmap to add work items.",
+            next_call="teleclaude__next_prepare",
+        )
+
+    # If not in progress, return helpful info about what was found
+    if not is_in_progress:
+        desc_text = f"\n\nDescription:\n{description}" if description else ""
+        return format_error(
+            "ITEM_NOT_STARTED",
+            f"Found roadmap item '{resolved_slug}' (not started).{desc_text}\n\n"
+            f"To start: mark as '- [>] {resolved_slug}' in todos/roadmap.md",
+            next_call="After marking in-progress, call teleclaude__next_prepare() again.",
         )
 
     # 2. Check requirements
@@ -373,6 +390,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             thinking_mode=mode,
             subfolder="",
             note="Engage as collaborator - this is an architect session requiring discussion.",
+            next_call="teleclaude__next_prepare",
         )
 
     # 3. Check implementation plan
@@ -386,6 +404,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             thinking_mode=mode,
             subfolder="",
             note="Engage as collaborator - this is an architect session requiring discussion.",
+            next_call="teleclaude__next_prepare",
         )
 
     # 4. Both exist - prepared
@@ -416,12 +435,25 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             thinking_mode=mode,
             subfolder="",
             note="Fix bugs in todos/bugs.md before proceeding with roadmap work.",
+            next_call="teleclaude__next_work",
         )
 
     # 1. Resolve slug
-    resolved_slug, _ = resolve_slug(cwd, slug)
+    resolved_slug, is_in_progress, description = resolve_slug(cwd, slug)
     if not resolved_slug:
-        return format_error("NO_WORK", "No pending items in roadmap.")
+        return format_error(
+            "NO_ROADMAP_ITEMS",
+            "No items found in roadmap.",
+            next_call="Call teleclaude__next_prepare() to groom the roadmap.",
+        )
+
+    if not is_in_progress:
+        desc_text = f"\n\nDescription:\n{description}" if description else ""
+        return format_error(
+            "ITEM_NOT_STARTED",
+            f"Found roadmap item '{resolved_slug}' (not started).{desc_text}",
+            next_call="Call teleclaude__next_prepare() to start work on it.",
+        )
 
     # 2. Check if already finalized
     archive_path = get_archive_path(cwd, resolved_slug)
@@ -434,8 +466,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if not (has_requirements and has_impl_plan):
         return format_error(
             "NOT_PREPARED",
-            f"todos/{resolved_slug} is missing requirements or implementation plan.\n"
-            f'Run teleclaude__next_prepare("{resolved_slug}") first.',
+            f"todos/{resolved_slug} is missing requirements or implementation plan.",
+            next_call=f'Call teleclaude__next_prepare("{resolved_slug}") to complete preparation.',
         )
 
     # 4. Ensure worktree exists
@@ -451,6 +483,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
+            next_call="teleclaude__next_work",
         )
 
     # 6. Check build status
@@ -463,6 +496,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
+            next_call="teleclaude__next_work",
         )
 
     # 7. Check review status
@@ -476,6 +510,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
+            next_call="teleclaude__next_work",
         )
 
     # 8. Check if review approved
@@ -488,6 +523,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
+            next_call="teleclaude__next_work",
         )
 
     # 9. Review approved - dispatch finalize (runs from MAIN REPO, not worktree)
@@ -499,4 +535,5 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         agent=agent,
         thinking_mode=mode,
         subfolder="",  # Empty = main repo, NOT worktree
+        next_call="teleclaude__next_work",
     )
