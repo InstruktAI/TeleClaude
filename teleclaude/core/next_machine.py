@@ -116,6 +116,16 @@ def format_complete(slug: str, archive_path: str) -> str:
 NEXT: Call teleclaude__next_work() to continue with more work."""
 
 
+def format_hitl_guidance(context: str) -> str:
+    """Format guidance for the calling AI to work interactively with the user.
+
+    Used when HITL=True.
+    """
+    return f"""Before proceeding, read ~/.agents/commands/next-prepare.md if you haven't already.
+
+{context}"""
+
+
 # =============================================================================
 # Shared Helper Functions
 # =============================================================================
@@ -363,7 +373,7 @@ def ensure_worktree(cwd: str, slug: str) -> None:
 # =============================================================================
 
 
-async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
+async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) -> str:
     """Phase A state machine for collaborative architect work.
 
     Checks what's missing (requirements.md, implementation-plan.md) and
@@ -371,40 +381,49 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
 
     Args:
         db: Database instance
-        slug: Optional explicit slug (resolved from roadmap if not provided)
+        slug: Optional explicit slug (resolved from roadmap if HITL=False)
         cwd: Current working directory (project root)
+        hitl: Human-In-The-Loop mode. If True (default), returns guidance
+              for calling AI. If False, dispatches to another AI.
 
     Returns:
         Plain text instructions for the orchestrator to execute
     """
     # 1. Resolve slug
-    resolved_slug, is_in_progress, description = resolve_slug(cwd, slug)
+    resolved_slug = slug
+
+    if not slug and not hitl:
+        resolved_slug, _, _ = resolve_slug(cwd, None)
+
     if not resolved_slug:
-        # Dispatch roadmap grooming when roadmap is empty
+        if hitl:
+            return format_hitl_guidance(
+                "Read todos/roadmap.md. Discuss with the user to identify or propose a "
+                "work item slug. Once decided, write requirements.md and "
+                "implementation-plan.md yourself and commit."
+            )
+
+        # Dispatch next-prepare (no slug) when hitl=False
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
-            command="next-roadmap",
+            command="next-prepare",
             args="",
             project=cwd,
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note="Roadmap is empty. Groom the roadmap to add work items.",
+            note="Roadmap is empty or no item selected. Groom the roadmap to add work items.",
             next_call="teleclaude__next_prepare",
-        )
-
-    # If not in progress, return helpful info about what was found
-    if not is_in_progress:
-        desc_text = f"\n\nDescription:\n{description}" if description else ""
-        return format_error(
-            "ITEM_NOT_STARTED",
-            f"Found roadmap item '{resolved_slug}' (not started).{desc_text}\n\n"
-            f"To start: mark as '- [>] {resolved_slug}' in todos/roadmap.md",
-            next_call="After marking in-progress, call teleclaude__next_prepare() again.",
         )
 
     # 2. Check requirements
     if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
+        if hitl:
+            return format_hitl_guidance(
+                f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/requirements.md "
+                f"and todos/{resolved_slug}/implementation-plan.md yourself and commit."
+            )
+
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
             command="next-prepare",
@@ -413,15 +432,17 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note="""YOUR ROLE: You are the orchestrator driving this collaboration.
-The worker is your SPARRING PARTNER for analysis only - they do NOT write files.
-Discuss until you have enough input. Do NOT thank or confirm agreement - once decided, just do the work.
-Write todos/{slug}/requirements.md yourself and commit.""".replace("{slug}", resolved_slug),
+            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/requirements.md yourself and commit.",
             next_call="teleclaude__next_prepare",
         )
 
     # 3. Check implementation plan
     if not check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md"):
+        if hitl:
+            return format_hitl_guidance(
+                f"Preparing: {resolved_slug}. Write todos/{resolved_slug}/implementation-plan.md yourself and commit."
+            )
+
         agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
         return format_tool_call(
             command="next-prepare",
@@ -430,10 +451,7 @@ Write todos/{slug}/requirements.md yourself and commit.""".replace("{slug}", res
             agent=agent,
             thinking_mode=mode,
             subfolder="",
-            note="""YOUR ROLE: You are the orchestrator driving this collaboration.
-The worker is your SPARRING PARTNER for analysis only - they do NOT write files.
-Discuss until you have enough input. Do NOT thank or confirm agreement - once decided, just do the work.
-Write todos/{slug}/implementation-plan.md yourself and commit.""".replace("{slug}", resolved_slug),
+            note=f"Discuss until you have enough input. Write todos/{resolved_slug}/implementation-plan.md yourself and commit.",
             next_call="teleclaude__next_prepare",
         )
 
