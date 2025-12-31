@@ -39,6 +39,22 @@ class _FakeWriter:
         await asyncio.sleep(0)
 
 
+class _InstantQueue:
+    def __init__(self, item: dict) -> None:
+        self._item = item
+        self._used = False
+
+    def empty(self) -> bool:
+        return self._used
+
+    async def get(self) -> dict:
+        if self._used:
+            await asyncio.sleep(0)
+            raise asyncio.TimeoutError
+        self._used = True
+        return self._item
+
+
 def _load_wrapper_module(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MCP_WRAPPER_LOG_LEVEL", "CRITICAL")
     wrapper_path = Path(__file__).resolve().parents[2] / "bin" / "mcp-wrapper.py"
@@ -201,3 +217,22 @@ async def test_handle_initialize_schedules_reconnect(monkeypatch: pytest.MonkeyP
     ok = await proxy.handle_initialize(reader)
     assert ok is True
     assert called["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_socket_sender_exits_on_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    proxy.shutdown.set()
+    proxy._outbound = _InstantQueue(  # type: ignore[assignment]
+        {
+            "raw": b"{}",
+            "request_id": None,
+            "method": None,
+            "enqueued_at": asyncio.get_running_loop().time(),
+            "attempts": 0,
+        }
+    )
+
+    await proxy._socket_sender()

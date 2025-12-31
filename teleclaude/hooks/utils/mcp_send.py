@@ -80,7 +80,7 @@ def _call_wrapper(tool: str, payload: Dict[str, Any], timeout_s: float) -> Dict[
         [sys.executable, str(MCP_WRAPPER)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         text=True,
         bufsize=1,
     )

@@ -1342,9 +1342,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _periodic_cleanup(self) -> None:
         """Periodically clean up inactive sessions (72h lifecycle) and orphaned tmux sessions."""
+        first_run = True
         while True:
             try:
-                await asyncio.sleep(3600)  # Run every hour
+                if not first_run:
+                    await asyncio.sleep(3600)  # Run every hour
+                first_run = False
 
                 # Clean up sessions inactive for 72+ hours
                 await self._cleanup_inactive_sessions()

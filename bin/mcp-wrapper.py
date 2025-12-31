@@ -448,8 +448,13 @@ class MCPProxy:
 
         Provides bounded buffering + timeout-based failure instead of hanging clients.
         """
-        while not self.shutdown.is_set():
-            item = await self._outbound.get()
+        while True:
+            if self.shutdown.is_set() and self._outbound.empty():
+                break
+            try:
+                item = await asyncio.wait_for(self._outbound.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
             if self.shutdown.is_set():
                 break
 
@@ -540,7 +545,10 @@ class MCPProxy:
         """Forward backend socket to stdout, filtering internal tools from responses."""
         try:
             while not self.shutdown.is_set():
-                await self.connected.wait()
+                try:
+                    await asyncio.wait_for(self.connected.wait(), timeout=0.5)
+                except asyncio.TimeoutError:
+                    continue
                 if not self.reader or self.shutdown.is_set():
                     continue
 
@@ -704,6 +712,11 @@ class MCPProxy:
             self.shutdown.set()
             if self.writer:
                 self.writer.close()
+            for task in (stdin_task, stdout_task, self._sender_task, watchdog_task):
+                if task and not task.done():
+                    task.cancel()
+            if self._reconnect_task and not self._reconnect_task.done():
+                self._reconnect_task.cancel()
 
 
 _PARENT_PID = os.getppid()
@@ -721,11 +734,17 @@ def _check_parent_alive() -> bool:
 
     Returns False if parent died (PPID changed to 1 on Unix).
     """
-    return os.getppid() == _PARENT_PID
+    current_ppid = os.getppid()
+    if current_ppid == 1:
+        return False
+    return current_ppid == _PARENT_PID
 
 
 def main():
     """Entry point."""
+    if os.getppid() == 1:
+        logger.info("Orphan wrapper detected at startup (PPID=1), exiting")
+        return
     # Exit cleanly on signals (especially SIGHUP when parent dies)
     signal.signal(signal.SIGHUP, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)

@@ -68,6 +68,9 @@ Mapping rules (Gemini):
   - Requires `data.session_id` (native session id).
   - Requires `data.transcript_path` (native transcript path).
 - `AfterAgent` → `event_type = "stop"` (fires when agent loop ends = turn completion)
+  - **TODO(2025-01):** Using Gemini CLI nightly (0.24.0) for AfterAgent fix (fires once per turn).
+    When stable release includes fix from PR #15651/#15701, switch back: `npm install -g @google/gemini-cli@latest`
+    Track: https://github.com/google-gemini/gemini-cli/issues/15712
 - `Notification` → `event_type = "notification"`
 - `SessionEnd` → `event_type = "session_end"` (reserved; no handler logic yet)
 
