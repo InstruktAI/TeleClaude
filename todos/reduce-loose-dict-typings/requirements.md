@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-The codebase has ~130 instances of `dict[str, object]` (and a few `dict[str, Any]`) spread across 25+ source files. These loose typings:
+The codebase has ~130 instances of `dict[str, object]` spread across 25+ source files. These loose typings:
 
 1. **Hide structure** - No IDE autocomplete or type checking for known fields
 2. **Allow runtime errors** - Missing keys or wrong types discovered only at runtime
@@ -12,72 +12,67 @@ The codebase has ~130 instances of `dict[str, object]` (and a few `dict[str, Any
 
 ### Must-Have
 
-1. **Replace `dict[str, object]` with TypedDicts where structure is known**
-   - Event dataclass fields (`raw`, `updated_fields`, `details`, `channel_metadata`)
-   - MCP tool return types
-   - Session/computer info structures
-   - Configuration data structures
+1. **Create centralized TypedDict module**
+   - New file: `teleclaude/core/typed_dicts.py`
+   - All TypedDict definitions in one discoverable location
+   - Only depends on stdlib types (no circular imports)
 
-2. **Keep `dict[str, object]` only where truly dynamic**
-   - External JSON parsing (transcript files, Redis messages from unknown agents)
-   - Serialized dataclass output (`asdict()` returns)
-   - JSON payloads passed through without inspection
+2. **Consolidate existing TypedDicts**
+   - Move `SystemStats`, `MemoryStats`, `DiskStats`, `CpuStats` from `command_handlers.py`
+   - Move `HandleEventResult`, `HandleEventData` from `telegram_adapter.py`
 
-3. **Maintain backward compatibility**
-   - No breaking changes to MCP tool signatures
-   - No changes to wire format (JSON serialization)
+3. **Add TypedDicts for MCP tool returns** (~26 occurrences in mcp_server.py)
+   - `ComputerInfo` - list_computers return type
+   - `SessionInfo` - list_sessions return type
+   - `SessionDataResult` - get_session_data return type
+   - `DeployResult` - deploy return type
+   - Other tool-specific return types as needed
 
-### Nice-to-Have
+4. **Tighten dataclass fields in models.py** (~12 occurrences)
+   - `PeerInfo.system_stats` → `SystemStats | None`
+   - Other fields where structure is known
 
-- Reduce boilerplate by using `TypedDict` inheritance for shared fields
-- Consider `total=False` for optional fields instead of `Optional` wrappers
+5. **Add TypedDicts for daemon.py deployment payloads** (~8 occurrences)
+   - `DeployStatusPayload` for status updates
+
+### Keep Loose (Intentionally)
+
+- `teleclaude/utils/transcript.py` - Parsing arbitrary JSONL from external agents
+- `teleclaude/adapters/redis_adapter.py` - Explicitly excluded from scope
+- Event `raw` payloads in `events.py` - Agent hook data varies by agent
+- `from_dict` method parameters - Input validation pattern
+- `asdict()` returns - Serialization output
 
 ## Non-Goals
 
-- Changing the `redis_adapter.py` - explicitly excluded from scope
-- Introducing runtime validation (Pydantic, msgspec) - this is static typing only
-- Refactoring dataclass hierarchies - only add TypedDicts for dict fields
+- Runtime validation (Pydantic, msgspec) - Static typing only
+- Changing redis_adapter.py - Excluded from scope
+- 100% coverage - Focus on high-impact files first
 
 ## Constraints
 
-1. **Python 3.11+ syntax** - Use `class FooDict(TypedDict)` not older `FooDict = TypedDict(...)`
+1. **Python 3.11+ syntax** - Use `class FooDict(TypedDict)` style
 2. **No new dependencies** - `typing` and `typing_extensions` only
-3. **Incremental adoption** - Files can be updated independently
+3. **No circular imports** - `typed_dicts.py` must be import-safe
 4. **Tests must pass** - All existing tests remain green
-
-## Categories of Dict Usage
-
-From analysis, loose dicts fall into these categories:
-
-| Category | Example | Action |
-|----------|---------|--------|
-| Event raw payload | `AgentStart.raw` | TypedDict for known structure |
-| MCP return type | `-> dict[str, object]` | TypedDict for tool responses |
-| Session/computer info | `system_stats`, `channel_metadata` | TypedDict for structured data |
-| Transcript parsing | `entry: dict[str, object]` | Keep loose - external format |
-| JSON passthrough | `asdict()` return | Keep loose - serialization |
-
-## File Priority (by occurrence count)
-
-High priority (>10 occurrences):
-- `mcp_server.py` (26)
-- `utils/transcript.py` (23) - mostly keep loose
-- `core/adapter_client.py` (14)
-- `core/models.py` (12)
-
-Medium priority (5-10):
-- `daemon.py` (8)
-- `core/events.py` (7)
-- `core/agent_parsers.py` (7)
-- `core/ux_state.py` (6)
-- `core/command_handlers.py` (5)
-
-Lower priority (<5):
-- Remaining files with 1-4 occurrences
+5. **Lint must pass** - `make lint` with mypy strict mode
 
 ## Success Criteria
 
-1. At least 50% reduction in `dict[str, object]` occurrences (targeting ~65 remaining)
+1. At least 50% reduction in `dict[str, object]` occurrences (from ~130 to ~65)
 2. `make lint` passes with no new warnings
 3. `make test` passes
 4. IDE autocomplete works for TypedDict fields in key paths
+
+## Implementation Priority
+
+1. **Primary** (highest impact):
+   - `mcp_server.py` (26 occurrences)
+   - `models.py` (12 occurrences)
+
+2. **Secondary**:
+   - `daemon.py` (8 occurrences)
+   - `command_handlers.py` (5 occurrences)
+
+3. **Later/Optional**:
+   - Remaining files with 1-4 occurrences
