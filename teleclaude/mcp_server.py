@@ -566,19 +566,18 @@ class TeleClaudeMCPServer:
                 ),
                 Tool(
                     name="teleclaude__next_prepare",
-                    title="TeleClaude: Next Prepare",
-                    description=(
-                        "Phase A state machine: Check preparation state and return instructions. "
-                        "Checks for requirements.md and implementation-plan.md, returns exact command to dispatch. "
-                        "If roadmap is empty, dispatches roadmap grooming. "
-                        "Call this to prepare a work item before building."
-                    ),
+                    description="Phase A state machine: Check preparation state and return instructions. Checks for requirements.md and implementation-plan.md, returns exact command to dispatch. If roadmap is empty, dispatches roadmap grooming. Call this to prepare a work item before building.",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "slug": {
                                 "type": "string",
                                 "description": "Optional work item slug. If not provided, resolves from roadmap.",
+                            },
+                            "hitl": {
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Human-in-the-loop mode. When true (default), returns guidance for the calling AI to work interactively with the user. When false, dispatches to another AI for autonomous collaboration.",
                             },
                         },
                     },
@@ -773,9 +772,11 @@ class TeleClaudeMCPServer:
                 result_text = await self.teleclaude__handle_agent_event(session_id, event_type, data)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__next_prepare":
-                slug = str(arguments.get("slug", "")) if arguments and arguments.get("slug") else None
-                cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
-                result_text = await self.teleclaude__next_prepare(slug, cwd)
+                slug = cast(Optional[str], arguments.get("slug"))
+                hitl = cast(bool, arguments.get("hitl", True))
+                # Use project root as default_working_dir if not explicitly provided
+                cwd = cast(Optional[str], arguments.get("cwd"))
+                result_text = await self.teleclaude__next_prepare(slug, cwd, hitl)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__next_work":
                 slug = str(arguments.get("slug", "")) if arguments and arguments.get("slug") else None
@@ -2129,27 +2130,12 @@ class TeleClaudeMCPServer:
     # Next Machine Tools - Deterministic workflow state machine
     # =========================================================================
 
-    async def teleclaude__next_prepare(
-        self,
-        slug: str | None = None,
-        cwd: str | None = None,
-    ) -> str:
-        """Phase A: Prepare work items for the build/review cycle.
-
-        Checks todos/{slug} for requirements.md and implementation-plan.md.
-        Returns plain text instructions for the orchestrator AI to execute literally.
-
-        Args:
-            slug: Optional work item slug (resolved from roadmap.md if not provided)
-            cwd: Working directory (auto-injected by MCP wrapper via os.getcwd())
-
-        Returns:
-            Plain text: TOOL_CALL (dispatch architect), PREPARED (ready for work), or ERROR
-        """
+    async def teleclaude__next_prepare(self, slug: str | None = None, cwd: str | None = None, hitl: bool = True) -> str:
+        """Phase A state machine: Check preparation state and return instructions."""
         if not cwd:
-            return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
+            cwd = str(config.computer.default_working_dir)
 
-        return await next_prepare(db, slug, cwd)
+        return await next_prepare(db, slug, cwd, hitl)
 
     async def teleclaude__next_work(
         self,
