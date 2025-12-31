@@ -50,7 +50,9 @@ def format_tool_call(
     next_call: str = "",
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
-    result = f"""Execute these steps in order:
+    result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
+
+Execute these steps in order:
 
 STEP 1 - DISPATCH:
 teleclaude__run_agent_command(
