@@ -299,6 +299,7 @@ def test_update_title_with_agent_same_computer_ai_to_ai():
 
     Bug fix: Previously would replace initiator prefix instead of target.
     The fix matches "$Computer - " to ensure only target (before dash) is replaced.
+    Additionally, same-computer targets drop @Computer to avoid redundancy.
     """
     from teleclaude.core.session_utils import update_title_with_agent
 
@@ -309,4 +310,5 @@ def test_update_title_with_agent_same_computer_ai_to_ai():
         computer_name="MozMini",
     )
     # Should only replace target ($MozMini -), not initiator ($MozMini >)
-    assert result == "TeleClaude: $MozMini > Gemini-fast@MozMini - New session"
+    # Target drops @Computer since initiator is same computer
+    assert result == "TeleClaude: $MozMini > Gemini-fast - New session"

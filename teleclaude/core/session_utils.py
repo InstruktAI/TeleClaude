@@ -201,6 +201,9 @@ def update_title_with_agent(
     Replaces "${Computer} - " with "{Agent}-{mode}@{Computer} - " in the title.
     The target computer is always followed by " - " (before the description).
 
+    For AI-to-AI sessions on the same computer, drops @Computer from target
+    to avoid redundancy (initiator already shows @Computer).
+
     Format: "{project}: {prefix} - {description}"
     AI-to-AI: "{project}: {initiator} > {target} - {description}"
 
@@ -216,7 +219,14 @@ def update_title_with_agent(
     # Match "$Computer - " to ensure we replace the TARGET prefix (before description),
     # not the initiator prefix in AI-to-AI titles like "Project: $Init > $Target - desc"
     old_pattern = f"${computer_name} - "
-    new_pattern = f"{build_computer_prefix(computer_name, agent_name, thinking_mode)} - "
+
+    # Check if initiator is same computer (AI-to-AI same-computer case)
+    # Initiator patterns: "$Computer >" or "Agent-mode@Computer >"
+    same_computer = f"${computer_name} >" in title or f"@{computer_name} >" in title
+
+    new_pattern = (
+        f"{build_computer_prefix(computer_name, agent_name, thinking_mode, include_computer=not same_computer)} - "
+    )
 
     if old_pattern in title:
         return title.replace(old_pattern, new_pattern, 1)
