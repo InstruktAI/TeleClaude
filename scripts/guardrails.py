@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 
@@ -77,16 +76,12 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     if not matches:
         return
 
-    max_allowed = 145  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
+    max_allowed = 0  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
     if len(matches) > max_allowed:
         _fail(f"loose dict typings detected ({len(matches)} > {max_allowed})\nFIX by replacing with typed dicts!!\n")
 
     if len(matches) > 0:
-        sys.stderr.write("guardrails warning: loose dict typings detected\n")
-        for match in matches:
-            sys.stderr.write(f"  {match}\n")
-    else:
-        sys.stdout.write("guardrails ok: no problems detected\n")
+        _fail("guardrails warning: loose dict typings detected\n")
 
 
 if __name__ == "__main__":
