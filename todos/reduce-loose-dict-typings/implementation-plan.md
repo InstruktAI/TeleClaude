@@ -372,6 +372,16 @@ git commit -m "refactor(mcp): add TypedDicts for MCP tool arguments"
 
 ## Keep Loose (Intentionally NOT Changed)
 
+**CRITICAL: All exceptions MUST be documented with exception comment:**
+
+```python
+# Use one of these patterns:
+dict[str, object]  # noqa: loose-dict - Reason why this must stay loose
+dict[str, object]  # type: boundary - External data source with unknown structure
+```
+
+**Guardrails enforcement:** The `scripts/guardrails.py` pre-commit hook enforces zero tolerance for undocumented loose dicts. Any `dict[str, object]` without an exception comment will fail the build.
+
 These files/patterns should keep `dict[str, object]` for valid reasons:
 
 ### Files with mypy overrides (from pyproject.toml)
@@ -384,14 +394,31 @@ These files/patterns should keep `dict[str, object]` for valid reasons:
 
 ### Patterns that should stay generic (TRUE boundaries only)
 
-| Pattern | Why Keep Loose | Examples | Occurrences |
-|---------|---------------|----------|-------------|
-| External JSONL iterators | Unknown structure from agent transcripts | `transcript.py` - `_iter_*_entries()` return types | ~4 |
-| Agent hook `raw` fields | Flexible schema for agent hook data | `events.py` - `raw: dict[str, object]` fields | ~4 |
-| `from_dict()` parameters | Input validation pattern - accepts any dict for validation | All dataclass `from_dict()` methods | ~5 |
-| `asdict()` returns | Serialization output - should be generic | All dataclass serialization (already typed correctly) | 0 |
+| Pattern | Why Keep Loose | Examples | Exception Comment |
+|---------|---------------|----------|-------------------|
+| External JSONL iterators | Unknown structure from agent transcripts | `transcript.py` - `_iter_*_entries()` return types | `# noqa: loose-dict - External JSONL unknown structure` |
+| Agent hook `raw` fields | Flexible schema for agent hook data | `events.py` - `raw: dict[str, object]` fields | `# type: boundary - Agent hook data schema unknown` |
+| `from_dict()` parameters | Input validation pattern - accepts any dict for validation | All dataclass `from_dict()` methods | `# noqa: loose-dict - Input validation accepts any dict` |
 
-**Total legitimate "keep loose":** ~25 occurrences
+**Total legitimate "keep loose":** ~13 occurrences (must all have exception comments)
+
+**Example of documented boundary:**
+```python
+# CORRECT - External boundary with justification
+def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
+    """Parse JSONL file from external agent."""
+    ...
+
+# CORRECT - Internal use with proper typing
+class TranscriptEntry(TypedDict):
+    """Typed structure for internal processing."""
+    timestamp: str
+    message: dict[str, object]  # noqa: loose-dict - Message structure varies by agent
+
+# WRONG - No justification (guardrail FAILS)
+def process_data() -> dict[str, object]:  # ❌ Build fails!
+    ...
+```
 
 ## Success Metrics
 

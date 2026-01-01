@@ -35,6 +35,14 @@ def main() -> None:
 
 
 def _warn_for_loose_dicts(repo_root: Path) -> None:
+    """Check for loose dict typings without proper justification.
+
+    Allows exceptions when documented with:
+    - # noqa: loose-dict - Reason
+    - # type: boundary - Reason
+
+    This enforces: "You can use dict[str, object] ONLY if you document WHY."
+    """
     scan_roots = [
         repo_root / "teleclaude",
         repo_root / "tests",
@@ -43,6 +51,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     ]
     patterns = ("dict[str, object]", "dict[str, Any]")
     matches: list[str] = []
+    exception_markers = ("# noqa: loose-dict", "# type: boundary")
 
     excluded_files = {
         repo_root / "teleclaude" / "adapters" / "redis_adapter.py",
@@ -60,14 +69,17 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
                 continue
             for lineno, line in enumerate(lines, start=1):
                 if any(pattern in line for pattern in patterns):
+                    # Skip if line has documented exception
+                    if any(marker in line for marker in exception_markers):
+                        continue
                     matches.append(f"{path.relative_to(repo_root)}:{lineno}: {line.strip()}")
 
     if not matches:
         return
 
-    max_allowed = 150
+    max_allowed = 145  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
     if len(matches) > max_allowed:
-        _fail(f"loose dict typings exceed limit ({len(matches)} > {max_allowed})")
+        _fail(f"loose dict typings detected ({len(matches)} > {max_allowed})\nFIX by replacing with typed dicts!!\n")
 
     sys.stderr.write("guardrails warning: loose dict typings detected\n")
     for match in matches:
