@@ -117,14 +117,18 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
         return_value={"status": "success", "data": {"session_id": "new-session-456"}}
     )
 
-    result = await server.teleclaude__start_session(
-        computer="local",
-        project_dir="/home/user/project",
-        title="Test Session",
-        message="Hello Claude",
-    )
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_ux_state = AsyncMock(return_value=None)
+        mock_db.get_session = AsyncMock(return_value=None)
 
-    assert result["status"] == "success"
+        result = await server.teleclaude__start_session(
+            computer="local",
+            project_dir="/home/user/project",
+            title="Test Session",
+            message="Hello Claude",
+        )
+
+        assert result["status"] == "success"
     assert result["session_id"] == "new-session-456"
 
     # Verify handle_event was called for both NEW_SESSION and CLAUDE
@@ -359,88 +363,92 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     # Mock handle_event to return success with session_id
     server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "agent-test-123"}})
 
-    # Test 1: Gemini agent
-    result = await server.teleclaude__start_session(
-        computer="local",
-        project_dir="/home/user/project",
-        title="Gemini Session",
-        message="Hello Gemini",
-        agent="gemini",
-    )
-    assert result["status"] == "success"
+    with patch("teleclaude.mcp_server.db") as mock_db:
+        mock_db.get_ux_state = AsyncMock(return_value=None)
+        mock_db.get_session = AsyncMock(return_value=None)
 
-    # Verify events
-    assert server.client.handle_event.call_count == 2
+        # Test 1: Gemini agent
+        result = await server.teleclaude__start_session(
+            computer="local",
+            project_dir="/home/user/project",
+            title="Gemini Session",
+            message="Hello Gemini",
+            agent="gemini",
+        )
+        assert result["status"] == "success"
 
-    # Check session creation call
-    first_call = server.client.handle_event.call_args_list[0]
-    assert first_call[0][0] == "new_session"
+        # Verify events
+        assert server.client.handle_event.call_count == 2
 
-    # Check command call - should be "agent" event with "gemini" in args
-    second_call = server.client.handle_event.call_args_list[1]
-    assert second_call[0][0] == "agent"  # TeleClaudeEvents.AGENT_START
-    call_payload = second_call[0][1]
-    assert call_payload["args"][0] == "gemini"
-    assert call_payload["args"][1] == "slow"
+        # Check session creation call
+        first_call = server.client.handle_event.call_args_list[0]
+        assert first_call[0][0] == "new_session"
 
-    # Reset mock
-    server.client.handle_event.reset_mock()
-    server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-456"}}
+        # Check command call - should be "agent" event with "gemini" in args
+        second_call = server.client.handle_event.call_args_list[1]
+        assert second_call[0][0] == "agent"  # TeleClaudeEvents.AGENT_START
+        call_payload = second_call[0][1]
+        assert call_payload["args"][0] == "gemini"
+        assert call_payload["args"][1] == "slow"
 
-    # Test 2: Codex agent
-    result = await server.teleclaude__start_session(
-        computer="local",
-        project_dir="/home/user/project",
-        title="Codex Session",
-        message="Hello Codex",
-        agent="codex",
-    )
-    assert result["status"] == "success"
+        # Reset mock
+        server.client.handle_event.reset_mock()
+        server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-456"}}
 
-    # Check command call - should be "agent" event with "codex"
-    second_call = server.client.handle_event.call_args_list[1]
-    assert second_call[0][0] == "agent"
-    call_payload = second_call[0][1]
-    assert call_payload["args"][0] == "codex"
-    assert call_payload["args"][1] == "slow"
+        # Test 2: Codex agent
+        result = await server.teleclaude__start_session(
+            computer="local",
+            project_dir="/home/user/project",
+            title="Codex Session",
+            message="Hello Codex",
+            agent="codex",
+        )
+        assert result["status"] == "success"
 
-    # Reset mock
-    server.client.handle_event.reset_mock()
-    server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-789"}}
+        # Check command call - should be "agent" event with "codex"
+        second_call = server.client.handle_event.call_args_list[1]
+        assert second_call[0][0] == "agent"
+        call_payload = second_call[0][1]
+        assert call_payload["args"][0] == "codex"
+        assert call_payload["args"][1] == "slow"
 
-    # Test 3: Claude agent (default)
-    result = await server.teleclaude__start_session(
-        computer="local",
-        project_dir="/home/user/project",
-        title="Claude Session",
-        message="Hello Claude",
-        agent="claude",
-    )
-    assert result["status"] == "success"
+        # Reset mock
+        server.client.handle_event.reset_mock()
+        server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-789"}}
 
-    # Check command call - should be "agent" event with "claude"
-    second_call = server.client.handle_event.call_args_list[1]
-    assert second_call[0][0] == "agent"
-    call_payload = second_call[0][1]
-    assert call_payload["args"][0] == "claude"
-    assert call_payload["args"][1] == "slow"
+        # Test 3: Claude agent (default)
+        result = await server.teleclaude__start_session(
+            computer="local",
+            project_dir="/home/user/project",
+            title="Claude Session",
+            message="Hello Claude",
+            agent="claude",
+        )
+        assert result["status"] == "success"
 
-    # Reset mock and test explicit fast mode
-    server.client.handle_event.reset_mock()
-    server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-fast"}}
+        # Check command call - should be "agent" event with "claude"
+        second_call = server.client.handle_event.call_args_list[1]
+        assert second_call[0][0] == "agent"
+        call_payload = second_call[0][1]
+        assert call_payload["args"][0] == "claude"
+        assert call_payload["args"][1] == "slow"
 
-    result = await server.teleclaude__start_session(
-        computer="local",
-        project_dir="/home/user/project",
-        title="Fast Claude Session",
-        message="Hello Claude",
-        agent="claude",
-        thinking_mode=ThinkingMode.FAST,
-    )
-    assert result["status"] == "success"
-    second_call = server.client.handle_event.call_args_list[1]
-    call_payload = second_call[0][1]
-    assert call_payload["args"][1] == "fast"
+        # Reset mock and test explicit fast mode
+        server.client.handle_event.reset_mock()
+        server.client.handle_event.return_value = {"status": "success", "data": {"session_id": "agent-test-fast"}}
+
+        result = await server.teleclaude__start_session(
+            computer="local",
+            project_dir="/home/user/project",
+            title="Fast Claude Session",
+            message="Hello Claude",
+            agent="claude",
+            thinking_mode=ThinkingMode.FAST,
+        )
+        assert result["status"] == "success"
+        second_call = server.client.handle_event.call_args_list[1]
+        call_payload = second_call[0][1]
+        assert call_payload["args"][1] == "fast"
 
 
 @pytest.mark.asyncio

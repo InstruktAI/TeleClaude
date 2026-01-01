@@ -93,25 +93,29 @@ def build_computer_prefix(
     computer_name: str,
     agent_name: Optional[str] = None,
     thinking_mode: Optional[str] = None,
+    include_computer: bool = True,
 ) -> str:
     """Build the computer prefix portion of a session title.
 
     Format:
-    - Agent known: "{Agent}-{mode}@{Computer}" (e.g., "Claude-slow@MozMini")
+    - Agent known + include_computer: "{Agent}-{mode}@{Computer}" (e.g., "Claude-slow@MozMini")
+    - Agent known + no computer: "{Agent}-{mode}" (e.g., "Gemini-fast")
     - Agent unknown: "${Computer}" (e.g., "$MozMini")
 
     Args:
         computer_name: Name of the computer (e.g., "MozMini")
         agent_name: Name of the agent if known (e.g., "Claude", "Gemini")
         thinking_mode: Thinking mode if known (e.g., "slow", "med", "fast")
+        include_computer: Whether to include @Computer suffix (default True)
 
     Returns:
         Formatted prefix string
     """
     if agent_name and thinking_mode:
-        # Capitalize agent name for display (claude -> Claude)
         agent_display = agent_name.capitalize()
-        return f"{agent_display}-{thinking_mode}@{computer_name}"
+        if include_computer:
+            return f"{agent_display}-{thinking_mode}@{computer_name}"
+        return f"{agent_display}-{thinking_mode}"
     return f"${computer_name}"
 
 
@@ -128,14 +132,15 @@ def build_session_title(
     """Build a session title following the standard format.
 
     Format:
-    - Human session: "{prefix}[{project}] - {description}"
-    - AI-to-AI session: "{initiator_prefix} > {target_prefix}[{project}] - {description}"
+    - Human session: "{project}: {prefix} - {description}"
+    - AI-to-AI session: "{project}: {initiator} > {target} - {description}"
 
     Where prefix is either "${Computer}" (agent unknown) or "{Agent}-{mode}@{Computer}" (agent known).
+    For AI-to-AI, if initiator and target are same computer, target drops @Computer suffix.
 
     Args:
         computer_name: Target computer name
-        short_project: Short project name (e.g., "apps/TeleClaude")
+        short_project: Short project name (e.g., "TeleClaude", "TeleClaude/fix-bug")
         description: Session description (e.g., "New session", "Debug auth flow")
         initiator_computer: Initiator computer for AI-to-AI sessions (None for human sessions)
         agent_name: Target agent name if known
@@ -146,32 +151,32 @@ def build_session_title(
     Returns:
         Formatted session title
     """
-    target_prefix = build_computer_prefix(computer_name, agent_name, thinking_mode)
-
     if initiator_computer:
-        # AI-to-AI session
+        # AI-to-AI session - drop target @Computer if same as initiator
+        same_computer = initiator_computer == computer_name
         initiator_prefix = build_computer_prefix(initiator_computer, initiator_agent, initiator_mode)
-        return f"{initiator_prefix} > {target_prefix}[{short_project}] - {description}"
+        target_prefix = build_computer_prefix(
+            computer_name, agent_name, thinking_mode, include_computer=not same_computer
+        )
+        return f"{short_project}: {initiator_prefix} > {target_prefix} - {description}"
 
     # Human session
-    return f"{target_prefix}[{short_project}] - {description}"
+    target_prefix = build_computer_prefix(computer_name, agent_name, thinking_mode)
+    return f"{short_project}: {target_prefix} - {description}"
 
 
 # Regex patterns for parsing session titles
-# Matches both old "$Computer" and new "Agent-mode@Computer" formats
-_COMPUTER_PREFIX_PATTERN = r"(?:\$\w+|\w+-\w+@\w+)"
-_TITLE_PATTERN = re.compile(
-    rf"^({_COMPUTER_PREFIX_PATTERN}(?:\s*>\s*{_COMPUTER_PREFIX_PATTERN})?\[[^\]]+\]\s*-\s*)(.*)$"
-)
+# Format: "{project}: {prefix} - {description}" or "{project}: {init} > {target} - {description}"
+# Prefix matches: "$Computer" or "Agent-mode@Computer" or "Agent-mode"
+_AGENT_PREFIX = r"(?:\$\w+|\w+-\w+(?:@\w+)?)"
+_TITLE_PATTERN = re.compile(rf"^([^:]+:\s*{_AGENT_PREFIX}(?:\s*>\s*{_AGENT_PREFIX})?\s*-\s*)(.*)$")
 
 
 def parse_session_title(title: str) -> tuple[Optional[str], Optional[str]]:
     """Parse a session title into prefix and description.
 
-    Handles both formats:
-    - Old: "$Computer[project] - description"
-    - New: "Agent-mode@Computer[project] - description"
-    - AI-to-AI: "$Initiator > $Target[project] - description"
+    Format: "{project}: {prefix} - {description}"
+    AI-to-AI: "{project}: {initiator} > {target} - {description}"
 
     Args:
         title: Session title to parse
@@ -193,7 +198,11 @@ def update_title_with_agent(
 ) -> Optional[str]:
     """Update a session title to include agent information.
 
-    Replaces "${Computer}" prefix with "{Agent}-{mode}@{Computer}" prefix.
+    Replaces "${Computer} - " with "{Agent}-{mode}@{Computer} - " in the title.
+    The target computer is always followed by " - " (before the description).
+
+    Format: "{project}: {prefix} - {description}"
+    AI-to-AI: "{project}: {initiator} > {target} - {description}"
 
     Args:
         title: Current session title
@@ -204,11 +213,12 @@ def update_title_with_agent(
     Returns:
         Updated title with agent info, or None if title format doesn't match
     """
-    # Pattern to match $ComputerName in the title (for target computer)
-    old_prefix = f"${computer_name}"
-    new_prefix = build_computer_prefix(computer_name, agent_name, thinking_mode)
+    # Match "$Computer - " to ensure we replace the TARGET prefix (before description),
+    # not the initiator prefix in AI-to-AI titles like "Project: $Init > $Target - desc"
+    old_pattern = f"${computer_name} - "
+    new_pattern = f"{build_computer_prefix(computer_name, agent_name, thinking_mode)} - "
 
-    if old_prefix in title:
-        return title.replace(old_prefix, new_prefix, 1)  # Only replace first occurrence (target)
+    if old_pattern in title:
+        return title.replace(old_pattern, new_pattern, 1)
 
     return None

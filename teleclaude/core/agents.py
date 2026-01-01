@@ -25,6 +25,11 @@ class AgentName(str, Enum):
         raise ValueError(f"Unknown agent '{value}'")
 
 
+def normalize_agent_name(value: str) -> str:
+    """Normalize and validate an agent name, returning the canonical value."""
+    return AgentName.from_str(value).value
+
+
 def _get_agent_config(agent: str) -> AgentConfig:
     """Fetch AgentConfig or raise clear error for unknown agent."""
     cfg = config.agents.get(agent)

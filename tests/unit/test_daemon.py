@@ -173,6 +173,35 @@ async def test_new_session_auto_command_agent_then_message():
 
 
 @pytest.mark.asyncio
+async def test_agent_then_message_waits_settle_delay():
+    """agent_then_message should pause before injecting message."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon.handle_message = AsyncMock()
+
+    with (
+        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 2.5),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 0),
+        patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+    ):
+        mock_db.get_session = AsyncMock(return_value=MagicMock(tmux_session_name="tc_123"))
+        mock_running.return_value = True
+
+        result = await daemon._handle_agent_then_message(
+            "sess-123",
+            ["gemini", "slow", "/prime-architect"],
+        )
+
+        assert result["status"] == "success"
+        mock_sleep.assert_awaited_once_with(2.5)
+
+
+@pytest.mark.asyncio
 async def test_process_agent_stop_uses_registered_transcript_when_payload_missing():
     """Agent STOP should use stored transcript path when payload omits it."""
     from teleclaude.core.agents import AgentName
@@ -446,7 +475,7 @@ class TestTitleUpdate:
             computer_name="TestMac",
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
-            title="$TestMac[apps/TeleClaude] - New session",
+            title="TeleClaude: $TestMac - New session",
             closed=False,
         )
 
@@ -456,7 +485,7 @@ class TestTitleUpdate:
 
             await daemon._update_session_title("sess-1", "Fix login bug")
 
-            mock_db.update_session.assert_called_once_with("sess-1", title="$TestMac[apps/TeleClaude] - Fix login bug")
+            mock_db.update_session.assert_called_once_with("sess-1", title="TeleClaude: $TestMac - Fix login bug")
 
     async def test_update_session_title_updates_new_session_with_counter(self):
         """Title should update when description is 'New session (N)'."""
@@ -472,7 +501,7 @@ class TestTitleUpdate:
             computer_name="TestMac",
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
-            title="$TestMac[apps/TeleClaude] - New session (2)",
+            title="TeleClaude: $TestMac - New session (2)",
             closed=False,
         )
 
@@ -482,7 +511,7 @@ class TestTitleUpdate:
 
             await daemon._update_session_title("sess-1", "Add dark mode")
 
-            mock_db.update_session.assert_called_once_with("sess-1", title="$TestMac[apps/TeleClaude] - Add dark mode")
+            mock_db.update_session.assert_called_once_with("sess-1", title="TeleClaude: $TestMac - Add dark mode")
 
     async def test_update_session_title_skips_already_updated(self):
         """Title should NOT update when already has LLM-generated title."""
@@ -498,7 +527,7 @@ class TestTitleUpdate:
             computer_name="TestMac",
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
-            title="$TestMac[apps/TeleClaude] - Fix login bug",  # Already updated
+            title="TeleClaude: $TestMac - Fix login bug",  # Already updated
             closed=False,
         )
 

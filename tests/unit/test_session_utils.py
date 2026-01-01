@@ -141,10 +141,10 @@ def test_build_session_title_human_session():
 
     result = build_session_title(
         computer_name="MozMini",
-        short_project="apps/TeleClaude",
+        short_project="TeleClaude",
         description="New session",
     )
-    assert result == "$MozMini[apps/TeleClaude] - New session"
+    assert result == "TeleClaude: $MozMini - New session"
 
 
 def test_build_session_title_human_session_with_agent():
@@ -153,12 +153,12 @@ def test_build_session_title_human_session_with_agent():
 
     result = build_session_title(
         computer_name="MozMini",
-        short_project="apps/TeleClaude",
+        short_project="TeleClaude",
         description="Debug auth flow",
         agent_name="claude",
         thinking_mode="slow",
     )
-    assert result == "Claude-slow@MozMini[apps/TeleClaude] - Debug auth flow"
+    assert result == "TeleClaude: Claude-slow@MozMini - Debug auth flow"
 
 
 def test_build_session_title_ai_to_ai_session():
@@ -167,11 +167,11 @@ def test_build_session_title_ai_to_ai_session():
 
     result = build_session_title(
         computer_name="RasPi",
-        short_project="apps/TeleClaude",
+        short_project="TeleClaude",
         description="New session",
         initiator_computer="MozBook",
     )
-    assert result == "$MozBook > $RasPi[apps/TeleClaude] - New session"
+    assert result == "TeleClaude: $MozBook > $RasPi - New session"
 
 
 def test_build_session_title_ai_to_ai_with_agents():
@@ -180,7 +180,7 @@ def test_build_session_title_ai_to_ai_with_agents():
 
     result = build_session_title(
         computer_name="RasPi",
-        short_project="apps/TeleClaude",
+        short_project="TeleClaude",
         description="Build feature",
         initiator_computer="MozBook",
         agent_name="gemini",
@@ -188,24 +188,42 @@ def test_build_session_title_ai_to_ai_with_agents():
         initiator_agent="claude",
         initiator_mode="slow",
     )
-    assert result == "Claude-slow@MozBook > Gemini-med@RasPi[apps/TeleClaude] - Build feature"
+    assert result == "TeleClaude: Claude-slow@MozBook > Gemini-med@RasPi - Build feature"
 
 
-def test_parse_session_title_old_format():
-    """Test parse_session_title with old $Computer format."""
+def test_build_session_title_ai_to_ai_same_computer():
+    """Test build_session_title for AI-to-AI on same computer drops target @Computer."""
+    from teleclaude.core.session_utils import build_session_title
+
+    result = build_session_title(
+        computer_name="MozMini",
+        short_project="TeleClaude",
+        description="Local dispatch",
+        initiator_computer="MozMini",
+        agent_name="gemini",
+        thinking_mode="fast",
+        initiator_agent="claude",
+        initiator_mode="slow",
+    )
+    # Target drops @MozMini since same computer as initiator
+    assert result == "TeleClaude: Claude-slow@MozMini > Gemini-fast - Local dispatch"
+
+
+def test_parse_session_title_human():
+    """Test parse_session_title with human-initiated format."""
     from teleclaude.core.session_utils import parse_session_title
 
-    prefix, description = parse_session_title("$MozMini[apps/TeleClaude] - Debug auth flow")
-    assert prefix == "$MozMini[apps/TeleClaude] - "
+    prefix, description = parse_session_title("TeleClaude: $MozMini - Debug auth flow")
+    assert prefix == "TeleClaude: $MozMini - "
     assert description == "Debug auth flow"
 
 
-def test_parse_session_title_new_format():
-    """Test parse_session_title with new Agent-mode@Computer format."""
+def test_parse_session_title_with_agent():
+    """Test parse_session_title with Agent-mode@Computer format."""
     from teleclaude.core.session_utils import parse_session_title
 
-    prefix, description = parse_session_title("Claude-slow@MozMini[apps/TeleClaude] - Debug auth")
-    assert prefix == "Claude-slow@MozMini[apps/TeleClaude] - "
+    prefix, description = parse_session_title("TeleClaude: Claude-slow@MozMini - Debug auth")
+    assert prefix == "TeleClaude: Claude-slow@MozMini - "
     assert description == "Debug auth"
 
 
@@ -213,9 +231,18 @@ def test_parse_session_title_ai_to_ai():
     """Test parse_session_title with AI-to-AI format."""
     from teleclaude.core.session_utils import parse_session_title
 
-    prefix, description = parse_session_title("$MozBook > $RasPi[apps/TeleClaude] - New session")
-    assert prefix == "$MozBook > $RasPi[apps/TeleClaude] - "
+    prefix, description = parse_session_title("TeleClaude: $MozBook > $RasPi - New session")
+    assert prefix == "TeleClaude: $MozBook > $RasPi - "
     assert description == "New session"
+
+
+def test_parse_session_title_with_subfolder():
+    """Test parse_session_title with project/slug format."""
+    from teleclaude.core.session_utils import parse_session_title
+
+    prefix, description = parse_session_title("TeleClaude/fix-bug: Claude-slow@MozMini - Fix auth")
+    assert prefix == "TeleClaude/fix-bug: Claude-slow@MozMini - "
+    assert description == "Fix auth"
 
 
 def test_parse_session_title_invalid():
@@ -232,12 +259,12 @@ def test_update_title_with_agent():
     from teleclaude.core.session_utils import update_title_with_agent
 
     result = update_title_with_agent(
-        title="$MozMini[apps/TeleClaude] - New session",
+        title="TeleClaude: $MozMini - New session",
         agent_name="claude",
         thinking_mode="slow",
         computer_name="MozMini",
     )
-    assert result == "Claude-slow@MozMini[apps/TeleClaude] - New session"
+    assert result == "TeleClaude: Claude-slow@MozMini - New session"
 
 
 def test_update_title_with_agent_ai_to_ai():
@@ -245,13 +272,13 @@ def test_update_title_with_agent_ai_to_ai():
     from teleclaude.core.session_utils import update_title_with_agent
 
     result = update_title_with_agent(
-        title="$MozBook > $RasPi[apps/TeleClaude] - Build feature",
+        title="TeleClaude: $MozBook > $RasPi - Build feature",
         agent_name="gemini",
         thinking_mode="med",
         computer_name="RasPi",
     )
-    # Should only replace target computer ($RasPi), not initiator ($MozBook)
-    assert result == "$MozBook > Gemini-med@RasPi[apps/TeleClaude] - Build feature"
+    # Should only replace target computer ($RasPi -), not initiator ($MozBook >)
+    assert result == "TeleClaude: $MozBook > Gemini-med@RasPi - Build feature"
 
 
 def test_update_title_with_agent_no_match():
@@ -259,9 +286,27 @@ def test_update_title_with_agent_no_match():
     from teleclaude.core.session_utils import update_title_with_agent
 
     result = update_title_with_agent(
-        title="$OtherComputer[apps/TeleClaude] - New session",
+        title="TeleClaude: $OtherComputer - New session",
         agent_name="claude",
         thinking_mode="slow",
         computer_name="MozMini",  # Not in title
     )
     assert result is None
+
+
+def test_update_title_with_agent_same_computer_ai_to_ai():
+    """Test update_title_with_agent when initiator and target are same computer.
+
+    Bug fix: Previously would replace initiator prefix instead of target.
+    The fix matches "$Computer - " to ensure only target (before dash) is replaced.
+    """
+    from teleclaude.core.session_utils import update_title_with_agent
+
+    result = update_title_with_agent(
+        title="TeleClaude: $MozMini > $MozMini - New session",
+        agent_name="gemini",
+        thinking_mode="fast",
+        computer_name="MozMini",
+    )
+    # Should only replace target ($MozMini -), not initiator ($MozMini >)
+    assert result == "TeleClaude: $MozMini > Gemini-fast@MozMini - New session"

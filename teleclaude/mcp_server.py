@@ -22,6 +22,7 @@ from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
 from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import command_handlers
+from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs, ThinkingMode
@@ -1120,9 +1121,24 @@ class TeleClaudeMCPServer:
         Returns:
             dict with session_id and status
         """
+        # Get caller's agent info for AI-to-AI title format
+        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID")
+        initiator_agent: str | None = None
+        initiator_mode: str | None = None
+        if effective_caller_id:
+            caller_ux = await db.get_ux_state(effective_caller_id)
+            if caller_ux:
+                initiator_agent = caller_ux.active_agent
+                initiator_mode = caller_ux.thinking_mode
+
+        # Build channel_metadata with initiator info for title building
+        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}
+        if initiator_agent:
+            channel_metadata["initiator_agent"] = initiator_agent
+        if initiator_mode:
+            channel_metadata["initiator_mode"] = initiator_mode
+
         # Emit NEW_SESSION event - daemon's handle_event will call handle_create_session
-        # Include channel_metadata with target_computer to identify this as AI-to-AI session
-        # (for remote sessions, Redis transport auto-injects "initiator" field)
         result: object = await self.client.handle_event(
             TeleClaudeEvents.NEW_SESSION,
             {"session_id": "", "args": [title]},
@@ -1130,7 +1146,7 @@ class TeleClaudeMCPServer:
                 adapter_type="redis",
                 project_dir=project_dir,
                 title=title,
-                channel_metadata={"target_computer": self.computer_name},
+                channel_metadata=channel_metadata,
             ),
         )
 
@@ -2309,7 +2325,8 @@ class TeleClaudeMCPServer:
         Returns:
             Confirmation message
         """
+        agent_name = normalize_agent_name(agent)
         if not unavailable_until:
             unavailable_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
-        await db.mark_agent_unavailable(agent, unavailable_until, reason)
-        return f"OK: {agent} marked unavailable until {unavailable_until} ({reason})"
+        await db.mark_agent_unavailable(agent_name, unavailable_until, reason)
+        return f"OK: {agent_name} marked unavailable until {unavailable_until} ({reason})"

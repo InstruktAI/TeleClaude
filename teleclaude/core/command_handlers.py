@@ -83,18 +83,38 @@ class SystemStats(TypedDict):
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 
 
-def get_short_project_name(project_path: str) -> str:
-    """Extract short project name from path (last 2 parts).
+def get_short_project_name(working_dir: str, base_project: str | None = None) -> str:
+    """Extract short project name from path.
+
+    Format depends on whether base_project is provided:
+    - With base_project: "RootFolder" or "RootFolder/slug" if working in subfolder
+    - Without base_project: Just last folder name
 
     Args:
-        project_path: Full path like /home/morriz/apps/TeleClaude
+        working_dir: Full working directory path (e.g., /home/morriz/apps/TeleClaude/trees/fix)
+        base_project: Optional base project path (e.g., /home/morriz/apps/TeleClaude)
 
     Returns:
-        Short name like apps/TeleClaude
+        Short name like "TeleClaude" or "TeleClaude/fix"
     """
-    parts = project_path.rstrip("/").split("/")
-    if len(parts) >= 2:
-        return "/".join(parts[-2:])
+    working_dir = working_dir.rstrip("/")
+
+    if base_project:
+        base_project = base_project.rstrip("/")
+        # Get root folder name from base_project
+        root_name = base_project.split("/")[-1] if base_project else "unknown"
+
+        # Check if working_dir has a subfolder beyond base_project
+        if working_dir.startswith(base_project) and len(working_dir) > len(base_project):
+            # Extract subfolder part and get the slug (last component)
+            subfolder = working_dir[len(base_project) :].strip("/")
+            slug = subfolder.split("/")[-1] if subfolder else ""
+            if slug:
+                return f"{root_name}/{slug}"
+        return root_name
+
+    # Fallback: just last folder name
+    parts = working_dir.split("/")
     return parts[-1] if parts else "unknown"
 
 
@@ -216,26 +236,37 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     session_id = str(uuid.uuid4())
     tmux_name = f"{TMUX_SESSION_PREFIX}{session_id[:8]}"
 
-    # Get short project name for title
-    short_project = get_short_project_name(working_dir)
-
-    # Extract initiator from channel_metadata if present
+    # Extract metadata from channel_metadata if present (AI-to-AI session)
     initiator = None
+    initiator_agent = None
+    initiator_mode = None
+    base_project = None
     if metadata.channel_metadata:
         initiator_raw = metadata.channel_metadata.get("target_computer")
         initiator = str(initiator_raw) if initiator_raw else None
+        initiator_agent_raw = metadata.channel_metadata.get("initiator_agent")
+        initiator_agent = str(initiator_agent_raw) if initiator_agent_raw else None
+        initiator_mode_raw = metadata.channel_metadata.get("initiator_mode")
+        initiator_mode = str(initiator_mode_raw) if initiator_mode_raw else None
+        base_project_raw = metadata.channel_metadata.get("base_project")
+        base_project = str(base_project_raw) if base_project_raw else None
+
+    # Get short project name for title
+    short_project = get_short_project_name(working_dir, base_project)
 
     # Build session title using standard format
-    # Agent info not yet known at session creation time (will be updated when agent starts)
+    # Target agent info not yet known (will be updated when agent starts)
+    # Initiator agent info is known if this is an AI-to-AI session
     description = " ".join(args) if args else "New session"
     base_title = build_session_title(
         computer_name=computer_name,
         short_project=short_project,
         description=description,
         initiator_computer=initiator,
-        # Agent info unknown at creation time - will be updated when agent starts
         agent_name=None,
         thinking_mode=None,
+        initiator_agent=initiator_agent,
+        initiator_mode=initiator_mode,
     )
 
     # Ensure title is unique (appends counter if needed)
