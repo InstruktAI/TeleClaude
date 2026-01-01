@@ -31,8 +31,49 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
     "build": [("gemini", "med"), ("claude", "med"), ("codex", "med")],
     "review": [("codex", "slow"), ("claude", "slow"), ("gemini", "slow")],
     "fix": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
-    "commit": [("claude", "fast"), ("gemini", "fast"), ("codex", "fast")],
     "finalize": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
+}
+
+# Post-completion instructions for each command (used in format_tool_call)
+# These tell the orchestrator what to do AFTER a worker completes
+POST_COMPLETION: dict[str, str] = {
+    "next-bugs": """WHEN WORKER COMPLETES:
+1. Verify bugs fixed and tests pass
+2. If success:
+   - teleclaude__end_session(computer="local", session_id="<session_id>")
+   - Call {next_call}()
+3. If bugs remain or tests fail:
+   - Keep session alive and guide worker to resolution""",
+    "next-build": """WHEN WORKER COMPLETES:
+1. Verify worker reports success with passing tests
+2. If success:
+   - teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
+   - teleclaude__end_session(computer="local", session_id="<session_id>")
+   - Call {next_call}()
+3. If failure or blocker:
+   - Keep session alive and guide worker to resolution""",
+    "next-review": """WHEN WORKER COMPLETES:
+1. Read trees/{args}/todos/{args}/review-findings.md
+2. Relay verdict to state:
+   - If "[x] APPROVE": teleclaude__mark_phase(slug="{args}", phase="review", status="approved")
+   - If "[x] REQUEST CHANGES": teleclaude__mark_phase(slug="{args}", phase="review", status="changes_requested")
+3. teleclaude__end_session(computer="local", session_id="<session_id>")
+4. Call {next_call}()""",
+    "next-fix-review": """WHEN WORKER COMPLETES:
+1. Verify fixes applied and tests pass
+2. If fixes complete:
+   - teleclaude__mark_phase(slug="{args}", phase="review", status="pending")
+   - teleclaude__end_session(computer="local", session_id="<session_id>")
+   - Call {next_call}()
+3. If fixes incomplete:
+   - Keep session alive and guide worker to finish""",
+    "next-finalize": """WHEN WORKER COMPLETES:
+1. Verify merge and archive succeeded
+2. If success:
+   - teleclaude__end_session(computer="local", session_id="<session_id>")
+   - Call {next_call}()
+3. If failed:
+   - Keep session alive and help resolve""",
 }
 
 
@@ -53,7 +94,14 @@ def format_tool_call(
 ) -> str:
     """Format a literal tool call for the orchestrator to execute."""
     # Codex requires /prompts: prefix for custom commands
-    formatted_command = f"/prompts:{command}" if agent == "codex" else command
+    agent_key = agent.strip().lower()
+    formatted_command = f"/prompts:{command}" if agent_key.startswith("codex") else command
+
+    # Get post-completion instructions for this command
+    post_completion = POST_COMPLETION.get(command, "")
+    if post_completion:
+        # Substitute {args} and {next_call} placeholders
+        post_completion = post_completion.format(args=args, next_call=next_call)
 
     result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
 
@@ -83,7 +131,7 @@ WHAT HAPPENS NEXT (one of these will occur):
 
 A) NOTIFICATION ARRIVES (worker completed):
    - The timer is now irrelevant (let it expire or ignore it)
-   - Call {next_call}() to check the next step
+   - Follow WHEN WORKER COMPLETES below
 
 B) TIMER COMPLETES (no notification after 5 minutes):
    - Use TaskOutput(task_id=<task_id>) to confirm timer finished
@@ -94,6 +142,8 @@ C) YOU SEND ANOTHER MESSAGE TO THE AGENT:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
    - Start a new 5-minute timer: Bash(command="sleep 300", run_in_background=true)
    - Save the new task_id for the reset timer
+
+{post_completion}
 
 ORCHESTRATION PRINCIPLE: Guide process, don't dictate implementation.
 You are an orchestrator, not a micromanager. If a worker is stuck, point them
@@ -124,6 +174,13 @@ def format_complete(slug: str, archive_path: str) -> str:
     return f"""COMPLETE: todos/{slug} has been finalized and delivered to {archive_path}/
 
 NEXT: Call teleclaude__next_work() to continue with more work."""
+
+
+def format_uncommitted_changes(slug: str) -> str:
+    """Format instruction for orchestrator to commit uncommitted changes directly."""
+    return f"""UNCOMMITTED CHANGES in trees/{slug}
+
+Commit, then call teleclaude__next_work() to continue."""
 
 
 def format_hitl_guidance(context: str) -> str:
@@ -637,18 +694,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     # review-findings.md are committed there, not in main repo
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 
-    # 5. Check uncommitted changes
+    # 5. Check uncommitted changes - orchestrator handles commits directly
     if has_uncommitted_changes(cwd, resolved_slug):
-        agent, mode = await get_available_agent(db, "commit", WORK_FALLBACK)
-        return format_tool_call(
-            command="next-commit",
-            args=resolved_slug,
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder=f"trees/{resolved_slug}",
-            next_call="teleclaude__next_work",
-        )
+        return format_uncommitted_changes(resolved_slug)
 
     # 6. Check build status (from state.json in worktree)
     if not is_build_complete(worktree_cwd, resolved_slug):
