@@ -285,18 +285,15 @@ class UiAdapter(BaseAdapter):
         """
         lines: list[str] = []
 
-        # TeleClaude session ID (first 8 chars for brevity)
-        tc_id = session.session_id[:8] if session.session_id else None
-        if tc_id:
-            lines.append(f"📋 tc: {tc_id}")
+        # TeleClaude session ID (full UUID)
+        if session.session_id:
+            lines.append(f"📋 tc: {session.session_id}")
 
         # Native agent session ID (from ux_state - set when any agent starts)
         native_id = ux_state.native_session_id if ux_state else None
         if native_id:
-            # Truncate if too long (some native IDs can be very long)
-            display_id = native_id[:20] if len(native_id) > 20 else native_id
             agent_name = ux_state.active_agent or "ai"
-            lines.append(f"🤖 {agent_name}: {display_id}")
+            lines.append(f"🤖 {agent_name}: {native_id}")
 
         return "\n".join(lines)
 
