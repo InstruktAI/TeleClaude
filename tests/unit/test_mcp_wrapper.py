@@ -178,8 +178,8 @@ async def test_cached_handshake_emits_single_response(monkeypatch: pytest.Monkey
 
 @pytest.mark.asyncio
 async def test_handle_initialize_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MCP_WRAPPER_INIT_TIMEOUT", "0.01")
     wrapper = _load_wrapper_module(monkeypatch)
+    wrapper.INIT_TIMEOUT = 0.01
     proxy = wrapper.MCPProxy()
 
     reader = asyncio.StreamReader()
