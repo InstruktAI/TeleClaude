@@ -327,6 +327,49 @@ git commit -m "refactor(daemon): add TypedDicts for deployment status payloads"
 
 **Action:** ✅ No changes needed - already following co-location pattern.
 
+## Group 5: Type MCP Tool Arguments (Co-located)
+
+**Goal:** Type all MCP tool argument types in `mcp_server.py`.
+
+**Why type arguments?** MCP validates against inputSchema, so we know the exact structure. We can:
+1. Define TypedDict for each tool's arguments
+2. Use type narrowing based on tool name
+3. Get full type safety in tool implementations
+
+**Example:**
+```python
+# Add TypedDict definitions for tool arguments
+class StartSessionArgs(TypedDict):
+    """Arguments for teleclaude__start_session."""
+    computer: str
+    project_dir: str
+    title: str
+    message: str
+    agent: str  # 'claude', 'gemini', 'codex'
+    thinking_mode: str  # 'fast', 'med', 'slow'
+    subfolder: str | None
+    caller_session_id: str | None
+
+class ListComputersArgs(TypedDict, total=False):
+    """Arguments for teleclaude__list_computers."""
+    computer_names: list[str]  # Optional filter
+
+# In call_tool, use type narrowing:
+async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent]:
+    if name == "teleclaude__start_session":
+        args = cast(StartSessionArgs, arguments)
+        # Now fully typed!
+        computer: str = args["computer"]
+        project_dir: str = args["project_dir"]
+```
+
+**Testing after Group 5:**
+```bash
+make lint
+make test
+git commit -m "refactor(mcp): add TypedDicts for MCP tool arguments"
+```
+
 ## Keep Loose (Intentionally NOT Changed)
 
 These files/patterns should keep `dict[str, object]` for valid reasons:
@@ -337,20 +380,18 @@ These files/patterns should keep `dict[str, object]` for valid reasons:
 |------------|--------------|----------------|-------------|
 | `teleclaude/hooks/*` | `ignore_errors = true` | **COMPLETELY IGNORED** - Agent hook adapters deal with untyped external responses | ~8 |
 | `teleclaude/adapters/redis_adapter.py` | Major relaxations (`no-any-return`, `explicit-any`) | Redis client returns untyped data - third-party boundary | ~12 |
-| `teleclaude/mcp_server.py` | Major relaxations (allows `explicit-any`) | MCP library decorators are untyped - third-party boundary. We CAN type our return values, but `arguments: dict[str, object]` stays loose. | ~31 total (~26 can be typed) |
-| `teleclaude/core/command_handlers.py` | Some relaxations (`explicit-any` allowed) | Decorators cause typing issues - but we CAN type function returns | ~5 can be typed |
 | `tests/*` | `disallow_untyped_defs = false` | Test data flexibility - acceptable | Various |
 
-### Patterns that should stay generic
+### Patterns that should stay generic (TRUE boundaries only)
 
-| Pattern | Why Keep Loose | Examples |
-|---------|---------------|----------|
-| External parsing | Unknown/dynamic structure from external sources | `teleclaude/utils/transcript.py` (JSONL parsing) |
-| `raw` fields | Flexible schema for agent hook data | `teleclaude/core/events.py` - `raw` fields |
-| `from_dict()` parameters | Input validation pattern - accepts any dict for validation | All dataclass `from_dict()` methods |
-| `asdict()` returns | Serialization output - should be generic | All dataclass serialization |
-| MCP tool `arguments` | External MCP client input - unknown structure | `call_tool(arguments: dict[str, object])` |
-| Third-party callbacks | Untyped library callbacks and hooks | Various adapter integration points |
+| Pattern | Why Keep Loose | Examples | Occurrences |
+|---------|---------------|----------|-------------|
+| External JSONL iterators | Unknown structure from agent transcripts | `transcript.py` - `_iter_*_entries()` return types | ~4 |
+| Agent hook `raw` fields | Flexible schema for agent hook data | `events.py` - `raw: dict[str, object]` fields | ~4 |
+| `from_dict()` parameters | Input validation pattern - accepts any dict for validation | All dataclass `from_dict()` methods | ~5 |
+| `asdict()` returns | Serialization output - should be generic | All dataclass serialization (already typed correctly) | 0 |
+
+**Total legitimate "keep loose":** ~25 occurrences
 
 ## Success Metrics
 
@@ -358,13 +399,29 @@ These files/patterns should keep `dict[str, object]` for valid reasons:
 
 **Baseline:** ~155 total `dict[str, object]` occurrences across 27 files
 
-**Breakdown:**
-- Can be typed: ~43 (SystemStats: 4, MCP: 26, Handlers: 5, Daemon: 8)
-- Must keep loose: ~112 (hooks: 8, redis: 12, boundaries: ~92)
+**Aggressive Breakdown:**
+- **Can be typed:** ~130 occurrences
+  - SystemStats extraction: 4
+  - MCP server returns: 26
+  - MCP tool arguments: ~15
+  - Command handlers: 5
+  - Daemon: 8
+  - Events internal structures: ~10
+  - Transcript internal processing: ~15
+  - Models, parsers, adapters: ~40
+  - Other scattered uses: ~7
 
-**Target reduction:** ~43 typed = ~28% reduction (from 155 → ~112)
+- **Must keep loose (TRUE boundaries only):** ~25 occurrences
+  - hooks/*: 8 (mypy ignored)
+  - redis_adapter: 12 (mypy excluded)
+  - External iterators: 4 (transcript.py)
+  - Agent hook raw fields: 4 (events.py)
+  - from_dict params: 5
+  - Tests: Various (mypy excluded)
 
-**Note:** 50% reduction unrealistic - majority are intentional third-party boundaries or mypy-excluded modules.
+**Target reduction:** ~130 typed = **~84% reduction** (from 155 → ~25)
+
+**Revised philosophy:** Type EVERYTHING except true external boundaries.
 
 ### Qualitative
 
@@ -383,8 +440,11 @@ These files/patterns should keep `dict[str, object]` for valid reasons:
 2. ✅ **Group 2:** Type MCP server returns in `mcp_server.py` (1 commit)
 3. ✅ **Group 3:** Type command handler returns in `command_handlers.py` (1 commit)
 4. ✅ **Group 4:** Type daemon deployment payloads in `daemon.py` (1 commit)
+5. ✅ **Group 5:** Type MCP tool arguments in `mcp_server.py` (1 commit)
+6. ✅ **Group 6:** Type remaining high-value files (events, transcript, models, parsers) (2-3 commits)
 
-**Total:** 4 focused commits, each independently tested and validated.
+**Total:** 7-8 focused commits, each independently tested and validated.
+**Target:** 84% reduction in loose dict typings.
 
 ---
 
