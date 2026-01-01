@@ -139,7 +139,7 @@ class TeleClaudeMCPServer:
     def _setup_tools(self, server: Server) -> None:
         """Register MCP tools with the server."""
 
-        @server.list_tools()  # type: ignore
+        @server.list_tools()  # type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822
         async def list_tools() -> list[Tool]:  # pyright: ignore[reportUnusedFunction]
             """List available MCP tools."""
             return [
@@ -683,7 +683,7 @@ class TeleClaudeMCPServer:
                 ),
             ]
 
-        @server.call_tool()  # type: ignore
+        @server.call_tool()  # type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822
         async def call_tool(  # pyright: ignore[reportUnusedFunction]
             name: str, arguments: dict[str, object]
         ) -> list[TextContent]:
