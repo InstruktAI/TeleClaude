@@ -1345,7 +1345,22 @@ class TeleClaudeMCPServer:
         subfolder: str = "",
     ) -> dict[str, object]:
         """Create local session and run auto_command via daemon."""
+        # Get caller's agent info for AI-to-AI title format (same as _start_local_session)
+        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID")
+        initiator_agent: str | None = None
+        initiator_mode: str | None = None
+        if effective_caller_id:
+            caller_ux = await db.get_ux_state(effective_caller_id)
+            if caller_ux:
+                initiator_agent = caller_ux.active_agent
+                initiator_mode = caller_ux.thinking_mode
+
+        # Build channel_metadata with initiator info for title building
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}
+        if initiator_agent:
+            channel_metadata["initiator_agent"] = initiator_agent
+        if initiator_mode:
+            channel_metadata["initiator_mode"] = initiator_mode
         if subfolder:
             channel_metadata["subfolder"] = subfolder
 
@@ -1401,13 +1416,30 @@ class TeleClaudeMCPServer:
         if not target_online:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
-        channel_metadata: dict[str, object] | None = {"subfolder": subfolder} if subfolder else None
+        # Get caller's agent info for AI-to-AI title format
+        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID")
+        initiator_agent: str | None = None
+        initiator_mode: str | None = None
+        if effective_caller_id:
+            caller_ux = await db.get_ux_state(effective_caller_id)
+            if caller_ux:
+                initiator_agent = caller_ux.active_agent
+                initiator_mode = caller_ux.thinking_mode
+
+        # Build channel_metadata with initiator info for title building
+        channel_metadata: dict[str, object] = {}
+        if initiator_agent:
+            channel_metadata["initiator_agent"] = initiator_agent
+        if initiator_mode:
+            channel_metadata["initiator_mode"] = initiator_mode
+        if subfolder:
+            channel_metadata["subfolder"] = subfolder
 
         metadata = MessageMetadata(
             project_dir=project_dir,
             title=title,
             auto_command=auto_command,
-            channel_metadata=channel_metadata,
+            channel_metadata=channel_metadata if channel_metadata else None,
         )
 
         message_id = await self.client.send_request(

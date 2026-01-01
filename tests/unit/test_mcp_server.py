@@ -25,7 +25,9 @@ def mock_mcp_server():
         mock_config.mcp.socket_path = "/tmp/test.sock"
         server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
 
-    return server
+    # Patch db.get_ux_state on the module - stays active for test duration
+    with patch("teleclaude.mcp_server.db.get_ux_state", new=AsyncMock(return_value=None)):
+        yield server
 
 
 @pytest.mark.asyncio
