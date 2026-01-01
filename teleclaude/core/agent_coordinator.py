@@ -44,7 +44,7 @@ class AgentCoordinator:
         native_session_id = payload.session_id
         native_log_file = payload.transcript_path
 
-        update_kwargs: dict[str, object] = {
+        update_kwargs: dict[str, object] = {  # noqa: loose-dict - Dynamic session updates
             "native_session_id": str(native_session_id),
             "native_log_file": str(native_log_file),
         }

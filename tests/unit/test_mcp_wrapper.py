@@ -228,7 +228,7 @@ async def test_response_timeout_sends_error(monkeypatch: pytest.MonkeyPatch) -> 
     now = asyncio.get_running_loop().time()
     proxy._pending_requests = {123: now - 0.1}
 
-    sent: dict[str, object] = {}
+    sent: dict[str, object] = {}  # noqa: loose-dict - Test fixture data
 
     async def _send_error(request_id: object, message: str) -> None:
         sent["id"] = request_id

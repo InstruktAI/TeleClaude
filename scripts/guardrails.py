@@ -41,7 +41,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     - # noqa: loose-dict - Reason
     - # type: boundary - Reason
 
-    This enforces: "You can use dict[str, object] ONLY if you document WHY."
+    This enforces: "You can use dict[str, object] ONLY if you document WHY."  # noqa: loose-dict - Documentation
     """
     scan_roots = [
         repo_root / "teleclaude",
@@ -49,7 +49,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
         repo_root / "scripts",
         repo_root / "bin",
     ]
-    patterns = ("dict[str, object]", "dict[str, Any]")
+    patterns = ("dict[str, object]", "dict[str, Any]")  # noqa: loose-dict - Pattern definition
     matches: list[str] = []
     exception_markers = ("# noqa: loose-dict", "# type: boundary")
 
@@ -81,9 +81,12 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     if len(matches) > max_allowed:
         _fail(f"loose dict typings detected ({len(matches)} > {max_allowed})\nFIX by replacing with typed dicts!!\n")
 
-    sys.stderr.write("guardrails warning: loose dict typings detected\n")
-    for match in matches:
-        sys.stderr.write(f"  {match}\n")
+    if len(matches) > 0:
+        sys.stderr.write("guardrails warning: loose dict typings detected\n")
+        for match in matches:
+            sys.stderr.write(f"  {match}\n")
+    else:
+        sys.stdout.write("guardrails ok: no problems detected\n")
 
 
 if __name__ == "__main__":

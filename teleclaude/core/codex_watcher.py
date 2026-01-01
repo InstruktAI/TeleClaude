@@ -179,10 +179,10 @@ class CodexWatcher:
             for line in handle:
                 if not line.strip():
                     continue
-                data = cast(dict[str, object], json.loads(line))
+                data = cast(dict[str, object], json.loads(line))  # noqa: loose-dict - External JSONL data
                 if data.get("type") != "session_meta":
                     continue
-                payload = cast(dict[str, object], data["payload"])
+                payload = cast(dict[str, object], data["payload"])  # noqa: loose-dict - External JSONL payload
                 timestamp = payload["timestamp"]
                 ts_value = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).timestamp()
                 self._log_timestamps[file_path] = ts_value
@@ -287,11 +287,11 @@ class CodexWatcher:
                         continue
 
                     try:
-                        entry = cast(dict[str, object], json.loads(line))
+                        entry = cast(dict[str, object], json.loads(line))  # noqa: loose-dict - External JSONL entry
                         entry_type = str(entry.get("type"))
                         entry_type_counts[entry_type] = entry_type_counts.get(entry_type, 0) + 1
                         if entry_type == "event_msg":
-                            payload = cast(dict[str, object], entry.get("payload", {}))
+                            payload = cast(dict[str, object], entry.get("payload", {}))  # noqa: loose-dict - External JSONL payload
                             payload_type = str(payload.get("type"))
                             event_msg_counts[payload_type] = event_msg_counts.get(payload_type, 0) + 1
 

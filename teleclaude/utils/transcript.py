@@ -99,7 +99,7 @@ def parse_gemini_transcript(
         return f"Error parsing transcript: {e}"
 
 
-def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], until_dt: Optional[datetime]) -> bool:
+def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], until_dt: Optional[datetime]) -> bool:  # noqa: loose-dict - External entry
     """Check if entry should be skipped based on type and timestamp filters."""
     if entry.get("type") == "summary":
         return True
@@ -115,7 +115,7 @@ def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], u
     return False
 
 
-def _process_entry(entry: dict[str, object], lines: list[str], last_section: Optional[str]) -> Optional[str]:
+def _process_entry(entry: dict[str, object], lines: list[str], last_section: Optional[str]) -> Optional[str]:  # noqa: loose-dict - External entry
     """Process a transcript entry and append formatted content to lines."""
     entry_timestamp = entry.get("timestamp")
     entry_dt = None
@@ -190,7 +190,7 @@ def _process_list_content(
 
 
 def _process_text_block(
-    block: dict[str, object],
+    block: dict[str, object],  # noqa: loose-dict - External block
     role: str,
     time_prefix: str,
     lines: list[str],
@@ -217,7 +217,10 @@ def _process_text_block(
 
 
 def _process_thinking_block(
-    block: dict[str, object], time_prefix: str, lines: list[str], last_section: Optional[str]
+    block: dict[str, object],  # noqa: loose-dict - External block
+    time_prefix: str,
+    lines: list[str],
+    last_section: Optional[str],
 ) -> str:
     """Process thinking block."""
     if last_section != "assistant":
@@ -230,7 +233,7 @@ def _process_thinking_block(
     return "assistant"
 
 
-def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:
+def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:  # noqa: loose-dict - External block
     """Process tool use block."""
     tool_name = block.get("name", "unknown")
     tool_input = block.get("input", {})
@@ -242,7 +245,7 @@ def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: l
     return "tool_use"
 
 
-def _process_tool_result_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:
+def _process_tool_result_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:  # noqa: loose-dict - External block
     """Process tool result block."""
     is_error = block.get("is_error", False)
     status_emoji = "❌" if is_error else "✅"
@@ -370,7 +373,7 @@ def _format_thinking(text: str) -> str:
 
 
 def _render_transcript_from_entries(
-    entries: Iterable[dict[str, object]],
+    entries: Iterable[dict[str, object]],  # noqa: loose-dict - External entries
     title: str,
     since_timestamp: Optional[str],
     until_timestamp: Optional[str],
@@ -396,7 +399,7 @@ def _render_transcript_from_entries(
     return tail_limit_fn(result, tail_chars)
 
 
-def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:
+def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
     """Yield JSON objects for each line in a transcript file."""
 
     with open(path, encoding="utf-8") as f:
@@ -409,16 +412,16 @@ def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:
                 continue
 
             if isinstance(entry_value, dict):
-                yield cast(dict[str, object], entry_value)
+                yield cast(dict[str, object], entry_value)  # noqa: loose-dict - Parsed JSONL entry
 
 
-def _iter_claude_entries(path: Path) -> Iterable[dict[str, object]]:
+def _iter_claude_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
     """Yield entries from Claude Code transcripts (raw JSONL)."""
 
     yield from _iter_jsonl_entries(path)
 
 
-def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:
+def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
     """Yield entries from Codex JSONL transcripts, skipping metadata."""
 
     for entry in _iter_jsonl_entries(path):
@@ -427,22 +430,22 @@ def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:
         yield entry
 
 
-def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:
+def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
     """Yield normalized entries from Gemini JSON session files."""
 
     with open(path, encoding="utf-8") as f:
         raw_document: object = json.load(f)
 
-    document: dict[str, object] = {}
+    document: dict[str, object] = {}  # noqa: loose-dict - External JSON document
     if isinstance(raw_document, dict):
-        document = cast(dict[str, object], raw_document)
+        document = cast(dict[str, object], raw_document)  # noqa: loose-dict - External JSON document
 
     raw_messages = document.get("messages", [])
-    messages: list[dict[str, object]] = []
+    messages: list[dict[str, object]] = []  # noqa: loose-dict - External JSON messages
     if isinstance(raw_messages, list):
         for item in raw_messages:
             if isinstance(item, dict):
-                messages.append(cast(dict[str, object], item))
+                messages.append(cast(dict[str, object], item))  # noqa: loose-dict - External JSON message
 
     for message in messages:
         msg_type = message.get("type")
@@ -463,13 +466,13 @@ def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:
         if msg_type != "gemini":
             continue
 
-        blocks: list[dict[str, object]] = []
+        blocks: list[dict[str, object]] = []  # noqa: loose-dict - Internal normalized blocks
         thoughts_raw = message.get("thoughts")
-        thoughts: list[dict[str, object]] = []
+        thoughts: list[dict[str, object]] = []  # noqa: loose-dict - External thoughts
         if isinstance(thoughts_raw, list):
             for thought_item in thoughts_raw:
                 if isinstance(thought_item, dict):
-                    thoughts.append(cast(dict[str, object], thought_item))
+                    thoughts.append(cast(dict[str, object], thought_item))  # noqa: loose-dict - External thought
 
         for thought in thoughts:
             description = thought.get("description") or thought.get("text") or ""
@@ -481,18 +484,18 @@ def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:
             blocks.append({"type": "text", "text": str(content_text)})
 
         tool_calls_raw = message.get("toolCalls")
-        tool_calls: list[dict[str, object]] = []
+        tool_calls: list[dict[str, object]] = []  # noqa: loose-dict - External tool calls
         if isinstance(tool_calls_raw, list):
             for tool_item in tool_calls_raw:
                 if isinstance(tool_item, dict):
-                    tool_calls.append(cast(dict[str, object], tool_item))
+                    tool_calls.append(cast(dict[str, object], tool_item))  # noqa: loose-dict - External tool call
 
         for tool_call in tool_calls:
             name = tool_call.get("displayName") or tool_call.get("name") or "tool"
             args = tool_call.get("args")
-            input_payload: dict[str, object] = {}
+            input_payload: dict[str, object] = {}  # noqa: loose-dict - External tool args
             if isinstance(args, dict):
-                input_payload = cast(dict[str, object], args)
+                input_payload = cast(dict[str, object], args)  # noqa: loose-dict - External tool args
             blocks.append(
                 {
                     "type": "tool_use",

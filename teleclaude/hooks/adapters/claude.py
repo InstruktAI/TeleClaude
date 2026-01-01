@@ -15,7 +15,7 @@ _CLAUDE_TO_INTERNAL: dict[str, str] = {
 }
 
 
-def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:
+def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:  # noqa: loose-dict - Agent hook boundary
     """Map Claude external fields to internal schema.
 
     Drops fields like permission_mode, hook_event_name that we don't use.

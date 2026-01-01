@@ -162,7 +162,7 @@ class Config:
 
 
 # Default configuration values (single source of truth)
-DEFAULT_CONFIG: dict[str, object] = {
+DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration structure
     "database": {
         "path": "${WORKING_DIR}/teleclaude.db",
     },
@@ -198,7 +198,7 @@ DEFAULT_CONFIG: dict[str, object] = {
 }
 
 
-def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
+def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:  # noqa: loose-dict - YAML config merge
     """Deep merge override dict into base dict.
 
     Args:
@@ -245,7 +245,7 @@ def _parse_trusted_dirs(raw_dirs: list[object]) -> list[TrustedDir]:
     return trusted_dirs
 
 
-def _build_config(raw: dict[str, object]) -> Config:
+def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML deserialization input
     """Build typed Config from raw dict with proper type conversion."""
     db_raw = raw["database"]
     comp_raw = raw["computer"]

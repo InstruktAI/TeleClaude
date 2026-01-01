@@ -54,7 +54,7 @@ class SessionUXState:
     thinking_mode: Optional[str] = None  # Model tier: "fast", "med", "slow" (MCP terminology)
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "SessionUXState":
+    def from_dict(cls, data: dict[str, object]) -> "SessionUXState":  # noqa: loose-dict - Deserialization input
         """Create SessionUXState from dict."""
         output_message_id_raw: object = data.get("output_message_id")
         pending_deletions_raw: object = data.get("pending_deletions", [])
@@ -81,7 +81,7 @@ class SessionUXState:
             thinking_mode=str(thinking_mode_raw) if thinking_mode_raw else None,
         )
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         """Convert to dict for JSON storage."""
         return {
             "output_message_id": self.output_message_id,
@@ -112,7 +112,7 @@ class SystemUXState:
     registry: RegistryState = field(default_factory=RegistryState)
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "SystemUXState":
+    def from_dict(cls, data: dict[str, object]) -> "SystemUXState":  # noqa: loose-dict - Deserialization input
         """Create SystemUXState from dict."""
         registry_data = data.get("registry", {})
         if isinstance(registry_data, dict):
@@ -129,7 +129,7 @@ class SystemUXState:
             registry = RegistryState()
         return cls(registry=registry)
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         """Convert to dict for JSON storage."""
         return {
             "registry": {
@@ -159,7 +159,7 @@ async def get_session_ux_state(db: aiosqlite.Connection, session_id: str) -> Ses
             if not isinstance(data_raw, dict):
                 logger.warning("Invalid ux_state format for session %s", session_id[:8])
                 return SessionUXState()
-            data: dict[str, object] = data_raw
+            data: dict[str, object] = data_raw  # noqa: loose-dict - Database JSON deserialization
             return SessionUXState.from_dict(data)
 
         return SessionUXState()
@@ -187,7 +187,7 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
             if not isinstance(data_raw, dict):
                 logger.warning("Invalid system ux_state format")
                 return SystemUXState()
-            data: dict[str, object] = data_raw
+            data: dict[str, object] = data_raw  # noqa: loose-dict - Database JSON deserialization
             return SystemUXState.from_dict(data)
 
         return SystemUXState()

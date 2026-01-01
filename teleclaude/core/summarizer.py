@@ -20,7 +20,7 @@ from teleclaude.utils.transcript import (
 
 SUMMARY_MODEL_ANTHROPIC = "claude-haiku-4-5-20251001"
 SUMMARY_MODEL_OPENAI = "gpt-5-nano-2025-08-07"
-SUMMARY_SCHEMA: dict[str, object] = {
+SUMMARY_SCHEMA: dict[str, object] = {  # noqa: loose-dict - JSON schema definition
     "type": "object",
     "properties": {
         "summary": {"type": "string"},

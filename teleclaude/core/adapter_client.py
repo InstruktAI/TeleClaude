@@ -498,7 +498,7 @@ class AdapterClient:
 
         return bool(result)
 
-    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:
+    async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # noqa: loose-dict - Adapter peer data
         """Discover peers from all registered adapters.
 
         Aggregates peer lists from all adapters and deduplicates by name.
@@ -528,7 +528,7 @@ class AdapterClient:
             logger.debug("Redis disabled, skipping peer discovery")
             return []
 
-        all_peers: list[dict[str, object]] = []
+        all_peers: list[dict[str, object]] = []  # noqa: loose-dict - Adapter peer data
 
         # Collect peers from all adapters
         for adapter_type, adapter in self.adapters.items():
@@ -537,7 +537,7 @@ class AdapterClient:
                 peers = await adapter.discover_peers()  # Returns list[PeerInfo]
                 # Convert PeerInfo dataclass to dict for transport
                 for peer_info in peers:
-                    peer_dict: dict[str, object] = {
+                    peer_dict: dict[str, object] = {  # noqa: loose-dict - Adapter peer data
                         "name": peer_info.name,
                         "status": peer_info.status,
                         "last_seen": peer_info.last_seen,
@@ -560,7 +560,7 @@ class AdapterClient:
 
         # Deduplicate by name (keep first occurrence = primary adapter wins)
         seen: set[str] = set()
-        unique_peers: list[dict[str, object]] = []
+        unique_peers: list[dict[str, object]] = []  # noqa: loose-dict - Adapter peer data
         for peer in all_peers:
             peer_name = cast(str, peer.get("name"))
             if peer_name and peer_name not in seen:
@@ -584,7 +584,7 @@ class AdapterClient:
     async def handle_event(
         self,
         event: EventType,
-        payload: dict[str, object],
+        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
         metadata: MessageMetadata,
     ) -> object:
         """Handle incoming event by dispatching to registered handler.
@@ -651,7 +651,7 @@ class AdapterClient:
 
     async def _resolve_session_id(
         self,
-        payload: dict[str, object],
+        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
         metadata: MessageMetadata,
     ) -> None:
         """Resolve session_id from platform metadata (topic_id or channel_id).
@@ -674,7 +674,7 @@ class AdapterClient:
     def _build_context(
         self,
         event: EventType,
-        payload: dict[str, object],
+        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
         metadata: MessageMetadata,
     ) -> EventContext:
         """Build typed context dataclass based on event type."""
@@ -684,18 +684,18 @@ class AdapterClient:
                 event_type=cast(AgentHookEventType, payload["event_type"]),
                 data=self._build_agent_payload(
                     cast(AgentHookEventType, payload["event_type"]),
-                    cast(dict[str, object], payload["data"]),
+                    cast(dict[str, object], payload["data"]),  # noqa: loose-dict - Event data from adapter
                 ),
             ),
             TeleClaudeEvents.SESSION_UPDATED: lambda: SessionUpdatedContext(
                 session_id=str(payload.get("session_id")),
-                updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),
+                updated_fields=cast(dict[str, object], payload.get("updated_fields", {})),  # noqa: loose-dict - Event fields
             ),
             TeleClaudeEvents.ERROR: lambda: ErrorEventContext(
                 session_id=str(payload.get("session_id")),
                 message=cast(str, payload.get("message", "")),
                 source=cast(str | None, payload.get("source")),
-                details=cast(dict[str, object] | None, payload.get("details")),
+                details=cast(dict[str, object] | None, payload.get("details")),  # noqa: loose-dict - Event detail boundary
             ),
             TeleClaudeEvents.MESSAGE: lambda: MessageEventContext(
                 session_id=str(payload.get("session_id")),
@@ -748,7 +748,7 @@ class AdapterClient:
     def _build_agent_payload(
         self,
         event_type: AgentHookEventType,
-        data: dict[str, object],
+        data: dict[str, object],  # noqa: loose-dict - Event data to adapters
     ) -> AgentSessionStartPayload | AgentStopPayload | AgentNotificationPayload | AgentSessionEndPayload:
         """Build typed agent payload from normalized hook data."""
         if event_type == AgentHookEvents.AGENT_SESSION_START:
@@ -801,7 +801,7 @@ class AdapterClient:
         await pre_handler(session)
         logger.debug("Pre-handler executed for %s on event %s", adapter_type, event)
 
-    async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:
+    async def _dispatch(self, event: EventType, context: EventContext) -> dict[str, object]:  # noqa: loose-dict - Event dispatch result
         """Dispatch event to registered handler."""
         logger.trace("Dispatching event: %s, handlers: %s", event, list(self._handlers.keys()))
 
@@ -864,7 +864,7 @@ class AdapterClient:
         self,
         session: "Session",
         event: EventType,
-        payload: dict[str, object],
+        payload: dict[str, object],  # noqa: loose-dict - Event payload from/to adapters
         source_adapter: str | None = None,
     ) -> None:
         """Broadcast user actions to UI observer adapters.
@@ -894,7 +894,7 @@ class AdapterClient:
             except Exception as e:
                 logger.warning("Failed to broadcast %s to observer %s: %s", event, adapter_type, e)
 
-    def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:
+    def _format_event_for_observers(self, event: EventType, payload: dict[str, object]) -> Optional[str]:  # noqa: loose-dict - Event payload
         """Format event as human-readable text for observer adapters.
 
         Args:

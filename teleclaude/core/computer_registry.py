@@ -56,7 +56,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         self.bot_username = bot_username
 
         # In-memory state
-        self.computers: dict[str, dict[str, object]] = {}
+        self.computers: dict[str, dict[str, object]] = {}  # noqa: loose-dict - Computer registry data from Telegram
         self.registry_topic_id: Optional[int] = None
         self.my_ping_message_id: Optional[int] = None  # Message ID for /registry_ping command
         self.my_pong_message_id: Optional[int] = None  # Message ID for [REGISTRY_PONG] response
@@ -308,7 +308,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
     # === Public API for MCP tools and daemon ===
 
-    def get_online_computers(self) -> list[dict[str, object]]:
+    def get_online_computers(self) -> list[dict[str, object]]:  # noqa: loose-dict - Computer registry data
         """Get list of currently online computers (for teleclaude__list_computers).
 
         Returns:
@@ -317,7 +317,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         computers = [c for c in self.computers.values() if c["status"] == "online"]
         return sorted(computers, key=lambda c: str(c["name"]))  # type: ignore[misc]
 
-    def get_all_computers(self) -> list[dict[str, object]]:
+    def get_all_computers(self) -> list[dict[str, object]]:  # noqa: loose-dict - Computer registry data
         """Get all computers (online + offline), sorted by name."""
         return sorted(self.computers.values(), key=lambda c: str(c["name"]))  # type: ignore[misc]
 
@@ -325,6 +325,6 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         """Check if specific computer is currently online."""
         return computer_name in self.computers and self.computers[computer_name]["status"] == "online"
 
-    def get_computer_info(self, computer_name: str) -> Optional[dict[str, object]]:
+    def get_computer_info(self, computer_name: str) -> Optional[dict[str, object]]:  # noqa: loose-dict - Computer registry data
         """Get info for specific computer (or None if not found)."""
         return self.computers.get(computer_name)

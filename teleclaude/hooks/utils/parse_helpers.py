@@ -13,6 +13,6 @@ def coerce_str(value: Any) -> str | None:
     return None
 
 
-def get_str(data: dict[str, object], key: str) -> str | None:
+def get_str(data: dict[str, object], key: str) -> str | None:  # noqa: loose-dict - Agent hook data
     """Fetch a string from a specific top-level key (no nesting)."""
     return coerce_str(data.get(key))

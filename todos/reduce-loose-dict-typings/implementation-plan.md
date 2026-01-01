@@ -16,15 +16,16 @@
 
 ### When to Use Type Ignore Comments
 
-| Scenario | Format | Example |
-|----------|--------|---------|
-| **MCP decorators** | `# type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822` | `@server.call_tool()  # type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822` |
-| **Third-party untyped** | `# type: ignore[import-untyped]  # Library X has no type stubs` | Only if library truly has no stubs AND no `@types-*` package |
-| **Known library bugs** | `# type: ignore[arg-type]  # Library Y bug: github.com/org/repo/issues/123` | Include upstream issue URL |
+| Scenario                | Format                                                                                    | Example                                                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **MCP decorators**      | `# type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822` | `@server.call_tool()  # type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822` |
+| **Third-party untyped** | `# type: ignore[import-untyped]  # Library X has no type stubs`                           | Only if library truly has no stubs AND no `@types-*` package                                                   |
+| **Known library bugs**  | `# type: ignore[arg-type]  # Library Y bug: github.com/org/repo/issues/123`               | Include upstream issue URL                                                                                     |
 
 ### When NOT to Use Type Ignore
 
 **Never use `# type: ignore` for:**
+
 - ❌ Our own code - fix the type error instead
 - ❌ Missing type annotations - add them instead
 - ❌ Complex types - simplify or use TypedDict/Protocol
@@ -34,6 +35,7 @@
 ### Error Codes Reference
 
 Common error codes you might encounter:
+
 - `untyped-decorator` - Decorator doesn't preserve types (MCP decorators)
 - `import-untyped` - Third-party library has no type stubs
 - `no-any-return` - Function returns Any (fix by typing the return)
@@ -46,13 +48,13 @@ Common error codes you might encounter:
 
 After investigating the codebase, here's what types exist and where they're used:
 
-| Type Location | Types | Shared? | Action |
-|--------------|-------|---------|--------|
-| `command_handlers.py` | `SystemStats`, `MemoryStats`, `DiskStats`, `CpuStats` | ✅ Used in `models.py` | **Extract** to `teleclaude/types/system.py` |
-| `telegram_adapter.py` | `HandleEventResult`, `HandleEventData` | ❌ Only used in telegram_adapter.py | **Keep** in place |
-| `mcp_server.py` | MCP tool return types (~26 occurrences) | ❌ Only returned to MCP clients | **Define** as local TypedDicts |
-| `daemon.py` | Deployment status payloads (~8 occurrences) | ❌ Only used in daemon.py | **Define** as local TypedDicts |
-| `command_handlers.py` | Handler return types (~5 occurrences) | ⚠️ Returned to callers but not imported | **Define** as local TypedDicts |
+| Type Location         | Types                                                 | Shared?                                 | Action                                      |
+| --------------------- | ----------------------------------------------------- | --------------------------------------- | ------------------------------------------- |
+| `command_handlers.py` | `SystemStats`, `MemoryStats`, `DiskStats`, `CpuStats` | ✅ Used in `models.py`                  | **Extract** to `teleclaude/types/system.py` |
+| `telegram_adapter.py` | `HandleEventResult`, `HandleEventData`                | ❌ Only used in telegram_adapter.py     | **Keep** in place                           |
+| `mcp_server.py`       | MCP tool return types (~26 occurrences)               | ❌ Only returned to MCP clients         | **Define** as local TypedDicts              |
+| `daemon.py`           | Deployment status payloads (~8 occurrences)           | ❌ Only used in daemon.py               | **Define** as local TypedDicts              |
+| `command_handlers.py` | Handler return types (~5 occurrences)                 | ⚠️ Returned to callers but not imported | **Define** as local TypedDicts              |
 
 **Total `dict[str, object]` count:** ~155 occurrences across 27 files
 **Target reduction:** ~50% (from 155 → ~78)
@@ -62,6 +64,7 @@ After investigating the codebase, here's what types exist and where they're used
 **Goal:** Create shared types module for system statistics used across modules.
 
 **Files to create:**
+
 - `teleclaude/types/__init__.py` - Package marker + re-exports
 - `teleclaude/types/system.py` - SystemStats family
 
@@ -106,10 +109,12 @@ __all__ = ["SystemStats", "MemoryStats", "DiskStats", "CpuStats"]
 ```
 
 **Files to update:**
+
 - [x] `teleclaude/core/command_handlers.py` - Remove definitions, import from types.system
 - [x] `teleclaude/core/models.py` - Change `system_stats: dict[str, object] | None` → `SystemStats | None`, import from types
 
 **Testing after Group 1:**
+
 ```bash
 make lint   # Verify mypy passes, no circular imports
 make test   # Verify runtime behavior unchanged
@@ -123,12 +128,14 @@ git commit -m "refactor(types): extract SystemStats family to shared types modul
 **Why co-locate?** These types are only used by MCP server - they're returned to external MCP clients but not imported by other teleclaude modules.
 
 **Approach:**
+
 1. Add TypedDict definitions at top of `mcp_server.py` (after imports, before class)
 2. Update method return types from `dict[str, object]` → specific TypedDict
 3. Ensure dict literals match TypedDict structure
 4. Keep decorator `# type: ignore` with explanation (see Type Ignore Policy above)
 
 **Example of proper type ignore usage:**
+
 ```python
 # CORRECT - Specific error code + explanation
 @server.call_tool()  # type: ignore[untyped-decorator]  # MCP decorators use Callable[...] - see issue #1822
@@ -145,6 +152,7 @@ async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent
 **Categories (~26 occurrences):**
 
 **a) Computer/Peer info:**
+
 ```python
 class ComputerInfo(TypedDict):
     """Computer information returned by list_computers."""
@@ -159,6 +167,7 @@ class ComputerInfo(TypedDict):
 ```
 
 **b) Session info:**
+
 ```python
 class SessionInfo(TypedDict):
     """Session information returned by list_sessions."""
@@ -181,6 +190,7 @@ class SessionDataResult(TypedDict):
 ```
 
 **c) Command results:**
+
 ```python
 class StartSessionResult(TypedDict):
     """Result from start_session."""
@@ -201,6 +211,7 @@ class RunAgentCommandResult(TypedDict):
 ```
 
 **d) Deployment results:**
+
 ```python
 class DeployComputerResult(TypedDict):
     """Deployment result for a single computer."""
@@ -215,6 +226,7 @@ class DeployResult(TypedDict):
 ```
 
 **Testing after Group 2:**
+
 ```bash
 make lint   # Verify mypy passes
 make test   # Run MCP-related tests
@@ -270,6 +282,7 @@ class EndSessionResult(TypedDict):
 ```
 
 **Update signatures:**
+
 - `handle_list_sessions() -> list[dict[str, object]]` → `list[SessionListItem]`
 - `handle_list_projects() -> list[dict[str, str]]` → `list[ProjectInfo]`
 - `handle_get_computer_info() -> dict[str, object]` → `ComputerInfoData`
@@ -277,6 +290,7 @@ class EndSessionResult(TypedDict):
 - `handle_end_session(...) -> dict[str, object]` → `EndSessionResult`
 
 **Testing after Group 3:**
+
 ```bash
 make lint
 make test
@@ -311,10 +325,12 @@ class DeployErrorPayload(TypedDict):
 ```
 
 **Update in `handle_deploy` method:**
+
 - Replace `dict[str, object]` with `DeployStatusPayload` or `DeployErrorPayload`
 - ~8 occurrences total
 
 **Testing after Group 4:**
+
 ```bash
 make lint
 make test
@@ -332,11 +348,13 @@ git commit -m "refactor(daemon): add TypedDicts for deployment status payloads"
 **Goal:** Type all MCP tool argument types in `mcp_server.py`.
 
 **Why type arguments?** MCP validates against inputSchema, so we know the exact structure. We can:
+
 1. Define TypedDict for each tool's arguments
 2. Use type narrowing based on tool name
 3. Get full type safety in tool implementations
 
 **Example:**
+
 ```python
 # Add TypedDict definitions for tool arguments
 class StartSessionArgs(TypedDict):
@@ -364,6 +382,7 @@ async def call_tool(name: str, arguments: dict[str, object]) -> list[TextContent
 ```
 
 **Testing after Group 5:**
+
 ```bash
 make lint
 make test
@@ -386,23 +405,24 @@ These files/patterns should keep `dict[str, object]` for valid reasons:
 
 ### Files with mypy overrides (from pyproject.toml)
 
-| File/Module | Mypy Override | Why Keep Loose | Occurrences |
-|------------|--------------|----------------|-------------|
-| `teleclaude/hooks/*` | `ignore_errors = true` | **COMPLETELY IGNORED** - Agent hook adapters deal with untyped external responses | ~8 |
-| `teleclaude/adapters/redis_adapter.py` | Major relaxations (`no-any-return`, `explicit-any`) | Redis client returns untyped data - third-party boundary | ~12 |
-| `tests/*` | `disallow_untyped_defs = false` | Test data flexibility - acceptable | Various |
+| File/Module                            | Mypy Override                                       | Why Keep Loose                                                                    | Occurrences |
+| -------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- | ----------- |
+| `teleclaude/hooks/*`                   | `ignore_errors = true`                              | **COMPLETELY IGNORED** - Agent hook adapters deal with untyped external responses | ~8          |
+| `teleclaude/adapters/redis_adapter.py` | Major relaxations (`no-any-return`, `explicit-any`) | Redis client returns untyped data - third-party boundary                          | ~12         |
+| `tests/*`                              | `disallow_untyped_defs = false`                     | Test data flexibility - acceptable                                                | Various     |
 
 ### Patterns that should stay generic (TRUE boundaries only)
 
-| Pattern | Why Keep Loose | Examples | Exception Comment |
-|---------|---------------|----------|-------------------|
-| External JSONL iterators | Unknown structure from agent transcripts | `transcript.py` - `_iter_*_entries()` return types | `# noqa: loose-dict - External JSONL unknown structure` |
-| Agent hook `raw` fields | Flexible schema for agent hook data | `events.py` - `raw: dict[str, object]` fields | `# type: boundary - Agent hook data schema unknown` |
-| `from_dict()` parameters | Input validation pattern - accepts any dict for validation | All dataclass `from_dict()` methods | `# noqa: loose-dict - Input validation accepts any dict` |
+| Pattern                  | Why Keep Loose                                             | Examples                                           | Exception Comment                                        |
+| ------------------------ | ---------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------- |
+| External JSONL iterators | Unknown structure from agent transcripts                   | `transcript.py` - `_iter_*_entries()` return types | `# noqa: loose-dict - External JSONL unknown structure`  |
+| Agent hook `raw` fields  | Flexible schema for agent hook data                        | `events.py` - `raw: dict[str, object]` fields      | `# type: boundary - Agent hook data schema unknown`      |
+| `from_dict()` parameters | Input validation pattern - accepts any dict for validation | All dataclass `from_dict()` methods                | `# noqa: loose-dict - Input validation accepts any dict` |
 
 **Total legitimate "keep loose":** ~13 occurrences (must all have exception comments)
 
 **Example of documented boundary:**
+
 ```python
 # CORRECT - External boundary with justification
 def _iter_jsonl_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
@@ -427,7 +447,9 @@ def process_data() -> dict[str, object]:  # ❌ Build fails!
 **Baseline:** ~155 total `dict[str, object]` occurrences across 27 files
 
 **Aggressive Breakdown:**
+
 - **Can be typed:** ~130 occurrences
+
   - SystemStats extraction: 4
   - MCP server returns: 26
   - MCP tool arguments: ~15
@@ -439,14 +461,12 @@ def process_data() -> dict[str, object]:  # ❌ Build fails!
   - Other scattered uses: ~7
 
 - **Must keep loose (TRUE boundaries only):** ~25 occurrences
-  - hooks/*: 8 (mypy ignored)
+  - hooks/\*: 8 (mypy ignored)
   - redis_adapter: 12 (mypy excluded)
   - External iterators: 4 (transcript.py)
   - Agent hook raw fields: 4 (events.py)
   - from_dict params: 5
   - Tests: Various (mypy excluded)
-
-**Target reduction:** ~130 typed = **~84% reduction** (from 155 → ~25)
 
 **Revised philosophy:** Type EVERYTHING except true external boundaries.
 
@@ -470,8 +490,7 @@ def process_data() -> dict[str, object]:  # ❌ Build fails!
 5. ✅ **Group 5:** Type MCP tool arguments in `mcp_server.py` (1 commit)
 6. ✅ **Group 6:** Type remaining high-value files (events, transcript, models, parsers) (2-3 commits)
 
-**Total:** 7-8 focused commits, each independently tested and validated.
-**Target:** 84% reduction in loose dict typings.
+Focused commits, each independently tested and validated.
 
 ---
 

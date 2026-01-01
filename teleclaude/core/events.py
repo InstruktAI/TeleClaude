@@ -72,7 +72,7 @@ class AgentSessionStartPayload:
 
     session_id: str
     transcript_path: str
-    raw: dict[str, object]
+    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
 
 
 @dataclass
@@ -81,7 +81,7 @@ class AgentStopPayload:
 
     session_id: str
     transcript_path: str
-    raw: dict[str, object]
+    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
     summary: str | None = None
     title: str | None = None
 
@@ -93,7 +93,7 @@ class AgentNotificationPayload:
     session_id: str
     transcript_path: str
     message: str
-    raw: dict[str, object]
+    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
 
 
 @dataclass
@@ -101,7 +101,7 @@ class AgentSessionEndPayload:
     """Internal payload for agent session_end hook."""
 
     session_id: str
-    raw: dict[str, object]
+    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
 
 
 AgentEventPayload = Union[
@@ -316,7 +316,7 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
     message_thread_id: Optional[int] = None
     title: Optional[str] = None
     project_dir: Optional[str] = None
-    channel_metadata: Optional[dict[str, object]] = None
+    channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
     auto_command: Optional[str] = None  # For chaining commands (e.g., start agent after session creation)
 
 
@@ -334,7 +334,7 @@ class SessionUpdatedContext:
     """Context for session_updated events."""
 
     session_id: str
-    updated_fields: dict[str, object]
+    updated_fields: dict[str, object]  # noqa: loose-dict - Dynamic session field updates
 
 
 @dataclass
@@ -344,7 +344,7 @@ class ErrorEventContext:
     session_id: str
     message: str
     source: Optional[str] = None
-    details: Optional[dict[str, object]] = None
+    details: Optional[dict[str, object]] = None  # noqa: loose-dict - Error detail data varies by error
 
 
 # Union of all event context types (for adapter_client handler signatures)

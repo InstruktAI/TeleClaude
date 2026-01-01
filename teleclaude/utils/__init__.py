@@ -225,7 +225,7 @@ def format_terminal_message(terminal_output: str, status_line: str) -> str:
     return "\n".join(message_parts)
 
 
-def apply_code_block_formatting(text: str, metadata: dict[str, object]) -> str:
+def apply_code_block_formatting(text: str, metadata: dict[str, object]) -> str:  # noqa: loose-dict - Adapter metadata
     """Apply code block formatting unless already formatted.
 
     Args:

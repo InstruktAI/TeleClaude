@@ -381,7 +381,7 @@ class UiAdapter(BaseAdapter):
         self,
         session_id: str,
         audio_file_path: str,
-        context: dict[str, object],
+        context: dict[str, object],  # noqa: loose-dict - Voice event context
     ) -> None:
         """Shared voice processing logic for UI adapters.
 

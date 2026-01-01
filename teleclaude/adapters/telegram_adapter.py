@@ -85,7 +85,7 @@ class HandleEventResult(TypedDict, total=False):
     """Result from client.handle_event() calls."""
 
     status: str
-    data: dict[str, object]  # Nested data structure varies by event type
+    data: dict[str, object]  # noqa: loose-dict - Nested data structure varies by event type
 
 
 class HandleEventData(TypedDict, total=False):
@@ -269,7 +269,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         # Force IPv4 for Telegram API calls. Some networks advertise IPv6 (AAAA) without
         # providing a working IPv6 route, which can cause connect timeouts inside httpx.
         httpx_kwargs = cast(
-            dict[str, object],
+            dict[str, object],  # noqa: loose-dict - Telegram Bot API httpx kwargs
             {"transport": httpx.AsyncHTTPTransport(local_address="0.0.0.0")},
         )
         builder.request(HTTPXRequest(httpx_kwargs=httpx_kwargs))

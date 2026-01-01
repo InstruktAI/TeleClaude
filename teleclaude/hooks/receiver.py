@@ -50,9 +50,9 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_stdin() -> tuple[str, dict[str, object]]:
+def _read_stdin() -> tuple[str, dict[str, object]]:  # noqa: loose-dict - Agent hook stdin data
     raw_input = ""
-    data: dict[str, object] = {}
+    data: dict[str, object] = {}  # noqa: loose-dict - Agent hook stdin data
     try:
         if not sys.stdin.isatty():
             raw_input = sys.stdin.read()
@@ -82,7 +82,7 @@ def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
         )
 
 
-def _send_error_event(session_id: str, message: str, details: dict[str, object]) -> None:
+def _send_error_event(session_id: str, message: str, details: dict[str, object]) -> None:  # noqa: loose-dict - Error detail data
     mcp_send(
         "teleclaude__handle_agent_event",
         {
@@ -94,7 +94,7 @@ def _send_error_event(session_id: str, message: str, details: dict[str, object])
 
 
 class NormalizeFn(Protocol):
-    def __call__(self, event_type: str, data: dict[str, object]) -> dict[str, object]: ...
+    def __call__(self, event_type: str, data: dict[str, object]) -> dict[str, object]: ...  # noqa: loose-dict - Agent hook protocol
 
 
 def _get_adapter(agent: str) -> NormalizeFn:

@@ -35,6 +35,7 @@ from teleclaude.core.session_cleanup import (
 )
 from teleclaude.core.session_utils import build_session_title, ensure_unique_title, update_title_with_agent
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
+from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.utils.transcript import (
     get_transcript_parser_info,
     parse_session_transcript,
@@ -46,37 +47,56 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# TypedDicts for structured data
+# TypedDict definitions for command handler return types
+class SessionListItem(TypedDict, total=False):
+    """Session list item returned by handle_list_sessions."""
+
+    session_id: str
+    origin_adapter: str
+    title: str
+    working_directory: str
+    status: str
+    created_at: str
+    last_activity: str
+    computer: str  # Added by MCP server for consistency
 
 
-class MemoryStats(TypedDict):
-    """Memory statistics structure."""
+class ProjectInfo(TypedDict):
+    """Project info returned by handle_list_projects."""
 
-    total_gb: float
-    available_gb: float
-    percent_used: float
-
-
-class DiskStats(TypedDict):
-    """Disk statistics structure."""
-
-    total_gb: float
-    free_gb: float
-    percent_used: float
+    name: str
+    desc: str
+    location: str
 
 
-class CpuStats(TypedDict):
-    """CPU statistics structure."""
+class ComputerInfoData(TypedDict):
+    """Computer info returned by handle_get_computer_info."""
 
-    percent_used: float
+    user: str | None
+    host: str | None
+    role: str | None
+    system_stats: SystemStats | None
 
 
-class SystemStats(TypedDict):
-    """System statistics structure."""
+class SessionDataPayload(TypedDict, total=False):
+    """Session data payload returned by handle_get_session_data."""
 
-    memory: MemoryStats
-    disk: DiskStats
-    cpu: CpuStats
+    status: str  # Required - always present
+    session_id: str
+    transcript: str | None
+    last_activity: str | None
+    working_directory: str | None
+    error: str  # Present in error responses
+    project_dir: str  # Sometimes present
+    messages: str  # Sometimes present
+    created_at: str | None  # Sometimes present
+
+
+class EndSessionHandlerResult(TypedDict):
+    """Result from handle_end_session."""
+
+    status: str
+    message: str
 
 
 # Type alias for start_polling function
@@ -356,7 +376,7 @@ You can now send commands to this session.
     raise RuntimeError("Failed to create tmux session")
 
 
-async def handle_list_sessions() -> list[dict[str, object]]:
+async def handle_list_sessions() -> list[SessionListItem]:
     """List all active sessions from local database.
 
     Ephemeral request/response for MCP/Redis only - no DB session required.
@@ -384,7 +404,7 @@ async def handle_list_sessions() -> list[dict[str, object]]:
             )
         )
 
-    return [s.to_dict() for s in summaries]
+    return cast(list[SessionListItem], [s.to_dict() for s in summaries])
 
 
 async def handle_list_projects() -> list[dict[str, str]]:
@@ -415,7 +435,7 @@ async def handle_list_projects() -> list[dict[str, str]]:
     return dirs_data
 
 
-async def handle_get_computer_info() -> dict[str, object]:
+async def handle_get_computer_info() -> ComputerInfoData:
     """Return computer info including system stats.
 
     Ephemeral request/response - no DB session required.
@@ -462,7 +482,7 @@ async def handle_get_computer_info() -> dict[str, object]:
         "cpu": cpu_stats,
     }
 
-    info_data: dict[str, object] = {
+    info_data: ComputerInfoData = {
         "user": config.computer.user,
         "role": config.computer.role,
         "host": config.computer.host,
@@ -478,7 +498,7 @@ async def handle_get_session_data(
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
     tail_chars: int = 5000,
-) -> dict[str, object]:
+) -> SessionDataPayload:
     """Get session data from native_log_file.
 
     Reads the Agent session file (JSONL format) and parses to markdown.
@@ -1145,7 +1165,7 @@ async def handle_exit_session(
 async def handle_end_session(
     session_id: str,
     client: "AdapterClient",
-) -> dict[str, object]:
+) -> EndSessionHandlerResult:
     """End a session - graceful termination for MCP tool.
 
     Similar to handle_exit_session but designed for MCP tool calls.

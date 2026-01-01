@@ -6,6 +6,8 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Union
 
+from teleclaude.types import SystemStats
+
 if TYPE_CHECKING:
     from telegram.types import InlineKeyboardMarkup  # type: ignore[import-not-found]
 
@@ -15,7 +17,7 @@ JsonValue = Union[JsonPrimitive, list["JsonValue"], dict[str, "JsonValue"]]
 JsonDict = dict[str, JsonValue]
 
 
-def asdict_exclude_none(obj: object) -> dict[str, object]:
+def asdict_exclude_none(obj: object) -> dict[str, object]:  # noqa: loose-dict - Serialization output
     """Convert dataclass to dict, recursively excluding None values.
 
     Replacement for Pydantic's model_dump(exclude_none=True).
@@ -25,7 +27,7 @@ def asdict_exclude_none(obj: object) -> dict[str, object]:
     if isinstance(obj, dict):
         return {k: v for k, v in obj.items() if v is not None}
 
-    result: dict[str, object] = asdict(obj)  # type: ignore[call-overload]  # asdict accepts dataclass instances
+    result: dict[str, object] = asdict(obj)  # type: ignore[call-overload]  # asdict accepts dataclass instances  # noqa: loose-dict - Serialization
 
     def _exclude_none(data: object) -> object:
         """Recursively exclude None values from dicts."""
@@ -109,7 +111,7 @@ class PeerInfo:  # pylint: disable=too-many-instance-attributes  # Data model fo
     host: Optional[str] = None
     ip: Optional[str] = None
     role: Optional[str] = None
-    system_stats: Optional[dict[str, object]] = None  # memory, disk, cpu stats
+    system_stats: Optional[SystemStats] = None
 
 
 @dataclass
@@ -235,7 +237,7 @@ class MessageMetadata:  # type: ignore[no-any-unimported]  # pylint: disable=too
     # Session creation fields (for send_request with new_session command)
     title: Optional[str] = None
     project_dir: Optional[str] = None
-    channel_metadata: Optional[dict[str, object]] = None
+    channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
 
     # Auto-command to run after session creation (e.g., "claude", "claude_resume")
     auto_command: Optional[str] = None
@@ -260,9 +262,9 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     ux_state: Optional[str] = None  # JSON blob for session-level UX state
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
-        data: dict[str, object] = asdict(self)  # asdict returns dict[str, Any]
+        data: dict[str, object] = asdict(self)  # asdict returns dict[str, Any]  # noqa: loose-dict - Serialization
         # Convert datetime to ISO format
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
@@ -277,7 +279,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "Session":
+    def from_dict(cls, data: dict[str, object]) -> "Session":  # noqa: loose-dict - Deserialization input
         """Create session from dictionary (from database/JSON)."""
         created_at_raw = data.get("created_at")
         created_at = datetime.fromisoformat(created_at_raw) if isinstance(created_at_raw, str) else created_at_raw
@@ -341,7 +343,7 @@ class Recording:
 
     def to_dict(self) -> JsonDict:
         """Convert recording to dictionary."""
-        data: JsonDict = asdict(self)  # asdict returns dict[str, Any]
+        data: JsonDict = asdict(self)  # noqa: loose-dict - asdict returns dict[str, Any]
         if self.timestamp:
             data["timestamp"] = self.timestamp.isoformat()
         return data
@@ -379,7 +381,7 @@ class StartSessionArgs:
     caller_session_id: Optional[str] = None
 
     @classmethod
-    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "StartSessionArgs":
+    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "StartSessionArgs":  # noqa: loose-dict - MCP protocol boundary
         """Build args from MCP tool call."""
         required = ["computer", "project_dir", "title", "message"]
         missing = [r for r in required if r not in arguments]
@@ -419,7 +421,7 @@ class RunAgentCommandArgs:
     caller_session_id: Optional[str] = None
 
     @classmethod
-    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "RunAgentCommandArgs":
+    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "RunAgentCommandArgs":  # noqa: loose-dict - MCP protocol boundary
         """Build args from MCP tool call."""
         if not arguments or "computer" not in arguments or "command" not in arguments:
             raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
@@ -453,7 +455,7 @@ class RedisInboundMessage:
     msg_type: str
     session_id: Optional[str]
     command: str
-    channel_metadata: Optional[dict[str, object]] = None
+    channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
     initiator: Optional[str] = None
     project_dir: Optional[str] = None
     title: Optional[str] = None
@@ -473,7 +475,7 @@ class SessionSummary:
     created_at: Optional[str]
     last_activity: Optional[str]
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         return {
             "session_id": self.session_id,
             "origin_adapter": self.origin_adapter,

@@ -35,6 +35,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -649,10 +650,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     role_val: object = computer_info.get("role")
                     system_stats_val: object = computer_info.get("system_stats")
 
-                    # Ensure system_stats is a dict or None
-                    system_stats: dict[str, object] | None = None
+                    # Ensure system_stats is a dict or None, then cast to SystemStats
+                    system_stats: SystemStats | None = None
                     if isinstance(system_stats_val, dict):
-                        system_stats = system_stats_val
+                        system_stats = cast(SystemStats, system_stats_val)
 
                     peers.append(
                         PeerInfo(

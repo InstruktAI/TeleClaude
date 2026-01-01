@@ -12,7 +12,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional, TextIO, cast
+from typing import Callable, Optional, TextIO, TypedDict, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -61,6 +61,22 @@ from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+
+
+# TypedDict definitions for deployment status payloads
+class DeployStatusPayload(TypedDict):
+    """Deployment status payload - sent to Redis during deployment lifecycle."""
+
+    status: str
+    timestamp: float
+
+
+class DeployErrorPayload(TypedDict):
+    """Deployment error payload - sent to Redis when deployment fails."""
+
+    status: str
+    error: str
+
 
 # Logging defaults (can be overridden via environment variables)
 DEFAULT_LOG_LEVEL = "INFO"
@@ -581,12 +597,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         status_key = f"system_status:{config.computer.name}:deploy"
         redis_client = redis_adapter._require_redis()
 
-        async def update_status(payload: dict[str, object]) -> None:
+        async def update_status(payload: DeployStatusPayload | DeployErrorPayload) -> None:
             await redis_client.set(status_key, json.dumps(payload))
 
         try:
             # 1. Write deploying status
-            deploying_payload: dict[str, object] = {"status": "deploying", "timestamp": time.time()}
+            deploying_payload: DeployStatusPayload = {"status": "deploying", "timestamp": time.time()}
             await update_status(deploying_payload)
             logger.info("Deploy: marked status as deploying")
 
@@ -620,7 +636,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 stderr_msg = stderr.decode("utf-8").strip()
                 error_msg = f"{stderr_msg}\n{stdout_msg}".strip()
                 logger.error("Deploy: git pull failed: %s", error_msg)
-                git_error_payload: dict[str, object] = {
+                git_error_payload: DeployErrorPayload = {
                     "status": "error",
                     "error": f"git pull failed: {error_msg}",
                 }
@@ -645,7 +661,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 install_stdout, install_stderr = await asyncio.wait_for(install_result.communicate(), timeout=60.0)  # type: ignore[misc]
             except asyncio.TimeoutError:
                 logger.error("Deploy: make install timed out after 60s")
-                timeout_payload: dict[str, object] = {
+                timeout_payload: DeployErrorPayload = {
                     "status": "error",
                     "error": "make install timed out after 60s",
                 }
@@ -655,7 +671,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if install_result.returncode != 0:
                 error_msg = install_stderr.decode("utf-8")
                 logger.error("Deploy: make install failed: %s", error_msg)
-                install_error_payload: dict[str, object] = {
+                install_error_payload: DeployErrorPayload = {
                     "status": "error",
                     "error": f"make install failed: {error_msg}",
                 }
@@ -666,7 +682,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.info("Deploy: make install successful - %s", install_output.strip())
 
             # 4. Write restarting status
-            restarting_payload: dict[str, object] = {"status": "restarting", "timestamp": time.time()}
+            restarting_payload: DeployStatusPayload = {"status": "restarting", "timestamp": time.time()}
             await update_status(restarting_payload)
 
             # 5. Exit to trigger service manager restart
@@ -677,7 +693,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         except Exception as e:
             logger.error("Deploy failed: %s", e, exc_info=True)
-            exception_payload: dict[str, object] = {"status": "error", "error": str(e)}
+            exception_payload: DeployErrorPayload = {"status": "error", "error": str(e)}
             await update_status(exception_payload)
 
     async def _handle_health_check(self) -> None:
@@ -828,7 +844,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return get_output_file(session_id)
 
     async def _send_feedback_callback(
-        self, sid: str, msg: str, metadata: Optional[dict[str, object]] = None
+        self,
+        sid: str,
+        msg: str,
+        metadata: Optional[dict[str, object]] = None,  # noqa: loose-dict - Adapter-specific metadata
     ) -> Optional[str]:
         """Adapter callback for handlers that need send_feedback signature.
 

@@ -20,7 +20,7 @@ _GEMINI_TO_INTERNAL: dict[str, str] = {
 }
 
 
-def _discover_transcript_path(data: dict[str, object]) -> str:
+def _discover_transcript_path(data: dict[str, object]) -> str:  # noqa: loose-dict - Agent hook data
     """Discover Gemini transcript path when not provided in payload.
 
     Gemini stores transcripts at:
@@ -50,7 +50,7 @@ def _discover_transcript_path(data: dict[str, object]) -> str:
     return ""
 
 
-def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:
+def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:  # noqa: loose-dict - Agent hook boundary
     """Map Gemini external fields to internal schema.
 
     Drops large fields like llm_request, llm_response, tool_input, tool_output
