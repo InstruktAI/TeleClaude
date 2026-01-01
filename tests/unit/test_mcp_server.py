@@ -596,7 +596,7 @@ async def test_run_agent_command_requires_project_for_new_session(mock_mcp_serve
 
 @pytest.mark.asyncio
 async def test_run_agent_command_with_subfolder(mock_mcp_server):
-    """Test that run_agent_command computes working directory with subfolder."""
+    """Test that run_agent_command passes raw project and subfolder separately."""
     server = mock_mcp_server
     server.client.handle_event = AsyncMock(
         return_value={"status": "success", "data": {"session_id": "worktree-session"}}
@@ -611,10 +611,12 @@ async def test_run_agent_command_with_subfolder(mock_mcp_server):
 
     assert result["status"] == "success"
 
-    # Verify first call (new_session) has correct project_dir in metadata
+    # Verify raw inputs are passed separately (not concatenated)
+    # handle_create_session derives working_dir from these
     first_call = server.client.handle_event.call_args_list[0]
     metadata = first_call[0][2]  # Third arg is MessageMetadata
-    assert metadata.project_dir == "/home/user/myproject/worktrees/my-feature"
+    assert metadata.project_dir == "/home/user/myproject"
+    assert metadata.channel_metadata["subfolder"] == "worktrees/my-feature"
 
 
 @pytest.mark.asyncio

@@ -240,7 +240,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     initiator = None
     initiator_agent = None
     initiator_mode = None
-    base_project = None
+    subfolder = None
     if metadata.channel_metadata:
         initiator_raw = metadata.channel_metadata.get("target_computer")
         initiator = str(initiator_raw) if initiator_raw else None
@@ -248,11 +248,25 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         initiator_agent = str(initiator_agent_raw) if initiator_agent_raw else None
         initiator_mode_raw = metadata.channel_metadata.get("initiator_mode")
         initiator_mode = str(initiator_mode_raw) if initiator_mode_raw else None
-        base_project_raw = metadata.channel_metadata.get("base_project")
-        base_project = str(base_project_raw) if base_project_raw else None
+        subfolder_raw = metadata.channel_metadata.get("subfolder")
+        subfolder = str(subfolder_raw) if subfolder_raw else None
 
-    # Get short project name for title
-    short_project = get_short_project_name(working_dir, base_project)
+    # Derive working_dir and short_project from raw inputs (project_dir + subfolder)
+    # project_dir is the base project, subfolder is the optional worktree/branch path
+    if subfolder:
+        # Append subfolder to get actual working directory
+        working_dir = f"{working_dir}/{subfolder}"
+        working_dir_path = Path(working_dir)
+        if not working_dir_path.exists():
+            working_dir_path.mkdir(parents=True, exist_ok=True)
+        working_dir = str(working_dir_path)
+        # Derive short_project from raw inputs: project_name/slug
+        project_name = project_dir.rstrip("/").split("/")[-1] if project_dir else "unknown"
+        slug = subfolder.split("/")[-1]
+        short_project = f"{project_name}/{slug}"
+    else:
+        # No subfolder - just use last folder name
+        short_project = working_dir.rstrip("/").split("/")[-1] if working_dir else "unknown"
 
     # Build session title using standard format
     # Target agent info not yet known (will be updated when agent starts)

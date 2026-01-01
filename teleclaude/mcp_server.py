@@ -1342,8 +1342,13 @@ class TeleClaudeMCPServer:
         title: str,
         auto_command: str,
         caller_session_id: str | None = None,
+        subfolder: str = "",
     ) -> dict[str, object]:
         """Create local session and run auto_command via daemon."""
+        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}
+        if subfolder:
+            channel_metadata["subfolder"] = subfolder
+
         result: object = await self.client.handle_event(
             TeleClaudeEvents.NEW_SESSION,
             {"session_id": "", "args": [title]},
@@ -1351,7 +1356,7 @@ class TeleClaudeMCPServer:
                 adapter_type="redis",
                 project_dir=project_dir,
                 title=title,
-                channel_metadata={"target_computer": self.computer_name},
+                channel_metadata=channel_metadata,
                 auto_command=auto_command,
             ),
         )
@@ -1387,6 +1392,7 @@ class TeleClaudeMCPServer:
         title: str,
         auto_command: str,
         caller_session_id: str | None = None,
+        subfolder: str = "",
     ) -> dict[str, object]:
         """Create remote session and run auto_command via daemon."""
         peers = await self.client.discover_peers()
@@ -1395,10 +1401,13 @@ class TeleClaudeMCPServer:
         if not target_online:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
+        channel_metadata: dict[str, object] | None = {"subfolder": subfolder} if subfolder else None
+
         metadata = MessageMetadata(
             project_dir=project_dir,
             title=title,
             auto_command=auto_command,
+            channel_metadata=channel_metadata,
         )
 
         message_id = await self.client.send_request(
@@ -1658,9 +1667,6 @@ class TeleClaudeMCPServer:
         if not project:
             return {"status": "error", "message": "project required when session_id not provided"}
 
-        # Compute working directory
-        working_dir = f"{project}/{subfolder}".rstrip("/") if subfolder.strip() else project
-
         # Use command as title
         title = full_command
 
@@ -1668,20 +1674,26 @@ class TeleClaudeMCPServer:
         quoted_command = shlex.quote(full_command)
         auto_command = f"agent_then_message {agent} {normalized_mode} {quoted_command}"
 
+        # Pass raw inputs: project and subfolder separately
+        # Let handle_create_session derive working_dir and short_project
+        normalized_subfolder = subfolder.strip().strip("/") if subfolder else ""
+
         if self._is_local_computer(computer):
             return await self._start_local_session_with_auto_command(
-                project_dir=working_dir,
+                project_dir=project,
                 title=title,
                 auto_command=auto_command,
                 caller_session_id=caller_session_id,
+                subfolder=normalized_subfolder,
             )
 
         return await self._start_remote_session_with_auto_command(
             computer=computer,
-            project_dir=working_dir,
+            project_dir=project,
             title=title,
             auto_command=auto_command,
             caller_session_id=caller_session_id,
+            subfolder=normalized_subfolder,
         )
 
     async def teleclaude__get_session_data(
