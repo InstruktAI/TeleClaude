@@ -97,6 +97,7 @@ AGENT_START_OUTPUT_TAIL_CHARS = 4000
 AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
+AGENT_START_POST_INJECT_DELAY_S = 1.0
 
 logger = get_logger(__name__)
 
@@ -555,6 +556,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 if not pasted:
                     return {"status": "error", "message": "Failed to paste command into tmux"}
 
+                await asyncio.sleep(AGENT_START_POST_INJECT_DELAY_S)
                 await db.update_last_activity(session_id)
                 await self._poll_and_send_output(session_id, session.tmux_session_name)
 
