@@ -266,6 +266,16 @@ async def test_agent_then_message_times_out_on_no_output_change():
         assert "Timeout waiting for command acceptance" in result["message"]
 
 
+def test_summarize_output_change_reports_diff():
+    """_summarize_output_change should report a diff index and snippets."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    summary = daemon._summarize_output_change("hello", "hEllo")
+    assert summary["changed"] is True
+    assert summary["diff_index"] == 1
+    assert "before_snippet" in summary
+    assert "after_snippet" in summary
+
+
 @pytest.mark.asyncio
 async def test_process_agent_stop_uses_registered_transcript_when_payload_missing():
     """Agent STOP should use stored transcript path when payload omits it."""

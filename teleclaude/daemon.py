@@ -79,6 +79,18 @@ class DeployErrorPayload(TypedDict):
     error: str
 
 
+class OutputChangeSummary(TypedDict, total=False):
+    """Summary details for tmux output changes."""
+
+    changed: bool
+    reason: str
+    before_len: int
+    after_len: int
+    diff_index: int
+    before_snippet: str
+    after_snippet: str
+
+
 # Logging defaults (can be overridden via environment variables)
 DEFAULT_LOG_LEVEL = "INFO"
 
@@ -577,36 +589,76 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
         return {"status": "error", "message": "Timeout waiting for agent to start"}
 
-    async def _pane_output_fingerprint(self, session_name: str) -> str:
+    async def _pane_output_snapshot(self, session_name: str) -> tuple[str, str]:
         output = await terminal_bridge.capture_pane(session_name, lines=AGENT_START_OUTPUT_CAPTURE_LINES)
         if not output:
-            return ""
+            return "", ""
         tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
-        return hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
+        digest = hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
+        return tail, digest
 
-    async def _wait_for_output_change(self, session_name: str, before: str, timeout_s: float) -> bool:
+    @staticmethod
+    def _summarize_output_change(before: str, after: str) -> OutputChangeSummary:
+        if before == after:
+            return {"changed": False, "reason": "identical"}
+
+        min_len = min(len(before), len(after))
+        diff_index = None
+        for idx in range(min_len):
+            if before[idx] != after[idx]:
+                diff_index = idx
+                break
+        if diff_index is None:
+            diff_index = min_len
+
+        snippet_len = 160
+        before_snippet = before[max(0, diff_index - 40) : diff_index + snippet_len]
+        after_snippet = after[max(0, diff_index - 40) : diff_index + snippet_len]
+
+        return {
+            "changed": True,
+            "before_len": len(before),
+            "after_len": len(after),
+            "diff_index": diff_index,
+            "before_snippet": repr(before_snippet),
+            "after_snippet": repr(after_snippet),
+        }
+
+    async def _wait_for_output_change(
+        self,
+        session_name: str,
+        before: str,
+        before_digest: str,
+        timeout_s: float,
+    ) -> tuple[bool, str]:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            current = await self._pane_output_fingerprint(session_name)
-            if current != before:
-                return True
+            current_tail, current_digest = await self._pane_output_snapshot(session_name)
+            if current_digest != before_digest:
+                return True, current_tail
             await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
-        return False
+        return False, ""
 
     async def _confirm_command_acceptance(self, session_name: str) -> bool:
         attempts = max(1, AGENT_START_CONFIRM_ENTER_ATTEMPTS)
         for attempt in range(attempts):
-            before = await self._pane_output_fingerprint(session_name)
+            before_tail, before_digest = await self._pane_output_snapshot(session_name)
             await terminal_bridge.send_enter(session_name)
             await asyncio.sleep(AGENT_START_ENTER_INTER_DELAY_S)
             await terminal_bridge.send_enter(session_name)
 
-            changed = await self._wait_for_output_change(
+            changed, after_tail = await self._wait_for_output_change(
                 session_name,
-                before,
+                before_tail,
+                before_digest,
                 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S,
             )
             if changed:
+                summary = self._summarize_output_change(before_tail, after_tail)
+                logger.debug(
+                    "agent_then_message acceptance output change: %s",
+                    summary,
+                )
                 return True
 
             if attempt < attempts - 1:
