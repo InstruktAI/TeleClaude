@@ -1,6 +1,7 @@
 """Tests for the agent hook installation helper."""
 
 import json
+import tomllib
 from pathlib import Path
 
 from scripts import install_hooks
@@ -51,3 +52,139 @@ def test_configure_claude_writes_hook_file(tmp_path, monkeypatch):
     hook = hooks_block["hooks"][0]
     assert hook["type"] == "command"
     assert "receiver.py --agent claude session_start" in hook["command"]
+
+
+def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
+    """Codex hook configuration writes notify array to ~/.codex/config.toml."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    install_hooks.configure_codex(repo_root)
+
+    codex_config = tmp_path / ".codex" / "config.toml"
+    assert codex_config.exists()
+
+    data = tomllib.loads(codex_config.read_text())
+    assert "notify" in data
+    notify = data["notify"]
+    assert isinstance(notify, list)
+    assert len(notify) == 4
+    assert notify[2] == "--agent"
+    assert notify[3] == "codex"
+    assert "receiver.py" in notify[1]
+
+
+def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
+    """Codex hook configuration preserves existing settings in config.toml."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    # Create existing config with other settings
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(parents=True)
+    codex_config = codex_dir / "config.toml"
+    codex_config.write_text('model = "gpt-4"\nsandbox_mode = "safe"\n')
+
+    install_hooks.configure_codex(repo_root)
+
+    data = tomllib.loads(codex_config.read_text())
+    # Existing settings preserved
+    assert data["model"] == "gpt-4"
+    assert data["sandbox_mode"] == "safe"
+    # New notify hook added
+    assert "notify" in data
+    assert "receiver.py" in data["notify"][1]
+
+
+def test_configure_codex_is_idempotent(tmp_path, monkeypatch):
+    """Running configure_codex twice produces identical results without corruption."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    # Create existing config with settings and a comment
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(parents=True)
+    codex_config = codex_dir / "config.toml"
+    codex_config.write_text('# My config\nmodel = "gpt-4"\n\n[mcp_servers.test]\ntype = "stdio"\n')
+
+    # First run
+    install_hooks.configure_codex(repo_root)
+    content_after_first = codex_config.read_text()
+    data_after_first = tomllib.loads(content_after_first)
+
+    # Second run
+    install_hooks.configure_codex(repo_root)
+    content_after_second = codex_config.read_text()
+    data_after_second = tomllib.loads(content_after_second)
+
+    # Content should be identical after second run
+    assert content_after_first == content_after_second
+
+    # Data integrity checks
+    assert data_after_second["model"] == "gpt-4"
+    assert data_after_second["mcp_servers"]["test"]["type"] == "stdio"
+    assert "notify" in data_after_second
+    assert len(data_after_second["notify"]) == 4
+
+
+def test_configure_codex_updates_our_hook_when_paths_change(tmp_path, monkeypatch):
+    """Our notify hook is updated when python path or receiver path changes."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    # Create config with our hook but old paths (simulating repo move or venv change)
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(parents=True)
+    codex_config = codex_dir / "config.toml"
+    old_hook = '["/old/venv/python", "/old/path/teleclaude/hooks/receiver.py", "--agent", "codex"]'
+    codex_config.write_text(f'model = "gpt-4"\nnotify = {old_hook}\n')
+
+    install_hooks.configure_codex(repo_root)
+
+    data = tomllib.loads(codex_config.read_text())
+    # Our hook updated to new paths
+    assert str(hook_python) in data["notify"][0]
+    assert "receiver.py" in data["notify"][1]
+    assert "--agent" in data["notify"][2]
+    assert "codex" in data["notify"][3]
+    # Old paths gone
+    assert "/old/venv/python" not in str(data["notify"])
+    assert "/old/path/" not in str(data["notify"])
+
+
+def test_configure_codex_skips_foreign_notify_hook(tmp_path, monkeypatch, capsys):
+    """Foreign notify hook (not ours) is not replaced - we skip with a warning."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    # Create config with someone else's notify hook
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(parents=True)
+    codex_config = codex_dir / "config.toml"
+    foreign_hook = '["/usr/bin/python", "/their/custom/script.py", "--some", "args"]'
+    codex_config.write_text(f'model = "gpt-4"\nnotify = {foreign_hook}\n')
+    original_content = codex_config.read_text()
+
+    install_hooks.configure_codex(repo_root)
+
+    # Config should be unchanged - we don't clobber foreign hooks
+    assert codex_config.read_text() == original_content
+
+    # Warning should be printed
+    captured = capsys.readouterr()
+    assert "not ours" in captured.out

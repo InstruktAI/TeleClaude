@@ -8,7 +8,9 @@ The hooks point to the receiver scripts within this repository.
 
 import json
 import os
+import re
 import shlex
+import tomllib
 from pathlib import Path
 from typing import Any, Dict
 
@@ -267,6 +269,79 @@ def configure_claude(repo_root: Path) -> None:
     print(f"Claude hooks configured in {settings_path}")
 
 
+def configure_codex(repo_root: Path) -> None:
+    """Configure Codex CLI notify hook.
+
+    Codex uses TOML config at ~/.codex/config.toml with a simple `notify` key
+    that takes an array of command parts. Unlike Claude/Gemini which use JSON
+    with nested hook structures, Codex only supports one hook event type:
+    `agent-turn-complete` which maps to our internal "stop" event.
+    """
+    receiver_script = repo_root / "teleclaude" / "hooks" / "receiver.py"
+    if not receiver_script.exists():
+        print(f"Warning: Codex receiver not found at {receiver_script}")
+        return
+
+    os.chmod(receiver_script, 0o755)
+
+    config_path = Path.home() / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+
+    python_exe = _resolve_hook_python(repo_root)
+    notify_value = [str(python_exe), str(receiver_script), "--agent", "codex"]
+
+    if config_path.exists():
+        content = config_path.read_text()
+        try:
+            config = tomllib.loads(content)
+        except tomllib.TOMLDecodeError as e:
+            print(f"Warning: Failed to parse Codex config: {e}")
+            return
+
+        existing_notify = config.get("notify")
+        if existing_notify == notify_value:
+            print(f"Codex notify hook already configured in {config_path}")
+            return
+
+        # Update or add notify line using text manipulation to preserve formatting
+        notify_line = f'notify = {json.dumps(notify_value)}'
+        if "notify" in config:
+            # Check if existing notify is our hook (contains receiver.py and --agent codex)
+            is_our_hook = (
+                isinstance(existing_notify, list)
+                and len(existing_notify) >= 4
+                and "receiver.py" in str(existing_notify[1])
+                and existing_notify[2:4] == ["--agent", "codex"]
+            )
+            if not is_our_hook:
+                print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
+                print(f"  Existing: {existing_notify}")
+                return
+            # Replace our existing notify line with updated paths
+            content = re.sub(
+                r'^notify\s*=\s*\[.*?\]',
+                notify_line,
+                content,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        else:
+            # Add notify after any comments at the top, before first section
+            first_section = re.search(r'^\[', content, re.MULTILINE)
+            if first_section:
+                insert_pos = first_section.start()
+                content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
+            else:
+                content = content.rstrip() + "\n\n" + notify_line + "\n"
+    else:
+        # Create new config with just the notify hook
+        notify_line = f'notify = {json.dumps(notify_value)}'
+        content = f"# Codex CLI configuration\n\n{notify_line}\n"
+
+    config_path.write_text(content)
+    print(f"Codex notify hook configured in {config_path}")
+
+
 def main() -> None:
     # Repo root is parent of scripts/ dir
     repo_root = Path(__file__).parent.parent.resolve()
@@ -274,7 +349,7 @@ def main() -> None:
 
     configure_claude(repo_root)
     configure_gemini(repo_root)
-    # Add configure_claude(repo_root) here in future
+    configure_codex(repo_root)
 
 
 if __name__ == "__main__":
