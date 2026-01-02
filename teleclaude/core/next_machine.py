@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 
 # Fallback matrices: task_type -> [(agent, thinking_mode), ...]
 PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
-    "prepare": [("claude", "slow"), ("gemini", "slow")],
+    "prepare": [("claude", "slow"), ("codex", "slow"), ("gemini", "slow")],
 }
 
 WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {

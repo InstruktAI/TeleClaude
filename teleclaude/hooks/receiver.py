@@ -18,6 +18,7 @@ sys.path.append(str(hooks_dir))
 sys.path.append(str(hooks_dir.parent.parent))
 
 from adapters import claude as claude_adapter  # noqa: E402
+from adapters import codex as codex_adapter  # noqa: E402
 from adapters import gemini as gemini_adapter  # noqa: E402
 from utils.mcp_send import mcp_send  # noqa: E402
 
@@ -43,7 +44,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--agent",
         required=True,
-        choices=("claude", "gemini"),
+        choices=("claude", "codex", "gemini"),
         help="Agent name for adapter selection",
     )
     parser.add_argument("event_type", nargs="?", default=None, help="Hook event type")
@@ -100,6 +101,8 @@ class NormalizeFn(Protocol):
 def _get_adapter(agent: str) -> NormalizeFn:
     if agent == "claude":
         return claude_adapter.normalize_payload
+    if agent == "codex":
+        return codex_adapter.normalize_payload
     if agent == "gemini":
         return gemini_adapter.normalize_payload
     raise ValueError(f"Unknown agent '{agent}'")
@@ -117,7 +120,21 @@ def main() -> None:
         agent=args.agent,
     )
 
-    raw_input, data = _read_stdin()
+    # Read input based on agent type
+    if args.agent == "codex":
+        # Codex notify passes JSON as command-line argument, event is always "stop"
+        raw_input = args.event_type or ""
+        try:
+            data: dict[str, object] = json.loads(raw_input) if raw_input.strip() else {}  # noqa: loose-dict - Agent hook data
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON from Codex notify argument")
+            data = {}
+        event_type = "stop"
+    else:
+        # Claude/Gemini pass event_type as arg, JSON on stdin
+        event_type = cast(str, args.event_type)
+        raw_input, data = _read_stdin()
+
     log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
     _log_raw_input(raw_input, log_raw=log_raw)
 
@@ -125,8 +142,6 @@ def main() -> None:
     if not teleclaude_session_id:
         logger.debug("Hook receiver skipped: missing session id")
         sys.exit(0)
-
-    event_type = cast(str, args.event_type)
 
     # Early exit for unhandled events - don't spawn mcp-wrapper
     if event_type not in _HANDLED_EVENTS:
