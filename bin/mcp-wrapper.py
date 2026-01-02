@@ -34,7 +34,7 @@ REQUEST_TIMEOUT = 15.0
 RESPONSE_TIMEOUT = REQUEST_TIMEOUT
 INIT_TIMEOUT = 5.0
 LONG_RUNNING_TOOL_TIMEOUTS = {
-    "teleclaude__run_agent_command": 30.0,
+    "teleclaude__run_agent_command": 60.0,
     "teleclaude__start_session": 30.0,
 }
 STDIN_CONNECT_TIMEOUT = float(os.getenv("MCP_WRAPPER_STDIN_CONNECT_TIMEOUT", "5"))

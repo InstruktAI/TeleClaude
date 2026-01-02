@@ -308,4 +308,4 @@ async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.Monke
 
     started_at = proxy._pending_started[42]
     deadline = proxy._pending_requests[42]
-    assert deadline - started_at >= 29.0
+    assert deadline - started_at >= 59.0
