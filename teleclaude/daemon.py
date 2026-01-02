@@ -1207,9 +1207,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
         logger.info("Poller watch task started")
 
-        # Start session watcher
-        await self.codex_watcher.start()
-        logger.info("Session watcher started")
+        # CodexWatcher disabled - using native Codex notify hook instead (2026-01)
+        # Keeping code for fallback. Remove after notify hook proven stable.
+        # await self.codex_watcher.start()
+        # logger.info("Session watcher started")
 
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
 
