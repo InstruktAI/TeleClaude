@@ -309,3 +309,32 @@ async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.Monke
     started_at = proxy._pending_started[42]
     deadline = proxy._pending_requests[42]
     assert deadline - started_at >= 59.0
+
+
+@pytest.mark.asyncio
+async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    dummy_stdout = _DummyStdout()
+    monkeypatch.setattr(sys, "stdout", dummy_stdout)
+
+    wrapper.TOOL_LIST_CACHE = [
+        {
+            "name": "teleclaude__noop",
+            "description": "",
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+    ]
+
+    reader = asyncio.StreamReader()
+    request = {"jsonrpc": "2.0", "id": 9, "method": "tools/list"}
+    reader.feed_data((json.dumps(request) + "\n").encode("utf-8"))
+    reader.feed_eof()
+
+    await proxy.stdin_to_socket(reader)
+
+    output = dummy_stdout.buffer.getvalue().decode("utf-8").strip()
+    response = json.loads(output)
+    assert response["id"] == 9
+    assert response["result"]["tools"] == wrapper.TOOL_LIST_CACHE

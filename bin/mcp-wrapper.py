@@ -52,6 +52,17 @@ _ERR_BACKEND_UNAVAILABLE = -32000
 _STARTUP_COMPLETE = threading.Event()
 
 
+class ToolInputSchema(TypedDict):
+    type: str
+    properties: dict[str, object]  # type: boundary - JSON schema is dynamic
+
+
+class ToolSpec(TypedDict):
+    name: str
+    description: str
+    inputSchema: ToolInputSchema
+
+
 class _QueueItem(TypedDict):
     raw: bytes
     request_id: object | None
@@ -142,6 +153,20 @@ def _get_mcp_server_path() -> Path:
 _TOOL_CACHE_MTIME: float | None = None
 TOOL_NAMES: list[str] = []
 RESPONSE_TEMPLATE: str = ""
+TOOL_LIST_FALLBACK: list[ToolSpec] = []
+TOOL_LIST_CACHE: list[ToolSpec] | None = None
+
+
+def _build_tools_list_fallback(tool_names: list[str]) -> list[ToolSpec]:
+    """Build a minimal tools/list payload when full schemas are unavailable."""
+    return [
+        {
+            "name": name,
+            "description": "",
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+        for name in tool_names
+    ]
 
 
 def refresh_tool_cache_if_needed(force: bool = False) -> None:
@@ -151,7 +176,7 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
     handshake while the backend is restarting, the tool list must match the
     current server code (not whatever was present when the wrapper first started).
     """
-    global _TOOL_CACHE_MTIME, TOOL_NAMES, RESPONSE_TEMPLATE  # pylint: disable=global-statement
+    global _TOOL_CACHE_MTIME, TOOL_NAMES, RESPONSE_TEMPLATE, TOOL_LIST_FALLBACK  # pylint: disable=global-statement
 
     try:
         mcp_server_path = _get_mcp_server_path()
@@ -164,6 +189,7 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
 
     TOOL_NAMES = extract_tools_from_mcp_server()
     RESPONSE_TEMPLATE = build_response_template(TOOL_NAMES)
+    TOOL_LIST_FALLBACK = _build_tools_list_fallback(TOOL_NAMES)
     _TOOL_CACHE_MTIME = mtime
     logger.info("Tool cache refreshed (count=%d)", len(TOOL_NAMES))
 
@@ -194,6 +220,15 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
 
     params["arguments"] = arguments
     return params
+
+
+def _jsonrpc_tools_list_response(request_id: object, tools_list: list[ToolSpec]) -> bytes:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {"tools": tools_list},
+    }
+    return (json.dumps(payload) + "\n").encode("utf-8")
 
 
 def process_message(
@@ -407,6 +442,15 @@ class MCPProxy:
             # Never write to stderr; best-effort only.
             pass
 
+    async def _send_tools_list_cached(self, request_id: object) -> None:
+        """Send cached tools/list response without touching the backend."""
+        tools_list = TOOL_LIST_CACHE or TOOL_LIST_FALLBACK
+        try:
+            sys.stdout.buffer.write(_jsonrpc_tools_list_response(request_id, tools_list))
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
+
     async def _fail_request(self, request_id: object, message: str) -> None:
         """Mark a request failed and send an error response."""
         now = asyncio.get_running_loop().time()
@@ -460,6 +504,11 @@ class MCPProxy:
                     break
 
                 request_id, method, tool_name = _extract_request_meta(line)
+
+                if method == "tools/list" and request_id is not None:
+                    refresh_tool_cache_if_needed()
+                    await self._send_tools_list_cached(request_id)
+                    continue
                 response_timeout = _get_response_timeout(method, tool_name)
 
                 # Process message (inject context)
@@ -625,6 +674,7 @@ class MCPProxy:
     async def socket_to_stdout(self):
         """Forward backend socket to stdout, filtering internal tools from responses."""
         try:
+            global TOOL_LIST_CACHE  # pylint: disable=global-statement
             while not self.shutdown.is_set():
                 try:
                     await asyncio.wait_for(self.connected.wait(), timeout=0.5)
@@ -660,6 +710,13 @@ class MCPProxy:
 
                     if isinstance(msg, dict):
                         response_id = msg.get("id")
+                        if (
+                            "result" in msg
+                            and isinstance(msg.get("result"), dict)
+                            and isinstance(msg["result"].get("tools"), list)
+                        ):
+                            # Cache tools/list response for startup fallbacks.
+                            TOOL_LIST_CACHE = msg["result"]["tools"]
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
                             started_at = self._pending_started.pop(response_id, None)
