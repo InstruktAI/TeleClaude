@@ -107,6 +107,7 @@ TelegramApp = Application[  # type: ignore[misc]
 ]
 
 logger = get_logger(__name__)
+TOPIC_READY_TIMEOUT_S = 5.0
 
 
 @dataclass
@@ -170,6 +171,8 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         self._mcp_message_queues: dict[int, asyncio.Queue[object]] = {}  #  Event-driven MCP delivery: topic_id -> queue
         self._pending_edits: dict[str, EditContext] = {}  # Track pending edits (message_id -> mutable context)
         self._topic_creation_locks: dict[str, asyncio.Lock] = {}  # Prevent duplicate topic creation per session_id
+        self._topic_ready_events: dict[int, asyncio.Event] = {}  # topic_id -> readiness event
+        self._topic_ready_cache: set[int] = set()  # topic_ids confirmed via forum_topic_created
 
         # Peer discovery state (heartbeat advertisement only)
         self.registry_message_id: Optional[int] = None  # Message ID for [REGISTRY] heartbeat message
@@ -342,11 +345,13 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         )
         self.app.add_handler(file_handler)  # type: ignore[arg-type]
 
-        # Handle forum topic closed events
+        # Handle forum topic created/closed/reopened events
+        created_handler: object = MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CREATED, self._handle_topic_created)
         closed_handler: object = MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self._handle_topic_closed)
         reopened_handler: object = MessageHandler(
             filters.StatusUpdate.FORUM_TOPIC_REOPENED, self._handle_topic_reopened
         )
+        self.app.add_handler(created_handler)  # type: ignore[arg-type]
         self.app.add_handler(closed_handler)  # type: ignore[arg-type]
         self.app.add_handler(reopened_handler)  # type: ignore[arg-type]
 
@@ -740,7 +745,30 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             topic_id = topic.message_thread_id
             logger.info("Created topic: %s (ID: %s)", title, topic_id)
 
+            # Wait for forum_topic_created event before returning
+            await self._wait_for_topic_ready(topic_id, title)
+
             return str(topic_id)
+
+    async def _wait_for_topic_ready(self, topic_id: int, title: str) -> None:
+        """Wait for forum_topic_created event for a topic."""
+        if topic_id in self._topic_ready_cache:
+            return
+
+        event = self._topic_ready_events.get(topic_id)
+        if not event:
+            event = asyncio.Event()
+            self._topic_ready_events[topic_id] = event
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=TOPIC_READY_TIMEOUT_S)
+        except asyncio.TimeoutError as exc:
+            self._topic_ready_events.pop(topic_id, None)
+            raise AdapterError(
+                f"Topic {title} (ID: {topic_id}) did not emit forum_topic_created within {TOPIC_READY_TIMEOUT_S:.1f}s"
+            ) from exc
+
+        self._topic_ready_cache.add(topic_id)
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _create_forum_topic_with_retry(self, title: str) -> ForumTopic:
@@ -2203,6 +2231,22 @@ Usage:
             )
             if message_id:
                 await db.add_pending_deletion(session.session_id, message_id)
+
+    async def _handle_topic_created(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle forum topic created event (readiness signal)."""
+        if not update.message or not update.message.message_thread_id:
+            return
+
+        topic_id = update.message.message_thread_id
+        event = self._topic_ready_events.pop(topic_id, None)
+        if event:
+            event.set()
+        self._topic_ready_cache.add(topic_id)
+
+        topic_name = ""
+        if update.message.forum_topic_created:
+            topic_name = update.message.forum_topic_created.name
+        logger.info("Topic created event received: %s (ID: %s)", topic_name, topic_id)
 
     async def _handle_topic_closed(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle forum topic closed event."""

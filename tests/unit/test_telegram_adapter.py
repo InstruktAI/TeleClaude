@@ -154,12 +154,16 @@ class TestChannelManagement:
         )
 
         # Mock db.get_session to return session without topic_id (first creation)
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+        with (
+            patch("teleclaude.adapters.telegram_adapter.db") as mock_db,
+            patch.object(telegram_adapter, "_wait_for_topic_ready", new_callable=AsyncMock) as mock_wait,
+        ):
             mock_db.get_session = AsyncMock(return_value=mock_session)
             result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
 
         assert result == "123"
         telegram_adapter.app.bot.create_forum_topic.assert_called_once()
+        mock_wait.assert_awaited_once_with(123, "Test Topic")
 
     @pytest.mark.asyncio
     async def test_create_channel_deduplication_returns_existing_topic(self, telegram_adapter):
