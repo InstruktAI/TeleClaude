@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
 
-VOICES_CONFIG_PATH = Path.home() / ".claude" / "config" / "voices.json"
+VOICES_CONFIG_PATH = Path.home() / ".claude" / "voices.json"
 
 
 @dataclass

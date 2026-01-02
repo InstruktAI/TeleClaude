@@ -632,12 +632,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         timeout_s: float,
     ) -> tuple[bool, str]:
         deadline = time.monotonic() + timeout_s
+        last_tail = ""
         while time.monotonic() < deadline:
             current_tail, current_digest = await self._pane_output_snapshot(session_name)
+            last_tail = current_tail
             if current_digest != before_digest:
                 return True, current_tail
             await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
-        return False, ""
+        return False, last_tail
 
     async def _confirm_command_acceptance(self, session_name: str) -> bool:
         attempts = max(1, AGENT_START_CONFIRM_ENTER_ATTEMPTS)
@@ -655,11 +657,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
             if changed:
                 summary = self._summarize_output_change(before_tail, after_tail)
-                logger.debug(
+                logger.info(
                     "agent_then_message acceptance output change: %s",
                     summary,
                 )
                 return True
+            logger.info(
+                "agent_then_message no output change after enter attempt %d: tail=%s",
+                attempt + 1,
+                repr(after_tail[-160:]) if after_tail else "''",
+            )
 
             if attempt < attempts - 1:
                 await asyncio.sleep(AGENT_START_CONFIRM_ENTER_DELAY_S)

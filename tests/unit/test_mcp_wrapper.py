@@ -287,3 +287,25 @@ async def test_socket_sender_exits_on_shutdown(monkeypatch: pytest.MonkeyPatch) 
     )
 
     await proxy._socket_sender()
+
+
+@pytest.mark.asyncio
+async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    reader = asyncio.StreamReader()
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 42,
+        "method": "tools/call",
+        "params": {"name": "teleclaude__run_agent_command", "arguments": {}},
+    }
+    reader.feed_data((json.dumps(msg) + "\n").encode("utf-8"))
+    reader.feed_eof()
+
+    await proxy.stdin_to_socket(reader)
+
+    started_at = proxy._pending_started[42]
+    deadline = proxy._pending_requests[42]
+    assert deadline - started_at >= 29.0

@@ -33,6 +33,10 @@ CONNECTION_TIMEOUT = 10
 REQUEST_TIMEOUT = 15.0
 RESPONSE_TIMEOUT = REQUEST_TIMEOUT
 INIT_TIMEOUT = 5.0
+LONG_RUNNING_TOOL_TIMEOUTS = {
+    "teleclaude__run_agent_command": 30.0,
+    "teleclaude__start_session": 30.0,
+}
 STDIN_CONNECT_TIMEOUT = float(os.getenv("MCP_WRAPPER_STDIN_CONNECT_TIMEOUT", "5"))
 STARTUP_TIMEOUT = float(os.getenv("MCP_WRAPPER_STARTUP_TIMEOUT", "20"))
 RESPONSE_CHECK_INTERVAL = float(os.getenv("MCP_WRAPPER_RESPONSE_CHECK_INTERVAL", "0.5"))
@@ -68,15 +72,27 @@ def _jsonrpc_error_response(request_id: object, message: str) -> bytes:
     return (json.dumps(payload) + "\n").encode("utf-8")
 
 
-def _extract_request_id_and_method(raw_line: bytes) -> tuple[object | None, str | None]:
+def _extract_request_meta(raw_line: bytes) -> tuple[object | None, str | None, str | None]:
     """Best-effort parse of JSON-RPC request metadata (never raises)."""
     try:
         msg = json.loads(raw_line.decode("utf-8"))
     except Exception:
-        return None, None
+        return None, None, None
     if not isinstance(msg, dict):
-        return None, None
-    return msg.get("id"), msg.get("method")
+        return None, None, None
+    method = msg.get("method")
+    tool_name: str | None = None
+    if method == "tools/call":
+        params = msg.get("params")
+        if isinstance(params, dict):
+            tool_name = params.get("name") if isinstance(params.get("name"), str) else None
+    return msg.get("id"), method, tool_name
+
+
+def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
+    if method == "tools/call" and tool_name:
+        return LONG_RUNNING_TOOL_TIMEOUTS.get(tool_name, RESPONSE_TIMEOUT)
+    return RESPONSE_TIMEOUT
 
 
 def extract_tools_from_mcp_server() -> list[str]:
@@ -443,7 +459,8 @@ class MCPProxy:
                     self.shutdown.set()
                     break
 
-                request_id, method = _extract_request_id_and_method(line)
+                request_id, method, tool_name = _extract_request_meta(line)
+                response_timeout = _get_response_timeout(method, tool_name)
 
                 # Process message (inject context)
                 try:
@@ -469,12 +486,14 @@ class MCPProxy:
                     "attempts": 0,
                 }
                 if request_id is not None:
-                    self._pending_requests[request_id] = asyncio.get_running_loop().time() + RESPONSE_TIMEOUT
+                    self._pending_requests[request_id] = asyncio.get_running_loop().time() + response_timeout
                     self._pending_started[request_id] = asyncio.get_running_loop().time()
                     logger.debug(
                         "Wrapper request queued",
                         request_id=request_id,
                         method=method,
+                        tool_name=tool_name,
+                        response_timeout=response_timeout,
                         queue_size=self._outbound.qsize(),
                         pending=len(self._pending_requests),
                     )
