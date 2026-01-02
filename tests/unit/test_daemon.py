@@ -135,22 +135,32 @@ async def test_new_session_auto_command_agent_then_message():
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
-    daemon.handle_message = AsyncMock()
+    daemon._poll_and_send_output = AsyncMock()
 
     with (
         patch("teleclaude.daemon.command_handlers.handle_create_session", new_callable=AsyncMock) as mock_create,
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock) as mock_start,
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_bridge.send_keys", new_callable=AsyncMock) as mock_send_keys,
+        patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
         patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock) as mock_send_enter,
         patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 2),
+        patch("teleclaude.daemon.AGENT_START_ENTER_INTER_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_OUTPUT_POLL_INTERVAL_S", 0.0),
     ):
         mock_create.return_value = {"session_id": "sess-123"}
-        mock_db.get_session = AsyncMock(return_value=MagicMock(tmux_session_name="tc_123"))
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
+        )
+        mock_db.get_ux_state = AsyncMock(return_value=MagicMock(active_agent="codex"))
+        mock_db.update_last_activity = AsyncMock()
         mock_running.side_effect = [False, True]
+        mock_send_keys.return_value = True
+        mock_capture.side_effect = ["baseline", "changed"]
 
         context = CommandEventContext(session_id="sess-ctx", args=[])
         metadata = MessageMetadata(
@@ -168,7 +178,6 @@ async def test_new_session_auto_command_agent_then_message():
         assert result["session_id"] == "sess-123"
         assert result["auto_command_status"] == "success"
         mock_start.assert_awaited_once()
-        daemon.handle_message.assert_awaited_once()
         assert mock_send_enter.await_count == 2
 
 
@@ -178,19 +187,31 @@ async def test_agent_then_message_waits_settle_delay():
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
-    daemon.handle_message = AsyncMock()
+    daemon._poll_and_send_output = AsyncMock()
 
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_bridge.send_keys", new_callable=AsyncMock) as mock_send_keys,
+        patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
+        patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock),
         patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 2.5),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 0),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 1),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_ENTER_INTER_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_OUTPUT_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
-        mock_db.get_session = AsyncMock(return_value=MagicMock(tmux_session_name="tc_123"))
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
+        )
+        mock_db.get_ux_state = AsyncMock(return_value=MagicMock(active_agent="gemini"))
+        mock_db.update_last_activity = AsyncMock()
         mock_running.return_value = True
+        mock_send_keys.return_value = True
+        mock_capture.side_effect = ["baseline", "changed"]
 
         result = await daemon._handle_agent_then_message(
             "sess-123",
@@ -198,7 +219,48 @@ async def test_agent_then_message_waits_settle_delay():
         )
 
         assert result["status"] == "success"
-        mock_sleep.assert_awaited_once_with(2.5)
+        mock_sleep.assert_any_await(2.5)
+
+
+@pytest.mark.asyncio
+async def test_agent_then_message_times_out_on_no_output_change():
+    """agent_then_message should fail if output never changes after enter."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon._poll_and_send_output = AsyncMock()
+
+    with (
+        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_bridge.send_keys", new_callable=AsyncMock) as mock_send_keys,
+        patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
+        patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock),
+        patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 1),
+        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_ENTER_INTER_DELAY_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_OUTPUT_POLL_INTERVAL_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_OUTPUT_CHANGE_TIMEOUT_S", 0.0),
+    ):
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
+        )
+        mock_db.get_ux_state = AsyncMock(return_value=MagicMock(active_agent="claude"))
+        mock_db.update_last_activity = AsyncMock()
+        mock_running.return_value = True
+        mock_send_keys.return_value = True
+        mock_capture.return_value = "baseline"
+
+        result = await daemon._handle_agent_then_message(
+            "sess-123",
+            ["claude", "slow", "/next-work"],
+        )
+
+        assert result["status"] == "error"
+        assert "Timeout waiting for command acceptance" in result["message"]
 
 
 @pytest.mark.asyncio

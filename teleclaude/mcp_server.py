@@ -2467,8 +2467,10 @@ class TeleClaudeMCPServer:
             return "ERROR: NO_CWD\nWorking directory not provided. This should be auto-injected by MCP wrapper."
         if phase not in ("build", "review"):
             return f"ERROR: Invalid phase '{phase}'. Must be 'build' or 'review'."
-        if status not in ("complete", "approved", "changes_requested"):
-            return f"ERROR: Invalid status '{status}'. Must be 'complete', 'approved', or 'changes_requested'."
+        if status not in ("pending", "complete", "approved", "changes_requested"):
+            return (
+                f"ERROR: Invalid status '{status}'. Must be 'pending', 'complete', 'approved', or 'changes_requested'."
+            )
 
         # Construct worktree path from project root
         worktree_cwd = str(Path(cwd) / "trees" / slug)

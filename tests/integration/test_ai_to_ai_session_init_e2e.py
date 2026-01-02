@@ -98,9 +98,9 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
     session = sessions[0]
     assert session.origin_adapter == "redis"
-    # Title format: $initiator > $computer[project] - custom title
+    # Title format: {project}: $initiator > $computer - custom title
     # (Agent info not yet known at session creation - will be updated when agent starts)
-    assert session.title.startswith(f"${initiator_computer} > ${session.computer_name}[apps/TeleClaude] -")
+    assert session.title.startswith(f"TeleClaude: ${initiator_computer} > ${session.computer_name} -")
     assert "Test AI-to-AI Session" in session.title
     # Description is optional, just verify session was created
 

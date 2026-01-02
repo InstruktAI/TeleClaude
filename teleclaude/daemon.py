@@ -4,6 +4,7 @@ import asyncio
 import atexit
 import base64
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -91,6 +92,11 @@ AGENT_START_POLL_INTERVAL_S = 0.5
 AGENT_START_SETTLE_DELAY_S = 1.0
 AGENT_START_CONFIRM_ENTER_DELAY_S = 1.0
 AGENT_START_CONFIRM_ENTER_ATTEMPTS = 4
+AGENT_START_OUTPUT_CAPTURE_LINES = 200
+AGENT_START_OUTPUT_TAIL_CHARS = 4000
+AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
+AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
+AGENT_START_ENTER_INTER_DELAY_S = 0.2
 
 logger = get_logger(__name__)
 
@@ -525,14 +531,41 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if is_running:
                 await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
                 logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
-                await self.handle_message(
-                    session_id,
+
+                cols, rows = 80, 24
+                if session.terminal_size and "x" in session.terminal_size:
+                    try:
+                        cols, rows = map(int, session.terminal_size.split("x"))
+                    except ValueError:
+                        pass
+
+                ux_state = await db.get_ux_state(session_id)
+                active_agent = ux_state.active_agent if ux_state else None
+
+                pasted = await terminal_bridge.send_keys(
+                    session.tmux_session_name,
                     message,
-                    MessageEventContext(session_id=session_id, text=message),
+                    session_id=session.session_id,
+                    working_dir=session.working_directory,
+                    cols=cols,
+                    rows=rows,
+                    send_enter=False,
+                    active_agent=active_agent,
                 )
-                for _ in range(AGENT_START_CONFIRM_ENTER_ATTEMPTS):
-                    await asyncio.sleep(AGENT_START_CONFIRM_ENTER_DELAY_S)
-                    await terminal_bridge.send_enter(session.tmux_session_name)
+                if not pasted:
+                    return {"status": "error", "message": "Failed to paste command into tmux"}
+
+                await db.update_last_activity(session_id)
+                await self._poll_and_send_output(session_id, session.tmux_session_name)
+
+                accepted = await self._confirm_command_acceptance(session.tmux_session_name)
+                if not accepted:
+                    logger.warning(
+                        "agent_then_message timed out waiting for output change (session=%s)",
+                        session_id[:8],
+                    )
+                    return {"status": "error", "message": "Timeout waiting for command acceptance"}
+
                 return {"status": "success", "message": "Message injected after agent start"}
             await asyncio.sleep(AGENT_START_POLL_INTERVAL_S)
 
@@ -541,6 +574,42 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session_id[:8],
         )
         return {"status": "error", "message": "Timeout waiting for agent to start"}
+
+    async def _pane_output_fingerprint(self, session_name: str) -> str:
+        output = await terminal_bridge.capture_pane(session_name, lines=AGENT_START_OUTPUT_CAPTURE_LINES)
+        if not output:
+            return ""
+        tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
+        return hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
+
+    async def _wait_for_output_change(self, session_name: str, before: str, timeout_s: float) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            current = await self._pane_output_fingerprint(session_name)
+            if current != before:
+                return True
+            await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
+        return False
+
+    async def _confirm_command_acceptance(self, session_name: str) -> bool:
+        attempts = max(1, AGENT_START_CONFIRM_ENTER_ATTEMPTS)
+        for attempt in range(attempts):
+            before = await self._pane_output_fingerprint(session_name)
+            await terminal_bridge.send_enter(session_name)
+            await asyncio.sleep(AGENT_START_ENTER_INTER_DELAY_S)
+            await terminal_bridge.send_enter(session_name)
+
+            changed = await self._wait_for_output_change(
+                session_name,
+                before,
+                AGENT_START_OUTPUT_CHANGE_TIMEOUT_S,
+            )
+            if changed:
+                return True
+
+            if attempt < attempts - 1:
+                await asyncio.sleep(AGENT_START_CONFIRM_ENTER_DELAY_S)
+        return False
 
     async def _handle_error(self, _event: str, context: EventContext) -> None:
         """Handle error events (fail-fast contract violations, hook issues)."""
