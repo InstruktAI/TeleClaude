@@ -50,3 +50,17 @@
 Priority fixes needed:
 1. Remove the unused `Db` import in `tests/unit/test_mcp_set_dependencies.py`.
 2. Add/relocate integration tests into `tests/integration/` to satisfy the required coverage.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Unused `Db` import in test_mcp_set_dependencies.py:16 | Removed unused import | 9706b8b |
+| Missing integration test coverage | Created tests/integration/test_state_machine_workflow.py with 3 comprehensive integration tests covering workflow, dependency blocking, and archived dependencies | 0bd995d |
+
+**Test Results:**
+- All 15 tests passing (unit + integration)
+- All lint checks passing (ruff, pyright, mypy)
+- Pre-commit hooks passing
