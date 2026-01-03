@@ -26,7 +26,14 @@ from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs, ThinkingMode
-from teleclaude.core.next_machine import mark_phase, next_prepare, next_work
+from teleclaude.core.next_machine import (
+    detect_circular_dependency,
+    mark_phase,
+    next_prepare,
+    next_work,
+    read_dependencies,
+    write_dependencies,
+)
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 from teleclaude.types import SystemStats
 
@@ -2531,13 +2538,6 @@ class TeleClaudeMCPServer:
         if not cwd:
             return "ERROR: NO_CWD\nWorking directory not provided."
 
-        # Import here to avoid circular import
-        from teleclaude.core.next_machine import (
-            detect_circular_dependency,
-            read_dependencies,
-            write_dependencies,
-        )
-
         # Validate slug format
         slug_pattern = re.compile(r"^[a-z0-9-]+$")
         if not slug_pattern.match(slug):
@@ -2558,13 +2558,17 @@ class TeleClaudeMCPServer:
 
         content = roadmap_path.read_text(encoding="utf-8")
 
+        # Parse all slugs from roadmap using exact pattern matching
+        roadmap_slug_pattern = re.compile(r"^-\s+\[[. >x]\]\s+([a-z0-9-]+)", re.MULTILINE)
+        roadmap_slugs = set(roadmap_slug_pattern.findall(content))
+
         # Check slug exists in roadmap
-        if slug not in content:
+        if slug not in roadmap_slugs:
             return f"ERROR: SLUG_NOT_FOUND\nSlug '{slug}' not found in roadmap.md."
 
         # Check all dependencies exist in roadmap
         for dep in after:
-            if dep not in content:
+            if dep not in roadmap_slugs:
                 return f"ERROR: DEP_NOT_FOUND\nDependency '{dep}' not found in roadmap.md."
 
         # Read current dependencies

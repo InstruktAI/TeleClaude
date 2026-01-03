@@ -862,15 +862,23 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     resolved_slug: str
     if slug:
-        # Explicit slug provided - use it directly
+        # Explicit slug provided - validate dependencies first
+        if not check_dependencies_satisfied(cwd, slug, deps):
+            return format_error(
+                "DEPS_UNSATISFIED",
+                f"Item '{slug}' has unsatisfied dependencies.",
+                next_call="Complete dependency items first, or check todos/dependencies.json.",
+            )
         resolved_slug = slug
     else:
         # Find first [.] item with satisfied dependencies
         found_slug: str | None = None
         roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+        # Pattern for ready items
+        pattern = re.compile(r"^-\s+\[\.]\s+([a-z0-9-]+)", re.MULTILINE)
+
         if roadmap_path.exists():
             content = roadmap_path.read_text(encoding="utf-8")
-            pattern = re.compile(r"^-\s+\[\.]\s+([a-z0-9-]+)", re.MULTILINE)
 
             for match in pattern.finditer(content):
                 candidate_slug = match.group(1)
@@ -880,14 +888,18 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
         if not found_slug:
             # Check if there are [.] items but with unsatisfied deps
+            has_ready_items = False
             if roadmap_path.exists():
                 content = roadmap_path.read_text(encoding="utf-8")
-                if "[.]" in content:
-                    return format_error(
-                        "DEPS_UNSATISFIED",
-                        "Ready items exist but all have unsatisfied dependencies.",
-                        next_call="Complete dependency items first, or check todos/dependencies.json.",
-                    )
+                # Use regex to detect actual ready items (not legend/description)
+                has_ready_items = bool(pattern.search(content))
+
+            if has_ready_items:
+                return format_error(
+                    "DEPS_UNSATISFIED",
+                    "Ready items exist but all have unsatisfied dependencies.",
+                    next_call="Complete dependency items first, or check todos/dependencies.json.",
+                )
             return format_error(
                 "NO_READY_ITEMS",
                 "No [.] (ready) items found in roadmap.",
