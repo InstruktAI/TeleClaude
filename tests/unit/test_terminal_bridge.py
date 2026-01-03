@@ -57,6 +57,7 @@ class TestSendKeys:
             with (
                 patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
                 patch.object(terminal_bridge, "create_tmux_session", new=AsyncMock(return_value=True)) as mock_create,
+                patch("asyncio.sleep", new=AsyncMock()),
             ):
                 success = await terminal_bridge.send_keys(
                     session_name="test-session",
@@ -78,7 +79,10 @@ class TestSendKeys:
             mock_process.communicate = AsyncMock(return_value=(b"", b""))
             mock_exec.return_value = mock_process
 
-            with patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)):
+            with (
+                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch("asyncio.sleep", new=AsyncMock()),
+            ):
                 success = await terminal_bridge.send_keys(
                     session_name="test-session",
                     text="Hello! World!",
@@ -103,7 +107,10 @@ class TestSendKeys:
             mock_process.communicate = AsyncMock(return_value=(b"", b""))
             mock_exec.return_value = mock_process
 
-            with patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)):
+            with (
+                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch("asyncio.sleep", new=AsyncMock()),
+            ):
                 success = await terminal_bridge.send_keys(
                     session_name="test-session",
                     text="Hello! World!",
