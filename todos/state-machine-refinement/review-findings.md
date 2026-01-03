@@ -47,3 +47,13 @@
 
 Priority fixes needed:
 1. Prevent `next_prepare()` from downgrading `[>]` items to `[.]`.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| `next_prepare()` unconditionally downgrades `[>]` items to `[.]` | Added `get_roadmap_state()` helper and modified `next_prepare()` to only transition `[ ] -> [.]`, preserving `[.]`, `[>]`, and `[x]` states | 695b742 |
+
+**Tests**: All unit tests (37 passed) and integration tests (3 passed) passing.
