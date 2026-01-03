@@ -1,8 +1,15 @@
 # Roadmap
 
-> **Last Updated**: 2025-12-31
-> **Status Legend**: `[ ]` = Todo | `[>]` = In Progress
+> **Last Updated**: 2026-01-03
+> **Status Legend**: `[ ]` = Pending | `[.]` = Ready | `[>]` = In Progress
 > (DONE work is tracked in [delivered.md](./delivered.md))
+
+---
+
+## State Machine
+
+- [.] state-machine-refinement
+Refine the next_work state machine: remove bug check, add [.] ready state, implement dependency tracking via todos/dependencies.json, make state machine own checkbox transitions.
 
 ---
 
