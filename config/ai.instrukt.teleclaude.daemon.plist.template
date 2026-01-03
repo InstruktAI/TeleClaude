@@ -15,7 +15,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>{{PATH}}</string>
+        <string>.venv/bin:{{PATH}}</string>
     </dict>
     <key>SoftResourceLimits</key>
     <dict>
