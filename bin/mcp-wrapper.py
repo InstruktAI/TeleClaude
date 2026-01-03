@@ -48,6 +48,9 @@ OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
 CONNECT_LOCK_PATH = os.getenv("MCP_WRAPPER_CONNECT_LOCK", "/tmp/teleclaude-mcp-wrapper.lock")
 CONNECT_LOCK_TIMEOUT = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_TIMEOUT", "2.0"))
 CONNECT_LOCK_RETRY_S = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_RETRY", "0.05"))
+CONNECT_LOCK_SLOTS = int(os.getenv("MCP_WRAPPER_CONNECT_LOCK_SLOTS", "3"))
+CONNECT_LOCK_FAILS = int(os.getenv("MCP_WRAPPER_CONNECT_LOCK_FAILS", "3"))
+CONNECT_LOCK_WINDOW_S = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_WINDOW", "10.0"))
 # Keep logs human-friendly by default: no repeated spam while waiting for a restart
 # or when running in a restricted environment that can't connect to the socket.
 LOG_THROTTLE_S = 60.0
@@ -288,26 +291,33 @@ class MCPProxy:
         self._log_last_at: dict[str, float] = {}
         self._log_throttle_s: float = LOG_THROTTLE_S
         self._connect_hard_error_seen = False
+        self._connect_failures = 0
+        self._connect_failure_window_start = 0.0
+        self._connect_lock_enabled = False
 
     async def _acquire_connect_lock(self) -> int | None:
-        """Acquire a cross-process connect lock to prevent connection storms."""
+        """Acquire a cross-process connect slot to cap connect storms."""
         start = time.monotonic()
+        slot_count = max(1, CONNECT_LOCK_SLOTS)
+        lock_paths = [CONNECT_LOCK_PATH] if slot_count == 1 else [f"{CONNECT_LOCK_PATH}.{i}" for i in range(slot_count)]
         while not self.shutdown.is_set():
-            fd: int | None = None
-            try:
-                fd = os.open(CONNECT_LOCK_PATH, os.O_CREAT | os.O_RDWR)
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return fd
-            except BlockingIOError:
-                if fd is not None:
-                    os.close(fd)
-                if time.monotonic() - start >= CONNECT_LOCK_TIMEOUT:
+            for lock_path in lock_paths:
+                fd: int | None = None
+                try:
+                    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR)
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    return fd
+                except BlockingIOError:
+                    if fd is not None:
+                        os.close(fd)
+                    continue
+                except Exception:
+                    if fd is not None:
+                        os.close(fd)
                     return None
-                await asyncio.sleep(CONNECT_LOCK_RETRY_S)
-            except Exception:
-                if fd is not None:
-                    os.close(fd)
+            if time.monotonic() - start >= CONNECT_LOCK_TIMEOUT:
                 return None
+            await asyncio.sleep(CONNECT_LOCK_RETRY_S)
         return None
 
     @staticmethod
@@ -322,6 +332,48 @@ class MCPProxy:
             os.close(fd)
         except Exception:
             pass
+
+    def _note_connect_failure(self) -> None:
+        now = time.monotonic()
+        if (
+            self._connect_failure_window_start == 0.0
+            or (now - self._connect_failure_window_start) > CONNECT_LOCK_WINDOW_S
+        ):
+            self._connect_failure_window_start = now
+            self._connect_failures = 1
+        else:
+            self._connect_failures += 1
+
+        if not self._connect_lock_enabled and self._connect_failures >= CONNECT_LOCK_FAILS:
+            self._connect_lock_enabled = True
+            self._log_throttled(
+                "connect:guard:enabled",
+                logging.WARNING,
+                "Connect guard enabled after %d failures in %.1fs (slots=%d)",
+                self._connect_failures,
+                CONNECT_LOCK_WINDOW_S,
+                max(1, CONNECT_LOCK_SLOTS),
+            )
+
+    def _reset_connect_guard(self) -> None:
+        if self._connect_failures or self._connect_lock_enabled:
+            self._connect_failures = 0
+            self._connect_failure_window_start = 0.0
+            self._connect_lock_enabled = False
+            self._log_throttled(
+                "connect:guard:disabled",
+                logging.INFO,
+                "Connect guard disabled",
+            )
+
+    def _should_use_connect_lock(self) -> bool:
+        if not self._connect_lock_enabled:
+            return False
+        now = time.monotonic()
+        if (now - self._connect_failure_window_start) > CONNECT_LOCK_WINDOW_S:
+            self._reset_connect_guard()
+            return False
+        return True
 
     def _log_throttled(self, key: str, level: int, message: str, *args: object) -> None:
         """Log a message at most once per throttle window for a given key."""
@@ -375,16 +427,18 @@ class MCPProxy:
         while not self.shutdown.is_set():
             try:
                 self._log_throttled("connect:attempt", logging.INFO, "Connecting to %s...", MCP_SOCKET)
-                lock_fd = await self._acquire_connect_lock()
-                if lock_fd is None:
-                    self._log_throttled(
-                        "connect:lock",
-                        logging.WARNING,
-                        "Connect lock busy. Retrying in %ss...",
-                        RECONNECT_DELAY,
-                    )
-                    await asyncio.sleep(RECONNECT_DELAY)
-                    continue
+                lock_fd = None
+                if self._should_use_connect_lock():
+                    lock_fd = await self._acquire_connect_lock()
+                    if lock_fd is None:
+                        self._log_throttled(
+                            "connect:lock",
+                            logging.WARNING,
+                            "Connect guard busy. Retrying in %ss...",
+                            RECONNECT_DELAY,
+                        )
+                        await asyncio.sleep(RECONNECT_DELAY)
+                        continue
                 try:
                     self.reader, self.writer = await asyncio.wait_for(
                         asyncio.open_unix_connection(MCP_SOCKET),
@@ -396,16 +450,20 @@ class MCPProxy:
                 self._backend_generation += 1
                 logger.info("Connected to backend")
                 self._connect_hard_error_seen = False
+                self._reset_connect_guard()
                 return True
             except FileNotFoundError:
+                self._note_connect_failure()
                 self._log_throttled(
                     "connect:missing", logging.WARNING, "Socket not found. Retrying in %ss...", RECONNECT_DELAY
                 )
             except ConnectionRefusedError:
+                self._note_connect_failure()
                 self._log_throttled(
                     "connect:refused", logging.WARNING, "Connection refused. Retrying in %ss...", RECONNECT_DELAY
                 )
             except asyncio.TimeoutError:
+                self._note_connect_failure()
                 self._log_throttled(
                     "connect:timeout", logging.WARNING, "Connection timeout. Retrying in %ss...", RECONNECT_DELAY
                 )
@@ -429,10 +487,12 @@ class MCPProxy:
                         e,
                         int(_EPERM_BACKOFF_S),
                     )
+                self._note_connect_failure()
                 await asyncio.sleep(_EPERM_BACKOFF_S)
                 continue
             except Exception as e:
                 # EPERM can happen in sandboxed contexts; throttle to avoid log spam.
+                self._note_connect_failure()
                 self._log_throttled(
                     "connect:error", logging.ERROR, "Connection error: %s. Retrying in %ss...", e, RECONNECT_DELAY
                 )

@@ -316,6 +316,7 @@ async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
+    monkeypatch.setattr(wrapper, "CONNECT_LOCK_SLOTS", 1)
     monkeypatch.setattr(wrapper, "CONNECT_LOCK_TIMEOUT", 0.0)
     monkeypatch.setattr(wrapper, "CONNECT_LOCK_RETRY_S", 0.0)
 
@@ -342,6 +343,24 @@ async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -
     assert calls["open"] == 1
     assert calls["flock"] == 1
     assert calls["close"] == 1
+
+
+@pytest.mark.asyncio
+async def test_connect_guard_enables_after_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    monkeypatch.setattr(wrapper, "CONNECT_LOCK_FAILS", 2)
+    monkeypatch.setattr(wrapper, "CONNECT_LOCK_WINDOW_S", 10.0)
+
+    proxy._note_connect_failure()
+    assert proxy._should_use_connect_lock() is False
+
+    proxy._note_connect_failure()
+    assert proxy._should_use_connect_lock() is True
+
+    proxy._reset_connect_guard()
+    assert proxy._should_use_connect_lock() is False
 
 
 @pytest.mark.asyncio
