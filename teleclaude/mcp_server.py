@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 
 MCP_SOCKET_BACKLOG = int(os.getenv("MCP_SOCKET_BACKLOG", "256"))
 MCP_SESSION_DATA_MAX_CHARS = int(os.getenv("MCP_SESSION_DATA_MAX_CHARS", "48000"))
-MCP_HANDSHAKE_TIMEOUT_S = float(os.getenv("MCP_HANDSHAKE_TIMEOUT_S", "2.0"))
+MCP_HANDSHAKE_TIMEOUT_S = float(os.getenv("MCP_HANDSHAKE_TIMEOUT_S", "0.0"))
 MCP_CONNECTION_SHUTDOWN_TIMEOUT_S = float(os.getenv("MCP_CONNECTION_SHUTDOWN_TIMEOUT_S", "2.0"))
 
 # Reusable instruction for AI-to-AI session management (appended to tool descriptions)
@@ -1112,20 +1112,22 @@ class TeleClaudeMCPServer:
         if task:
             self._track_connection_task(task)
         try:
-            try:
-                first_line = await asyncio.wait_for(reader.readline(), timeout=MCP_HANDSHAKE_TIMEOUT_S)
-            except asyncio.TimeoutError:
-                logger.debug("MCP client handshake timed out")
-                return
+            first_message: JSONRPCMessage | None = None
+            if MCP_HANDSHAKE_TIMEOUT_S > 0:
+                try:
+                    first_line = await asyncio.wait_for(reader.readline(), timeout=MCP_HANDSHAKE_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    logger.debug("MCP client handshake timed out")
+                    return
 
-            if not first_line:
-                return
+                if not first_line:
+                    return
 
-            try:
-                first_message = JSONRPCMessage.model_validate_json(first_line.decode("utf-8"))
-            except Exception as exc:
-                logger.warning("MCP client sent invalid JSON: %s", exc)
-                return
+                try:
+                    first_message = JSONRPCMessage.model_validate_json(first_line.decode("utf-8"))
+                except Exception as exc:
+                    logger.warning("MCP client sent invalid JSON: %s", exc)
+                    return
 
             # Create FRESH server instance for this connection
             # This ensures clean state (no stale initialization)
@@ -1157,7 +1159,8 @@ class TeleClaudeMCPServer:
                 """Read from socket and parse JSON-RPC messages."""
                 try:
                     async with read_stream_writer:
-                        await read_stream_writer.send(SessionMessage(first_message))
+                        if first_message is not None:
+                            await read_stream_writer.send(SessionMessage(first_message))
                         while True:
                             line = await reader.readline()
                             if not line:

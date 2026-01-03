@@ -286,6 +286,7 @@ class MCPProxy:
         self.shutdown = asyncio.Event()
         self._reconnect_task: asyncio.Task[None] | None = None
         self._reconnect_lock = asyncio.Lock()
+        self._resync_lock = asyncio.Lock()
         self._outbound: asyncio.Queue[_QueueItem] = asyncio.Queue(maxsize=OUTBOUND_QUEUE_MAX)
         self._sender_task: asyncio.Task[None] | None = None
         self._log_last_at: dict[str, float] = {}
@@ -419,6 +420,8 @@ class MCPProxy:
                     await self.reconnect()
                 except Exception as exc:  # pragma: no cover - defensive
                     logger.error("Reconnect task failed: %s", exc)
+                if not self.shutdown.is_set():
+                    await self._startup_resync()
 
         self._reconnect_task = asyncio.create_task(_runner())
 
@@ -520,41 +523,63 @@ class MCPProxy:
         The MCP client does NOT re-send initialize after daemon restart; without
         replaying the handshake, backend tool calls can hang or fail.
         """
-        if timeout_s <= 0:
-            return False
-        if not self._client_initialize_request or self._client_initialize_id is None:
-            logger.warning("Cannot resync backend: missing stored initialize request")
-            return False
-
-        if not self.writer:
-            return False
-
-        self._backend_init_response.clear()
-
-        try:
-            self.writer.write(self._client_initialize_request)
-            await self.writer.drain()
-        except Exception as exc:
-            logger.warning("Failed writing initialize to backend: %s", exc)
-            return False
-
-        try:
-            await asyncio.wait_for(self._backend_init_response.wait(), timeout=timeout_s)
-        except asyncio.TimeoutError:
-            logger.warning("Backend did not respond to initialize within %.1fs", timeout_s)
-            return False
-
-        # Per MCP sequence, send client's notifications/initialized after init response.
-        if self._client_initialized_notification:
-            try:
-                self.writer.write(self._client_initialized_notification)
-                await self.writer.drain()
-            except Exception as exc:
-                logger.warning("Failed writing notifications/initialized to backend: %s", exc)
+        async with self._resync_lock:
+            if not self._needs_backend_resync:
+                return True
+            if timeout_s <= 0:
+                return False
+            if not self._client_initialize_request or self._client_initialize_id is None:
+                logger.warning("Cannot resync backend: missing stored initialize request")
                 return False
 
-        logger.info("Backend handshake resynced successfully")
-        return True
+            if not self.writer:
+                return False
+
+            self._backend_init_response.clear()
+
+            try:
+                self.writer.write(self._client_initialize_request)
+                await self.writer.drain()
+            except Exception as exc:
+                logger.warning("Failed writing initialize to backend: %s", exc)
+                return False
+
+            try:
+                await asyncio.wait_for(self._backend_init_response.wait(), timeout=timeout_s)
+            except asyncio.TimeoutError:
+                logger.warning("Backend did not respond to initialize within %.1fs", timeout_s)
+                return False
+
+            # Per MCP sequence, send client's notifications/initialized after init response.
+            if self._client_initialized_notification:
+                try:
+                    self.writer.write(self._client_initialized_notification)
+                    await self.writer.drain()
+                except Exception as exc:
+                    logger.warning("Failed writing notifications/initialized to backend: %s", exc)
+                    return False
+
+            logger.info("Backend handshake resynced successfully")
+            return True
+
+    async def _startup_resync(self) -> None:
+        """Ensure backend handshake is replayed even if no messages are sent."""
+        if not self._needs_backend_resync:
+            return
+        try:
+            await asyncio.wait_for(self.connected.wait(), timeout=STARTUP_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning("Backend not ready for handshake resync within %.1fs", STARTUP_TIMEOUT)
+            return
+
+        if not self._needs_backend_resync:
+            return
+
+        self._suppress_backend_init_messages = True
+        ok = await self._resync_backend_handshake(STARTUP_TIMEOUT)
+        if ok:
+            self._needs_backend_resync = False
+        self._suppress_backend_init_messages = False
 
     async def _send_error(self, request_id: object, message: str) -> None:
         """Send an error response to the client (never raises)."""
@@ -1006,9 +1031,14 @@ class MCPProxy:
         stdout_task = asyncio.create_task(self.socket_to_stdout())
         self._sender_task = asyncio.create_task(self._socket_sender())
         response_task = asyncio.create_task(self._response_timeout_watcher())
+        startup_resync_task = None
+        if self._needs_backend_resync:
+            startup_resync_task = asyncio.create_task(self._startup_resync())
 
         try:
             tasks = [stdin_task, stdout_task, self._sender_task, response_task, watchdog_task]
+            if startup_resync_task:
+                tasks.append(startup_resync_task)
             if self._reconnect_task:
                 tasks.append(self._reconnect_task)
             await asyncio.gather(*tasks)
@@ -1019,7 +1049,7 @@ class MCPProxy:
             _STARTUP_COMPLETE.set()
             if self.writer:
                 self.writer.close()
-            for task in (stdin_task, stdout_task, self._sender_task, response_task, watchdog_task):
+            for task in (stdin_task, stdout_task, self._sender_task, response_task, watchdog_task, startup_resync_task):
                 if task and not task.done():
                     task.cancel()
             if self._reconnect_task and not self._reconnect_task.done():

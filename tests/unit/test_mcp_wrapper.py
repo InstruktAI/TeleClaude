@@ -71,6 +71,7 @@ async def test_backend_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch)
     proxy = wrapper.MCPProxy()
 
     proxy.writer = _FakeWriter()
+    proxy._needs_backend_resync = True
 
     proxy._client_initialize_id = 1
     proxy._client_initialize_request = (
@@ -102,6 +103,47 @@ async def test_backend_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch)
     assert ok is True
     assert proxy.writer.writes[0] == proxy._client_initialize_request
     assert proxy.writer.writes[1] == proxy._client_initialized_notification
+
+
+@pytest.mark.asyncio
+async def test_startup_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    proxy.writer = _FakeWriter()
+    proxy.connected.set()
+    proxy._needs_backend_resync = True
+
+    proxy._client_initialize_id = 1
+    proxy._client_initialize_request = (
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "0"},
+                },
+            }
+        )
+        + "\n"
+    ).encode("utf-8")
+    proxy._client_initialized_notification = (
+        json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+    ).encode("utf-8")
+
+    async def _signal_backend_init() -> None:
+        await asyncio.sleep(0)
+        proxy._backend_init_response.set()
+
+    asyncio.create_task(_signal_backend_init())
+
+    await proxy._startup_resync()
+
+    assert proxy._needs_backend_resync is False
+    assert proxy.writer.writes[0] == proxy._client_initialize_request
 
 
 @pytest.mark.asyncio
