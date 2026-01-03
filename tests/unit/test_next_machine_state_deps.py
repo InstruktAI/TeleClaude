@@ -22,6 +22,7 @@ from teleclaude.core.next_machine import (
     detect_circular_dependency,
     next_work,
     read_dependencies,
+    resolve_slug,
     update_roadmap_state,
     write_dependencies,
 )
@@ -295,3 +296,125 @@ async def test_next_work_explicit_slug_checks_dependencies():
         # Should return error about unsatisfied dependencies
         assert "ERROR:" in result
         assert "DEPS_UNSATISFIED" in result
+
+
+# =============================================================================
+# resolve_slug Tests (ready_only mode)
+# =============================================================================
+
+
+def test_resolve_slug_ready_only_matches_ready_items():
+    """Verify ready_only=True only matches [.] items"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(
+            "# Roadmap\n\n- [ ] pending-item\n- [.] ready-item\n- [>] in-progress-item\n- [x] done-item\n"
+        )
+
+        slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
+
+        # Should only match the first [.] item
+        assert slug == "ready-item"
+        assert is_ready is True
+
+
+def test_resolve_slug_ready_only_no_ready_items():
+    """Verify ready_only=True returns None when no [.] items exist"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text("# Roadmap\n\n- [ ] pending-item\n- [>] in-progress-item\n")
+
+        slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
+
+        assert slug is None
+        assert is_ready is False
+
+
+def test_resolve_slug_ready_only_skips_pending():
+    """Verify ready_only=True skips [ ] items"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text("# Roadmap\n\n- [ ] pending-item\n- [.] ready-item\n")
+
+        slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
+
+        # Should skip pending and match ready
+        assert slug == "ready-item"
+
+
+def test_resolve_slug_ready_only_skips_in_progress():
+    """Verify ready_only=True skips [>] items"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text("# Roadmap\n\n- [>] in-progress-item\n- [.] ready-item\n")
+
+        slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
+
+        # Should skip in-progress and match ready
+        assert slug == "ready-item"
+
+
+# =============================================================================
+# Integration Workflow Test
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_workflow_pending_to_archived_with_dependencies():
+    """Integration test: [ ] → [.] → [>] → archived with dependency gating"""
+    db = MagicMock(spec=Db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create roadmap with dependency chain
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(
+            "# Roadmap\n\n- [ ] dep-item\nDependency item description\n\n- [ ] main-item\nMain item description\n"
+        )
+
+        # Set up dependency: main-item depends on dep-item
+        deps = {"main-item": ["dep-item"]}
+        with patch("teleclaude.core.next_machine.Repo"):
+            write_dependencies(tmpdir, deps)
+
+        # Step 1: Verify main-item cannot be marked ready (dependency unsatisfied)
+        slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
+        assert slug is None  # No ready items yet
+
+        # Step 2: Mark dep-item as ready [.]
+        with patch("teleclaude.core.next_machine.Repo"):
+            result = update_roadmap_state(tmpdir, "dep-item", ".")
+        assert result is True
+
+        # Step 3: Mark dep-item as in-progress [>]
+        with patch("teleclaude.core.next_machine.Repo"):
+            result = update_roadmap_state(tmpdir, "dep-item", ">")
+        assert result is True
+
+        # Step 4: Mark dep-item as completed [x]
+        with patch("teleclaude.core.next_machine.Repo"):
+            result = update_roadmap_state(tmpdir, "dep-item", "x")
+        assert result is True
+
+        # Step 5: Verify dependency is now satisfied
+        satisfied = check_dependencies_satisfied(tmpdir, "main-item", deps)
+        assert satisfied is True
+
+        # Step 6: Mark main-item as ready [.]
+        with patch("teleclaude.core.next_machine.Repo"):
+            result = update_roadmap_state(tmpdir, "main-item", ".")
+        assert result is True
+
+        # Step 7: Verify main-item is now selectable with ready_only
+        slug, is_ready, desc = resolve_slug(tmpdir, slug=None, ready_only=True)
+        assert slug == "main-item"
+        assert is_ready is True
+
+        # Verify roadmap state transitions occurred correctly
+        content = roadmap_path.read_text()
+        assert "- [x] dep-item" in content
+        assert "- [.] main-item" in content
