@@ -519,12 +519,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
 
     for dep in item_deps:
         if dep not in roadmap_items:
-            # Not in roadmap - check if archived
-            if get_archive_path(cwd, dep) is None:
-                # Not archived either - dependency doesn't exist
-                # This shouldn't happen if validation worked, but treat as unsatisfied
-                return False
-            # Archived = satisfied
+            # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
         dep_state = roadmap_items[dep]
