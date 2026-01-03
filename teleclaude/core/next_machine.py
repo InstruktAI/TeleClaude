@@ -473,6 +473,7 @@ def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
                 pass
         return
 
+    deps_path.parent.mkdir(parents=True, exist_ok=True)
     deps_path.write_text(json.dumps(deps, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     try:
