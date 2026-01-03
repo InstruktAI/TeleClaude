@@ -9,12 +9,12 @@
 |-------------|--------|-------|
 | R1: Remove bug check from `next_work()` | ✅ Implemented | Bug check block removed. |
 | R2: Introduce ready state `[.]` | ✅ Implemented | Ready state supported in roadmap parsing and transitions. |
-| R3: State machine owns checkbox transitions | ✅ Implemented | `next_prepare()`/`next_work()` call `update_roadmap_state()`. |
+| R3: State machine owns checkbox transitions | ✅ Implemented | `next_prepare()`/`next_work()` update roadmap via `update_roadmap_state()`. |
 | R4: Add `todos/dependencies.json` support | ✅ Implemented | Read/write helpers added; file created on first write. |
 | R5: Add `teleclaude__set_dependencies()` tool + validation | ✅ Implemented | Tool validates slug format, existence, self-reference, and cycles. |
-| R6: `resolve_slug()` ready-only + dependency gating | ✅ Implemented | Ready-only selection gates on dependency satisfaction when provided. |
+| R6: `resolve_slug()` ready-only + dependency gating | ✅ Implemented | Ready-only selection gates on dependency satisfaction. |
 | R7: `update_roadmap_state()` helper | ✅ Implemented | Added with git-commit side effect. |
-| Tests per requirements | ⚠️ Partial | No new `tests/integration/` coverage; “integration” test is placed in unit tests. |
+| Tests per requirements | ✅ Implemented | Unit + integration coverage added for workflow/deps. |
 
 ## Critical Issues (must fix)
 
@@ -22,20 +22,18 @@
 
 ## Important Issues (should fix)
 
-- [tests] `tests/unit/test_mcp_set_dependencies.py:16` - Unused import `Db` will trigger lint failures.
-  - Suggested fix: remove the unused import.
-- [tests] `tests/integration/` - Required integration coverage is missing; the workflow/dependency test is implemented in `tests/unit/` instead of `tests/integration/`.
-  - Suggested fix: add/relocate the full workflow and dependency-blocking tests to `tests/integration/` as specified in requirements.
+- [code] `teleclaude/core/next_machine.py:877` - Explicit `next_work(slug=...)` bypasses ready-state gating and can start work on `[ ]` items, leaving roadmap state unchanged (no `[.]` → `[>]` transition) and violating the “only [.] items” requirement.
+  - Suggested fix: when `slug` is provided, read the roadmap state for that slug and require `[.]` or `[>]` (error with `NOT_PREPARED`/`ITEM_NOT_READY` for `[ ]`), or normalize via `resolve_slug` before proceeding.
 
 ## Suggestions (nice to have)
 
-- [tests] `tests/unit/test_next_machine_state_deps.py` - Many tests use multiple assertions, which conflicts with the “one assertion per test” directive. Consider splitting for clearer failures.
-- [repo] `todos/state-machine-refinement/state.json` - This appears to be a worktree-local artifact; consider removing it from the main repo if it isn’t intentionally tracked.
+- [tests] `tests/integration/test_state_machine_workflow.py:140` - The assertion `assert "ERROR:" not in result or "DEPS_UNSATISFIED" not in result` is too weak and can pass on unrelated errors.
+  - Reason: It allows other error states to slip through; prefer asserting an expected tool call or explicitly ensuring no error prefix.
 
 ## Strengths
 
-- Dependency gating is centralized in `resolve_slug()` and consistently applied by `next_work()`.
-- Clear user-facing errors for “no ready items” vs. “deps unsatisfied.”
+- Dependency gating is centralized and reused by `next_work()`.
+- Clear error messaging distinguishes “no ready items” vs. “dependencies unsatisfied.”
 - Roadmap state transitions are automated as required.
 
 ---
@@ -48,19 +46,4 @@
 ### If REQUEST CHANGES:
 
 Priority fixes needed:
-1. Remove the unused `Db` import in `tests/unit/test_mcp_set_dependencies.py`.
-2. Add/relocate integration tests into `tests/integration/` to satisfy the required coverage.
-
----
-
-## Fixes Applied
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| Unused `Db` import in test_mcp_set_dependencies.py:16 | Removed unused import | 9706b8b |
-| Missing integration test coverage | Created tests/integration/test_state_machine_workflow.py with 3 comprehensive integration tests covering workflow, dependency blocking, and archived dependencies | 0bd995d |
-
-**Test Results:**
-- All 15 tests passing (unit + integration)
-- All lint checks passing (ruff, pyright, mypy)
-- Pre-commit hooks passing
+1. Enforce ready-state gating for explicit `next_work(slug=...)` so `[ ]` items cannot be claimed without preparation.
