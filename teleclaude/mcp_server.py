@@ -771,7 +771,7 @@ class TeleClaudeMCPServer:
                             },
                             "status": {
                                 "type": "string",
-                                "enum": ["complete", "approved", "changes_requested"],
+                                "enum": ["pending", "complete", "approved", "changes_requested"],
                                 "description": "New status for the phase",
                             },
                             "cwd": {
@@ -2518,7 +2518,7 @@ class TeleClaudeMCPServer:
         Args:
             slug: Work item slug
             phase: Phase to update ("build" or "review")
-            status: New status ("complete", "approved", or "changes_requested")
+            status: New status ("pending", "complete", "approved", or "changes_requested")
             cwd: Project root directory (auto-injected by MCP wrapper)
 
         Returns:

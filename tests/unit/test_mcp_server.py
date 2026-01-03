@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mcp import types
+from mcp.server import Server
 
 from teleclaude.core.models import ThinkingMode
 
@@ -650,3 +652,20 @@ async def test_run_agent_command_with_agent_type(mock_mcp_server):
     call_args = server.client.handle_event.call_args
     metadata = call_args[0][2]
     assert "gemini" in metadata.auto_command
+
+
+@pytest.mark.asyncio
+async def test_mark_phase_schema_allows_pending(mock_mcp_server):
+    """mark_phase tool schema includes pending status."""
+    server = mock_mcp_server
+    mcp_server = Server("teleclaude")
+    server._setup_tools(mcp_server)
+
+    handler = mcp_server.request_handlers[types.ListToolsRequest]
+    result = await handler(types.ListToolsRequest())
+
+    tools = result.root.tools
+    mark_phase_tool = next(tool for tool in tools if tool.name == "teleclaude__mark_phase")
+    status_enum = mark_phase_tool.inputSchema["properties"]["status"]["enum"]
+
+    assert "pending" in status_enum
