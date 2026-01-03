@@ -10,13 +10,13 @@ def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
 
     sent = []
 
-    def fake_send(name, payload):
-        sent.append((name, payload))
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
 
     def fake_normalize(_event_type, _data):
         raise ValueError("boom")
 
-    monkeypatch.setattr(receiver, "mcp_send", fake_send)
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
@@ -27,11 +27,9 @@ def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
 
     assert exc.value.code == 1
     assert sent
-    event_name, payload = sent[0]
-    assert event_name == "teleclaude__handle_agent_event"
-    assert payload["session_id"] == "sess-1"
-    assert payload["event_type"] == "error"
-    data = payload["data"]
+    session_id, event_type, data = sent[0]
+    assert session_id == "sess-1"
+    assert event_type == "error"
     assert data["message"] == "boom"
     assert data["source"] == "hook_receiver"
     assert data["details"] == {"agent": "claude", "event_type": "stop"}

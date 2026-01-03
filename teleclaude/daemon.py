@@ -11,7 +11,7 @@ import re
 import signal
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Coroutine, Optional, TextIO, TypedDict, cast
 
@@ -109,6 +109,13 @@ MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.
 MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_INTERVAL_S", "10"))
 MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
 MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
+
+# Hook outbox worker
+HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
+HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
+HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
+HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
+HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -239,6 +246,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._mcp_restart_window_start = 0.0
         self._last_mcp_probe_at = 0.0
         self._last_mcp_restart_at = 0.0
+        self.hook_outbox_task: asyncio.Task[object] | None = None
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""
@@ -445,6 +453,120 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 failures = 0
                 if not ok:
                     return
+
+    def _hook_outbox_backoff(self, attempt: int) -> float:
+        """Compute exponential backoff for hook outbox retries."""
+        safe_attempt = max(1, attempt)
+        delay: float = float(HOOK_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
+        return min(delay, float(HOOK_OUTBOX_MAX_BACKOFF_S))
+
+    def _is_retryable_hook_error(self, exc: Exception) -> bool:
+        """Return True if hook dispatch errors should be retried."""
+        if isinstance(exc, ValueError) and "not found" in str(exc):
+            return False
+        return True
+
+    async def _dispatch_hook_event(
+        self,
+        session_id: str,
+        event_type: str,
+        data: dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+    ) -> None:
+        """Dispatch a hook event directly via AdapterClient."""
+        session = await db.get_session(session_id)
+        if not session:
+            raise ValueError(f"TeleClaude session {session_id} not found")
+
+        transcript_path = data.get("transcript_path")
+        if isinstance(transcript_path, str) and transcript_path:
+            await db.update_ux_state(session_id, native_log_file=transcript_path)
+
+        if event_type not in AgentHookEvents.ALL:
+            logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
+            return
+
+        event_type_name: EventType
+        if event_type == AgentHookEvents.AGENT_ERROR:
+            event_payload = cast(
+                dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+                {
+                    "session_id": session_id,
+                    "message": str(data.get("message", "")),
+                    "source": str(data.get("source")) if "source" in data else None,
+                    "details": data.get("details") if isinstance(data.get("details"), dict) else None,
+                },
+            )
+            event_type_name = TeleClaudeEvents.ERROR
+        else:
+            event_payload = cast(
+                dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+                {"session_id": session_id, "event_type": event_type, "data": data},
+            )
+            event_type_name = TeleClaudeEvents.AGENT_EVENT
+
+        response = await self.client.handle_event(
+            event_type_name,
+            event_payload,
+            MessageMetadata(adapter_type="internal"),
+        )
+        if isinstance(response, dict):
+            response_dict = cast(dict[str, object], response)  # noqa: loose-dict - Adapter response payload
+            status = response_dict.get("status")
+            if status == "error":
+                raise ValueError(str(response_dict.get("error")))
+
+    async def _hook_outbox_worker(self) -> None:
+        """Drain hook outbox for durable, restart-safe delivery."""
+        while not self.shutdown_event.is_set():
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat()
+            lock_cutoff = (now - timedelta(seconds=HOOK_OUTBOX_LOCK_TTL_S)).isoformat()
+            rows = await db.fetch_hook_outbox_batch(now_iso, HOOK_OUTBOX_BATCH_SIZE, lock_cutoff)
+
+            if not rows:
+                await asyncio.sleep(HOOK_OUTBOX_POLL_INTERVAL_S)
+                continue
+
+            for row in rows:
+                if self.shutdown_event.is_set():
+                    break
+                claimed = await db.claim_hook_outbox(row["id"], now_iso, lock_cutoff)
+                if not claimed:
+                    continue
+
+                try:
+                    payload = cast(dict[str, object], json.loads(row["payload"]))  # noqa: loose-dict - JSON payload boundary
+                except json.JSONDecodeError as exc:
+                    logger.error("Hook outbox payload invalid", row_id=row["id"], error=str(exc))
+                    await db.mark_hook_outbox_delivered(row["id"], error=str(exc))
+                    continue
+
+                try:
+                    await self._dispatch_hook_event(row["session_id"], row["event_type"], payload)
+                    await db.mark_hook_outbox_delivered(row["id"])
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    attempt = int(row.get("attempt_count", 0)) + 1
+                    error_str = str(exc)
+                    if not self._is_retryable_hook_error(exc):
+                        logger.error(
+                            "Hook outbox event dropped (non-retryable)",
+                            row_id=row["id"],
+                            attempt=attempt,
+                            error=error_str,
+                        )
+                        await db.mark_hook_outbox_delivered(row["id"], error=error_str)
+                        continue
+
+                    delay = self._hook_outbox_backoff(attempt)
+                    next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+                    logger.error(
+                        "Hook outbox dispatch failed (retrying)",
+                        row_id=row["id"],
+                        attempt=attempt,
+                        next_attempt_in_s=round(delay, 2),
+                        error=error_str,
+                    )
+                    await db.mark_hook_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -1459,6 +1581,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
         logger.info("Poller watch task started")
 
+        self.hook_outbox_task = asyncio.create_task(self._hook_outbox_worker())
+        self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
+        logger.info("Hook outbox worker started")
+
         # CodexWatcher disabled - using native Codex notify hook instead (2026-01)
         # Keeping code for fallback. Remove after notify hook proven stable.
         # await self.codex_watcher.start()
@@ -1504,6 +1630,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Poller watch task stopped")
+
+        if self.hook_outbox_task:
+            self.hook_outbox_task.cancel()
+            try:
+                await self.hook_outbox_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Hook outbox worker stopped")
 
         # Stop session watcher
         if hasattr(self, "codex_watcher"):

@@ -5,7 +5,7 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, TypedDict, cast
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -22,6 +22,14 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+
+class HookOutboxRow(TypedDict):
+    id: int
+    session_id: str
+    event_type: str
+    payload: str
+    attempt_count: int
 
 
 class Db:
@@ -760,6 +768,113 @@ class Db:
         if cleared > 0:
             logger.info("Cleared availability for %d agents (TTL expired)", cleared)
         return cleared
+
+    async def enqueue_hook_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload: dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+    ) -> int:
+        """Persist a hook event in the outbox for durable delivery."""
+        now = datetime.now(timezone.utc).isoformat()
+        payload_json = json.dumps(payload)
+        cursor = await self.conn.execute(
+            """
+            INSERT INTO hook_outbox (
+                session_id, event_type, payload, created_at, next_attempt_at, attempt_count
+            ) VALUES (?, ?, ?, ?, ?, 0)
+            """,
+            (session_id, event_type, payload_json, now, now),
+        )
+        await self.conn.commit()
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("Failed to insert hook outbox row")
+        return int(row_id)
+
+    async def fetch_hook_outbox_batch(
+        self,
+        now_iso: str,
+        limit: int,
+        lock_cutoff_iso: str,
+    ) -> list[HookOutboxRow]:
+        """Fetch a batch of due hook events."""
+        cursor = await self.conn.execute(
+            """
+            SELECT id, session_id, event_type, payload, attempt_count
+            FROM hook_outbox
+            WHERE delivered_at IS NULL
+              AND next_attempt_at <= ?
+              AND (locked_at IS NULL OR locked_at <= ?)
+            ORDER BY created_at
+            LIMIT ?
+            """,
+            (now_iso, lock_cutoff_iso, limit),
+        )
+        rows = await cursor.fetchall()
+        typed_rows: list[HookOutboxRow] = []
+        for row in rows:
+            row_id = cast(int, row["id"])
+            session_id = cast(str, row["session_id"])
+            event_type = cast(str, row["event_type"])
+            payload = cast(str, row["payload"])
+            attempt_count = cast(int, row["attempt_count"])
+            typed_rows.append(
+                HookOutboxRow(
+                    id=row_id,
+                    session_id=session_id,
+                    event_type=event_type,
+                    payload=payload,
+                    attempt_count=attempt_count,
+                )
+            )
+        return typed_rows
+
+    async def claim_hook_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
+        """Claim a hook outbox row for processing."""
+        cursor = await self.conn.execute(
+            """
+            UPDATE hook_outbox
+            SET locked_at = ?
+            WHERE id = ?
+              AND delivered_at IS NULL
+              AND (locked_at IS NULL OR locked_at <= ?)
+            """,
+            (now_iso, row_id, lock_cutoff_iso),
+        )
+        await self.conn.commit()
+        return cursor.rowcount == 1
+
+    async def mark_hook_outbox_delivered(self, row_id: int, error: str | None = None) -> None:
+        """Mark a hook outbox row delivered (optionally capturing last error)."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self.conn.execute(
+            """
+            UPDATE hook_outbox
+            SET delivered_at = ?, last_error = ?, locked_at = NULL
+            WHERE id = ?
+            """,
+            (now, error, row_id),
+        )
+        await self.conn.commit()
+
+    async def mark_hook_outbox_failed(
+        self,
+        row_id: int,
+        attempt_count: int,
+        next_attempt_at: str,
+        error: str,
+    ) -> None:
+        """Record a hook outbox failure and schedule a retry."""
+        await self.conn.execute(
+            """
+            UPDATE hook_outbox
+            SET attempt_count = ?, next_attempt_at = ?, last_error = ?, locked_at = NULL
+            WHERE id = ?
+            """,
+            (attempt_count, next_attempt_at, error, row_id),
+        )
+        await self.conn.commit()
 
 
 # Module-level singleton instance (initialized on first import)

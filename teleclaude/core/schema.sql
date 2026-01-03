@@ -51,3 +51,19 @@ CREATE TABLE IF NOT EXISTS agent_availability (
     unavailable_until TEXT,           -- ISO timestamp, NULL if available
     reason TEXT                       -- "quota_exhausted", "rate_limited", "service_outage"
 );
+
+-- Hook outbox for durable agent events (fire-and-forget with retry)
+CREATE TABLE IF NOT EXISTS hook_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL,            -- JSON payload (data dict)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    attempt_count INTEGER DEFAULT 0,
+    last_error TEXT,
+    delivered_at TEXT,
+    locked_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);

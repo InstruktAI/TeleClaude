@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Unified hook receiver for agent CLIs."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -20,9 +24,8 @@ sys.path.append(str(hooks_dir.parent.parent))
 from adapters import claude as claude_adapter  # noqa: E402
 from adapters import codex as codex_adapter  # noqa: E402
 from adapters import gemini as gemini_adapter  # noqa: E402
-from utils.mcp_send import mcp_send  # noqa: E402
-
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
+from teleclaude.config import config  # noqa: E402
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -88,14 +91,53 @@ def _send_error_event(
     message: str,
     details: dict[str, object],  # noqa: loose-dict - Error detail data
 ) -> None:
-    mcp_send(
-        "teleclaude__handle_agent_event",
-        {
-            "session_id": session_id,
-            "event_type": "error",
-            "data": {"message": message, "source": "hook_receiver", "details": details},
-        },
+    _enqueue_hook_event(
+        session_id,
+        "error",
+        {"message": message, "source": "hook_receiver", "details": details},
     )
+
+
+def _enqueue_hook_event(
+    session_id: str,
+    event_type: str,
+    data: dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+) -> None:
+    """Persist hook event to local outbox for durable delivery."""
+    db_path = config.database.path
+    now = datetime.now(timezone.utc).isoformat()
+    payload_json = json.dumps(data)
+
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS hook_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                attempt_count INTEGER DEFAULT 0,
+                last_error TEXT,
+                delivered_at TEXT,
+                locked_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO hook_outbox (
+                session_id, event_type, payload, created_at, next_attempt_at, attempt_count
+            ) VALUES (?, ?, ?, ?, ?, 0)
+            """,
+            (session_id, event_type, payload_json, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 class NormalizeFn(Protocol):
@@ -174,14 +216,7 @@ def main() -> None:
         agent=args.agent,
     )
 
-    mcp_send(
-        "teleclaude__handle_agent_event",
-        {
-            "session_id": teleclaude_session_id,
-            "event_type": event_type,
-            "data": data,
-        },
-    )
+    _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 
 if __name__ == "__main__":

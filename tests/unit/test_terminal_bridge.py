@@ -87,6 +87,7 @@ class TestSendKeys:
                     session_name="test-session",
                     text="Hello! World!",
                     active_agent="gemini",
+                    send_enter=False,
                 )
 
                 assert success is True
