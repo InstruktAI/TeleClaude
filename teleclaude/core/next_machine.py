@@ -284,7 +284,12 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
     return state.get("review") == "changes_requested"
 
 
-def resolve_slug(cwd: str, slug: str | None, ready_only: bool = False) -> tuple[str | None, bool, str]:
+def resolve_slug(
+    cwd: str,
+    slug: str | None,
+    ready_only: bool = False,
+    dependencies: dict[str, list[str]] | None = None,
+) -> tuple[str | None, bool, str]:
     """Resolve slug from argument or roadmap.
 
     Roadmap format expected:
@@ -297,6 +302,8 @@ def resolve_slug(cwd: str, slug: str | None, ready_only: bool = False) -> tuple[
         cwd: Current working directory (project root)
         slug: Optional explicit slug
         ready_only: If True, only match [.] items (for next_work)
+        dependencies: Optional dependency graph for dependency gating (R6).
+                     If provided with ready_only=True, only returns slugs with satisfied dependencies.
 
     Returns:
         Tuple of (slug, is_ready_or_in_progress, description).
@@ -329,6 +336,11 @@ def resolve_slug(cwd: str, slug: str | None, ready_only: bool = False) -> tuple[
             status = match.group(1)
             found_slug = match.group(2)
             is_ready = status in (".", ">")
+
+        # R6: Enforce dependency gating when ready_only=True and dependencies provided
+        if ready_only and dependencies is not None:
+            if not check_dependencies_satisfied(cwd, found_slug, dependencies):
+                continue  # Skip items with unsatisfied dependencies
 
         # Extract description: everything after the slug line until next item or section
         start_pos = match.end()
@@ -872,28 +884,12 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
         resolved_slug = slug
     else:
-        # Find first [.] item with satisfied dependencies
-        found_slug: str | None = None
-        roadmap_path = Path(cwd) / "todos" / "roadmap.md"
-        # Pattern for ready items
-        pattern = re.compile(r"^-\s+\[\.]\s+([a-z0-9-]+)", re.MULTILINE)
-
-        if roadmap_path.exists():
-            content = roadmap_path.read_text(encoding="utf-8")
-
-            for match in pattern.finditer(content):
-                candidate_slug = match.group(1)
-                if check_dependencies_satisfied(cwd, candidate_slug, deps):
-                    found_slug = candidate_slug
-                    break
+        # R6: Use resolve_slug with dependency gating
+        found_slug, _, _ = resolve_slug(cwd, None, ready_only=True, dependencies=deps)
 
         if not found_slug:
-            # Check if there are [.] items but with unsatisfied deps
-            has_ready_items = False
-            if roadmap_path.exists():
-                content = roadmap_path.read_text(encoding="utf-8")
-                # Use regex to detect actual ready items (not legend/description)
-                has_ready_items = bool(pattern.search(content))
+            # Check if there are [.] items (without dependency gating) to provide better error
+            has_ready_items, _, _ = resolve_slug(cwd, None, ready_only=True)
 
             if has_ready_items:
                 return format_error(
