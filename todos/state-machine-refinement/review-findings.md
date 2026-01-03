@@ -58,3 +58,16 @@ Priority fixes needed:
 1. Enforce roadmap slug existence with exact slug matching in `teleclaude__set_dependencies()`.
 2. Add the required unit/integration tests for roadmap state and dependency logic.
 3. Ensure dependency checks apply even when an explicit slug is provided.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Substring-based slug validation in `teleclaude__set_dependencies()` | Changed to exact regex matching with `r"^-\s+\[[. >x]\]\s+([a-z0-9-]+)"` | e0b6426 |
+| Imports inside method violating module-level rule | Moved `detect_circular_dependency`, `read_dependencies`, `write_dependencies` to top-level imports | e0b6426 |
+| Explicit slug bypasses dependency checks in `next_work()` | Added `check_dependencies_satisfied()` call before using explicit slug | e0b6426 |
+| Ready-item detection using substring match | Changed to regex-based detection with `pattern.search(content)` | e0b6426 |
+| Roadmap legend missing `[.]` entry | Already present - no fix needed (false positive in review) | N/A |
+| Missing unit/integration tests | Added comprehensive test suite covering all requirements | 8a6acfb |
