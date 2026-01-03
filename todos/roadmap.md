@@ -6,13 +6,6 @@
 
 ---
 
-## State Machine
-
-- [.] state-machine-refinement
-Refine the next_work state machine: remove bug check, add [.] ready state, implement dependency tracking via todos/dependencies.json, make state machine own checkbox transitions.
-
----
-
 ## Typing Cleanup
 
 - [ ] reduce-loose-dict-typings

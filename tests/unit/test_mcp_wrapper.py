@@ -338,3 +338,33 @@ async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch) 
     response = json.loads(output)
     assert response["id"] == 9
     assert response["result"]["tools"] == wrapper.TOOL_LIST_CACHE
+
+
+@pytest.mark.asyncio
+async def test_tools_list_forwards_when_connected(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    class _DummyWriter:
+        def write(self, _data: bytes) -> None:
+            pass
+
+        async def drain(self) -> None:
+            return None
+
+    proxy.writer = _DummyWriter()
+    proxy.connected.set()
+
+    dummy_stdout = _DummyStdout()
+    monkeypatch.setattr(sys, "stdout", dummy_stdout)
+
+    reader = asyncio.StreamReader()
+    request = {"jsonrpc": "2.0", "id": 11, "method": "tools/list"}
+    reader.feed_data((json.dumps(request) + "\n").encode("utf-8"))
+    reader.feed_eof()
+
+    await proxy.stdin_to_socket(reader)
+
+    assert dummy_stdout.buffer.getvalue() == b""
+    assert proxy._outbound.qsize() == 1
+    assert 11 in proxy._pending_requests

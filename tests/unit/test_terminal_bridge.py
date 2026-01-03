@@ -29,10 +29,14 @@ class TestSendKeys:
             mock_exec.return_value = mock_process
 
             # Mock session exists
-            with patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)):
+            with (
+                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch("asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            ):
                 success = await terminal_bridge.send_keys(session_name="test-session", text="ls -la")
 
                 assert success is True
+                mock_sleep.assert_awaited_once_with(1.0)
 
                 # Verify send_keys command sends text as-is (no bracketed paste)
                 call_args_list = mock_exec.call_args_list

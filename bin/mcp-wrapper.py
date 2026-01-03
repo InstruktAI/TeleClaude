@@ -155,6 +155,7 @@ TOOL_NAMES: list[str] = []
 RESPONSE_TEMPLATE: str = ""
 TOOL_LIST_FALLBACK: list[ToolSpec] = []
 TOOL_LIST_CACHE: list[ToolSpec] | None = None
+_INTERNAL_TOOL_NAME = "teleclaude__handle_agent_event"
 
 
 def _build_tools_list_fallback(tool_names: list[str]) -> list[ToolSpec]:
@@ -167,6 +168,16 @@ def _build_tools_list_fallback(tool_names: list[str]) -> list[ToolSpec]:
         }
         for name in tool_names
     ]
+
+
+def _filter_internal_tools(tools: list[object]) -> list[object]:
+    """Remove internal-only tools from a tools/list payload."""
+    filtered: list[object] = []
+    for tool in tools:
+        if isinstance(tool, dict) and tool.get("name") == _INTERNAL_TOOL_NAME:
+            continue
+        filtered.append(tool)
+    return filtered
 
 
 def refresh_tool_cache_if_needed(force: bool = False) -> None:
@@ -445,6 +456,7 @@ class MCPProxy:
     async def _send_tools_list_cached(self, request_id: object) -> None:
         """Send cached tools/list response without touching the backend."""
         tools_list = TOOL_LIST_CACHE or TOOL_LIST_FALLBACK
+        tools_list = _filter_internal_tools(tools_list)
         try:
             sys.stdout.buffer.write(_jsonrpc_tools_list_response(request_id, tools_list))
             sys.stdout.buffer.flush()
@@ -507,8 +519,9 @@ class MCPProxy:
 
                 if method == "tools/list" and request_id is not None:
                     refresh_tool_cache_if_needed()
-                    await self._send_tools_list_cached(request_id)
-                    continue
+                    if not self.connected.is_set() or not self.writer:
+                        await self._send_tools_list_cached(request_id)
+                        continue
                 response_timeout = _get_response_timeout(method, tool_name)
 
                 # Process message (inject context)
@@ -716,7 +729,10 @@ class MCPProxy:
                             and isinstance(msg["result"].get("tools"), list)
                         ):
                             # Cache tools/list response for startup fallbacks.
-                            TOOL_LIST_CACHE = msg["result"]["tools"]
+                            tools = msg["result"]["tools"]
+                            if isinstance(tools, list):
+                                TOOL_LIST_CACHE = _filter_internal_tools(tools)
+                                msg["result"]["tools"] = TOOL_LIST_CACHE
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
                             started_at = self._pending_started.pop(response_id, None)
@@ -751,13 +767,7 @@ class MCPProxy:
                             # This is a tools/list response - filter internal tools
                             tools = msg["result"]["tools"]
                             if isinstance(tools, list):
-                                msg["result"]["tools"] = [
-                                    tool
-                                    for tool in tools
-                                    if not (
-                                        isinstance(tool, dict) and tool.get("name") == "teleclaude__handle_agent_event"
-                                    )
-                                ]
+                                msg["result"]["tools"] = _filter_internal_tools(tools)
                                 line = (json.dumps(msg) + "\n").encode()
                                 logger.debug("Filtered internal tools from tools/list response")
                     except (json.JSONDecodeError, KeyError):

@@ -252,7 +252,7 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
             return False
 
         # Small delay to let text be processed
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(1.0)
 
         # Send Enter key twice if requested (second press ensures it registers for voice input)
         if send_enter:
