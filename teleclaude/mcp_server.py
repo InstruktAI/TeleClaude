@@ -44,6 +44,8 @@ logger = get_logger(__name__)
 
 MCP_SOCKET_BACKLOG = int(os.getenv("MCP_SOCKET_BACKLOG", "256"))
 MCP_SESSION_DATA_MAX_CHARS = int(os.getenv("MCP_SESSION_DATA_MAX_CHARS", "48000"))
+MCP_HANDSHAKE_TIMEOUT_S = float(os.getenv("MCP_HANDSHAKE_TIMEOUT_S", "2.0"))
+MCP_CONNECTION_SHUTDOWN_TIMEOUT_S = float(os.getenv("MCP_CONNECTION_SHUTDOWN_TIMEOUT_S", "2.0"))
 
 # Reusable instruction for AI-to-AI session management (appended to tool descriptions)
 REMOTE_AI_TIMER_INSTRUCTION = (
@@ -177,6 +179,15 @@ class MarkPhaseResult(TypedDict):
     message: str
 
 
+class MCPHealthSnapshot(TypedDict):
+    """Snapshot of MCP server health state."""
+
+    is_serving: bool
+    socket_exists: bool
+    active_connections: int
+    last_accept_age_s: float | None
+
+
 def _is_client_disconnect_exception(exc: BaseException) -> bool:
     """Return True if the exception indicates the client went away."""
     if isinstance(exc, ExceptionGroup):
@@ -211,6 +222,9 @@ class TeleClaudeMCPServer:
         self.computer_name = config.computer.name
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._server: asyncio.AbstractServer | None = None
+        self._connection_tasks: set[asyncio.Task[None]] = set()
+        self._active_connections = 0
+        self._last_accept_at: float | None = None
 
     def _track_background_task(self, task: asyncio.Task[None], label: str) -> None:
         """Keep background tasks alive and log failures."""
@@ -224,6 +238,18 @@ class TeleClaudeMCPServer:
                 return
             if exc:
                 logger.error("Background task failed (%s): %s", label, exc, exc_info=exc)
+
+        task.add_done_callback(_on_done)
+
+    def _track_connection_task(self, task: asyncio.Task[None]) -> None:
+        """Track active MCP client connection tasks."""
+        self._connection_tasks.add(task)
+        self._active_connections += 1
+        self._last_accept_at = asyncio.get_running_loop().time()
+
+        def _on_done(done: asyncio.Task[None]) -> None:
+            self._connection_tasks.discard(done)
+            self._active_connections = max(0, self._active_connections - 1)
 
         task.add_done_callback(_on_done)
 
@@ -1024,7 +1050,7 @@ class TeleClaudeMCPServer:
 
         # Create Unix socket server
         server = await asyncio.start_unix_server(
-            lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)),
+            self._handle_socket_connection,
             path=str(socket_path),
             backlog=MCP_SOCKET_BACKLOG,
         )
@@ -1048,10 +1074,59 @@ class TeleClaudeMCPServer:
         await server.wait_closed()
         self._server = None
 
+        if not self._connection_tasks:
+            return
+
+        for task in list(self._connection_tasks):
+            task.cancel()
+        done, pending = await asyncio.wait(
+            self._connection_tasks,
+            timeout=MCP_CONNECTION_SHUTDOWN_TIMEOUT_S,
+        )
+        if pending:
+            logger.warning(
+                "Timed out stopping %d MCP connection task(s)",
+                len(pending),
+            )
+        self._connection_tasks.difference_update(done)
+
+    async def health_snapshot(self, socket_path: Path) -> MCPHealthSnapshot:
+        """Return a health snapshot for MCP server diagnostics."""
+        server = self._server
+        is_serving = bool(server and server.is_serving())
+        socket_exists = socket_path.exists()
+        last_accept_age = None
+        if self._last_accept_at is not None:
+            last_accept_age = max(0.0, asyncio.get_running_loop().time() - self._last_accept_at)
+        return MCPHealthSnapshot(
+            is_serving=is_serving,
+            socket_exists=socket_exists,
+            active_connections=self._active_connections,
+            last_accept_age_s=last_accept_age,
+        )
+
     async def _handle_socket_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handle a single MCP client connection over Unix socket."""
         logger.debug("New MCP client connected")
+        task = asyncio.current_task()
+        if task:
+            self._track_connection_task(task)
         try:
+            try:
+                first_line = await asyncio.wait_for(reader.readline(), timeout=MCP_HANDSHAKE_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.debug("MCP client handshake timed out")
+                return
+
+            if not first_line:
+                return
+
+            try:
+                first_message = JSONRPCMessage.model_validate_json(first_line.decode("utf-8"))
+            except Exception as exc:
+                logger.warning("MCP client sent invalid JSON: %s", exc)
+                return
+
             # Create FRESH server instance for this connection
             # This ensures clean state (no stale initialization)
             server = Server("teleclaude")
@@ -1082,6 +1157,7 @@ class TeleClaudeMCPServer:
                 """Read from socket and parse JSON-RPC messages."""
                 try:
                     async with read_stream_writer:
+                        await read_stream_writer.send(SessionMessage(first_message))
                         while True:
                             line = await reader.readline()
                             if not line:

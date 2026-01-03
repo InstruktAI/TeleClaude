@@ -106,6 +106,9 @@ MCP_WATCH_RESTART_MAX = int(os.getenv("MCP_WATCH_RESTART_MAX", "3"))
 MCP_WATCH_RESTART_WINDOW_S = float(os.getenv("MCP_WATCH_RESTART_WINDOW_S", "60"))
 MCP_WATCH_RESTART_TIMEOUT_S = float(os.getenv("MCP_WATCH_RESTART_TIMEOUT_S", "2"))
 MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.5"))
+MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_INTERVAL_S", "10"))
+MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
+MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -234,6 +237,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._mcp_restart_lock = asyncio.Lock()
         self._mcp_restart_attempts = 0
         self._mcp_restart_window_start = 0.0
+        self._last_mcp_probe_at = 0.0
+        self._last_mcp_restart_at = 0.0
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""
@@ -341,11 +346,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
             self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
             self.mcp_task.add_done_callback(self._handle_mcp_task_done)
+            self._last_mcp_restart_at = asyncio.get_running_loop().time()
             logger.warning("MCP server restarted")
             return True
 
-    async def _check_mcp_socket_health(self) -> bool:
-        socket_path = os.path.expandvars(MCP_SOCKET_PATH)
+    async def _probe_mcp_socket(self, socket_path: str) -> bool:
         try:
             connect_awaitable = cast(
                 Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]],
@@ -364,6 +369,50 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         except Exception:
             pass
         return True
+
+    async def _check_mcp_socket_health(self) -> bool:
+        now = asyncio.get_running_loop().time()
+        if self._mcp_restart_lock.locked():
+            return True
+        if (now - self._last_mcp_restart_at) < MCP_SOCKET_HEALTH_STARTUP_GRACE_S:
+            return True
+
+        socket_path = Path(os.path.expandvars(MCP_SOCKET_PATH))
+        snapshot = None
+        if self.mcp_server and hasattr(self.mcp_server, "health_snapshot"):
+            try:
+                snapshot = await self.mcp_server.health_snapshot(socket_path)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("MCP health snapshot failed: %s", exc, exc_info=True)
+
+        if snapshot:
+            is_serving = bool(snapshot.get("is_serving"))
+            socket_exists = bool(snapshot.get("socket_exists"))
+            active_connections = int(snapshot.get("active_connections") or 0)
+            last_accept_age = snapshot.get("last_accept_age_s")
+
+            if not is_serving or not socket_exists:
+                logger.warning(
+                    "MCP socket precheck failed",
+                    is_serving=is_serving,
+                    socket_exists=socket_exists,
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                return False
+
+            if active_connections > 0:
+                return True
+            if last_accept_age is not None and last_accept_age <= MCP_SOCKET_HEALTH_ACCEPT_GRACE_S:
+                return True
+            if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+                return True
+
+        if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+            return True
+
+        self._last_mcp_probe_at = now
+        return await self._probe_mcp_socket(str(socket_path))
 
     async def _mcp_watch_loop(self) -> None:
         failures = 0

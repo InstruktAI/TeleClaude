@@ -271,6 +271,29 @@ async def test_restart_mcp_server_replaces_task():
         assert "Timeout waiting for command acceptance" in result["message"]
 
 
+@pytest.mark.asyncio
+async def test_check_mcp_socket_health_uses_snapshot():
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.mcp_server = MagicMock()
+    daemon.mcp_server.health_snapshot = AsyncMock(
+        return_value={
+            "is_serving": True,
+            "socket_exists": True,
+            "active_connections": 0,
+            "last_accept_age_s": 1.0,
+        }
+    )
+    daemon._mcp_restart_lock = asyncio.Lock()
+    daemon._last_mcp_restart_at = 0.0
+    daemon._last_mcp_probe_at = 0.0
+
+    with patch("teleclaude.daemon.asyncio.open_unix_connection", new_callable=AsyncMock) as mock_open:
+        healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
+
+    assert healthy is True
+    mock_open.assert_not_called()
+
+
 def test_summarize_output_change_reports_diff():
     """_summarize_output_change should report a diff index and snippets."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
