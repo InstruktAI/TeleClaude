@@ -9,7 +9,7 @@
 |-------------|--------|-------|
 | R1: Remove bug check from `next_work()` | ✅ Implemented | Bug check block removed. |
 | R2: Introduce ready state `[.]` | ✅ Implemented | Ready state supported in roadmap parsing and transitions. |
-| R3: State machine owns checkbox transitions | ⚠️ Partial | `next_prepare()` can downgrade `[>]` to `[.]` (see Important issue). |
+| R3: State machine owns checkbox transitions | ✅ Implemented | `next_prepare()` marks `[ ] → [.]`; `next_work()` claims `[.] → [>]`. |
 | R4: Add `todos/dependencies.json` support | ✅ Implemented | Read/write helpers added; file created on first write. |
 | R5: Add `teleclaude__set_dependencies()` tool + validation | ✅ Implemented | Tool validates slug format, existence, self-reference, and cycles. |
 | R6: `resolve_slug()` ready-only + dependency gating | ✅ Implemented | Ready-only selection gates on dependency satisfaction. |
@@ -22,19 +22,18 @@
 
 ## Important Issues (should fix)
 
-- [code] `teleclaude/core/next_machine.py:854` - `next_prepare()` unconditionally calls `update_roadmap_state(..., ".")` once requirements + implementation plan exist. If the item is already `[>]` (in progress), this downgrades it back to `[.]`, allowing other workers to claim it and breaking the state model.
-  - Suggested fix: Read the current state from `todos/roadmap.md` and only transition `[ ] -> [.]` (or no-op if already `[.]`). Avoid changing `[>]` or `[x]`.
+- [code] `teleclaude/core/next_machine.py:933` - Error guidance uses a literal `{slug}` instead of interpolating the requested slug. This produces an invalid command string and can mislead the orchestrator to call `teleclaude__next_prepare` with `{slug}`.
+  - Suggested fix: use an f-string: `next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first."`
 
 ## Suggestions (nice to have)
 
-- [tests] `tests/unit/test_next_machine_state_deps.py:35` - Tests use multiple assertions per test, which conflicts with the repo’s testing directive (“one assertion per test”).
-  - Reason: Increases failure ambiguity; splitting assertions into focused tests would align with project standards.
+- [tests] `tests/unit/test_next_machine_state_deps.py:35` (and similar) - Multiple assertions per test conflict with the testing directives. Consider splitting into single-assertion tests for clearer failures and better alignment with repo standards.
 
 ## Strengths
 
-- Dependency gating is centralized and reused by `next_work()`.
-- Error messaging distinguishes “no ready items” vs. “dependencies unsatisfied.”
-- Roadmap state transitions are automated as required.
+- Dependency gating is centralized and reused by `next_work()` and `resolve_slug()`.
+- State transitions are automated and guarded against downgrades.
+- Error paths differentiate “no ready items” vs. “dependencies unsatisfied,” which improves operator guidance.
 
 ---
 
@@ -46,14 +45,4 @@
 ### If REQUEST CHANGES:
 
 Priority fixes needed:
-1. Prevent `next_prepare()` from downgrading `[>]` items to `[.]`.
-
----
-
-## Fixes Applied
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| `next_prepare()` unconditionally downgrades `[>]` items to `[.]` | Added `get_roadmap_state()` helper and modified `next_prepare()` to only transition `[ ] -> [.]`, preserving `[.]`, `[>]`, and `[x]` states | 695b742 |
-
-**Tests**: All unit tests (37 passed) and integration tests (3 passed) passing.
+1. Interpolate `slug` in the `ITEM_NOT_READY` next_call guidance.
