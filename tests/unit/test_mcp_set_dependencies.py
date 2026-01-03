@@ -13,7 +13,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
     read_dependencies,
