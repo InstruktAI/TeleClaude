@@ -523,6 +523,11 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
             # Not in roadmap - treat as satisfied (completed and cleaned up)
             continue
 
+        # Check if dependency is archived (done/*-dep exists)
+        if get_archive_path(cwd, dep):
+            # Archived = completed, even if still in roadmap
+            continue
+
         dep_state = roadmap_items[dep]
         if dep_state != "x":
             # Dependency exists but not completed
