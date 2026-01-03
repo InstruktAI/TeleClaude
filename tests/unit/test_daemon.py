@@ -311,11 +311,52 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
         mock_db.get_ux_state = AsyncMock(
             return_value=SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json")
         )
+        mock_db.update_ux_state = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=MagicMock())
         mock_summarize.return_value = ("title", "summary")
 
         await daemon._process_agent_stop(context)
 
+        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
+
+
+@pytest.mark.asyncio
+async def test_process_agent_stop_sets_native_session_id_from_payload():
+    """Agent STOP should persist native_session_id when provided."""
+    from teleclaude.core.agents import AgentName
+    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+    from teleclaude.core.ux_state import SessionUXState
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.send_feedback = AsyncMock()
+    daemon.agent_coordinator = MagicMock()
+    daemon.agent_coordinator.handle_stop = AsyncMock()
+    daemon._update_session_title = AsyncMock()
+    daemon._last_stop_time = {}
+    daemon._stop_debounce_seconds = 5.0
+
+    payload = AgentStopPayload(
+        session_id="native-123",
+        transcript_path="/tmp/native.json",
+        raw={},
+    )
+    context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+    ):
+        mock_db.get_ux_state = AsyncMock(
+            return_value=SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json")
+        )
+        mock_db.update_ux_state = AsyncMock()
+        mock_db.get_session = AsyncMock(return_value=MagicMock())
+        mock_summarize.return_value = ("title", "summary")
+
+        await daemon._process_agent_stop(context)
+
+        mock_db.update_ux_state.assert_awaited_once_with("tele-123", native_session_id="native-123")
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
 
 

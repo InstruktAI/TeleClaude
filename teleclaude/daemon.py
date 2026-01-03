@@ -642,6 +642,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if not ux_state.active_agent:
                 raise ValueError(f"Session {session_id[:8]} missing active_agent metadata")
 
+            native_session_id = str(payload.session_id) if payload.session_id else ""
+            if native_session_id and ux_state.native_session_id != native_session_id:
+                await db.update_ux_state(session_id, native_session_id=native_session_id)
+                ux_state.native_session_id = native_session_id
+
             transcript_path = payload.transcript_path or ux_state.native_log_file
             if not transcript_path:
                 raise ValueError(f"Session {session_id[:8]} missing transcript path on stop event")
