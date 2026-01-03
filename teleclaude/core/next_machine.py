@@ -875,7 +875,38 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     resolved_slug: str
     if slug:
-        # Explicit slug provided - validate dependencies first
+        # Explicit slug provided - verify it's in ready state and dependencies satisfied
+        # Read roadmap to check state
+        roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+        if not roadmap_path.exists():
+            return format_error(
+                "NOT_PREPARED",
+                f"Item '{slug}' not found: roadmap doesn't exist.",
+                next_call="Call teleclaude__next_prepare() to create roadmap first.",
+            )
+
+        content = roadmap_path.read_text(encoding="utf-8")
+        # Match the slug and extract its state
+        pattern = re.compile(rf"^-\s+\[([ .>])\]\s+{re.escape(slug)}\b", re.MULTILINE)
+        match = pattern.search(content)
+
+        if not match:
+            return format_error(
+                "NOT_PREPARED",
+                f"Item '{slug}' not found in roadmap.",
+                next_call="Check todos/roadmap.md or call teleclaude__next_prepare().",
+            )
+
+        state: str = match.group(1)
+        if state == " ":
+            # Item is [ ] (pending) - not prepared yet
+            return format_error(
+                "ITEM_NOT_READY",
+                f"Item '{slug}' is [ ] (pending). Must be [.] (ready) to start work.",
+                next_call="Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
+            )
+
+        # Item is [.] or [>] - check dependencies
         if not check_dependencies_satisfied(cwd, slug, deps):
             return format_error(
                 "DEPS_UNSATISFIED",

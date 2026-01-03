@@ -298,6 +298,25 @@ async def test_next_work_explicit_slug_checks_dependencies():
         assert "DEPS_UNSATISFIED" in result
 
 
+@pytest.mark.asyncio
+async def test_next_work_explicit_slug_rejects_pending_items():
+    """Verify explicit slug rejects [ ] (pending) items"""
+    db = MagicMock(spec=Db)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create roadmap with pending item
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text("# Roadmap\n\n- [ ] pending-item\n- [.] ready-item\n")
+
+        result = await next_work(db, slug="pending-item", cwd=tmpdir)
+
+        # Should return error indicating item is not ready
+        assert "ERROR:" in result
+        assert "ITEM_NOT_READY" in result
+        assert "[ ] (pending)" in result
+
+
 # =============================================================================
 # resolve_slug Tests (ready_only mode)
 # =============================================================================
