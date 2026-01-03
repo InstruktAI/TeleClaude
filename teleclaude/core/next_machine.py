@@ -930,7 +930,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             return format_error(
                 "ITEM_NOT_READY",
                 f"Item '{slug}' is [ ] (pending). Must be [.] (ready) to start work.",
-                next_call="Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
+                next_call=f"Call teleclaude__next_prepare(slug='{slug}') to prepare it first.",
             )
 
         # Item is [.] or [>] - check dependencies
