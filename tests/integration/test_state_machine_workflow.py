@@ -136,8 +136,9 @@ async def test_next_work_dependency_blocking():
         with patch("teleclaude.core.next_machine.Repo"):
             result = await next_work(db, slug="blocked-feature", cwd=tmpdir)
 
-        # Should no longer be blocked
-        assert "ERROR:" not in result or "DEPS_UNSATISFIED" not in result
+        # Should no longer be blocked - verify no errors
+        assert "ERROR:" not in result
+        assert "DEPS_UNSATISFIED" not in result
 
 
 @pytest.mark.asyncio
