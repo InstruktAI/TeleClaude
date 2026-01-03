@@ -13,7 +13,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional, TextIO, TypedDict, cast
+from typing import Callable, Coroutine, Optional, TextIO, TypedDict, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -220,6 +220,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
+        self._background_tasks: set[asyncio.Task[object]] = set()
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""
@@ -233,6 +234,26 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.error("Background task '%s' crashed: %s", task_name, e, exc_info=True)
 
         return _on_done
+
+    def _track_background_task(self, task: asyncio.Task[object], label: str) -> None:
+        """Track background tasks so failures are logged and tasks aren't lost."""
+        self._background_tasks.add(task)
+
+        def _on_done(done: asyncio.Task[object]) -> None:
+            self._background_tasks.discard(done)
+            try:
+                done.result()
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.error("Background task failed (%s): %s", label, exc, exc_info=True)
+
+        task.add_done_callback(_on_done)
+
+    def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
+        """Create and track a background task."""
+        task = asyncio.create_task(coro)
+        self._track_background_task(task, label)
 
     async def _handle_command_event(self, event: str, context: CommandEventContext) -> object:
         """Generic handler for all command events.
@@ -511,6 +532,31 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     )
             except Exception:
                 pass
+
+    async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
+        """Execute a post-session auto_command and return status/message."""
+        auto_context = CommandEventContext(session_id=session_id, args=[])
+        cmd_name, auto_args = parse_command_string(auto_command)
+
+        if cmd_name == "agent_then_message":
+            return await self._handle_agent_then_message(session_id, auto_args)
+
+        if cmd_name == TeleClaudeEvents.AGENT_START and auto_args:
+            agent_name = auto_args.pop(0)
+            await command_handlers.handle_agent_start(
+                auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
+            )
+            return {"status": "success"}
+
+        if cmd_name == TeleClaudeEvents.AGENT_RESUME and auto_args:
+            agent_name = auto_args.pop(0)
+            await command_handlers.handle_agent_resume(
+                auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
+            )
+            return {"status": "success"}
+
+        logger.warning("Unknown or malformed auto_command: %s", auto_command)
+        return {"status": "error", "message": f"Unknown or malformed auto_command: {auto_command}"}
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for tmux to leave shell, then inject message."""
@@ -1286,28 +1332,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             # Handle auto_command if specified (e.g., start Claude after session creation)
             if metadata.auto_command and result.get("session_id"):
                 session_id = str(result["session_id"])
-                auto_context = CommandEventContext(session_id=session_id, args=[])
+                auto_command = metadata.auto_command
 
-                # Parse auto_command (e.g., "agent claude --flag")
-                cmd_name, auto_args = parse_command_string(metadata.auto_command)
-
-                if cmd_name == "agent_then_message":
-                    auto_result = await self._handle_agent_then_message(session_id, auto_args)
+                if metadata.adapter_type in ("redis", "mcp"):
+                    self._queue_background_task(
+                        self._execute_auto_command(session_id, auto_command),
+                        f"auto_command:{session_id[:8]}",
+                    )
+                    result["auto_command_status"] = "queued"
+                    result["auto_command_message"] = "Auto-command queued"
+                else:
+                    auto_result = await self._execute_auto_command(session_id, auto_command)
                     result["auto_command_status"] = auto_result.get("status", "error")
                     if auto_result.get("message"):
                         result["auto_command_message"] = auto_result["message"]
-                elif cmd_name == TeleClaudeEvents.AGENT_START and auto_args:
-                    agent_name = auto_args.pop(0)  # First arg is agent name
-                    await command_handlers.handle_agent_start(
-                        auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
-                    )
-                elif cmd_name == TeleClaudeEvents.AGENT_RESUME and auto_args:
-                    agent_name = auto_args.pop(0)
-                    await command_handlers.handle_agent_resume(
-                        auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
-                    )
-                else:
-                    logger.warning("Unknown or malformed auto_command: %s", metadata.auto_command)
 
             return result
         elif command == TeleClaudeEvents.LIST_SESSIONS:

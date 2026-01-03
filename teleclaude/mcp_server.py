@@ -1340,12 +1340,21 @@ class TeleClaudeMCPServer:
 
         # Determine which event to fire based on agent (now always AGENT_START)
         # Send command with prefixed message to start the agent
-        await self.client.handle_event(
-            TeleClaudeEvents.AGENT_START,
-            {"session_id": session_id, "args": [agent, thinking_mode.value, message]},
-            MessageMetadata(adapter_type="redis"),
+        async def _run_agent_start() -> None:
+            try:
+                await self.client.handle_event(
+                    TeleClaudeEvents.AGENT_START,
+                    {"session_id": session_id, "args": [agent, thinking_mode.value, message]},
+                    MessageMetadata(adapter_type="redis"),
+                )
+                logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.error("Failed to dispatch AGENT_START for session %s: %s", session_id[:8], exc)
+
+        self._track_background_task(
+            asyncio.create_task(_run_agent_start()),
+            f"agent_start:{session_id[:8]}",
         )
-        logger.debug("Sent AGENT_START command with message to local session %s", session_id[:8])
 
         return {"session_id": session_id, "status": "success"}
 

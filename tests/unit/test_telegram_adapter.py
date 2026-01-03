@@ -1,5 +1,6 @@
 """Unit tests for telegram_adapter.py."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,6 +165,19 @@ class TestChannelManagement:
         assert result == "123"
         telegram_adapter.app.bot.create_forum_topic.assert_called_once()
         mock_wait.assert_awaited_once_with(123, "Test Topic")
+
+    @pytest.mark.asyncio
+    async def test_wait_for_topic_ready_timeout_is_soft(self, telegram_adapter, monkeypatch):
+        """Timeout waiting for topic readiness should not raise."""
+        topic_id = 321
+        telegram_adapter._topic_ready_cache.clear()
+        telegram_adapter._topic_ready_events[topic_id] = asyncio.Event()
+
+        monkeypatch.setattr("teleclaude.adapters.telegram_adapter.TOPIC_READY_TIMEOUT_S", 0.0)
+
+        await telegram_adapter._wait_for_topic_ready(topic_id, "Slow Topic")
+
+        assert topic_id in telegram_adapter._topic_ready_cache
 
     @pytest.mark.asyncio
     async def test_create_channel_deduplication_returns_existing_topic(self, telegram_adapter):

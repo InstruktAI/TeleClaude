@@ -136,32 +136,11 @@ async def test_new_session_auto_command_agent_then_message():
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
+    daemon._execute_auto_command = AsyncMock(return_value={"status": "success"})
+    daemon._queue_background_task = MagicMock(side_effect=lambda coro, _label: coro.close())
 
-    with (
-        patch("teleclaude.daemon.command_handlers.handle_create_session", new_callable=AsyncMock) as mock_create,
-        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock) as mock_start,
-        patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_bridge.send_keys", new_callable=AsyncMock) as mock_send_keys,
-        patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
-        patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock) as mock_send_enter,
-        patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 2),
-        patch("teleclaude.daemon.AGENT_START_ENTER_INTER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_OUTPUT_POLL_INTERVAL_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0.0),
-    ):
+    with patch("teleclaude.daemon.command_handlers.handle_create_session", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = {"session_id": "sess-123"}
-        mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
-        )
-        mock_db.get_ux_state = AsyncMock(return_value=MagicMock(active_agent="codex"))
-        mock_db.update_last_activity = AsyncMock()
-        mock_running.side_effect = [False, True]
-        mock_send_keys.return_value = True
-        mock_capture.side_effect = ["baseline", "changed"]
 
         context = CommandEventContext(session_id="sess-ctx", args=[])
         metadata = MessageMetadata(
@@ -177,9 +156,8 @@ async def test_new_session_auto_command_agent_then_message():
         )
 
         assert result["session_id"] == "sess-123"
-        assert result["auto_command_status"] == "success"
-        mock_start.assert_awaited_once()
-        assert mock_send_enter.await_count == 2
+        assert result["auto_command_status"] == "queued"
+        daemon._queue_background_task.assert_called_once()
 
 
 @pytest.mark.asyncio

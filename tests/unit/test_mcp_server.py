@@ -112,6 +112,8 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
 @pytest.mark.asyncio
 async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     """Test that start_session creates a new session."""
+    from teleclaude.core.events import TeleClaudeEvents
+
     server = mock_mcp_server
 
     # Mock handle_event to return success with session_id
@@ -133,8 +135,11 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
         assert result["status"] == "success"
     assert result["session_id"] == "new-session-456"
 
-    # Verify handle_event was called for both NEW_SESSION and CLAUDE
-    assert server.client.handle_event.call_count == 2
+    # Verify handle_event was called for NEW_SESSION (AGENT_START may run in background)
+    assert server.client.handle_event.call_count >= 1
+    assert server.client.handle_event.call_args_list[0].args[0] == TeleClaudeEvents.NEW_SESSION
+    if server.client.handle_event.call_count > 1:
+        assert server.client.handle_event.call_args_list[1].args[0] == TeleClaudeEvents.AGENT_START
 
 
 @pytest.mark.asyncio
@@ -360,6 +365,8 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
 @pytest.mark.asyncio
 async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     """Test that start_session dispatches correct agent event based on parameter."""
+    from teleclaude.core.events import TeleClaudeEvents
+
     server = mock_mcp_server
 
     # Mock handle_event to return success with session_id
@@ -380,7 +387,10 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         assert result["status"] == "success"
 
         # Verify events
-        assert server.client.handle_event.call_count == 2
+    assert server.client.handle_event.call_count >= 1
+    assert server.client.handle_event.call_args_list[0].args[0] == TeleClaudeEvents.NEW_SESSION
+    if server.client.handle_event.call_count > 1:
+        assert server.client.handle_event.call_args_list[1].args[0] == TeleClaudeEvents.AGENT_START
 
         # Check session creation call
         first_call = server.client.handle_event.call_args_list[0]

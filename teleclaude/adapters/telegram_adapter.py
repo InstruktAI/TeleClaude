@@ -463,6 +463,9 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         # topic_id must be int (validated above)
         assert isinstance(topic_id, int), "topic_id must be int"
 
+        # Best-effort wait for topic readiness to avoid "thread not found" races.
+        await self._wait_for_topic_ready(topic_id, session.title)
+
         # Send message with retry decorator handling errors
         message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)  # type: ignore[misc]
         return str(message.message_id)
@@ -487,13 +490,19 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             ),
         ):
             reply_markup = None
-        return await self.bot.send_message(
-            chat_id=self.supergroup_id,
-            message_thread_id=topic_id,
-            text=formatted_text,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup,
-        )
+        try:
+            return await self.bot.send_message(
+                chat_id=self.supergroup_id,
+                message_thread_id=topic_id,
+                text=formatted_text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+            )
+        except Exception as exc:
+            if "message thread not found" in str(exc).lower():
+                logger.warning("Topic %s not ready yet; retrying send", topic_id)
+                raise TimeoutError("message thread not found") from exc
+            raise
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _send_document_with_retry(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -506,15 +515,21 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
     ) -> Message:
         """Internal method with retry logic for sending documents."""
         with open(file_path, "rb") as f:
-            return await self.bot.send_document(
-                chat_id=chat_id,
-                message_thread_id=message_thread_id,
-                document=f,
-                filename=filename,
-                caption=caption,
-                write_timeout=15.0,
-                read_timeout=15.0,
-            )
+            try:
+                return await self.bot.send_document(
+                    chat_id=chat_id,
+                    message_thread_id=message_thread_id,
+                    document=f,
+                    filename=filename,
+                    caption=caption,
+                    write_timeout=15.0,
+                    read_timeout=15.0,
+                )
+            except Exception as exc:
+                if "message thread not found" in str(exc).lower():
+                    logger.warning("Topic %s not ready yet; retrying document send", message_thread_id)
+                    raise TimeoutError("message thread not found") from exc
+                raise
 
     async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:
         """Edit an existing message with automatic retry on rate limits and network errors.
@@ -762,11 +777,16 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
         try:
             await asyncio.wait_for(event.wait(), timeout=TOPIC_READY_TIMEOUT_S)
-        except asyncio.TimeoutError as exc:
+        except asyncio.TimeoutError:
             self._topic_ready_events.pop(topic_id, None)
-            raise AdapterError(
-                f"Topic {title} (ID: {topic_id}) did not emit forum_topic_created within {TOPIC_READY_TIMEOUT_S:.1f}s"
-            ) from exc
+            logger.warning(
+                "Topic %s (ID: %s) did not emit forum_topic_created within %.1fs; proceeding anyway",
+                title,
+                topic_id,
+                TOPIC_READY_TIMEOUT_S,
+            )
+            self._topic_ready_cache.add(topic_id)
+            return
 
         self._topic_ready_cache.add(topic_id)
 
