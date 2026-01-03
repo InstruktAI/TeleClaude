@@ -1,5 +1,6 @@
 """Unit tests for daemon.py core logic."""
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -239,6 +240,31 @@ async def test_agent_then_message_times_out_on_no_output_change():
             "sess-123",
             ["claude", "slow", "/next-work"],
         )
+
+
+@pytest.mark.asyncio
+async def test_restart_mcp_server_replaces_task():
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.mcp_server = MagicMock()
+    daemon.mcp_server.start = AsyncMock()
+    daemon.shutdown_event = asyncio.Event()
+    daemon._mcp_restart_lock = asyncio.Lock()
+    daemon._mcp_restart_attempts = 0
+    daemon._mcp_restart_window_start = 0.0
+    daemon._log_background_task_exception = MagicMock(return_value=lambda _task: None)
+    daemon._handle_mcp_task_done = MagicMock()
+
+    daemon.mcp_task = asyncio.create_task(asyncio.sleep(10))
+
+    ok = await daemon._restart_mcp_server("test")
+
+    assert ok is True
+    assert daemon.mcp_task is not None
+    assert daemon.mcp_task.done() is False
+
+    daemon.mcp_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await daemon.mcp_task
 
         assert result["status"] == "error"
         assert "Timeout waiting for command acceptance" in result["message"]
