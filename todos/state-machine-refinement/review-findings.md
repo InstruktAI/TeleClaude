@@ -53,3 +53,18 @@
 Priority fixes needed:
 1. Align dependency satisfaction with the requirement: missing roadmap items must count as completed.
 2. Add/repair tests: eliminate empty `test_mcp_set_dependencies.py` and cover ready-only slug resolution + integration flow.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Dependency check treats missing roadmap items as unsatisfied | Modified `check_dependencies_satisfied()` to treat missing roadmap items as satisfied (completed and cleaned up) without requiring done/ directory check | 5c3c790 |
+| Empty test file `test_mcp_set_dependencies.py` | Added 7 comprehensive unit tests for circular dependency detection and dependency I/O; fixed `write_dependencies()` to create todos/ directory | e9557b7 |
+| Missing tests for ready-only `resolve_slug` and integration workflow | Added 4 focused tests for `resolve_slug(ready_only=True)` and 1 integration test exercising full [ ] → [.] → [>] → [x] workflow with dependency gating | b616142 |
+
+**Test Results:**
+- All 533 unit tests passing
+- All 35 integration tests passing (1 skipped)
+- All linting and formatting checks passing
