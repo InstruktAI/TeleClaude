@@ -104,6 +104,7 @@ MCP_WATCH_INTERVAL_S = float(os.getenv("MCP_WATCH_INTERVAL_S", "2"))
 MCP_WATCH_FAILURE_THRESHOLD = int(os.getenv("MCP_WATCH_FAILURE_THRESHOLD", "3"))
 MCP_WATCH_RESTART_MAX = int(os.getenv("MCP_WATCH_RESTART_MAX", "3"))
 MCP_WATCH_RESTART_WINDOW_S = float(os.getenv("MCP_WATCH_RESTART_WINDOW_S", "60"))
+MCP_WATCH_RESTART_TIMEOUT_S = float(os.getenv("MCP_WATCH_RESTART_TIMEOUT_S", "2"))
 MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.5"))
 
 # Agent auto-command startup detection
@@ -312,10 +313,26 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 self.shutdown_event.set()
                 return False
 
+            logger.warning(
+                "Restarting MCP server",
+                reason=reason,
+                attempt=self._mcp_restart_attempts,
+                window_s=MCP_WATCH_RESTART_WINDOW_S,
+            )
+
+            try:
+                await asyncio.wait_for(self.mcp_server.stop(), timeout=MCP_WATCH_RESTART_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out stopping MCP server listener", timeout_s=MCP_WATCH_RESTART_TIMEOUT_S)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("MCP server stop failed: %s", exc, exc_info=True)
+
             if self.mcp_task:
                 self.mcp_task.cancel()
                 try:
-                    await self.mcp_task
+                    await asyncio.wait_for(self.mcp_task, timeout=MCP_WATCH_RESTART_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    logger.warning("Timed out cancelling MCP server task", timeout_s=MCP_WATCH_RESTART_TIMEOUT_S)
                 except asyncio.CancelledError:
                     pass
                 except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -324,12 +341,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
             self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
             self.mcp_task.add_done_callback(self._handle_mcp_task_done)
-            logger.warning(
-                "MCP server restarted",
-                reason=reason,
-                attempt=self._mcp_restart_attempts,
-                window_s=MCP_WATCH_RESTART_WINDOW_S,
-            )
+            logger.warning("MCP server restarted")
             return True
 
     async def _check_mcp_socket_health(self) -> bool:

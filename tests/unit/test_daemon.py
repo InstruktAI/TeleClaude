@@ -247,6 +247,7 @@ async def test_restart_mcp_server_replaces_task():
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.start = AsyncMock()
+    daemon.mcp_server.stop = AsyncMock()
     daemon.shutdown_event = asyncio.Event()
     daemon._mcp_restart_lock = asyncio.Lock()
     daemon._mcp_restart_attempts = 0

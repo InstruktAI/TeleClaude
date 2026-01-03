@@ -210,6 +210,7 @@ class TeleClaudeMCPServer:
 
         self.computer_name = config.computer.name
         self._background_tasks: set[asyncio.Task[None]] = set()
+        self._server: asyncio.AbstractServer | None = None
 
     def _track_background_task(self, task: asyncio.Task[None], label: str) -> None:
         """Keep background tasks alive and log failures."""
@@ -1027,12 +1028,25 @@ class TeleClaudeMCPServer:
             path=str(socket_path),
             backlog=MCP_SOCKET_BACKLOG,
         )
+        self._server = server
 
         # Make socket accessible (owner only)
         socket_path.chmod(0o600)
 
-        async with server:
-            await server.serve_forever()
+        try:
+            async with server:
+                await server.serve_forever()
+        finally:
+            self._server = None
+
+    async def stop(self) -> None:
+        """Stop MCP server listener if running."""
+        server = self._server
+        if not server:
+            return
+        server.close()
+        await server.wait_closed()
+        self._server = None
 
     async def _handle_socket_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handle a single MCP client connection over Unix socket."""
