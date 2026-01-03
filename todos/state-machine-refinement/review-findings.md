@@ -8,13 +8,13 @@
 | Requirement | Status | Notes |
 |-------------|--------|-------|
 | R1: Remove bug check from `next_work()` | ✅ Implemented | Bug check block removed. |
-| R2: Introduce ready state `[.]` | ⚠️ Partial | Ready state supported in code, but roadmap legend not updated. |
-| R3: State machine owns checkbox transitions | ✅ Implemented | `next_prepare()`/`next_work()` update roadmap state. |
+| R2: Introduce ready state `[.]` | ✅ Implemented | Ready state supported in code; roadmap legend already includes `[.]`. |
+| R3: State machine owns checkbox transitions | ✅ Implemented | `next_prepare()`/`next_work()` call `update_roadmap_state()`. |
 | R4: Add `todos/dependencies.json` support | ✅ Implemented | Read/write helpers added; file created on first write. |
-| R5: Add `teleclaude__set_dependencies()` tool + validation | ⚠️ Partial | Existence validation is substring-based; can accept non-existent slugs. |
-| R6: `resolve_slug()` ready-only + dependency gating | ⚠️ Partial | Dependency gating is outside `resolve_slug`; explicit slugs bypass deps. |
-| R7: `update_roadmap_state()` helper | ✅ Implemented | Added with git commit side effect. |
-| Tests per requirements | ❌ Missing | No new unit/integration tests added. |
+| R5: Add `teleclaude__set_dependencies()` tool + validation | ✅ Implemented | Tool validates slug format, existence, self-reference, and cycles. |
+| R6: `resolve_slug()` ready-only + dependency gating | ⚠️ Partial | Dependency gating lives in `next_work()`; `resolve_slug()` ready-only mode does not enforce deps. |
+| R7: `update_roadmap_state()` helper | ✅ Implemented | Added with git-commit side effect. |
+| Tests per requirements | ⚠️ Partial | Some unit tests added, but missing ready-only `resolve_slug` tests, set-dependencies validation tests, and the integration workflow test. |
 
 ## Critical Issues (must fix)
 
@@ -22,28 +22,24 @@
 
 ## Important Issues (should fix)
 
-- [code] `teleclaude/mcp_server.py:2561` - `teleclaude__set_dependencies()` validates slug/deps with substring checks (`if slug not in content`), so `auth` passes when only `auth-system` exists or when legend text contains the slug. This violates the strict roadmap validation requirement.
-  - Suggested fix: Parse roadmap items with a regex like `r"^- \[[ .>x]\] ([a-z0-9-]+)"` and compare exact slugs.
-- [code] `teleclaude/mcp_server.py:2534` - New import inside method violates the project's “imports at module level” rule and may fail linting.
-  - Suggested fix: move `detect_circular_dependency`, `read_dependencies`, and `write_dependencies` imports to top-level and resolve circular dependency (e.g., by refactoring helpers into a shared module).
-- [code] `teleclaude/core/next_machine.py:863` - Explicit slug path bypasses dependency checks; callers can work on items with unsatisfied dependencies.
-  - Suggested fix: when `slug` is provided, call `check_dependencies_satisfied(...)` and return a clear dependency error if blocked.
-- [code] `teleclaude/core/next_machine.py:882` - Ready-item detection uses `if "[.]" in content`, which can match the status legend or description text and incorrectly returns `DEPS_UNSATISFIED` when no ready items exist.
-  - Suggested fix: use the same ready-item regex and track a `has_ready_items` flag based on actual matches.
-- [tests] `tests/` - Required unit/integration tests are missing (no new/updated test files in this change).
-  - Suggested fix: add the tests listed in `todos/state-machine-refinement/requirements.md` and update coverage for new dependency logic and roadmap state transitions.
-- [comments] `todos/roadmap.md` - Status legend still lacks `[.]` (Ready) entry, so the documented roadmap format is now out of sync.
-  - Suggested fix: update the legend line to include `[.] = Ready`.
+- [code] `teleclaude/core/next_machine.py:520` - `check_dependencies_satisfied()` treats a dependency that is missing from `roadmap.md` as **unsatisfied** unless a `done/*-slug` directory exists. This violates the requirement that “not present in roadmap” implies completion, and will block valid work items after roadmap cleanup.
+  - Suggested fix: if `dep` not in `roadmap_items`, treat it as satisfied without requiring a `done/` entry.
+- [tests] `tests/unit/test_mcp_set_dependencies.py:1` - Empty test file with unused imports; will fail linting and does not validate the MCP tool behavior.
+  - Suggested fix: remove the file or add the required tests for `teleclaude__set_dependencies()` validation rules.
+- [tests] `tests/unit/test_next_machine_state_deps.py:1` - Missing required tests for `resolve_slug(..., ready_only=True)` and full workflow integration (R6 + integration requirements).
+  - Suggested fix: add focused unit tests for ready-only slug resolution and a lightweight integration test that exercises `[ ] → [.] → [>] → archived` plus dependency gating.
 
 ## Suggestions (nice to have)
 
-- [simplify] `teleclaude/core/next_machine.py:287` - `resolve_slug(..., ready_only=True)` duplicates selection logic but does not enforce dependencies. Consider centralizing dependency gating here so `next_work()` can reuse it and avoid divergent behavior.
-- [code] `todos/state-machine-refinement/state.json` - This looks like a work-state artifact; confirm whether it should live in the main tree or be generated in a worktree instead.
+- [simplify] `teleclaude/core/next_machine.py:287` - Consider moving dependency gating into `resolve_slug(..., ready_only=True)` so selection logic isn’t split across helpers and `next_work()`.
+- [tests] `tests/unit/test_next_machine_state_deps.py:1` - Several tests use multiple assertions; consider splitting for single-assertion clarity in line with testing directives.
+- [docs] `todos/state-machine-refinement/state.json:1` - Verify this artifact belongs in the main repo; state is typically worktree-local (`trees/{slug}/todos/{slug}/state.json`).
 
 ## Strengths
 
-- Dependency helpers and roadmap state update are cleanly factored and follow the intended workflow.
-- Error messages for no-ready-items and dependency blocking are clear and actionable.
+- Clear, actionable error messages for “no ready items” and “dependencies unsatisfied” scenarios.
+- Dependency helpers are cleanly factored and easy to reuse.
+- Roadmap state transitions are centralized and consistently invoked.
 
 ---
 
@@ -55,19 +51,5 @@
 ### If REQUEST CHANGES:
 
 Priority fixes needed:
-1. Enforce roadmap slug existence with exact slug matching in `teleclaude__set_dependencies()`.
-2. Add the required unit/integration tests for roadmap state and dependency logic.
-3. Ensure dependency checks apply even when an explicit slug is provided.
-
----
-
-## Fixes Applied
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| Substring-based slug validation in `teleclaude__set_dependencies()` | Changed to exact regex matching with `r"^-\s+\[[. >x]\]\s+([a-z0-9-]+)"` | e0b6426 |
-| Imports inside method violating module-level rule | Moved `detect_circular_dependency`, `read_dependencies`, `write_dependencies` to top-level imports | e0b6426 |
-| Explicit slug bypasses dependency checks in `next_work()` | Added `check_dependencies_satisfied()` call before using explicit slug | e0b6426 |
-| Ready-item detection using substring match | Changed to regex-based detection with `pattern.search(content)` | e0b6426 |
-| Roadmap legend missing `[.]` entry | Already present - no fix needed (false positive in review) | N/A |
-| Missing unit/integration tests | Added comprehensive test suite covering all requirements | 8a6acfb |
+1. Align dependency satisfaction with the requirement: missing roadmap items must count as completed.
+2. Add/repair tests: eliminate empty `test_mcp_set_dependencies.py` and cover ready-only slug resolution + integration flow.
