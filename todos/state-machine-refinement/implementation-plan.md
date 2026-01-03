@@ -15,20 +15,20 @@ Before starting, read these files in order:
 
 ### Group 1: Core Infrastructure
 
-- [ ] **1.1** Add `update_roadmap_state()` function to `next_machine.py`
-- [ ] **1.2** Add `read_dependencies()` function to `next_machine.py`
-- [ ] **1.3** Add `write_dependencies()` function to `next_machine.py`
-- [ ] **1.4** Add `check_dependencies_satisfied()` function to `next_machine.py`
-- [ ] **1.5** Add `detect_circular_dependency()` function to `next_machine.py`
+- [x] **1.1** Add `update_roadmap_state()` function to `next_machine.py`
+- [x] **1.2** Add `read_dependencies()` function to `next_machine.py`
+- [x] **1.3** Add `write_dependencies()` function to `next_machine.py`
+- [x] **1.4** Add `check_dependencies_satisfied()` function to `next_machine.py`
+- [x] **1.5** Add `detect_circular_dependency()` function to `next_machine.py`
 
 ### Group 2: Modify Existing Functions
 
 - [ ] **2.1** Remove bug check from `next_work()` (delete lines 641-653)
-- [ ] **2.2** Modify `resolve_slug()` to accept `ready_only` parameter
+- [x] **2.2** Modify `resolve_slug()` to accept `ready_only` parameter
 - [ ] **2.3** Update `next_work()` to call `resolve_slug(ready_only=True)`
 - [ ] **2.4** Update `next_work()` to check dependencies before claiming
 - [ ] **2.5** Update `next_work()` to call `update_roadmap_state()` marking `[>]`
-- [ ] **2.6** Update `next_prepare()` to call `update_roadmap_state()` marking `[.]`
+- [x] **2.6** Update `next_prepare()` to call `update_roadmap_state()` marking `[.]`
 
 ### Group 3: New MCP Tool
 

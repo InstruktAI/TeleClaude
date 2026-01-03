@@ -838,7 +838,8 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             next_call="teleclaude__next_prepare",
         )
 
-    # 4. Both exist - prepared
+    # 4. Both exist - mark as ready and return prepared
+    update_roadmap_state(cwd, resolved_slug, ".")
     return format_prepared(resolved_slug)
 
 
