@@ -847,6 +847,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
     Executes the build/review/fix/finalize cycle on prepared work items.
+    Only considers [.] items (ready) with satisfied dependencies.
 
     Args:
         db: Database instance
@@ -856,22 +857,43 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    # 1. Resolve slug
-    resolved_slug, is_in_progress, description = resolve_slug(cwd, slug)
-    if not resolved_slug:
-        return format_error(
-            "NO_ROADMAP_ITEMS",
-            "No items found in roadmap.",
-            next_call="Call teleclaude__next_prepare() to groom the roadmap.",
-        )
+    # 1. Resolve slug - only ready items when no explicit slug
+    deps = read_dependencies(cwd)
 
-    if not is_in_progress:
-        desc_text = f"\n\nDescription:\n{description}" if description else ""
-        return format_error(
-            "ITEM_NOT_STARTED",
-            f"Found roadmap item '{resolved_slug}' (not started).{desc_text}",
-            next_call="Call teleclaude__next_prepare() to start work on it.",
-        )
+    resolved_slug: str
+    if slug:
+        # Explicit slug provided - use it directly
+        resolved_slug = slug
+    else:
+        # Find first [.] item with satisfied dependencies
+        found_slug: str | None = None
+        roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+        if roadmap_path.exists():
+            content = roadmap_path.read_text(encoding="utf-8")
+            pattern = re.compile(r"^-\s+\[\.]\s+([a-z0-9-]+)", re.MULTILINE)
+
+            for match in pattern.finditer(content):
+                candidate_slug = match.group(1)
+                if check_dependencies_satisfied(cwd, candidate_slug, deps):
+                    found_slug = candidate_slug
+                    break
+
+        if not found_slug:
+            # Check if there are [.] items but with unsatisfied deps
+            if roadmap_path.exists():
+                content = roadmap_path.read_text(encoding="utf-8")
+                if "[.]" in content:
+                    return format_error(
+                        "DEPS_UNSATISFIED",
+                        "Ready items exist but all have unsatisfied dependencies.",
+                        next_call="Complete dependency items first, or check todos/dependencies.json.",
+                    )
+            return format_error(
+                "NO_READY_ITEMS",
+                "No [.] (ready) items found in roadmap.",
+                next_call="Call teleclaude__next_prepare() to prepare items first.",
+            )
+        resolved_slug = found_slug
 
     # 2. Check if already finalized
     archive_path = get_archive_path(cwd, resolved_slug)
@@ -893,16 +915,21 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if worktree_created:
         logger.info("Created new worktree for %s", resolved_slug)
 
-    # From here on, use worktree context for file checks
-    # The builder works in the worktree, so implementation-plan.md and
-    # review-findings.md are committed there, not in main repo
     worktree_cwd = str(Path(cwd) / "trees" / resolved_slug)
 
-    # 5. Check uncommitted changes - orchestrator handles commits directly
+    # 5. Check uncommitted changes
     if has_uncommitted_changes(cwd, resolved_slug):
         return format_uncommitted_changes(resolved_slug)
 
-    # 6. Check build status (from state.json in worktree)
+    # 6. Mark as in-progress BEFORE dispatching (claim the item)
+    # Only mark if currently [.] (not already [>])
+    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    if roadmap_path.exists():
+        content = roadmap_path.read_text(encoding="utf-8")
+        if f"[.] {resolved_slug}" in content:
+            update_roadmap_state(cwd, resolved_slug, ">")
+
+    # 7. Check build status (from state.json in worktree)
     if not is_build_complete(worktree_cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "build", WORK_FALLBACK)
         return format_tool_call(
@@ -915,7 +942,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call="teleclaude__next_work",
         )
 
-    # 7. Check review status (from state.json in worktree)
+    # 8. Check review status
     if not is_review_approved(worktree_cwd, resolved_slug):
         # Check if review hasn't started yet or needs fixes
         if is_review_changes_requested(worktree_cwd, resolved_slug):
@@ -941,7 +968,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             next_call="teleclaude__next_work",
         )
 
-    # 9. Review approved - dispatch finalize (runs from MAIN REPO, not worktree)
+    # 9. Review approved - dispatch finalize
     agent, mode = await get_available_agent(db, "finalize", WORK_FALLBACK)
     return format_tool_call(
         command="next-finalize",

@@ -25,9 +25,9 @@ Before starting, read these files in order:
 
 - [x] **2.1** Remove bug check from `next_work()` (delete lines 641-653)
 - [x] **2.2** Modify `resolve_slug()` to accept `ready_only` parameter
-- [ ] **2.3** Update `next_work()` to call `resolve_slug(ready_only=True)`
-- [ ] **2.4** Update `next_work()` to check dependencies before claiming
-- [ ] **2.5** Update `next_work()` to call `update_roadmap_state()` marking `[>]`
+- [x] **2.3** Update `next_work()` to call `resolve_slug(ready_only=True)`
+- [x] **2.4** Update `next_work()` to check dependencies before claiming
+- [x] **2.5** Update `next_work()` to call `update_roadmap_state()` marking `[>]`
 - [x] **2.6** Update `next_prepare()` to call `update_roadmap_state()` marking `[.]`
 
 ### Group 3: New MCP Tool
