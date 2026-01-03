@@ -23,7 +23,7 @@ Before starting, read these files in order:
 
 ### Group 2: Modify Existing Functions
 
-- [ ] **2.1** Remove bug check from `next_work()` (delete lines 641-653)
+- [x] **2.1** Remove bug check from `next_work()` (delete lines 641-653)
 - [x] **2.2** Modify `resolve_slug()` to accept `ready_only` parameter
 - [ ] **2.3** Update `next_work()` to call `resolve_slug(ready_only=True)`
 - [ ] **2.4** Update `next_work()` to check dependencies before claiming

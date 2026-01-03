@@ -856,20 +856,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    # 0. Bug check (only when no explicit slug - bugs are priority)
-    if not slug and has_pending_bugs(cwd):
-        agent, mode = await get_available_agent(db, "bugs", WORK_FALLBACK)
-        return format_tool_call(
-            command="next-bugs",
-            args="",
-            project=cwd,
-            agent=agent,
-            thinking_mode=mode,
-            subfolder="",
-            note="Fix bugs in todos/bugs.md before proceeding with roadmap work.",
-            next_call="teleclaude__next_work",
-        )
-
     # 1. Resolve slug
     resolved_slug, is_in_progress, description = resolve_slug(cwd, slug)
     if not resolved_slug:
