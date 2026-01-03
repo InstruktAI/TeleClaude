@@ -196,6 +196,12 @@ def _read_json_response(stream: Any, timeout_s: float, expected_id: object) -> D
                 continue
 
             if message.get("id") != expected_id:
-                raise RuntimeError(f"Unexpected MCP response id {message.get('id')!r} (expected {expected_id!r})")
+                # Responses can arrive out-of-order; ignore unrelated IDs.
+                logger.debug(
+                    "Ignoring unexpected MCP response id",
+                    got=message.get("id"),
+                    expected=expected_id,
+                )
+                continue
             return message
     raise TimeoutError("Timeout waiting for MCP wrapper response")

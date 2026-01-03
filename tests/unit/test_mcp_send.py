@@ -45,7 +45,7 @@ def test_read_json_response_rejects_unexpected_id() -> None:
     thread = threading.Thread(target=_write_lines, args=(write_fd, lines), daemon=True)
     thread.start()
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(TimeoutError):
         _read_json_response(reader, timeout_s=1.0, expected_id=1)
 
     thread.join(timeout=1)
