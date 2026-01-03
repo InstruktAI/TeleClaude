@@ -312,6 +312,39 @@ async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
+async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    monkeypatch.setattr(wrapper, "CONNECT_LOCK_TIMEOUT", 0.0)
+    monkeypatch.setattr(wrapper, "CONNECT_LOCK_RETRY_S", 0.0)
+
+    calls: dict[str, int] = {"open": 0, "flock": 0, "close": 0}
+
+    def fake_open(_path: str, _flags: int) -> int:
+        calls["open"] += 1
+        return 123
+
+    def fake_flock(_fd: int, _flags: int) -> None:
+        calls["flock"] += 1
+        raise BlockingIOError()
+
+    def fake_close(_fd: int) -> None:
+        calls["close"] += 1
+
+    monkeypatch.setattr(wrapper.os, "open", fake_open)
+    monkeypatch.setattr(wrapper.fcntl, "flock", fake_flock)
+    monkeypatch.setattr(wrapper.os, "close", fake_close)
+
+    fd = await proxy._acquire_connect_lock()
+
+    assert fd is None
+    assert calls["open"] == 1
+    assert calls["flock"] == 1
+    assert calls["close"] == 1
+
+
+@pytest.mark.asyncio
 async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch) -> None:
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()

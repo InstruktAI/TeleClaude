@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+MCP_SOCKET_BACKLOG = int(os.getenv("MCP_SOCKET_BACKLOG", "256"))
 MCP_SESSION_DATA_MAX_CHARS = int(os.getenv("MCP_SESSION_DATA_MAX_CHARS", "48000"))
 
 # Reusable instruction for AI-to-AI session management (appended to tool descriptions)
@@ -1024,6 +1025,7 @@ class TeleClaudeMCPServer:
         server = await asyncio.start_unix_server(
             lambda r, w: asyncio.create_task(self._handle_socket_connection(r, w)),
             path=str(socket_path),
+            backlog=MCP_SOCKET_BACKLOG,
         )
 
         # Make socket accessible (owner only)

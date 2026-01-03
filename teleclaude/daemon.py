@@ -13,7 +13,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Coroutine, Optional, TextIO, TypedDict, cast
+from typing import Awaitable, Callable, Coroutine, Optional, TextIO, TypedDict, cast
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -21,6 +21,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
+from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -97,6 +98,11 @@ DEFAULT_LOG_LEVEL = "INFO"
 # Startup retry configuration
 STARTUP_MAX_RETRIES = 3
 STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
+
+# MCP server health monitoring
+MCP_WATCH_INTERVAL_S = float(os.getenv("MCP_WATCH_INTERVAL_S", "2"))
+MCP_WATCH_FAILURE_THRESHOLD = int(os.getenv("MCP_WATCH_FAILURE_THRESHOLD", "3"))
+MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.5"))
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -249,6 +255,70 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.error("Background task failed (%s): %s", label, exc, exc_info=True)
 
         task.add_done_callback(_on_done)
+
+    def _handle_mcp_task_done(self, task: asyncio.Task[object]) -> None:
+        """Trigger daemon shutdown if MCP server task exits unexpectedly."""
+        if self.shutdown_event.is_set():
+            return
+        try:
+            task.result()
+            logger.error("MCP server task exited unexpectedly; shutting down daemon")
+        except asyncio.CancelledError:
+            return
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("MCP server task crashed: %s; shutting down daemon", e, exc_info=True)
+        self.shutdown_event.set()
+
+    async def _check_mcp_socket_health(self) -> bool:
+        socket_path = os.path.expandvars(MCP_SOCKET_PATH)
+        try:
+            connect_awaitable = cast(
+                Awaitable[tuple[asyncio.StreamReader, asyncio.StreamWriter]],
+                asyncio.open_unix_connection(socket_path),
+            )  # pyright: ignore[reportUnnecessaryCast]
+            _reader, writer = await asyncio.wait_for(
+                connect_awaitable,
+                timeout=MCP_SOCKET_HEALTH_TIMEOUT_S,
+            )  # type: ignore[misc]
+        except (FileNotFoundError, ConnectionRefusedError, asyncio.TimeoutError, OSError) as exc:
+            logger.warning("MCP socket health check failed: %s", exc)
+            return False
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return True
+
+    async def _mcp_watch_loop(self) -> None:
+        failures = 0
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(MCP_WATCH_INTERVAL_S)
+
+            if not self.mcp_task:
+                logger.error("MCP server task missing; shutting down daemon")
+                self.shutdown_event.set()
+                return
+
+            if self.mcp_task.done():
+                self._handle_mcp_task_done(self.mcp_task)
+                return
+
+            healthy = await self._check_mcp_socket_health()
+            if healthy:
+                failures = 0
+                continue
+
+            failures += 1
+            logger.warning(
+                "MCP socket health failure",
+                failures=failures,
+                threshold=MCP_WATCH_FAILURE_THRESHOLD,
+            )
+            if failures >= MCP_WATCH_FAILURE_THRESHOLD:
+                logger.error("MCP socket unhealthy; shutting down daemon")
+                self.shutdown_event.set()
+                return
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -1239,7 +1309,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if self.mcp_server:
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
             self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
+            self.mcp_task.add_done_callback(self._handle_mcp_task_done)
             logger.info("MCP server starting in background")
+
+            self.mcp_watch_task = asyncio.create_task(self._mcp_watch_loop())
+            self.mcp_watch_task.add_done_callback(self._log_background_task_exception("mcp_watch"))
+            logger.info("MCP server watch task started")
         else:
             logger.warning("MCP server not started - object is None")
 
@@ -1272,6 +1347,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("MCP server stopped")
+
+        if hasattr(self, "mcp_watch_task"):
+            self.mcp_watch_task.cancel()
+            try:
+                await self.mcp_watch_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("MCP server watch task stopped")
 
         # Stop periodic cleanup task
         if hasattr(self, "cleanup_task"):

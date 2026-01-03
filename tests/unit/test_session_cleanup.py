@@ -1,11 +1,16 @@
 """Unit tests for session cleanup utilities."""
 
+from __future__ import annotations
+
+import shutil
 import signal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core import session_cleanup
 from teleclaude.core.session_cleanup import (
     cleanup_all_stale_sessions,
     cleanup_orphan_mcp_wrappers,
@@ -372,3 +377,32 @@ async def test_cleanup_all_stale_sessions_handles_empty_list():
         count = await cleanup_all_stale_sessions(mock_adapter_client)
 
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, tmp_path: Path) -> None:
+    called = {}
+
+    async def fake_to_thread(func, *args, **kwargs):
+        called["func"] = func
+        called["args"] = args
+        return func(*args, **kwargs)
+
+    async def noop_async(*_args, **_kwargs):
+        return None
+
+    (tmp_path / "file.txt").write_text("data")
+
+    monkeypatch.setattr(session_cleanup.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(session_cleanup, "get_session_output_dir", lambda _sid: tmp_path)
+    monkeypatch.setattr(session_cleanup.db, "clear_pending_deletions", noop_async)
+    monkeypatch.setattr(session_cleanup.db, "update_ux_state", noop_async)
+
+    adapter_client = SimpleNamespace(delete_channel=noop_async)
+    session = SimpleNamespace(session_id="sess-1")
+
+    await session_cleanup.cleanup_session_resources(session, adapter_client)
+
+    assert called["func"] is shutil.rmtree
+    assert called["args"][0] == tmp_path
+    assert not tmp_path.exists()

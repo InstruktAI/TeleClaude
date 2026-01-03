@@ -83,7 +83,11 @@ def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
         )
 
 
-def _send_error_event(session_id: str, message: str, details: dict[str, object]) -> None:  # noqa: loose-dict - Error detail data
+def _send_error_event(
+    session_id: str,
+    message: str,
+    details: dict[str, object],  # noqa: loose-dict - Error detail data
+) -> None:
     mcp_send(
         "teleclaude__handle_agent_event",
         {

@@ -341,6 +341,7 @@ Environment="PATH=$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$INSTALL_DIR/bin/teleclaude-wrapper.sh
 Restart=on-failure
 RestartSec=10
+LimitNOFILE=4096
 StandardOutput=null
 StandardError=null
 KillMode=process

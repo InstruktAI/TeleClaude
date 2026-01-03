@@ -66,7 +66,7 @@ async def cleanup_session_resources(session: "Session", adapter_client: "Adapter
     workspace_dir = get_session_output_dir(session_id)
     if workspace_dir.exists():
         try:
-            shutil.rmtree(workspace_dir)
+            await asyncio.to_thread(shutil.rmtree, workspace_dir)
             logger.debug("Deleted workspace directory for session %s", session_id[:8])
         except Exception as e:
             logger.warning("Failed to delete workspace for session %s: %s", session_id[:8], e)

@@ -7,6 +7,7 @@ Dynamically extracts tool definitions from mcp_server.py at startup.
 """
 
 import asyncio
+import fcntl
 import json
 import logging
 import os
@@ -43,6 +44,10 @@ RESPONSE_CHECK_INTERVAL = float(os.getenv("MCP_WRAPPER_RESPONSE_CHECK_INTERVAL",
 TIMED_OUT_RETENTION = float(os.getenv("MCP_WRAPPER_TIMEOUT_RETENTION", "300"))
 GUARD_CHECK_INTERVAL = float(os.getenv("MCP_WRAPPER_GUARD_INTERVAL", "0.5"))
 OUTBOUND_QUEUE_MAX = int(os.getenv("MCP_WRAPPER_OUTBOUND_QUEUE_MAX", "200"))
+# Limit concurrent backend connect attempts across wrapper processes.
+CONNECT_LOCK_PATH = os.getenv("MCP_WRAPPER_CONNECT_LOCK", "/tmp/teleclaude-mcp-wrapper.lock")
+CONNECT_LOCK_TIMEOUT = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_TIMEOUT", "2.0"))
+CONNECT_LOCK_RETRY_S = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_RETRY", "0.05"))
 # Keep logs human-friendly by default: no repeated spam while waiting for a restart
 # or when running in a restricted environment that can't connect to the socket.
 LOG_THROTTLE_S = 60.0
@@ -284,6 +289,40 @@ class MCPProxy:
         self._log_throttle_s: float = LOG_THROTTLE_S
         self._connect_hard_error_seen = False
 
+    async def _acquire_connect_lock(self) -> int | None:
+        """Acquire a cross-process connect lock to prevent connection storms."""
+        start = time.monotonic()
+        while not self.shutdown.is_set():
+            fd: int | None = None
+            try:
+                fd = os.open(CONNECT_LOCK_PATH, os.O_CREAT | os.O_RDWR)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return fd
+            except BlockingIOError:
+                if fd is not None:
+                    os.close(fd)
+                if time.monotonic() - start >= CONNECT_LOCK_TIMEOUT:
+                    return None
+                await asyncio.sleep(CONNECT_LOCK_RETRY_S)
+            except Exception:
+                if fd is not None:
+                    os.close(fd)
+                return None
+        return None
+
+    @staticmethod
+    def _release_connect_lock(fd: int | None) -> None:
+        if fd is None:
+            return
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+
     def _log_throttled(self, key: str, level: int, message: str, *args: object) -> None:
         """Log a message at most once per throttle window for a given key."""
         now = asyncio.get_running_loop().time()
@@ -336,10 +375,23 @@ class MCPProxy:
         while not self.shutdown.is_set():
             try:
                 self._log_throttled("connect:attempt", logging.INFO, "Connecting to %s...", MCP_SOCKET)
-                self.reader, self.writer = await asyncio.wait_for(
-                    asyncio.open_unix_connection(MCP_SOCKET),
-                    timeout=CONNECTION_TIMEOUT,
-                )
+                lock_fd = await self._acquire_connect_lock()
+                if lock_fd is None:
+                    self._log_throttled(
+                        "connect:lock",
+                        logging.WARNING,
+                        "Connect lock busy. Retrying in %ss...",
+                        RECONNECT_DELAY,
+                    )
+                    await asyncio.sleep(RECONNECT_DELAY)
+                    continue
+                try:
+                    self.reader, self.writer = await asyncio.wait_for(
+                        asyncio.open_unix_connection(MCP_SOCKET),
+                        timeout=CONNECTION_TIMEOUT,
+                    )
+                finally:
+                    self._release_connect_lock(lock_fd)
                 self.connected.set()
                 self._backend_generation += 1
                 logger.info("Connected to backend")
