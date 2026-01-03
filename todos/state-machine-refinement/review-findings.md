@@ -38,6 +38,15 @@
 
 ---
 
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| **Important:** Explicit `next_work(slug=...)` bypasses ready-state gating | Added roadmap state check when explicit slug provided. Now rejects `[ ]` (pending) items with `ITEM_NOT_READY` error. Only allows `[.]` (ready) or `[>]` (in-progress) items. Added test coverage. | a5be7ea |
+| **Suggestion:** Weak test assertion in dependency blocking test | Changed from compound OR assertion to two explicit assertions to catch all error conditions. | 3cb667d |
+
+---
+
 ## Verdict
 
 **[ ] APPROVE** - Ready to merge
