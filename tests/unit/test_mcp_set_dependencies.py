@@ -3,17 +3,23 @@
 Tests validation rules (tested directly, not via MCP):
 1. Circular dependency detection works correctly
 2. Dependency read/write functions work correctly
+3. MCP tool validation (slug format, roadmap presence)
 """
 
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import pytest
+
+from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
     read_dependencies,
     write_dependencies,
 )
+from teleclaude.mcp_server import TeleClaudeMCPServer
 
 
 def test_detect_circular_dependency_simple_cycle() -> None:
@@ -79,3 +85,137 @@ def test_write_dependencies_creates_todos_dir() -> None:
         with open(deps_file, encoding="utf-8") as f:
             data = json.load(f)
         assert data == {"a": ["b"]}
+
+
+# =============================================================================
+# MCP Tool Validation Tests (R5)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_mcp_set_dependencies_invalid_slug_format() -> None:
+    """Test that MCP tool rejects invalid slug format."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cwd = Path(tmpdir)
+
+        # Create roadmap with valid slugs
+        todos_dir = cwd / "todos"
+        todos_dir.mkdir()
+        roadmap = todos_dir / "roadmap.md"
+        roadmap.write_text("- [ ] valid-slug\n- [ ] another-slug\n")
+
+        # Create MCP server with mocked dependencies
+        mock_client = MagicMock()
+        mock_terminal_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+
+        # Test invalid slug with uppercase
+        result = await mcp.teleclaude__set_dependencies("Invalid-Slug", [], cwd=str(cwd))
+        assert "ERROR: INVALID_SLUG" in result
+        assert "lowercase alphanumeric" in result
+
+        # Test invalid slug with special characters
+        result = await mcp.teleclaude__set_dependencies("slug_with_underscore", [], cwd=str(cwd))
+        assert "ERROR: INVALID_SLUG" in result
+
+        # Test invalid dependency format
+        result = await mcp.teleclaude__set_dependencies("valid-slug", ["Invalid-Dep"], cwd=str(cwd))
+        assert "ERROR: INVALID_DEP" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_set_dependencies_slug_not_in_roadmap() -> None:
+    """Test that MCP tool rejects slug not found in roadmap."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cwd = Path(tmpdir)
+
+        # Create roadmap with some slugs
+        todos_dir = cwd / "todos"
+        todos_dir.mkdir()
+        roadmap = todos_dir / "roadmap.md"
+        roadmap.write_text("- [ ] existing-slug\n- [.] another-slug\n")
+
+        # Create MCP server with mocked dependencies
+        mock_client = MagicMock()
+        mock_terminal_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+
+        # Test slug not in roadmap
+        result = await mcp.teleclaude__set_dependencies("nonexistent-slug", [], cwd=str(cwd))
+        assert "ERROR: SLUG_NOT_FOUND" in result
+        assert "not found in roadmap" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_set_dependencies_dependency_not_in_roadmap() -> None:
+    """Test that MCP tool rejects dependency not found in roadmap."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cwd = Path(tmpdir)
+
+        # Create roadmap with some slugs
+        todos_dir = cwd / "todos"
+        todos_dir.mkdir()
+        roadmap = todos_dir / "roadmap.md"
+        roadmap.write_text("- [ ] item-a\n- [ ] item-b\n")
+
+        # Create MCP server with mocked dependencies
+        mock_client = MagicMock()
+        mock_terminal_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+
+        # Test dependency not in roadmap
+        result = await mcp.teleclaude__set_dependencies("item-a", ["nonexistent-dep"], cwd=str(cwd))
+        assert "ERROR: DEP_NOT_FOUND" in result
+        assert "not found in roadmap" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_set_dependencies_self_reference_via_tool() -> None:
+    """Test that MCP tool rejects self-reference."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cwd = Path(tmpdir)
+
+        # Create roadmap
+        todos_dir = cwd / "todos"
+        todos_dir.mkdir()
+        roadmap = todos_dir / "roadmap.md"
+        roadmap.write_text("- [ ] item-a\n")
+
+        # Create MCP server with mocked dependencies
+        mock_client = MagicMock()
+        mock_terminal_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+
+        # Test self-reference
+        result = await mcp.teleclaude__set_dependencies("item-a", ["item-a"], cwd=str(cwd))
+        assert "ERROR: SELF_REFERENCE" in result
+        assert "cannot depend on itself" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_set_dependencies_circular_via_tool() -> None:
+    """Test that MCP tool detects circular dependencies."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cwd = Path(tmpdir)
+
+        # Create roadmap
+        todos_dir = cwd / "todos"
+        todos_dir.mkdir()
+        roadmap = todos_dir / "roadmap.md"
+        roadmap.write_text("- [ ] item-a\n- [ ] item-b\n- [ ] item-c\n")
+
+        # Create MCP server with mocked dependencies
+        mock_client = MagicMock()
+        mock_terminal_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+
+        # Set up: b depends on c
+        await mcp.teleclaude__set_dependencies("item-b", ["item-c"], cwd=str(cwd))
+
+        # Set up: c depends on a
+        await mcp.teleclaude__set_dependencies("item-c", ["item-a"], cwd=str(cwd))
+
+        # Test: trying to make a depend on b (creates cycle a -> b -> c -> a)
+        result = await mcp.teleclaude__set_dependencies("item-a", ["item-b"], cwd=str(cwd))
+        assert "ERROR: CIRCULAR_DEP" in result
+        assert "Circular dependency detected" in result
