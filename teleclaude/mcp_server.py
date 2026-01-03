@@ -774,6 +774,26 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
+                    name="teleclaude__set_dependencies",
+                    title="TeleClaude: Set Dependencies",
+                    description="Set dependencies for a work item. Replaces all dependencies. Use after=[] to clear.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "slug": {
+                                "type": "string",
+                                "description": "Work item slug",
+                            },
+                            "after": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of slugs that must complete before this item can be worked on",
+                            },
+                        },
+                        "required": ["slug", "after"],
+                    },
+                ),
+                Tool(
                     name="teleclaude__mark_agent_unavailable",
                     title="TeleClaude: Mark Agent Unavailable",
                     description=(
@@ -962,6 +982,15 @@ class TeleClaudeMCPServer:
                 status = str(arguments.get("status", "")) if arguments else ""
                 cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
                 result_text = await self.teleclaude__mark_phase(slug, phase, status, cwd)
+                return [TextContent(type="text", text=result_text)]
+            elif name == "teleclaude__set_dependencies":
+                slug = str(arguments.get("slug", ""))
+                after = arguments.get("after", [])
+                if not isinstance(after, list):
+                    after = []
+                after = [str(a) for a in after]
+                cwd = str(arguments.get("cwd", "")) if arguments and arguments.get("cwd") else None
+                result_text = await self.teleclaude__set_dependencies(slug, after, cwd)
                 return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__mark_agent_unavailable":
                 agent = str(arguments.get("agent", "")) if arguments else ""
@@ -2480,6 +2509,84 @@ class TeleClaudeMCPServer:
 
         updated_state = mark_phase(worktree_cwd, slug, phase, status)
         return f"OK: {slug} state updated - {phase}: {status}\nCurrent state: {updated_state}"
+
+    async def teleclaude__set_dependencies(
+        self,
+        slug: str,
+        after: list[str],
+        cwd: str | None = None,
+    ) -> str:
+        """Set dependencies for a work item.
+
+        Replaces all dependencies for the slug. Use after=[] to clear.
+
+        Args:
+            slug: Work item slug
+            after: List of slugs that must complete before this one
+            cwd: Working directory (auto-injected)
+
+        Returns:
+            Success message or error
+        """
+        if not cwd:
+            return "ERROR: NO_CWD\nWorking directory not provided."
+
+        # Import here to avoid circular import
+        from teleclaude.core.next_machine import (
+            detect_circular_dependency,
+            read_dependencies,
+            write_dependencies,
+        )
+
+        # Validate slug format
+        slug_pattern = re.compile(r"^[a-z0-9-]+$")
+        if not slug_pattern.match(slug):
+            return f"ERROR: INVALID_SLUG\nSlug '{slug}' must be lowercase alphanumeric with hyphens only."
+
+        for dep in after:
+            if not slug_pattern.match(dep):
+                return f"ERROR: INVALID_DEP\nDependency '{dep}' must be lowercase alphanumeric with hyphens only."
+
+        # Check self-reference
+        if slug in after:
+            return f"ERROR: SELF_REFERENCE\nSlug '{slug}' cannot depend on itself."
+
+        # Read roadmap to validate slugs exist
+        roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+        if not roadmap_path.exists():
+            return "ERROR: NO_ROADMAP\ntodos/roadmap.md not found."
+
+        content = roadmap_path.read_text(encoding="utf-8")
+
+        # Check slug exists in roadmap
+        if slug not in content:
+            return f"ERROR: SLUG_NOT_FOUND\nSlug '{slug}' not found in roadmap.md."
+
+        # Check all dependencies exist in roadmap
+        for dep in after:
+            if dep not in content:
+                return f"ERROR: DEP_NOT_FOUND\nDependency '{dep}' not found in roadmap.md."
+
+        # Read current dependencies
+        deps = read_dependencies(cwd)
+
+        # Check for circular dependency
+        cycle = detect_circular_dependency(deps, slug, after)
+        if cycle:
+            cycle_str = " -> ".join(cycle)
+            return f"ERROR: CIRCULAR_DEP\nCircular dependency detected: {cycle_str}"
+
+        # Update and write
+        if after:
+            deps[slug] = after
+        elif slug in deps:
+            del deps[slug]
+
+        write_dependencies(cwd, deps)
+
+        if after:
+            return f"OK: Dependencies set for '{slug}': {', '.join(after)}"
+        return f"OK: Dependencies cleared for '{slug}'"
 
     async def teleclaude__mark_agent_unavailable(
         self,

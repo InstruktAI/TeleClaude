@@ -32,9 +32,9 @@ Before starting, read these files in order:
 
 ### Group 3: New MCP Tool
 
-- [ ] **3.1** Add `teleclaude__set_dependencies()` method to `McpServer` class
-- [ ] **3.2** Register tool in `_register_tools()` method
-- [ ] **3.3** Add tool handler in `_handle_tool_call()` method
+- [x] **3.1** Add `teleclaude__set_dependencies()` method to `McpServer` class
+- [x] **3.2** Register tool in `_register_tools()` method
+- [x] **3.3** Add tool handler in `_handle_tool_call()` method
 
 ### Group 4: Tests
 
