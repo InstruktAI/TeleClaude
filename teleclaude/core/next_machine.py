@@ -396,6 +396,30 @@ def get_archive_path(cwd: str, slug: str) -> str | None:
 # =============================================================================
 
 
+def get_roadmap_state(cwd: str, slug: str) -> str | None:
+    """Get current checkbox state for slug in roadmap.md.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug to query
+
+    Returns:
+        One of " " (pending), "." (ready), ">" (in-progress), "x" (done)
+        or None if slug not found in roadmap
+    """
+    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    if not roadmap_path.exists():
+        return None
+
+    content = roadmap_path.read_text(encoding="utf-8")
+
+    # Pattern: - [STATE] slug where STATE is space, ., >, or x
+    pattern = re.compile(rf"^- \[([ .>x])\] {re.escape(slug)}(\s|$)", re.MULTILINE)
+    match = pattern.search(content)
+
+    return match.group(1) if match else None
+
+
 def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
     """Update checkbox state for slug in roadmap.md.
 
@@ -851,8 +875,11 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             next_call="teleclaude__next_prepare",
         )
 
-    # 4. Both exist - mark as ready and return prepared
-    update_roadmap_state(cwd, resolved_slug, ".")
+    # 4. Both exist - mark as ready if pending (avoid downgrading [>] or [x])
+    current_state = get_roadmap_state(cwd, resolved_slug)
+    if current_state == " ":  # Only transition pending -> ready
+        update_roadmap_state(cwd, resolved_slug, ".")
+    # else: already [.], [>], or [x] - no state change needed
     return format_prepared(resolved_slug)
 
 
