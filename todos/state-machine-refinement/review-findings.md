@@ -46,3 +46,16 @@
 
 Priority fixes needed:
 1. Interpolate `slug` in the `ITEM_NOT_READY` next_call guidance.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Line 933: Literal `{slug}` in error guidance | Changed to f-string interpolation: `next_call=f"Call teleclaude__next_prepare(slug='{slug}')..."` | e030374 |
+
+**Summary:**
+- ✅ 1 Important issue fixed
+- ✅ All tests passing (21 state machine tests)
+- ⏭️ Suggestions (test splitting) deferred as optional improvements
