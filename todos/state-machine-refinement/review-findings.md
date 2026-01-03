@@ -44,6 +44,19 @@
 
 ---
 
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| `check_dependencies_satisfied()` ignores archived dependencies | Added check for `get_archive_path(cwd, dep)` before validating roadmap state. If archived, treat as satisfied. | 0e1307e |
+| `resolve_slug(..., ready_only=True)` doesn't enforce dependency gating (R6) | Added `dependencies` parameter to `resolve_slug()`. When `ready_only=True` and dependencies provided, skip slugs with unsatisfied deps. Updated `next_work()` to use refactored `resolve_slug()` instead of duplicating logic. | fa196f1 |
+| Missing validation tests for `teleclaude__set_dependencies()` | Added 5 comprehensive MCP tool validation tests covering invalid slug format, slug not in roadmap, dependency not in roadmap, self-reference, and circular dependencies. | ff5d89f |
+| `.venv` symlink tracked in repo (machine-specific) | Removed `.venv` from git tracking. Added `.venv` (without trailing slash) to `.gitignore` to ignore symlinks. Recreated symlink locally (ignored by git). | 41af68a |
+
+---
+
 ## Verdict
 
 **[ ] APPROVE** - Ready to merge
@@ -52,6 +65,6 @@
 ### If REQUEST CHANGES:
 
 Priority fixes needed:
-1. Honor archived `done/*-slug` completion when dependencies are still present in `roadmap.md`.
-2. Add validation tests for `teleclaude__set_dependencies()` and move dependency gating into `resolve_slug(..., ready_only=True)` as required.
-3. Remove the tracked `.venv` symlink from the repo.
+1. ~~Honor archived `done/*-slug` completion when dependencies are still present in `roadmap.md`.~~ ✅ Fixed
+2. ~~Add validation tests for `teleclaude__set_dependencies()` and move dependency gating into `resolve_slug(..., ready_only=True)` as required.~~ ✅ Fixed
+3. ~~Remove the tracked `.venv` symlink from the repo.~~ ✅ Fixed
