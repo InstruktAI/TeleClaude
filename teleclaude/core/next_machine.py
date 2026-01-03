@@ -284,22 +284,24 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
     return state.get("review") == "changes_requested"
 
 
-def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool, str]:
+def resolve_slug(cwd: str, slug: str | None, ready_only: bool = False) -> tuple[str | None, bool, str]:
     """Resolve slug from argument or roadmap.
 
     Roadmap format expected:
-        - [ ] my-slug   (pending)
-        - [>] my-slug   (in progress)
+        - [ ] my-slug   (pending - not prepared)
+        - [.] my-slug   (ready - prepared, available for work)
+        - [>] my-slug   (in progress - claimed by worker)
         Description of the work item.
 
     Args:
         cwd: Current working directory (project root)
         slug: Optional explicit slug
+        ready_only: If True, only match [.] items (for next_work)
 
     Returns:
-        Tuple of (slug, is_in_progress, description).
+        Tuple of (slug, is_ready_or_in_progress, description).
         If slug provided, returns (slug, True, "").
-        If found in roadmap, returns (slug, True if [>], False if [ ], description).
+        If found in roadmap, returns (slug, True if [.] or [>], False if [ ], description).
         If nothing found, returns (None, False, "").
     """
     if slug:
@@ -311,13 +313,22 @@ def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool, str]:
 
     content = roadmap_path.read_text(encoding="utf-8")
 
-    # Pattern: - [>] or - [ ] followed by slug
-    pattern = re.compile(r"^-\s+\[([ >])\]\s+(\S+)", re.MULTILINE)
-    match = pattern.search(content)
-    if match:
-        status: str = match.group(1)
-        found_slug: str = match.group(2)
-        is_in_progress: bool = status == ">"
+    if ready_only:
+        # Only match [.] items for next_work
+        pattern = re.compile(r"^-\s+\[\.]\s+(\S+)", re.MULTILINE)
+    else:
+        # Match [ ], [.], or [>] for next_prepare
+        pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
+
+    for match in pattern.finditer(content):
+        if ready_only:
+            found_slug = match.group(1)
+            # For ready_only, we know it's [.] so it's "ready"
+            is_ready = True
+        else:
+            status = match.group(1)
+            found_slug = match.group(2)
+            is_ready = status in (".", ">")
 
         # Extract description: everything after the slug line until next item or section
         start_pos = match.end()
@@ -331,7 +342,7 @@ def resolve_slug(cwd: str, slug: str | None) -> tuple[str | None, bool, str]:
             end_pos = min(end_pos, start_pos + next_section.start())
 
         description = content[start_pos:end_pos].strip()
-        return found_slug, is_in_progress, description
+        return found_slug, is_ready, description
 
     return None, False, ""
 
@@ -365,6 +376,212 @@ def get_archive_path(cwd: str, slug: str) -> str | None:
     for entry in done_dir.iterdir():
         if entry.is_dir() and entry.name.endswith(f"-{slug}"):
             return f"done/{entry.name}"
+    return None
+
+
+# =============================================================================
+# Roadmap State Management (R3, R7)
+# =============================================================================
+
+
+def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
+    """Update checkbox state for slug in roadmap.md.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug to update
+        new_state: One of " " (space), ".", ">", "x"
+
+    Returns:
+        True if slug found and updated, False if slug not found
+
+    Side effects:
+        - Modifies todos/roadmap.md in place
+        - Commits the change to git with descriptive message
+    """
+    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    if not roadmap_path.exists():
+        return False
+
+    content = roadmap_path.read_text(encoding="utf-8")
+
+    # Pattern: - [STATE] slug where STATE is space, ., >, or x
+    pattern = re.compile(rf"^(- \[)[ .>x](\] {re.escape(slug)})(\s|$)", re.MULTILINE)
+    new_content, count = pattern.subn(rf"\g<1>{new_state}\g<2>\g<3>", content)
+
+    if count == 0:
+        return False
+
+    roadmap_path.write_text(new_content, encoding="utf-8")
+
+    # Commit the state change
+    try:
+        repo = Repo(cwd)
+        repo.index.add(["todos/roadmap.md"])
+        state_names = {" ": "pending", ".": "ready", ">": "in-progress", "x": "done"}
+        msg = f"roadmap({slug}): mark {state_names.get(new_state, new_state)}"
+        repo.index.commit(msg)
+        logger.info("Updated roadmap state for %s to %s", slug, new_state)
+    except InvalidGitRepositoryError:
+        logger.warning("Cannot commit roadmap update: %s is not a git repository", cwd)
+
+    return True
+
+
+# =============================================================================
+# Dependency Management (R4, R5, R6)
+# =============================================================================
+
+
+def read_dependencies(cwd: str) -> dict[str, list[str]]:
+    """Read dependency graph from todos/dependencies.json.
+
+    Returns:
+        Dict mapping slug to list of slugs it depends on.
+        Empty dict if file doesn't exist.
+    """
+    deps_path = Path(cwd) / "todos" / "dependencies.json"
+    if not deps_path.exists():
+        return {}
+
+    content = deps_path.read_text(encoding="utf-8")
+    result: dict[str, list[str]] = json.loads(content)
+    return result
+
+
+def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
+    """Write dependency graph to todos/dependencies.json and commit.
+
+    Args:
+        cwd: Project root directory
+        deps: Dependency graph to write
+    """
+    deps_path = Path(cwd) / "todos" / "dependencies.json"
+
+    # Remove empty lists to keep file clean
+    deps = {k: v for k, v in deps.items() if v}
+
+    if not deps:
+        # If no dependencies, remove file if it exists
+        if deps_path.exists():
+            deps_path.unlink()
+            try:
+                repo = Repo(cwd)
+                repo.index.remove(["todos/dependencies.json"])  # type: ignore[misc]
+                repo.index.commit("deps: remove empty dependencies.json")
+            except InvalidGitRepositoryError:
+                pass
+        return
+
+    deps_path.write_text(json.dumps(deps, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    try:
+        repo = Repo(cwd)
+        repo.index.add(["todos/dependencies.json"])
+        repo.index.commit("deps: update dependencies.json")
+        logger.info("Updated dependencies.json")
+    except InvalidGitRepositoryError:
+        logger.warning("Cannot commit dependencies update: %s is not a git repository", cwd)
+
+
+def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]) -> bool:
+    """Check if all dependencies for a slug are satisfied.
+
+    A dependency is satisfied if:
+    - It is marked [x] in roadmap.md, OR
+    - It is not present in roadmap.md (assumed completed/archived), OR
+    - It exists in done/*-{dep}/ directory
+
+    Args:
+        cwd: Project root directory
+        slug: Work item to check
+        deps: Dependency graph
+
+    Returns:
+        True if all dependencies are satisfied (or no dependencies)
+    """
+    item_deps = deps.get(slug, [])
+    if not item_deps:
+        return True
+
+    # Get all slugs currently in roadmap with their states
+    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    if not roadmap_path.exists():
+        return True  # No roadmap = no blocking
+
+    content = roadmap_path.read_text(encoding="utf-8")
+    pattern = re.compile(r"^- \[([x.> ])\] ([a-z0-9-]+)", re.MULTILINE)
+
+    roadmap_items: dict[str, str] = {}
+    for match in pattern.finditer(content):
+        state, item_slug = match.groups()
+        roadmap_items[item_slug] = state
+
+    for dep in item_deps:
+        if dep not in roadmap_items:
+            # Not in roadmap - check if archived
+            if get_archive_path(cwd, dep) is None:
+                # Not archived either - dependency doesn't exist
+                # This shouldn't happen if validation worked, but treat as unsatisfied
+                return False
+            # Archived = satisfied
+            continue
+
+        dep_state = roadmap_items[dep]
+        if dep_state != "x":
+            # Dependency exists but not completed
+            return False
+
+    return True
+
+
+def detect_circular_dependency(deps: dict[str, list[str]], slug: str, new_deps: list[str]) -> list[str] | None:
+    """Detect if adding new_deps to slug would create a cycle.
+
+    Args:
+        deps: Current dependency graph
+        slug: Item we're updating
+        new_deps: New dependencies for slug
+
+    Returns:
+        List representing the cycle path if cycle detected, None otherwise
+    """
+    # Build graph with proposed change
+    graph: dict[str, set[str]] = {k: set(v) for k, v in deps.items()}
+    graph[slug] = set(new_deps)
+
+    # DFS to detect cycle
+    visited: set[str] = set()
+    path: list[str] = []
+
+    def dfs(node: str) -> list[str] | None:
+        if node in path:
+            # Found cycle - return path from cycle start
+            cycle_start = path.index(node)
+            return path[cycle_start:] + [node]
+
+        if node in visited:
+            return None
+
+        visited.add(node)
+        path.append(node)
+
+        for dep in graph.get(node, set()):
+            result = dfs(dep)
+            if result:
+                return result
+
+        path.pop()
+        return None
+
+    # Check from the slug we're modifying
+    for dep in new_deps:
+        path = [slug]
+        visited = {slug}
+        result = dfs(dep)
+        if result:
+            return [slug] + result
+
     return None
 
 
