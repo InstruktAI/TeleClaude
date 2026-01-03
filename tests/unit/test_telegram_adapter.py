@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from telegram.error import BadRequest, RetryAfter
+from telegram.ext import filters
 
 from teleclaude import config as config_module
 from teleclaude.adapters.base_adapter import AdapterError
@@ -68,6 +69,14 @@ class TestInitialization:
         """Test _ensure_started raises when app is None."""
         with pytest.raises(AdapterError, match="not started"):
             telegram_adapter._ensure_started()
+
+
+class TestCommandHandlerFilters:
+    """Tests for command handler update filters."""
+
+    def test_command_handler_filter_is_message_only(self, telegram_adapter):
+        """Command handlers should only process new messages (not edits)."""
+        assert telegram_adapter._get_command_handler_update_filter() == filters.UpdateType.MESSAGE
 
 
 class TestMessaging:

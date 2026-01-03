@@ -282,25 +282,17 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         assert self.app.updater is not None  # Updater is created by builder
 
         # Register command handlers
-        # IMPORTANT: python-telegram-bot filter behavior (applies to ALL handler types):
-        # - WITHOUT UpdateType filter: By default handles MESSAGES (new) in most handlers, but behavior varies
-        # - Filters can be combined using bitwise operators: & (AND), | (OR), ~ (NOT)
-        # - To handle BOTH new AND edited: Use filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE
-        #
-        # For clarity and to prevent double-processing bugs, we explicitly specify filters:
-        # - Use filters.UpdateType.MESSAGE for ONLY new messages
-        # - Use filters.UpdateType.EDITED_MESSAGE for ONLY edited messages
-        # - Use filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE for BOTH
+        # IMPORTANT: For commands, handle ONLY new messages.
+        # Edited command updates can duplicate execution (MESSAGE + EDITED_MESSAGE).
         for command_name, handler in self._get_command_handlers():
             typed_handler = cast(
                 Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]],
                 handler,
             )
-            # Handle both new and edited commands (explicit OR filter)
             cmd_handler: object = CommandHandler(
                 command_name,
                 typed_handler,
-                filters=filters.UpdateType.MESSAGE | filters.UpdateType.EDITED_MESSAGE,
+                filters=self._get_command_handler_update_filter(),
             )
             self.app.add_handler(cmd_handler)  # type: ignore[arg-type]
 
@@ -920,6 +912,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             Command name like "new-session" or "key-up"
         """
         return event_name.replace("_", "-")
+
+    def _get_command_handler_update_filter(self) -> filters.BaseFilter:
+        """Return UpdateType filter for command handlers."""
+        return filters.UpdateType.MESSAGE
 
     def _build_project_keyboard(self, callback_prefix: str) -> InlineKeyboardMarkup:
         """Build inline keyboard for project selection.
