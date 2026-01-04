@@ -535,6 +535,8 @@ class Db:
         native_log_file: Optional[str] | object = ux_state._UNSET,
         active_agent: Optional[str] | object = ux_state._UNSET,
         thinking_mode: Optional[str] | object = ux_state._UNSET,
+        native_tty_path: Optional[str] | object = ux_state._UNSET,
+        native_pid: Optional[int] | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
 
@@ -560,6 +562,8 @@ class Db:
             native_log_file=native_log_file,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
+            native_tty_path=native_tty_path,
+            native_pid=native_pid,
         )
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:

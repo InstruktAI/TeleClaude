@@ -128,6 +128,24 @@ class TestSendKeys:
                 assert text_arg == "Hello! World!"
 
 
+class TestSendKeysExistingTmux:
+    """Tests for send_keys_existing_tmux() function."""
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_session_missing(self):
+        with (
+            patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
+            patch.object(terminal_bridge, "_send_keys_tmux", new=AsyncMock()) as mock_send,
+        ):
+            success = await terminal_bridge.send_keys_existing_tmux(
+                session_name="missing-session",
+                text="hello",
+            )
+
+            assert success is False
+            mock_send.assert_not_awaited()
+
+
 class TestSendCtrlKey:
     """Tests for send_ctrl_key() function."""
 

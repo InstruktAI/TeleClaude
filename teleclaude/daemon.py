@@ -59,7 +59,6 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_listeners import cleanup_caller_listeners, get_listeners, pop_listeners
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
-from teleclaude.core.terminal_bridge import send_keys
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -480,6 +479,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         transcript_path = data.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
             await db.update_ux_state(session_id, native_log_file=transcript_path)
+
+        teleclaude_pid = data.get("teleclaude_pid")
+        teleclaude_tty = data.get("teleclaude_tty")
+        if isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str):
+            await db.update_ux_state(
+                session_id,
+                native_pid=teleclaude_pid if isinstance(teleclaude_pid, int) else None,
+                native_tty_path=teleclaude_tty if isinstance(teleclaude_tty, str) else None,
+            )
 
         if event_type not in AgentHookEvents.ALL:
             logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
@@ -1250,11 +1258,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 f'computer="{source_computer}", session_id="{target_session_id}")'
             )
 
-            # Inject into caller's tmux session
-            success = await send_keys(
-                session_name=listener.caller_tmux_session,
-                text=notification,
-                send_enter=True,
+            success = await self._deliver_listener_message(
+                listener.caller_session_id,
+                listener.caller_tmux_session,
+                notification,
             )
 
             if success:
@@ -1319,11 +1326,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 f'message="your response") to respond.'
             )
 
-            # Inject into caller's tmux session
-            success = await send_keys(
-                session_name=listener.caller_tmux_session,
-                text=notification,
-                send_enter=True,
+            success = await self._deliver_listener_message(
+                listener.caller_session_id,
+                listener.caller_tmux_session,
+                notification,
             )
 
             if success:
@@ -1341,6 +1347,24 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
         return get_output_file(session_id)
+
+    async def _deliver_listener_message(self, session_id: str, tmux_session: str, message: str) -> bool:
+        """Deliver a notification to a listener via tmux or fallback TTY."""
+        delivered = await terminal_bridge.send_keys_existing_tmux(
+            session_name=tmux_session,
+            text=message,
+            send_enter=True,
+        )
+        if delivered:
+            return True
+
+        ux_state = await db.get_ux_state(session_id)
+        tty_path = ux_state.native_tty_path
+        pid = ux_state.native_pid
+        if isinstance(tty_path, str) and tty_path and isinstance(pid, int) and terminal_bridge.pid_is_alive(pid):
+            return await terminal_bridge.send_keys_to_tty(tty_path, message, send_enter=True)
+
+        return False
 
     async def _send_feedback_callback(
         self,

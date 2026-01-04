@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,6 +97,34 @@ def _send_error_event(
         "error",
         {"message": message, "source": "hook_receiver", "details": details},
     )
+
+
+def _get_parent_process_info() -> tuple[int | None, str | None]:
+    """Capture parent PID + controlling TTY for hook caller."""
+    parent_pid = os.getppid()
+    if parent_pid <= 1:
+        return None, None
+
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "tty=", "-p", str(parent_pid)],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+            check=False,
+        )
+    except Exception:
+        return parent_pid, None
+
+    tty_name = result.stdout.strip()
+    if not tty_name or tty_name in {"?", "??"}:
+        return parent_pid, None
+
+    tty_path = tty_name if tty_name.startswith("/dev/") else f"/dev/{tty_name}"
+    if not Path(tty_path).exists():
+        return parent_pid, None
+
+    return parent_pid, tty_path
 
 
 def _enqueue_hook_event(
@@ -215,6 +244,12 @@ def main() -> None:
         session_id=teleclaude_session_id,
         agent=args.agent,
     )
+
+    parent_pid, tty_path = _get_parent_process_info()
+    if parent_pid:
+        data["teleclaude_pid"] = parent_pid
+    if tty_path:
+        data["teleclaude_tty"] = tty_path
 
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 

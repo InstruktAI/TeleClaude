@@ -228,55 +228,120 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
                 return False
             logger.info("Created fresh session %s", session_name)
 
-        # Gemini CLI can't handle '!' character - escape it
-        # See: https://github.com/google-gemini/gemini-cli/issues/4454
-        send_text = text.replace("!", r"\!") if active_agent == "gemini" else text
-
-        # Send command (no pipes - don't leak file descriptors)
-        # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
-        # start a long-lived process that would inherit the pipe, so this is safe.
-        # -l flag sends keys literally
-        cmd_text = ["tmux", "send-keys", "-t", session_name, "-l", "--", send_text]
-        result = await asyncio.create_subprocess_exec(
-            *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        return await _send_keys_tmux(
+            session_name=session_name,
+            text=text,
+            send_enter=send_enter,
+            active_agent=active_agent,
         )
-        _, stderr = await result.communicate()
-
-        if result.returncode != 0:
-            logger.error(
-                "Failed to send text to session %s: returncode=%d, stderr=%s",
-                session_name,
-                result.returncode,
-                stderr.decode().strip(),
-            )
-            return False
-
-        # Small delay to let text be processed
-        await asyncio.sleep(1.0)
-
-        # Send Enter key twice if requested (second press ensures it registers for voice input)
-        if send_enter:
-            for _ in range(2):
-                cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
-                result = await asyncio.create_subprocess_exec(
-                    *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                _, stderr = await result.communicate()
-
-                if result.returncode != 0:
-                    logger.error(
-                        "Failed to send Enter to session %s: returncode=%d, stderr=%s",
-                        session_name,
-                        result.returncode,
-                        stderr.decode().strip(),
-                    )
-                    return False
-
-        return True
 
     except Exception as e:
         logger.exception("Error sending keys to tmux session %s: %s", session_name, e)
         return False
+
+
+async def send_keys_existing_tmux(
+    session_name: str,
+    text: str,
+    *,
+    send_enter: bool = True,
+    active_agent: Optional[str] = None,
+) -> bool:
+    """Send keys to an existing tmux session (do not auto-create)."""
+    try:
+        if not await session_exists(session_name):
+            return False
+        return await _send_keys_tmux(
+            session_name=session_name,
+            text=text,
+            send_enter=send_enter,
+            active_agent=active_agent,
+        )
+    except Exception as e:
+        logger.exception("Error sending keys to existing tmux session %s: %s", session_name, e)
+        return False
+
+
+async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True) -> bool:
+    """Send keys directly to a controlling TTY (non-tmux sessions)."""
+    try:
+        payload = text + ("\n" if send_enter else "")
+
+        def _write() -> None:
+            with open(tty_path, "wb", buffering=0) as tty_file:
+                tty_file.write(payload.encode())
+
+        await asyncio.to_thread(_write)
+        return True
+    except Exception as e:
+        logger.exception("Error sending keys to tty %s: %s", tty_path, e)
+        return False
+
+
+def pid_is_alive(pid: int) -> bool:
+    """Return True if a PID appears to be alive."""
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+async def _send_keys_tmux(
+    *,
+    session_name: str,
+    text: str,
+    send_enter: bool,
+    active_agent: Optional[str],
+) -> bool:
+    """Send keys to tmux (session must already exist)."""
+    # Gemini CLI can't handle '!' character - escape it
+    # See: https://github.com/google-gemini/gemini-cli/issues/4454
+    send_text = text.replace("!", r"\!") if active_agent == "gemini" else text
+
+    # Send command (no pipes - don't leak file descriptors)
+    # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
+    # start a long-lived process that would inherit the pipe, so this is safe.
+    # -l flag sends keys literally
+    cmd_text = ["tmux", "send-keys", "-t", session_name, "-l", "--", send_text]
+    result = await asyncio.create_subprocess_exec(
+        *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await result.communicate()
+
+    if result.returncode != 0:
+        logger.error(
+            "Failed to send text to session %s: returncode=%d, stderr=%s",
+            session_name,
+            result.returncode,
+            stderr.decode().strip(),
+        )
+        return False
+
+    # Small delay to let text be processed
+    await asyncio.sleep(1.0)
+
+    # Send Enter key twice if requested (second press ensures it registers for voice input)
+    if send_enter:
+        for _ in range(2):
+            cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
+            result = await asyncio.create_subprocess_exec(
+                *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error(
+                    "Failed to send Enter to session %s: returncode=%d, stderr=%s",
+                    session_name,
+                    result.returncode,
+                    stderr.decode().strip(),
+                )
+                return False
+
+    return True
 
 
 async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:

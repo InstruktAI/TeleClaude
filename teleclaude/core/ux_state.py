@@ -52,6 +52,8 @@ class SessionUXState:
     native_log_file: Optional[str] = None  # Path to native agent session .jsonl file
     active_agent: Optional[str] = None  # Name of the active agent (e.g. "claude", "gemini")
     thinking_mode: Optional[str] = None  # Model tier: "fast", "med", "slow" (MCP terminology)
+    native_tty_path: Optional[str] = None  # TTY path for agent CLI (non-tmux)
+    native_pid: Optional[int] = None  # Parent PID for agent CLI (non-tmux)
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "SessionUXState":  # noqa: loose-dict - Deserialization input
@@ -63,9 +65,17 @@ class SessionUXState:
 
         native_session_id_raw: object = data.get("native_session_id")
         native_log_file_raw: object = data.get("native_log_file")
+        native_tty_path_raw: object = data.get("native_tty_path")
+        native_pid_raw: object = data.get("native_pid")
 
         active_agent_raw: object = data.get("active_agent")
         thinking_mode_raw: object = data.get("thinking_mode")
+
+        native_pid_value: int | None = None
+        if isinstance(native_pid_raw, int):
+            native_pid_value = native_pid_raw
+        elif isinstance(native_pid_raw, str) and native_pid_raw.isdigit():
+            native_pid_value = int(native_pid_raw)
 
         return cls(
             output_message_id=(str(output_message_id_raw) if output_message_id_raw else None),
@@ -79,6 +89,8 @@ class SessionUXState:
             native_log_file=str(native_log_file_raw) if native_log_file_raw else None,
             active_agent=str(active_agent_raw) if active_agent_raw else None,
             thinking_mode=str(thinking_mode_raw) if thinking_mode_raw else None,
+            native_tty_path=str(native_tty_path_raw) if native_tty_path_raw else None,
+            native_pid=native_pid_value,
         )
 
     def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
@@ -93,6 +105,8 @@ class SessionUXState:
             "native_log_file": self.native_log_file,
             "active_agent": self.active_agent,
             "thinking_mode": self.thinking_mode,
+            "native_tty_path": self.native_tty_path,
+            "native_pid": self.native_pid,
         }
 
 
@@ -210,6 +224,8 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
     native_log_file: Optional[str] | object = _UNSET,
     active_agent: Optional[str] | object = _UNSET,
     thinking_mode: Optional[str] | object = _UNSET,
+    native_tty_path: Optional[str] | object = _UNSET,
+    native_pid: Optional[int] | object = _UNSET,
 ) -> None:
     """Update session UX state (merges with existing).
 
@@ -248,6 +264,10 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
             existing.active_agent = active_agent  # type: ignore
         if thinking_mode is not _UNSET:
             existing.thinking_mode = thinking_mode  # type: ignore
+        if native_tty_path is not _UNSET:
+            existing.native_tty_path = native_tty_path  # type: ignore
+        if native_pid is not _UNSET:
+            existing.native_pid = native_pid  # type: ignore
 
         # Store
         ux_state_json = json.dumps(existing.to_dict())

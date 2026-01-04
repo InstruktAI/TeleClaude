@@ -235,6 +235,8 @@ def test_session_ux_state_from_dict_handles_missing_fields():
     assert state.notification_sent is False  # Default
     assert state.pending_deletions == []  # Default
     assert state.last_input_adapter is None  # Default
+    assert state.native_tty_path is None  # Default
+    assert state.native_pid is None  # Default
 
 
 def test_session_ux_state_to_dict_serializes_all_fields():
@@ -251,6 +253,8 @@ def test_session_ux_state_to_dict_serializes_all_fields():
         native_log_file="/path/to/session.jsonl",
         active_agent="claude",
         thinking_mode="fast",
+        native_tty_path="/dev/ttys007",
+        native_pid=12345,
     )
 
     data = state.to_dict()
@@ -264,3 +268,5 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     assert data["native_log_file"] == "/path/to/session.jsonl"
     assert data["active_agent"] == "claude"
     assert data["thinking_mode"] == "fast"
+    assert data["native_tty_path"] == "/dev/ttys007"
+    assert data["native_pid"] == 12345
