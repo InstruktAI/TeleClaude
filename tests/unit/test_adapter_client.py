@@ -486,7 +486,8 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
             with patch.object(client, "create_channel", new=AsyncMock(return_value="999")) as create_channel:
                 result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    get_session.assert_called_once_with("session-789")
+    assert get_session.call_count == 2
+    get_session.assert_any_call("session-789")
     create_channel.assert_called_once()
     assert update_session.call_count == 1
     _, kwargs = update_session.call_args

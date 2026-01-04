@@ -121,7 +121,7 @@ class AdapterClient:
             output.append((adapter_type, result))
 
         if missing_thread_error:
-            await self._handle_missing_telegram_thread(session, missing_thread_error)
+            updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
             if session.origin_adapter == "terminal" and operation in {"send_message", "send_feedback"}:
                 telegram_adapter = next(
                     (adapter for adapter_type, adapter in ui_adapters if adapter_type == "telegram"),
@@ -129,6 +129,9 @@ class AdapterClient:
                 )
                 if telegram_adapter:
                     try:
+                        if updated_session:
+                            session.adapter_metadata = updated_session.adapter_metadata
+                            session.title = updated_session.title
                         retry_result = await task_factory(telegram_adapter)
                         if telegram_index is not None:
                             output[telegram_index] = ("telegram", retry_result)
@@ -492,13 +495,14 @@ class AdapterClient:
                 logger.debug("Output update sent", adapter=adapter_type, session=session.session_id[:8])
 
         if missing_thread_error:
-            await self._handle_missing_telegram_thread(session, missing_thread_error)
+            updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
             if session.origin_adapter == "terminal":
                 telegram_adapter = self.adapters.get("telegram")
                 if isinstance(telegram_adapter, UiAdapter):
                     try:
+                        retry_session = updated_session or session
                         retry_result = await telegram_adapter.send_output_update(
-                            session,
+                            retry_session,
                             output,
                             started_at,
                             last_output_changed_at,
@@ -527,11 +531,11 @@ class AdapterClient:
             "message thread not found" in error_text or "topic_deleted" in error_text or "topic deleted" in error_text
         )
 
-    async def _handle_missing_telegram_thread(self, session: "Session", error: Exception) -> None:
+    async def _handle_missing_telegram_thread(self, session: "Session", error: Exception) -> "Session | None":
         if session.origin_adapter == "terminal":
             current = await db.get_session(session.session_id)
             if not current:
-                return
+                return None
 
             logger.warning(
                 "Telegram topic missing for terminal session %s; recreating (error: %s)",
@@ -557,14 +561,15 @@ class AdapterClient:
                     current.session_id[:8],
                     exc,
                 )
-            return
+                return None
+            return await db.get_session(current.session_id)
 
         if session.origin_adapter != "telegram":
-            return
+            return None
 
         current = await db.get_session(session.session_id)
         if not current:
-            return
+            return None
 
         logger.warning(
             "Telegram topic missing for session %s; terminating session (error: %s)",
@@ -577,6 +582,7 @@ class AdapterClient:
             reason="telegram_topic_missing",
             session=current,
         )
+        return None
 
     async def send_exit_message(
         self,
