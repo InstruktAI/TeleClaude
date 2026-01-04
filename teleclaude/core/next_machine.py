@@ -173,14 +173,14 @@ def format_complete(slug: str, archive_path: str) -> str:
     """Format a 'complete' message indicating work item is finalized."""
     return f"""COMPLETE: todos/{slug} has been finalized and delivered to {archive_path}/
 
-NEXT: Call teleclaude__next_work() to continue with more work."""
+NEXT: Call teleclaude__next_work(slug="{slug}") to continue with more work."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
     """Format instruction for orchestrator to commit uncommitted changes directly."""
     return f"""UNCOMMITTED CHANGES in trees/{slug}
 
-Commit, then call teleclaude__next_work() to continue."""
+NEXT: Commit these changes intelligently, then call teleclaude__next_work(slug="{slug}") to continue."""
 
 
 def format_hitl_guidance(context: str) -> str:
@@ -974,7 +974,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         return format_error(
             "NOT_PREPARED",
             f"todos/{resolved_slug} is missing requirements or implementation plan.",
-            next_call=f'Call teleclaude__next_prepare("{resolved_slug}") to complete preparation.',
+            next_call=f'Call teleclaude__next_prepare(slug="{resolved_slug}") to complete preparation.',
         )
 
     # 4. Ensure worktree exists
