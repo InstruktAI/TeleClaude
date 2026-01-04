@@ -27,6 +27,7 @@ from adapters import codex as codex_adapter  # noqa: E402
 from adapters import gemini as gemini_adapter  # noqa: E402
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
 from teleclaude.config import config  # noqa: E402
+from teleclaude.core.terminal_sessions import ensure_terminal_session  # noqa: E402
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -100,31 +101,99 @@ def _send_error_event(
 
 
 def _get_parent_process_info() -> tuple[int | None, str | None]:
-    """Capture parent PID + controlling TTY for hook caller."""
+    """Capture parent PID + controlling TTY for hook caller.
+
+    Walk the parent process chain and select the most reliable TTY owner.
+    Prefer a shell parent when available; fall back to the nearest TTY-holding ancestor.
+    """
     parent_pid = os.getppid()
     if parent_pid <= 1:
-        return None, None
+        parent_pid = None
+
+    def _normalize_tty(value: str | None) -> str | None:
+        if not value:
+            return None
+        tty = value if value.startswith("/dev/") else f"/dev/{value}"
+        return tty if Path(tty).exists() else None
+
+    def _stdio_tty() -> str | None:
+        for stream in (sys.stdin, sys.stdout, sys.stderr):
+            try:
+                if stream is not None and stream.isatty():
+                    return _normalize_tty(os.ttyname(stream.fileno()))
+            except Exception:
+                continue
+        return None
+
+    stdio_tty = _stdio_tty()
 
     try:
-        result = subprocess.run(
-            ["ps", "-o", "tty=", "-p", str(parent_pid)],
-            capture_output=True,
-            text=True,
-            timeout=1.0,
-            check=False,
-        )
+        import psutil  # type: ignore[import-not-found]
+
+        if parent_pid:
+            shell_names = {
+                "bash",
+                "zsh",
+                "fish",
+                "sh",
+                "ksh",
+                "tcsh",
+                Path(os.environ.get("SHELL") or "").name,
+            }
+
+            chain = []
+            proc = psutil.Process(parent_pid)
+            while proc and proc.pid > 1 and len(chain) < 50:
+                chain.append(proc)
+                try:
+                    proc = proc.parent()
+                except Exception:
+                    break
+
+            # Prefer a shell process with a tty.
+            for proc in chain:
+                tty = _normalize_tty(proc.terminal() if hasattr(proc, "terminal") else None)
+                if not tty:
+                    continue
+                try:
+                    name = proc.name()
+                except Exception:
+                    name = ""
+                if name in shell_names:
+                    return proc.pid, tty
+
+            # Fallback to the nearest ancestor with a tty.
+            for proc in chain:
+                tty = _normalize_tty(proc.terminal() if hasattr(proc, "terminal") else None)
+                if tty:
+                    return proc.pid, tty
     except Exception:
-        return parent_pid, None
+        pass
 
-    tty_name = result.stdout.strip()
-    if not tty_name or tty_name in {"?", "??"}:
-        return parent_pid, None
+    if parent_pid:
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "tty=", "-p", str(parent_pid)],
+                capture_output=True,
+                text=True,
+                timeout=1.0,
+                check=False,
+            )
+            tty_name = result.stdout.strip()
+            tty_path = _normalize_tty(tty_name)
+            if tty_path:
+                return parent_pid, tty_path
+        except Exception:
+            pass
 
-    tty_path = tty_name if tty_name.startswith("/dev/") else f"/dev/{tty_name}"
-    if not Path(tty_path).exists():
-        return parent_pid, None
+    ssh_tty = _normalize_tty(os.getenv("SSH_TTY"))
+    if ssh_tty:
+        return parent_pid, ssh_tty
 
-    return parent_pid, tty_path
+    if stdio_tty:
+        return parent_pid, stdio_tty
+
+    return parent_pid, None
 
 
 def _enqueue_hook_event(
@@ -213,15 +282,30 @@ def main() -> None:
     log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
     _log_raw_input(raw_input, log_raw=log_raw)
 
-    teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
-    if not teleclaude_session_id:
-        logger.debug("Hook receiver skipped: missing session id")
-        sys.exit(0)
-
     # Early exit for unhandled events - don't spawn mcp-wrapper
     if event_type not in _HANDLED_EVENTS:
         logger.trace("Hook receiver skipped: unhandled event", event_type=event_type)
         sys.exit(0)
+
+    parent_pid, tty_path = _get_parent_process_info()
+
+    teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
+    if not teleclaude_session_id:
+        if tty_path:
+            teleclaude_session_id = ensure_terminal_session(
+                tty_path=tty_path,
+                parent_pid=parent_pid,
+                agent=args.agent,
+                cwd=os.getcwd(),
+            )
+            logger.info(
+                "Hook receiver recovered session from tty",
+                tty=tty_path,
+                session_id=teleclaude_session_id,
+            )
+        else:
+            logger.info("Hook receiver requires TELECLAUDE_SESSION_ID (use telec to start a session)")
+            sys.exit(1)
 
     normalize_payload = _get_adapter(args.agent)
     try:
@@ -245,7 +329,6 @@ def main() -> None:
         agent=args.agent,
     )
 
-    parent_pid, tty_path = _get_parent_process_info()
     if parent_pid:
         data["teleclaude_pid"] = parent_pid
     if tty_path:
