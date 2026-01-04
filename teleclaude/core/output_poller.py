@@ -1,10 +1,10 @@
 """Terminal output polling - pure poller with no I/O side effects.
 
-Polls tmux and yields output events. Daemon handles all message sending.
+Reads raw terminal output logs (tmux pipe-pane) and yields output events.
+Daemon handles all message sending.
 """
 
 import asyncio
-import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,12 +16,22 @@ from teleclaude.config import config
 from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.utils import strip_ansi_codes
 
 logger = get_logger(__name__)
 _CONFIG_FOR_TESTS = config
 IDLE_SUMMARY_INTERVAL_S = 60.0
 PROCESS_START_GRACE_S = 3.0
+
+
+def _parse_terminal_rows(value: str | None) -> int | None:
+    if value and "x" in value:
+        try:
+            _cols_str, rows_str = value.split("x", 1)
+            rows = int(rows_str)
+            return rows if rows > 0 else None
+        except ValueError:
+            return None
+    return None
 
 
 @dataclass
@@ -100,6 +110,7 @@ class OutputPoller:
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
         idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
+        terminal_rows: int | None = None
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -109,6 +120,12 @@ class OutputPoller:
             last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
             last_summary_time = started_at
             logger.trace("Polling started for %s", session_id[:8])
+
+            try:
+                session = await db.get_session(session_id)
+                terminal_rows = _parse_terminal_rows(session.terminal_size) if session else None
+            except Exception:
+                terminal_rows = None
 
             def maybe_log_idle_summary(force: bool = False) -> None:
                 nonlocal last_summary_time, suppressed_idle_ticks
@@ -142,12 +159,15 @@ class OutputPoller:
 
                 # WATCHDOG: Detect session disappearing between polls
                 if session_existed_last_poll and not session_exists_now:
-                    # Check if this was an expected closure (user closed topic)
-                    session = await db.get_session(session_id)
-                    if session and session.closed:
-                        # Expected closure - user closed the topic
+                    # Check if this was an expected closure (session terminated)
+                    try:
+                        session = await db.get_session(session_id)
+                    except RuntimeError:
+                        session = None
+                    if not session:
+                        # Expected closure - session was terminated and removed
                         logger.debug(
-                            "Session %s disappeared (user closed topic) session=%s",
+                            "Session %s disappeared (session terminated) session=%s",
                             tmux_session_name,
                             session_id[:8],
                         )
@@ -177,15 +197,7 @@ class OutputPoller:
                         )
                         last_sent_output = previous_output
 
-                    # Read final output from file
-                    final_output = ""
-                    if output_file.exists():
-                        try:
-                            raw_output = output_file.read_text(encoding="utf-8")
-                            # Clean the output (strip ANSI)
-                            final_output = strip_ansi_codes(raw_output)
-                        except Exception as e:
-                            logger.warning("Failed to read final output: %s", e)
+                    final_output = previous_output
 
                     yield ProcessExited(
                         session_id=session_id,
@@ -197,22 +209,9 @@ class OutputPoller:
 
                 session_existed_last_poll = session_exists_now
 
-                # Capture current output
-                current_output = await terminal_bridge.capture_pane(tmux_session_name)
-                if not current_output.strip():
-                    # No output yet, keep polling
-                    await asyncio.sleep(poll_interval)
-                    continue
-
-                # Strip ANSI codes and collapse whitespace
-                current_raw = strip_ansi_codes(current_output)
-                current_raw = re.sub(r"\n\n+", "\n", current_raw)
-
-                # Also create clean version for UI
-                current_cleaned = current_raw
-
-                # Detect output changes (for idle tracking)
-                output_changed = current_cleaned != previous_output
+                captured_output = await terminal_bridge.capture_pane(tmux_session_name, lines=terminal_rows)
+                output_changed = captured_output != previous_output
+                current_cleaned = captured_output
 
                 if output_changed:
                     maybe_log_idle_summary(force=True)
@@ -221,6 +220,10 @@ class OutputPoller:
                     last_output_changed_at = time.time()
                     current_update_interval = global_update_interval
                     pending_output = True
+                    try:
+                        output_file.write_text(current_cleaned, encoding="utf-8")
+                    except Exception as exc:
+                        logger.warning("Failed to write output file %s: %s", output_file, exc)
 
                 # Check if enough time elapsed since last yield (wall-clock, not tick-based)
                 current_time = time.time()
@@ -230,11 +233,11 @@ class OutputPoller:
                 # (or when we have never sent output yet). This avoids UI spam when idle.
                 did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
-                    if pending_output or not output_sent_at_least_once:
-                        # Send clean output to UI (current_cleaned already stripped)
+                    if pending_output or (not output_sent_at_least_once and current_cleaned.strip()):
+                        # Send rendered TUI snapshot to UI
                         yield OutputChanged(
                             session_id=session_id,
-                            output=current_cleaned,  # Already cleaned for UI
+                            output=current_cleaned,
                             started_at=started_at,
                             last_changed_at=last_output_changed_at,
                         )

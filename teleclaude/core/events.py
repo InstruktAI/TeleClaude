@@ -195,8 +195,8 @@ class TeleClaudeEvents:
     FILE: Literal["file"] = "file"  # File or photo uploaded
 
     # Session lifecycle events
-    SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Session marked closed in DB
-    SESSION_REOPENED: Literal["session_reopened"] = "session_reopened"  # Session reopened
+    SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Session terminated and deleted
+    SESSION_REOPENED: Literal["session_reopened"] = "session_reopened"  # Legacy (no-op)
 
     # System commands
     SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
@@ -284,7 +284,7 @@ class VoiceEventContext:
 
 @dataclass
 class SessionLifecycleContext:
-    """Context for session lifecycle events (closed, reopened)."""
+    """Context for session lifecycle events (terminated, reopened)."""
 
     session_id: str
 

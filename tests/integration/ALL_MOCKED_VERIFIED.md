@@ -122,7 +122,7 @@ tmux list-sessions | grep -E "test-|Test"
    - `test_close_session_full_cleanup` ✅ Now mocked
    - `test_close_session_with_active_polling` ✅ Now mocked
    - `test_close_session_idempotent` ✅ Now mocked
-   - `test_close_session_does_not_delete_from_db` ✅ Now mocked
+   - `test_close_session_deletes_from_db` ✅ Now mocked
 
 4. **File Upload** (4 tests)
    - `test_file_upload_with_claude_code`

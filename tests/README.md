@@ -118,14 +118,13 @@ This document maps all critical user pathways to integration tests, identifying 
 - ✅ `test_session_lifecycle::test_close_session_full_cleanup` - Close cleans up resources
 - ✅ `test_session_lifecycle::test_close_session_with_active_polling` - Close stops polling
 - ✅ `test_session_lifecycle::test_close_session_idempotent` - Multiple closes safe
-- ✅ `test_session_lifecycle::test_close_session_does_not_delete_from_db` - Close vs delete
+- ✅ `test_session_lifecycle::test_close_session_deletes_from_db` - Hard delete on close
 - ✅ `test_core::test_session_manager_crud` - Basic CRUD operations
 - ✅ `test_core::test_session_manager_with_metadata` - Metadata handling
 
 **Missing Tests**:
 
-- ❌ **Reopen workflow**: Session closed → User reopens → tmux session recreated at last working_directory
-- ❌ **Channel status updates**: Session closed → Telegram topic shows "🔒 Closed" → Reopened → Shows "active"
+- ❌ **Channel status updates**: Topic deleted → user sends message → new topic created for terminal-origin sessions
 
 ---
 

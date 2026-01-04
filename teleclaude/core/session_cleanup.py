@@ -15,13 +15,13 @@ import os
 import shutil
 import signal
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
-from teleclaude.core.session_listeners import cleanup_caller_listeners
+from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 
 if TYPE_CHECKING:
@@ -35,8 +35,13 @@ TMUX_SESSION_PREFIX = "tc_"
 _MCP_WRAPPER_MATCH = "bin/mcp-wrapper.py"
 
 
-async def cleanup_session_resources(session: "Session", adapter_client: "AdapterClient") -> None:
-    """Clean up session resources: channels, listeners, pending deletions, and workspace directory.
+async def cleanup_session_resources(
+    session: "Session",
+    adapter_client: "AdapterClient",
+    *,
+    delete_channel: bool = True,
+) -> None:
+    """Clean up session resources: channels, listeners, and workspace directory.
 
     Shared cleanup logic used by both explicit exit and stale session cleanup.
     Does NOT modify DB state - caller handles that.
@@ -47,20 +52,25 @@ async def cleanup_session_resources(session: "Session", adapter_client: "Adapter
     """
     session_id = session.session_id
 
+    # Remove listeners waiting on this session (target listeners)
+    target_listeners = pop_listeners(session_id)
+    if target_listeners:
+        logger.debug(
+            "Cleaned up %d listener(s) for terminated target session %s",
+            len(target_listeners),
+            session_id[:8],
+        )
+
     # Clean up any listeners this session registered (as a caller waiting for other sessions)
     cleanup_caller_listeners(session_id)
 
-    # Clear pending deletions - messages that would have been deleted on next user input
-    # These are no longer relevant since the session is ending
-    await db.clear_pending_deletions(session_id)
-    await db.update_ux_state(session_id, pending_feedback_deletions=[])
-
-    # Delete channel/topic in all adapters (broadcasts to observers)
-    try:
-        await adapter_client.delete_channel(session)
-        logger.info("Deleted channels for session %s", session_id[:8])
-    except Exception as e:
-        logger.warning("Failed to delete channels for session %s: %s", session_id[:8], e)
+    if delete_channel:
+        # Delete channel/topic in all adapters (broadcasts to observers)
+        try:
+            await adapter_client.delete_channel(session)
+            logger.info("Deleted channels for session %s", session_id[:8])
+        except Exception as e:
+            logger.warning("Failed to delete channels for session %s: %s", session_id[:8], e)
 
     # Clean up entire workspace directory (workspace/{session_id}/)
     workspace_dir = get_session_output_dir(session_id)
@@ -70,6 +80,55 @@ async def cleanup_session_resources(session: "Session", adapter_client: "Adapter
             logger.debug("Deleted workspace directory for session %s", session_id[:8])
         except Exception as e:
             logger.warning("Failed to delete workspace for session %s: %s", session_id[:8], e)
+
+
+async def terminate_session(
+    session_id: str,
+    adapter_client: "AdapterClient",
+    *,
+    reason: str,
+    session: Optional["Session"] = None,
+    kill_tmux: bool | None = None,
+    delete_channel: bool = True,
+) -> bool:
+    """Terminate a session and delete its DB record.
+
+    Args:
+        session_id: Session identifier
+        adapter_client: AdapterClient for deleting channels
+        reason: Reason for termination (for logs)
+        session: Optional pre-fetched session object
+        kill_tmux: Whether to kill tmux (defaults to True for non-terminal sessions)
+        delete_channel: Whether to delete adapter channels/topics
+
+    Returns:
+        True if session was terminated, False if session not found
+    """
+    session = session or await db.get_session(session_id)
+    if not session:
+        logger.debug("Session %s not found for termination", session_id[:8])
+        return False
+
+    logger.info("Terminating session %s (%s)", session_id[:8], reason)
+
+    if kill_tmux is None:
+        kill_tmux = session.origin_adapter != "terminal"
+
+    if kill_tmux:
+        try:
+            killed = await terminal_bridge.kill_session(session.tmux_session_name)
+            if killed:
+                logger.info("Killed tmux session %s", session.tmux_session_name)
+            else:
+                logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
+
+    await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
+
+    await db.delete_session(session.session_id)
+    logger.info("Deleted session %s from database", session.session_id[:8])
+    return True
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:
@@ -87,15 +146,17 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
         logger.debug("Session %s not found in database", session_id[:8])
         return False
 
-    if session.closed:
-        logger.debug("Session %s already marked as closed", session_id[:8])
-        return False
-
-    # Check if tmux session exists
-    exists = await terminal_bridge.session_exists(session.tmux_session_name)
-    if exists:
-        # Session is healthy
-        return False
+    if session.origin_adapter == "terminal":
+        ux_state = await db.get_ux_state(session_id)
+        pid = ux_state.native_pid if ux_state else None
+        if isinstance(pid, int) and terminal_bridge.pid_is_alive(pid):
+            return False
+    else:
+        # Check if tmux session exists
+        exists = await terminal_bridge.session_exists(session.tmux_session_name)
+        if exists:
+            # Session is healthy
+            return False
 
     # Session is stale - tmux gone but DB says active
     logger.warning(
@@ -103,15 +164,16 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
         session_id[:8],
         session.tmux_session_name,
     )
-
-    # Mark as closed in database
-    await db.update_session(session_id, closed=True)
-
-    # Clean up channels and workspace (shared logic)
-    await cleanup_session_resources(session, adapter_client)
-
-    logger.info("Cleaned up stale session %s", session_id[:8])
-    return True
+    cleaned = await terminate_session(
+        session_id,
+        adapter_client,
+        reason="stale",
+        session=session,
+        kill_tmux=False,
+    )
+    if cleaned:
+        logger.info("Cleaned up stale session %s", session_id[:8])
+    return cleaned
 
 
 async def cleanup_all_stale_sessions(adapter_client: "AdapterClient") -> int:
@@ -254,7 +316,7 @@ async def cleanup_orphan_workspaces() -> int:
     - Database is cleared but workspace directories remain
     - Session cleanup fails to remove workspace
     - Manual intervention or crashes leave directories behind
-    - Sessions are closed but workspace cleanup didn't happen
+    - Sessions were terminated but workspace cleanup didn't happen
 
     Returns:
         Number of orphan workspace directories removed
@@ -265,7 +327,7 @@ async def cleanup_orphan_workspaces() -> int:
 
     # Get all active session IDs from DB
     all_sessions = await db.get_all_sessions()
-    known_session_ids = {s.session_id for s in all_sessions if not s.closed}
+    known_session_ids = {s.session_id for s in all_sessions}
 
     removed_count = 0
     for workspace_dir in OUTPUT_DIR.iterdir():

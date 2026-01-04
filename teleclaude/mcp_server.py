@@ -537,7 +537,7 @@ class TeleClaudeMCPServer:
                         "Retrieve session data from a remote computer's Claude Code session. "
                         "Reads from the claude_session_file which contains complete session history. "
                         "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
-                        "Returns `status: 'closed'` if session has ended (no transcript returned). "
+                        "Returns `status: 'error'` if session has ended or is missing (no transcript returned). "
                         "**Use this to check on delegated work** after teleclaude__send_message. "
                         "**Supervising Worker AI Sessions:** Responses are capped at 48,000 chars to keep MCP "
                         "transport stable. Use `since_timestamp` / `until_timestamp` to page through history. "
@@ -692,7 +692,7 @@ class TeleClaudeMCPServer:
                     title="TeleClaude: End Session",
                     description=(
                         "Gracefully end a Claude Code session (local or remote). "
-                        "Kills the tmux session, marks it closed in database, and cleans up all resources "
+                        "Kills the tmux session, deletes the session record, and cleans up all resources "
                         "(listeners, workspace directories, channels). "
                         "Use this when a master AI wants to terminate a worker session that has completed its work "
                         "or needs to be replaced (e.g., due to context exhaustion)."
@@ -1772,7 +1772,7 @@ class TeleClaudeMCPServer:
             - origin_adapter: Adapter that initiated session
             - title: Session title
             - working_directory: Current working directory
-            - status: Session status (active/closed)
+            - status: Session status (active)
             - created_at: ISO timestamp
             - last_activity: ISO timestamp
             - computer: Computer name (included for all queries)
@@ -2421,7 +2421,7 @@ class TeleClaudeMCPServer:
         computer: str,
         session_id: str,
     ) -> EndSessionResult:
-        """End a session gracefully (kill tmux, mark closed, clean up resources).
+        """End a session gracefully (kill tmux, delete session, clean up resources).
 
         Args:
             computer: Target computer name (or "local"/self.computer_name)

@@ -64,7 +64,6 @@ async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
     # Mock db to return the known session
     mock_session = MagicMock()
     mock_session.session_id = known_session_id
-    mock_session.closed = False
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
@@ -77,31 +76,6 @@ async def test_cleanup_orphan_workspaces_keeps_known_sessions(tmp_path: Path):
     assert removed == 1
     assert known_dir.exists()  # Should NOT be removed
     assert not orphan_dir.exists()  # Should be removed
-
-
-@pytest.mark.asyncio
-async def test_cleanup_orphan_workspaces_removes_closed_sessions(tmp_path: Path):
-    """Closed sessions should not keep workspace directories."""
-    closed_session_id = "closed-session-123"
-
-    closed_dir = tmp_path / closed_session_id
-    closed_dir.mkdir()
-    (closed_dir / "tmux.txt").write_text("closed output")
-
-    mock_session = MagicMock()
-    mock_session.session_id = closed_session_id
-    mock_session.closed = True
-
-    with (
-        patch("teleclaude.core.session_cleanup.db.get_all_sessions", new_callable=AsyncMock) as mock_db,
-        patch("teleclaude.core.session_cleanup.OUTPUT_DIR", tmp_path),
-    ):
-        mock_db.return_value = [mock_session]
-
-        removed = await cleanup_orphan_workspaces()
-
-    assert removed == 1
-    assert not closed_dir.exists()
 
 
 @pytest.mark.asyncio
@@ -121,28 +95,29 @@ async def test_cleanup_stale_session_detects_missing_tmux():
     mock_session = MagicMock()
     mock_session.session_id = "stale-session-123"
     mock_session.tmux_session_name = "tc_stale"
-    mock_session.closed = False
+    mock_session.origin_adapter = "telegram"
 
     mock_adapter_client = MagicMock()
-    mock_adapter_client.delete_channel = AsyncMock()
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock) as mock_update,
-        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
-        patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get.return_value = mock_session
         mock_exists.return_value = False  # tmux session is gone
-        mock_output_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+        mock_terminate.return_value = True
 
         result = await cleanup_stale_session("stale-session-123", mock_adapter_client)
 
     assert result is True
-    mock_update.assert_called_once_with("stale-session-123", closed=True)
-    mock_adapter_client.delete_channel.assert_called_once()
+    mock_terminate.assert_called_once_with(
+        "stale-session-123",
+        mock_adapter_client,
+        reason="stale",
+        session=mock_session,
+        kill_tmux=False,
+    )
 
 
 @pytest.mark.asyncio
@@ -175,13 +150,14 @@ async def test_cleanup_stale_session_skips_healthy_session():
     mock_session = MagicMock()
     mock_session.session_id = "healthy-session-123"
     mock_session.tmux_session_name = "tc_healthy"
-    mock_session.closed = False
+    mock_session.origin_adapter = "telegram"
 
     mock_adapter_client = MagicMock()
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get.return_value = mock_session
         mock_exists.return_value = True  # tmux session exists
@@ -189,142 +165,69 @@ async def test_cleanup_stale_session_skips_healthy_session():
         result = await cleanup_stale_session("healthy-session-123", mock_adapter_client)
 
     assert result is False
+    mock_terminate.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_cleanup_stale_session_skips_already_closed():
-    """Test that cleanup_stale_session skips already closed sessions."""
+async def test_terminate_session_deletes_db_and_resources():
+    """terminate_session should delete DB record after cleanup."""
     mock_session = MagicMock()
-    mock_session.session_id = "closed-session-123"
-    mock_session.closed = True
+    mock_session.session_id = "session-123"
+    mock_session.tmux_session_name = "tc_session"
+    mock_session.origin_adapter = "telegram"
 
-    mock_adapter_client = MagicMock()
-
-    with patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = mock_session
-
-        result = await cleanup_stale_session("closed-session-123", mock_adapter_client)
-
-    assert result is False
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stale_session_marks_as_closed():
-    """Test that cleanup_stale_session marks session as closed in DB."""
-    mock_session = MagicMock()
-    mock_session.session_id = "stale-session-123"
-    mock_session.tmux_session_name = "tc_stale"
-    mock_session.closed = False
-
-    mock_adapter_client = MagicMock()
-    mock_adapter_client.delete_channel = AsyncMock()
+    adapter_client = MagicMock()
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock) as mock_update,
-        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
-        patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
+        patch("teleclaude.core.session_cleanup.db.delete_session", new_callable=AsyncMock) as mock_delete,
+        patch("teleclaude.core.session_cleanup.terminal_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
+        patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock) as mock_cleanup,
     ):
         mock_get.return_value = mock_session
-        mock_exists.return_value = False
-        mock_output_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+        mock_kill.return_value = True
 
-        await cleanup_stale_session("stale-session-123", mock_adapter_client)
-
-    mock_update.assert_called_once_with("stale-session-123", closed=True)
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stale_session_deletes_channel():
-    """Test that cleanup_stale_session deletes channel."""
-    mock_session = MagicMock()
-    mock_session.session_id = "stale-session-123"
-    mock_session.tmux_session_name = "tc_stale"
-    mock_session.closed = False
-
-    mock_adapter_client = MagicMock()
-    mock_adapter_client.delete_channel = AsyncMock()
-
-    with (
-        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
-        patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
-    ):
-        mock_get.return_value = mock_session
-        mock_exists.return_value = False
-        mock_output_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
-
-        await cleanup_stale_session("stale-session-123", mock_adapter_client)
-
-    mock_adapter_client.delete_channel.assert_called_once_with(mock_session)
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stale_session_deletes_output_file(tmp_path: Path):
-    """Test that cleanup_stale_session deletes output file."""
-    session_id = "stale-session-123"
-    workspace_dir = tmp_path / session_id
-    workspace_dir.mkdir()
-    (workspace_dir / "tmux.txt").write_text("session output")
-
-    mock_session = MagicMock()
-    mock_session.session_id = session_id
-    mock_session.tmux_session_name = "tc_stale"
-    mock_session.closed = False
-
-    mock_adapter_client = MagicMock()
-    mock_adapter_client.delete_channel = AsyncMock()
-
-    with (
-        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
-        patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
-    ):
-        mock_get.return_value = mock_session
-        mock_exists.return_value = False
-        mock_output_dir.return_value = workspace_dir
-
-        await cleanup_stale_session(session_id, mock_adapter_client)
-
-    assert not workspace_dir.exists()
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stale_session_handles_channel_deletion_failure():
-    """Test that cleanup continues if channel deletion fails."""
-    mock_session = MagicMock()
-    mock_session.session_id = "stale-session-123"
-    mock_session.tmux_session_name = "tc_stale"
-    mock_session.closed = False
-
-    mock_adapter_client = MagicMock()
-    mock_adapter_client.delete_channel = AsyncMock(side_effect=Exception("Channel deletion failed"))
-
-    with (
-        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock) as mock_update,
-        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
-        patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
-    ):
-        mock_get.return_value = mock_session
-        mock_exists.return_value = False
-        mock_output_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
-
-        # Should not raise, cleanup continues
-        result = await cleanup_stale_session("stale-session-123", mock_adapter_client)
+        result = await session_cleanup.terminate_session(
+            "session-123",
+            adapter_client,
+            reason="test",
+            session=mock_session,
+        )
 
     assert result is True
-    mock_update.assert_called_once()
+    mock_kill.assert_called_once_with("tc_session")
+    mock_cleanup.assert_called_once_with(mock_session, adapter_client, delete_channel=True)
+    mock_delete.assert_called_once_with("session-123")
+
+
+@pytest.mark.asyncio
+async def test_terminate_session_skips_tmux_for_terminal_origin():
+    mock_session = MagicMock()
+    mock_session.session_id = "session-456"
+    mock_session.tmux_session_name = "terminal:deadbeef"
+    mock_session.origin_adapter = "terminal"
+
+    adapter_client = MagicMock()
+
+    with (
+        patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
+        patch("teleclaude.core.session_cleanup.db.delete_session", new_callable=AsyncMock) as mock_delete,
+        patch("teleclaude.core.session_cleanup.terminal_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
+        patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock) as mock_cleanup,
+    ):
+        mock_get.return_value = mock_session
+
+        result = await session_cleanup.terminate_session(
+            "session-456",
+            adapter_client,
+            reason="test",
+            session=mock_session,
+        )
+
+    assert result is True
+    mock_kill.assert_not_called()
+    mock_cleanup.assert_called_once_with(mock_session, adapter_client, delete_channel=True)
+    mock_delete.assert_called_once_with("session-456")
 
 
 @pytest.mark.asyncio
@@ -336,7 +239,7 @@ async def test_cleanup_all_stale_sessions_processes_all():
         s = MagicMock()
         s.session_id = f"session-{i}"
         s.tmux_session_name = f"tc_session_{i}"
-        s.closed = False
+        s.origin_adapter = "telegram"
         mock_sessions.append(s)
 
     mock_adapter_client = MagicMock()
@@ -351,19 +254,17 @@ async def test_cleanup_all_stale_sessions_processes_all():
     with (
         patch("teleclaude.core.session_cleanup.db.get_active_sessions", new_callable=AsyncMock) as mock_get_active,
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", side_effect=mock_session_exists),
-        patch("teleclaude.core.session_cleanup.get_session_output_dir") as mock_output_dir,
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get_active.return_value = mock_sessions
         mock_get.side_effect = lambda sid: next((s for s in mock_sessions if s.session_id == sid), None)
-        mock_output_dir.return_value = MagicMock(exists=MagicMock(return_value=False))
+        mock_terminate.return_value = True
 
         count = await cleanup_all_stale_sessions(mock_adapter_client)
 
     assert count == 2  # 2 stale sessions cleaned up
+    assert mock_terminate.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -395,14 +296,12 @@ async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, 
 
     monkeypatch.setattr(session_cleanup.asyncio, "to_thread", fake_to_thread)
     monkeypatch.setattr(session_cleanup, "get_session_output_dir", lambda _sid: tmp_path)
-    monkeypatch.setattr(session_cleanup.db, "clear_pending_deletions", noop_async)
-    monkeypatch.setattr(session_cleanup.db, "update_ux_state", noop_async)
-
-    adapter_client = SimpleNamespace(delete_channel=noop_async)
+    adapter_client = SimpleNamespace(delete_channel=AsyncMock())
     session = SimpleNamespace(session_id="sess-1")
 
     await session_cleanup.cleanup_session_resources(session, adapter_client)
 
+    adapter_client.delete_channel.assert_called_once_with(session)
     assert called["func"] is shutil.rmtree
     assert called["args"][0] == tmp_path
     assert not tmp_path.exists()

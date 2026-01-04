@@ -105,6 +105,8 @@ async def test_handle_new_session_creates_session():
             mock_db.get_session = AsyncMock(return_value=mock_session)
             mock_db.assign_voice = AsyncMock()  # Voice assignment
             mock_tb.create_tmux_session = AsyncMock(return_value=True)
+            mock_tb.get_pane_tty = AsyncMock(return_value=None)
+            mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
             result = await command_handlers.handle_create_session(
@@ -152,6 +154,8 @@ async def test_handle_new_session_validates_working_dir():
         mock_db.delete_session = AsyncMock()
         mock_db.assign_voice = AsyncMock()  # Voice assignment
         mock_tb.create_tmux_session = AsyncMock(return_value=True)
+        mock_tb.get_pane_tty = AsyncMock(return_value=None)
+        mock_tb.get_pane_pid = AsyncMock(return_value=None)
         mock_unique.return_value = "Test Title"
 
         with pytest.raises(ValueError, match="could not be created"):
@@ -234,12 +238,12 @@ async def test_handle_kill_terminates_process():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_bridge") as mock_tb:
+    with patch.object(command_handlers, "terminal_io") as mock_tb:
         mock_tb.send_signal = AsyncMock(return_value=True)
 
         await command_handlers.handle_kill_command.__wrapped__(mock_session, mock_context, mock_client, AsyncMock())
 
-    mock_tb.send_signal.assert_called_once_with("tc_test", "SIGKILL")
+    mock_tb.send_signal.assert_called_once_with(mock_session, "SIGKILL")
 
 
 @pytest.mark.asyncio
@@ -254,12 +258,12 @@ async def test_handle_cancel_sends_ctrl_c():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_bridge") as mock_tb:
+    with patch.object(command_handlers, "terminal_io") as mock_tb:
         mock_tb.send_signal = AsyncMock(return_value=True)
 
         await command_handlers.handle_cancel_command.__wrapped__(mock_session, mock_context, mock_client, AsyncMock())
 
-    mock_tb.send_signal.assert_called_once_with("tc_test", "SIGINT")
+    mock_tb.send_signal.assert_called_once_with(mock_session, "SIGINT")
 
 
 @pytest.mark.asyncio
@@ -274,14 +278,14 @@ async def test_handle_escape_sends_esc():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_bridge") as mock_tb:
+    with patch.object(command_handlers, "terminal_io") as mock_tb:
         mock_tb.send_escape = AsyncMock(return_value=True)
 
         await command_handlers.handle_escape_command.__wrapped__(
             mock_session, mock_context, [], mock_client, AsyncMock()
         )
 
-    mock_tb.send_escape.assert_called_once_with("tc_test")
+    mock_tb.send_escape.assert_called_once_with(mock_session)
 
 
 @pytest.mark.asyncio
@@ -296,14 +300,14 @@ async def test_handle_ctrl_sends_ctrl_key():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_bridge") as mock_tb:
+    with patch.object(command_handlers, "terminal_io") as mock_tb:
         mock_tb.send_ctrl_key = AsyncMock(return_value=True)
 
         await command_handlers.handle_ctrl_command.__wrapped__(
             mock_session, mock_context, ["d"], mock_client, AsyncMock()
         )
 
-    mock_tb.send_ctrl_key.assert_called_once_with("tc_test", "d")
+    mock_tb.send_ctrl_key.assert_called_once_with(mock_session, "d")
 
 
 @pytest.mark.asyncio
@@ -349,7 +353,6 @@ async def test_handle_list_sessions_formats_output():
         s.origin_adapter = "telegram"
         s.title = f"Test Session {i}"
         s.working_directory = "/home/user"
-        s.closed = False
         s.created_at = datetime.now()
         s.last_activity = datetime.now()
         mock_sessions.append(s)
@@ -382,7 +385,6 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session.working_directory = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
-    mock_session.closed = False  # Session must be active
 
     mock_ux_state = MagicMock()
     mock_ux_state.native_log_file = None  # No file yet
@@ -415,7 +417,6 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
     mock_session.working_directory = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
-    mock_session.closed = False  # Session must be active to return data
 
     nested_path = tmp_path / "session.json"
     gemini_payload = {
@@ -456,26 +457,21 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_handle_get_session_data_returns_closed_for_closed_session():
-    """Test that handle_get_session_data returns 'closed' status for closed sessions."""
+async def test_handle_get_session_data_returns_error_for_missing_session():
+    """Test that handle_get_session_data returns error for missing sessions."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
 
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-closed"
-    mock_session.closed = True
-
     mock_context = MagicMock(spec=EventContext)
-    mock_context.session_id = "test-session-closed"
+    mock_context.session_id = "missing-session"
 
     with patch.object(command_handlers, "db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=mock_session)
+        mock_db.get_session = AsyncMock(return_value=None)
 
         result = await command_handlers.handle_get_session_data(mock_context)
 
-    assert result["status"] == "closed"
-    assert result["session_id"] == "test-session-closed"
-    assert "messages" not in result  # No transcript for closed sessions
+    assert result["status"] == "error"
+    assert "not found" in result["error"].lower()
 
 
 @pytest.mark.asyncio
@@ -819,7 +815,7 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_bridge") as mock_terminal_bridge,
+        patch.object(command_handlers, "terminal_io") as mock_terminal_bridge,
     ):
         mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
         mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
@@ -885,7 +881,7 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_bridge") as mock_terminal_bridge,
+        patch.object(command_handlers, "terminal_io") as mock_terminal_bridge,
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers, "config") as mock_config,
@@ -928,7 +924,7 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_bridge") as mock_terminal_bridge,
+        patch.object(command_handlers, "terminal_io") as mock_terminal_bridge,
         patch.object(command_handlers, "config") as mock_config,
     ):
         mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)

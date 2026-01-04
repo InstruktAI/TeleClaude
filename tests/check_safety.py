@@ -9,7 +9,7 @@ from pathlib import Path
 db_path = Path(__file__).parent.parent / "teleclaude.db"
 if db_path.exists():
     conn = sqlite3.connect(str(db_path))
-    cursor = conn.execute("SELECT COUNT(*) FROM sessions WHERE closed = 0")
+    cursor = conn.execute("SELECT COUNT(*) FROM sessions")
     count = cursor.fetchone()[0]
     conn.close()
 

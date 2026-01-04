@@ -23,7 +23,7 @@ async def test_heartbeat_includes_sessions(daemon_with_mocked_telegram):
     assert session.computer_name == "TestPC"
 
     # Get all sessions
-    sessions = await daemon.db.list_sessions(closed=False)
+    sessions = await daemon.db.list_sessions()
     assert len(sessions) >= 1
     assert any(s.session_id == session.session_id for s in sessions)
 
@@ -46,7 +46,7 @@ async def test_heartbeat_sessions_limit(daemon_with_mocked_telegram):
         session_ids.append(session.session_id)
 
     # Get all sessions
-    sessions = await daemon.db.list_sessions(closed=False)
+    sessions = await daemon.db.list_sessions()
     assert len(sessions) >= 5
 
     # Verify all our sessions are in the list

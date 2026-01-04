@@ -9,6 +9,7 @@ import os
 import pwd
 import re
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -35,6 +36,13 @@ def _safe_path_component(value: str) -> str:
     if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
         return value
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+
+
+def _tty_to_pty_master(tty_path: str) -> Optional[str]:
+    """Best-effort mapping from tty device to pty master (BSD/macOS)."""
+    if tty_path.startswith("/dev/tty"):
+        return tty_path.replace("/dev/tty", "/dev/pty", 1)
+    return None
 
 
 def _prepare_session_tmp_dir(session_id: str) -> Path:
@@ -278,6 +286,37 @@ async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True)
         return False
 
 
+async def start_tty_capture(tty_path: str, output_file: str) -> bool:
+    """Start best-effort TTY capture process for terminal-origin sessions."""
+    pty_path = _tty_to_pty_master(tty_path)
+    if not pty_path:
+        logger.warning("Unsupported tty path for capture: %s", tty_path)
+        return False
+
+    if not Path(pty_path).exists():
+        logger.warning("PTY master not found for %s", tty_path)
+        return False
+
+    try:
+        await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "teleclaude.core.tty_capture",
+            "--pty",
+            pty_path,
+            "--output",
+            output_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        logger.info("Started TTY capture for %s -> %s", tty_path, output_file)
+        return True
+    except Exception as exc:
+        logger.warning("Failed to start TTY capture for %s: %s", tty_path, exc)
+        return False
+
+
 def pid_is_alive(pid: int) -> bool:
     """Return True if a PID appears to be alive."""
     try:
@@ -287,6 +326,56 @@ def pid_is_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+async def get_pane_tty(session_name: str) -> Optional[str]:
+    """Get tty path for the tmux pane backing a session."""
+    try:
+        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_tty}"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await result.communicate()
+        if result.returncode != 0:
+            logger.error(
+                "Failed to get pane tty for session %s: %s",
+                session_name,
+                stderr.decode().strip(),
+            )
+            return None
+
+        tty = stdout.decode().strip()
+        if not tty or tty in {"?", "??"}:
+            return None
+        return tty
+    except Exception as e:
+        logger.error("Exception getting pane tty for %s: %s", session_name, e)
+        return None
+
+
+async def get_pane_pid(session_name: str) -> Optional[int]:
+    """Get shell PID for the tmux pane backing a session."""
+    try:
+        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_pid}"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await result.communicate()
+        if result.returncode != 0:
+            logger.error(
+                "Failed to get pane PID for session %s: %s",
+                session_name,
+                stderr.decode().strip(),
+            )
+            return None
+
+        pid_str = stdout.decode().strip()
+        if not pid_str.isdigit():
+            return None
+        return int(pid_str)
+    except Exception as e:
+        logger.error("Exception getting pane PID for %s: %s", session_name, e)
+        return None
 
 
 async def _send_keys_tmux(
@@ -725,7 +814,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
     Args:
         session_name: Session name
         log_missing: If True, log ERROR with diagnostics when session is missing.
-                     Set to False when checking closed sessions to avoid noise.
+                     Set to False when checking expected-terminated sessions to avoid noise.
 
     Returns:
         True if session exists, False otherwise

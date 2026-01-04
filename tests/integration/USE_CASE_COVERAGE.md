@@ -126,7 +126,7 @@ async def test_close_session_full_cleanup():
     # Execute: Send /exit command
     # Assert: tmux session killed
     # Assert: output file deleted
-    # Assert: session marked closed in DB
+    # Assert: session deleted from DB
     # Assert: polling stopped
 
 @pytest.mark.integration

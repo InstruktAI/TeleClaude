@@ -27,7 +27,7 @@ from teleclaude.core import (
     polling_coordinator,
     session_cleanup,
     terminal_bridge,  # Imported for test mocking
-    voice_assignment,
+    terminal_io,
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
@@ -56,9 +56,10 @@ from teleclaude.core.events import (
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_listeners import cleanup_caller_listeners, get_listeners, pop_listeners
+from teleclaude.core.session_listeners import get_listeners
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
+from teleclaude.core.terminal_output_poller import TerminalOutputPoller
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -184,6 +185,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Note: terminal_bridge and db are functional modules (no instantiation)
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
         self.output_poller = OutputPoller()
+        self.terminal_output_poller = TerminalOutputPoller()
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
@@ -476,13 +478,23 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
+        if session.origin_adapter == "terminal":
+            await self.client.create_channel(
+                session=session,
+                title=session.title,
+                origin_adapter=session.origin_adapter,
+            )
+            await self._ensure_terminal_polling(session)
+
         transcript_path = data.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
             await db.update_ux_state(session_id, native_log_file=transcript_path)
 
         teleclaude_pid = data.get("teleclaude_pid")
         teleclaude_tty = data.get("teleclaude_tty")
-        if isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str):
+        if session.origin_adapter == "terminal" and (
+            isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str)
+        ):
             await db.update_ux_state(
                 session_id,
                 native_pid=teleclaude_pid if isinstance(teleclaude_pid, int) else None,
@@ -615,12 +627,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             _event: Event type (always "message") - unused but required by event handler signature
             context: Message event context (Pydantic)
         """
-        # Auto-reopen if closed
-        session = await db.get_session(context.session_id)
-        if session and session.closed:
-            logger.info("Auto-reopening closed session %s", context.session_id[:8])
-            await self._reopen_session(session)
-
         # Pass typed context directly
         await self.handle_message(context.session_id, context.text, context)
 
@@ -654,40 +660,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         logger.info("Handling session_closed for %s", ctx.session_id[:8])
-
-        # Kill tmux session (polling will stop automatically when session dies)
-        await terminal_bridge.kill_session(session.tmux_session_name)
-
-        # Mark closed in DB
-        await db.update_session(ctx.session_id, closed=True)
-
-        # Clean up session listeners:
-        # 1. Remove listeners where this session was the target (nobody listening to it anymore)
-        target_listeners = pop_listeners(ctx.session_id)
-        if target_listeners:
-            logger.debug(
-                "Cleaned up %d listener(s) for closed target session %s",
-                len(target_listeners),
-                ctx.session_id[:8],
-            )
-
-        # 2. Remove listeners where this session was the caller (can't receive notifications anymore)
-        caller_count = cleanup_caller_listeners(ctx.session_id)
-        if caller_count:
-            logger.debug(
-                "Cleaned up %d listener(s) registered by closed caller session %s",
-                caller_count,
-                ctx.session_id[:8],
-            )
-
-        # Delete output file
-        output_file = self._get_output_file_path(ctx.session_id)
-        if output_file.exists():
-            try:
-                output_file.unlink()
-                logger.debug("Deleted output file for closed session %s", ctx.session_id[:8])
-            except Exception as e:
-                logger.warning("Failed to delete output file for closed session %s: %s", ctx.session_id[:8], e)
+        await session_cleanup.terminate_session(
+            ctx.session_id,
+            self.client,
+            reason="topic_closed",
+            session=session,
+        )
 
     async def _handle_session_reopened(self, _event: str, context: SessionLifecycleContext) -> None:
         """Handler for session_reopened events - user reopened topic.
@@ -698,49 +676,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """
         ctx = context
 
-        session = await db.get_session(ctx.session_id)
-        if not session:
-            logger.warning("Session %s not found for reopen event", ctx.session_id[:8])
-            return
-
-        logger.info("Handling session_reopened for %s", ctx.session_id[:8])
-        await self._reopen_session(session)
-
-    async def _reopen_session(self, session: Session) -> None:
-        """Recreate tmux at saved working directory and mark active."""
-        # Parse terminal size (format: "WIDTHxHEIGHT")
-        cols, rows = 120, 40
-        if session.terminal_size:
-            try:
-                width, height = session.terminal_size.split("x")
-                cols, rows = int(width), int(height)
-            except (ValueError, AttributeError):
-                pass
-
-        # Restore voice env vars from DB if available
-        # Lookup by native_session_id first (persists across tmux restarts), then by session_id
-        voice_env_vars = None
-        ux_state = await db.get_ux_state(session.session_id)
-        voice = None
-        if ux_state.native_session_id:
-            voice = await db.get_voice(ux_state.native_session_id)
-        if not voice:
-            voice = await db.get_voice(session.session_id)
-        if voice:
-            voice_env_vars = voice_assignment.get_voice_env_vars(voice)
-            logger.debug("Restored voice '%s' for session %s", voice.name, session.session_id[:8])
-
-        await terminal_bridge.create_tmux_session(
-            name=session.tmux_session_name,
-            working_dir=session.working_directory,
-            cols=cols,
-            rows=rows,
-            session_id=session.session_id,
-            env_vars=voice_env_vars,
-        )
-
-        await db.update_session(session.session_id, closed=False)
-        logger.info("Session %s reopened at %s", session.session_id[:8], session.working_directory)
+        logger.info("Session reopen event ignored for %s (sessions are deleted on close)", ctx.session_id[:8])
 
     async def _handle_file(self, _event: str, context: FileEventContext) -> None:
         """Handler for FILE events - pure business logic.
@@ -917,7 +853,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         deadline = time.monotonic() + AGENT_START_TIMEOUT_S
         while time.monotonic() < deadline:
-            is_running = await terminal_bridge.is_process_running(session.tmux_session_name)
+            is_running = await terminal_io.is_process_running(session)
             if is_running:
                 await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
                 logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
@@ -932,10 +868,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 ux_state = await db.get_ux_state(session_id)
                 active_agent = ux_state.active_agent if ux_state else None
 
-                pasted = await terminal_bridge.send_keys(
-                    session.tmux_session_name,
+                pasted = await terminal_io.send_text(
+                    session,
                     message,
-                    session_id=session.session_id,
                     working_dir=session.working_directory,
                     cols=cols,
                     rows=rows,
@@ -949,7 +884,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 await db.update_last_activity(session_id)
                 await self._poll_and_send_output(session_id, session.tmux_session_name)
 
-                accepted = await self._confirm_command_acceptance(session.tmux_session_name)
+                accepted = await self._confirm_command_acceptance(session)
                 if not accepted:
                     logger.warning(
                         "agent_then_message timed out waiting for output change (session=%s)",
@@ -966,8 +901,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
         return {"status": "error", "message": "Timeout waiting for agent to start"}
 
-    async def _pane_output_snapshot(self, session_name: str) -> tuple[str, str]:
-        output = await terminal_bridge.capture_pane(session_name, lines=AGENT_START_OUTPUT_CAPTURE_LINES)
+    async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
+        output = await terminal_bridge.capture_pane(
+            session.tmux_session_name,
+            lines=AGENT_START_OUTPUT_CAPTURE_LINES,
+        )
         if not output:
             return "", ""
         tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
@@ -1003,7 +941,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _wait_for_output_change(
         self,
-        session_name: str,
+        session: Session,
         before: str,
         before_digest: str,
         timeout_s: float,
@@ -1011,23 +949,23 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         deadline = time.monotonic() + timeout_s
         last_tail = ""
         while time.monotonic() < deadline:
-            current_tail, current_digest = await self._pane_output_snapshot(session_name)
+            current_tail, current_digest = await self._pane_output_snapshot(session)
             last_tail = current_tail
             if current_digest != before_digest:
                 return True, current_tail
             await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
         return False, last_tail
 
-    async def _confirm_command_acceptance(self, session_name: str) -> bool:
+    async def _confirm_command_acceptance(self, session: Session) -> bool:
         attempts = max(1, AGENT_START_CONFIRM_ENTER_ATTEMPTS)
         for attempt in range(attempts):
-            before_tail, before_digest = await self._pane_output_snapshot(session_name)
-            await terminal_bridge.send_enter(session_name)
+            before_tail, before_digest = await self._pane_output_snapshot(session)
+            await terminal_io.send_enter(session)
             await asyncio.sleep(AGENT_START_ENTER_INTER_DELAY_S)
-            await terminal_bridge.send_enter(session_name)
+            await terminal_io.send_enter(session)
 
             changed, after_tail = await self._wait_for_output_change(
-                session_name,
+                session,
                 before_tail,
                 before_digest,
                 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S,
@@ -1241,7 +1179,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
 
         # Get listeners (don't pop - session is still active, Claude just finished its turn)
-        # Listeners are only removed when session is closed (in _handle_session_closed)
+        # Listeners are only removed when session is terminated (in _handle_session_closed)
         listeners = get_listeners(target_session_id)
         if not listeners:
             logger.debug("No listeners for remote session %s", target_session_id[:8])
@@ -1349,22 +1287,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return get_output_file(session_id)
 
     async def _deliver_listener_message(self, session_id: str, tmux_session: str, message: str) -> bool:
-        """Deliver a notification to a listener via tmux or fallback TTY."""
-        delivered = await terminal_bridge.send_keys_existing_tmux(
-            session_name=tmux_session,
-            text=message,
-            send_enter=True,
-        )
-        if delivered:
-            return True
+        """Deliver a notification to a listener via terminal delivery sink."""
+        from teleclaude.core.terminal_delivery import deliver_listener_message
 
-        ux_state = await db.get_ux_state(session_id)
-        tty_path = ux_state.native_tty_path
-        pid = ux_state.native_pid
-        if isinstance(tty_path, str) and tty_path and isinstance(pid, int) and terminal_bridge.pid_is_alive(pid):
-            return await terminal_bridge.send_keys_to_tty(tty_path, message, send_enter=True)
-
-        return False
+        return await deliver_listener_message(session_id, tmux_session, message)
 
     async def _send_feedback_callback(
         self,
@@ -1510,10 +1436,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
 
         # Send command
-        success = await terminal_bridge.send_keys(
-            session.tmux_session_name,
+        success = await terminal_io.send_text(
+            session,
             command,
-            session_id=session.session_id,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
@@ -1538,7 +1463,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Start polling only if requested by handler
         # Handlers know whether their commands need polling (cd=instant, claude=long-running)
         if start_polling:
-            await self._poll_and_send_output(session_id, session.tmux_session_name)
+            await self._start_polling_for_session(session_id, session.tmux_session_name)
 
         logger.info("Executed command in session %s: %s (polling=%s)", session_id[:8], command, start_polling)
         return True
@@ -1767,52 +1692,56 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.info("handle_get_computer_info returned: %s", result)
             return result
         elif command == TeleClaudeEvents.CANCEL:
-            return await command_handlers.handle_cancel_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_cancel_command(context, self.client, self._start_polling_for_session)
         elif command == TeleClaudeEvents.CANCEL_2X:
             return await command_handlers.handle_cancel_command(
-                context, self.client, self._poll_and_send_output, double=True
+                context, self.client, self._start_polling_for_session, double=True
             )
         elif command == TeleClaudeEvents.KILL:
-            return await command_handlers.handle_kill_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_kill_command(context, self.client, self._start_polling_for_session)
         elif command == TeleClaudeEvents.ESCAPE:
-            return await command_handlers.handle_escape_command(context, args, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_escape_command(
+                context, args, self.client, self._start_polling_for_session
+            )
         elif command == TeleClaudeEvents.ESCAPE_2X:
             return await command_handlers.handle_escape_command(
                 context,
                 args,
                 self.client,
-                self._poll_and_send_output,
+                self._start_polling_for_session,
                 double=True,
             )
         elif command == TeleClaudeEvents.CTRL:
-            return await command_handlers.handle_ctrl_command(context, args, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_ctrl_command(
+                context, args, self.client, self._start_polling_for_session
+            )
         elif command == TeleClaudeEvents.TAB:
-            return await command_handlers.handle_tab_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_tab_command(context, self.client, self._start_polling_for_session)
         elif command == TeleClaudeEvents.SHIFT_TAB:
             return await command_handlers.handle_shift_tab_command(
-                context, args, self.client, self._poll_and_send_output
+                context, args, self.client, self._start_polling_for_session
             )
         elif command == TeleClaudeEvents.BACKSPACE:
             return await command_handlers.handle_backspace_command(
-                context, args, self.client, self._poll_and_send_output
+                context, args, self.client, self._start_polling_for_session
             )
         elif command == TeleClaudeEvents.ENTER:
-            return await command_handlers.handle_enter_command(context, self.client, self._poll_and_send_output)
+            return await command_handlers.handle_enter_command(context, self.client, self._start_polling_for_session)
         elif command == TeleClaudeEvents.KEY_UP:
             return await command_handlers.handle_arrow_key_command(
-                context, args, self.client, self._poll_and_send_output, "up"
+                context, args, self.client, self._start_polling_for_session, "up"
             )
         elif command == TeleClaudeEvents.KEY_DOWN:
             return await command_handlers.handle_arrow_key_command(
-                context, args, self.client, self._poll_and_send_output, "down"
+                context, args, self.client, self._start_polling_for_session, "down"
             )
         elif command == TeleClaudeEvents.KEY_LEFT:
             return await command_handlers.handle_arrow_key_command(
-                context, args, self.client, self._poll_and_send_output, "left"
+                context, args, self.client, self._start_polling_for_session, "left"
             )
         elif command == TeleClaudeEvents.KEY_RIGHT:
             return await command_handlers.handle_arrow_key_command(
-                context, args, self.client, self._poll_and_send_output, "right"
+                context, args, self.client, self._start_polling_for_session, "right"
             )
         elif command == TeleClaudeEvents.RENAME:
             return await command_handlers.handle_rename_session(context, args, self.client)
@@ -1852,13 +1781,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         was_stale = await session_cleanup.cleanup_stale_session(session_id, self.client)
         if was_stale:
             logger.warning("Session %s was stale and has been cleaned up", session_id[:8])
-            warning_msg_id = await self.client.send_message(
-                session,
-                "⚠️ This session's terminal was closed externally and has been cleaned up.",
-                MessageMetadata(),
-            )
-            if warning_msg_id:
-                await db.add_pending_deletion(session_id, warning_msg_id)
             return
 
         # Parse terminal size (e.g., "80x24" -> cols=80, rows=24)
@@ -1874,10 +1796,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         active_agent = ux_state.active_agent if ux_state else None
 
         # Send command to terminal (will create fresh session if needed)
-        success = await terminal_bridge.send_keys(
-            session.tmux_session_name,
+        success = await terminal_io.send_text(
+            session,
             text,
-            session_id=session.session_id,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
@@ -1897,7 +1818,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         await db.update_last_activity(session_id)
 
         # Start polling for output updates
-        await self._poll_and_send_output(session_id, session.tmux_session_name)
+        await self._start_polling_for_session(session_id, session.tmux_session_name)
         logger.debug("Started polling for session %s", session_id[:8])
 
     async def _periodic_cleanup(self) -> None:
@@ -1938,8 +1859,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             try:
                 sessions = await db.get_active_sessions()
                 for session in sessions:
-                    if session.closed:
-                        continue
                     if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
                         continue
                     if not await terminal_bridge.is_process_running(session.tmux_session_name):
@@ -1967,9 +1886,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             sessions = await db.list_sessions()
 
             for session in sessions:
-                if session.closed:
-                    continue
-
                 # Check last_activity timestamp
                 if not session.last_activity:
                     logger.warning("No last_activity for session %s", session.session_id[:8])
@@ -1982,12 +1898,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         datetime.now() - session.last_activity,
                     )
 
-                    # Kill tmux session
-                    await terminal_bridge.kill_session(session.tmux_session_name)
-
-                    # Mark as closed
-                    await db.update_session(session.session_id, closed=True)
-
+                    await session_cleanup.terminate_session(
+                        session.session_id,
+                        self.client,
+                        reason="inactive_72h",
+                        session=session,
+                    )
                     logger.info("Session %s cleaned up (72h lifecycle)", session.session_id[:8])
 
         except Exception as e:
@@ -2007,6 +1923,37 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             adapter_client=self.client,  # Use AdapterClient for multi-adapter broadcasting
             get_output_file=self._get_output_file_path,
         )
+
+    async def _ensure_terminal_polling(self, session: Session) -> None:
+        if await polling_coordinator.is_polling(session.session_id):
+            return
+        ux_state = await db.get_ux_state(session.session_id)
+        log_path = ux_state.tui_log_file if ux_state else None
+        if not log_path:
+            log_path = str(get_output_file(session.session_id))
+            await db.update_ux_state(session.session_id, tui_log_file=log_path)
+
+        if ux_state and ux_state.native_tty_path and log_path and not ux_state.tui_capture_started:
+            started = await terminal_bridge.start_tty_capture(ux_state.native_tty_path, log_path)
+            if started:
+                await db.update_ux_state(session.session_id, tui_capture_started=True)
+
+        if log_path:
+            await polling_coordinator.schedule_terminal_polling(
+                session_id=session.session_id,
+                poller=self.terminal_output_poller,
+                adapter_client=self.client,
+                log_file=Path(log_path),
+                terminal_size=session.terminal_size,
+                pid=ux_state.native_pid if ux_state else None,
+            )
+
+    async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None:
+        session = await db.get_session(session_id)
+        if session and session.origin_adapter == "terminal":
+            await self._ensure_terminal_polling(session)
+            return
+        await self._poll_and_send_output(session_id, tmux_session_name)
 
 
 async def main() -> None:

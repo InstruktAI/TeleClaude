@@ -997,7 +997,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             )
         else:
             # Session not found for this topic
-            error_msg = "❌ No session found for this topic. The session may have been closed."
+            error_msg = "❌ No session found for this topic. The session may have ended."
             logger.warning("No session found for topic_id %s", thread_id)
 
         try:
@@ -2274,12 +2274,12 @@ Usage:
         sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)
 
         if not sessions:
-            logger.warning("No session found for closed topic %s", topic_id)
+            logger.warning("No session found for topic %s", topic_id)
             return
 
         session = sessions[0]
         logger.info(
-            "Topic %s closed by user, closing session %s",
+            "Topic %s closed by user, terminating session %s",
             topic_id,
             session.session_id[:8],
         )

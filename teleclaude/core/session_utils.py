@@ -17,7 +17,7 @@ OUTPUT_DIR = Path("workspace")
 async def ensure_unique_title(base_title: str) -> str:
     """Ensure session title is unique by appending counter if needed.
 
-    Checks all active (non-closed) sessions for duplicate titles.
+    Checks all active sessions for duplicate titles.
     If the base_title exists, appends " (2)", " (3)", etc. until unique.
 
     Args:
@@ -35,7 +35,7 @@ async def ensure_unique_title(base_title: str) -> str:
         "$MozBook[apps/TC] - New session (2)"
     """
     # Get all active sessions
-    existing_sessions = await db.list_sessions(closed=False)
+    existing_sessions = await db.list_sessions()
     existing_titles = {s.title for s in existing_sessions}
 
     # If title is unique, return as-is

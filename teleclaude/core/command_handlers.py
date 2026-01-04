@@ -16,7 +16,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import terminal_bridge
+from teleclaude.core import terminal_bridge, terminal_io
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
@@ -29,10 +29,7 @@ from teleclaude.core.models import (
     SessionSummary,
     ThinkingMode,
 )
-from teleclaude.core.session_cleanup import (
-    TMUX_SESSION_PREFIX,
-    cleanup_session_resources,
-)
+from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, cleanup_session_resources, terminate_session
 from teleclaude.core.session_utils import build_session_title, ensure_unique_title, update_title_with_agent
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
@@ -158,7 +155,7 @@ def with_session(
         @with_session
         async def handle_cancel(session: Session, context: EventContext, ...) -> None:
             # session is already validated and injected
-            await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+            await terminal_io.send_signal(session, "SIGINT")
     """
 
     @functools.wraps(func)
@@ -199,7 +196,7 @@ async def _execute_control_key(
     Returns:
         True if terminal action succeeded, False otherwise
     """
-    return await terminal_action(session.tmux_session_name, *terminal_args)
+    return await terminal_action(session, *terminal_args)
 
 
 async def handle_create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
@@ -386,7 +383,7 @@ async def handle_list_sessions() -> list[SessionListItem]:
         List of session dicts with fields: session_id, origin_adapter, title,
         working_directory, status, created_at, last_activity
     """
-    sessions = await db.list_sessions(closed=False)
+    sessions = await db.list_sessions()
 
     summaries: list[SessionSummary] = []
     for s in sessions:
@@ -398,7 +395,7 @@ async def handle_list_sessions() -> list[SessionListItem]:
                 title=s.title,
                 working_directory=s.working_directory,
                 thinking_mode=ux_state.thinking_mode or ThinkingMode.SLOW.value,
-                status="closed" if s.closed else "active",
+                status="active",
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
             )
@@ -528,10 +525,6 @@ async def handle_get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
-    if session.closed:
-        logger.info("Session %s is closed", session_id[:8])
-        return {"status": "closed", "session_id": session_id, "error": "Session is closed"}
-
     # Get ux_state to get native_log_file
     ux_state = await db.get_ux_state(session_id)
     if not ux_state or not ux_state.native_log_file:
@@ -605,7 +598,7 @@ async def handle_cancel_command(
     """
     # Send SIGINT (CTRL+C) to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_bridge.send_signal,
+        terminal_io.send_signal,
         session,
         "SIGINT",
     )
@@ -614,7 +607,7 @@ async def handle_cancel_command(
         # Wait a moment then send second SIGINT
         await asyncio.sleep(0.2)
         success = await _execute_control_key(
-            terminal_bridge.send_signal,
+            terminal_io.send_signal,
             session,
             "SIGINT",
         )
@@ -646,7 +639,7 @@ async def handle_kill_command(
     """
     # Send SIGKILL (forceful termination) to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_bridge.send_signal,
+        terminal_io.send_signal,
         session,
         "SIGKILL",
     )
@@ -682,7 +675,7 @@ async def handle_escape_command(
         text = " ".join(args)
 
         # Send ESCAPE first
-        success = await terminal_bridge.send_escape(session.tmux_session_name)
+        success = await terminal_io.send_escape(session)
         if not success:
             logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
             return
@@ -690,7 +683,7 @@ async def handle_escape_command(
         # Send second ESCAPE if double flag set
         if double:
             await asyncio.sleep(0.1)
-            success = await terminal_bridge.send_escape(session.tmux_session_name)
+            success = await terminal_io.send_escape(session)
             if not success:
                 logger.error("Failed to send second ESCAPE to session %s", session.session_id[:8])
                 return
@@ -707,17 +700,16 @@ async def handle_escape_command(
                 pass
 
         # Check if process is running for polling decision
-        is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
+        is_process_running = await terminal_io.is_process_running(session)
 
         # Get active agent for agent-specific escaping
         ux_state = await db.get_ux_state(session.session_id)
         active_agent = ux_state.active_agent if ux_state else None
 
         # Send text + ENTER
-        success = await terminal_bridge.send_keys(
-            session.tmux_session_name,
+        success = await terminal_io.send_text(
+            session,
             text,
-            session_id=session.session_id,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
@@ -747,7 +739,7 @@ async def handle_escape_command(
 
     # No args: send ESCAPE only (TUI navigation, no polling)
     success = await _execute_control_key(
-        terminal_bridge.send_escape,
+        terminal_io.send_escape,
         session,
     )
 
@@ -755,7 +747,7 @@ async def handle_escape_command(
         # Wait a moment then send second ESCAPE
         await asyncio.sleep(0.2)
         success = await _execute_control_key(
-            terminal_bridge.send_escape,
+            terminal_io.send_escape,
             session,
         )
 
@@ -820,7 +812,7 @@ async def handle_ctrl_command(
 
     # Send CTRL+key to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_bridge.send_ctrl_key,
+        terminal_io.send_ctrl_key,
         session,
         key,
     )
@@ -847,7 +839,7 @@ async def handle_tab_command(
         start_polling: Function to start polling for a session
     """
     success = await _execute_control_key(
-        terminal_bridge.send_tab,
+        terminal_io.send_tab,
         session,
     )
 
@@ -887,7 +879,7 @@ async def handle_shift_tab_command(
             count = 1
 
     success = await _execute_control_key(
-        terminal_bridge.send_shift_tab,
+        terminal_io.send_shift_tab,
         session,
         count,
     )
@@ -928,7 +920,7 @@ async def handle_backspace_command(
             count = 1
 
     success = await _execute_control_key(
-        terminal_bridge.send_backspace,
+        terminal_io.send_backspace,
         session,
         count,
     )
@@ -956,7 +948,7 @@ async def handle_enter_command(
     """
     # Send ENTER key (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_bridge.send_enter,
+        terminal_io.send_enter,
         session,
     )
 
@@ -999,7 +991,7 @@ async def handle_arrow_key_command(
             count = 1
 
     success = await _execute_control_key(
-        terminal_bridge.send_arrow_key,
+        terminal_io.send_arrow_key,
         session,
         direction,
         count,
@@ -1147,19 +1139,12 @@ async def handle_exit_session(
         context: Command context with session_id
         client: AdapterClient for channel operations
     """
-    # Kill tmux session
-    success = await terminal_bridge.kill_session(session.tmux_session_name)
-    if success:
-        logger.info("Killed tmux session %s", session.tmux_session_name)
-    else:
-        logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
-
-    # Delete from database
-    await db.delete_session(session.session_id)
-    logger.info("Deleted session %s from database", session.session_id[:8])
-
-    # Clean up channels and workspace (shared logic)
-    await cleanup_session_resources(session, client)
+    await terminate_session(
+        session.session_id,
+        client,
+        reason="exit",
+        session=session,
+    )
 
 
 async def handle_end_session(
@@ -1169,7 +1154,7 @@ async def handle_end_session(
     """End a session - graceful termination for MCP tool.
 
     Similar to handle_exit_session but designed for MCP tool calls.
-    Kills tmux, marks session closed, cleans up resources.
+    Kills tmux, deletes the session, cleans up resources.
 
     Args:
         session_id: Session identifier
@@ -1183,29 +1168,14 @@ async def handle_end_session(
     if not session:
         return {"status": "error", "message": f"Session {session_id[:8]} not found"}
 
-    if session.closed:
-        return {
-            "status": "error",
-            "message": f"Session {session_id[:8]} already closed",
-        }
-
-    # Kill tmux session
-    success = await terminal_bridge.kill_session(session.tmux_session_name)
-    if success:
-        logger.info("Killed tmux session %s", session.tmux_session_name)
-    else:
-        logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
-        return {
-            "status": "error",
-            "message": f"Failed to kill tmux session {session.tmux_session_name}",
-        }
-
-    # Mark as closed in database
-    await db.update_session(session_id, closed=True)
-    logger.info("Marked session %s as closed", session_id[:8])
-
-    # Clean up channels and workspace (shared logic)
-    await cleanup_session_resources(session, client)
+    terminated = await terminate_session(
+        session_id,
+        client,
+        reason="end_session",
+        session=session,
+    )
+    if not terminated:
+        return {"status": "error", "message": f"Session {session_id[:8]} not found"}
 
     return {
         "status": "success",
@@ -1433,13 +1403,13 @@ async def handle_agent_restart(
     )
 
     # Kill any existing process (send CTRL+C twice).
-    sent = await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+    sent = await terminal_io.send_signal(session, "SIGINT")
     if sent:
         await asyncio.sleep(0.2)
-        await terminal_bridge.send_signal(session.tmux_session_name, "SIGINT")
+        await terminal_io.send_signal(session, "SIGINT")
         await asyncio.sleep(0.5)
 
-    ready = await terminal_bridge.wait_for_shell_ready(session.tmux_session_name)
+    ready = await terminal_io.wait_for_shell_ready(session)
     if not ready:
         await client.send_feedback(
             session,

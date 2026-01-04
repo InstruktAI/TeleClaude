@@ -19,7 +19,7 @@ async def test_ensure_unique_title_returns_base_when_unique():
         result = await ensure_unique_title("My Unique Title")
 
         assert result == "My Unique Title"
-        mock_db.list_sessions.assert_called_once_with(closed=False)
+        mock_db.list_sessions.assert_called_once_with()
 
 
 @pytest.mark.asyncio

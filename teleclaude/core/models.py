@@ -253,7 +253,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     origin_adapter: str  # Single origin adapter (e.g., "redis" or "telegram")
     title: str
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
-    closed: bool = False
+    closed: bool = False  # Legacy field; sessions are deleted on close.
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     terminal_size: str = "160x80"

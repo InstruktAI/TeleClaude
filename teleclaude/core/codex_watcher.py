@@ -266,7 +266,7 @@ class CodexWatcher:
                     self._file_positions[file_path] = f.tell()
 
                 session = None
-                active_sessions = await self._db.list_sessions(closed=False)
+                active_sessions = await self._db.list_sessions()
                 for candidate in active_sessions:
                     ux_state = await self._db.get_ux_state(candidate.session_id)
                     if ux_state.native_log_file == str(file_path):

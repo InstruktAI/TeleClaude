@@ -20,6 +20,7 @@ def mock_daemon():
         patch("teleclaude.core.terminal_bridge") as mock_tb,
         patch("teleclaude.core.message_handler.terminal_bridge", mock_tb),
         patch("teleclaude.core.voice_message_handler.terminal_bridge", mock_tb),
+        patch("teleclaude.core.terminal_io.terminal_bridge", mock_tb),
         patch("teleclaude.daemon.TelegramAdapter") as mock_ta,
         patch("teleclaude.daemon.ComputerRegistry") as mock_cr,
         patch("teleclaude.daemon.TeleClaudeMCPServer") as mock_mcp,
@@ -172,10 +173,10 @@ async def test_agent_then_message_waits_settle_delay():
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_bridge.send_keys", new_callable=AsyncMock) as mock_send_keys,
+        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send_keys,
         patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
-        patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock),
+        patch("teleclaude.daemon.terminal_io.send_enter", new_callable=AsyncMock),
         patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 2.5),
         patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 1),
@@ -214,10 +215,10 @@ async def test_agent_then_message_times_out_on_no_output_change():
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_bridge.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_bridge.send_keys", new_callable=AsyncMock) as mock_send_keys,
+        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send_keys,
         patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
-        patch("teleclaude.daemon.terminal_bridge.send_enter", new_callable=AsyncMock),
+        patch("teleclaude.daemon.terminal_io.send_enter", new_callable=AsyncMock),
         patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 1),
@@ -384,66 +385,6 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
 
 
 @pytest.mark.asyncio
-class TestSessionCloseReopen:
-    """Test session close and reopen functionality."""
-
-    async def test_reopen_session_creates_tmux_at_saved_working_dir(self):
-        """Test that _reopen_session creates tmux at saved working_dir."""
-        from unittest.mock import AsyncMock, Mock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.core.ux_state import SessionUXState
-        from teleclaude.daemon import TeleClaudeDaemon
-
-        # Create daemon instance without full initialization
-        daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-
-        # Setup mocks (must patch at daemon module namespace, not config_module)
-        with (
-            patch("teleclaude.daemon.terminal_bridge") as mock_tb,
-            patch("teleclaude.daemon.db") as mock_db,
-            patch("teleclaude.daemon.config") as mock_config,
-        ):
-            mock_tb.create_tmux_session = AsyncMock()
-            mock_db.update_session = AsyncMock()
-            mock_db.get_ux_state = AsyncMock(return_value=SessionUXState())  # No claude_session_id
-            mock_db.get_voice = AsyncMock(return_value=None)  # No voice stored
-
-            # Mock config.computer.default_shell (must set up the mock chain properly)
-            mock_computer = Mock()
-            mock_computer.default_shell = "/bin/zsh"
-            mock_config.computer = mock_computer
-
-            # Test session
-            session = Session(
-                session_id="test-123",
-                computer_name="TestMac",
-                tmux_session_name="test-tmux-123",
-                origin_adapter="telegram",
-                title="Test",
-                working_directory="/home/user/project",
-                terminal_size="120x40",
-                closed=True,
-            )
-
-            # Execute
-            await daemon._reopen_session(session)
-
-            # Verify: tmux created at saved directory (env_vars=None when no voice found)
-            mock_tb.create_tmux_session.assert_called_once_with(
-                name="test-tmux-123",
-                working_dir="/home/user/project",
-                cols=120,
-                rows=40,
-                session_id="test-123",
-                env_vars=None,
-            )
-
-            # Verify: marked active
-            mock_db.update_session.assert_called_once_with("test-123", closed=False)
-
-
-@pytest.mark.asyncio
 class TestSessionCleanup:
     """Test session cleanup functionality."""
 
@@ -457,6 +398,7 @@ class TestSessionCleanup:
 
         # Create daemon instance
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+        daemon.client = MagicMock()
 
         # Create session inactive for 73 hours
         old_time = datetime.now() - timedelta(hours=73)
@@ -470,19 +412,21 @@ class TestSessionCleanup:
             last_activity=old_time,
         )
 
-        with patch("teleclaude.daemon.db") as mock_db, patch("teleclaude.daemon.terminal_bridge") as mock_tb:
+        with (
+            patch("teleclaude.daemon.db") as mock_db,
+            patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
+        ):
             mock_db.list_sessions = AsyncMock(return_value=[inactive_session])
-            mock_db.update_session = AsyncMock()
-            mock_tb.kill_session = AsyncMock()
 
             # Execute cleanup
             await daemon._cleanup_inactive_sessions()
 
-            # Verify tmux killed
-            mock_tb.kill_session.assert_called_once_with("inactive-tmux")
-
-            # Verify session marked closed
-            mock_db.update_session.assert_called_once_with("inactive-123", closed=True)
+            terminate_session.assert_called_once_with(
+                "inactive-123",
+                daemon.client,
+                reason="inactive_72h",
+                session=inactive_session,
+            )
 
     async def test_cleanup_skips_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
@@ -493,6 +437,7 @@ class TestSessionCleanup:
         from teleclaude.daemon import TeleClaudeDaemon
 
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+        daemon.client = MagicMock()
 
         # Session active 1 hour ago
         recent_time = datetime.now() - timedelta(hours=1)
@@ -506,50 +451,17 @@ class TestSessionCleanup:
             last_activity=recent_time,
         )
 
-        with patch("teleclaude.daemon.db") as mock_db, patch("teleclaude.daemon.terminal_bridge") as mock_tb:
+        with (
+            patch("teleclaude.daemon.db") as mock_db,
+            patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
+        ):
             mock_db.list_sessions = AsyncMock(return_value=[active_session])
-            mock_db.update_session = AsyncMock()
-            mock_tb.kill_session = AsyncMock()
 
             # Execute cleanup
             await daemon._cleanup_inactive_sessions()
 
             # Verify NO cleanup
-            mock_tb.kill_session.assert_not_called()
-            mock_db.update_session.assert_not_called()
-
-    async def test_cleanup_skips_closed_sessions(self):
-        """Test that closed sessions are skipped."""
-        from datetime import datetime, timedelta
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
-        daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-
-        old_time = datetime.now() - timedelta(hours=100)
-        closed_session = Session(
-            session_id="closed-789",
-            computer_name="TestMac",
-            tmux_session_name="closed-tmux",
-            origin_adapter="telegram",
-            title="Closed",
-            closed=True,
-            last_activity=old_time,
-        )
-
-        with patch("teleclaude.daemon.db") as mock_db, patch("teleclaude.daemon.terminal_bridge") as mock_tb:
-            mock_db.list_sessions = AsyncMock(return_value=[closed_session])
-            mock_db.update_session = AsyncMock()
-            mock_tb.kill_session = AsyncMock()
-
-            # Execute cleanup
-            await daemon._cleanup_inactive_sessions()
-
-            # Verify NO cleanup
-            mock_tb.kill_session.assert_not_called()
-            mock_db.update_session.assert_not_called()
+            terminate_session.assert_not_called()
 
 
 def test_all_events_have_handlers():

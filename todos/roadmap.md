@@ -10,3 +10,8 @@
 
 - [ ] test-cleanup
 Define and enforce test quality standards (requirements-only; no implementation plan yet).
+
+## TerminalAdapter
+
+- [ ] terminal-adapter
+First-class terminal sessions (no TELECLAUDE_SESSION_ID) with TTY-based registration and unified injection via TerminalAdapter.

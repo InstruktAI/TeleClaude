@@ -1011,8 +1011,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             while self._running:
                 # Check if session still exists
                 session = await db.get_session(session_id)
-                if not session or session.closed:
-                    logger.info("Session %s closed, stopping output stream listener", session_id[:8])
+                if not session:
+                    logger.info("Session %s missing, stopping output stream listener", session_id[:8])
                     break
 
                 # Read from output stream

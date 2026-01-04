@@ -18,6 +18,7 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
+from teleclaude.core.terminal_output_poller import TerminalOutputPoller
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -80,6 +81,35 @@ async def schedule_polling(
     return True
 
 
+async def schedule_terminal_polling(
+    session_id: str,
+    poller: TerminalOutputPoller,
+    adapter_client: "AdapterClient",
+    log_file: Path,
+    terminal_size: str,
+    pid: int | None,
+) -> bool:
+    """Schedule terminal TUI polling in the background."""
+    if not await _register_polling(session_id):
+        logger.warning(
+            "Polling already active for session %s, ignoring duplicate request",
+            session_id[:8],
+        )
+        return False
+
+    asyncio.create_task(
+        poll_and_send_terminal_output(
+            session_id=session_id,
+            poller=poller,
+            adapter_client=adapter_client,
+            log_file=log_file,
+            terminal_size=terminal_size,
+            pid=pid,
+        )
+    )
+    return True
+
+
 async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     session_id: str,
     tmux_session_name: str,
@@ -110,7 +140,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
     # Get output file
     output_file = get_output_file(session_id)
-
     try:
         # Consume events from pure poller
         async for event in output_poller.poll(session_id, tmux_session_name, output_file):
@@ -119,17 +148,23 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     "[COORDINATOR %s] Received OutputChanged event from poller",
                     session_id[:8],
                 )
-                # Output is already clean (poller writes filtered output to file)
+                # Output is a rendered TUI snapshot (poller reads from raw stream)
                 clean_output = event.output
 
                 # Fetch session once for all operations
                 session = await db.get_session(event.session_id)
+                if not session:
+                    logger.debug(
+                        "Session %s missing during polling output; stopping poller",
+                        event.session_id[:8],
+                    )
+                    return
 
                 # Unified output handling - ALL sessions use send_output_update
                 start_time = time.time()
                 logger.trace("[COORDINATOR %s] Calling send_output_update...", session_id[:8])
                 await adapter_client.send_output_update(
-                    session,  # type: ignore[arg-type]
+                    session,
                     clean_output,
                     event.started_at,
                     event.last_changed_at,
@@ -169,14 +204,13 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                         event.exit_code,
                     )
                 else:
-                    # Session died - check if it was user-closed before sending exit message
-                    if session and session.closed:
-                        # Session was intentionally closed by user - don't send exit message
+                    # Session died - if session was deleted, skip exit message
+                    if not session:
                         logger.debug(
-                            "Session %s was closed by user, skipping exit message",
+                            "Session %s missing (likely terminated), skipping exit message",
                             event.session_id[:8],
                         )
-                    elif session:
+                    else:
                         # Tmux session died unexpectedly - notify user
                         try:
                             await adapter_client.send_exit_message(
@@ -211,3 +245,50 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         # Only cleared when session closes (/exit command)
 
         logger.debug("Polling ended for session %s", session_id[:8])
+
+
+async def poll_and_send_terminal_output(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    session_id: str,
+    poller: TerminalOutputPoller,
+    adapter_client: "AdapterClient",
+    log_file: Path,
+    terminal_size: str,
+    pid: int | None,
+) -> None:
+    """Poll terminal output log and send to all adapters."""
+    try:
+        async for event in poller.poll(session_id, log_file, terminal_size, pid):
+            if isinstance(event, OutputChanged):
+                session = await db.get_session(event.session_id)
+                if not session:
+                    logger.debug(
+                        "Session %s missing during terminal polling output; stopping poller",
+                        event.session_id[:8],
+                    )
+                    return
+                await adapter_client.send_output_update(
+                    session,
+                    event.output,
+                    event.started_at,
+                    event.last_changed_at,
+                )
+            else:
+                session = await db.get_session(event.session_id)
+                if not session:
+                    return
+                if session:
+                    try:
+                        await adapter_client.send_exit_message(
+                            session,
+                            event.final_output,
+                            "⚠️ Session terminated",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to send terminal exit message for %s: %s",
+                            event.session_id[:8],
+                            exc,
+                        )
+    finally:
+        await _unregister_polling(session_id)
+        logger.debug("Terminal polling ended for session %s", session_id[:8])
