@@ -238,6 +238,23 @@ def _enqueue_hook_event(
         conn.close()
 
 
+def _session_exists(session_id: str) -> bool:
+    """Return True if a TeleClaude session exists in the DB."""
+    db_path = config.database.path
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        try:
+            cursor = conn.execute("SELECT 1 FROM sessions WHERE session_id = ? LIMIT 1", (session_id,))
+            return cursor.fetchone() is not None
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return False
+            raise
+    finally:
+        conn.close()
+
+
 class NormalizeFn(Protocol):
     def __call__(self, event_type: str, data: dict[str, object]) -> dict[str, object]: ...  # noqa: loose-dict - Agent hook protocol
 
@@ -290,6 +307,13 @@ def main() -> None:
     parent_pid, tty_path = _get_parent_process_info()
 
     teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
+    if teleclaude_session_id and not _session_exists(teleclaude_session_id):
+        logger.warning(
+            "Hook receiver session id missing in DB; attempting tty recovery",
+            session_id=teleclaude_session_id,
+        )
+        teleclaude_session_id = None
+
     if not teleclaude_session_id:
         if tty_path:
             teleclaude_session_id = ensure_terminal_session(
