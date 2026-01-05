@@ -9,7 +9,7 @@ from teleclaude.core.models import Session
 
 
 @pytest.mark.asyncio
-async def test_send_text_terminal_prefers_tmux():
+async def test_send_text_prefers_existing_tmux():
     session = Session(
         session_id="sid-123",
         computer_name="test",
@@ -25,17 +25,17 @@ async def test_send_text_terminal_prefers_tmux():
             "send_keys_existing_tmux",
             new=AsyncMock(return_value=True),
         ) as mock_send_tmux,
-        patch.object(terminal_io, "_send_to_tty", new=AsyncMock(return_value=True)) as mock_send_tty,
+        patch.object(terminal_io.terminal_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
     ):
         ok = await terminal_io.send_text(session, "hello", send_enter=True)
 
     assert ok is True
     mock_send_tmux.assert_awaited_once()
-    mock_send_tty.assert_not_called()
+    mock_send_keys.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_send_text_terminal_falls_back_to_tty():
+async def test_send_text_creates_tmux_when_missing():
     session = Session(
         session_id="sid-456",
         computer_name="test",
@@ -51,10 +51,10 @@ async def test_send_text_terminal_falls_back_to_tty():
             "send_keys_existing_tmux",
             new=AsyncMock(return_value=True),
         ) as mock_send_tmux,
-        patch.object(terminal_io, "_send_to_tty", new=AsyncMock(return_value=True)) as mock_send_tty,
+        patch.object(terminal_io.terminal_bridge, "send_keys", new=AsyncMock(return_value=True)) as mock_send_keys,
     ):
         ok = await terminal_io.send_text(session, "hello", send_enter=True)
 
     assert ok is True
     mock_send_tmux.assert_not_called()
-    mock_send_tty.assert_awaited_once()
+    mock_send_keys.assert_awaited_once()

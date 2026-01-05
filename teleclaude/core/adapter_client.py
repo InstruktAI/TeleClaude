@@ -13,9 +13,9 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
+from teleclaude.adapters.terminal_adapter import TerminalAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.core import session_cleanup
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
@@ -80,8 +80,9 @@ class AdapterClient:
         self.adapters[adapter_type] = adapter
         logger.info("Registered adapter: %s", adapter_type)
 
-    def _is_terminal_origin(self, session: "Session") -> bool:
-        return session.origin_adapter == "terminal"
+    def _origin_ui_adapter(self, session: "Session") -> UiAdapter | None:
+        adapter = self.adapters.get(session.origin_adapter)
+        return adapter if isinstance(adapter, UiAdapter) else None
 
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
         return [
@@ -122,28 +123,27 @@ class AdapterClient:
 
         if missing_thread_error:
             updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
-            if session.origin_adapter == "terminal" and operation in {"send_message", "send_feedback"}:
-                telegram_adapter = next(
-                    (adapter for adapter_type, adapter in ui_adapters if adapter_type == "telegram"),
-                    None,
-                )
-                if telegram_adapter:
-                    try:
-                        if updated_session:
-                            session.adapter_metadata = updated_session.adapter_metadata
-                            session.title = updated_session.title
-                        retry_result = await task_factory(telegram_adapter)
-                        if telegram_index is not None:
-                            output[telegram_index] = ("telegram", retry_result)
-                        else:
-                            output.append(("telegram", retry_result))
-                    except Exception as exc:
-                        logger.warning(
-                            "UI adapter telegram failed %s retry for session %s: %s",
-                            operation,
-                            session.session_id[:8],
-                            exc,
-                        )
+            telegram_adapter = next(
+                (adapter for adapter_type, adapter in ui_adapters if adapter_type == "telegram"),
+                None,
+            )
+            if telegram_adapter:
+                try:
+                    if updated_session:
+                        session.adapter_metadata = updated_session.adapter_metadata
+                        session.title = updated_session.title
+                    retry_result = await task_factory(telegram_adapter)
+                    if telegram_index is not None:
+                        output[telegram_index] = ("telegram", retry_result)
+                    else:
+                        output.append(("telegram", retry_result))
+                except Exception as exc:
+                    logger.warning(
+                        "UI adapter telegram failed %s retry for session %s: %s",
+                        operation,
+                        session.session_id[:8],
+                        exc,
+                    )
 
         return output
 
@@ -161,6 +161,11 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
+        # Terminal adapter (local, no-op)
+        terminal = TerminalAdapter(self)
+        await terminal.start()
+        self.adapters["terminal"] = terminal
+
         # Telegram adapter
         if os.getenv("TELEGRAM_BOT_TOKEN"):
             telegram = TelegramAdapter(self)
@@ -176,7 +181,7 @@ class AdapterClient:
             logger.info("Started redis adapter")
 
         # Validate at least one adapter started
-        if not self.adapters:
+        if len(self.adapters) == 1 and "terminal" in self.adapters:
             raise ValueError("No adapters started - check config.yml and .env")
 
         logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
@@ -249,7 +254,8 @@ class AdapterClient:
         Returns:
             message_id from origin adapter
         """
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(
                 session,
                 "send_message",
@@ -260,10 +266,8 @@ class AdapterClient:
                     return str(ui_result)
             return ""
 
-        origin_adapter = self.adapters[session.origin_adapter]
-
-        # Send to origin adapter (CRITICAL - let exceptions propagate)
-        origin_message_id: str = await origin_adapter.send_message(session, text, metadata)
+        # Send to origin UI adapter (CRITICAL - let exceptions propagate)
+        origin_message_id: str = await origin_ui.send_message(session, text, metadata)
         logger.debug("Sent message to origin adapter %s for session %s", session.origin_adapter, session.session_id[:8])
 
         # Broadcast to UI observers (best-effort)
@@ -318,12 +322,11 @@ class AdapterClient:
                 target_adapter_type = origin_adapter_type
 
         if target_adapter_type is None:
-            if self._is_terminal_origin(session):
-                await self._broadcast_to_ui_adapters(
-                    session,
-                    "send_feedback",
-                    lambda adapter: adapter.send_feedback(session, message, metadata, persistent),
-                )
+            await self._broadcast_to_ui_adapters(
+                session,
+                "send_feedback",
+                lambda adapter: adapter.send_feedback(session, message, metadata, persistent),
+            )
             return None
 
         target_adapter = self.adapters[target_adapter_type]
@@ -345,7 +348,8 @@ class AdapterClient:
         Returns:
             True if origin edit succeeded
         """
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(
                 session,
                 "edit_message",
@@ -353,10 +357,8 @@ class AdapterClient:
             )
             return any(isinstance(result, bool) and result for _, result in results)
 
-        origin_adapter = self.adapters[session.origin_adapter]
-
         # Edit in origin adapter (CRITICAL)
-        result: bool = await origin_adapter.edit_message(session, message_id, text, MessageMetadata())
+        result: bool = await origin_ui.edit_message(session, message_id, text, MessageMetadata())
 
         # Broadcast edit to UI observers (best-effort)
         await self._broadcast_to_observers(
@@ -375,7 +377,8 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(
                 session,
                 "delete_message",
@@ -383,10 +386,8 @@ class AdapterClient:
             )
             return any(isinstance(result, bool) and result for _, result in results)
 
-        origin_adapter = self.adapters[session.origin_adapter]
-
         # Delete in origin adapter (CRITICAL)
-        result = await origin_adapter.delete_message(session, message_id)
+        result = await origin_ui.delete_message(session, message_id)
 
         # Broadcast delete to UI observers (best-effort)
         await self._broadcast_to_observers(
@@ -411,7 +412,8 @@ class AdapterClient:
         Returns:
             message_id from origin adapter
         """
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(
                 session,
                 "send_file",
@@ -422,8 +424,7 @@ class AdapterClient:
                     return str(ui_result)
             return ""
 
-        origin_adapter = self.adapters[session.origin_adapter]
-        result: str = await origin_adapter.send_file(session, file_path, MessageMetadata(), caption)
+        result: str = await origin_ui.send_file(session, file_path, MessageMetadata(), caption)
         logger.debug(
             "Sent file %s to origin adapter %s for session %s",
             file_path,
@@ -504,32 +505,31 @@ class AdapterClient:
 
         if missing_thread_error:
             updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
-            if session.origin_adapter == "terminal":
-                telegram_adapter = self.adapters.get("telegram")
-                if isinstance(telegram_adapter, UiAdapter):
-                    try:
-                        retry_session = updated_session or session
-                        retry_result = await telegram_adapter.send_output_update(
-                            retry_session,
-                            output,
-                            started_at,
-                            last_output_changed_at,
-                            is_final,
-                            exit_code,
-                            render_markdown,
+            telegram_adapter = self.adapters.get("telegram")
+            if isinstance(telegram_adapter, UiAdapter):
+                try:
+                    retry_session = updated_session or session
+                    retry_result = await telegram_adapter.send_output_update(
+                        retry_session,
+                        output,
+                        started_at,
+                        last_output_changed_at,
+                        is_final,
+                        exit_code,
+                        render_markdown,
+                    )
+                    if isinstance(retry_result, str) and not first_success:
+                        first_success = retry_result
+                        logger.debug(
+                            "Output update sent after topic recreation",
+                            session=session.session_id[:8],
                         )
-                        if isinstance(retry_result, str) and not first_success:
-                            first_success = retry_result
-                            logger.debug(
-                                "Output update sent after topic recreation",
-                                session=session.session_id[:8],
-                            )
-                    except Exception as exc:
-                        logger.warning(
-                            "UI adapter telegram failed send_output_update retry for session %s: %s",
-                            session.session_id[:8],
-                            exc,
-                        )
+                except Exception as exc:
+                    logger.warning(
+                        "UI adapter telegram failed send_output_update retry for session %s: %s",
+                        session.session_id[:8],
+                        exc,
+                    )
 
         return first_success
 
@@ -541,57 +541,36 @@ class AdapterClient:
         )
 
     async def _handle_missing_telegram_thread(self, session: "Session", error: Exception) -> "Session | None":
-        if session.origin_adapter == "terminal":
-            current = await db.get_session(session.session_id)
-            if not current:
-                return None
-
-            logger.warning(
-                "Telegram topic missing for terminal session %s; recreating (error: %s)",
-                session.session_id[:8],
-                error,
-            )
-
-            # Clear stale topic/message IDs so create_channel can rebuild.
-            if current.adapter_metadata and current.adapter_metadata.telegram:
-                current.adapter_metadata.telegram.topic_id = None
-                current.adapter_metadata.telegram.output_message_id = None
-                await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
-
-            try:
-                await self.create_channel(
-                    session=current,
-                    title=current.title,
-                    origin_adapter=current.origin_adapter,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to recreate Telegram topic for terminal session %s: %s",
-                    current.session_id[:8],
-                    exc,
-                )
-                return None
-            return await db.get_session(current.session_id)
-
-        if session.origin_adapter != "telegram":
-            return None
-
         current = await db.get_session(session.session_id)
         if not current:
             return None
 
         logger.warning(
-            "Telegram topic missing for session %s; terminating session (error: %s)",
+            "Telegram topic missing for session %s; recreating (error: %s)",
             session.session_id[:8],
             error,
         )
-        await session_cleanup.terminate_session(
-            session.session_id,
-            self,
-            reason="telegram_topic_missing",
-            session=current,
-        )
-        return None
+
+        # Clear stale topic/message IDs so create_channel can rebuild.
+        if current.adapter_metadata and current.adapter_metadata.telegram:
+            current.adapter_metadata.telegram.topic_id = None
+            current.adapter_metadata.telegram.output_message_id = None
+            await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
+
+        try:
+            await self.create_channel(
+                session=current,
+                title=current.title,
+                origin_adapter=current.origin_adapter,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to recreate Telegram topic for session %s: %s",
+                current.session_id[:8],
+                exc,
+            )
+            return None
+        return await db.get_session(current.session_id)
 
     async def send_exit_message(
         self,
@@ -617,7 +596,8 @@ class AdapterClient:
         if not session.origin_adapter:
             raise ValueError(f"Session {session.session_id} has no origin adapter configured")
 
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             await self._broadcast_to_ui_adapters(
                 session,
                 "send_exit_message",
@@ -625,17 +605,7 @@ class AdapterClient:
             )
             return
 
-        # Get origin adapter (trust invariant: adapter in registry = started successfully)
-        origin_adapter = self.adapters[session.origin_adapter]
-
-        # Check if adapter is a UI adapter (type-safe check)
-        if not isinstance(origin_adapter, UiAdapter):
-            raise AttributeError(
-                f"send_exit_message requires UiAdapter, but {session.origin_adapter} is {type(origin_adapter).__name__}"
-            )
-
-        # Type checker now knows this is UiAdapter
-        await origin_adapter.send_exit_message(session, output, exit_text)
+        await origin_ui.send_exit_message(session, output, exit_text)
 
     async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Broadcast channel title update to ALL adapters.
@@ -647,7 +617,8 @@ class AdapterClient:
         Returns:
             True if origin update succeeded
         """
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(
                 session,
                 "update_channel_title",
@@ -655,11 +626,8 @@ class AdapterClient:
             )
             return any(isinstance(result, bool) and result for _, result in results)
 
-        # Trust invariant: adapter in registry = started successfully
-        origin_adapter = self.adapters[session.origin_adapter]
-
         # Update origin adapter (CRITICAL - let exceptions propagate)
-        result = await origin_adapter.update_channel_title(session, title)
+        result = await origin_ui.update_channel_title(session, title)
 
         # Broadcast to observer adapters (best-effort)
         await self._broadcast_to_observers(
@@ -677,7 +645,8 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        if self._is_terminal_origin(session):
+        origin_ui = self._origin_ui_adapter(session)
+        if not origin_ui:
             results = await self._broadcast_to_ui_adapters(
                 session,
                 "delete_channel",
@@ -685,11 +654,8 @@ class AdapterClient:
             )
             return any(isinstance(result, bool) and result for _, result in results)
 
-        # Trust invariant: adapter in registry = started successfully
-        origin_adapter = self.adapters[session.origin_adapter]
-
         # Delete in origin adapter (CRITICAL)
-        result = await origin_adapter.delete_channel(session)
+        result = await origin_ui.delete_channel(session)
 
         # Broadcast to observer adapters (best-effort)
         await self._broadcast_to_observers(session, "delete_channel", lambda adapter: adapter.delete_channel(session))
@@ -1164,11 +1130,10 @@ class AdapterClient:
 
         channel_origin_adapter = origin_adapter
         if origin_adapter not in self.adapters:
-            if origin_adapter == "terminal":
-                ui_adapters = self._ui_adapters()
-                channel_origin_adapter = ui_adapters[0][0] if ui_adapters else ""
-            else:
-                raise ValueError(f"Origin adapter {origin_adapter} not found")
+            raise ValueError(f"Origin adapter {origin_adapter} not found")
+
+        origin_adapter_instance = self.adapters.get(channel_origin_adapter)
+        origin_requires_channel = isinstance(origin_adapter_instance, UiAdapter)
 
         tasks = []
         adapter_types = []
@@ -1201,10 +1166,10 @@ class AdapterClient:
                 if is_origin:
                     origin_channel_id = channel_id
 
-        if not origin_channel_id:
-            if origin_adapter == "terminal":
-                return ""
+        if origin_requires_channel and not origin_channel_id:
             raise ValueError(f"Origin adapter {origin_adapter} not found or did not return channel_id")
+        if not origin_channel_id:
+            origin_channel_id = ""
 
         # Store ALL adapter channel_ids in session metadata (enables observer broadcasting)
         updated_session = await db.get_session(session_id)

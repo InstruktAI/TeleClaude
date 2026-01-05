@@ -392,12 +392,12 @@ async def test_adapter_client_discover_peers_redis_disabled():
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_closes_missing_telegram_thread():
-    """Missing Telegram topic should close origin session and cleanup."""
+async def test_send_output_update_missing_thread_recreates_topic():
+    """Missing Telegram topic should trigger topic recreation."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
+    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
     client = AdapterClient()
     client.register_adapter("telegram", DummyTelegramAdapter(client, error=Exception("Message thread not found")))
@@ -408,31 +408,31 @@ async def test_send_output_update_closes_missing_telegram_thread():
         tmux_session_name="tc_session",
         origin_adapter="telegram",
         title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
+        ),
     )
 
-    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
-        with patch(
-            "teleclaude.core.adapter_client.session_cleanup.terminate_session",
-            new=AsyncMock(),
-        ) as terminate_session:
-            await client.send_output_update(session, "output", 0.0, 0.0)
+    with (
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch.object(client, "create_channel", new=AsyncMock(return_value="999")) as create_channel,
+    ):
+        await client.send_output_update(session, "output", 0.0, 0.0)
 
-    get_session.assert_called_once_with("session-123")
-    terminate_session.assert_called_once_with(
-        "session-123",
-        client,
-        reason="telegram_topic_missing",
-        session=session,
-    )
+    assert get_session.call_count == 2
+    get_session.assert_any_call("session-123")
+    create_channel.assert_called_once()
+    assert update_session.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_send_output_update_missing_thread_non_telegram_origin_no_close():
-    """Missing Telegram topic should not close non-telegram origin sessions."""
+async def test_send_output_update_missing_thread_non_telegram_origin_recreates_topic():
+    """Missing Telegram topic should recreate topic even for non-telegram origin."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
+    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
     client = AdapterClient()
     client.register_adapter("telegram", DummyTelegramAdapter(client, error=Exception("Message thread not found")))
@@ -443,17 +443,22 @@ async def test_send_output_update_missing_thread_non_telegram_origin_no_close():
         tmux_session_name="tc_session_456",
         origin_adapter="redis",
         title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(topic_id=456, output_message_id="msg-2")
+        ),
     )
 
-    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
-        with patch(
-            "teleclaude.core.adapter_client.session_cleanup.terminate_session",
-            new=AsyncMock(),
-        ) as terminate_session:
-            await client.send_output_update(session, "output", 0.0, 0.0)
+    with (
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch.object(client, "create_channel", new=AsyncMock(return_value="999")) as create_channel,
+    ):
+        await client.send_output_update(session, "output", 0.0, 0.0)
 
-    get_session.assert_not_called()
-    terminate_session.assert_not_called()
+    assert get_session.call_count == 2
+    get_session.assert_any_call("session-456")
+    create_channel.assert_called_once()
+    assert update_session.call_count == 1
 
 
 @pytest.mark.asyncio

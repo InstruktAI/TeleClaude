@@ -98,7 +98,7 @@ async def terminate_session(
         adapter_client: AdapterClient for deleting channels
         reason: Reason for termination (for logs)
         session: Optional pre-fetched session object
-        kill_tmux: Whether to kill tmux (defaults to True for non-terminal sessions)
+        kill_tmux: Whether to kill tmux (defaults to True)
         delete_channel: Whether to delete adapter channels/topics
 
     Returns:
@@ -112,7 +112,7 @@ async def terminate_session(
     logger.info("Terminating session %s (%s)", session_id[:8], reason)
 
     if kill_tmux is None:
-        kill_tmux = session.origin_adapter != "terminal"
+        kill_tmux = True
 
     if kill_tmux:
         try:
@@ -146,17 +146,11 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
         logger.debug("Session %s not found in database", session_id[:8])
         return False
 
-    if session.origin_adapter == "terminal":
-        ux_state = await db.get_ux_state(session_id)
-        pid = ux_state.native_pid if ux_state else None
-        if isinstance(pid, int) and terminal_bridge.pid_is_alive(pid):
-            return False
-    else:
-        # Check if tmux session exists
-        exists = await terminal_bridge.session_exists(session.tmux_session_name)
-        if exists:
-            # Session is healthy
-            return False
+    # Check if tmux session exists
+    exists = await terminal_bridge.session_exists(session.tmux_session_name)
+    if exists:
+        # Session is healthy
+        return False
 
     # Session is stale - tmux gone but DB says active
     logger.warning(

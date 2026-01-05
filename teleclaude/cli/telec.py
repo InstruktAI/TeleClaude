@@ -20,7 +20,7 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.agents import get_agent_command, normalize_agent_name
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import ThinkingMode
-from teleclaude.core.session_utils import get_output_file, update_title_with_agent
+from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.terminal_sessions import ensure_terminal_session, terminal_tmux_name_for_session
 from teleclaude.core.ux_state import SessionUXState, UXStatePayload
 
@@ -728,8 +728,6 @@ def main() -> None:
             session = _load_session(conn, parsed.session_id)
             if not session:
                 raise ValueError(f"Session {parsed.session_id[:8]} not found")
-            if session.origin_adapter != "terminal":
-                raise ValueError("telec can only resume terminal-origin sessions")
             session_id = parsed.session_id
         else:
             session_id = ensure_terminal_session(tty_path, parent_pid, None, cwd)
@@ -761,17 +759,6 @@ def main() -> None:
                 native_tty_path=tty_path,
                 native_pid=parent_pid if parent_pid > 1 else None,
             )
-
-            title_row = _load_session(conn, session_id)
-            if title_row and title_row.title:
-                new_title = update_title_with_agent(
-                    title_row.title,
-                    agent_name,
-                    thinking_mode,
-                    config.computer.name,
-                )
-                if new_title:
-                    conn.execute("UPDATE sessions SET title = ? WHERE session_id = ?", (new_title, session_id))
 
         else:
             if parsed.session_id:

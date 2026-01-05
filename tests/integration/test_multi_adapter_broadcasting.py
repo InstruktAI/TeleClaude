@@ -9,18 +9,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import Db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
 
 
-class MockTelegramAdapter(BaseAdapter):
-    """Mock Telegram adapter (has_ui=True, origin)."""
+class MockTelegramAdapter(UiAdapter):
+    """Mock Telegram adapter (UI-enabled origin)."""
 
-    has_ui = True
+    ADAPTER_KEY = "telegram"
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, client: AdapterClient):
+        self.client = client
         self.send_message_calls = []
         self.edit_message_calls = []
         self.delete_message_calls = []
@@ -33,8 +34,8 @@ class MockTelegramAdapter(BaseAdapter):
         self.edit_message_calls.append((session, message_id, text, metadata))
         return True
 
-    async def delete_message(self, session_id: str, message_id: str) -> bool:
-        self.delete_message_calls.append((session_id, message_id))
+    async def delete_message(self, session: Session, message_id: str) -> bool:
+        self.delete_message_calls.append((session, message_id))
         return True
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
@@ -52,22 +53,25 @@ class MockTelegramAdapter(BaseAdapter):
     async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+    async def send_file(
+        self, session: Session, file_path: str, metadata: MessageMetadata, caption: str | None = None
+    ) -> str:
         return "file-msg-123"
 
-    async def start(self):
+    async def start(self) -> None:
         pass
 
-    async def stop(self):
+    async def stop(self) -> None:
         pass
 
     async def discover_peers(self):
         return []
 
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+    async def poll_output_stream(self, session: Session, timeout: float = 300.0):
         """Not used in these tests."""
+        _ = (session, timeout)
         if False:
-            yield
+            yield ""
         return
 
 
@@ -158,8 +162,8 @@ async def test_origin_adapter_receives_output():
                 )
 
                 # Create adapter_client with TelegramAdapter as origin
-                telegram_adapter = MockTelegramAdapter()
                 adapter_client = AdapterClient()
+                telegram_adapter = MockTelegramAdapter(adapter_client)
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Send message (should route to origin)
@@ -210,12 +214,10 @@ async def test_redis_observer_skipped_no_ui():
                     title="Redis Observer Test",
                 )
 
-                # Create adapters
-                telegram_adapter = MockTelegramAdapter()
-                redis_adapter = MockRedisAdapter()
-
                 # Create adapter_client with both adapters
                 adapter_client = AdapterClient()
+                telegram_adapter = MockTelegramAdapter(adapter_client)
+                redis_adapter = MockRedisAdapter()
                 adapter_client.adapters = {
                     "telegram": telegram_adapter,
                     "redis": redis_adapter,
@@ -322,12 +324,10 @@ async def test_ui_observer_receives_broadcasts():
                     title="UI Observer Test",
                 )
 
-                # Create adapters
-                telegram_adapter = MockTelegramAdapter()
-                slack_adapter = MockSlackAdapter()
-
                 # Create adapter_client
                 adapter_client = AdapterClient()
+                telegram_adapter = MockTelegramAdapter(adapter_client)
+                slack_adapter = MockSlackAdapter()
                 adapter_client.adapters = {
                     "telegram": telegram_adapter,
                     "slack": slack_adapter,
@@ -437,12 +437,10 @@ async def test_observer_failure_does_not_affect_origin():
                     title="Observer Failure Test",
                 )
 
-                # Create adapters
-                telegram_adapter = MockTelegramAdapter()
-                slack_adapter = MockSlackAdapterFailing()
-
                 # Create adapter_client
                 adapter_client = AdapterClient()
+                telegram_adapter = MockTelegramAdapter(adapter_client)
+                slack_adapter = MockSlackAdapterFailing()
                 adapter_client.adapters = {
                     "telegram": telegram_adapter,
                     "slack": slack_adapter,
@@ -476,13 +474,13 @@ async def test_origin_failure_raises_exception():
     4. Verify exception raised (origin failures are critical)
     """
 
-    class MockTelegramAdapterFailing(BaseAdapter):
+    class MockTelegramAdapterFailing(UiAdapter):
         """Mock Telegram adapter that fails."""
 
-        has_ui = True
+        ADAPTER_KEY = "telegram"
 
-        def __init__(self):
-            super().__init__()
+        def __init__(self, client: AdapterClient):
+            self.client = client
 
         async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
             raise Exception("Telegram API error")
@@ -490,7 +488,7 @@ async def test_origin_failure_raises_exception():
         async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
             return True
 
-        async def delete_message(self, session_id: str, message_id: str) -> bool:
+        async def delete_message(self, session: Session, message_id: str) -> bool:
             return True
 
         async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
@@ -508,22 +506,25 @@ async def test_origin_failure_raises_exception():
         async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+        async def send_file(
+            self, session: Session, file_path: str, metadata: MessageMetadata, caption: str | None = None
+        ) -> str:
             return "file-msg-123"
 
-        async def start(self):
+        async def start(self) -> None:
             pass
 
-        async def stop(self):
+        async def stop(self) -> None:
             pass
 
         async def discover_peers(self):
             return []
 
-        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        async def poll_output_stream(self, session: Session, timeout: float = 300.0):
             """Not used in these tests."""
+            _ = (session, timeout)
             if False:
-                yield
+                yield ""
             return
 
     # Setup test database
@@ -544,11 +545,10 @@ async def test_origin_failure_raises_exception():
                     title="Origin Failure Test",
                 )
 
-                # Create failing adapter
-                telegram_adapter = MockTelegramAdapterFailing()
-
                 # Create adapter_client
                 adapter_client = AdapterClient()
+                # Create failing adapter
+                telegram_adapter = MockTelegramAdapterFailing(adapter_client)
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Attempt to send message (should raise)

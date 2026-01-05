@@ -451,7 +451,24 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         {session_name: output_file}
     )
 
+    async def mock_send_keys_existing_tmux(
+        session_name: str,
+        text: str,
+        *,
+        send_enter: bool = True,
+        active_agent: str | None = None,
+    ):
+        session_id = session_ids_by_name.get(session_name)
+        return await mock_send_keys(
+            session_name,
+            text,
+            session_id=session_id,
+            send_enter=send_enter,
+            active_agent=active_agent,
+        )
+
     monkeypatch.setattr(terminal_bridge, "send_keys", mock_send_keys)
+    monkeypatch.setattr(terminal_bridge, "send_keys_existing_tmux", mock_send_keys_existing_tmux)
 
     # Mock all tmux operations - no real tmux sessions created
     created_sessions = set()

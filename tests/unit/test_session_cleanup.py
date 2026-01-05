@@ -201,7 +201,7 @@ async def test_terminate_session_deletes_db_and_resources():
 
 
 @pytest.mark.asyncio
-async def test_terminate_session_skips_tmux_for_terminal_origin():
+async def test_terminate_session_kills_tmux_for_terminal_origin():
     mock_session = MagicMock()
     mock_session.session_id = "session-456"
     mock_session.tmux_session_name = "terminal:deadbeef"
@@ -225,7 +225,7 @@ async def test_terminate_session_skips_tmux_for_terminal_origin():
         )
 
     assert result is True
-    mock_kill.assert_not_called()
+    mock_kill.assert_called_once_with("terminal:deadbeef")
     mock_cleanup.assert_called_once_with(mock_session, adapter_client, delete_channel=True)
     mock_delete.assert_called_once_with("session-456")
 

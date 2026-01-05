@@ -59,11 +59,9 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_listeners import get_listeners
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
-from teleclaude.core.terminal_output_poller import TerminalOutputPoller
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.utils.transcript import parse_session_transcript
 
 
 # TypedDict definitions for deployment status payloads
@@ -186,7 +184,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Note: terminal_bridge and db are functional modules (no instantiation)
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
         self.output_poller = OutputPoller()
-        self.terminal_output_poller = TerminalOutputPoller()
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
@@ -485,9 +482,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         teleclaude_pid = data.get("teleclaude_pid")
         teleclaude_tty = data.get("teleclaude_tty")
-        if session.origin_adapter == "terminal" and (
-            isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str)
-        ):
+        if isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str):
             existing_ux_state = await db.get_ux_state(session_id)
             updates: dict[str, object] = {}  # noqa: loose-dict - Hook payload is dynamic JSON
             if isinstance(teleclaude_pid, int):
@@ -501,13 +496,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if updates:
                 await db.update_ux_state(session_id, **updates)
 
-        if session.origin_adapter == "terminal":
-            await self.client.create_channel(
-                session=session,
-                title=session.title,
-                origin_adapter=session.origin_adapter,
-            )
-            await self._ensure_terminal_polling(session)
+        await self._ensure_output_polling(session)
 
         if event_type not in AgentHookEvents.ALL:
             logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
@@ -790,28 +779,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if not session:
                 raise ValueError(f"Summary feedback requires active session: {session_id}")
             await self.client.send_feedback(session, summary, MessageMetadata(adapter_type="internal"))
-
-            if session.origin_adapter == "terminal" and ux_state and not ux_state.tui_capture_started:
-                transcript_output = parse_session_transcript(
-                    transcript_path,
-                    title=payload.title or session.title,
-                    agent_name=agent_name,
-                    tail_chars=0,
-                    escape_triple_backticks=False,
-                    collapse_tool_results=True,
-                )
-                if not (
-                    transcript_output.startswith("Transcript file not found:")
-                    or transcript_output.startswith("Error parsing transcript:")
-                ):
-                    now_ts = time.time()
-                    await self.client.send_output_update(
-                        session,
-                        transcript_output,
-                        now_ts,
-                        now_ts,
-                        render_markdown=True,
-                    )
 
             # Dispatch to coordinator
             await self.agent_coordinator.handle_stop(context)
@@ -1954,37 +1921,36 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             get_output_file=self._get_output_file_path,
         )
 
-    async def _ensure_terminal_polling(self, session: Session) -> None:
+    async def _ensure_output_polling(self, session: Session) -> None:
         if await polling_coordinator.is_polling(session.session_id):
             return
-        if await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
-            await self._poll_and_send_output(session.session_id, session.tmux_session_name)
+        if (
+            not session.adapter_metadata
+            or not session.adapter_metadata.telegram
+            or not session.adapter_metadata.telegram.topic_id
+        ):
+            try:
+                await self.client.create_channel(
+                    session=session,
+                    title=session.title,
+                    origin_adapter=session.origin_adapter,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to create UI channel for session %s: %s",
+                    session.session_id[:8],
+                    exc,
+                )
+        if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
+            logger.warning("Tmux session missing for %s; polling skipped", session.session_id[:8])
             return
-        ux_state = await db.get_ux_state(session.session_id)
-        log_path = ux_state.tui_log_file if ux_state else None
-        if not log_path:
-            log_path = str(get_output_file(session.session_id))
-            await db.update_ux_state(session.session_id, tui_log_file=log_path)
 
-        if ux_state and ux_state.native_tty_path and log_path and not ux_state.tui_capture_started:
-            started = await terminal_bridge.start_tty_capture(ux_state.native_tty_path, log_path)
-            if started:
-                await db.update_ux_state(session.session_id, tui_capture_started=True)
-
-        if log_path:
-            await polling_coordinator.schedule_terminal_polling(
-                session_id=session.session_id,
-                poller=self.terminal_output_poller,
-                adapter_client=self.client,
-                log_file=Path(log_path),
-                terminal_size=session.terminal_size,
-                pid=ux_state.native_pid if ux_state else None,
-            )
+        await self._poll_and_send_output(session.session_id, session.tmux_session_name)
 
     async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None:
         session = await db.get_session(session_id)
-        if session and session.origin_adapter == "terminal":
-            await self._ensure_terminal_polling(session)
+        if session:
+            await self._ensure_output_polling(session)
             return
         await self._poll_and_send_output(session_id, tmux_session_name)
 

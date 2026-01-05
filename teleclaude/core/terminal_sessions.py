@@ -12,7 +12,7 @@ from typing import cast
 
 from teleclaude.config import config
 from teleclaude.core.models import SessionAdapterMetadata
-from teleclaude.core.session_utils import get_output_file
+from teleclaude.core.session_utils import build_session_title, get_output_file, parse_session_title
 from teleclaude.core.ux_state import SessionUXState, UXStatePayload
 
 
@@ -49,8 +49,30 @@ def ensure_terminal_session(
     """Create or attach a terminal-origin session based on TTY."""
     db_path = config.database.path
     now = datetime.now(timezone.utc).isoformat()
-    title = f"[{config.computer.name}] Terminal ({Path(tty_path).name})"
     session_id = str(uuid.uuid4())
+
+    def _short_project(path: str) -> str:
+        if not path:
+            return "terminal"
+        name = Path(path).name
+        return name or "terminal"
+
+    def _unique_title(conn: sqlite3.Connection, base_title: str, exclude_id: str | None = None) -> str:
+        cursor = conn.execute("SELECT session_id, title FROM sessions WHERE closed = 0")
+        rows = cast(list[tuple[object, object]], cursor.fetchall())
+        existing_titles = {str(row[1]) for row in rows if row[1] and (exclude_id is None or str(row[0]) != exclude_id)}
+        if base_title not in existing_titles:
+            return base_title
+        counter = 2
+        while f"{base_title} ({counter})" in existing_titles:
+            counter += 1
+        return f"{base_title} ({counter})"
+
+    base_title = build_session_title(
+        computer_name=config.computer.name,
+        short_project=_short_project(cwd),
+        description="Terminal",
+    )
 
     output_file = get_output_file(session_id)
     ux_state = SessionUXState(
@@ -68,18 +90,19 @@ def ensure_terminal_session(
         conn.execute("PRAGMA busy_timeout = 1000")
         cursor = conn.execute(
             """
-            SELECT session_id, ux_state, closed
+            SELECT session_id, ux_state, closed, title
             FROM sessions
             WHERE origin_adapter = 'terminal'
               AND json_extract(ux_state, '$.native_tty_path') = ?
             """,
             (tty_path,),
         )
-        row = cast(tuple[object, object, object] | None, cursor.fetchone())
+        row = cast(tuple[object, object, object, object] | None, cursor.fetchone())
         if row:
             existing_id = str(row[0])
             existing_state_raw = row[1]
             existing_closed = bool(row[2])
+            existing_title = str(row[3]) if row[3] else ""
 
             if not existing_closed:
                 existing_state = SessionUXState()
@@ -94,14 +117,17 @@ def ensure_terminal_session(
                 merged_state = _merge_ux_state(existing_state, ux_state)
                 if not merged_state.tui_log_file:
                     merged_state.tui_log_file = str(get_output_file(existing_id))
+                normalized_title = existing_title
+                if not normalized_title or not parse_session_title(normalized_title)[0]:
+                    normalized_title = _unique_title(conn, base_title, exclude_id=existing_id)
                 tmux_name = terminal_tmux_name_for_session(existing_id)
                 conn.execute(
                     """
                     UPDATE sessions
-                    SET ux_state = ?, last_activity = ?, working_directory = ?, closed = 0, tmux_session_name = ?
+                    SET ux_state = ?, last_activity = ?, working_directory = ?, closed = 0, tmux_session_name = ?, title = ?
                     WHERE session_id = ?
                     """,
-                    (json.dumps(merged_state.to_dict()), now, cwd or "~", tmux_name, existing_id),
+                    (json.dumps(merged_state.to_dict()), now, cwd or "~", tmux_name, normalized_title, existing_id),
                 )
                 conn.commit()
                 return existing_id
@@ -113,6 +139,7 @@ def ensure_terminal_session(
             conn.commit()
 
         tmux_name = terminal_tmux_name_for_session(session_id)
+        title = _unique_title(conn, base_title)
         conn.execute(
             """
             INSERT INTO sessions (
