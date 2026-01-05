@@ -271,16 +271,14 @@ Use the `/usr/bin/log show` command to check system logs for launchd/daemon erro
 
 ### Topic Deletion Leaves Orphaned Sessions
 
-**Issue:** When you delete a Telegram forum topic (not just close it), the session remains in the database as active.
+**Issue:** When you delete a Telegram forum topic (not just close it), the session remains in the database.
 
 **Why:** Telegram does not send deletion events to bots. The Bot API only provides events for:
 - Topic created (`forum_topic_created`)
-- Topic closed (`forum_topic_closed`) - ✅ Handled
-- Topic reopened (`forum_topic_reopened`) - ✅ Handled
+- Topic closed (`forum_topic_closed`) - ✅ Handled (terminates session)
+- Topic reopened (`forum_topic_reopened`) - ignored (session already terminated)
 - Topic edited (`forum_topic_edited`)
 
-**Workaround:** Use topic close instead of delete for clean session lifecycle:
-1. Close the topic (we handle cleanup automatically)
-2. Later, delete the topic if needed
+**Workaround:** Close the topic to terminate the session cleanly, then delete if needed.
 
-**Impact:** Orphaned sessions consume minimal resources (database entries only). The tmux session and polling will continue until manually cleaned up with `/exit` or by killing the tmux session directly.
+**Impact:** Orphaned sessions linger until stale cleanup or manual termination (tmux may still be running).

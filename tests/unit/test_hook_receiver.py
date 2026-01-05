@@ -57,7 +57,7 @@ def test_receiver_requires_session_id(monkeypatch):
     assert not sent
 
 
-def test_receiver_recovers_session_from_tty(monkeypatch):
+def test_receiver_requires_session_id_without_recovery(monkeypatch):
     from teleclaude.hooks import receiver
 
     sent = []
@@ -69,16 +69,14 @@ def test_receiver_recovers_session_from_tty(monkeypatch):
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
     monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (123, "/dev/ttys001"))
-    monkeypatch.setattr(receiver, "_find_session_by_tty", lambda _tty: None)
-    monkeypatch.setattr(receiver, "ensure_terminal_session", lambda **_kwargs: "sess-tty")
+    monkeypatch.setattr(receiver, "_find_session_by_tmux_name", lambda _name: None)
     monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
 
-    receiver.main()
+    with pytest.raises(SystemExit) as exc:
+        receiver.main()
 
-    assert sent
-    session_id, event_type, _data = sent[0]
-    assert session_id == "sess-tty"
-    assert event_type == "stop"
+    assert exc.value.code == 1
+    assert not sent
 
 
 def test_receiver_recovers_when_env_session_missing(monkeypatch):
@@ -94,16 +92,14 @@ def test_receiver_recovers_when_env_session_missing(monkeypatch):
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
     monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (123, "/dev/ttys001"))
     monkeypatch.setattr(receiver, "_session_exists", lambda _sid: False)
-    monkeypatch.setattr(receiver, "_find_session_by_tty", lambda _tty: None)
-    monkeypatch.setattr(receiver, "ensure_terminal_session", lambda **_kwargs: "sess-new")
+    monkeypatch.setattr(receiver, "_find_session_by_tmux_name", lambda _name: None)
     monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-old")
 
-    receiver.main()
+    with pytest.raises(SystemExit) as exc:
+        receiver.main()
 
-    assert sent
-    session_id, event_type, _data = sent[0]
-    assert session_id == "sess-new"
-    assert event_type == "stop"
+    assert exc.value.code == 1
+    assert not sent
 
 
 def test_receiver_recovers_from_native_session_id(monkeypatch):

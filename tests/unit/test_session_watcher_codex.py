@@ -28,7 +28,6 @@ async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
         terminal_size="120x40",
         created_at=datetime.now(UTC),
         last_activity=datetime.now(UTC),
-        closed=False,
     )
 
     old_file = tmp_path / "old.jsonl"
@@ -72,7 +71,6 @@ async def test_rehydrate_watcher_attaches_existing_log(tmp_path: Path) -> None:
         terminal_size="120x40",
         created_at=datetime.now(UTC),
         last_activity=datetime.now(UTC),
-        closed=False,
     )
 
     log_file = tmp_path / "codex.jsonl"

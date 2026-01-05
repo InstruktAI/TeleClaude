@@ -11,8 +11,6 @@ import os
 import pwd
 import re
 import shutil
-import string
-import sys
 import termios
 import time
 from pathlib import Path
@@ -40,23 +38,6 @@ def _safe_path_component(value: str) -> str:
     if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
         return value
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
-
-
-def _tty_to_pty_master(tty_path: str) -> Optional[str]:
-    """Best-effort mapping from tty device to pty master (legacy BSD/macOS)."""
-    if not tty_path.startswith("/dev/tty"):
-        return None
-
-    suffix = tty_path.replace("/dev/tty", "", 1)
-    if not suffix:
-        return None
-
-    # Legacy BSD ptys use 2-char suffixes (e.g., /dev/ttyp0 -> /dev/ptyp0).
-    if len(suffix) == 2 and suffix[0].isalpha() and suffix[1] in string.hexdigits:
-        return f"/dev/pty{suffix}"
-
-    # Modern /dev/ttysNNN devices don't expose a master path.
-    return None
 
 
 def _prepare_session_tmp_dir(session_id: str) -> Path:
@@ -158,7 +139,37 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
-        return result.returncode == 0
+        if result.returncode != 0:
+            return False
+
+        # Ensure detach does NOT destroy the session (respect persistent TC sessions).
+        try:
+            option_cmd = ["tmux", "set-option", "-t", name, "destroy-unattached", "off"]
+            opt_result = await asyncio.create_subprocess_exec(
+                *option_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, opt_err = await opt_result.communicate()
+            if opt_result.returncode != 0:
+                logger.warning(
+                    "Failed to set destroy-unattached off for %s: %s",
+                    name,
+                    opt_err.decode().strip(),
+                )
+            hook_cmd = ["tmux", "set-hook", "-t", name, "client-detached", "run-shell true"]
+            hook_result = await asyncio.create_subprocess_exec(
+                *hook_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            _, hook_err = await hook_result.communicate()
+            if hook_result.returncode != 0:
+                logger.warning(
+                    "Failed to set client-detached hook for %s: %s",
+                    name,
+                    hook_err.decode().strip(),
+                )
+        except Exception as e:
+            logger.warning("Failed to set destroy-unattached off for %s: %s", name, e)
+
+        return True
 
     except Exception as e:
         print(f"Error creating tmux session: {e}")
@@ -334,37 +345,6 @@ async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True)
         return False
 
 
-async def start_tty_capture(tty_path: str, output_file: str) -> bool:
-    """Start best-effort TTY capture process for terminal-origin sessions."""
-    pty_path = _tty_to_pty_master(tty_path)
-    if not pty_path:
-        logger.warning("Unsupported tty path for capture: %s", tty_path)
-        return False
-
-    if not Path(pty_path).exists():
-        logger.warning("PTY master not found for %s", tty_path)
-        return False
-
-    try:
-        await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "teleclaude.core.tty_capture",
-            "--pty",
-            pty_path,
-            "--output",
-            output_file,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        logger.info("Started TTY capture for %s -> %s", tty_path, output_file)
-        return True
-    except Exception as exc:
-        logger.warning("Failed to start TTY capture for %s: %s", tty_path, exc)
-        return False
-
-
 def pid_is_alive(pid: int) -> bool:
     """Return True if a PID appears to be alive."""
     try:
@@ -460,23 +440,22 @@ async def _send_keys_tmux(
     # Small delay to let text be processed
     await asyncio.sleep(1.0)
 
-    # Send Enter key twice if requested (second press ensures it registers for voice input)
+    # Send Enter key once if requested
     if send_enter:
-        for _ in range(2):
-            cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
-            result = await asyncio.create_subprocess_exec(
-                *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            _, stderr = await result.communicate()
+        cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await result.communicate()
 
-            if result.returncode != 0:
-                logger.error(
-                    "Failed to send Enter to session %s: returncode=%d, stderr=%s",
-                    session_name,
-                    result.returncode,
-                    stderr.decode().strip(),
-                )
-                return False
+        if result.returncode != 0:
+            logger.error(
+                "Failed to send Enter to session %s: returncode=%d, stderr=%s",
+                session_name,
+                result.returncode,
+                stderr.decode().strip(),
+            )
+            return False
 
     return True
 
@@ -981,6 +960,25 @@ async def is_process_running(session_name: str) -> bool:
     if not current:
         return False
     return current.lower() != _SHELL_NAME
+
+
+async def is_pane_dead(session_name: str) -> bool:
+    """Return True if all tmux panes are marked dead (shell exited)."""
+    try:
+        cmd = ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_dead}"]
+        result = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await result.communicate()
+        if result.returncode != 0:
+            return False
+        lines = stdout.decode("utf-8").strip().split("\n") if stdout else []
+        panes = [line.strip() for line in lines if line.strip()]
+        if not panes:
+            return False
+        return all(pane == "1" for pane in panes)
+    except Exception:
+        return False
 
 
 async def rename_session(old_name: str, new_name: str) -> bool:

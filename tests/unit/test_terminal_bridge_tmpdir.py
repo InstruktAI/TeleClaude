@@ -23,9 +23,19 @@ async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypa
     proc = MagicMock()
     proc.returncode = 0
     proc.wait = AsyncMock(return_value=None)
+    proc_opt = MagicMock()
+    proc_opt.returncode = 0
+    proc_opt.communicate = AsyncMock(return_value=(b"", b""))
+    proc_hook = MagicMock()
+    proc_hook.returncode = 0
+    proc_hook.communicate = AsyncMock(return_value=(b"", b""))
 
     original_env = {"FOO": "bar"}
-    with patch.object(terminal_bridge.asyncio, "create_subprocess_exec", new=AsyncMock(return_value=proc)) as mock_exec:
+    with patch.object(
+        terminal_bridge.asyncio,
+        "create_subprocess_exec",
+        new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
+    ) as mock_exec:
         ok = await terminal_bridge.create_tmux_session(
             name="tc_test",
             working_dir=str(tmp_path),
@@ -43,7 +53,7 @@ async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypa
     assert expected_tmpdir.exists()
     assert expected_tmpdir.is_dir()
 
-    called_args = mock_exec.call_args[0]
+    called_args = mock_exec.call_args_list[0][0]
     assert called_args[0] == "tmux"
     assert "-e" in called_args
     assert f"TMPDIR={expected_tmpdir}" in called_args
@@ -77,8 +87,18 @@ async def test_create_tmux_session_cleans_existing_tmpdir_with_socket(tmp_path, 
         proc = MagicMock()
         proc.returncode = 0
         proc.wait = AsyncMock(return_value=None)
+        proc_opt = MagicMock()
+        proc_opt.returncode = 0
+        proc_opt.communicate = AsyncMock(return_value=(b"", b""))
+        proc_hook = MagicMock()
+        proc_hook.returncode = 0
+        proc_hook.communicate = AsyncMock(return_value=(b"", b""))
 
-        with patch.object(terminal_bridge.asyncio, "create_subprocess_exec", new=AsyncMock(return_value=proc)):
+        with patch.object(
+            terminal_bridge.asyncio,
+            "create_subprocess_exec",
+            new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
+        ):
             ok = await terminal_bridge.create_tmux_session(
                 name="tc_test",
                 working_dir=str(tmp_path),

@@ -129,7 +129,7 @@ AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
 AGENT_START_POST_INJECT_DELAY_S = 1.0
 
-logger = get_logger(__name__)
+logger = get_logger("teleclaude.daemon")
 
 
 def _is_retryable_startup_error(error: Exception) -> bool:
@@ -642,38 +642,27 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             send_feedback=self._send_feedback_callback,  # type: ignore[arg-type]
         )
 
-    async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Handler for session_closed events - user closed topic.
+    async def _handle_session_terminated(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Handler for session_terminated events - user removed topic.
 
         Args:
-            _event: Event type (always "session_closed") - unused but required by event handler signature
+            _event: Event type (always "session_terminated") - unused but required by event handler signature
             context: Session lifecycle context
         """
         ctx = context
 
         session = await db.get_session(ctx.session_id)
         if not session:
-            logger.warning("Session %s not found for close event", ctx.session_id[:8])
+            logger.warning("Session %s not found for termination event", ctx.session_id[:8])
             return
 
-        logger.info("Handling session_closed for %s", ctx.session_id[:8])
+        logger.info("Handling session_terminated for %s", ctx.session_id[:8])
         await session_cleanup.terminate_session(
             ctx.session_id,
             self.client,
             reason="topic_closed",
             session=session,
         )
-
-    async def _handle_session_reopened(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Handler for session_reopened events - user reopened topic.
-
-        Args:
-            _event: Event type (always "session_reopened") - unused but required by event handler signature
-            context: Session lifecycle context
-        """
-        ctx = context
-
-        logger.info("Session reopen event ignored for %s (sessions are deleted on close)", ctx.session_id[:8])
 
     async def _handle_file(self, _event: str, context: FileEventContext) -> None:
         """Handler for FILE events - pure business logic.
@@ -1176,7 +1165,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
 
         # Get listeners (don't pop - session is still active, Claude just finished its turn)
-        # Listeners are only removed when session is terminated (in _handle_session_closed)
+        # Listeners are only removed when session is terminated (in _handle_session_terminated)
         listeners = get_listeners(target_session_id)
         if not listeners:
             logger.debug("No listeners for remote session %s", target_session_id[:8])
@@ -1509,6 +1498,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.mcp_task = asyncio.create_task(self.mcp_server.start())
             self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
             self.mcp_task.add_done_callback(self._handle_mcp_task_done)
+            # Avoid health checks during initial MCP startup.
+            self._last_mcp_restart_at = asyncio.get_running_loop().time()
             logger.info("MCP server starting in background")
 
             self.mcp_watch_task = asyncio.create_task(self._mcp_watch_loop())
@@ -1854,27 +1845,52 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Watch tmux foreground commands and ensure pollers are running when needed."""
         while True:
             try:
-                sessions = await db.get_active_sessions()
-                for session in sessions:
-                    if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
-                        continue
-                    if not await terminal_bridge.is_process_running(session.tmux_session_name):
-                        continue
-                    if await polling_coordinator.is_polling(session.session_id):
-                        continue
-
-                    await polling_coordinator.schedule_polling(
-                        session_id=session.session_id,
-                        tmux_session_name=session.tmux_session_name,
-                        output_poller=self.output_poller,
-                        adapter_client=self.client,
-                        get_output_file=self._get_output_file_path,
-                    )
+                await self._poller_watch_iteration()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Error in poller watch loop: %s", e)
             await asyncio.sleep(1.0)
+
+    async def _poller_watch_iteration(self) -> None:
+        """Run a single poller watch iteration (extracted for testing)."""
+        sessions = await db.get_active_sessions()
+        for session in sessions:
+            if (
+                not session.adapter_metadata
+                or not session.adapter_metadata.telegram
+                or not session.adapter_metadata.telegram.topic_id
+            ):
+                try:
+                    await self.client.ensure_ui_channels(session, session.title)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to ensure UI channels for session %s: %s",
+                        session.session_id[:8],
+                        exc,
+                    )
+
+            if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
+                await session_cleanup.cleanup_stale_session(session.session_id, self.client)
+                continue
+            if await terminal_bridge.is_pane_dead(session.tmux_session_name):
+                await session_cleanup.terminate_session(
+                    session.session_id,
+                    self.client,
+                    reason="pane_dead",
+                    session=session,
+                )
+                continue
+            if await polling_coordinator.is_polling(session.session_id):
+                continue
+
+            await polling_coordinator.schedule_polling(
+                session_id=session.session_id,
+                tmux_session_name=session.tmux_session_name,
+                output_poller=self.output_poller,
+                adapter_client=self.client,
+                get_output_file=self._get_output_file_path,
+            )
 
     async def _cleanup_inactive_sessions(self) -> None:
         """Clean up sessions inactive for 72+ hours."""
@@ -1930,11 +1946,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             or not session.adapter_metadata.telegram.topic_id
         ):
             try:
-                await self.client.create_channel(
-                    session=session,
-                    title=session.title,
-                    origin_adapter=session.origin_adapter,
-                )
+                await self.client.ensure_ui_channels(session, session.title)
             except Exception as exc:
                 logger.warning(
                     "Failed to create UI channel for session %s: %s",

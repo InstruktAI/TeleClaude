@@ -118,20 +118,6 @@ class TestListSessions:
         assert all(s.computer_name == "PC1" for s in sessions)
 
     @pytest.mark.asyncio
-    async def test_list_sessions_filter_by_status(self, test_db):
-        """Test filtering sessions by status."""
-        s1 = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-        s2 = await test_db.create_session("PC1", "session-2", "telegram", "Test Session")
-
-        # Update one to closed
-        await test_db.update_session(s2.session_id, closed=True)
-
-        sessions = await test_db.list_sessions(closed=False)
-
-        assert len(sessions) == 1
-        assert sessions[0].session_id == s1.session_id
-
-    @pytest.mark.asyncio
     async def test_list_sessions_filter_by_adapter_type(self, test_db):
         """Test filtering sessions by adapter type."""
         await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
@@ -177,25 +163,14 @@ class TestUpdateSession:
         assert updated.title == "New Title"
 
     @pytest.mark.asyncio
-    async def test_update_status(self, test_db):
-        """Test updating session closed status."""
-        session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-
-        await test_db.update_session(session.session_id, closed=True)
-
-        updated = await test_db.get_session(session.session_id)
-        assert updated.closed is True
-
-    @pytest.mark.asyncio
     async def test_update_multiple_fields(self, test_db):
         """Test updating multiple fields at once."""
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
-        await test_db.update_session(session.session_id, title="Updated Title", closed=True, terminal_size="100x30")
+        await test_db.update_session(session.session_id, title="Updated Title", terminal_size="100x30")
 
         updated = await test_db.get_session(session.session_id)
         assert updated.title == "Updated Title"
-        assert updated.closed is True
         assert updated.terminal_size == "100x30"
 
     @pytest.mark.asyncio
@@ -296,17 +271,6 @@ class TestCountSessions:
         assert count == 2
 
     @pytest.mark.asyncio
-    async def test_count_sessions_by_status(self, test_db):
-        """Test counting sessions by closed status."""
-        await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-        s2 = await test_db.create_session("PC1", "session-2", "telegram", "Test Session")
-        await test_db.update_session(s2.session_id, closed=True)
-
-        count = await test_db.count_sessions(closed=False)
-
-        assert count == 1
-
-    @pytest.mark.asyncio
     async def test_count_sessions_empty(self, test_db):
         """Test counting sessions when none exist."""
         count = await test_db.count_sessions()
@@ -364,6 +328,22 @@ class TestGetSessionsByAdapterMetadata:
         sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 999)
 
         assert len(sessions) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_by_metadata_matches_string_topic_id(self, test_db):
+        """Test retrieving sessions when topic_id stored as string."""
+        session = await test_db.create_session(
+            "PC1",
+            "session-1",
+            "telegram",
+            "Test Session",
+            adapter_metadata={"telegram": {"topic_id": "123", "output_message_id": "abc"}},
+        )
+
+        sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)
+
+        assert len(sessions) == 1
+        assert sessions[0].session_id == session.session_id
 
     @pytest.mark.asyncio
     async def test_get_by_metadata_finds_all_with_metadata(self, test_db):
@@ -444,11 +424,11 @@ class TestDbAdapterClientIntegration:
         )
 
         # Update without wiring client (should not crash)
-        await test_db.update_session(session.session_id, closed=True)
+        await test_db.update_session(session.session_id, title="Updated")
 
         # Verify session updated
         updated = await test_db.get_session(session.session_id)
-        assert updated.closed is True
+        assert updated.title == "Updated"
 
 
 class TestNotificationFlag:

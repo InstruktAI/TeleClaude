@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core import session_cleanup, terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.output_poller import (
     DirectoryChanged,
@@ -18,7 +19,6 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
-from teleclaude.core.terminal_output_poller import TerminalOutputPoller
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -76,35 +76,6 @@ async def schedule_polling(
             adapter_client=adapter_client,
             get_output_file=get_output_file,
             _skip_register=True,
-        )
-    )
-    return True
-
-
-async def schedule_terminal_polling(
-    session_id: str,
-    poller: TerminalOutputPoller,
-    adapter_client: "AdapterClient",
-    log_file: Path,
-    terminal_size: str,
-    pid: int | None,
-) -> bool:
-    """Schedule terminal TUI polling in the background."""
-    if not await _register_polling(session_id):
-        logger.warning(
-            "Polling already active for session %s, ignoring duplicate request",
-            session_id[:8],
-        )
-        return False
-
-    asyncio.create_task(
-        poll_and_send_terminal_output(
-            session_id=session_id,
-            poller=poller,
-            adapter_client=adapter_client,
-            log_file=log_file,
-            terminal_size=terminal_size,
-            pid=pid,
         )
     )
     return True
@@ -186,56 +157,62 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
                 # Fetch session once for all operations
                 session = await db.get_session(event.session_id)
+                if not session:
+                    logger.debug(
+                        "Session %s missing during process exit; stopping poller",
+                        event.session_id[:8],
+                    )
+                    return
 
                 # Unified output handling - ALL sessions use send_output_update
                 if event.exit_code is not None:
                     # Exit with code - send final message via AdapterClient
                     await adapter_client.send_output_update(
-                        session,  # type: ignore[arg-type]
+                        session,
                         clean_final_output,
                         event.started_at,  # Use actual start time from poller
                         time.time(),
                         is_final=True,
                         exit_code=event.exit_code,
                     )
-                    logger.info(
-                        "Polling stopped for %s (exit code: %d), output file kept for downloads",
-                        event.session_id[:8],
-                        event.exit_code,
-                    )
-                else:
-                    # Session died - if session was deleted, skip exit message
-                    if not session:
-                        logger.debug(
-                            "Session %s missing (likely terminated), skipping exit message",
+                    tmux_alive = True
+                    if session.tmux_session_name:
+                        tmux_alive = await terminal_bridge.session_exists(
+                            session.tmux_session_name,
+                            log_missing=False,
+                        )
+                    if not tmux_alive:
+                        await session_cleanup.terminate_session(
+                            event.session_id,
+                            adapter_client,
+                            reason="tmux_exited",
+                            session=session,
+                            kill_tmux=False,
+                        )
+                        logger.info(
+                            "Terminated session %s after tmux exit (exit code: %d)",
                             event.session_id[:8],
+                            event.exit_code,
                         )
                     else:
-                        # Tmux session died unexpectedly - notify user
-                        try:
-                            await adapter_client.send_exit_message(
-                                session,
-                                event.final_output,
-                                "⚠️ Session terminated abnormally",
-                            )
-                        except Exception as e:
-                            # Handle errors gracefully (e.g., message too long, topic closed)
-                            logger.warning(
-                                "Failed to send exit message for %s: %s",
-                                event.session_id[:8],
-                                e,
-                            )
-
-                    # Delete output file on session death
-                    try:
-                        if output_file.exists():
-                            output_file.unlink()
-                            logger.debug(
-                                "Deleted output file for exited session %s",
-                                event.session_id[:8],
-                            )
-                    except Exception as e:
-                        logger.warning("Failed to delete output file: %s", e)
+                        logger.info(
+                            "Polling stopped for %s (exit code: %d), output file kept for downloads",
+                            event.session_id[:8],
+                            event.exit_code,
+                        )
+                else:
+                    # Tmux session died - terminate and clean up the TeleClaude session
+                    await session_cleanup.terminate_session(
+                        event.session_id,
+                        adapter_client,
+                        reason="tmux_exited",
+                        session=session,
+                        kill_tmux=False,
+                    )
+                    logger.info(
+                        "Terminated session %s after tmux exit",
+                        event.session_id[:8],
+                    )
 
     finally:
         # Cleanup state
@@ -245,50 +222,3 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
         # Only cleared when session closes (/exit command)
 
         logger.debug("Polling ended for session %s", session_id[:8])
-
-
-async def poll_and_send_terminal_output(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    session_id: str,
-    poller: TerminalOutputPoller,
-    adapter_client: "AdapterClient",
-    log_file: Path,
-    terminal_size: str,
-    pid: int | None,
-) -> None:
-    """Poll terminal output log and send to all adapters."""
-    try:
-        async for event in poller.poll(session_id, log_file, terminal_size, pid):
-            if isinstance(event, OutputChanged):
-                session = await db.get_session(event.session_id)
-                if not session:
-                    logger.debug(
-                        "Session %s missing during terminal polling output; stopping poller",
-                        event.session_id[:8],
-                    )
-                    return
-                await adapter_client.send_output_update(
-                    session,
-                    event.output,
-                    event.started_at,
-                    event.last_changed_at,
-                )
-            else:
-                session = await db.get_session(event.session_id)
-                if not session:
-                    return
-                if session:
-                    try:
-                        await adapter_client.send_exit_message(
-                            session,
-                            event.final_output,
-                            "⚠️ Session terminated",
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to send terminal exit message for %s: %s",
-                            event.session_id[:8],
-                            exc,
-                        )
-    finally:
-        await _unregister_polling(session_id)
-        logger.debug("Terminal polling ended for session %s", session_id[:8])

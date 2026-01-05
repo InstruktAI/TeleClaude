@@ -463,7 +463,6 @@ class TestSessionCleanup:
             tmux_session_name="inactive-tmux",
             origin_adapter="telegram",
             title="Inactive",
-            closed=False,
             last_activity=old_time,
         )
 
@@ -502,7 +501,6 @@ class TestSessionCleanup:
             tmux_session_name="active-tmux",
             origin_adapter="telegram",
             title="Active",
-            closed=False,
             last_activity=recent_time,
         )
 
@@ -665,7 +663,6 @@ class TestTitleUpdate:
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
             title="TeleClaude: $TestMac - New session",
-            closed=False,
         )
 
         with patch("teleclaude.daemon.db") as mock_db:
@@ -691,7 +688,6 @@ class TestTitleUpdate:
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
             title="TeleClaude: $TestMac - New session (2)",
-            closed=False,
         )
 
         with patch("teleclaude.daemon.db") as mock_db:
@@ -717,7 +713,6 @@ class TestTitleUpdate:
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
             title="TeleClaude: $TestMac - Fix login bug",  # Already updated
-            closed=False,
         )
 
         with patch("teleclaude.daemon.db") as mock_db:

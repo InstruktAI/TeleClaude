@@ -86,7 +86,6 @@ def _make_terminal_session() -> Session:
         origin_adapter="terminal",
         title="Terminal",
         adapter_metadata=SessionAdapterMetadata(),
-        closed=False,
         created_at=None,
         last_activity=None,
         terminal_size="80x24",

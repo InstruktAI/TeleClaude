@@ -571,7 +571,7 @@ graph LR
 - **Created**: When polling starts
 - **Updated**: Every poll (1s interval)
 - **Persists**: Survives daemon restarts
-- **Deleted**: When process exits OR session closed with `/exit`
+- **Deleted**: When process exits OR session terminated with `/exit`
 
 ---
 
@@ -589,7 +589,6 @@ class Session:
     adapter_metadata: dict  # Platform-specific data
     title: str
     description: Optional[str]
-    status: str  # active, idle, disconnected, closed
     created_at: datetime
     last_activity: datetime
 ```

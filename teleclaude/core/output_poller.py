@@ -254,13 +254,9 @@ class OutputPoller:
                     # Skip per-tick logging; summarized in idle summaries.
                     pass
 
-                # Exit condition 2: process returned to shell
-                if not await terminal_bridge.is_process_running(tmux_session_name):
-                    if not output_sent_at_least_once and (time.time() - started_at) < PROCESS_START_GRACE_S:
-                        await asyncio.sleep(poll_interval)
-                        continue
+                # Exit condition 2: tmux pane fully exited (shell ended)
+                if await terminal_bridge.is_pane_dead(tmux_session_name):
                     # Force a final snapshot if output changed since last yield (or nothing was sent yet).
-                    # This bypasses the normal update interval to ensure the last screen state is visible.
                     if pending_output or output_changed or not output_sent_at_least_once:
                         yield OutputChanged(
                             session_id=session_id,
@@ -272,11 +268,11 @@ class OutputPoller:
 
                     yield ProcessExited(
                         session_id=session_id,
-                        exit_code=0,
+                        exit_code=None,
                         final_output=current_cleaned,
                         started_at=started_at,
                     )
-                    logger.info("Process returned to shell for %s, stopping poll", session_id[:8])
+                    logger.info("Shell exited for %s, stopping poll", session_id[:8])
                     break
 
                 # Apply exponential backoff when idle: 3s -> 6s -> 9s -> 12s -> 15s

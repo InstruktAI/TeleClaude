@@ -161,8 +161,13 @@ class SessionAdapterMetadata:
             if isinstance(tg_raw, dict):
                 topic_id_val: object = tg_raw.get("topic_id")
                 output_msg_val: object = tg_raw.get("output_message_id")
+                topic_id: int | None = None
+                if isinstance(topic_id_val, int):
+                    topic_id = topic_id_val
+                elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
+                    topic_id = int(topic_id_val)
                 tg_fields: dict[str, object | None] = {
-                    "topic_id": int(topic_id_val) if isinstance(topic_id_val, int) else None,
+                    "topic_id": topic_id,
                     "output_message_id": str(output_msg_val) if output_msg_val is not None else None,
                 }
                 telegram_metadata = TelegramAdapterMetadata(**tg_fields)  # type: ignore[arg-type]
@@ -253,7 +258,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     origin_adapter: str  # Single origin adapter (e.g., "redis" or "telegram")
     title: str
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
-    closed: bool = False  # Legacy field; sessions are deleted on close.
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     terminal_size: str = "160x80"
@@ -296,10 +300,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
         else:
             adapter_metadata = SessionAdapterMetadata()
 
-        # Convert closed from SQLite integer (0/1) to Python bool
-        closed_val = data.get("closed")
-        closed = bool(closed_val) if isinstance(closed_val, int) else closed_val
-
         # Convert initiated_by_ai from SQLite integer (0/1) to Python bool
         ia_val = data.get("initiated_by_ai")
         initiated_by_ai = bool(ia_val) if isinstance(ia_val, int) else ia_val
@@ -312,7 +312,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "origin_adapter",
             "title",
             "adapter_metadata",
-            "closed",
             "created_at",
             "last_activity",
             "terminal_size",
@@ -325,7 +324,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
         filtered_data["adapter_metadata"] = adapter_metadata
         filtered_data["created_at"] = created_at
         filtered_data["last_activity"] = last_activity
-        filtered_data["closed"] = closed
         filtered_data["initiated_by_ai"] = initiated_by_ai
 
         return cls(**filtered_data)  # type: ignore[arg-type]

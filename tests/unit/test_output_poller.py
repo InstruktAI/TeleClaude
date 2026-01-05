@@ -59,6 +59,10 @@ def _patch_reader(outputs: list[str | None]):
     )
 
 
+def _init_terminal_mock(mock_terminal) -> None:
+    mock_terminal.is_pane_dead = AsyncMock(return_value=False)
+
+
 @pytest.mark.asyncio
 class TestOutputPollerPoll:
     """Test OutputPoller.poll() async generator."""
@@ -73,6 +77,7 @@ class TestOutputPollerPoll:
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with _patch_reader([]):
                     # Session no longer exists
@@ -89,24 +94,47 @@ class TestOutputPollerPoll:
                 assert events[0].session_id == "test-123"
                 assert events[0].exit_code is None
 
-    async def test_shell_return_emits_process_exited(self, poller, tmp_path):
-        """Process exit is detected when the shell returns to the foreground."""
+    async def test_shell_return_keeps_polling(self, poller, tmp_path):
+        """Shell return should not terminate polling."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                     with _patch_reader(["command output\n"]):
-                        mock_terminal.session_exists = AsyncMock(return_value=True)
-                        mock_terminal.is_process_running = AsyncMock(side_effect=[True, False])
+                        mock_terminal.session_exists = AsyncMock(side_effect=[True, True, False])
+                        mock_terminal.is_process_running = AsyncMock(side_effect=[True, False, False])
+                        mock_terminal.is_pane_dead = AsyncMock(return_value=False)
 
                         events = []
                         async for event in poller.poll("test-456", "test-tmux", output_file):
                             events.append(event)
 
                 assert len(events) >= 1
+                assert any(isinstance(e, OutputChanged) for e in events)
+                assert not any(isinstance(e, ProcessExited) and e.exit_code == 0 for e in events)
+
+    async def test_shell_exit_emits_process_exited_without_code(self, poller, tmp_path):
+        """Shell exit should emit ProcessExited with exit_code None."""
+        output_file = tmp_path / "output.txt"
+
+        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
+                    with _patch_reader(["command output\n"]):
+                        mock_terminal.session_exists = AsyncMock(return_value=True)
+                        mock_terminal.is_process_running = AsyncMock(side_effect=[True, False])
+                        mock_terminal.is_pane_dead = AsyncMock(return_value=True)
+
+                        events = []
+                        async for event in poller.poll("test-457", "test-tmux", output_file):
+                            events.append(event)
+
+                assert len(events) >= 1
                 assert isinstance(events[-1], ProcessExited)
-                assert events[-1].exit_code == 0
+                assert events[-1].exit_code is None
                 assert "command output" in events[-1].final_output
 
     async def test_periodic_updates_send_full_file_contents(self, poller, tmp_path):
@@ -114,6 +142,7 @@ class TestOutputPollerPoll:
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                     with _patch_reader(["line 1\n", "line 1\nline 2\n", None]):
@@ -149,6 +178,7 @@ class TestOutputPollerPoll:
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                     with _patch_reader(["output 1\n", "output 1\noutput 2\n", None]):
@@ -194,6 +224,7 @@ class TestOutputPollerPoll:
             return _time
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", new=time_mock()):
                     with _patch_reader(["output 1\n"]):
@@ -231,12 +262,12 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.db") as mock_db:
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                         with patch("teleclaude.core.output_poller.time.time", new=lambda: next(time_iter)):
                             with _patch_reader(["first output\n", "second output\n"]):
-                                mock_terminal.session_exists = AsyncMock(return_value=True)
-                                mock_terminal.is_process_running = AsyncMock(side_effect=[True, False])
+                                mock_terminal.session_exists = AsyncMock(side_effect=[True, True, False])
                                 mock_db.get_session = AsyncMock(return_value=None)
 
                                 events = []
@@ -253,6 +284,7 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
                         with _patch_reader(["initial output\n"]):
@@ -286,6 +318,7 @@ class TestOutputPollerPoll:
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
             with patch("teleclaude.core.output_poller.IDLE_SUMMARY_INTERVAL_S", 0.5):
                 with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                    _init_terminal_mock(mock_terminal)
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                         with patch(
                             "teleclaude.core.output_poller.time.time",
@@ -317,6 +350,7 @@ class TestOutputPollerPoll:
         output_file = Path("/nonexistent/output.txt")
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with _patch_reader([]):
                     # Session dies immediately
@@ -338,6 +372,7 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 3):  # Check every 3 seconds
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with _patch_reader(["output\n"]):
                         iteration_count = 0
@@ -380,6 +415,7 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
             with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with _patch_reader(["output\n"]):
                         iteration_count = 0

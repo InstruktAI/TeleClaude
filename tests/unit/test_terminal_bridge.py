@@ -16,16 +16,6 @@ def setup_config():
         yield
 
 
-def test_tty_to_pty_master_legacy_suffix():
-    """Legacy /dev/ttyp0 style names map to /dev/ptyp0."""
-    assert terminal_bridge._tty_to_pty_master("/dev/ttyp0") == "/dev/ptyp0"
-
-
-def test_tty_to_pty_master_modern_ttys_returns_none():
-    """Modern /dev/ttysNNN devices do not expose a master path."""
-    assert terminal_bridge._tty_to_pty_master("/dev/ttys050") is None
-
-
 @pytest.mark.asyncio
 async def test_send_keys_to_tty_injects_input():
     """send_keys_to_tty should inject bytes via TIOCSTI when available."""

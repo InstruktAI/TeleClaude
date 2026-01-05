@@ -171,6 +171,7 @@ class TestChannelManagement:
             patch.object(telegram_adapter, "_wait_for_topic_ready", new_callable=AsyncMock) as mock_wait,
         ):
             mock_db.get_session = AsyncMock(return_value=mock_session)
+            mock_db.update_session = AsyncMock()
             result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
 
         assert result == "123"
@@ -224,6 +225,7 @@ class TestChannelManagement:
 
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session_with_topic)
+            mock_db.update_session = AsyncMock()
             result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())
 
         # Should return existing topic_id, NOT create new one

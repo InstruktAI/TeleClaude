@@ -28,7 +28,10 @@ from adapters import gemini as gemini_adapter  # noqa: E402
 
 from teleclaude.config import config  # noqa: E402
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
-from teleclaude.core.terminal_sessions import ensure_terminal_session  # noqa: E402
+from teleclaude.core.db import (  # noqa: E402
+    get_session_id_by_tmux_name_sync,
+    get_session_id_by_ux_state_sync,
+)
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -260,94 +263,17 @@ def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str |
 
 def _find_session_by_native_id(native_session_id: str) -> str | None:
     """Locate a TeleClaude session by stored native_session_id."""
-    db_path = config.database.path
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        cursor = conn.execute(
-            """
-            SELECT session_id
-            FROM sessions
-            WHERE json_extract(ux_state, '$.native_session_id') = ?
-            ORDER BY last_activity DESC
-            LIMIT 1
-            """,
-            (native_session_id,),
-        )
-        row = cursor.fetchone()
-        return str(row[0]) if row else None
-    finally:
-        conn.close()
+    return get_session_id_by_ux_state_sync(config.database.path, "native_session_id", native_session_id)
 
 
 def _find_session_by_log_path(native_log_file: str) -> str | None:
     """Locate a TeleClaude session by stored native_log_file."""
-    db_path = config.database.path
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        cursor = conn.execute(
-            """
-            SELECT session_id
-            FROM sessions
-            WHERE json_extract(ux_state, '$.native_log_file') = ?
-            ORDER BY last_activity DESC
-            LIMIT 1
-            """,
-            (native_log_file,),
-        )
-        row = cursor.fetchone()
-        return str(row[0]) if row else None
-    finally:
-        conn.close()
+    return get_session_id_by_ux_state_sync(config.database.path, "native_log_file", native_log_file)
 
 
 def _find_session_by_tmux_name(tmux_name: str) -> str | None:
     """Locate a TeleClaude session by tmux session name."""
-    db_path = config.database.path
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        cursor = conn.execute(
-            """
-            SELECT session_id
-            FROM sessions
-            WHERE tmux_session_name = ?
-            ORDER BY last_activity DESC
-            LIMIT 1
-            """,
-            (tmux_name,),
-        )
-        row = cursor.fetchone()
-        return str(row[0]) if row else None
-    finally:
-        conn.close()
-
-
-def _find_session_by_tty(tty_path: str) -> str | None:
-    """Locate a TeleClaude session by stored tty path."""
-    db_path = config.database.path
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        cursor = conn.execute(
-            """
-            SELECT session_id
-            FROM sessions
-            WHERE origin_adapter = 'terminal'
-              AND (
-                json_extract(ux_state, '$.native_tty_path') = ?
-                OR json_extract(ux_state, '$.tmux_tty_path') = ?
-              )
-            ORDER BY last_activity DESC
-            LIMIT 1
-            """,
-            (tty_path, tty_path),
-        )
-        row = cursor.fetchone()
-        return str(row[0]) if row else None
-    finally:
-        conn.close()
+    return get_session_id_by_tmux_name_sync(config.database.path, tmux_name)
 
 
 def _session_exists(session_id: str) -> bool:
@@ -421,7 +347,7 @@ def main() -> None:
     teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
     if teleclaude_session_id and not _session_exists(teleclaude_session_id):
         logger.warning(
-            "Hook receiver session id missing in DB; attempting tty recovery",
+            "Hook receiver session id missing in DB; attempting recovery",
             session_id=teleclaude_session_id,
         )
         teleclaude_session_id = None
@@ -450,28 +376,6 @@ def main() -> None:
                     tmux_session=tmux_name,
                 )
 
-        if not teleclaude_session_id and tty_path:
-            teleclaude_session_id = _find_session_by_tty(tty_path)
-            if teleclaude_session_id:
-                logger.info(
-                    "Hook receiver recovered session from tty",
-                    tty=tty_path,
-                    session_id=teleclaude_session_id,
-                )
-
-        if not teleclaude_session_id and tty_path:
-            teleclaude_session_id = ensure_terminal_session(
-                tty_path=tty_path,
-                parent_pid=parent_pid,
-                agent=args.agent,
-                cwd=os.getcwd(),
-            )
-            logger.info(
-                "Hook receiver recovered session from tty",
-                tty=tty_path,
-                session_id=teleclaude_session_id,
-            )
-
         if not teleclaude_session_id:
             native_session_id, native_log_file = _extract_native_identity(args.agent, data)
             if native_session_id:
@@ -485,7 +389,6 @@ def main() -> None:
                     native_session_id=native_session_id,
                 )
             else:
-                logger.info("Hook receiver requires TELECLAUDE_SESSION_ID (use telec to start a session)")
                 sys.exit(1)
 
     normalize_payload = _get_adapter(args.agent)

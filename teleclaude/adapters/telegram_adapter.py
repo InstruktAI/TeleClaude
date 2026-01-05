@@ -53,7 +53,13 @@ from teleclaude.config import config
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
+from teleclaude.core.models import (
+    ChannelMetadata,
+    MessageMetadata,
+    PeerInfo,
+    Session,
+    TelegramAdapterMetadata,
+)
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.core.ux_state import (
     SessionUXState,
@@ -338,15 +344,11 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         )
         self.app.add_handler(file_handler)  # type: ignore[arg-type]
 
-        # Handle forum topic created/closed/reopened events
+        # Handle forum topic created/closed events
         created_handler: object = MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CREATED, self._handle_topic_created)
         closed_handler: object = MessageHandler(filters.StatusUpdate.FORUM_TOPIC_CLOSED, self._handle_topic_closed)
-        reopened_handler: object = MessageHandler(
-            filters.StatusUpdate.FORUM_TOPIC_REOPENED, self._handle_topic_reopened
-        )
         self.app.add_handler(created_handler)  # type: ignore[arg-type]
         self.app.add_handler(closed_handler)  # type: ignore[arg-type]
-        self.app.add_handler(reopened_handler)  # type: ignore[arg-type]
 
         # Add catch-all handler to log ALL updates (for debugging)
         log_handler: object = MessageHandler(filters.ALL, self._log_all_updates)
@@ -762,6 +764,16 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             # Wait for forum_topic_created event before returning
             await self._wait_for_topic_ready(topic_id, title)
 
+            # Persist topic_id inside the lock so concurrent callers see it.
+            updated_session = await db.get_session(session_id)
+            if updated_session:
+                adapter_meta = updated_session.adapter_metadata.telegram
+                if not adapter_meta:
+                    adapter_meta = TelegramAdapterMetadata()
+                    updated_session.adapter_metadata.telegram = adapter_meta
+                adapter_meta.topic_id = int(topic_id)
+                await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
+
             return str(topic_id)
 
     async def _wait_for_topic_ready(self, topic_id: int, title: str) -> None:
@@ -885,6 +897,14 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
         """Internal method with retry logic for deleting forum topics."""
         await self.bot.delete_forum_topic(chat_id=self.supergroup_id, message_thread_id=topic_id)
 
+    async def _delete_orphan_topic(self, topic_id: int) -> None:
+        """Delete a topic that no longer maps to a session."""
+        try:
+            await self._delete_forum_topic_with_retry(topic_id)
+            logger.info("Deleted orphan topic %s (no session)", topic_id)
+        except TelegramError as e:
+            logger.warning("Failed to delete orphan topic %s: %s", topic_id, e)
+
     # ==================== Platform-Specific Parameters ====================
 
     def get_max_message_length(self) -> int:
@@ -1006,6 +1026,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             # Session not found for this topic
             error_msg = "❌ No session found for this topic. The session may have ended."
             logger.warning("No session found for topic_id %s", thread_id)
+
+        if thread_id and update.effective_user and update.effective_user.id in self.user_whitelist:
+            await self._delete_orphan_topic(thread_id)
+            return None
 
         try:
             await self.bot.send_message(
@@ -2079,6 +2103,13 @@ Usage:
                     else None
                 ),
             )
+            if (
+                update.effective_user
+                and update.effective_user.id in self.user_whitelist
+                and update.effective_message
+                and update.effective_message.message_thread_id
+            ):
+                await self._delete_orphan_topic(update.effective_message.message_thread_id)
             return
         if not update.effective_message or not update.effective_user:
             logger.warning("Missing effective_message or effective_user in update")
@@ -2272,7 +2303,7 @@ Usage:
         logger.info("Topic created event received: %s (ID: %s)", topic_name, topic_id)
 
     async def _handle_topic_closed(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle forum topic closed event."""
+        """Handle forum topic end event."""
         if not update.message or not update.message.message_thread_id:
             return
 
@@ -2282,46 +2313,19 @@ Usage:
 
         if not sessions:
             logger.warning("No session found for topic %s", topic_id)
+            await self._delete_orphan_topic(topic_id)
             return
 
         session = sessions[0]
         logger.info(
-            "Topic %s closed by user, terminating session %s",
+            "Topic %s ended by user, terminating session %s",
             topic_id,
             session.session_id[:8],
         )
 
-        # Emit session_closed event to daemon for cleanup
+        # Emit session_terminated event to daemon for cleanup
         await self.client.handle_event(
-            event="session_closed",
-            payload={"session_id": session.session_id},
-            metadata=self._metadata(),
-        )
-
-    async def _handle_topic_reopened(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle forum topic reopened event."""
-        if not update.message or not update.message.message_thread_id:
-            return
-
-        topic_id = update.message.message_thread_id
-
-        # Find session by topic ID (try both formats)
-        sessions = await db.get_sessions_by_adapter_metadata("telegram", "topic_id", topic_id)
-
-        if not sessions:
-            logger.warning("No session found for reopened topic %s", topic_id)
-            return
-
-        session = sessions[0]
-        logger.info(
-            "Topic %s reopened by user, reopening session %s",
-            topic_id,
-            session.session_id[:8],
-        )
-
-        # Emit session_reopened event to daemon
-        await self.client.handle_event(
-            event="session_reopened",
+            event="session_terminated",
             payload={"session_id": session.session_id},
             metadata=self._metadata(),
         )

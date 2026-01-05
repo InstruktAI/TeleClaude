@@ -460,6 +460,20 @@ class AdapterClient:
         Returns:
             Message ID from first successful adapter, or None if all failed
         """
+        session_to_send = session
+        if self._needs_ui_channel(session):
+            try:
+                await self.ensure_ui_channels(session, session.title)
+                refreshed = await db.get_session(session.session_id)
+                if refreshed:
+                    session_to_send = refreshed
+            except Exception as exc:
+                logger.warning(
+                    "Failed to ensure UI channels for session %s: %s",
+                    session.session_id[:8],
+                    exc,
+                )
+
         # Broadcast to ALL UI adapters
         tasks = []
         for adapter_type, adapter in self.adapters.items():
@@ -468,7 +482,7 @@ class AdapterClient:
                     (
                         adapter_type,
                         adapter.send_output_update(
-                            session,
+                            session_to_send,
                             output,
                             started_at,
                             last_output_changed_at,
@@ -494,21 +508,21 @@ class AdapterClient:
                 logger.warning(
                     "UI adapter %s failed send_output_update for session %s: %s",
                     adapter_type,
-                    session.session_id[:8],
+                    session_to_send.session_id[:8],
                     result,
                 )
                 if adapter_type == "telegram" and self._is_missing_thread_error(result):
                     missing_thread_error = result
             elif isinstance(result, str) and not first_success:
                 first_success = result
-                logger.debug("Output update sent", adapter=adapter_type, session=session.session_id[:8])
+                logger.debug("Output update sent", adapter=adapter_type, session=session_to_send.session_id[:8])
 
         if missing_thread_error:
-            updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
+            updated_session = await self._handle_missing_telegram_thread(session_to_send, missing_thread_error)
             telegram_adapter = self.adapters.get("telegram")
             if isinstance(telegram_adapter, UiAdapter):
                 try:
-                    retry_session = updated_session or session
+                    retry_session = updated_session or session_to_send
                     retry_result = await telegram_adapter.send_output_update(
                         retry_session,
                         output,
@@ -522,16 +536,24 @@ class AdapterClient:
                         first_success = retry_result
                         logger.debug(
                             "Output update sent after topic recreation",
-                            session=session.session_id[:8],
+                            session=session_to_send.session_id[:8],
                         )
                 except Exception as exc:
                     logger.warning(
                         "UI adapter telegram failed send_output_update retry for session %s: %s",
-                        session.session_id[:8],
+                        session_to_send.session_id[:8],
                         exc,
                     )
 
         return first_success
+
+    def _needs_ui_channel(self, session: "Session") -> bool:
+        telegram_adapter = self.adapters.get("telegram")
+        if isinstance(telegram_adapter, UiAdapter):
+            telegram_meta = session.adapter_metadata.telegram
+            if not telegram_meta or not telegram_meta.topic_id:
+                return True
+        return False
 
     @staticmethod
     def _is_missing_thread_error(error: Exception) -> bool:
@@ -558,11 +580,7 @@ class AdapterClient:
             await db.update_session(current.session_id, adapter_metadata=current.adapter_metadata)
 
         try:
-            await self.create_channel(
-                session=current,
-                title=current.title,
-                origin_adapter=current.origin_adapter,
-            )
+            await self.ensure_ui_channels(current, current.title)
         except Exception as exc:
             logger.warning(
                 "Failed to recreate Telegram topic for session %s: %s",
@@ -806,9 +824,8 @@ class AdapterClient:
         if session and message_id:
             await self._call_post_handler(session, event, str(message_id), metadata.adapter_type)
 
-        # 7. Broadcast to observers (lifecycle events and user actions)
+        # 7. Broadcast to observers (user actions)
         if session:
-            await self._broadcast_lifecycle(session, event)
             await self._broadcast_action(session, event, payload, metadata.adapter_type)
 
         return response
@@ -876,8 +893,7 @@ class AdapterClient:
                 caption=cast(str | None, payload.get("caption")),
                 file_size=cast(int, payload.get("file_size", 0)),
             ),
-            TeleClaudeEvents.SESSION_CLOSED: lambda: SessionLifecycleContext(session_id=str(payload.get("session_id"))),
-            TeleClaudeEvents.SESSION_REOPENED: lambda: SessionLifecycleContext(
+            TeleClaudeEvents.SESSION_TERMINATED: lambda: SessionLifecycleContext(
                 session_id=str(payload.get("session_id"))
             ),
             TeleClaudeEvents.SYSTEM_COMMAND: lambda: SystemCommandContext(
@@ -1004,25 +1020,6 @@ class AdapterClient:
 
         await post_handler(session, message_id)
         logger.debug("Post-handler executed for %s on event %s", adapter_type, event)
-
-    async def _broadcast_lifecycle(self, session: "Session", event: EventType) -> None:
-        """Broadcast session lifecycle events (close/reopen) to observer adapters."""
-        if event not in (TeleClaudeEvents.SESSION_CLOSED, TeleClaudeEvents.SESSION_REOPENED):
-            return
-
-        for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.origin_adapter:
-                continue
-
-            try:
-                if event == TeleClaudeEvents.SESSION_CLOSED:
-                    await adapter.close_channel(session)
-                    logger.debug("Closed channel in observer adapter: %s", adapter_type)
-                else:
-                    await adapter.reopen_channel(session)
-                    logger.debug("Reopened channel in observer adapter: %s", adapter_type)
-            except Exception as e:
-                logger.warning("Failed to %s channel in observer %s: %s", event, adapter_type, e)
 
     async def _broadcast_action(
         self,

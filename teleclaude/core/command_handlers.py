@@ -100,41 +100,6 @@ class EndSessionHandlerResult(TypedDict):
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 
 
-def get_short_project_name(working_dir: str, base_project: str | None = None) -> str:
-    """Extract short project name from path.
-
-    Format depends on whether base_project is provided:
-    - With base_project: "RootFolder" or "RootFolder/slug" if working in subfolder
-    - Without base_project: Just last folder name
-
-    Args:
-        working_dir: Full working directory path (e.g., /home/morriz/apps/TeleClaude/trees/fix)
-        base_project: Optional base project path (e.g., /home/morriz/apps/TeleClaude)
-
-    Returns:
-        Short name like "TeleClaude" or "TeleClaude/fix"
-    """
-    working_dir = working_dir.rstrip("/")
-
-    if base_project:
-        base_project = base_project.rstrip("/")
-        # Get root folder name from base_project
-        root_name = base_project.split("/")[-1] if base_project else "unknown"
-
-        # Check if working_dir has a subfolder beyond base_project
-        if working_dir.startswith(base_project) and len(working_dir) > len(base_project):
-            # Extract subfolder part and get the slug (last component)
-            subfolder = working_dir[len(base_project) :].strip("/")
-            slug = subfolder.split("/")[-1] if subfolder else ""
-            if slug:
-                return f"{root_name}/{slug}"
-        return root_name
-
-    # Fallback: just last folder name
-    parts = working_dir.split("/")
-    return parts[-1] if parts else "unknown"
-
-
 # Decorator to inject session from context (removes boilerplate)
 def with_session(
     func: Callable[..., Awaitable[None]],

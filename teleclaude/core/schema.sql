@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     tmux_session_name TEXT NOT NULL,
     origin_adapter TEXT NOT NULL DEFAULT 'telegram',  -- Single origin adapter (e.g., "telegram", "redis")
     adapter_metadata TEXT,  -- JSON string for platform-specific data
-    closed BOOLEAN DEFAULT 0,  -- Legacy: sessions are deleted on close
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     terminal_size TEXT DEFAULT '80x24',

@@ -34,7 +34,6 @@ async def test_session_manager_crud():
 
         assert session.session_id is not None
         assert session.title == "Test Session"
-        assert session.closed is False
 
         # Get session
         retrieved = await session_mgr.get_session(session.session_id)

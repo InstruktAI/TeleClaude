@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import sqlite3
@@ -13,16 +14,21 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, TextIO, cast
+from typing import TYPE_CHECKING, Iterable, TextIO, cast
 
 from teleclaude.config import config
-from teleclaude.core import terminal_bridge
+from teleclaude.core import session_cleanup, terminal_bridge
+from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command, normalize_agent_name
+from teleclaude.core.db import db
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import ThinkingMode
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.terminal_sessions import ensure_terminal_session, terminal_tmux_name_for_session
 from teleclaude.core.ux_state import SessionUXState, UXStatePayload
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import Session
 
 _UNSET = object()
 
@@ -62,8 +68,8 @@ def _usage() -> str:
     return (
         "Usage:\n"
         "  telec                      # open session picker\n"
-        "  telec ls                   # list sessions\n"
-        "  telec attach <id|index>    # attach to tmux session\n"
+        "  telec /list                # list sessions\n"
+        "  telec /new_session          # create & attach new tmux session\n"
         "  telec /claude fast [prompt]\n"
         "  telec /gemini med [prompt]\n"
         "  telec /codex slow [prompt]\n"
@@ -98,14 +104,111 @@ def _split_thinking_mode(args: Iterable[str], default_mode: str, agent: str) -> 
     return thinking_mode, remaining
 
 
+def _parse_agent_args(
+    agent_name: str,
+    args: list[str],
+    stored_mode: str | None,
+) -> tuple[str, list[str]]:
+    default_mode = stored_mode or ThinkingMode.SLOW.value
+    return _split_thinking_mode(args, default_mode, agent_name)
+
+
+_SLASH_COMMANDS = (
+    "/list",
+    "/new_session",
+    "/rename",
+    "/agent",
+    "/agent_resume",
+    "/claude",
+    "/gemini",
+    "/codex",
+)
+_AGENTS = ("claude", "gemini", "codex")
+_MODES: tuple[str, ...] = ("fast", "med", "slow")
+
+
+def _completion_candidates(tokens: list[str]) -> list[str]:
+    if tokens == [""]:
+        tokens = []
+    if not tokens:
+        return list(_SLASH_COMMANDS)
+
+    last = tokens[-1]
+    prev = tokens[-2] if len(tokens) >= 2 else ""
+
+    if last.startswith("/"):
+        return [cmd for cmd in _SLASH_COMMANDS if cmd.startswith(last)]
+
+    if prev in {"/claude", "/gemini", "/codex"}:
+        modes = list(_MODES)
+        if prev == "/codex":
+            modes.append("deep")
+        return [mode for mode in modes if mode.startswith(last)]
+
+    if prev == "/agent":
+        return [agent for agent in _AGENTS if agent.startswith(last)]
+
+    if len(tokens) >= 3 and tokens[-3] == "/agent":
+        modes = list(_MODES)
+        if tokens[-2] == "codex":
+            modes.append("deep")
+        return [mode for mode in modes if mode.startswith(last)]
+
+    if prev == "/agent_resume":
+        db_path = config.database.path
+        conn = sqlite3.connect(db_path, timeout=1.0)
+        try:
+            conn.execute("PRAGMA busy_timeout = 1000")
+            entries = _load_sessions(conn)
+        finally:
+            conn.close()
+        ids = [entry.session_id[:8] for entry in entries]
+        idxs = [str(entry.index) for entry in entries]
+        tmux_names = [entry.tmux_session_name for entry in entries if entry.tmux_session_name]
+        options = ids + idxs + tmux_names
+        return [opt for opt in options if opt.startswith(last)]
+
+    if last == "" and prev == "telec":
+        return list(_SLASH_COMMANDS)
+
+    return []
+
+
+def _complete_from_env() -> None:
+    line = os.environ.get("COMP_LINE", "")
+    point_raw = os.environ.get("COMP_POINT")
+    point = int(point_raw) if point_raw and point_raw.isdigit() else len(line)
+    line = line[:point]
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        tokens = re.split(r"\\s+", line.strip())
+    if line.endswith(" "):
+        tokens.append("")
+    # Drop program name
+    if tokens and tokens[0] == "telec":
+        tokens = tokens[1:]
+    for item in _completion_candidates(tokens):
+        print(item)
+
+
 def parse_telec_command(argv: list[str]) -> TelecCommand:
     if not argv:
+        raise ValueError(_usage())
+
+    if not argv[0].startswith("/"):
         raise ValueError(_usage())
 
     command_str = " ".join(argv)
     cmd_name, args = parse_command_string(command_str)
     if not cmd_name:
         raise ValueError(_usage())
+
+    if cmd_name in {"list", "list_sessions"}:
+        return TelecCommand(action="list", agent=None, args=args, session_id=None)
+
+    if cmd_name == "new_session":
+        return TelecCommand(action="new_session", agent=None, args=args, session_id=None)
 
     if cmd_name in {"claude", "gemini", "codex"}:
         return TelecCommand(action="start", agent=cmd_name, args=args, session_id=None)
@@ -228,16 +331,15 @@ def _resolve_tmux_name(entry: SessionListEntry) -> str:
 
 
 def _print_session_table(entries: list[SessionListEntry]) -> None:
-    header = f"{'Idx':>3}  {'ID':<8}  {'Agent':<6}  {'Mode':<4}  {'Last Active':<16}  {'Tmux':<4}  Title"
+    header = f"{'Idx':>3}  {'Last Active':<16}  {'ID':<8}  {'Agent':<6}  {'Mode':<4}  Title"
     print(header)
     print("-" * len(header))
     for entry in entries:
         agent = entry.active_agent or "—"
         mode = entry.thinking_mode or "—"
         last = _format_timestamp(entry.last_activity or entry.created_at)
-        tmux = "yes" if entry.tmux_ready else "no"
         title = entry.title
-        print(f"{entry.index:>3}  {entry.session_id[:8]:<8}  {agent:<6}  {mode:<4}  {last:<16}  {tmux:<4}  {title}")
+        print(f"{entry.index:>3}  {last:<16}  {entry.session_id[:8]:<8}  {agent:<6}  {mode:<4}  {title}")
 
 
 def _list_sessions(db_path: str) -> None:
@@ -263,7 +365,7 @@ def _run_session_picker(db_path: str) -> SessionListEntry | None:
         "   ██║   ██╔══╝  ██║     ██╔══╝  ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  ",
         "   ██║   ███████╗███████╗███████╗╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗",
         "   ╚═╝   ╚══════╝╚══════╝╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝",
-        "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -",
+        "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -",
     ]
 
     def _load() -> list[SessionListEntry]:
@@ -288,6 +390,36 @@ def _run_session_picker(db_path: str) -> SessionListEntry | None:
 
     def _ui(stdscr: "curses.window") -> SessionListEntry | None:
         curses.curs_set(0)
+        use_colors = False
+        agent_colors: dict[str, int] = {}
+        agent_attrs: dict[str, int] = {}
+        if curses.has_colors():
+            curses.start_color()
+            try:
+                curses.use_default_colors()
+            except Exception:
+                pass
+            colors_available = cast(int, getattr(curses, "COLORS", 0))
+            use_extended = bool(colors_available >= 256)
+            # Claude: terra/brown, Codex: light grey, Gemini: pink
+            claude_color: int = 130 if use_extended else int(curses.COLOR_RED)
+            codex_color: int = 250 if use_extended else int(curses.COLOR_WHITE)
+            gemini_color: int = 205 if use_extended else int(curses.COLOR_MAGENTA)
+            agent_colors = {
+                "claude": 1,
+                "codex": 2,
+                "gemini": 3,
+            }
+            curses.init_pair(agent_colors["claude"], claude_color, -1)
+            curses.init_pair(agent_colors["codex"], codex_color, -1)
+            curses.init_pair(agent_colors["gemini"], gemini_color, -1)
+            agent_attrs = {
+                "claude": curses.color_pair(agent_colors["claude"]),
+                "codex": curses.color_pair(agent_colors["codex"]) | (0 if use_extended else int(curses.A_BOLD)),
+                "gemini": curses.color_pair(agent_colors["gemini"]),
+            }
+            use_colors = True
+
         selected = 0
         filter_text = ""
         entries = _load()
@@ -305,7 +437,7 @@ def _run_session_picker(db_path: str) -> SessionListEntry | None:
             stdscr.addstr(
                 table_header_row,
                 0,
-                "Idx  ID       Agent  Mode  Last Active        Tmux  Title"[:width],
+                "Idx  Last Active        ID       Agent  Mode  Title"[:width],
             )
             stdscr.hline(table_header_row + 1, 0, ord("-"), max(0, width - 1))
 
@@ -318,19 +450,20 @@ def _run_session_picker(db_path: str) -> SessionListEntry | None:
             for i, entry in enumerate(filtered[start : start + view_height]):
                 row_idx = start + i
                 last = _format_timestamp(entry.last_activity or entry.created_at)
-                tmux = "yes" if entry.tmux_ready else "no"
                 line = (
-                    f"{entry.index:>3}  {entry.session_id[:8]:<8}  "
-                    f"{(entry.active_agent or '—'):<6}  {(entry.thinking_mode or '—'):<4}  "
-                    f"{last:<16}  {tmux:<4}  {entry.title}"
+                    f"{entry.index:>3}  {last:<16}  {entry.session_id[:8]:<8}  "
+                    f"{(entry.active_agent or '—'):<6}  {(entry.thinking_mode or '—'):<4}  {entry.title}"
                 )
                 row_y = table_header_row + 2 + i
+                row_attr = curses.A_NORMAL
+                if use_colors:
+                    agent_key = (entry.active_agent or "").lower()
+                    row_attr |= agent_attrs.get(agent_key, 0)
                 if row_idx == selected:
-                    stdscr.attron(curses.A_REVERSE)
-                    stdscr.addstr(row_y, 0, line[:width])
-                    stdscr.attroff(curses.A_REVERSE)
-                else:
-                    stdscr.addstr(row_y, 0, line[:width])
+                    row_attr |= curses.A_REVERSE
+                stdscr.attron(row_attr)
+                stdscr.addstr(row_y, 0, line[:width])
+                stdscr.attroff(row_attr)
 
             footer = "↑↓ move  Enter attach  / filter  r refresh  q quit"
             stdscr.addstr(height - 2, 0, footer[:width])
@@ -432,8 +565,7 @@ def _build_agent_start_command(
     args: list[str],
     stored_mode: str | None,
 ) -> tuple[str, str]:
-    default_mode = stored_mode or ThinkingMode.SLOW.value
-    thinking_mode, user_args = _split_thinking_mode(args, default_mode, agent_name)
+    thinking_mode, user_args = _parse_agent_args(agent_name, args, stored_mode)
     has_prompt = bool(user_args)
 
     base_cmd = get_agent_command(agent_name, thinking_mode=thinking_mode, interactive=has_prompt)
@@ -657,15 +789,45 @@ def _attach_session_entry(
     _attach_tmux(tmux_name)
 
 
+class _CleanupAdapterClient(AdapterClient):
+    async def delete_channel(self, session: "Session") -> bool:
+        _ = session
+        return True
+
+
+def _cleanup_stale_on_startup() -> None:
+    if not shutil.which("tmux"):
+        return
+
+    async def _run() -> None:
+        await db.initialize()
+        try:
+            client = _CleanupAdapterClient()
+            await session_cleanup.cleanup_all_stale_sessions(client)
+            await session_cleanup.cleanup_orphan_tmux_sessions()
+            await session_cleanup.cleanup_orphan_workspaces()
+            await session_cleanup.cleanup_orphan_mcp_wrappers()
+            await db.cleanup_stale_voice_assignments()
+        finally:
+            await db.close()
+
+    try:
+        asyncio.run(_run())
+    except Exception as exc:
+        sys.stderr.write(f"telec: cleanup skipped ({exc})\n")
+
+
 def main() -> None:
     argv = sys.argv[1:]
     db_path = config.database.path
 
-    if argv and argv[0] in {"ls", "list", "sessions"}:
-        _list_sessions(db_path)
+    if os.getenv("TELEC_COMPLETE") == "1":
+        _complete_from_env()
         return
 
-    if not argv or argv[0] in {"attach", "open"}:
+    _cleanup_stale_on_startup()
+
+    if not argv:
         selection = None
         if argv and len(argv) > 1:
             selection = argv[1]
@@ -704,6 +866,10 @@ def main() -> None:
         sys.stderr.write(f"{exc}\n")
         sys.exit(1)
 
+    if parsed.action == "list":
+        _list_sessions(db_path)
+        return
+
     tty_path = _resolve_tty()
     if not tty_path:
         sys.stderr.write("telec: could not resolve a controlling TTY\n")
@@ -723,14 +889,25 @@ def main() -> None:
 
         if parsed.action == "start":
             agent_name = normalize_agent_name(parsed.agent or "")
-            session_id = ensure_terminal_session(tty_path, parent_pid, agent_name, cwd)
+            thinking_mode_for_title, user_args = _parse_agent_args(agent_name, parsed.args, None)
+            description = " ".join(user_args) if user_args else "New session"
+            session_id = ensure_terminal_session(
+                tty_path,
+                parent_pid,
+                agent_name,
+                cwd,
+                thinking_mode=thinking_mode_for_title,
+                description=description,
+            )
+        elif parsed.action == "new_session":
+            session_id = ensure_terminal_session(tty_path, parent_pid, None, cwd, description="New session")
         elif parsed.session_id:
             session = _load_session(conn, parsed.session_id)
             if not session:
                 raise ValueError(f"Session {parsed.session_id[:8]} not found")
             session_id = parsed.session_id
         else:
-            session_id = ensure_terminal_session(tty_path, parent_pid, None, cwd)
+            session_id = ensure_terminal_session(tty_path, parent_pid, None, cwd, description="New session")
 
         if not session_id:
             raise ValueError("Failed to resolve TeleClaude session")
@@ -760,6 +937,14 @@ def main() -> None:
                 native_pid=parent_pid if parent_pid > 1 else None,
             )
 
+        elif parsed.action == "new_session":
+            _update_ux_state(
+                conn,
+                session_id,
+                native_tty_path=tty_path,
+                native_pid=parent_pid if parent_pid > 1 else None,
+            )
+            sys.stderr.write(f"Created terminal session {session_id}\n")
         else:
             if parsed.session_id:
                 _update_ux_state(

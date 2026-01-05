@@ -1,6 +1,7 @@
 """Database manager for TeleClaude - handles session persistence and retrieval."""
 
 import json
+import sqlite3
 import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -61,6 +62,43 @@ class Db:
 
         await self._db.executescript(schema_sql)
         await self._db.commit()
+        await self._normalize_adapter_metadata()
+
+    async def _normalize_adapter_metadata(self) -> None:
+        """Normalize adapter_metadata types (e.g., topic_id stored as string)."""
+        cursor = await self.conn.execute("SELECT session_id, adapter_metadata FROM sessions")
+        rows = await cursor.fetchall()
+        if not rows:
+            return
+
+        any_updated = False
+        for row in rows:
+            raw = cast(object, row["adapter_metadata"])
+            if not isinstance(raw, str) or not raw:
+                continue
+            try:
+                parsed: object = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            tg = parsed.get("telegram")
+            row_updated = False
+            if isinstance(tg, dict):
+                topic_id = tg.get("topic_id")
+                if isinstance(topic_id, str) and topic_id.isdigit():
+                    tg["topic_id"] = int(topic_id)
+                    row_updated = True
+            if row_updated:
+                session_id = cast(str, row["session_id"])
+                await self.conn.execute(
+                    "UPDATE sessions SET adapter_metadata = ? WHERE session_id = ?",
+                    (json.dumps(parsed), session_id),
+                )
+                any_updated = True
+
+        if any_updated:
+            await self.conn.commit()
 
     @property
     def conn(self) -> aiosqlite.Connection:
@@ -127,7 +165,6 @@ class Db:
             origin_adapter=origin_adapter,
             title=title or f"[{computer_name}] New session",
             adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
-            closed=False,
             created_at=now,
             last_activity=now,
             terminal_size=terminal_size,
@@ -140,9 +177,9 @@ class Db:
             """
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
-                origin_adapter, adapter_metadata, closed, created_at,
+                origin_adapter, adapter_metadata, created_at,
                 last_activity, terminal_size, working_directory, description
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -151,7 +188,6 @@ class Db:
                 data["tmux_session_name"],
                 data["origin_adapter"],
                 data["adapter_metadata"],
-                data["closed"],
                 data["created_at"],
                 data["last_activity"],
                 data["terminal_size"],
@@ -190,10 +226,7 @@ class Db:
         Returns:
             Session object or None if not found
         """
-        cursor = await self.conn.execute(
-            f"SELECT * FROM sessions WHERE json_extract(ux_state, '$.{field}') = ?",
-            (value,),
-        )
+        cursor = await self.conn.execute(_ux_state_query(field), (value,))
         row = await cursor.fetchone()
 
         if not row:
@@ -204,14 +237,12 @@ class Db:
     async def list_sessions(
         self,
         computer_name: Optional[str] = None,
-        closed: Optional[bool] = None,
         origin_adapter: Optional[str] = None,
     ) -> list[Session]:
         """List sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
-        closed: Legacy filter by closed status (sessions are deleted on close)
             origin_adapter: Filter by origin adapter (telegram, redis, etc.)
 
         Returns:
@@ -223,9 +254,6 @@ class Db:
         if computer_name:
             query += " AND computer_name = ?"
             params.append(computer_name)
-        if closed is not None:
-            query += " AND closed = ?"
-            params.append(1 if closed else 0)
         if origin_adapter:
             query += " AND origin_adapter = ?"
             params.append(origin_adapter)
@@ -398,12 +426,11 @@ class Db:
         await self.conn.commit()
         logger.debug("Deleted session %s from database", session_id[:8])
 
-    async def count_sessions(self, computer_name: Optional[str] = None, closed: Optional[bool] = None) -> int:
+    async def count_sessions(self, computer_name: Optional[str] = None) -> int:
         """Count sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
-        closed: Legacy filter by closed status (sessions are deleted on close)
 
         Returns:
             Number of sessions
@@ -414,9 +441,6 @@ class Db:
         if computer_name:
             query += " AND computer_name = ?"
             params.append(computer_name)
-        if closed is not None:
-            query += " AND closed = ?"
-            params.append(1 if closed else 0)
 
         cursor = await self.conn.execute(query, params)
         row = await cursor.fetchone()
@@ -443,13 +467,20 @@ class Db:
         # SQLite JSON functions - adapter_metadata is nested: {adapter_type: {metadata_key: value}}
         # NOTE: We do NOT filter by origin_adapter - observer adapters need to find
         # sessions where they have metadata even if they weren't the initiator
-        cursor = await self.conn.execute(
-            f"""
+        query = f"""
             SELECT * FROM sessions
             WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
-            """,
-            (metadata_value,),
-        )
+            """
+        params: list[object] = [metadata_value]
+        if isinstance(metadata_value, int):
+            query = f"""
+                SELECT * FROM sessions
+                WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
+                   OR json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
+                """
+            params.append(str(metadata_value))
+
+        cursor = await self.conn.execute(query, params)
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
@@ -473,39 +504,15 @@ class Db:
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
-    async def get_all_sessions(self, closed: Optional[bool] = None) -> list[Session]:
-        """Get all sessions with optional closed filter (legacy).
-
-        Args:
-            closed: Legacy filter by closed status (sessions are deleted on close)
-
-        Returns:
-            List of sessions ordered by last activity
-        """
-        if closed is None:
-            query = "SELECT * FROM sessions ORDER BY last_activity DESC"
-            params: tuple[int, ...] = ()
-        else:
-            query = "SELECT * FROM sessions WHERE closed = ? ORDER BY last_activity DESC"
-            params = (1 if closed else 0,)
-
-        cursor = await self.conn.execute(query, params)
+    async def get_all_sessions(self) -> list[Session]:
+        """Get all sessions ordered by last activity."""
+        cursor = await self.conn.execute("SELECT * FROM sessions ORDER BY last_activity DESC")
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
     async def get_active_sessions(self) -> list[Session]:
-        """Get all open sessions (closed=False, legacy).
-
-        Returns:
-            List of open sessions
-        """
-        cursor = await self.conn.execute(
-            """
-            SELECT * FROM sessions
-            WHERE closed = 0
-            ORDER BY last_activity DESC
-            """
-        )
+        """Get all sessions ordered by last activity."""
+        cursor = await self.conn.execute("SELECT * FROM sessions ORDER BY last_activity DESC")
         rows = await cursor.fetchall()
         all_sessions = [Session.from_dict(dict(row)) for row in rows]
 
@@ -885,6 +892,36 @@ class Db:
             (attempt_count, next_attempt_at, error, row_id),
         )
         await self.conn.commit()
+
+
+def _ux_state_query(field: str) -> str:
+    return (
+        "SELECT session_id FROM sessions "
+        f"WHERE json_extract(ux_state, '$.{field}') = ? "
+        "ORDER BY last_activity DESC LIMIT 1"
+    )
+
+
+def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | None:
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        cursor = conn.execute(query, (value,))
+        row = cast(tuple[object, ...] | None, cursor.fetchone())
+        return str(row[0]) if row else None
+    finally:
+        conn.close()
+
+
+def get_session_id_by_ux_state_sync(db_path: str, field: str, value: object) -> str | None:
+    """Sync helper for lookups in standalone scripts (hook receiver, telec)."""
+    return _fetch_session_id_sync(db_path, _ux_state_query(field), value)
+
+
+def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:
+    """Sync helper to find session_id by tmux session name."""
+    query = "SELECT session_id FROM sessions WHERE tmux_session_name = ? ORDER BY last_activity DESC LIMIT 1"
+    return _fetch_session_id_sync(db_path, query, tmux_name)
 
 
 # Module-level singleton instance (initialized on first import)

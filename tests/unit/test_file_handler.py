@@ -27,7 +27,6 @@ def mock_session():
             telegram=TelegramAdapterMetadata(topic_id=456, output_message_id="msg_123")
         ),
         title="Test Session",
-        closed=False,
     )
 
 
@@ -165,7 +164,6 @@ class TestHandleFile:
                 telegram=TelegramAdapterMetadata(topic_id=456)  # No output_message_id
             ),
             title="Test Session",
-            closed=False,
         )
 
         with (

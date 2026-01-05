@@ -494,7 +494,7 @@ sequenceDiagram
     TG->>Client: handle_event(COMMAND, command="list")
     Client->>Daemon: handle_command("list")
 
-    Daemon->>DB: list_sessions(closed=False)
+    Daemon->>DB: list_sessions()
     DB-->>Daemon: [Session1, Session2, Session3]
 
     loop For each session
@@ -510,7 +510,7 @@ sequenceDiagram
 
 ---
 
-### UC-S2: Close Session
+### UC-S2: End Session
 
 **Actor:** Human user via Telegram
 
@@ -542,15 +542,15 @@ sequenceDiagram
     Note over Daemon: Delete output file
     Daemon->>FS: unlink(session_output/abc123.txt)
 
-    Note over Daemon: Mark session as closed
-    Daemon->>DB: update_session(session_id, closed=True)
+    Note over Daemon: Delete session record
+    Daemon->>DB: delete_session(session_id)
 
-    Note over Daemon: Close Telegram topic
+    Note over Daemon: Delete Telegram topic
     Daemon->>Client: delete_channel(session_id)
-    Client->>TG: close_topic()
+    Client->>TG: delete_topic()
 
-    Client->>TG: send_message("Session closed")
-    TG-->>User: "✅ Session closed"
+    Client->>TG: send_message("Session ended")
+    TG-->>User: "✅ Session ended"
 ```
 
 **Key Points:**
@@ -558,8 +558,8 @@ sequenceDiagram
 - Stops output polling
 - Kills tmux session
 - Deletes output file (cleanup)
-- Marks session as closed (not deleted from DB)
-- Closes Telegram topic
+- Deletes session from DB
+- Deletes Telegram topic
 
 ---
 
@@ -579,7 +579,7 @@ sequenceDiagram
     participant TG as TelegramAdapter
 
     Note over Daemon: Daemon starting
-    Daemon->>DB: list_sessions(closed=False)
+    Daemon->>DB: list_sessions()
     DB-->>Daemon: [Session1, Session2]
 
     loop For each active session
@@ -590,8 +590,8 @@ sequenceDiagram
             Note over Daemon: Session restored
         else tmux session missing
             tmux-->>Daemon: Not found
-            Note over Daemon: Mark as closed
-            Daemon->>DB: update_session(session_id, closed=True)
+            Note over Daemon: Terminate and delete
+            Daemon->>DB: delete_session(session_id)
         end
     end
 ```
@@ -600,7 +600,7 @@ sequenceDiagram
 
 - Sessions persist in SQLite
 - tmux sessions may survive daemon restart
-- Dead tmux sessions auto-detected and closed
+- Dead tmux sessions auto-detected and terminated
 - No output polling resumed (user must send new command)
 
 ---

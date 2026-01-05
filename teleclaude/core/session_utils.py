@@ -14,6 +14,17 @@ from teleclaude.core.db import db
 OUTPUT_DIR = Path("workspace")
 
 
+def unique_title(base_title: str, existing_titles: set[str]) -> str:
+    """Return a unique title by appending a counter if needed."""
+    if base_title not in existing_titles:
+        return base_title
+
+    counter = 2
+    while f"{base_title} ({counter})" in existing_titles:
+        counter += 1
+    return f"{base_title} ({counter})"
+
+
 async def ensure_unique_title(base_title: str) -> str:
     """Ensure session title is unique by appending counter if needed.
 
@@ -37,17 +48,7 @@ async def ensure_unique_title(base_title: str) -> str:
     # Get all active sessions
     existing_sessions = await db.list_sessions()
     existing_titles = {s.title for s in existing_sessions}
-
-    # If title is unique, return as-is
-    if base_title not in existing_titles:
-        return base_title
-
-    # Find next available counter
-    counter = 2
-    while f"{base_title} ({counter})" in existing_titles:
-        counter += 1
-
-    return f"{base_title} ({counter})"
+    return unique_title(base_title, existing_titles)
 
 
 def get_session_output_dir(session_id: str) -> Path:
@@ -163,6 +164,41 @@ def build_session_title(
     # Human session
     target_prefix = build_computer_prefix(computer_name, agent_name, thinking_mode)
     return f"{short_project}: {target_prefix} - {description}"
+
+
+def get_short_project_name(working_dir: str, base_project: str | None = None) -> str:
+    """Extract short project name from path.
+
+    Format depends on whether base_project is provided:
+    - With base_project: "RootFolder" or "RootFolder/slug" if working in subfolder
+    - Without base_project: Just last folder name
+
+    Args:
+        working_dir: Full working directory path (e.g., /home/morriz/apps/TeleClaude/trees/fix)
+        base_project: Optional base project path (e.g., /home/morriz/apps/TeleClaude)
+
+    Returns:
+        Short name like "TeleClaude" or "TeleClaude/fix"
+    """
+    working_dir = working_dir.rstrip("/")
+
+    if base_project:
+        base_project = base_project.rstrip("/")
+        # Get root folder name from base_project
+        root_name = base_project.split("/")[-1] if base_project else "unknown"
+
+        # Check if working_dir has a subfolder beyond base_project
+        if working_dir.startswith(base_project) and len(working_dir) > len(base_project):
+            # Extract subfolder part and get the slug (last component)
+            subfolder = working_dir[len(base_project) :].strip("/")
+            slug = subfolder.split("/")[-1] if subfolder else ""
+            if slug:
+                return f"{root_name}/{slug}"
+        return root_name
+
+    # Fallback: just last folder name
+    parts = working_dir.split("/")
+    return parts[-1] if parts else "unknown"
 
 
 # Regex patterns for parsing session titles

@@ -87,7 +87,6 @@ class TestSession:
             origin_adapter="telegram",
             title="Roundtrip Test",
             adapter_metadata=metadata,
-            closed=False,
             created_at=now,
             last_activity=now,
             terminal_size="100x30",
@@ -104,9 +103,27 @@ class TestSession:
         assert restored.tmux_session_name == original.tmux_session_name
         assert restored.origin_adapter == original.origin_adapter
         assert restored.title == original.title
-        assert restored.closed == original.closed
         assert restored.terminal_size == original.terminal_size
         assert restored.working_directory == original.working_directory
+
+    def test_session_from_dict_parses_string_topic_id(self):
+        """Test adapter_metadata topic_id stored as string is parsed to int."""
+        now = datetime.now()
+        data = {
+            "session_id": "test-topic-id",
+            "computer_name": "TestPC",
+            "tmux_session_name": "test-tmux",
+            "origin_adapter": "telegram",
+            "title": "Test Session",
+            "created_at": now,
+            "last_activity": now,
+            "adapter_metadata": json.dumps({"telegram": {"topic_id": "123", "output_message_id": "42"}}),
+        }
+
+        session = Session.from_dict(data)
+
+        assert session.adapter_metadata.telegram is not None
+        assert session.adapter_metadata.telegram.topic_id == 123
 
 
 class TestRecording:

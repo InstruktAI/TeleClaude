@@ -5,7 +5,7 @@ was wiping tracked message IDs before they could be deleted on next user input.
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -61,14 +61,19 @@ async def test_polling_does_not_clear_pending_deletions():
     get_output_file = Mock(return_value=output_file)
 
     # Run polling
-    await polling_coordinator.poll_and_send_output(
-        session_id="test-123",
-        tmux_session_name="test-tmux",
-        output_poller=output_poller,
-        adapter_client=adapter_client,
-        get_output_file=get_output_file,
-        _skip_register=True,
-    )
+    with patch(
+        "teleclaude.core.terminal_bridge.session_exists",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        await polling_coordinator.poll_and_send_output(
+            session_id="test-123",
+            tmux_session_name="test-tmux",
+            output_poller=output_poller,
+            adapter_client=adapter_client,
+            get_output_file=get_output_file,
+            _skip_register=True,
+        )
 
     # CRITICAL ASSERTION: clear_pending_deletions should NOT have been called
     # The finally block should not touch deletion tracking; that's handled by

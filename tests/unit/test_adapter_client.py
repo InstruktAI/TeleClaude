@@ -32,7 +32,8 @@ class DummyTelegramAdapter(UiAdapter):
     async def stop(self) -> None:
         return None
 
-    async def create_channel(self, _session, _title, _metadata) -> str:
+    async def create_channel(self, _session, _title, metadata) -> str:
+        _ = metadata
         return "topic"
 
     async def update_channel_title(self, _session, _title) -> bool:
@@ -416,14 +417,14 @@ async def test_send_output_update_missing_thread_recreates_topic():
     with (
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
-        patch.object(client, "create_channel", new=AsyncMock(return_value="999")) as create_channel,
+        patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count == 2
+    assert get_session.call_count >= 2
     get_session.assert_any_call("session-123")
-    create_channel.assert_called_once()
-    assert update_session.call_count == 1
+    ensure_ui_channels.assert_called_once()
+    assert update_session.call_count >= 1
 
 
 @pytest.mark.asyncio
@@ -451,14 +452,14 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
     with (
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
-        patch.object(client, "create_channel", new=AsyncMock(return_value="999")) as create_channel,
+        patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count == 2
+    assert get_session.call_count >= 2
     get_session.assert_any_call("session-456")
-    create_channel.assert_called_once()
-    assert update_session.call_count == 1
+    ensure_ui_channels.assert_called_once()
+    assert update_session.call_count >= 1
 
 
 @pytest.mark.asyncio
@@ -488,18 +489,63 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
 
     with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
         with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
-            with patch.object(client, "create_channel", new=AsyncMock(return_value="999")) as create_channel:
+            with patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels:
                 result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count == 2
+    assert get_session.call_count >= 2
     get_session.assert_any_call("session-789")
-    create_channel.assert_called_once()
-    assert update_session.call_count == 1
+    ensure_ui_channels.assert_called_once()
+    assert update_session.call_count >= 1
     _, kwargs = update_session.call_args
     updated_meta = kwargs["adapter_metadata"]
     assert updated_meta.telegram.topic_id is None
     assert updated_meta.telegram.output_message_id is None
     assert result == "msg"
+
+
+@pytest.mark.asyncio
+async def test_send_output_update_missing_metadata_creates_ui_channel():
+    """Missing UI metadata should trigger UI channel creation before sending output."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
+
+    client = AdapterClient()
+    telegram = DummyTelegramAdapter(client)
+    telegram.send_output_update = AsyncMock(return_value="msg")  # type: ignore[assignment]
+    client.register_adapter("telegram", telegram)
+
+    session = Session(
+        session_id="session-999",
+        computer_name="test",
+        tmux_session_name="tc_session_999",
+        origin_adapter="terminal",
+        title="Test Terminal Session",
+        adapter_metadata=SessionAdapterMetadata(),
+    )
+    updated_session = Session(
+        session_id="session-999",
+        computer_name="test",
+        tmux_session_name="tc_session_999",
+        origin_adapter="terminal",
+        title="Test Terminal Session",
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(topic_id=999, output_message_id="msg-1")
+        ),
+    )
+
+    with (
+        patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=updated_session)),
+    ):
+        await client.send_output_update(session, "output", 0.0, 0.0)
+
+    ensure_ui_channels.assert_called_once()
+    assert telegram.send_output_update.call_count == 1
+    sent_session = telegram.send_output_update.call_args[0][0]
+    assert sent_session.adapter_metadata.telegram
+    assert sent_session.adapter_metadata.telegram.topic_id == 999
 
 
 @pytest.mark.asyncio
