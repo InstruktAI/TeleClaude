@@ -268,6 +268,30 @@ provision_logs() {
     print_success "Log directory provisioned"
 }
 
+# Install global telec CLI symlink
+install_global_cli() {
+    print_header "Installing Global CLI (telec)"
+
+    local target_dir=""
+    if [ "$OS" = "macos" ] && [ -d "/opt/homebrew/bin" ]; then
+        target_dir="/opt/homebrew/bin"
+    elif [ -d "/usr/local/bin" ]; then
+        target_dir="/usr/local/bin"
+    else
+        target_dir="$HOME/.local/bin"
+        mkdir -p "$target_dir"
+    fi
+
+    local target="$target_dir/telec"
+    if [ -w "$target_dir" ]; then
+        ln -sf "$INSTALL_DIR/bin/telec" "$target"
+    else
+        sudo ln -sf "$INSTALL_DIR/bin/telec" "$target"
+    fi
+
+    print_success "Installed telec at $target"
+}
+
 # Main
 main() {
     print_header "TeleClaude Install"
@@ -280,6 +304,7 @@ main() {
     install_system_deps
     install_python_deps
     provision_logs
+    install_global_cli
 
     print_header "Install Complete"
     print_success "Binaries and Python dependencies installed"

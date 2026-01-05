@@ -201,6 +201,8 @@ def test_format_tool_call_codex_adds_prompts_prefix():
         next_call="teleclaude__next_work",
     )
     assert 'command="/prompts:next-build"' in result
+    assert "execution script" in result
+    assert "do not re-read" in result
 
 
 def test_format_tool_call_claude_no_prefix():
@@ -216,6 +218,8 @@ def test_format_tool_call_claude_no_prefix():
     )
     assert 'command="next-build"' in result
     assert "/prompts:" not in result
+    assert "execution script" in result
+    assert "do not re-read" in result
 
 
 def test_format_tool_call_gemini_no_prefix():

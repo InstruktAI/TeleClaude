@@ -11,10 +11,10 @@ for the orchestrator AI to execute literally.
 import json
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from git import Repo
-from git.exc import InvalidGitRepositoryError
+from git.exc import GitCommandError, InvalidGitRepositoryError
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.db import Db
@@ -76,6 +76,11 @@ POST_COMPLETION: dict[str, str] = {
    - Keep session alive and help resolve""",
 }
 
+REVIEW_DIFF_NOTE = (
+    "Review guard: if `git log --oneline HEAD..main` shows commits, "
+    "diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`."
+)
+
 
 # =============================================================================
 # Response Formatters (plain text output)
@@ -104,6 +109,8 @@ def format_tool_call(
         post_completion = post_completion.format(args=args, next_call=next_call)
 
     result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
+
+IMPORTANT: This output is an execution script. Follow it verbatim. If you've already read that command file, do not re-read it.
 
 Execute these steps in order:
 
@@ -788,6 +795,30 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
         raise
 
 
+def is_main_ahead(cwd: str, slug: str) -> bool:
+    """Check if local main has commits not in the worktree branch.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug (worktree is at trees/{slug})
+
+    Returns:
+        True if main is ahead of HEAD for the worktree, False otherwise.
+    """
+    worktree_path = Path(cwd) / "trees" / slug
+    if not worktree_path.exists():
+        return False
+
+    try:
+        repo = Repo(worktree_path)
+        ahead_count_raw = repo.git.rev_list("--count", "HEAD..main")  # type: ignore[misc]
+        ahead_count = cast(str, ahead_count_raw).strip()
+        return int(ahead_count) > 0
+    except (InvalidGitRepositoryError, GitCommandError, ValueError):
+        logger.warning("Cannot determine main ahead status for %s", worktree_path)
+        return False
+
+
 # =============================================================================
 # Main Functions
 # =============================================================================
@@ -1024,6 +1055,14 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call="teleclaude__next_work",
             )
         # Review not started or still pending
+        if is_main_ahead(cwd, resolved_slug):
+            return format_error(
+                "MAIN_AHEAD",
+                f"main has commits not in trees/{resolved_slug}. Sync the worktree with main before review.",
+                next_call=(
+                    f"Merge or rebase main into trees/{resolved_slug}, then call teleclaude__next_work() again."
+                ),
+            )
         agent, mode = await get_available_agent(db, "review", WORK_FALLBACK)
         return format_tool_call(
             command="next-review",
@@ -1033,6 +1072,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
             next_call="teleclaude__next_work",
+            note=REVIEW_DIFF_NOTE,
         )
 
     # 9. Review approved - dispatch finalize

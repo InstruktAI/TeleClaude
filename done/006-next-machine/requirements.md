@@ -439,7 +439,7 @@ Merge conflicts, push failures, and network issues need AI judgment to resolve.
 
 1. Reads `todos/{slug}/requirements.md`
 2. Reads `todos/{slug}/implementation-plan.md`
-3. Runs `git diff main..HEAD`
+3. Runs `git diff $(git merge-base HEAD main)..HEAD`
 4. Evaluates: requirements coverage, code quality, tests, security
 5. Writes `todos/{slug}/review-findings.md` with verdict:
    - `[x] APPROVE` - ready to merge

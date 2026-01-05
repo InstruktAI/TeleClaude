@@ -267,7 +267,7 @@ async def test_handle_voice_forwards_transcription_to_process():
                 new_callable=AsyncMock,
             ) as mock_transcribe,
             patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.send_keys",
+                "teleclaude.core.voice_message_handler.terminal_io.send_text",
                 new_callable=AsyncMock,
             ) as mock_send_keys,
         ):
@@ -283,7 +283,7 @@ async def test_handle_voice_forwards_transcription_to_process():
         # Verify transcription forwarded to terminal
         mock_send_keys.assert_called_once()
         call_args = mock_send_keys.call_args[0]
-        assert call_args[0] == "tc_test"
+        assert call_args[0] == mock_session
         assert call_args[1] == "Transcribed text"
 
     finally:
@@ -323,7 +323,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
                 new_callable=AsyncMock,
             ) as mock_transcribe,
             patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.send_keys",
+                "teleclaude.core.voice_message_handler.terminal_io.send_text",
                 new_callable=AsyncMock,
             ) as mock_send_keys,
         ):
@@ -339,7 +339,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
         # Verify transcription forwarded to terminal even without feedback
         mock_send_keys.assert_called_once()
         call_args = mock_send_keys.call_args[0]
-        assert call_args[0] == "tc_test"
+        assert call_args[0] == mock_session
         assert call_args[1] == "Transcribed text"
 
         # Verify temp file cleaned up

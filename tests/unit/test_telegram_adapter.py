@@ -105,11 +105,13 @@ class TestMessaging:
         with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
-            metadata = MessageMetadata()
+            metadata = MessageMetadata(parse_mode="MarkdownV2")
             result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata)
 
             assert result is True
             telegram_adapter.app.bot.edit_message_text.assert_called_once()
+            call_kwargs = telegram_adapter.app.bot.edit_message_text.call_args.kwargs
+            assert call_kwargs["parse_mode"] == "MarkdownV2"
 
     @pytest.mark.asyncio
     async def test_delete_message_success(self, telegram_adapter):

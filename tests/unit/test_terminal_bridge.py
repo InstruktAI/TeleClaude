@@ -1,5 +1,6 @@
 """Unit tests for terminal_bridge.py."""
 
+import errno
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,115 @@ def setup_config():
     # Mock _SHELL_NAME for consistent test behavior
     with patch.object(terminal_bridge, "_SHELL_NAME", "zsh"):
         yield
+
+
+def test_tty_to_pty_master_legacy_suffix():
+    """Legacy /dev/ttyp0 style names map to /dev/ptyp0."""
+    assert terminal_bridge._tty_to_pty_master("/dev/ttyp0") == "/dev/ptyp0"
+
+
+def test_tty_to_pty_master_modern_ttys_returns_none():
+    """Modern /dev/ttysNNN devices do not expose a master path."""
+    assert terminal_bridge._tty_to_pty_master("/dev/ttys050") is None
+
+
+@pytest.mark.asyncio
+async def test_send_keys_to_tty_injects_input():
+    """send_keys_to_tty should inject bytes via TIOCSTI when available."""
+    injected: list[bytes] = []
+
+    async def _run(fn):
+        fn()
+
+    def _ioctl(_fd: int, _op: int, arg: bytes) -> int:
+        injected.append(arg)
+        return 0
+
+    with (
+        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(terminal_bridge.os, "open", return_value=3),
+        patch.object(terminal_bridge.os, "close"),
+        patch.object(terminal_bridge.fcntl, "ioctl", side_effect=_ioctl),
+    ):
+        ok = await terminal_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
+
+    assert ok is True
+    assert b"hello\n" == b"".join(injected)
+
+
+@pytest.mark.asyncio
+async def test_send_keys_to_tty_writes_to_pty_master():
+    """send_keys_to_tty should write directly when given a PTY master path."""
+    written: list[bytes] = []
+
+    async def _run(fn):
+        fn()
+
+    def _write(_fd: int, chunk: bytes) -> int:
+        write_len = max(1, len(chunk) // 2)
+        written.append(chunk[:write_len])
+        return write_len
+
+    with (
+        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(terminal_bridge.os, "open", return_value=3),
+        patch.object(terminal_bridge.os, "close"),
+        patch.object(terminal_bridge.os, "write", side_effect=_write),
+    ):
+        ok = await terminal_bridge.send_keys_to_tty("/dev/ptys001", "hello", send_enter=True)
+
+    assert ok is True
+    assert b"hello\n" == b"".join(written)
+
+
+@pytest.mark.asyncio
+async def test_send_keys_to_tty_returns_false_on_hard_error():
+    """send_keys_to_tty should return False if injection fails with a hard error."""
+
+    async def _run(fn):
+        fn()
+
+    def _ioctl(_fd: int, _op: int, _arg: bytes) -> int:
+        raise OSError(errno.EPERM, "not permitted")
+
+    with (
+        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(terminal_bridge.os, "open", return_value=3),
+        patch.object(terminal_bridge.os, "close"),
+        patch.object(terminal_bridge.fcntl, "ioctl", side_effect=_ioctl),
+    ):
+        ok = await terminal_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
+
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_send_keys_to_tty_retries_on_eagain():
+    """send_keys_to_tty should retry injection on EAGAIN and still send all bytes."""
+    injected: list[bytes] = []
+    calls = 0
+
+    async def _run(fn):
+        fn()
+
+    def _ioctl(_fd: int, _op: int, arg: bytes) -> int:
+        nonlocal calls
+        if calls < 2:
+            calls += 1
+            raise OSError(errno.EAGAIN, "try again")
+        injected.append(arg)
+        return 0
+
+    with (
+        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(terminal_bridge.os, "open", return_value=3),
+        patch.object(terminal_bridge.os, "close"),
+        patch.object(terminal_bridge.fcntl, "ioctl", side_effect=_ioctl),
+    ):
+        ok = await terminal_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
+
+    assert ok is True
+    assert b"hello\n" == b"".join(injected)
 
 
 class TestSendKeys:

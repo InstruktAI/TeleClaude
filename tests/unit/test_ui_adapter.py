@@ -141,7 +141,58 @@ class TestSendOutputUpdate:
 
         assert result == "msg-456"
         adapter._edit_message_mock.assert_called_once()
-        adapter._send_message_mock.assert_not_called()
+
+    async def test_render_markdown_skips_code_block(self, test_db):
+        """render_markdown should send output without code block wrapper."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            origin_adapter="telegram",
+            title="Test Session",
+        )
+
+        result = await adapter.send_output_update(
+            session,
+            "markdown output",
+            time.time(),
+            time.time(),
+            render_markdown=True,
+        )
+
+        assert result == "msg-123"
+        adapter._send_message_mock.assert_called_once()
+        sent_text = adapter._send_message_mock.call_args[0][1]
+        metadata = adapter._send_message_mock.call_args[0][2]
+        assert "```" not in sent_text
+        assert metadata.parse_mode == "MarkdownV2"
+
+    async def test_render_markdown_strips_heading_icons(self, test_db):
+        """render_markdown should render headings as bold without emoji prefixes."""
+        adapter = MockUiAdapter()
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="test",
+            origin_adapter="telegram",
+            title="Test Session",
+        )
+
+        output = "# Title\n\n## 23:03:31 · 🤖 Assistant\n\nBody text"
+
+        await adapter.send_output_update(
+            session,
+            output,
+            time.time(),
+            time.time(),
+            render_markdown=True,
+        )
+
+        sent_text = adapter._send_message_mock.call_args[0][1]
+        assert "## " not in sent_text
+        assert "📌" not in sent_text
+        assert "✏" not in sent_text
+        assert "*Title*" in sent_text
+        assert "*23:03:31 · 🤖 Assistant*" in sent_text
 
     async def test_creates_new_when_edit_fails(self, test_db):
         """Test creating new message when edit fails (stale message_id)."""

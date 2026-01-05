@@ -189,10 +189,8 @@ class TestHandleFile:
         """Test @ prefix is added for Claude Code."""
         sent_keys = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None, **kwargs: object
-        ) -> bool:
-            sent_keys.append((session_name, text))
+        async def mock_send_keys(session, text: str, **kwargs: object) -> bool:  # type: ignore[no-untyped-def]
+            sent_keys.append((session.session_id, text))
             return True
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
@@ -203,7 +201,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
-            patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -226,10 +224,8 @@ class TestHandleFile:
         """Test plain path is sent for non-Claude processes."""
         sent_keys = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None, **kwargs: object
-        ) -> bool:
-            sent_keys.append((session_name, text))
+        async def mock_send_keys(session, text: str, **kwargs: object) -> bool:  # type: ignore[no-untyped-def]
+            sent_keys.append((session.session_id, text))
             return True
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
@@ -240,7 +236,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=False),
-            patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -263,9 +259,7 @@ class TestHandleFile:
         """Test confirmation message includes file size."""
         sent_messages = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None, **kwargs: object
-        ) -> bool:
+        async def mock_send_keys(session, text: str, **kwargs: object) -> bool:  # type: ignore[no-untyped-def]
             return True
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
@@ -277,7 +271,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
-            patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
             await file_handler.handle_file(
@@ -299,9 +293,7 @@ class TestHandleFile:
         """Test error handling when send_keys fails."""
         sent_messages = []
 
-        async def mock_send_keys(
-            session_name: str, text: str, session_id: Optional[str] = None, **kwargs: object
-        ) -> bool:
+        async def mock_send_keys(session, text: str, **kwargs: object) -> bool:  # type: ignore[no-untyped-def]
             return False
 
         async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
@@ -313,7 +305,7 @@ class TestHandleFile:
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
-            patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id="test123",

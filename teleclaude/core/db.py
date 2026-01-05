@@ -211,7 +211,7 @@ class Db:
 
         Args:
             computer_name: Filter by computer name
-            closed: Filter by closed status (False = active, True = closed, None = all)
+        closed: Legacy filter by closed status (sessions are deleted on close)
             origin_adapter: Filter by origin adapter (telegram, redis, etc.)
 
         Returns:
@@ -403,7 +403,7 @@ class Db:
 
         Args:
             computer_name: Filter by computer name
-            closed: Filter by closed status (False = active, True = closed, None = all)
+        closed: Legacy filter by closed status (sessions are deleted on close)
 
         Returns:
             Number of sessions
@@ -474,10 +474,10 @@ class Db:
         return [Session.from_dict(dict(row)) for row in rows]
 
     async def get_all_sessions(self, closed: Optional[bool] = None) -> list[Session]:
-        """Get all sessions with optional closed filter.
+        """Get all sessions with optional closed filter (legacy).
 
         Args:
-            closed: Filter by closed status (False = active, True = closed, None = all)
+            closed: Legacy filter by closed status (sessions are deleted on close)
 
         Returns:
             List of sessions ordered by last activity
@@ -494,7 +494,7 @@ class Db:
         return [Session.from_dict(dict(row)) for row in rows]
 
     async def get_active_sessions(self) -> list[Session]:
-        """Get all open sessions (closed=False).
+        """Get all open sessions (closed=False, legacy).
 
         Returns:
             List of open sessions
@@ -536,7 +536,10 @@ class Db:
         active_agent: Optional[str] | object = ux_state._UNSET,
         thinking_mode: Optional[str] | object = ux_state._UNSET,
         native_tty_path: Optional[str] | object = ux_state._UNSET,
+        tmux_tty_path: Optional[str] | object = ux_state._UNSET,
         native_pid: Optional[int] | object = ux_state._UNSET,
+        tui_log_file: Optional[str] | object = ux_state._UNSET,
+        tui_capture_started: bool | object = ux_state._UNSET,
     ) -> None:
         """Update UX state for session (merges with existing).
 
@@ -563,7 +566,10 @@ class Db:
             active_agent=active_agent,
             thinking_mode=thinking_mode,
             native_tty_path=native_tty_path,
+            tmux_tty_path=tmux_tty_path,
             native_pid=native_pid,
+            tui_log_file=tui_log_file,
+            tui_capture_started=tui_capture_started,
         )
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:

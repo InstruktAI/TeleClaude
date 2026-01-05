@@ -273,6 +273,41 @@ def test_parse_session_transcript_agent_override(tmp_path):
     assert "there" in result
 
 
+def test_parse_session_transcript_escape_triple_backticks(tmp_path):
+    """Optional backtick escaping should replace ``` with a safe sequence."""
+    session_file = tmp_path / "claude-backticks.jsonl"
+    entries = [
+        json.dumps(
+            {
+                "timestamp": "2025-12-15T12:00:00.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "```py\nprint('hi')\n```"}],
+                },
+            }
+        )
+    ]
+    session_file.write_text("\n".join(entries), encoding="utf-8")
+
+    raw = parse_session_transcript(
+        str(session_file),
+        "Backticks Test",
+        agent_name=AgentName.CLAUDE,
+        tail_chars=0,
+    )
+    assert "```" in raw
+
+    escaped = parse_session_transcript(
+        str(session_file),
+        "Backticks Test",
+        agent_name=AgentName.CLAUDE,
+        tail_chars=0,
+        escape_triple_backticks=True,
+    )
+    assert "`\u200b``" in escaped
+    assert "```" not in escaped
+
+
 def test_parse_codex_transcript(tmp_path):
     """Codex transcripts normalize into markdown headings."""
     session_file = tmp_path / "codex.jsonl"
@@ -377,3 +412,37 @@ def test_parse_gemini_transcript(tmp_path):
     assert "Considering options" in result
     assert "TOOL CALL" in result
     assert "TOOL RESPONSE" in result
+    assert "> no matches found" in result
+
+
+def test_parse_transcript_collapses_tool_results(tmp_path):
+    """Tool results can be emitted as spoilers when collapse_tool_results is set."""
+    session_file = tmp_path / "claude.jsonl"
+    session_file.write_text(
+        json.dumps(
+            {
+                "type": "message",
+                "timestamp": "2025-12-15T21:00:03.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "content": "secret output",
+                        }
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = parse_claude_transcript(
+        str(session_file),
+        "Tool Result Collapse",
+        tail_chars=0,
+        collapse_tool_results=True,
+    )
+
+    assert "TOOL RESPONSE (tap to reveal)" in result
+    assert "||secret output||" in result

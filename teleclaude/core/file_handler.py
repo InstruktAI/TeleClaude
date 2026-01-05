@@ -14,7 +14,7 @@ from typing import Awaitable, Callable, Optional
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import terminal_bridge, terminal_io
 from teleclaude.core.db import db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import MessageMetadata
@@ -129,10 +129,9 @@ async def handle_file(
     active_agent = ux_state.active_agent if ux_state else None
 
     # Automatic detection: if process running, no marker
-    success = await terminal_bridge.send_keys(
-        session.tmux_session_name,
+    success = await terminal_io.send_text(
+        session,
         input_text,
-        session_id=session_id,
         active_agent=active_agent,
     )
 

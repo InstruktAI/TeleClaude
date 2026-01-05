@@ -121,6 +121,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     from teleclaude.core import db as db_module
     from teleclaude.core import terminal_bridge
     from teleclaude.core.db import Db
+    from teleclaude.core.session_utils import get_output_file
     from teleclaude.daemon import TeleClaudeDaemon
 
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
@@ -366,6 +367,27 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # Track output files for polling simulation
     output_files_for_session = {}
+    session_ids_by_name: dict[str, str] = {}
+
+    def _resolve_output_file(session_name: str, session_id: str | None) -> Path | None:
+        if session_id:
+            return get_output_file(session_id)
+        if session_name in session_ids_by_name:
+            return get_output_file(session_ids_by_name[session_name])
+        if session_name in output_files_for_session:
+            return Path(output_files_for_session[session_name])
+        return None
+
+    def _append_output(session_name: str, session_id: str | None, lines: list[str]) -> None:
+        if not lines:
+            return
+        output_file = _resolve_output_file(session_name, session_id)
+        if not output_file:
+            return
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+            f.write("\n")
 
     async def mock_send_keys(
         session_name: str,
@@ -385,6 +407,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         if session_name not in process_running:
             process_running[session_name] = False
 
+        new_lines: list[str] = []
+
         if daemon.mock_command_mode == "passthrough":
             # Passthrough mode - simulate sending input to running process
             # For long-running process, simulate echo behavior
@@ -392,32 +416,33 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             if session_outputs[session_name] and "Ready" in session_outputs[session_name]:
                 # Process is running, append echo output
                 session_outputs[session_name].append(f"Echo: {text}")
+                new_lines.append(f"Echo: {text}")
+            _append_output(session_name, session_id, new_lines)
             return True
         elif daemon.mock_command_mode == "long":
             # Long-running interactive process - append "Ready" to output
             session_outputs[session_name].append("Ready")
+            new_lines.append("Ready")
             process_running[session_name] = True
+            _append_output(session_name, session_id, new_lines)
             return True
         else:
             # Short-lived command - append command echo and simulated output
             # Include the command itself so tests can match on it
             session_outputs[session_name].append(f"$ {text}")
+            new_lines.append(f"$ {text}")
             # For echo commands, simulate the output
             if text.startswith("echo "):
                 # Extract text between quotes or just after echo
                 echo_text = text[5:].strip().strip("'\"")
                 session_outputs[session_name].append(echo_text)
+                new_lines.append(echo_text)
             else:
                 session_outputs[session_name].append("Command executed")
+                new_lines.append("Command executed")
             process_running[session_name] = False
 
-            # Write to output file if one exists for polling tests
-            # Tests that use polling will register their output file
-            if session_name in output_files_for_session:
-                output_file = output_files_for_session[session_name]
-                # Write command output
-                with open(output_file, "w") as f:
-                    f.write("\n".join(session_outputs[session_name]))
+            _append_output(session_name, session_id, new_lines)
 
             return True
 
@@ -443,6 +468,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     ):
         """Mock create_tmux_session with same signature as real function."""
         created_sessions.add(name)
+        if session_id:
+            session_ids_by_name[name] = session_id
         session_outputs[name] = []  # Initialize empty output buffer
         process_running[name] = False
         return True
@@ -457,20 +484,34 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         process_running.pop(name, None)
         return True
 
-    async def mock_capture_pane(name):
+    async def mock_capture_pane(name, lines=None):
         # Return accumulated output for this session
         if name not in session_outputs:
             return ""
-        return "\n".join(session_outputs[name])
+        output = "\n".join(session_outputs[name])
+        if lines is None:
+            return output
+        if lines <= 0:
+            return output
+        return "\n".join(output.splitlines()[-lines:])
 
     async def mock_is_process_running(name):
         return process_running.get(name, False)
+
+    async def mock_get_pane_tty(_name: str):
+        return None
+
+    async def mock_get_pane_pid(_name: str):
+        return None
 
     monkeypatch.setattr(terminal_bridge, "create_tmux_session", mock_create_tmux)
     monkeypatch.setattr(terminal_bridge, "session_exists", mock_session_exists)
     monkeypatch.setattr(terminal_bridge, "kill_session", mock_kill_session)
     monkeypatch.setattr(terminal_bridge, "capture_pane", mock_capture_pane)
     monkeypatch.setattr(terminal_bridge, "is_process_running", mock_is_process_running)
+    monkeypatch.setattr(terminal_bridge, "start_pipe_pane", AsyncMock(return_value=True))
+    monkeypatch.setattr(terminal_bridge, "get_pane_tty", mock_get_pane_tty)
+    monkeypatch.setattr(terminal_bridge, "get_pane_pid", mock_get_pane_pid)
 
     try:
         yield daemon

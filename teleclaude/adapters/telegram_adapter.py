@@ -121,6 +121,7 @@ class EditContext:
     message_id: str
     text: str
     reply_markup: Optional[object] = None
+    parse_mode: Optional[str] = None
 
 
 class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attributes  # Telegram adapter manages many handlers and state
@@ -543,8 +544,9 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             )
             return False
 
-        # Extract reply_markup from metadata
-        reply_markup = metadata.reply_markup  # type: ignore[misc]
+        # Extract reply_markup + parse_mode from metadata
+        reply_markup = cast(Optional[object], metadata.reply_markup)
+        parse_mode = metadata.parse_mode or "Markdown"
 
         # CRITICAL FIX: Remove pending edit optimization - it causes race conditions where
         # subsequent updates return True without actually sending, leading to stuck messages.
@@ -557,7 +559,12 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             self._pending_edits.pop(message_id)  # Remove stale edit
 
         # Create new edit context (mutable)
-        ctx = EditContext(message_id=message_id, text=text, reply_markup=reply_markup)  # type: ignore[misc]
+        ctx = EditContext(
+            message_id=message_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode,
+        )
         self._pending_edits[message_id] = ctx
 
         try:
@@ -608,7 +615,7 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             chat_id=self.supergroup_id,
             message_id=int(ctx.message_id),
             text=ctx.text,  # ← Read latest text from mutable context
-            parse_mode="Markdown",
+            parse_mode=ctx.parse_mode,
             reply_markup=markup,
         )
 

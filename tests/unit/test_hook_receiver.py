@@ -69,6 +69,7 @@ def test_receiver_recovers_session_from_tty(monkeypatch):
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
     monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (123, "/dev/ttys001"))
+    monkeypatch.setattr(receiver, "_find_session_by_tty", lambda _tty: None)
     monkeypatch.setattr(receiver, "ensure_terminal_session", lambda **_kwargs: "sess-tty")
     monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
 
@@ -93,6 +94,7 @@ def test_receiver_recovers_when_env_session_missing(monkeypatch):
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
     monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (123, "/dev/ttys001"))
     monkeypatch.setattr(receiver, "_session_exists", lambda _sid: False)
+    monkeypatch.setattr(receiver, "_find_session_by_tty", lambda _tty: None)
     monkeypatch.setattr(receiver, "ensure_terminal_session", lambda **_kwargs: "sess-new")
     monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-old")
 
@@ -101,4 +103,28 @@ def test_receiver_recovers_when_env_session_missing(monkeypatch):
     assert sent
     session_id, event_type, _data = sent[0]
     assert session_id == "sess-new"
+    assert event_type == "stop"
+
+
+def test_receiver_recovers_from_native_session_id(monkeypatch):
+    from teleclaude.hooks import receiver
+
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(
+        receiver, "_parse_args", lambda: argparse.Namespace(agent="codex", event_type='{"thread-id": "native-1"}')
+    )
+    monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (None, None))
+    monkeypatch.setattr(receiver, "_find_session_by_native_id", lambda _sid: "sess-native")
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "sess-native"
     assert event_type == "stop"

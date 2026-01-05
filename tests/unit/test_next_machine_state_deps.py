@@ -317,6 +317,72 @@ async def test_next_work_explicit_slug_rejects_pending_items():
         assert "[ ] (pending)" in result
 
 
+@pytest.mark.asyncio
+async def test_next_work_review_includes_merge_base_note():
+    """Verify next_work review dispatch includes merge-base guard note."""
+    db = MagicMock(spec=Db)
+    slug = "review-item"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create roadmap with ready item
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+
+        # Create required files in main repo
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+
+        # Create worktree state with build complete and review pending
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.json").write_text('{"build": "complete", "review": "pending"}')
+
+        with (
+            patch("teleclaude.core.next_machine.Repo"),
+            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.is_main_ahead", return_value=False),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "next-review" in result
+        assert "merge-base" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_blocks_review_when_main_ahead():
+    """Verify next_work blocks review dispatch when main is ahead."""
+    db = MagicMock(spec=Db)
+    slug = "review-blocked"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.json").write_text('{"build": "complete", "review": "pending"}')
+
+        with (
+            patch("teleclaude.core.next_machine.Repo"),
+            patch("teleclaude.core.next_machine.ensure_worktree", return_value=False),
+            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine.is_main_ahead", return_value=True),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+        assert "ERROR:" in result
+        assert "MAIN_AHEAD" in result
+
+
 # =============================================================================
 # resolve_slug Tests (ready_only mode)
 # =============================================================================

@@ -16,6 +16,7 @@ def parse_claude_transcript(
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
     tail_chars: int = 5000,
+    collapse_tool_results: bool = False,
 ) -> str:
     """Convert Claude Code JSONL transcript to markdown with filtering.
 
@@ -41,6 +42,7 @@ def parse_claude_transcript(
             since_timestamp,
             until_timestamp,
             tail_chars,
+            collapse_tool_results=collapse_tool_results,
         )
     except Exception as e:
         return f"Error parsing transcript: {e}"
@@ -52,6 +54,7 @@ def parse_codex_transcript(
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
     tail_chars: int = 5000,
+    collapse_tool_results: bool = False,
 ) -> str:
     """Convert Codex JSONL transcript to markdown with filtering."""
 
@@ -68,6 +71,7 @@ def parse_codex_transcript(
             until_timestamp,
             tail_chars,
             tail_limit_fn=_apply_tail_limit_codex,
+            collapse_tool_results=collapse_tool_results,
         )
     except Exception as e:
         return f"Error parsing transcript: {e}"
@@ -79,6 +83,7 @@ def parse_gemini_transcript(
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
     tail_chars: int = 5000,
+    collapse_tool_results: bool = False,
 ) -> str:
     """Convert Gemini JSON transcript into markdown."""
 
@@ -94,6 +99,7 @@ def parse_gemini_transcript(
             since_timestamp,
             until_timestamp,
             tail_chars,
+            collapse_tool_results=collapse_tool_results,
         )
     except Exception as e:
         return f"Error parsing transcript: {e}"
@@ -115,7 +121,12 @@ def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], u
     return False
 
 
-def _process_entry(entry: dict[str, object], lines: list[str], last_section: Optional[str]) -> Optional[str]:  # noqa: loose-dict - External entry
+def _process_entry(
+    entry: dict[str, object],  # noqa: loose-dict - External entry
+    lines: list[str],
+    last_section: Optional[str],
+    collapse_tool_results: bool,
+) -> Optional[str]:  # noqa: loose-dict - External entry
     """Process a transcript entry and append formatted content to lines."""
     entry_timestamp = entry.get("timestamp")
     entry_dt = None
@@ -144,7 +155,7 @@ def _process_entry(entry: dict[str, object], lines: list[str], last_section: Opt
         return _process_string_content(content, time_prefix, lines, last_section)
 
     if isinstance(content, list):
-        return _process_list_content(content, role, time_prefix, lines, last_section)
+        return _process_list_content(content, role, time_prefix, lines, last_section, collapse_tool_results)
 
     return last_section
 
@@ -165,6 +176,7 @@ def _process_list_content(
     time_prefix: str,
     lines: list[str],
     last_section: Optional[str],
+    collapse_tool_results: bool,
 ) -> Optional[str]:
     """Process list of content blocks."""
     current_section = last_section
@@ -184,7 +196,12 @@ def _process_list_content(
         elif block_type == "tool_use":
             current_section = _process_tool_use_block(block, time_prefix, lines)
         elif block_type == "tool_result":
-            current_section = _process_tool_result_block(block, time_prefix, lines)
+            current_section = _process_tool_result_block(
+                block,
+                time_prefix,
+                lines,
+                collapse_tool_results,
+            )
 
     return current_section
 
@@ -245,17 +262,30 @@ def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: l
     return "tool_use"
 
 
-def _process_tool_result_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:  # noqa: loose-dict - External block
+def _process_tool_result_block(
+    block: dict[str, object],  # noqa: loose-dict - External block
+    time_prefix: str,
+    lines: list[str],
+    collapse_tool_results: bool,
+) -> str:  # noqa: loose-dict - External block
     """Process tool result block."""
     is_error = block.get("is_error", False)
     status_emoji = "❌" if is_error else "✅"
     content_data = block.get("content", "")
     lines.append("")
-    lines.append(f"{time_prefix}{status_emoji} **TOOL RESPONSE:**")
-    lines.append("")
-    lines.append("<blockquote expandable>")
-    lines.append(str(content_data))
-    lines.append("</blockquote>")
+    content_lines = str(content_data).splitlines() or [""]
+    if collapse_tool_results:
+        lines.append(f"{time_prefix}{status_emoji} **TOOL RESPONSE (tap to reveal):**")
+        lines.append("")
+        for line in content_lines:
+            lines.append(f"||{line}||" if line else "|| ||")
+        lines.append("")
+    else:
+        lines.append(f"{time_prefix}{status_emoji} **TOOL RESPONSE:**")
+        lines.append("")
+        for line in content_lines:
+            lines.append(f"> {line}" if line else ">")
+        lines.append("")
     return "tool_result"
 
 
@@ -380,6 +410,7 @@ def _render_transcript_from_entries(
     tail_chars: int,
     *,
     tail_limit_fn: Callable[[str, int], str] = _apply_tail_limit,
+    collapse_tool_results: bool = False,
 ) -> str:
     """Render markdown from normalized transcript entries."""
 
@@ -393,7 +424,7 @@ def _render_transcript_from_entries(
         if _should_skip_entry(entry, since_dt, until_dt):
             continue
 
-        last_section = _process_entry(entry, lines, last_section)
+        last_section = _process_entry(entry, lines, last_section, collapse_tool_results)
 
     result = "\n".join(lines)
     return tail_limit_fn(result, tail_chars)
@@ -553,7 +584,7 @@ class TranscriptParserInfo:
 
     display_name: str
     file_prefix: str
-    parser: Callable[[str, str, Optional[str], Optional[str], int], str]
+    parser: Callable[[str, str, Optional[str], Optional[str], int, bool], str]
 
 
 AGENT_TRANSCRIPT_PARSERS: dict[AgentName, TranscriptParserInfo] = {
@@ -576,14 +607,35 @@ def parse_session_transcript(
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
     tail_chars: int = 5000,
+    escape_triple_backticks: bool = False,
+    collapse_tool_results: bool = False,
 ) -> str:
-    """Parse a session transcript using the agent-specific parser."""
+    """Parse a session transcript using the agent-specific parser.
+
+    Args:
+        transcript_path: Path to transcript file
+        title: Session title for header
+        agent_name: Agent type for parser selection
+        since_timestamp: Optional ISO 8601 UTC start filter (inclusive)
+        until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
+        tail_chars: Max characters to return from end (default 5000, 0 for unlimited)
+        escape_triple_backticks: If True, escape ``` to avoid breaking outer code blocks
+    """
 
     parser_info = get_transcript_parser_info(agent_name)
-    return parser_info.parser(
+    rendered = parser_info.parser(
         transcript_path,
         title,
         since_timestamp,
         until_timestamp,
         tail_chars,
+        collapse_tool_results,
     )
+    if escape_triple_backticks:
+        return _escape_triple_backticks(rendered)
+    return rendered
+
+
+def _escape_triple_backticks(text: str) -> str:
+    """Escape triple backticks to avoid nested code block breakage."""
+    return text.replace("```", "`\u200b``")

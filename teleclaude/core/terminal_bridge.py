@@ -4,12 +4,16 @@ All functions are stateless and use config imported from teleclaude.config.
 """
 
 import asyncio
+import errno
+import fcntl
 import hashlib
 import os
 import pwd
 import re
 import shutil
+import string
 import sys
+import termios
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -39,9 +43,19 @@ def _safe_path_component(value: str) -> str:
 
 
 def _tty_to_pty_master(tty_path: str) -> Optional[str]:
-    """Best-effort mapping from tty device to pty master (BSD/macOS)."""
-    if tty_path.startswith("/dev/tty"):
-        return tty_path.replace("/dev/tty", "/dev/pty", 1)
+    """Best-effort mapping from tty device to pty master (legacy BSD/macOS)."""
+    if not tty_path.startswith("/dev/tty"):
+        return None
+
+    suffix = tty_path.replace("/dev/tty", "", 1)
+    if not suffix:
+        return None
+
+    # Legacy BSD ptys use 2-char suffixes (e.g., /dev/ttyp0 -> /dev/ptyp0).
+    if len(suffix) == 2 and suffix[0].isalpha() and suffix[1] in string.hexdigits:
+        return f"/dev/pty{suffix}"
+
+    # Modern /dev/ttysNNN devices don't expose a master path.
     return None
 
 
@@ -274,12 +288,46 @@ async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True)
     """Send keys directly to a controlling TTY (non-tmux sessions)."""
     try:
         payload = text + ("\n" if send_enter else "")
+        data = payload.encode()
 
-        def _write() -> None:
-            with open(tty_path, "wb", buffering=0) as tty_file:
-                tty_file.write(payload.encode())
+        def _is_pty_master(path: str) -> bool:
+            name = Path(path).name
+            return name.startswith(("pty", "ptys", "ptyp"))
 
-        await asyncio.to_thread(_write)
+        def _inject() -> None:
+            fd = os.open(tty_path, os.O_RDWR | os.O_NOCTTY)
+            try:
+                if _is_pty_master(tty_path):
+                    _write_fallback(fd, data)
+                    return
+                if not hasattr(termios, "TIOCSTI"):
+                    raise OSError("TIOCSTI unavailable for TTY injection")
+
+                deadline = time.monotonic() + 5.0
+                for byte in data:
+                    while True:
+                        try:
+                            fcntl.ioctl(fd, termios.TIOCSTI, bytes([byte]))
+                            break
+                        except OSError as exc:
+                            if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK, errno.EINTR, errno.ENOMEM):
+                                if time.monotonic() >= deadline:
+                                    raise OSError("TIOCSTI timeout") from exc
+                                time.sleep(0.01)
+                                continue
+                            raise
+            finally:
+                os.close(fd)
+
+        def _write_fallback(fd: int, buffer: bytes) -> None:
+            total = 0
+            while total < len(buffer):
+                written = os.write(fd, buffer[total:])
+                if written <= 0:
+                    break
+                total += written
+
+        await asyncio.to_thread(_inject)
         return True
     except Exception as e:
         logger.exception("Error sending keys to tty %s: %s", tty_path, e)

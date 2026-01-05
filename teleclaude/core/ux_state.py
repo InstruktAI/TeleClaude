@@ -8,7 +8,7 @@ Provides unified interface for storing/retrieving UX state in either:
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Optional, TypedDict, cast
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -53,10 +53,13 @@ class SessionUXState:
     active_agent: Optional[str] = None  # Name of the active agent (e.g. "claude", "gemini")
     thinking_mode: Optional[str] = None  # Model tier: "fast", "med", "slow" (MCP terminology)
     native_tty_path: Optional[str] = None  # TTY path for agent CLI (non-tmux)
+    tmux_tty_path: Optional[str] = None  # tmux pane TTY path (terminal-origin sessions)
     native_pid: Optional[int] = None  # Parent PID for agent CLI (non-tmux)
+    tui_log_file: Optional[str] = None  # Path to raw TUI output log
+    tui_capture_started: bool = False  # Whether TUI capture was initiated
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "SessionUXState":  # noqa: loose-dict - Deserialization input
+    def from_dict(cls, data: "UXStatePayload") -> "SessionUXState":
         """Create SessionUXState from dict."""
         output_message_id_raw: object = data.get("output_message_id")
         pending_deletions_raw: object = data.get("pending_deletions", [])
@@ -66,7 +69,10 @@ class SessionUXState:
         native_session_id_raw: object = data.get("native_session_id")
         native_log_file_raw: object = data.get("native_log_file")
         native_tty_path_raw: object = data.get("native_tty_path")
+        tmux_tty_path_raw: object = data.get("tmux_tty_path")
         native_pid_raw: object = data.get("native_pid")
+        tui_log_file_raw: object = data.get("tui_log_file")
+        tui_capture_started_raw: object = data.get("tui_capture_started")
 
         active_agent_raw: object = data.get("active_agent")
         thinking_mode_raw: object = data.get("thinking_mode")
@@ -90,7 +96,10 @@ class SessionUXState:
             active_agent=str(active_agent_raw) if active_agent_raw else None,
             thinking_mode=str(thinking_mode_raw) if thinking_mode_raw else None,
             native_tty_path=str(native_tty_path_raw) if native_tty_path_raw else None,
+            tmux_tty_path=str(tmux_tty_path_raw) if tmux_tty_path_raw else None,
             native_pid=native_pid_value,
+            tui_log_file=str(tui_log_file_raw) if tui_log_file_raw else None,
+            tui_capture_started=bool(tui_capture_started_raw),
         )
 
     def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
@@ -106,8 +115,28 @@ class SessionUXState:
             "active_agent": self.active_agent,
             "thinking_mode": self.thinking_mode,
             "native_tty_path": self.native_tty_path,
+            "tmux_tty_path": self.tmux_tty_path,
             "native_pid": self.native_pid,
+            "tui_log_file": self.tui_log_file,
+            "tui_capture_started": self.tui_capture_started,
         }
+
+
+class UXStatePayload(TypedDict, total=False):
+    output_message_id: str
+    pending_deletions: list[str]
+    pending_feedback_deletions: list[str]
+    last_input_adapter: str
+    notification_sent: bool
+    native_session_id: str
+    native_log_file: str
+    active_agent: str
+    thinking_mode: str
+    native_tty_path: str
+    tmux_tty_path: str
+    native_pid: int | str
+    tui_log_file: str
+    tui_capture_started: bool
 
 
 @dataclass
@@ -173,7 +202,7 @@ async def get_session_ux_state(db: aiosqlite.Connection, session_id: str) -> Ses
             if not isinstance(data_raw, dict):
                 logger.warning("Invalid ux_state format for session %s", session_id[:8])
                 return SessionUXState()
-            data: dict[str, object] = data_raw  # noqa: loose-dict - Database JSON deserialization
+            data = cast(UXStatePayload, data_raw)
             return SessionUXState.from_dict(data)
 
         return SessionUXState()
@@ -225,7 +254,10 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
     active_agent: Optional[str] | object = _UNSET,
     thinking_mode: Optional[str] | object = _UNSET,
     native_tty_path: Optional[str] | object = _UNSET,
+    tmux_tty_path: Optional[str] | object = _UNSET,
     native_pid: Optional[int] | object = _UNSET,
+    tui_log_file: Optional[str] | object = _UNSET,
+    tui_capture_started: bool | object = _UNSET,
 ) -> None:
     """Update session UX state (merges with existing).
 
@@ -240,6 +272,8 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
         native_session_id: Native agent session ID (optional)
         native_log_file: Path to native agent log file (optional)
         active_agent: Name of the active agent (optional)
+        tui_log_file: Raw TUI log file path (optional)
+        tui_capture_started: Whether TUI capture was initiated (optional)
     """
     try:
         # Load existing state
@@ -266,8 +300,14 @@ async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-man
             existing.thinking_mode = thinking_mode  # type: ignore
         if native_tty_path is not _UNSET:
             existing.native_tty_path = native_tty_path  # type: ignore
+        if tmux_tty_path is not _UNSET:
+            existing.tmux_tty_path = tmux_tty_path  # type: ignore
         if native_pid is not _UNSET:
             existing.native_pid = native_pid  # type: ignore
+        if tui_log_file is not _UNSET:
+            existing.tui_log_file = tui_log_file  # type: ignore
+        if tui_capture_started is not _UNSET:
+            existing.tui_capture_started = tui_capture_started  # type: ignore
 
         # Store
         ux_state_json = json.dumps(existing.to_dict())

@@ -385,6 +385,62 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
 
 
 @pytest.mark.asyncio
+async def test_process_agent_stop_seeds_output_when_terminal_capture_missing():
+    """Agent STOP should seed output message when no terminal capture exists."""
+    from teleclaude.core.agents import AgentName
+    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
+    from teleclaude.core.ux_state import SessionUXState
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.send_feedback = AsyncMock()
+    daemon.client.send_output_update = AsyncMock()
+    daemon.agent_coordinator = MagicMock()
+    daemon.agent_coordinator.handle_stop = AsyncMock()
+    daemon._update_session_title = AsyncMock()
+    daemon._last_stop_time = {}
+    daemon._stop_debounce_seconds = 0.0
+
+    payload = AgentStopPayload(
+        session_id="native-123",
+        transcript_path="/tmp/native.json",
+        raw={},
+    )
+    context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
+
+    session = Session(
+        session_id="tele-123",
+        computer_name="TestMac",
+        tmux_session_name="terminal:abc",
+        origin_adapter="terminal",
+        title="Test session",
+        adapter_metadata=SessionAdapterMetadata(
+            telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="24419")
+        ),
+    )
+
+    ux_state = SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json", tui_capture_started=False)
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.parse_session_transcript", return_value="Transcript output") as mock_parse,
+    ):
+        mock_db.get_ux_state = AsyncMock(return_value=ux_state)
+        mock_db.update_ux_state = AsyncMock()
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_summarize.return_value = ("title", "summary")
+
+        await daemon._process_agent_stop(context)
+
+        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
+        mock_parse.assert_called_once()
+        daemon.client.send_output_update.assert_awaited_once()
+        assert daemon.client.send_output_update.await_args.kwargs.get("render_markdown") is True
+
+
+@pytest.mark.asyncio
 class TestSessionCleanup:
     """Test session cleanup functionality."""
 
@@ -462,6 +518,84 @@ class TestSessionCleanup:
 
             # Verify NO cleanup
             terminate_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dispatch_hook_event_updates_tty_before_polling():
+    """TTY metadata should be stored before terminal polling starts."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.core.models import Session
+    from teleclaude.core.ux_state import SessionUXState
+    from teleclaude.daemon import TeleClaudeDaemon
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.create_channel = AsyncMock()
+    daemon.client.handle_event = AsyncMock(return_value=None)
+    daemon._ensure_terminal_polling = AsyncMock()
+
+    session = Session(
+        session_id="sess-tty",
+        computer_name="TestMac",
+        tmux_session_name="terminal:deadbeef",
+        origin_adapter="terminal",
+        title="Terminal Session",
+    )
+
+    call_order: list[str] = []
+
+    async def record_update(*_args, **_kwargs):
+        call_order.append("update")
+
+    async def record_poll(*_args, **_kwargs):
+        call_order.append("poll")
+
+    daemon._ensure_terminal_polling = AsyncMock(side_effect=record_poll)
+
+    with patch("teleclaude.daemon.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState())
+        mock_db.update_ux_state = AsyncMock(side_effect=record_update)
+
+        await daemon._dispatch_hook_event(
+            session_id="sess-tty",
+            event_type="stop",
+            data={"teleclaude_pid": 123, "teleclaude_tty": "/dev/ttys001", "transcript_path": "/tmp/x.json"},
+        )
+
+    assert "poll" in call_order
+    assert call_order.index("poll") > max(i for i, v in enumerate(call_order) if v == "update")
+
+
+@pytest.mark.asyncio
+async def test_ensure_terminal_polling_prefers_tmux():
+    """Terminal-origin sessions should use tmux polling when tmux exists."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.core.models import Session
+    from teleclaude.daemon import TeleClaudeDaemon
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon._poll_and_send_output = AsyncMock()
+
+    session = Session(
+        session_id="sess-term",
+        computer_name="TestMac",
+        tmux_session_name="tc_term_1234",
+        origin_adapter="terminal",
+        title="Terminal Session",
+    )
+
+    with (
+        patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
+        patch("teleclaude.daemon.terminal_bridge.session_exists", new=AsyncMock(return_value=True)),
+        patch("teleclaude.daemon.polling_coordinator.schedule_terminal_polling", new=AsyncMock()) as mock_terminal_poll,
+    ):
+        await daemon._ensure_terminal_polling(session)
+
+    daemon._poll_and_send_output.assert_called_once_with(session.session_id, session.tmux_session_name)
+    mock_terminal_poll.assert_not_called()
 
 
 def test_all_events_have_handlers():

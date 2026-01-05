@@ -237,6 +237,8 @@ def test_session_ux_state_from_dict_handles_missing_fields():
     assert state.last_input_adapter is None  # Default
     assert state.native_tty_path is None  # Default
     assert state.native_pid is None  # Default
+    assert state.tui_log_file is None  # Default
+    assert state.tui_capture_started is False  # Default
 
 
 def test_session_ux_state_to_dict_serializes_all_fields():
@@ -254,7 +256,10 @@ def test_session_ux_state_to_dict_serializes_all_fields():
         active_agent="claude",
         thinking_mode="fast",
         native_tty_path="/dev/ttys007",
+        tmux_tty_path="/dev/ttys999",
         native_pid=12345,
+        tui_log_file="/tmp/tui.log",
+        tui_capture_started=True,
     )
 
     data = state.to_dict()
@@ -269,4 +274,7 @@ def test_session_ux_state_to_dict_serializes_all_fields():
     assert data["active_agent"] == "claude"
     assert data["thinking_mode"] == "fast"
     assert data["native_tty_path"] == "/dev/ttys007"
+    assert data["tmux_tty_path"] == "/dev/ttys999"
     assert data["native_pid"] == 12345
+    assert data["tui_log_file"] == "/tmp/tui.log"
+    assert data["tui_capture_started"] is True

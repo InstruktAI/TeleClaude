@@ -63,6 +63,7 @@ from teleclaude.core.terminal_output_poller import TerminalOutputPoller
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.utils.transcript import parse_session_transcript
 
 
 # TypedDict definitions for deployment status payloads
@@ -478,14 +479,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             raise ValueError(f"TeleClaude session {session_id} not found")
 
-        if session.origin_adapter == "terminal":
-            await self.client.create_channel(
-                session=session,
-                title=session.title,
-                origin_adapter=session.origin_adapter,
-            )
-            await self._ensure_terminal_polling(session)
-
         transcript_path = data.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
             await db.update_ux_state(session_id, native_log_file=transcript_path)
@@ -495,11 +488,26 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if session.origin_adapter == "terminal" and (
             isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str)
         ):
-            await db.update_ux_state(
-                session_id,
-                native_pid=teleclaude_pid if isinstance(teleclaude_pid, int) else None,
-                native_tty_path=teleclaude_tty if isinstance(teleclaude_tty, str) else None,
+            existing_ux_state = await db.get_ux_state(session_id)
+            updates: dict[str, object] = {}  # noqa: loose-dict - Hook payload is dynamic JSON
+            if isinstance(teleclaude_pid, int):
+                updates["native_pid"] = teleclaude_pid
+            if isinstance(teleclaude_tty, str):
+                if existing_ux_state.native_tty_path:
+                    if existing_ux_state.native_tty_path != teleclaude_tty:
+                        updates["tmux_tty_path"] = teleclaude_tty
+                else:
+                    updates["native_tty_path"] = teleclaude_tty
+            if updates:
+                await db.update_ux_state(session_id, **updates)
+
+        if session.origin_adapter == "terminal":
+            await self.client.create_channel(
+                session=session,
+                title=session.title,
+                origin_adapter=session.origin_adapter,
             )
+            await self._ensure_terminal_polling(session)
 
         if event_type not in AgentHookEvents.ALL:
             logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
@@ -782,6 +790,28 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if not session:
                 raise ValueError(f"Summary feedback requires active session: {session_id}")
             await self.client.send_feedback(session, summary, MessageMetadata(adapter_type="internal"))
+
+            if session.origin_adapter == "terminal" and ux_state and not ux_state.tui_capture_started:
+                transcript_output = parse_session_transcript(
+                    transcript_path,
+                    title=payload.title or session.title,
+                    agent_name=agent_name,
+                    tail_chars=0,
+                    escape_triple_backticks=False,
+                    collapse_tool_results=True,
+                )
+                if not (
+                    transcript_output.startswith("Transcript file not found:")
+                    or transcript_output.startswith("Error parsing transcript:")
+                ):
+                    now_ts = time.time()
+                    await self.client.send_output_update(
+                        session,
+                        transcript_output,
+                        now_ts,
+                        now_ts,
+                        render_markdown=True,
+                    )
 
             # Dispatch to coordinator
             await self.agent_coordinator.handle_stop(context)
@@ -1926,6 +1956,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _ensure_terminal_polling(self, session: Session) -> None:
         if await polling_coordinator.is_polling(session.session_id):
+            return
+        if await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
+            await self._poll_and_send_output(session.session_id, session.tmux_session_name)
             return
         ux_state = await db.get_ux_state(session.session_id)
         log_path = ux_state.tui_log_file if ux_state else None

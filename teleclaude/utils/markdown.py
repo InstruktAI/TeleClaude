@@ -1,6 +1,23 @@
 """Markdown formatting utilities for Telegram MarkdownV2."""
 
 import re
+from typing import Protocol
+
+from telegramify_markdown import markdownify as _markdownify
+
+
+class MarkdownifyFn(Protocol):
+    def __call__(
+        self,
+        content: str,
+        *,
+        max_line_length: int = 0,
+        normalize_whitespace: bool = False,
+        latex_escape: bool = True,
+    ) -> str: ...
+
+
+markdownify: MarkdownifyFn = _markdownify
 
 
 def strip_outer_codeblock(text: str) -> str:
@@ -73,3 +90,53 @@ def escape_markdown_v2(text: str) -> str:
         i += 1
 
     return "".join(result)
+
+
+def telegramify_markdown(text: str, *, strip_heading_icons: bool = True) -> str:
+    """Convert GitHub-style markdown to Telegram MarkdownV2-friendly format.
+
+    Applies telegramify_markdown, escapes nested backticks inside code blocks,
+    and adds `md` language tag to plain code blocks for Telegram rendering.
+    """
+    formatted = markdownify(text)
+    if strip_heading_icons:
+        formatted = _strip_heading_icons(formatted)
+    formatted = _escape_nested_backticks(formatted)
+    formatted = re.sub(r"^```\n(?!\n|$)", "```md\n", formatted, flags=re.MULTILINE)
+    return formatted
+
+
+def _escape_nested_backticks(text: str) -> str:
+    """Escape ``` inside code blocks to avoid breaking the outer fence."""
+
+    def escape_nested_backticks(match: re.Match[str]) -> str:
+        lang = str(match.group(1) or "")
+        block_content = str(match.group(2))
+        escaped = block_content.replace("```", "`\u200b``")
+        return f"```{lang}\n{escaped}```"
+
+    return re.sub(r"```(\w*)\n(.*?)```", escape_nested_backticks, text, flags=re.DOTALL)
+
+
+def _strip_heading_icons(text: str) -> str:
+    """Remove emoji prefixes added by telegramify_markdown heading conversion."""
+    heading_icons = ("\U0001f4cc", "\u270f", "\U0001f4da", "\U0001f516")
+    icon_pattern = re.compile(rf"^\*(?:{'|'.join(map(re.escape, heading_icons))}) (.+)\*$")
+    lines: list[str] = []
+    in_code_block = False
+
+    for line in text.splitlines():
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            lines.append(line)
+            continue
+
+        if not in_code_block:
+            match = icon_pattern.match(line)
+            if match:
+                lines.append(f"*{match.group(1)}*")
+                continue
+
+        lines.append(line)
+
+    return "\n".join(lines)

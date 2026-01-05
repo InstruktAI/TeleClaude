@@ -440,6 +440,7 @@ class AdapterClient:
         last_output_changed_at: float,
         is_final: bool = False,
         exit_code: Optional[int] = None,
+        render_markdown: bool = False,
     ) -> Optional[str]:
         """Broadcast output update to ALL UI adapters.
 
@@ -453,6 +454,7 @@ class AdapterClient:
             last_output_changed_at: When output last changed (timestamp)
             is_final: Whether this is the final message (process completed)
             exit_code: Exit code if process completed
+            render_markdown: If True, send output as Markdown (no code block wrapper)
 
         Returns:
             Message ID from first successful adapter, or None if all failed
@@ -465,7 +467,13 @@ class AdapterClient:
                     (
                         adapter_type,
                         adapter.send_output_update(
-                            session, output, started_at, last_output_changed_at, is_final, exit_code
+                            session,
+                            output,
+                            started_at,
+                            last_output_changed_at,
+                            is_final,
+                            exit_code,
+                            render_markdown,
                         ),
                     )
                 )
@@ -508,6 +516,7 @@ class AdapterClient:
                             last_output_changed_at,
                             is_final,
                             exit_code,
+                            render_markdown,
                         )
                         if isinstance(retry_result, str) and not first_success:
                             first_success = retry_result

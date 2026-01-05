@@ -22,6 +22,11 @@ def terminal_tmux_name(tty_path: str) -> str:
     return f"terminal:{digest}"
 
 
+def terminal_tmux_name_for_session(session_id: str) -> str:
+    """Build a TeleClaude-owned tmux session name for a terminal-origin session."""
+    return f"tc_term_{session_id[:8]}"
+
+
 def _merge_ux_state(existing: SessionUXState, incoming: SessionUXState) -> SessionUXState:
     merged = SessionUXState.from_dict(cast(UXStatePayload, existing.to_dict()))
     if incoming.active_agent is not None:
@@ -29,6 +34,7 @@ def _merge_ux_state(existing: SessionUXState, incoming: SessionUXState) -> Sessi
     if incoming.native_pid is not None:
         merged.native_pid = incoming.native_pid
     merged.native_tty_path = incoming.native_tty_path
+    merged.tmux_tty_path = incoming.tmux_tty_path
     merged.tui_log_file = incoming.tui_log_file
     merged.tui_capture_started = incoming.tui_capture_started
     return merged
@@ -44,7 +50,6 @@ def ensure_terminal_session(
     db_path = config.database.path
     now = datetime.now(timezone.utc).isoformat()
     title = f"[{config.computer.name}] Terminal ({Path(tty_path).name})"
-    tmux_name = terminal_tmux_name(tty_path)
     session_id = str(uuid.uuid4())
 
     output_file = get_output_file(session_id)
@@ -89,6 +94,7 @@ def ensure_terminal_session(
                 merged_state = _merge_ux_state(existing_state, ux_state)
                 if not merged_state.tui_log_file:
                     merged_state.tui_log_file = str(get_output_file(existing_id))
+                tmux_name = terminal_tmux_name_for_session(existing_id)
                 conn.execute(
                     """
                     UPDATE sessions
@@ -106,6 +112,7 @@ def ensure_terminal_session(
             )
             conn.commit()
 
+        tmux_name = terminal_tmux_name_for_session(session_id)
         conn.execute(
             """
             INSERT INTO sessions (

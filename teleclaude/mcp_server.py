@@ -16,7 +16,6 @@ from instrukt_ai_logging import get_logger
 from mcp.server import Server
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
-from telegramify_markdown import markdownify
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
@@ -36,6 +35,7 @@ from teleclaude.core.next_machine import (
 )
 from teleclaude.core.session_listeners import register_listener, unregister_listener
 from teleclaude.types import SystemStats
+from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -2306,25 +2306,8 @@ class TeleClaudeMCPServer:
             parse_mode = "HTML"
         else:
             # Markdown mode: convert GitHub markdown to Telegram MarkdownV2
-            # This handles: bold (**→*), italic (*→_), code blocks, tables, escaping
-            formatted_content = markdownify(content)
-
-            # Escape nested ``` inside code blocks to prevent markdown breaking
-            # Uses zero-width space to break the sequence (same approach as edit_message)
-            def escape_nested_backticks(match: re.Match[str]) -> str:
-                lang = match.group(1) or ""
-                block_content = match.group(2)
-                escaped = block_content.replace("```", "`\u200b``")
-                return f"```{lang}\n{escaped}```"
-
-            formatted_content = re.sub(
-                r"```(\w*)\n(.*?)```", escape_nested_backticks, formatted_content, flags=re.DOTALL
-            )
-
-            # Add 'md' language to plain code blocks (library leaves them without language)
-            # This ensures proper syntax highlighting in Telegram instead of just "copy" button
-            # Only match OPENING ``` (followed by content), not CLOSING (followed by blank line/end)
-            formatted_content = re.sub(r"^```\n(?!\n|$)", "```md\n", formatted_content, flags=re.MULTILINE)
+            # Handles bold/italic conversion, code blocks, tables, and escaping.
+            formatted_content = telegramify_markdown(content)
             parse_mode = "MarkdownV2"
 
         # Handle Telegram 4096 char limit

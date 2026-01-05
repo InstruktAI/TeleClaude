@@ -37,6 +37,7 @@ from teleclaude.utils import (
     format_size,
     format_terminal_message,
 )
+from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
 
@@ -170,6 +171,7 @@ class UiAdapter(BaseAdapter):
         last_output_changed_at: float,
         is_final: bool = False,
         exit_code: Optional[int] = None,
+        render_markdown: bool = False,
     ) -> Optional[str]:
         """Send or edit output message - generic implementation.
 
@@ -216,10 +218,29 @@ class UiAdapter(BaseAdapter):
 
         # Format message (base + platform-specific formatting)
         full_status = f"{session_id_lines}\n{status_line}" if session_id_lines else status_line
-        display_output = self.format_message(terminal_output, full_status)
+        if render_markdown:
+            if is_truncated:
+                prefix = f"[...truncated, showing last {self.max_message_size} chars...]"
+                max_body = max(self.max_message_size - len(prefix) - 2, 0)
+                terminal_output = output[-max_body:] if max_body else ""
+                body = f"{prefix}\n\n{terminal_output}" if terminal_output else prefix
+            else:
+                body = terminal_output
+
+            if body:
+                display_output = f"{body}\n\n{full_status}"
+            else:
+                display_output = full_status
+
+            if self.ADAPTER_KEY == "telegram":
+                display_output = telegramify_markdown(display_output)
+        else:
+            display_output = self.format_message(terminal_output, full_status)
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated, ux_state)
+        if render_markdown and not metadata.parse_mode:
+            metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == "telegram" else "Markdown"
 
         # Try to edit existing message
         if await self._try_edit_output_message(session, display_output, metadata):
