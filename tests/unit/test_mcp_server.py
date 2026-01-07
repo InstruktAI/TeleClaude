@@ -690,3 +690,23 @@ async def test_mark_phase_schema_allows_pending(mock_mcp_server):
     status_enum = mark_phase_tool.inputSchema["properties"]["status"]["enum"]
 
     assert "pending" in status_enum
+
+
+@pytest.mark.asyncio
+async def test_mark_phase_blocks_on_uncommitted_changes(mock_mcp_server, tmp_path):
+    """mark_phase refuses to update state when worktree is dirty."""
+    server = mock_mcp_server
+    slug = "dirty-slug"
+
+    worktree_path = tmp_path / "trees" / slug
+    worktree_path.mkdir(parents=True, exist_ok=True)
+
+    with patch("teleclaude.mcp_server.has_uncommitted_changes", return_value=True):
+        result = await server.teleclaude__mark_phase(
+            slug=slug,
+            phase="build",
+            status="complete",
+            cwd=str(tmp_path),
+        )
+
+    assert "ERROR: UNCOMMITTED_CHANGES" in result

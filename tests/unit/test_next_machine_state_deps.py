@@ -12,7 +12,7 @@ Tests for:
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -381,6 +381,41 @@ async def test_next_work_blocks_review_when_main_ahead():
 
         assert "ERROR:" in result
         assert "MAIN_AHEAD" in result
+
+
+@pytest.mark.asyncio
+async def test_next_work_finalize_next_call_without_slug():
+    """Finalize dispatch should call next_work without slug."""
+    db = MagicMock(spec=Db)
+    slug = "final-item"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
+        roadmap_path.parent.mkdir(parents=True, exist_ok=True)
+        roadmap_path.write_text(f"# Roadmap\n\n- [.] {slug}\n")
+
+        item_dir = Path(tmpdir) / "todos" / slug
+        item_dir.mkdir(parents=True, exist_ok=True)
+        (item_dir / "requirements.md").write_text("# Requirements\n")
+        (item_dir / "implementation-plan.md").write_text("# Plan\n")
+
+        state_dir = Path(tmpdir) / "trees" / slug / "todos" / slug
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "state.json").write_text('{"build": "complete", "review": "approved"}')
+
+        with (
+            patch("teleclaude.core.next_machine.Repo"),
+            patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
+            patch(
+                "teleclaude.core.next_machine.get_available_agent",
+                new=AsyncMock(return_value=("claude", "med")),
+            ),
+        ):
+            result = await next_work(db, slug=slug, cwd=tmpdir)
+
+    assert 'command="next-finalize"' in result
+    assert "Call teleclaude__next_work()" in result
+    assert "Call teleclaude__next_work(slug=" not in result
 
 
 # =============================================================================

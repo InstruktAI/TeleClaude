@@ -27,6 +27,7 @@ from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleCla
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs, ThinkingMode
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
+    has_uncommitted_changes,
     mark_phase,
     next_prepare,
     next_work,
@@ -2571,6 +2572,12 @@ class TeleClaudeMCPServer:
 
         if not Path(worktree_cwd).exists():
             return f"ERROR: Worktree not found at {worktree_cwd}"
+
+        if has_uncommitted_changes(cwd, slug):
+            return (
+                f"ERROR: UNCOMMITTED_CHANGES\nWorktree trees/{slug} has uncommitted changes. "
+                "Commit them before marking the phase."
+            )
 
         updated_state = mark_phase(worktree_cwd, slug, phase, status)
         return f"OK: {slug} state updated - {phase}: {status}\nCurrent state: {updated_state}"
