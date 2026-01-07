@@ -7,6 +7,7 @@ socket operations (EPERM). We validate logic via in-memory streams/mocks.
 import asyncio
 import io
 import json
+import sqlite3
 import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -63,6 +64,26 @@ def _load_wrapper_module(monkeypatch: pytest.MonkeyPatch):
     module = module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
+
+
+def _init_session_db(db_path: Path, session_id: str, tmux_name: str) -> None:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                tmux_session_name TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO sessions (session_id, tmux_session_name) VALUES (?, ?)",
+            (session_id, tmux_name),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @pytest.mark.asyncio
@@ -462,3 +483,71 @@ async def test_tools_list_forwards_when_connected(monkeypatch: pytest.MonkeyPatc
     assert dummy_stdout.buffer.getvalue() == b""
     assert proxy._outbound.qsize() == 1
     assert 11 in proxy._pending_requests
+
+
+def test_inject_context_does_not_use_tmux_lookup_for_caller_session(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+
+    db_path = tmp_path / "teleclaude.db"
+    session_id = "session-123"
+    tmux_name = "tc_session"
+    _init_session_db(db_path, session_id, tmux_name)
+
+    tmpdir = "/tmp/teleclaude-test-tmux"
+    monkeypatch.setenv("TMPDIR", tmpdir)
+    monkeypatch.setenv("TMP", tmpdir)
+    monkeypatch.setenv("TEMP", tmpdir)
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,123,0")
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+
+    params = {"arguments": {}}
+    out = wrapper.inject_context(params)
+    assert "caller_session_id" not in out["arguments"]
+
+
+def test_inject_context_uses_tmpdir_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+
+    session_id = "fe4aff3e-8f3b-483f-bd3d-4a09811bb3ba"
+    tmpdir = tmp_path / "session_tmp"
+    tmpdir.mkdir()
+    (tmpdir / "teleclaude_session_id").write_text(session_id, encoding="utf-8")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMUX", raising=False)
+
+    params = {"arguments": {}}
+    out = wrapper.inject_context(params)
+    assert out["arguments"]["caller_session_id"] == session_id
+
+
+def test_inject_context_does_not_use_tmpdir_path_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+
+    session_id = "fe4aff3e-8f3b-483f-bd3d-4a09811bb3ba"
+    monkeypatch.setenv("TMPDIR", f"/Users/morriz/.teleclaude/tmp/sessions/{session_id}")
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMP", raising=False)
+    monkeypatch.delenv("TEMP", raising=False)
+    monkeypatch.delenv("TMUX", raising=False)
+
+    params = {"arguments": {}}
+    out = wrapper.inject_context(params)
+    assert "caller_session_id" not in out["arguments"]
+
+
+def test_inject_context_overrides_blank_caller_session_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    wrapper = _load_wrapper_module(monkeypatch)
+
+    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "session-123")
+
+    params_empty = {"arguments": {"caller_session_id": ""}}
+    out_empty = wrapper.inject_context(params_empty)
+    assert out_empty["arguments"]["caller_session_id"] == "session-123"
+
+    params_none = {"arguments": {"caller_session_id": None}}
+    out_none = wrapper.inject_context(params_none)
+    assert out_none["arguments"]["caller_session_id"] == "session-123"

@@ -29,7 +29,7 @@ def terminal_tmux_name(tty_path: str) -> str:
 
 def terminal_tmux_name_for_session(session_id: str) -> str:
     """Build a TeleClaude-owned tmux session name for a terminal-origin session."""
-    return f"tc_term_{session_id[:8]}"
+    return f"telec_{session_id[:8]}"
 
 
 def _merge_ux_state(existing: SessionUXState, incoming: SessionUXState) -> SessionUXState:

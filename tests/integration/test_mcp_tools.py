@@ -107,6 +107,7 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
                     project_dir="/home/user/project",
                     title="TEST: start session",
                     message="ls -la",
+                    caller_session_id="caller-session-123",
                 )
 
                 # Verify result (ONLY remote session ID returned, no local session)
@@ -156,7 +157,10 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
 
         chunks = []
         async for chunk in mcp_server.teleclaude__send_message(
-            computer=target_computer, session_id=remote_session_id, message="ls -la"
+            computer=target_computer,
+            session_id=remote_session_id,
+            message="ls -la",
+            caller_session_id="caller-session-123",
         ):
             chunks.append(chunk)
 

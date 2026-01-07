@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import string
 from typing import Optional
 
 from instrukt_ai_logging import get_logger
@@ -10,6 +11,21 @@ from teleclaude.core import terminal_bridge
 from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+_SPECIAL_CHARS = frozenset(set(string.punctuation) - {"/"})
+_BRACKETED_PASTE_START = "\x1b[200~"
+_BRACKETED_PASTE_END = "\x1b[201~"
+
+
+def wrap_bracketed_paste(text: str) -> str:
+    if not text:
+        return text
+    # Guard for slash-prefixed commands if we ever decide to bypass bracketed paste.
+    if text.lstrip().startswith("/"):
+        return text
+    if any(char in _SPECIAL_CHARS for char in text):
+        return f"{_BRACKETED_PASTE_START}{text}{_BRACKETED_PASTE_END}"
+    return text
 
 
 def _parse_terminal_size(value: str | None) -> tuple[int, int]:

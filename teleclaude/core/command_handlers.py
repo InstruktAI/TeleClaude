@@ -31,6 +31,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, cleanup_session_resources, terminate_session
 from teleclaude.core.session_utils import build_session_title, ensure_unique_title, update_title_with_agent
+from teleclaude.core.terminal_events import TerminalEventMetadata
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.utils.transcript import (
@@ -164,6 +165,23 @@ async def _execute_control_key(
     return await terminal_action(session, *terminal_args)
 
 
+def _parse_terminal_size(value: str | None) -> tuple[int, int] | None:
+    """Parse terminal size string (e.g., '120x40') into cols/rows."""
+    if not value:
+        return None
+    parts = value.split("x")
+    if len(parts) != 2:
+        return None
+    try:
+        cols = int(parts[0])
+        rows = int(parts[1])
+    except ValueError:
+        return None
+    if cols <= 0 or rows <= 0:
+        return None
+    return cols, rows
+
+
 async def handle_create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
     _context: EventContext,
     args: list[str],
@@ -194,6 +212,14 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     computer_name = config.computer.name
     working_dir = os.path.expanduser(os.path.expandvars(config.computer.default_working_dir))
     terminal_size = "120x40"  # Default terminal size
+
+    terminal_meta = TerminalEventMetadata.from_channel_metadata(metadata.channel_metadata)
+    if adapter_type == "terminal" and terminal_meta.terminal_size:
+        parsed_size = _parse_terminal_size(terminal_meta.terminal_size)
+        if parsed_size:
+            terminal_size = terminal_meta.terminal_size
+        else:
+            logger.warning("Invalid terminal_size for terminal session: %s", terminal_meta.terminal_size)
 
     # For AI-to-AI sessions, use project_dir from metadata
     project_dir = metadata.project_dir
@@ -286,6 +312,13 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         session_id=session_id,
     )
 
+    if adapter_type == "terminal" and (terminal_meta.tty_path or terminal_meta.parent_pid is not None):
+        await db.update_ux_state(
+            session_id,
+            native_tty_path=terminal_meta.tty_path,
+            native_pid=terminal_meta.parent_pid,
+        )
+
     # Create channel via client (session object passed, adapter_metadata updated in DB)
     # Pass initiator (target_computer) for AI-to-AI sessions so stop events can be forwarded
     await client.create_channel(
@@ -302,7 +335,8 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     session = updated_session
 
     # Create actual tmux session with voice env vars
-    cols, rows = map(int, terminal_size.split("x"))
+    parsed_size = _parse_terminal_size(terminal_size)
+    cols, rows = parsed_size if parsed_size else (120, 40)
     voice_env_vars = get_voice_env_vars(voice) if voice else {}
 
     # Inject TELECLAUDE_SESSION_ID so mcp-wrapper knows who it is
@@ -672,9 +706,10 @@ async def handle_escape_command(
         active_agent = ux_state.active_agent if ux_state else None
 
         # Send text + ENTER
+        sanitized_text = terminal_io.wrap_bracketed_paste(text)
         success = await terminal_io.send_text(
             session,
-            text,
+            sanitized_text,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,

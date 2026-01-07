@@ -69,6 +69,10 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
         session_tmp.chmod(0o700)
     except OSError:
         pass
+    try:
+        (session_tmp / "teleclaude_session_id").write_text(session_id, encoding="utf-8")
+    except OSError:
+        pass
     return session_tmp
 
 

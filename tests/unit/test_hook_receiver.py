@@ -124,3 +124,29 @@ def test_receiver_recovers_from_native_session_id(monkeypatch):
     session_id, event_type, _data = sent[0]
     assert session_id == "sess-native"
     assert event_type == "stop"
+
+
+def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
+    from teleclaude.hooks import receiver
+
+    sent = []
+
+    def fake_enqueue(session_id, event_type, data):
+        sent.append((session_id, event_type, data))
+
+    def fake_normalize(_event_type, data):
+        return data
+
+    monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
+    monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
+    monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
+    monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="after_agent"))
+    monkeypatch.setattr(receiver, "_session_exists", lambda _sid: True)
+    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-1")
+
+    receiver.main()
+
+    assert sent
+    session_id, event_type, _data = sent[0]
+    assert session_id == "sess-1"
+    assert event_type == "stop"

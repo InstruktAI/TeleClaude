@@ -175,14 +175,11 @@ async def test_agent_then_message_waits_settle_delay():
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send_keys,
-        patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
-        patch("teleclaude.daemon.terminal_io.send_enter", new_callable=AsyncMock),
+        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_contains", new_callable=AsyncMock) as mock_echo,
+        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_change", new_callable=AsyncMock) as mock_banner,
+        patch("teleclaude.daemon.TeleClaudeDaemon._confirm_command_acceptance", new_callable=AsyncMock) as mock_accept,
         patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 2.5),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 1),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_ENTER_INTER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_OUTPUT_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0.0),
         patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
@@ -193,7 +190,9 @@ async def test_agent_then_message_waits_settle_delay():
         mock_db.update_last_activity = AsyncMock()
         mock_running.return_value = True
         mock_send_keys.return_value = True
-        mock_capture.side_effect = ["baseline", "changed"]
+        mock_echo.return_value = (True, "/prime-architect")
+        mock_banner.return_value = (True, "banner")
+        mock_accept.return_value = True
 
         result = await daemon._handle_agent_then_message(
             "sess-123",
@@ -217,16 +216,14 @@ async def test_agent_then_message_times_out_on_no_output_change():
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send_keys,
-        patch("teleclaude.daemon.terminal_bridge.capture_pane", new_callable=AsyncMock) as mock_capture,
-        patch("teleclaude.daemon.terminal_io.send_enter", new_callable=AsyncMock),
+        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_contains", new_callable=AsyncMock) as mock_echo,
+        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_change", new_callable=AsyncMock) as mock_banner,
+        patch("teleclaude.daemon.TeleClaudeDaemon._confirm_command_acceptance", new_callable=AsyncMock) as mock_accept,
         patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_ATTEMPTS", 1),
-        patch("teleclaude.daemon.AGENT_START_CONFIRM_ENTER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_ENTER_INTER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_OUTPUT_POLL_INTERVAL_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_OUTPUT_CHANGE_TIMEOUT_S", 0.0),
+        patch("teleclaude.daemon.AGENT_START_POST_BANNER_DELAY_S", 0.0),
         patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0.0),
+        patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock),
     ):
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
@@ -235,12 +232,17 @@ async def test_agent_then_message_times_out_on_no_output_change():
         mock_db.update_last_activity = AsyncMock()
         mock_running.return_value = True
         mock_send_keys.return_value = True
-        mock_capture.return_value = "baseline"
+        mock_echo.return_value = (True, "/next-work")
+        mock_banner.return_value = (True, "banner")
+        mock_accept.return_value = False
 
         result = await daemon._handle_agent_then_message(
             "sess-123",
             ["claude", "slow", "/next-work"],
         )
+
+        assert result["status"] == "error"
+        assert "Timeout waiting for command acceptance" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -581,7 +583,7 @@ async def test_ensure_output_polling_uses_tmux():
     session = Session(
         session_id="sess-term",
         computer_name="TestMac",
-        tmux_session_name="tc_term_1234",
+        tmux_session_name="telec_1234",
         origin_adapter="terminal",
         title="TeleClaude: $TestMac - Terminal",
     )

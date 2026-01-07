@@ -112,7 +112,7 @@ def format_tool_call(
 
 IMPORTANT: This output is an execution script. Follow it verbatim. If you've already read that command file, do not re-read it.
 
-Execute these steps in order:
+Execute these steps in order (FOLLOW TO THE LETTER!):
 
 STEP 1 - DISPATCH:
 teleclaude__run_agent_command(
@@ -145,7 +145,7 @@ B) TIMER COMPLETES (no notification after 5 minutes):
    - Check on the session: teleclaude__get_session_data(computer="local", session_id="<session_id>", tail_chars=2000)
    - Based on session status, decide next action
 
-C) YOU SEND ANOTHER MESSAGE TO THE AGENT:
+C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
    - Cancel the old timer: KillShell(shell_id=<task_id>)
    - Start a new 5-minute timer: Bash(command="sleep 300", run_in_background=true)
    - Save the new task_id for the reset timer

@@ -124,6 +124,63 @@ async def test_handle_new_session_creates_session():
 
 
 @pytest.mark.asyncio
+async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state():
+    """Terminal adapter should honor terminal metadata for size and UX state."""
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+    from teleclaude.core.models import MessageMetadata
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_metadata = MessageMetadata(
+        adapter_type="terminal",
+        channel_metadata={
+            "terminal": {
+                "tty_path": "/dev/pts/7",
+                "parent_pid": 4242,
+                "terminal_size": "200x55",
+            }
+        },
+    )
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+    mock_client.send_feedback = AsyncMock()
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-123"
+    mock_session.tmux_session_name = "tc_test-ses"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "terminal_bridge") as mock_tb,
+            patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = AsyncMock(return_value=mock_session)
+            mock_db.get_session = AsyncMock(return_value=mock_session)
+            mock_db.assign_voice = AsyncMock()
+            mock_db.update_ux_state = AsyncMock()
+            mock_tb.create_tmux_session = AsyncMock(return_value=True)
+            mock_unique.return_value = "$TestComputer[user] - Test Title"
+
+            await command_handlers.handle_create_session(mock_context, ["Test"], mock_metadata, mock_client)
+
+            _, create_kwargs = mock_db.create_session.call_args
+            assert create_kwargs.get("terminal_size") == "200x55"
+
+            _, tmux_kwargs = mock_tb.create_tmux_session.call_args
+            assert tmux_kwargs.get("cols") == 200
+            assert tmux_kwargs.get("rows") == 55
+
+            update_args, update_kwargs = mock_db.update_ux_state.call_args
+            assert update_args[0] == create_kwargs.get("session_id")
+            assert update_kwargs.get("native_tty_path") == "/dev/pts/7"
+            assert update_kwargs.get("native_pid") == 4242
+
+
+@pytest.mark.asyncio
 async def test_handle_new_session_validates_working_dir():
     """Test that handle_new_session rejects non-existent working directories."""
     from teleclaude.core import command_handlers

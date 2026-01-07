@@ -10,6 +10,8 @@ from mcp.server import Server
 
 from teleclaude.core.models import ThinkingMode
 
+CALLER_SESSION_ID = "caller-session-123"
+
 
 @pytest.fixture
 def mock_mcp_server():
@@ -132,6 +134,7 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
             project_dir="/home/user/project",
             title="Test Session",
             message="Hello Claude",
+            caller_session_id=CALLER_SESSION_ID,
         )
 
         assert result["status"] == "success"
@@ -153,7 +156,10 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
 
     chunks = []
     async for chunk in server.teleclaude__send_message(
-        computer="local", session_id="test-session-123", message="ls -la"
+        computer="local",
+        session_id="test-session-123",
+        message="ls -la",
+        caller_session_id=CALLER_SESSION_ID,
     ):
         chunks.append(chunk)
 
@@ -273,6 +279,7 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
         result = await server.teleclaude__get_session_data(
             computer="local",
             session_id="test-session-123",
+            caller_session_id=CALLER_SESSION_ID,
         )
 
         assert result["status"] == "success"
@@ -301,6 +308,7 @@ async def test_teleclaude_get_session_data_caps_large_transcripts(mock_mcp_serve
             computer="local",
             session_id="test-session-123",
             tail_chars=0,
+            caller_session_id=CALLER_SESSION_ID,
         )
 
         assert result["status"] == "success"
@@ -385,6 +393,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             title="Gemini Session",
             message="Hello Gemini",
             agent="gemini",
+            caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
 
@@ -416,6 +425,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             title="Codex Session",
             message="Hello Codex",
             agent="codex",
+            caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
 
@@ -437,6 +447,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             title="Claude Session",
             message="Hello Claude",
             agent="claude",
+            caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
 
@@ -458,6 +469,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             message="Hello Claude",
             agent="claude",
             thinking_mode=ThinkingMode.FAST,
+            caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
         second_call = server.client.handle_event.call_args_list[1]
@@ -477,6 +489,7 @@ async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_m
         project="/home/user/project",
         agent="codex",
         thinking_mode=ThinkingMode.MED,
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "success"
@@ -502,6 +515,7 @@ async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_ser
         command="next-work",
         session_id="existing-session",
         thinking_mode=ThinkingMode.FAST,
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "sent"
@@ -522,6 +536,7 @@ async def test_run_agent_command_normalizes_leading_slash(mock_mcp_server):
         computer="local",
         command="/compact",
         session_id="test-session-123",
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "sent"
@@ -541,6 +556,7 @@ async def test_run_agent_command_without_leading_slash(mock_mcp_server):
         computer="local",
         command="compact",
         session_id="test-session-123",
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "sent"
@@ -560,6 +576,7 @@ async def test_run_agent_command_with_args(mock_mcp_server):
         command="next-work",
         args="my-feature",
         session_id="test-session-123",
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "sent"
@@ -581,6 +598,7 @@ async def test_run_agent_command_starts_new_session(mock_mcp_server):
         command="next-work",
         args="feature-x",
         project="/home/user/myproject",
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "success"
@@ -602,6 +620,7 @@ async def test_run_agent_command_requires_project_for_new_session(mock_mcp_serve
         computer="local",
         command="next-work",
         # No session_id and no project
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "error"
@@ -621,6 +640,7 @@ async def test_run_agent_command_with_subfolder(mock_mcp_server):
         command="next-work",
         project="/home/user/myproject",
         subfolder="worktrees/my-feature",
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "success"
@@ -644,6 +664,7 @@ async def test_run_agent_command_with_agent_type(mock_mcp_server):
         command="help",
         project="/home/user/myproject",
         agent="gemini",
+        caller_session_id=CALLER_SESSION_ID,
     )
 
     assert result["status"] == "success"

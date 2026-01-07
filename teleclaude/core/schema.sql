@@ -66,3 +66,22 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
 );
 
 CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
+
+-- Terminal outbox for local CLI (telec) commands (durable with response)
+CREATE TABLE IF NOT EXISTS terminal_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL,            -- JSON payload (command/message)
+    metadata TEXT NOT NULL,           -- JSON MessageMetadata
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    attempt_count INTEGER DEFAULT 0,
+    last_error TEXT,
+    delivered_at TEXT,
+    locked_at TEXT,
+    response TEXT                     -- JSON response envelope from handler
+);
+
+CREATE INDEX IF NOT EXISTS idx_terminal_outbox_pending ON terminal_outbox(delivered_at, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_terminal_outbox_request ON terminal_outbox(request_id);

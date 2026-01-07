@@ -16,6 +16,7 @@ from teleclaude.config import config
 from . import ux_state
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata
+from .terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload
 from .ux_state import SessionUXState, update_session_ux_state
 from .voice_assignment import VoiceConfig
 
@@ -30,6 +31,15 @@ class HookOutboxRow(TypedDict):
     session_id: str
     event_type: str
     payload: str
+    attempt_count: int
+
+
+class TerminalOutboxRow(TypedDict):
+    id: int
+    request_id: str
+    event_type: str
+    payload: str
+    metadata: str
     attempt_count: int
 
 
@@ -893,6 +903,122 @@ class Db:
         )
         await self.conn.commit()
 
+    async def enqueue_terminal_event(
+        self,
+        request_id: str,
+        event_type: str,
+        payload: TerminalOutboxPayload,
+        metadata: TerminalOutboxMetadata,
+    ) -> int:
+        """Persist a terminal-origin event in the outbox for durable delivery."""
+        now = datetime.now(timezone.utc).isoformat()
+        payload_json = json.dumps(payload)
+        metadata_json = json.dumps(metadata)
+        cursor = await self.conn.execute(
+            """
+            INSERT INTO terminal_outbox (
+                request_id, event_type, payload, metadata, created_at, next_attempt_at, attempt_count
+            ) VALUES (?, ?, ?, ?, ?, ?, 0)
+            """,
+            (request_id, event_type, payload_json, metadata_json, now, now),
+        )
+        await self.conn.commit()
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise RuntimeError("Failed to insert terminal outbox row")
+        return int(row_id)
+
+    async def fetch_terminal_outbox_batch(
+        self,
+        now_iso: str,
+        limit: int,
+        lock_cutoff_iso: str,
+    ) -> list[TerminalOutboxRow]:
+        """Fetch a batch of due terminal outbox events."""
+        cursor = await self.conn.execute(
+            """
+            SELECT id, request_id, event_type, payload, metadata, attempt_count
+            FROM terminal_outbox
+            WHERE delivered_at IS NULL
+              AND next_attempt_at <= ?
+              AND (locked_at IS NULL OR locked_at <= ?)
+            ORDER BY created_at
+            LIMIT ?
+            """,
+            (now_iso, lock_cutoff_iso, limit),
+        )
+        rows = await cursor.fetchall()
+        typed_rows: list[TerminalOutboxRow] = []
+        for row in rows:
+            row_id = cast(int, row["id"])
+            request_id = cast(str, row["request_id"])
+            event_type = cast(str, row["event_type"])
+            payload = cast(str, row["payload"])
+            metadata = cast(str, row["metadata"])
+            attempt_count = cast(int, row["attempt_count"])
+            typed_rows.append(
+                TerminalOutboxRow(
+                    id=row_id,
+                    request_id=request_id,
+                    event_type=event_type,
+                    payload=payload,
+                    metadata=metadata,
+                    attempt_count=attempt_count,
+                )
+            )
+        return typed_rows
+
+    async def claim_terminal_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
+        """Claim a terminal outbox row for processing."""
+        cursor = await self.conn.execute(
+            """
+            UPDATE terminal_outbox
+            SET locked_at = ?
+            WHERE id = ?
+              AND delivered_at IS NULL
+              AND (locked_at IS NULL OR locked_at <= ?)
+            """,
+            (now_iso, row_id, lock_cutoff_iso),
+        )
+        await self.conn.commit()
+        return cursor.rowcount == 1
+
+    async def mark_terminal_outbox_delivered(
+        self,
+        row_id: int,
+        response_json: str,
+        error: str | None = None,
+    ) -> None:
+        """Mark a terminal outbox row delivered with response payload."""
+        now = datetime.now(timezone.utc).isoformat()
+        await self.conn.execute(
+            """
+            UPDATE terminal_outbox
+            SET delivered_at = ?, last_error = ?, locked_at = NULL, response = ?
+            WHERE id = ?
+            """,
+            (now, error, response_json, row_id),
+        )
+        await self.conn.commit()
+
+    async def mark_terminal_outbox_failed(
+        self,
+        row_id: int,
+        attempt_count: int,
+        next_attempt_at: str,
+        error: str,
+    ) -> None:
+        """Record a terminal outbox failure and schedule a retry."""
+        await self.conn.execute(
+            """
+            UPDATE terminal_outbox
+            SET attempt_count = ?, next_attempt_at = ?, last_error = ?, locked_at = NULL
+            WHERE id = ?
+            """,
+            (attempt_count, next_attempt_at, error, row_id),
+        )
+        await self.conn.commit()
+
 
 def _ux_state_query(field: str) -> str:
     return (
@@ -906,7 +1032,12 @@ def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | Non
     conn = sqlite3.connect(db_path, timeout=1.0)
     try:
         conn.execute("PRAGMA busy_timeout = 1000")
-        cursor = conn.execute(query, (value,))
+        try:
+            cursor = conn.execute(query, (value,))
+        except sqlite3.OperationalError as exc:
+            if "no such table" in str(exc).lower():
+                return None
+            raise
         row = cast(tuple[object, ...] | None, cursor.fetchone())
         return str(row[0]) if row else None
     finally:

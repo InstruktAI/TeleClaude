@@ -264,8 +264,8 @@ class TeleClaudeMCPServer:
         """
         return computer in ("local", self.computer_name)
 
-    async def _maybe_register_listener(self, target_session_id: str, caller_session_id: str | None = None) -> None:
-        """Register caller as listener for target session's stop event if possible.
+    async def _register_listener_if_present(self, target_session_id: str, caller_session_id: str | None = None) -> None:
+        """Register caller as listener for target session's stop event when available.
 
         Called on any contact with a session (start, send_message, get_session_data)
         so observers who tap in later also receive stop notifications.
@@ -867,8 +867,8 @@ class TeleClaudeMCPServer:
         ) -> list[TextContent]:
             """Handle tool calls.
 
-            Context variables (injected by mcp-wrapper.py from tmux env):
-            - caller_session_id: The calling session's ID for notifications/prefixes
+            Context variables (injected by mcp-wrapper.py):
+            - caller_session_id: Required calling session ID for notifications/prefixes
 
             These are extracted once here and passed to handlers that need them,
             keeping context handling centralized.
@@ -1377,14 +1377,12 @@ class TeleClaudeMCPServer:
             dict with session_id and status
         """
         # Get caller's agent info for AI-to-AI title format
-        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID")
         initiator_agent: str | None = None
         initiator_mode: str | None = None
-        if effective_caller_id:
-            caller_ux = await db.get_ux_state(effective_caller_id)
-            if caller_ux:
-                initiator_agent = caller_ux.active_agent
-                initiator_mode = caller_ux.thinking_mode
+        caller_ux = await db.get_ux_state(caller_session_id) if caller_session_id else None
+        if caller_ux:
+            initiator_agent = caller_ux.active_agent
+            initiator_mode = caller_ux.thinking_mode
 
         # Build channel_metadata with initiator info for title building
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # noqa: loose-dict - Adapter communication metadata
@@ -1425,13 +1423,8 @@ class TeleClaudeMCPServer:
         logger.info("Local session created: %s", session_id[:8])
 
         # Preserve caller ID only for listener registration/notifications
-        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-
         # Register listener so we get notified when target session stops
-        await self._maybe_register_listener(
-            session_id,
-            effective_caller_id if effective_caller_id != "unknown" else None,
-        )
+        await self._register_listener_if_present(session_id, caller_session_id)
 
         # Determine which event to fire based on agent (now always AGENT_START)
         # Send command with prefixed message to start the agent
@@ -1532,45 +1525,40 @@ class TeleClaudeMCPServer:
                 )
                 logger.debug("Sent /cd command to remote session %s", remote_session_id[:8])
 
-            # Preserve caller ID only for listener registration/notifications
-            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-
             # Register listener so we get notified when target session stops
             # Note: For remote sessions, the Stop event comes via Redis transport
-            logger.debug(
-                "Attempting listener registration: caller=%s, target=%s",
-                effective_caller_id[:8] if effective_caller_id != "unknown" else "unknown",
-                str(remote_session_id)[:8],
-            )
-            if effective_caller_id != "unknown":
+            if caller_session_id:
+                logger.debug(
+                    "Attempting listener registration: caller=%s, target=%s",
+                    caller_session_id[:8],
+                    str(remote_session_id)[:8],
+                )
                 try:
-                    caller_session = await db.get_session(effective_caller_id)
+                    caller_session = await db.get_session(caller_session_id)
                     logger.debug(
                         "Database lookup for caller %s: found=%s",
-                        effective_caller_id[:8],
+                        caller_session_id[:8],
                         caller_session is not None,
                     )
                     if caller_session:
                         register_listener(
                             target_session_id=str(remote_session_id),
-                            caller_session_id=effective_caller_id,
+                            caller_session_id=caller_session_id,
                             caller_tmux_session=caller_session.tmux_session_name,
                         )
                         logger.info(
                             "Listener registered: caller=%s -> target=%s (tmux=%s)",
-                            effective_caller_id[:8],
+                            caller_session_id[:8],
                             str(remote_session_id)[:8],
                             caller_session.tmux_session_name,
                         )
                     else:
                         logger.warning(
                             "Cannot register listener: caller session %s not found in database",
-                            effective_caller_id[:8],
+                            caller_session_id[:8],
                         )
                 except RuntimeError as e:
                     logger.warning("Database not initialized for listener registration: %s", e)
-            else:
-                logger.debug("Skipping listener registration: no caller_session_id")
 
             # Send agent start command with prefixed message
             # The remote handle_command expects: /agent {agent_name} {message}
@@ -1610,14 +1598,13 @@ class TeleClaudeMCPServer:
     ) -> RunAgentCommandResult:
         """Create local session and run auto_command via daemon."""
         # Get caller's agent info for AI-to-AI title format (same as _start_local_session)
-        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID")
+        effective_caller_id = caller_session_id
         initiator_agent: str | None = None
         initiator_mode: str | None = None
-        if effective_caller_id:
-            caller_ux = await db.get_ux_state(effective_caller_id)
-            if caller_ux:
-                initiator_agent = caller_ux.active_agent
-                initiator_mode = caller_ux.thinking_mode
+        caller_ux = await db.get_ux_state(effective_caller_id) if effective_caller_id else None
+        if caller_ux:
+            initiator_agent = caller_ux.active_agent
+            initiator_mode = caller_ux.thinking_mode
 
         # Build channel_metadata with initiator info for title building
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # noqa: loose-dict - Adapter communication metadata
@@ -1656,11 +1643,7 @@ class TeleClaudeMCPServer:
                 "message": "Local session did not return session_id",
             }
 
-        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-        await self._maybe_register_listener(
-            session_id,
-            effective_caller_id if effective_caller_id != "unknown" else None,
-        )
+        await self._register_listener_if_present(session_id, caller_session_id)
 
         return {"session_id": session_id, "status": "success"}
 
@@ -1681,14 +1664,13 @@ class TeleClaudeMCPServer:
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
         # Get caller's agent info for AI-to-AI title format
-        effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID")
+        effective_caller_id = caller_session_id
         initiator_agent: str | None = None
         initiator_mode: str | None = None
-        if effective_caller_id:
-            caller_ux = await db.get_ux_state(effective_caller_id)
-            if caller_ux:
-                initiator_agent = caller_ux.active_agent
-                initiator_mode = caller_ux.thinking_mode
+        caller_ux = await db.get_ux_state(effective_caller_id) if effective_caller_id else None
+        if caller_ux:
+            initiator_agent = caller_ux.active_agent
+            initiator_mode = caller_ux.thinking_mode
 
         # Build channel_metadata with initiator info for title building
         channel_metadata: dict[str, object] = {}  # noqa: loose-dict - Adapter communication metadata
@@ -1732,12 +1714,7 @@ class TeleClaudeMCPServer:
                     "message": "Remote did not return session_id",
                 }
 
-            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-
-            await self._maybe_register_listener(
-                str(remote_session_id),
-                effective_caller_id if effective_caller_id != "unknown" else None,
-            )
+            await self._register_listener_if_present(str(remote_session_id), caller_session_id)
 
             return {"session_id": remote_session_id, "status": "success"}
 
@@ -1875,14 +1852,8 @@ class TeleClaudeMCPServer:
             str: Acknowledgment message
         """
         try:
-            # Get caller's session_id for listener registration
-            effective_caller_id = caller_session_id or os.environ.get("TELECLAUDE_SESSION_ID", "unknown")
-
             # Register as listener so we get notified when target session stops
-            await self._maybe_register_listener(
-                session_id,
-                effective_caller_id if effective_caller_id != "unknown" else None,
-            )
+            await self._register_listener_if_present(session_id, caller_session_id)
 
             is_local = self._is_local_computer(computer)
 
@@ -2019,7 +1990,7 @@ class TeleClaudeMCPServer:
         """
         # Register as listener so caller gets notified when target session stops
         # Enables "master orchestrator" pattern - check multiple sessions, get notified when any stops
-        await self._maybe_register_listener(session_id, caller_session_id)
+        await self._register_listener_if_present(session_id, caller_session_id)
 
         requested_tail_chars = tail_chars
         if tail_chars <= 0 or tail_chars > MCP_SESSION_DATA_MAX_CHARS:

@@ -129,9 +129,10 @@ async def handle_file(
     active_agent = ux_state.active_agent if ux_state else None
 
     # Automatic detection: if process running, no marker
+    sanitized_text = terminal_io.wrap_bracketed_paste(input_text)
     success = await terminal_io.send_text(
         session,
-        input_text,
+        sanitized_text,
         active_agent=active_agent,
     )
 

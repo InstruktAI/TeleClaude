@@ -59,6 +59,11 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_listeners import get_listeners
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
+from teleclaude.core.terminal_events import (
+    TerminalOutboxMetadata,
+    TerminalOutboxPayload,
+    TerminalOutboxResponse,
+)
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -116,6 +121,13 @@ HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
 
+# Terminal outbox worker (telec)
+TERMINAL_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("TERMINAL_OUTBOX_POLL_INTERVAL_S", "0.5"))
+TERMINAL_OUTBOX_BATCH_SIZE: int = int(os.getenv("TERMINAL_OUTBOX_BATCH_SIZE", "25"))
+TERMINAL_OUTBOX_LOCK_TTL_S: float = float(os.getenv("TERMINAL_OUTBOX_LOCK_TTL_S", "30"))
+TERMINAL_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("TERMINAL_OUTBOX_BASE_BACKOFF_S", "1"))
+TERMINAL_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("TERMINAL_OUTBOX_MAX_BACKOFF_S", "60"))
+
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
 AGENT_START_POLL_INTERVAL_S = 0.5
@@ -128,6 +140,9 @@ AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
 AGENT_START_POST_INJECT_DELAY_S = 1.0
+AGENT_START_INPUT_ECHO_TIMEOUT_S = 2.5
+AGENT_START_BANNER_TIMEOUT_S = 3.0
+AGENT_START_POST_BANNER_DELAY_S = 5.0
 
 logger = get_logger("teleclaude.daemon")
 
@@ -246,6 +261,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_probe_at = 0.0
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
+        self.terminal_outbox_task: asyncio.Task[object] | None = None
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""
@@ -398,6 +414,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             active_connections = int(snapshot.get("active_connections") or 0)
             last_accept_age = snapshot.get("last_accept_age_s")
 
+            if active_connections > 0:
+                return True
+
             if not is_serving or not socket_exists:
                 logger.warning(
                     "MCP socket precheck failed",
@@ -464,6 +483,58 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
         return True
+
+    def _terminal_outbox_backoff(self, attempt: int) -> float:
+        """Compute exponential backoff for terminal outbox retries."""
+        safe_attempt = max(1, attempt)
+        delay: float = float(TERMINAL_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
+        return min(delay, float(TERMINAL_OUTBOX_MAX_BACKOFF_S))
+
+    def _is_retryable_terminal_error(self, exc: Exception) -> bool:
+        """Return True if terminal dispatch errors should be retried."""
+        if isinstance(exc, ValueError) and "not found" in str(exc):
+            return False
+        return True
+
+    def _coerce_message_metadata(self, metadata: TerminalOutboxMetadata) -> MessageMetadata:
+        """Build MessageMetadata from outbox metadata payload."""
+        adapter_type = metadata.get("adapter_type")
+        message_thread_id = metadata.get("message_thread_id")
+        parse_mode = metadata.get("parse_mode")
+        raw_format = metadata.get("raw_format", False)
+        channel_id = metadata.get("channel_id")
+        title = metadata.get("title")
+        project_dir = metadata.get("project_dir")
+        channel_metadata = metadata.get("channel_metadata")
+        auto_command = metadata.get("auto_command")
+
+        return MessageMetadata(
+            adapter_type=str(adapter_type) if adapter_type is not None else None,
+            message_thread_id=int(message_thread_id) if isinstance(message_thread_id, int) else None,
+            parse_mode=str(parse_mode) if parse_mode else "",
+            raw_format=bool(raw_format),
+            channel_id=str(channel_id) if channel_id is not None else None,
+            title=str(title) if title is not None else None,
+            project_dir=str(project_dir) if project_dir is not None else None,
+            channel_metadata=cast(dict[str, object] | None, channel_metadata),  # noqa: loose-dict - MessageMetadata contract
+            auto_command=str(auto_command) if auto_command is not None else None,
+        )
+
+    async def _dispatch_terminal_event(
+        self,
+        event_type: str,
+        payload: TerminalOutboxPayload,
+        metadata: MessageMetadata,
+    ) -> TerminalOutboxResponse:
+        """Dispatch a terminal-origin event directly via AdapterClient."""
+        response = await self.client.handle_event(
+            cast(EventType, event_type),
+            cast(dict[str, object], payload),  # noqa: loose-dict - AdapterClient expects loose dict
+            metadata,
+        )
+        if isinstance(response, dict):
+            return cast(TerminalOutboxResponse, response)
+        return cast(TerminalOutboxResponse, {"status": "success", "data": response})
 
     async def _dispatch_hook_event(
         self,
@@ -552,7 +623,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     continue
 
                 try:
-                    payload = cast(dict[str, object], json.loads(row["payload"]))  # noqa: loose-dict - JSON payload boundary
+                    payload = cast(dict[str, object], json.loads(row["payload"]))  # noqa: loose-dict - Hook payload JSON
                 except json.JSONDecodeError as exc:
                     logger.error("Hook outbox payload invalid", row_id=row["id"], error=str(exc))
                     await db.mark_hook_outbox_delivered(row["id"], error=str(exc))
@@ -584,6 +655,71 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         error=error_str,
                     )
                     await db.mark_hook_outbox_failed(row["id"], attempt, next_attempt, error_str)
+
+    async def _terminal_outbox_worker(self) -> None:
+        """Drain terminal outbox for telec-origin commands with responses."""
+        while not self.shutdown_event.is_set():
+            now = datetime.now(timezone.utc)
+            now_iso = now.isoformat()
+            lock_cutoff = (now - timedelta(seconds=TERMINAL_OUTBOX_LOCK_TTL_S)).isoformat()
+            rows = await db.fetch_terminal_outbox_batch(now_iso, TERMINAL_OUTBOX_BATCH_SIZE, lock_cutoff)
+
+            if not rows:
+                await asyncio.sleep(TERMINAL_OUTBOX_POLL_INTERVAL_S)
+                continue
+
+            for row in rows:
+                if self.shutdown_event.is_set():
+                    break
+                claimed = await db.claim_terminal_outbox(row["id"], now_iso, lock_cutoff)
+                if not claimed:
+                    continue
+
+                try:
+                    payload = cast(TerminalOutboxPayload, json.loads(row["payload"]))
+                except json.JSONDecodeError as exc:
+                    error_str = f"Invalid payload JSON: {exc}"
+                    error_payload: dict[str, str] = {"status": "error", "error": ""}
+                    error_payload["error"] = error_str
+                    response_json = json.dumps(error_payload)
+                    await db.mark_terminal_outbox_delivered(row["id"], response_json, error_str)
+                    continue
+
+                try:
+                    metadata_raw = cast(TerminalOutboxMetadata, json.loads(row["metadata"]))
+                    metadata = self._coerce_message_metadata(metadata_raw)
+                    if not metadata.adapter_type:
+                        metadata.adapter_type = "terminal"
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    error_str: str = f"Invalid metadata JSON: {exc}"
+                    error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
+                    response_json = json.dumps(error_payload)
+                    await db.mark_terminal_outbox_delivered(row["id"], response_json, error_str)
+                    continue
+
+                try:
+                    response = await self._dispatch_terminal_event(row["event_type"], payload, metadata)
+                    response_json = json.dumps(response)
+                    await db.mark_terminal_outbox_delivered(row["id"], response_json)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    attempt = int(row.get("attempt_count", 0)) + 1
+                    error_str: str = str(exc)
+                    if not self._is_retryable_terminal_error(exc):
+                        error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
+                        response_json = json.dumps(error_payload)
+                        await db.mark_terminal_outbox_delivered(row["id"], response_json, error_str)
+                        continue
+
+                    delay = self._terminal_outbox_backoff(attempt)
+                    next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
+                    logger.error(
+                        "Terminal outbox dispatch failed (retrying)",
+                        row_id=row["id"],
+                        attempt=attempt,
+                        next_attempt_in_s=round(delay, 2),
+                        error=error_str,
+                    )
+                    await db.mark_terminal_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -854,9 +990,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 ux_state = await db.get_ux_state(session_id)
                 active_agent = ux_state.active_agent if ux_state else None
 
+                sanitized_message = terminal_io.wrap_bracketed_paste(message)
                 pasted = await terminal_io.send_text(
                     session,
-                    message,
+                    sanitized_message,
                     working_dir=session.working_directory,
                     cols=cols,
                     rows=rows,
@@ -866,6 +1003,34 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 if not pasted:
                     return {"status": "error", "message": "Failed to paste command into tmux"}
 
+                echoed, _ = await self._wait_for_output_contains(
+                    session,
+                    message,
+                    AGENT_START_INPUT_ECHO_TIMEOUT_S,
+                )
+                if not echoed:
+                    logger.warning(
+                        "agent_then_message timed out waiting for input echo (session=%s)",
+                        session_id[:8],
+                    )
+                    return {"status": "error", "message": "Timeout waiting for input echo"}
+
+                before_tail, before_digest = await self._pane_output_snapshot(session)
+                banner_changed, banner_tail = await self._wait_for_output_change(
+                    session,
+                    before_tail,
+                    before_digest,
+                    AGENT_START_BANNER_TIMEOUT_S,
+                )
+                if not banner_changed:
+                    logger.warning(
+                        "agent_then_message timed out waiting for banner output (session=%s) tail=%s",
+                        session_id[:8],
+                        repr(banner_tail[-160:]) if banner_tail else "''",
+                    )
+                    return {"status": "error", "message": "Timeout waiting for agent banner"}
+
+                await asyncio.sleep(AGENT_START_POST_BANNER_DELAY_S)
                 await asyncio.sleep(AGENT_START_POST_INJECT_DELAY_S)
                 await db.update_last_activity(session_id)
                 await self._poll_and_send_output(session_id, session.tmux_session_name)
@@ -938,6 +1103,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             current_tail, current_digest = await self._pane_output_snapshot(session)
             last_tail = current_tail
             if current_digest != before_digest:
+                return True, current_tail
+            await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
+        return False, last_tail
+
+    async def _wait_for_output_contains(
+        self,
+        session: Session,
+        needle: str,
+        timeout_s: float,
+    ) -> tuple[bool, str]:
+        deadline = time.monotonic() + timeout_s
+        last_tail = ""
+        while time.monotonic() < deadline:
+            current_tail, _ = await self._pane_output_snapshot(session)
+            last_tail = current_tail
+            if needle and needle in current_tail:
                 return True, current_tail
             await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
         return False, last_tail
@@ -1421,10 +1602,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except ValueError:
                 pass
 
-        # Send command
+        sanitized_command = terminal_io.wrap_bracketed_paste(command)
         success = await terminal_io.send_text(
             session,
-            command,
+            sanitized_command,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,
@@ -1522,6 +1703,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
         logger.info("Hook outbox worker started")
 
+        self.terminal_outbox_task = asyncio.create_task(self._terminal_outbox_worker())
+        self.terminal_outbox_task.add_done_callback(self._log_background_task_exception("terminal_outbox"))
+        logger.info("Terminal outbox worker started")
+
         # CodexWatcher disabled - using native Codex notify hook instead (2026-01)
         # Keeping code for fallback. Remove after notify hook proven stable.
         # await self.codex_watcher.start()
@@ -1575,6 +1760,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Hook outbox worker stopped")
+
+        if self.terminal_outbox_task:
+            self.terminal_outbox_task.cancel()
+            try:
+                await self.terminal_outbox_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Terminal outbox worker stopped")
 
         # Stop session watcher
         if hasattr(self, "codex_watcher"):
@@ -1783,10 +1976,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         ux_state = await db.get_ux_state(session_id)
         active_agent = ux_state.active_agent if ux_state else None
 
+        sanitized_text = terminal_io.wrap_bracketed_paste(text)
+
         # Send command to terminal (will create fresh session if needed)
         success = await terminal_io.send_text(
             session,
-            text,
+            sanitized_text,
             working_dir=session.working_directory,
             cols=cols,
             rows=rows,

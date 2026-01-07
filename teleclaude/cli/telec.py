@@ -11,26 +11,56 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-from dataclasses import dataclass
-from datetime import datetime
+import time
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, TextIO, cast
 
 from teleclaude.config import config
-from teleclaude.core import session_cleanup, terminal_bridge
+from teleclaude.core import session_cleanup
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.agents import get_agent_command, normalize_agent_name
-from teleclaude.core.db import db
-from teleclaude.core.events import parse_command_string
-from teleclaude.core.models import ThinkingMode
-from teleclaude.core.session_utils import get_output_file
-from teleclaude.core.terminal_sessions import ensure_terminal_session, terminal_tmux_name_for_session
+from teleclaude.core.agents import normalize_agent_name
+from teleclaude.core.db import db, get_session_id_by_ux_state_sync
+from teleclaude.core.events import TeleClaudeEvents, parse_command_string
+from teleclaude.core.models import MessageMetadata, ThinkingMode
+from teleclaude.core.terminal_events import (
+    TERMINAL_METADATA_KEY,
+    TerminalEventMetadata,
+    TerminalOutboxMetadata,
+    TerminalOutboxPayload,
+    TerminalOutboxResponse,
+)
+from teleclaude.core.terminal_sessions import terminal_tmux_name_for_session
 from teleclaude.core.ux_state import SessionUXState, UXStatePayload
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 _UNSET = object()
+
+_TERMINAL_OUTBOX_SCHEMA = """
+CREATE TABLE IF NOT EXISTS terminal_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    metadata TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    attempt_count INTEGER DEFAULT 0,
+    last_error TEXT,
+    delivered_at TEXT,
+    locked_at TEXT,
+    response TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_terminal_outbox_pending ON terminal_outbox(delivered_at, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_terminal_outbox_request ON terminal_outbox(request_id);
+"""
+
+TELEC_OUTBOX_POLL_INTERVAL_S = float(os.getenv("TELEC_OUTBOX_POLL_INTERVAL_S", "0.05"))
+TELEC_OUTBOX_RESPONSE_TIMEOUT_S = float(os.getenv("TELEC_OUTBOX_RESPONSE_TIMEOUT_S", "10"))
 
 
 @dataclass
@@ -39,14 +69,6 @@ class TelecCommand:
     agent: str | None
     args: list[str]
     session_id: str | None
-
-
-@dataclass
-class SessionRow:
-    session_id: str
-    title: str | None
-    origin_adapter: str | None
-    ux_state_raw: str | None
 
 
 @dataclass
@@ -225,6 +247,116 @@ def parse_telec_command(argv: list[str]) -> TelecCommand:
     raise ValueError(_usage())
 
 
+def _ensure_terminal_outbox(conn: sqlite3.Connection) -> None:
+    conn.executescript(_TERMINAL_OUTBOX_SCHEMA)
+
+
+def _metadata_to_dict(metadata: MessageMetadata) -> TerminalOutboxMetadata:
+    return cast(TerminalOutboxMetadata, asdict(metadata))
+
+
+def _build_terminal_metadata(
+    *,
+    tty_path: str,
+    parent_pid: int,
+    cols: int,
+    rows: int,
+    cwd: str,
+    auto_command: str | None = None,
+) -> MessageMetadata:
+    terminal_meta = TerminalEventMetadata(
+        tty_path=tty_path,
+        parent_pid=parent_pid if parent_pid > 1 else None,
+        terminal_size=f"{cols}x{rows}",
+    )
+    channel_metadata = terminal_meta.to_channel_metadata()
+    channel_metadata_dict: dict[str, object] | None = None  # noqa: loose-dict - MessageMetadata contract
+    if channel_metadata:
+        channel_metadata_dict = {}
+        channel_metadata_dict[TERMINAL_METADATA_KEY] = channel_metadata[TERMINAL_METADATA_KEY]
+    return MessageMetadata(
+        adapter_type="terminal",
+        project_dir=cwd,
+        channel_metadata=channel_metadata_dict,
+        auto_command=auto_command,
+    )
+
+
+def _enqueue_terminal_event(
+    db_path: str,
+    request_id: str,
+    event_type: str,
+    payload: TerminalOutboxPayload,
+    metadata: MessageMetadata,
+) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    payload_json = json.dumps(payload)
+    metadata_json = json.dumps(_metadata_to_dict(metadata))
+
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        _ensure_terminal_outbox(conn)
+        conn.execute(
+            """
+            INSERT INTO terminal_outbox (
+                request_id, event_type, payload, metadata, created_at, next_attempt_at, attempt_count
+            ) VALUES (?, ?, ?, ?, ?, ?, 0)
+            """,
+            (request_id, event_type, payload_json, metadata_json, now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _wait_for_terminal_response(
+    db_path: str,
+    request_id: str,
+    *,
+    timeout_s: float = TELEC_OUTBOX_RESPONSE_TIMEOUT_S,
+    poll_interval_s: float = TELEC_OUTBOX_POLL_INTERVAL_S,
+) -> TerminalOutboxResponse:
+    deadline = time.monotonic() + timeout_s
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    conn.isolation_level = None
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        while time.monotonic() < deadline:
+            cursor = conn.execute(
+                "SELECT response FROM terminal_outbox WHERE request_id = ?",
+                (request_id,),
+            )
+            row = cast(tuple[object] | None, cursor.fetchone())
+            if row and row[0]:
+                raw = row[0]
+                if isinstance(raw, str):
+                    parsed = cast(object, json.loads(raw))
+                    if isinstance(parsed, dict):
+                        return cast(TerminalOutboxResponse, parsed)
+                raise ValueError("terminal outbox response is invalid")
+            time.sleep(poll_interval_s)
+    finally:
+        conn.close()
+
+    raise TimeoutError("Timed out waiting for terminal response")
+
+
+def _dispatch_terminal_event(
+    db_path: str,
+    event_type: str,
+    payload: TerminalOutboxPayload,
+    metadata: MessageMetadata,
+    *,
+    wait_for_response: bool = True,
+) -> TerminalOutboxResponse | None:
+    request_id = str(uuid.uuid4())
+    _enqueue_terminal_event(db_path, request_id, event_type, payload, metadata)
+    if not wait_for_response:
+        return None
+    return _wait_for_terminal_response(db_path, request_id)
+
+
 def _parse_datetime(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
@@ -232,6 +364,35 @@ def _parse_datetime(value: object) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _get_session_entry_by_id(db_path: str, session_id: str) -> SessionListEntry | None:
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        entries = _load_sessions(conn)
+    finally:
+        conn.close()
+    for entry in entries:
+        if entry.session_id == session_id:
+            return entry
+    return None
+
+
+def _find_session_id_for_tty(db_path: str, tty_path: str) -> str | None:
+    session_id = get_session_id_by_ux_state_sync(db_path, "native_tty_path", tty_path)
+    if session_id:
+        return session_id
+    return get_session_id_by_ux_state_sync(db_path, "tmux_tty_path", tty_path)
+
+
+def _wait_for_tmux_session(session_name: str, timeout_s: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if _tmux_session_exists(session_name):
+            return True
+        time.sleep(0.1)
+    return False
 
 
 def _tmux_session_exists(name: str) -> bool:
@@ -503,202 +664,9 @@ def _run_session_picker(db_path: str) -> SessionListEntry | None:
     return curses.wrapper(_ui)
 
 
-def _load_session(conn: sqlite3.Connection, session_id: str) -> SessionRow | None:
-    cursor = conn.execute(
-        "SELECT session_id, title, origin_adapter, ux_state FROM sessions WHERE session_id = ?",
-        (session_id,),
-    )
-    row = cast(tuple[object, object, object, object] | None, cursor.fetchone())
-    if not row:
-        return None
-    return SessionRow(
-        session_id=str(row[0]),
-        title=str(row[1]) if row[1] is not None else None,
-        origin_adapter=str(row[2]) if row[2] is not None else None,
-        ux_state_raw=str(row[3]) if row[3] is not None else None,
-    )
-
-
-def _load_ux_state(conn: sqlite3.Connection, session_id: str) -> SessionUXState:
-    cursor = conn.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
-    row = cast(tuple[object, ...] | None, cursor.fetchone())
-    if not row:
-        return SessionUXState()
-    if not row[0]:
-        return SessionUXState()
-    try:
-        data = row[0]
-        if isinstance(data, str):
-            parsed_raw: object = json.loads(data)
-            if isinstance(parsed_raw, dict):
-                return SessionUXState.from_dict(cast(UXStatePayload, parsed_raw))
-    except Exception:
-        return SessionUXState()
-    return SessionUXState()
-
-
-def _update_ux_state(conn: sqlite3.Connection, session_id: str, **updates: object) -> None:
-    cursor = conn.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
-    row = cast(tuple[object, ...] | None, cursor.fetchone())
-    existing = {}
-    if row and row[0]:
-        try:
-            if isinstance(row[0], str):
-                existing_raw: object = json.loads(row[0])
-                if isinstance(existing_raw, dict):
-                    existing = existing_raw
-        except Exception:
-            existing = {}
-    for key, value in updates.items():
-        if value is _UNSET:
-            continue
-        existing[key] = value
-
-    conn.execute(
-        "UPDATE sessions SET ux_state = ?, last_activity = CURRENT_TIMESTAMP WHERE session_id = ?",
-        (json.dumps(existing), session_id),
-    )
-
-
-def _build_agent_start_command(
-    agent_name: str,
-    args: list[str],
-    stored_mode: str | None,
-) -> tuple[str, str]:
-    thinking_mode, user_args = _parse_agent_args(agent_name, args, stored_mode)
-    has_prompt = bool(user_args)
-
-    base_cmd = get_agent_command(agent_name, thinking_mode=thinking_mode, interactive=has_prompt)
-    if user_args:
-        quoted = [shlex.quote(arg) for arg in user_args]
-        base_cmd = f"{base_cmd} {' '.join(quoted)}"
-    return base_cmd, thinking_mode
-
-
-def _build_agent_resume_command(agent_name: str, ux_state: SessionUXState) -> str:
-    thinking_mode = ux_state.thinking_mode or ThinkingMode.SLOW.value
-    native_session_id = ux_state.native_session_id
-    return get_agent_command(
-        agent=agent_name,
-        thinking_mode=thinking_mode,
-        exec=False,
-        resume=not native_session_id,
-        native_session_id=native_session_id,
-    )
-
-
-def _prepare_resume_state(ux_state: SessionUXState, explicit_session_id: bool) -> SessionUXState:
-    """Prefer 'resume latest' unless the user targets a specific TeleClaude session."""
-    if explicit_session_id or not ux_state.native_session_id:
-        return ux_state
-
-    fresh = SessionUXState.from_dict(cast(UXStatePayload, ux_state.to_dict()))
-    fresh.native_session_id = None
-    return fresh
-
-
-def _wrap_with_script(cmd: str, log_file: str | None) -> str:
-    if not log_file:
-        return cmd
-    if not shutil.which("script"):
-        return cmd
-    # macOS script(1) doesn't support -c; pass command as args to /bin/sh for portability.
-    return f"script -q {shlex.quote(log_file)} /bin/sh -c {shlex.quote(cmd)}"
-
-
 def _terminal_size() -> tuple[int, int]:
     size = shutil.get_terminal_size((160, 80))
     return size.columns, size.lines
-
-
-def _resolve_working_dir(value: str | None, fallback: str) -> str:
-    candidates = [
-        os.path.expanduser(value) if value else "",
-        os.path.expanduser(fallback) if fallback else "",
-        os.path.expanduser("~"),
-        os.getcwd(),
-    ]
-    for candidate in candidates:
-        if candidate and os.path.isdir(candidate):
-            return candidate
-    return os.getcwd()
-
-
-def _ensure_tmux_session(
-    *,
-    session_name: str,
-    session_id: str,
-    working_dir: str,
-    cols: int,
-    rows: int,
-    env_vars: dict[str, str],
-) -> None:
-    async def _run() -> None:
-        if await terminal_bridge.session_exists(session_name, log_missing=False):
-            ok = await terminal_bridge.update_tmux_session(session_name, env_vars)
-            if not ok:
-                raise RuntimeError(f"Failed to update tmux env for {session_name}")
-            return
-        ok = await terminal_bridge.create_tmux_session(
-            name=session_name,
-            working_dir=working_dir,
-            cols=cols,
-            rows=rows,
-            session_id=session_id,
-            env_vars=env_vars,
-        )
-        if not ok:
-            raise RuntimeError(f"Failed to create tmux session {session_name}")
-
-    asyncio.run(_run())
-
-
-def _update_tmux_tty(db_path: str, session_id: str, session_name: str) -> None:
-    async def _run() -> str | None:
-        return await terminal_bridge.get_pane_tty(session_name)
-
-    tmux_tty = asyncio.run(_run())
-    if not tmux_tty:
-        return
-
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        cursor = conn.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
-        row = cast(tuple[object] | None, cursor.fetchone())
-        existing: dict[str, object] = {}  # noqa: loose-dict - UX state JSON blob
-        if row and row[0]:
-            try:
-                if isinstance(row[0], str):
-                    parsed_raw: object = json.loads(row[0])
-                    if isinstance(parsed_raw, dict):
-                        existing = parsed_raw
-            except Exception:
-                existing = {}
-        if existing.get("tmux_tty_path") == tmux_tty:
-            return
-        existing["tmux_tty_path"] = tmux_tty
-        conn.execute(
-            "UPDATE sessions SET ux_state = ? WHERE session_id = ?",
-            (json.dumps(existing), session_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _send_tmux_command(session_name: str, cmd: str, agent_name: str | None) -> None:
-    async def _run() -> None:
-        ok = await terminal_bridge.send_keys_existing_tmux(
-            session_name=session_name,
-            text=cmd,
-            send_enter=True,
-            active_agent=agent_name,
-        )
-        if not ok:
-            raise RuntimeError(f"Failed to send command to tmux session {session_name}")
-
-    asyncio.run(_run())
 
 
 def _attach_tmux(session_name: str) -> None:
@@ -719,72 +687,14 @@ def _select_session_entry(db_path: str, selection: str | None) -> SessionListEnt
     return _resolve_session_selection(selection, entries)
 
 
-def _attach_session_entry(
-    *,
-    db_path: str,
-    entry: SessionListEntry,
-    tty_path: str,
-    parent_pid: int,
-    cwd: str,
-) -> None:
-    session_id = entry.session_id
+def _attach_session_entry(entry: SessionListEntry) -> None:
     tmux_name = _resolve_tmux_name(entry)
-
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        if tmux_name != entry.tmux_session_name:
-            conn.execute(
-                "UPDATE sessions SET tmux_session_name = ? WHERE session_id = ?",
-                (tmux_name, session_id),
-            )
-        _update_ux_state(
-            conn,
-            session_id,
-            native_tty_path=tty_path,
-            native_pid=parent_pid if parent_pid > 1 else None,
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
     if not shutil.which("tmux"):
         raise ValueError("tmux is required for terminal sessions")
 
-    cols, rows = _terminal_size()
-    env_vars = {
-        "TELECLAUDE_SESSION_ID": session_id,
-        "TELECLAUDE_TTY": tty_path,
-    }
-    if parent_pid > 1:
-        env_vars["TELECLAUDE_PID"] = str(parent_pid)
-
-    working_dir = _resolve_working_dir(entry.working_directory, cwd)
-    if entry.working_directory != working_dir:
-        conn = sqlite3.connect(db_path, timeout=1.0)
-        try:
-            conn.execute("PRAGMA busy_timeout = 1000")
-            conn.execute(
-                "UPDATE sessions SET working_directory = ? WHERE session_id = ?",
-                (working_dir, session_id),
-            )
-            conn.commit()
-        except Exception:
-            conn.rollback()
-        finally:
-            conn.close()
-    _ensure_tmux_session(
-        session_name=tmux_name,
-        session_id=session_id,
-        working_dir=working_dir,
-        cols=cols,
-        rows=rows,
-        env_vars=env_vars,
-    )
-    _update_tmux_tty(db_path, session_id, tmux_name)
+    if not _wait_for_tmux_session(tmux_name):
+        raise ValueError(f"tmux session {tmux_name} not found")
 
     _attach_tmux(tmux_name)
 
@@ -838,23 +748,8 @@ def main() -> None:
             sys.exit(1)
         if not entry:
             return
-
-        tty_path = _resolve_tty()
-        if not tty_path:
-            sys.stderr.write("telec: could not resolve a controlling TTY\n")
-            sys.exit(1)
-
-        parent_pid = os.getppid()
-        cwd = os.getcwd()
-
         try:
-            _attach_session_entry(
-                db_path=db_path,
-                entry=entry,
-                tty_path=tty_path,
-                parent_pid=parent_pid,
-                cwd=cwd,
-            )
+            _attach_session_entry(entry)
         except ValueError as exc:
             sys.stderr.write(f"telec error: {exc}\n")
             sys.exit(1)
@@ -877,138 +772,119 @@ def main() -> None:
 
     parent_pid = os.getppid()
     cwd = os.getcwd()
-
-    session_id: str | None = None
-    agent_name: str | None = None
-    tmux_name: str | None = None
-    cmd: str | None = None
-
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-
-        if parsed.action == "start":
-            agent_name = normalize_agent_name(parsed.agent or "")
-            thinking_mode_for_title, user_args = _parse_agent_args(agent_name, parsed.args, None)
-            description = " ".join(user_args) if user_args else "New session"
-            session_id = ensure_terminal_session(
-                tty_path,
-                parent_pid,
-                agent_name,
-                cwd,
-                thinking_mode=thinking_mode_for_title,
-                description=description,
-            )
-        elif parsed.action == "new_session":
-            session_id = ensure_terminal_session(tty_path, parent_pid, None, cwd, description="New session")
-        elif parsed.session_id:
-            session = _load_session(conn, parsed.session_id)
-            if not session:
-                raise ValueError(f"Session {parsed.session_id[:8]} not found")
-            session_id = parsed.session_id
-        else:
-            session_id = ensure_terminal_session(tty_path, parent_pid, None, cwd, description="New session")
-
-        if not session_id:
-            raise ValueError("Failed to resolve TeleClaude session")
-
-        tmux_name = terminal_tmux_name_for_session(session_id)
-        conn.execute("UPDATE sessions SET tmux_session_name = ? WHERE session_id = ?", (tmux_name, session_id))
-
-        ux_state = _load_ux_state(conn, session_id)
-
-        if parsed.action == "start":
-            if not agent_name:
-                agent_name = normalize_agent_name(parsed.agent or "")
-            cmd, thinking_mode = _build_agent_start_command(agent_name, parsed.args, ux_state.thinking_mode)
-            log_file = ux_state.tui_log_file or str(get_output_file(session_id))
-            cmd = _wrap_with_script(cmd, log_file)
-
-            _update_ux_state(
-                conn,
-                session_id,
-                active_agent=agent_name,
-                thinking_mode=thinking_mode,
-                native_session_id=None,
-                native_log_file=None,
-                tui_log_file=log_file,
-                tui_capture_started=True,
-                native_tty_path=tty_path,
-                native_pid=parent_pid if parent_pid > 1 else None,
-            )
-
-        elif parsed.action == "new_session":
-            _update_ux_state(
-                conn,
-                session_id,
-                native_tty_path=tty_path,
-                native_pid=parent_pid if parent_pid > 1 else None,
-            )
-            sys.stderr.write(f"Created terminal session {session_id}\n")
-        else:
-            if parsed.session_id:
-                _update_ux_state(
-                    conn,
-                    session_id,
-                    native_tty_path=tty_path,
-                    native_pid=parent_pid if parent_pid > 1 else None,
-                )
-
-            agent_name = ux_state.active_agent or parsed.agent
-            if not agent_name:
-                sys.stderr.write(f"Registered terminal session {session_id}\n")
-            else:
-                agent_name = normalize_agent_name(agent_name)
-                resume_state = _prepare_resume_state(ux_state, explicit_session_id=bool(parsed.session_id))
-                cmd = _build_agent_resume_command(agent_name, resume_state)
-                log_file = ux_state.tui_log_file or str(get_output_file(session_id))
-                cmd = _wrap_with_script(cmd, log_file)
-                _update_ux_state(
-                    conn,
-                    session_id,
-                    active_agent=agent_name,
-                    tui_log_file=log_file,
-                    tui_capture_started=True,
-                )
-
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        sys.stderr.write(f"telec error: {exc}\n")
-        sys.exit(1)
-    finally:
-        conn.close()
-
-    if not tmux_name:
-        sys.stderr.write("telec error: failed to resolve tmux session name\n")
-        sys.exit(1)
-
-    if not shutil.which("tmux"):
-        sys.stderr.write("telec error: tmux is required for terminal sessions\n")
-        sys.exit(1)
-
     cols, rows = _terminal_size()
-    env_vars = {
-        "TELECLAUDE_SESSION_ID": session_id,
-        "TELECLAUDE_TTY": tty_path,
-    }
-    if parent_pid > 1:
-        env_vars["TELECLAUDE_PID"] = str(parent_pid)
 
-    _ensure_tmux_session(
-        session_name=tmux_name,
-        session_id=session_id,
-        working_dir=cwd,
-        cols=cols,
-        rows=rows,
-        env_vars=env_vars,
-    )
-    _update_tmux_tty(db_path, session_id, tmux_name)
+    if parsed.action == "new_session":
+        metadata = _build_terminal_metadata(
+            tty_path=tty_path,
+            parent_pid=parent_pid,
+            cols=cols,
+            rows=rows,
+            cwd=cwd,
+        )
+        payload = cast(TerminalOutboxPayload, {"session_id": "", "args": parsed.args})
+        response = _dispatch_terminal_event(db_path, TeleClaudeEvents.NEW_SESSION, payload, metadata)
+        if response is None or response.get("status") != "success":
+            error = response.get("error", "unknown error") if response else "unknown error"
+            sys.stderr.write(f"telec error: {error}\n")
+            sys.exit(1)
+        data = response.get("data")
+        session_id = data.get("session_id") if isinstance(data, dict) else None
+        if not session_id:
+            sys.stderr.write("telec error: session creation failed\n")
+            sys.exit(1)
+        entry = _get_session_entry_by_id(db_path, str(session_id))
+        if not entry:
+            sys.stderr.write("telec error: session not found after creation\n")
+            sys.exit(1)
+        _attach_session_entry(entry)
+        return
 
-    if cmd:
-        _send_tmux_command(tmux_name, cmd, agent_name)
+    if parsed.action == "start":
+        agent_name = normalize_agent_name(parsed.agent or "")
+        thinking_mode, user_args = _parse_agent_args(agent_name, parsed.args, None)
+        description_args = user_args
+        auto_command = shlex.join(["agent", agent_name, thinking_mode] + user_args)
 
-    _attach_tmux(tmux_name)
+        metadata = _build_terminal_metadata(
+            tty_path=tty_path,
+            parent_pid=parent_pid,
+            cols=cols,
+            rows=rows,
+            cwd=cwd,
+            auto_command=auto_command,
+        )
+        payload = cast(TerminalOutboxPayload, {"session_id": "", "args": description_args})
+        response = _dispatch_terminal_event(db_path, TeleClaudeEvents.NEW_SESSION, payload, metadata)
+        if response is None or response.get("status") != "success":
+            error = response.get("error", "unknown error") if response else "unknown error"
+            sys.stderr.write(f"telec error: {error}\n")
+            sys.exit(1)
+        data = response.get("data")
+        session_id = data.get("session_id") if isinstance(data, dict) else None
+        if not session_id:
+            sys.stderr.write("telec error: session creation failed\n")
+            sys.exit(1)
+        entry = _get_session_entry_by_id(db_path, str(session_id))
+        if not entry:
+            sys.stderr.write("telec error: session not found after creation\n")
+            sys.exit(1)
+        _attach_session_entry(entry)
+        return
+
+    if parsed.action == "resume":
+        entry: SessionListEntry | None = None
+        if parsed.session_id:
+            entry = _select_session_entry(db_path, parsed.session_id)
+        else:
+            session_id = _find_session_id_for_tty(db_path, tty_path)
+            if session_id:
+                entry = _get_session_entry_by_id(db_path, session_id)
+
+        if entry:
+            metadata = MessageMetadata(adapter_type="terminal")
+            empty_args = list[str]()
+            payload = cast(TerminalOutboxPayload, {"session_id": entry.session_id, "args": empty_args})
+            _dispatch_terminal_event(
+                db_path,
+                TeleClaudeEvents.AGENT_RESUME,
+                payload,
+                metadata,
+                wait_for_response=True,
+            )
+            _attach_session_entry(entry)
+            return
+
+        auto_command = "agent_resume"
+        metadata = _build_terminal_metadata(
+            tty_path=tty_path,
+            parent_pid=parent_pid,
+            cols=cols,
+            rows=rows,
+            cwd=cwd,
+            auto_command=auto_command,
+        )
+        empty_args = list[str]()
+        payload = cast(TerminalOutboxPayload, {"session_id": "", "args": empty_args})
+        response = _dispatch_terminal_event(db_path, TeleClaudeEvents.NEW_SESSION, payload, metadata)
+        if response is None or response.get("status") != "success":
+            error = response.get("error", "unknown error") if response else "unknown error"
+            sys.stderr.write(f"telec error: {error}\n")
+            sys.exit(1)
+        data = response.get("data")
+        session_id = data.get("session_id") if isinstance(data, dict) else None
+        if not session_id:
+            sys.stderr.write("telec error: session creation failed\n")
+            sys.exit(1)
+        entry = _get_session_entry_by_id(db_path, str(session_id))
+        if not entry:
+            sys.stderr.write("telec error: session not found after creation\n")
+            sys.exit(1)
+        _attach_session_entry(entry)
+        return
+
+    sys.stderr.write("telec error: unsupported command\n")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ def test_resolve_session_selection_by_index_and_prefix() -> None:
             session_id="abc12345",
             title="Alpha",
             origin_adapter="terminal",
-            tmux_session_name="tc_term_abc1",
+            tmux_session_name="telec_abc1",
             working_directory=None,
             last_activity=None,
             created_at=None,
@@ -46,7 +46,7 @@ def test_resolve_session_selection_by_index_and_prefix() -> None:
             session_id="def67890",
             title="Beta",
             origin_adapter="terminal",
-            tmux_session_name="tc_term_def6",
+            tmux_session_name="telec_def6",
             working_directory=None,
             last_activity=None,
             created_at=None,
@@ -58,7 +58,7 @@ def test_resolve_session_selection_by_index_and_prefix() -> None:
 
     assert telec._resolve_session_selection("1", entries) == entries[0]
     assert telec._resolve_session_selection("abc", entries) == entries[0]
-    assert telec._resolve_session_selection("tc_term_abc", entries) == entries[0]
+    assert telec._resolve_session_selection("telec_abc", entries) == entries[0]
 
 
 def test_resolve_session_selection_multiple_matches() -> None:
@@ -68,7 +68,7 @@ def test_resolve_session_selection_multiple_matches() -> None:
             session_id="abc111",
             title="Alpha",
             origin_adapter="terminal",
-            tmux_session_name="tc_term_abc1",
+            tmux_session_name="telec_abc1",
             working_directory=None,
             last_activity=None,
             created_at=None,
@@ -81,7 +81,7 @@ def test_resolve_session_selection_multiple_matches() -> None:
             session_id="abc222",
             title="Beta",
             origin_adapter="terminal",
-            tmux_session_name="tc_term_abc2",
+            tmux_session_name="telec_abc2",
             working_directory=None,
             last_activity=None,
             created_at=None,
@@ -113,7 +113,7 @@ def test_load_sessions_parses_ux_state(monkeypatch: pytest.MonkeyPatch) -> None:
                 "abc12345",
                 "Test Session",
                 "terminal",
-                "tc_term_abc1",
+                "telec_abc1",
                 "/tmp",
                 "2025-01-01 10:00:00",
                 "2025-01-01 09:00:00",
@@ -164,7 +164,7 @@ def test_resolve_tmux_name_terminal_fallback() -> None:
         thinking_mode=None,
         tmux_ready=False,
     )
-    assert telec._resolve_tmux_name(entry) == "tc_term_abc12345"
+    assert telec._resolve_tmux_name(entry) == "telec_abc12345"
 
 
 def test_resolve_tmux_name_missing_for_nonterminal() -> None:

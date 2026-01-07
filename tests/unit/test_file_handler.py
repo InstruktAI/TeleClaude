@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from teleclaude.core import file_handler
+from teleclaude.core import file_handler, terminal_io
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import (
     Session,
@@ -215,7 +215,8 @@ class TestHandleFile:
         assert len(sent_keys) == 1
         # Path.resolve() converts to absolute path (e.g., /tmp -> /private/tmp on macOS)
         expected_path = str(Path("/tmp/file.pdf").resolve())
-        assert sent_keys[0][1] == f"@{expected_path}"
+        expected_text = terminal_io.wrap_bracketed_paste(f"@{expected_path}")
+        assert sent_keys[0][1] == expected_text
 
     @pytest.mark.asyncio
     async def test_sends_plain_path_for_other_process(self, mock_session, mock_ux_state):
@@ -250,7 +251,8 @@ class TestHandleFile:
         assert len(sent_keys) == 1
         # Path.resolve() converts to absolute path (e.g., /tmp -> /private/tmp on macOS)
         expected_path = str(Path("/tmp/file.pdf").resolve())
-        assert sent_keys[0][1] == expected_path
+        expected_text = terminal_io.wrap_bracketed_paste(expected_path)
+        assert sent_keys[0][1] == expected_text
 
     @pytest.mark.asyncio
     async def test_sends_confirmation_with_file_size(self, mock_session, mock_ux_state):

@@ -13,7 +13,7 @@ async def test_send_text_prefers_existing_tmux():
     session = Session(
         session_id="sid-123",
         computer_name="test",
-        tmux_session_name="tc_term_123",
+        tmux_session_name="telec_123",
         origin_adapter="terminal",
         title="Test Terminal",
     )
@@ -39,7 +39,7 @@ async def test_send_text_creates_tmux_when_missing():
     session = Session(
         session_id="sid-456",
         computer_name="test",
-        tmux_session_name="tc_term_456",
+        tmux_session_name="telec_456",
         origin_adapter="terminal",
         title="Test Terminal",
     )

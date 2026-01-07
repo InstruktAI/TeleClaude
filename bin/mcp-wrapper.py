@@ -19,9 +19,11 @@ import time
 from pathlib import Path
 from typing import MutableMapping, TypedDict
 
-from instrukt_ai_logging import get_logger
+from instrukt_ai_logging import configure_logging, get_logger
 
-logger = get_logger(__name__)
+configure_logging("teleclaude")
+
+logger = get_logger("teleclaude.mcp_wrapper")
 
 MCP_SOCKET = "/tmp/teleclaude.sock"
 # Map parameter names to env var names. Special value None means use os.getcwd()
@@ -106,6 +108,19 @@ def _extract_request_meta(raw_line: bytes) -> tuple[object | None, str | None, s
         if isinstance(params, dict):
             tool_name = params.get("name") if isinstance(params.get("name"), str) else None
     return msg.get("id"), method, tool_name
+
+
+def _read_session_id_marker() -> str | None:
+    """Read TeleClaude session ID from the per-session TMPDIR marker file."""
+    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
+    if not tmpdir:
+        return None
+    marker = Path(tmpdir) / "teleclaude_session_id"
+    try:
+        value = marker.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return value or None
 
 
 def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
@@ -227,15 +242,22 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
         arguments = {}
 
     for param_name, env_var in CONTEXT_TO_INJECT.items():
-        if param_name not in arguments:
-            if env_var is None:
-                # Special case: cwd uses os.getcwd()
-                if param_name == "cwd":
-                    arguments[param_name] = os.getcwd()
-            else:
-                env_value = os.environ.get(env_var)
-                if env_value:
-                    arguments[param_name] = env_value
+        existing = arguments.get(param_name)
+        has_value = existing is not None and (not isinstance(existing, str) or existing != "")
+        if has_value:
+            continue
+        if env_var is None:
+            # Special case: cwd uses os.getcwd()
+            if param_name == "cwd":
+                arguments[param_name] = os.getcwd()
+        else:
+            env_value = os.environ.get(env_var)
+            if env_value:
+                arguments[param_name] = env_value
+            elif param_name == "caller_session_id":
+                marker_value = _read_session_id_marker()
+                if marker_value:
+                    arguments[param_name] = marker_value
 
     params["arguments"] = arguments
     return params
@@ -1104,6 +1126,13 @@ def main():
     if os.getppid() == 1:
         logger.info("Orphan wrapper detected at startup (PPID=1), exiting")
         return
+    logger.info(
+        "MCP wrapper env",
+        teleclaude_session_id=os.environ.get("TELECLAUDE_SESSION_ID"),
+        tmux=os.environ.get("TMUX"),
+        tmpdir=os.environ.get("TMPDIR"),
+        ppid=os.getppid(),
+    )
     _start_guard_thread()
     # Exit cleanly on signals (especially SIGHUP when parent dies)
     signal.signal(signal.SIGHUP, _handle_signal)

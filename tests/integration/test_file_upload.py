@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core import file_handler
+from teleclaude.core import file_handler, terminal_io
 from teleclaude.core.db import Db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import (
@@ -89,8 +89,9 @@ class TestFileUploadFlow:
         assert len(sent_keys) == 1
         assert sent_keys[0][0] == "tmux_test"
         # Path is resolved to absolute path (on macOS /tmp -> /private/tmp)
-        assert sent_keys[0][1].startswith("@")
-        assert "document.pdf" in sent_keys[0][1]
+        expected_path = str(Path("/tmp/document.pdf").resolve())
+        expected_text = terminal_io.wrap_bracketed_paste(f"@{expected_path}")
+        assert sent_keys[0][1] == expected_text
 
         assert len(sent_messages) == 1
         assert "document.pdf" in sent_messages[0][1]
@@ -130,9 +131,9 @@ class TestFileUploadFlow:
             )
 
         assert len(sent_keys) == 1
-        # Path is resolved to absolute path (on macOS /tmp -> /private/tmp)
-        assert "image.jpg" in sent_keys[0][1]
-        assert not sent_keys[0][1].startswith("@")  # No @ prefix for non-Claude
+        expected_path = str(Path("/tmp/image.jpg").resolve())
+        expected_text = terminal_io.wrap_bracketed_paste(expected_path)
+        assert sent_keys[0][1] == expected_text
 
     @pytest.mark.asyncio
     async def test_rejection_when_no_process_active(self, session_manager, test_session):

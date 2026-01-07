@@ -307,6 +307,17 @@ def _get_adapter(agent: str) -> NormalizeFn:
     raise ValueError(f"Unknown agent '{agent}'")
 
 
+def _normalize_event_type(agent: str, event_type: str | None) -> str | None:
+    if event_type is None:
+        return None
+    if agent != "gemini":
+        return event_type
+    normalized = event_type.strip().lower().replace("-", "_")
+    if normalized == "after_agent":
+        return "stop"
+    return event_type
+
+
 def main() -> None:
     args = _parse_args()
 
@@ -331,7 +342,7 @@ def main() -> None:
         event_type = "stop"
     else:
         # Claude/Gemini pass event_type as arg, JSON on stdin
-        event_type = cast(str, args.event_type)
+        event_type = _normalize_event_type(args.agent, cast(str, args.event_type))
         raw_input, data = _read_stdin()
 
     log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"

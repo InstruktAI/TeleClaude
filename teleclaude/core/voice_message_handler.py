@@ -274,10 +274,11 @@ async def handle_voice(
     ux_state = await db.get_ux_state(session_id)
     active_agent = ux_state.active_agent if ux_state else None
 
+    sanitized_text = terminal_io.wrap_bracketed_paste(text)
     logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], text)
     success = await terminal_io.send_text(
         session,
-        text,
+        sanitized_text,
         active_agent=active_agent,
     )
 
