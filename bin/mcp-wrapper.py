@@ -779,7 +779,7 @@ class MCPProxy:
                     if request_id is not None:
                         await self._fail_request(
                             request_id,
-                            "TeleClaude backend is restarting or busy (wrapper queue full). Please retry.",
+                            "TeleClaude backend unavailable or busy (wrapper queue full). Please retry.",
                         )
                     else:
                         self._log_throttled(
@@ -818,7 +818,7 @@ class MCPProxy:
                 if request_id is not None:
                     await self._fail_request(
                         request_id,
-                        "TeleClaude backend unavailable (restarting). Please retry.",
+                        "TeleClaude backend unavailable. Please retry; if this persists, check daemon health.",
                     )
                 continue
 
@@ -886,7 +886,7 @@ class MCPProxy:
                         if request_id is not None:
                             await self._fail_request(
                                 request_id,
-                                "TeleClaude backend restarting (queue full). Please retry.",
+                                "TeleClaude backend unavailable (queue full). Please retry.",
                             )
             except Exception as e:
                 self._log_throttled("backend:send:error", logging.WARNING, "Failed sending request to backend: %s", e)

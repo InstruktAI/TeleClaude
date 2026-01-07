@@ -414,9 +414,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             active_connections = int(snapshot.get("active_connections") or 0)
             last_accept_age = snapshot.get("last_accept_age_s")
 
-            if active_connections > 0:
-                return True
-
             if not is_serving or not socket_exists:
                 logger.warning(
                     "MCP socket precheck failed",
@@ -427,10 +424,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 )
                 return False
 
-            if active_connections > 0:
-                return True
             if last_accept_age is not None and last_accept_age <= MCP_SOCKET_HEALTH_ACCEPT_GRACE_S:
                 return True
+            if active_connections > 0:
+                if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+                    return True
+                logger.warning(
+                    "MCP socket accept stale; probing",
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                self._last_mcp_probe_at = now
+                return await self._probe_mcp_socket(str(socket_path))
             if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
                 return True
 
