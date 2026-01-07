@@ -9,9 +9,10 @@ for the orchestrator AI to execute literally.
 """
 
 import json
+import os
 import re
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, Mapping, cast
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
@@ -247,6 +248,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
     # Commit the state change
     try:
         repo = Repo(cwd)
+        configure_git_env(repo, cwd)
         relative_path = state_path.relative_to(cwd)
         repo.index.add([str(relative_path)])
         # Create descriptive commit message
@@ -463,6 +465,7 @@ def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
     # Commit the state change
     try:
         repo = Repo(cwd)
+        configure_git_env(repo, cwd)
         repo.index.add(["todos/roadmap.md"])
         state_names = {" ": "pending", ".": "ready", ">": "in-progress", "x": "done"}
         msg = f"roadmap({slug}): mark {state_names.get(new_state, new_state)}"
@@ -513,6 +516,7 @@ def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
             deps_path.unlink()
             try:
                 repo = Repo(cwd)
+                configure_git_env(repo, cwd)
                 repo.index.remove(["todos/dependencies.json"])  # type: ignore[misc]
                 repo.index.commit("deps: remove empty dependencies.json")
             except InvalidGitRepositoryError:
@@ -524,6 +528,7 @@ def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
 
     try:
         repo = Repo(cwd)
+        configure_git_env(repo, cwd)
         repo.index.add(["todos/dependencies.json"])
         repo.index.commit("deps: update dependencies.json")
         logger.info("Updated dependencies.json")
@@ -743,6 +748,26 @@ async def get_available_agent(
 # =============================================================================
 # Git Operations
 # =============================================================================
+
+
+def build_git_hook_env(cwd: str, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Build env vars so git hooks resolve repo-local venv tools."""
+    env = dict(base_env or os.environ)
+    path_raw = env.get("PATH", "")
+    venv_bin = ".venv/bin"
+
+    path_parts = [p for p in path_raw.split(os.pathsep) if p and p != venv_bin]
+    path_parts.insert(0, venv_bin)
+    return {
+        "PATH": os.pathsep.join(path_parts),
+        "VIRTUAL_ENV": str(Path(cwd) / ".venv"),
+    }
+
+
+def configure_git_env(repo: Repo, cwd: str) -> None:
+    """Ensure git commands run with repo-local venv tools available."""
+    env = build_git_hook_env(cwd)
+    repo.git.update_environment(**env)
 
 
 def has_uncommitted_changes(cwd: str, slug: str) -> bool:
