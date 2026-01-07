@@ -291,7 +291,7 @@ async def test_response_timeout_sends_error(monkeypatch: pytest.MonkeyPatch) -> 
     now = asyncio.get_running_loop().time()
     proxy._pending_requests = {123: now - 0.1}
 
-    sent: dict[str, object] = {}  # noqa: loose-dict - Test fixture data
+    sent: dict[str, object] = {}  # type: boundary - Test fixture data
 
     async def _send_error(request_id: object, message: str) -> None:
         sent["id"] = request_id
@@ -427,7 +427,8 @@ async def test_connect_guard_enables_after_failures(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
-async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(tmp_path / "missing.json"))
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -453,6 +454,30 @@ async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch) 
     response = json.loads(output)
     assert response["id"] == 9
     assert response["result"]["tools"] == wrapper.TOOL_LIST_CACHE
+
+
+@pytest.mark.asyncio
+async def test_tools_list_errors_without_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(tmp_path / "missing.json"))
+    wrapper = _load_wrapper_module(monkeypatch)
+    proxy = wrapper.MCPProxy()
+
+    dummy_stdout = _DummyStdout()
+    monkeypatch.setattr(sys, "stdout", dummy_stdout)
+
+    wrapper.TOOL_LIST_CACHE = None
+
+    reader = asyncio.StreamReader()
+    request = {"jsonrpc": "2.0", "id": 10, "method": "tools/list"}
+    reader.feed_data((json.dumps(request) + "\n").encode("utf-8"))
+    reader.feed_eof()
+
+    await proxy.stdin_to_socket(reader)
+
+    output = dummy_stdout.buffer.getvalue().decode("utf-8").strip()
+    response = json.loads(output)
+    assert response["id"] == 10
+    assert response["error"]["code"] == wrapper._ERR_BACKEND_UNAVAILABLE
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import json
 import time
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -21,19 +21,33 @@ def _load_wrapper_module(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_refresh_tool_cache_if_needed_updates_on_mtime_change(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cache_path = tmp_path / "mcp-tools-cache.json"
+    monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(cache_path))
     wrapper = _load_wrapper_module(monkeypatch)
 
-    fake_server = tmp_path / "mcp_server.py"
-    fake_server.write_text('Tool(name="teleclaude__one")\\n', encoding="utf-8")
-    os.utime(fake_server, None)
+    tools_v1 = [
+        {
+            "name": "teleclaude__one",
+            "description": "",
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+    ]
+    cache_path.write_text(json.dumps(tools_v1), encoding="utf-8")
 
-    monkeypatch.setattr(wrapper, "_get_mcp_server_path", lambda: fake_server)
     wrapper.refresh_tool_cache_if_needed(force=True)
-    assert "teleclaude__one" in wrapper.TOOL_NAMES
+    assert wrapper.TOOL_LIST_CACHE
+    assert wrapper.TOOL_LIST_CACHE[0]["name"] == "teleclaude__one"
 
     time.sleep(0.01)
-    fake_server.write_text('Tool(name="teleclaude__two")\\n', encoding="utf-8")
-    os.utime(fake_server, None)
+    tools_v2 = [
+        {
+            "name": "teleclaude__two",
+            "description": "",
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+    ]
+    cache_path.write_text(json.dumps(tools_v2), encoding="utf-8")
 
     wrapper.refresh_tool_cache_if_needed()
-    assert "teleclaude__two" in wrapper.TOOL_NAMES
+    assert wrapper.TOOL_LIST_CACHE
+    assert wrapper.TOOL_LIST_CACHE[0]["name"] == "teleclaude__two"

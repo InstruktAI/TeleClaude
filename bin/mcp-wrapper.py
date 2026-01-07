@@ -3,7 +3,7 @@
 # mypy: ignore-errors
 """Resilient MCP wrapper that handles backend server restarts.
 
-Dynamically extracts tool definitions from mcp_server.py at startup.
+Uses a last-known-good tools list from the backend when the daemon is down.
 """
 
 import asyncio
@@ -11,7 +11,6 @@ import fcntl
 import json
 import logging
 import os
-import re
 import signal
 import sys
 import threading
@@ -52,6 +51,7 @@ CONNECT_LOCK_RETRY_S = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_RETRY", "0.05")
 CONNECT_LOCK_SLOTS = int(os.getenv("MCP_WRAPPER_CONNECT_LOCK_SLOTS", "3"))
 CONNECT_LOCK_FAILS = int(os.getenv("MCP_WRAPPER_CONNECT_LOCK_FAILS", "3"))
 CONNECT_LOCK_WINDOW_S = float(os.getenv("MCP_WRAPPER_CONNECT_LOCK_WINDOW", "10.0"))
+TOOL_CACHE_PATH_ENV = "MCP_WRAPPER_TOOL_CACHE_PATH"
 # Keep logs human-friendly by default: no repeated spam while waiting for a restart
 # or when running in a restricted environment that can't connect to the socket.
 LOG_THROTTLE_S = 60.0
@@ -128,68 +128,84 @@ def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
     return RESPONSE_TIMEOUT
 
 
-def extract_tools_from_mcp_server() -> list[str]:
-    """Extract tool names from mcp_server.py by grepping for teleclaude__ pattern.
-
-    Excludes internal-only tools that should not be exposed to MCP clients.
-    """
-    mcp_server_path = _get_mcp_server_path()
-
-    if not mcp_server_path.exists():
-        logger.warning("mcp_server.py not found at %s", mcp_server_path)
-        return []
-
-    content = mcp_server_path.read_text()
-    # Match: name="teleclaude__something"
-    pattern = r'name="(teleclaude__[a-z_]+)"'
-    matches = re.findall(pattern, content)
-
-    # Exclude internal-only tools (used by hooks, not for client invocation)
-    excluded = {"teleclaude__handle_agent_event"}
-    tools = [tool for tool in matches if tool not in excluded]
-
-    return list(dict.fromkeys(tools))  # Dedupe while preserving order
-
-
-def build_response_template(tool_names: list[str]) -> str:
-    """Pre-build response template with placeholder for request ID."""
-    # Pre-serialize response structure for maximum speed
-    # Use string template with unique placeholder to avoid JSON parsing overhead at runtime
-    tools_json = json.dumps(tool_names)
-    # Build template with __REQUEST_ID__ placeholder for str.replace()
-    response_template = (
-        '{"jsonrpc":"2.0","id":__REQUEST_ID__,"result":{'
-        '"protocolVersion":"2024-11-05",'
-        '"capabilities":{"tools":{}},'
-        '"serverInfo":{"name":"TeleClaude","version":"1.0.0","tools_available":' + tools_json + "}}}"
-    )
-    return response_template
-
-
-def _get_mcp_server_path() -> Path:
-    script_dir = Path(__file__).parent
-    return script_dir.parent / "teleclaude" / "mcp_server.py"
-
-
 # Mutable cache so long-lived wrapper processes can refresh after code updates.
 _TOOL_CACHE_MTIME: float | None = None
-TOOL_NAMES: list[str] = []
-RESPONSE_TEMPLATE: str = ""
-TOOL_LIST_FALLBACK: list[ToolSpec] = []
 TOOL_LIST_CACHE: list[ToolSpec] | None = None
 _INTERNAL_TOOL_NAME = "teleclaude__handle_agent_event"
 
 
-def _build_tools_list_fallback(tool_names: list[str]) -> list[ToolSpec]:
-    """Build a minimal tools/list payload when full schemas are unavailable."""
-    return [
-        {
-            "name": name,
-            "description": "",
-            "inputSchema": {"type": "object", "properties": {}},
-        }
-        for name in tool_names
-    ]
+def _resolve_tool_cache_path() -> Path:
+    env_path = os.getenv(TOOL_CACHE_PATH_ENV)
+    if env_path:
+        return Path(env_path).expanduser()
+    script_dir = Path(__file__).resolve().parent
+    working_dir = Path(os.getenv("WORKING_DIR", script_dir.parent))
+    return working_dir / "logs" / "mcp-tools-cache.json"
+
+
+TOOL_CACHE_PATH = _resolve_tool_cache_path()
+
+
+def _tool_names_from_cache(tools: list[ToolSpec] | None) -> list[str]:
+    if not tools:
+        return []
+    return [tool.get("name") for tool in tools if isinstance(tool.get("name"), str)]
+
+
+def _normalize_tools_list(raw: object) -> list[ToolSpec] | None:
+    if not isinstance(raw, list):
+        return None
+    normalized: list[ToolSpec] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None
+        name = item.get("name")
+        input_schema = item.get("inputSchema")
+        description = item.get("description", "")
+        if not isinstance(name, str) or not name:
+            return None
+        if not isinstance(input_schema, dict):
+            return None
+        if description is None:
+            description = ""
+        if not isinstance(description, str):
+            return None
+        tool = dict(item)
+        tool["name"] = name
+        tool["description"] = description
+        tool["inputSchema"] = input_schema
+        normalized.append(tool)  # type: ignore[arg-type]
+    if not normalized:
+        return None
+    return normalized
+
+
+def _load_tool_cache(path: Path) -> list[ToolSpec] | None:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except Exception as exc:
+        logger.warning("Failed reading tool cache at %s: %s", path, exc)
+        return None
+    tools = _normalize_tools_list(raw)
+    if not tools:
+        logger.warning("Ignoring invalid tool cache at %s", path)
+        return None
+    return tools
+
+
+def _persist_tool_cache(path: Path, tools: list[ToolSpec]) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        payload = json.dumps(tools, ensure_ascii=True, sort_keys=True)
+        tmp_path.write_text(payload, encoding="utf-8")
+        tmp_path.replace(path)
+        return True
+    except Exception as exc:
+        logger.warning("Failed persisting tool cache to %s: %s", path, exc)
+        return False
 
 
 def _filter_internal_tools(tools: list[object]) -> list[object]:
@@ -203,28 +219,58 @@ def _filter_internal_tools(tools: list[object]) -> list[object]:
 
 
 def refresh_tool_cache_if_needed(force: bool = False) -> None:
-    """Refresh cached tool names/templates if teleclaude/mcp_server.py changed.
-
-    This matters for long-lived MCP clients: if the wrapper serves a cached
-    handshake while the backend is restarting, the tool list must match the
-    current server code (not whatever was present when the wrapper first started).
-    """
-    global _TOOL_CACHE_MTIME, TOOL_NAMES, RESPONSE_TEMPLATE, TOOL_LIST_FALLBACK  # pylint: disable=global-statement
+    """Refresh cached tools list if the persisted cache changed."""
+    global _TOOL_CACHE_MTIME, TOOL_LIST_CACHE  # pylint: disable=global-statement
 
     try:
-        mcp_server_path = _get_mcp_server_path()
-        mtime = mcp_server_path.stat().st_mtime
+        mtime = TOOL_CACHE_PATH.stat().st_mtime
+    except FileNotFoundError:
+        return
     except Exception:
         mtime = None
 
     if not force and mtime is not None and _TOOL_CACHE_MTIME is not None and mtime <= _TOOL_CACHE_MTIME:
         return
 
-    TOOL_NAMES = extract_tools_from_mcp_server()
-    RESPONSE_TEMPLATE = build_response_template(TOOL_NAMES)
-    TOOL_LIST_FALLBACK = _build_tools_list_fallback(TOOL_NAMES)
+    tools = _load_tool_cache(TOOL_CACHE_PATH)
+    if not tools:
+        return
+    TOOL_LIST_CACHE = _filter_internal_tools(tools)  # type: ignore[assignment]
     _TOOL_CACHE_MTIME = mtime
-    logger.info("Tool cache refreshed (count=%d)", len(TOOL_NAMES))
+    logger.info("Tool cache loaded from disk (count=%d)", len(TOOL_LIST_CACHE))
+
+
+def _build_initialize_response(request_id: object) -> bytes:
+    tool_names = _tool_names_from_cache(TOOL_LIST_CACHE)
+    result = {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "TeleClaude", "version": "1.0.0"},
+    }
+    if tool_names:
+        result["serverInfo"]["tools_available"] = tool_names
+    payload = {"jsonrpc": "2.0", "id": request_id, "result": result}
+    return (json.dumps(payload) + "\n").encode("utf-8")
+
+
+def _update_tool_cache(tools: list[object], source: str) -> list[ToolSpec] | None:
+    global _TOOL_CACHE_MTIME, TOOL_LIST_CACHE  # pylint: disable=global-statement
+    normalized = _normalize_tools_list(tools)
+    if not normalized:
+        logger.warning("Ignoring invalid tools list from %s", source)
+        return None
+    filtered = _filter_internal_tools(normalized)
+    if not filtered:
+        logger.warning("Ignoring empty tools list from %s", source)
+        return None
+    TOOL_LIST_CACHE = filtered  # type: ignore[assignment]
+    if _persist_tool_cache(TOOL_CACHE_PATH, filtered):  # type: ignore[arg-type]
+        try:
+            _TOOL_CACHE_MTIME = TOOL_CACHE_PATH.stat().st_mtime
+        except Exception:
+            _TOOL_CACHE_MTIME = None
+    logger.info("Tool cache updated (%s, count=%d)", source, len(filtered))
+    return filtered  # type: ignore[return-value]
 
 
 # Initialize cache at import time
@@ -616,8 +662,13 @@ class MCPProxy:
 
     async def _send_tools_list_cached(self, request_id: object) -> None:
         """Send cached tools/list response without touching the backend."""
-        tools_list = TOOL_LIST_CACHE or TOOL_LIST_FALLBACK
-        tools_list = _filter_internal_tools(tools_list)
+        tools_list = TOOL_LIST_CACHE
+        if not tools_list:
+            await self._send_error(
+                request_id,
+                "TeleClaude backend unavailable and no cached tools list is available. Please retry.",
+            )
+            return
         try:
             sys.stdout.buffer.write(_jsonrpc_tools_list_response(request_id, tools_list))
             sys.stdout.buffer.flush()
@@ -892,8 +943,9 @@ class MCPProxy:
                             # Cache tools/list response for startup fallbacks.
                             tools = msg["result"]["tools"]
                             if isinstance(tools, list):
-                                TOOL_LIST_CACHE = _filter_internal_tools(tools)
-                                msg["result"]["tools"] = TOOL_LIST_CACHE
+                                updated = _update_tool_cache(tools, "backend")
+                                if updated is not None:
+                                    msg["result"]["tools"] = updated
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
                             started_at = self._pending_started.pop(response_id, None)
@@ -988,8 +1040,7 @@ class MCPProxy:
                     # Backend not ready yet, send cached response for zero-downtime
                     refresh_tool_cache_if_needed()
                     logger.info("Backend not ready, using cached handshake (id=%s)", request_id)
-                    response = RESPONSE_TEMPLATE.replace("__REQUEST_ID__", str(request_id))
-                    sys.stdout.buffer.write((response + "\n").encode())
+                    sys.stdout.buffer.write(_build_initialize_response(request_id))
                     sys.stdout.buffer.flush()
                     # We still must initialize the backend once it comes back up.
                     self._needs_backend_resync = True
@@ -1141,7 +1192,7 @@ def main():
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    logger.info("MCP wrapper starting. Extracted tools: %s", TOOL_NAMES)
+    logger.info("MCP wrapper starting. Cached tools: %s", _tool_names_from_cache(TOOL_LIST_CACHE))
     proxy = MCPProxy()
     asyncio.run(proxy.run())
 

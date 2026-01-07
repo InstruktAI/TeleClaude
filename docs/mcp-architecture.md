@@ -20,7 +20,8 @@ TeleClaude Daemon
 
 **Key Features**:
 
-- **Cached handshake** - Responds to `initialize` immediately with pre-built capabilities
+- **Cached handshake** - Responds to `initialize` immediately; includes last-known tool names when available
+- **Persistent tool cache** - Stores the last good `tools/list` response on disk and serves it only while the daemon is down
 - **Hybrid mode** - Waits 500ms for backend; uses cache if unavailable
 - **Auto-reconnection** - Transparently reconnects to backend when it restarts
 - **Tool filtering** - Hides internal tools (e.g., `teleclaude__handle_agent_event`) from clients
@@ -145,9 +146,8 @@ make restart
 
 **Pre-built response template**:
 
-- Tools extracted at wrapper startup by parsing `mcp_server.py`
-- JSON template pre-serialized with `__REQUEST_ID__` placeholder
-- Handshake completes in <1ms via simple string replacement
+- Tools list is captured from real backend `tools/list` responses and persisted to `logs/mcp-tools-cache.json` (override with `MCP_WRAPPER_TOOL_CACHE_PATH`)
+- Handshake is built dynamically; if a cached tool list exists, names are included in `serverInfo.tools_available`
 
 **Connection management**:
 
