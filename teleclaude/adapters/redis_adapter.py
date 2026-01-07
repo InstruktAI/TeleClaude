@@ -10,6 +10,7 @@ messaging restriction.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 import ssl
@@ -23,7 +24,7 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import EventType, TeleClaudeEvents, parse_command_string
+from teleclaude.core.events import AgentHookEvents, EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.models import (
     ChannelMetadata,
     CommandPayload,
@@ -801,7 +802,35 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             # MESSAGE and CLAUDE events use text in payload (keep message as single string)
             # Other commands use args list
             payload_obj: object
-            if event_type == TeleClaudeEvents.MESSAGE:
+            if cmd_name == "stop_notification":
+                if len(args) < 2:
+                    logger.warning("stop_notification received with insufficient args: %s", args)
+                    return
+
+                target_session_id = args[0]
+                source_computer = args[1]
+                title: str | None = None
+                if len(args) > 2:
+                    try:
+                        title = base64.b64decode(args[2]).decode()
+                    except Exception:
+                        title = None
+
+                event_type = TeleClaudeEvents.AGENT_EVENT
+                event_data: dict[str, object] = {  # noqa: loose-dict - Event payload assembly
+                    "session_id": target_session_id,
+                    "source_computer": source_computer,
+                }
+                if title:
+                    event_data["title"] = title
+
+                payload_obj = {
+                    "session_id": target_session_id,
+                    "event_type": AgentHookEvents.AGENT_STOP,
+                    "data": event_data,
+                }
+                logger.debug("Emitting AGENT_EVENT stop for remote session %s", target_session_id[:8])
+            elif event_type == TeleClaudeEvents.MESSAGE:
                 payload_obj = MessagePayload(session_id=session_id, text=" ".join(args) if args else "")
                 logger.debug(
                     "Emitting MESSAGE event with text: %s",
@@ -835,9 +864,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 metadata_to_send.channel_metadata["target_computer"] = parsed.initiator
 
             # Enrich payload with optional project/title if supported
-            if hasattr(payload_obj, "project_dir") and parsed.project_dir:
+            if parsed.project_dir and isinstance(payload_obj, (CommandPayload, MessagePayload)):
                 payload_obj.project_dir = parsed.project_dir
-            if hasattr(payload_obj, "title") and parsed.title:
+            if parsed.title and isinstance(payload_obj, (CommandPayload, MessagePayload)):
                 payload_obj.title = parsed.title
 
             logger.info(">>> About to call handle_event for event_type: %s", event_type)

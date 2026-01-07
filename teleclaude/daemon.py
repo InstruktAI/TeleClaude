@@ -880,6 +880,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Process agent stop event (summarization + coordination)."""
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
+        source_computer = payload.source_computer
 
         # Debounce: skip if we processed a stop event for this session recently
         # Gemini's AfterAgent fires multiple times per turn (after each agent step)
@@ -889,6 +890,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.debug("Debouncing stop event for session %s (%.1fs since last)", session_id[:8], now - last_stop)
             return
         self._last_stop_time[session_id] = now
+
+        if source_computer:
+            await self.agent_coordinator.handle_stop(context)
+            return
 
         try:
             ux_state = await db.get_ux_state(session_id)

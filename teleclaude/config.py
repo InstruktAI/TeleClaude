@@ -31,6 +31,7 @@ if not _dotenv_path.is_absolute():
     _dotenv_path = (_project_root / _dotenv_path).resolve()
 
 load_dotenv(_dotenv_path)
+os.environ.setdefault("WORKING_DIR", str(_project_root))
 
 
 @dataclass

@@ -100,6 +100,7 @@ class AgentCoordinator:
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
         title = payload.title
+        source_computer = payload.source_computer
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",
@@ -108,10 +109,11 @@ class AgentCoordinator:
         )
 
         # 1. Notify local listeners (AI-to-AI on same computer)
-        await self._notify_session_listener(session_id, title=title)
+        await self._notify_session_listener(session_id, title=title, source_computer=source_computer)
 
         # 2. Forward to remote initiator (AI-to-AI across computers)
-        await self._forward_stop_to_initiator(session_id, title=title)
+        if not (source_computer and source_computer != config.computer.name):
+            await self._forward_stop_to_initiator(session_id, title=title)
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""
@@ -135,7 +137,13 @@ class AgentCoordinator:
 
     # === Helper Methods (extracted from UiAdapter) ===
 
-    async def _notify_session_listener(self, target_session_id: str, *, title: str | None = None) -> None:
+    async def _notify_session_listener(
+        self,
+        target_session_id: str,
+        *,
+        title: str | None = None,
+        source_computer: str | None = None,
+    ) -> None:
         """Notify local listeners via terminal injection."""
         listeners = get_listeners(target_session_id)
         if not listeners:
@@ -143,12 +151,15 @@ class AgentCoordinator:
 
         target_session = await db.get_session(target_session_id)
         display_title = title or (target_session.title if target_session else "Unknown")
+        computer_name = source_computer or "local"
+        location_part = f" on {source_computer}" if source_computer else ""
 
         for listener in listeners:
             title_part = f' "{display_title}"' if title else f" ({display_title})"
             notification = (
-                f"Session {target_session_id[:8]}{title_part} finished its turn. "
-                f"Use teleclaude__get_session_data(computer='local', session_id='{target_session_id}') to inspect."
+                f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
+                f"Use teleclaude__get_session_data(computer='{computer_name}', "
+                f"session_id='{target_session_id}') to inspect."
             )
 
             delivered = await self._deliver_listener_message(

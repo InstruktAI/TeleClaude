@@ -944,10 +944,11 @@ class AdapterClient:
         if event_type == AgentHookEvents.AGENT_STOP:
             return AgentStopPayload(
                 session_id=str(data["session_id"]),
-                transcript_path=str(data["transcript_path"]),
+                transcript_path=cast(str | None, data.get("transcript_path")),
                 raw=data,
                 summary=str(data["summary"]) if "summary" in data else None,
                 title=str(data["title"]) if "title" in data else None,
+                source_computer=str(data["source_computer"]) if "source_computer" in data else None,
             )
 
         if event_type == AgentHookEvents.AGENT_NOTIFICATION:

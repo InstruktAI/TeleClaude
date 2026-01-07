@@ -79,10 +79,11 @@ class AgentStopPayload:
     """Internal payload for agent stop hook."""
 
     session_id: str
-    transcript_path: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    transcript_path: str | None = None
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     summary: str | None = None
     title: str | None = None
+    source_computer: str | None = None
 
 
 @dataclass
