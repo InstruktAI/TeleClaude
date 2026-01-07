@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
 
-from teleclaude.core import terminal_bridge, terminal_io
+from teleclaude.core import terminal_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.models import MessageMetadata
@@ -167,7 +167,7 @@ async def handle_voice(
     audio_path: str,
     context: VoiceEventContext,
     send_feedback: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
-) -> None:
+) -> Optional[str]:
     """Handle voice message (adapter-agnostic utility).
 
     Args:
@@ -186,7 +186,7 @@ async def handle_voice(
     session = await db.get_session(session_id)
     if not session:
         logger.warning("Session %s not found", session_id)
-        return
+        return None
 
     # Check if a process is currently running (foreground command != shell)
     is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
@@ -204,31 +204,9 @@ async def handle_voice(
             logger.debug("Cleaned up voice file (rejected - no active process): %s", audio_path)
         except Exception as e:
             logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
-        return
+        return None
 
-    # Voice message accepted - transcribe and send to active process
-    # Check if output message exists (polling may have just started)
-    # Get output_message_id from Telegram metadata (voice comes via Telegram regardless of origin)
-    telegram_metadata = session.adapter_metadata.telegram if session.adapter_metadata else None
-    current_message_id = telegram_metadata.output_message_id if telegram_metadata else None
-    if current_message_id is None:
-        logger.warning(
-            "No output message yet for session %s, polling may have just started",
-            session_id[:8],
-        )
-        # Send rejection message
-        await send_feedback(
-            session_id,
-            "⚠️ Voice input unavailable - output message not ready yet (try again in 1-2 seconds)",
-            MessageMetadata(),
-        )
-        # Clean up temp file
-        try:
-            Path(audio_path).unlink()
-            logger.debug("Cleaned up voice file (no message_id yet): %s", audio_path)
-        except Exception as e:
-            logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
-        return
+    # Voice message accepted - transcribe and forward through message pipeline.
 
     # Send transcribing status if feedback channel is available
     msg_id = await send_feedback(
@@ -259,7 +237,7 @@ async def handle_voice(
             "❌ Transcription failed. Please try again.",
             MessageMetadata(),
         )
-        return
+        return None
 
     # Send transcribed text back to UI (quoted + italics)
     escaped_text = escape_markdown_v2(text)
@@ -270,32 +248,5 @@ async def handle_voice(
         MessageMetadata(parse_mode="MarkdownV2"),
     )
 
-    # Get active agent for agent-specific escaping
-    ux_state = await db.get_ux_state(session_id)
-    active_agent = ux_state.active_agent if ux_state else None
-
-    sanitized_text = terminal_io.wrap_bracketed_paste(text)
-    logger.debug("Sending transcribed text as input to session %s: %s", session_id[:8], text)
-    success = await terminal_io.send_text(
-        session,
-        sanitized_text,
-        active_agent=active_agent,
-    )
-
-    if not success:
-        logger.error("Failed to send transcribed input to session %s", session_id[:8])
-        await send_feedback(
-            session_id,
-            "❌ Failed to send input to terminal",
-            MessageMetadata(),
-        )
-        return
-
-    # Update activity
-    await db.update_last_activity(session_id)
-
-    # Voice input sent to running process - existing poll will capture output
-    logger.debug(
-        "Voice input sent to running process in session %s, existing poll will capture output",
-        session_id[:8],
-    )
+    logger.debug("Transcribed voice input for session %s: %s", session_id[:8], text)
+    return text

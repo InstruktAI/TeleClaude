@@ -885,6 +885,9 @@ class AdapterClient:
             TeleClaudeEvents.VOICE: lambda: VoiceEventContext(
                 session_id=str(payload.get("session_id")),
                 file_path=cast(str, payload.get("file_path", "")),
+                message_id=cast(str | None, payload.get("message_id")),
+                message_thread_id=cast(int | None, payload.get("message_thread_id")),
+                adapter_type=metadata.adapter_type,
             ),
             TeleClaudeEvents.FILE: lambda: FileEventContext(
                 session_id=str(payload.get("session_id")),

@@ -180,12 +180,13 @@ async def test_handle_voice_rejects_no_active_process():
             mock_polling.return_value = False  # No active process
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
 
         # Verify rejection message sent
         mock_send_feedback.assert_called_once()
         call_args = mock_send_feedback.call_args[0]
         assert "requires an active process" in call_args[1]
+        assert result is None
 
         # Verify temp file cleaned up
         assert not Path(audio_path).exists()
@@ -194,8 +195,8 @@ async def test_handle_voice_rejects_no_active_process():
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_rejects_no_output_message():
-    """Test that handle_voice rejects when output message not ready."""
+async def test_handle_voice_returns_none_when_session_missing():
+    """Test that handle_voice returns None when session is missing."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
@@ -207,28 +208,16 @@ async def test_handle_voice_rejects_no_output_message():
     try:
         mock_send_feedback = AsyncMock(return_value="msg-123")
 
-        # Mock session with no output_message_id
-        mock_session = MagicMock()
-        mock_session.session_id = "test-session-123"
-        mock_session.origin_adapter = "telegram"
-        mock_session.adapter_metadata.telegram.output_message_id = None
-
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
-            ) as mock_polling,
         ):
-            mock_get.return_value = mock_session
-            mock_polling.return_value = True  # Polling active
+            mock_get.return_value = None
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
 
-        # Verify rejection message sent
-        mock_send_feedback.assert_called_once()
-        call_args = mock_send_feedback.call_args[0]
-        assert "not ready" in call_args[1]
+        assert result is None
+        mock_send_feedback.assert_not_called()
 
     finally:
         Path(audio_path).unlink(missing_ok=True)
@@ -236,7 +225,7 @@ async def test_handle_voice_rejects_no_output_message():
 
 @pytest.mark.asyncio
 async def test_handle_voice_forwards_transcription_to_process():
-    """Test that handle_voice forwards transcribed text to running process."""
+    """Test that handle_voice returns transcribed text for message pipeline."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
@@ -248,43 +237,29 @@ async def test_handle_voice_forwards_transcription_to_process():
     try:
         mock_send_feedback = AsyncMock(return_value="msg-123")
 
-        # Mock session with output_message_id
+        # Mock session with tmux name
         mock_session = MagicMock()
         mock_session.session_id = "test-session-123"
-        mock_session.origin_adapter = "telegram"
         mock_session.tmux_session_name = "tc_test"
-        mock_session.adapter_metadata.telegram.output_message_id = "output-456"
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.voice_message_handler.db.get_ux_state", new_callable=AsyncMock) as mock_get_ux,
             patch(
                 "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
-            patch("teleclaude.core.voice_message_handler.db.update_last_activity", new_callable=AsyncMock),
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
                 new_callable=AsyncMock,
             ) as mock_transcribe,
-            patch(
-                "teleclaude.core.voice_message_handler.terminal_io.send_text",
-                new_callable=AsyncMock,
-            ) as mock_send_keys,
         ):
             mock_get.return_value = mock_session
-            mock_get_ux.return_value = None
             mock_polling.return_value = True
             mock_transcribe.return_value = "Transcribed text"
-            mock_send_keys.return_value = True
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
 
-        # Verify transcription forwarded to terminal
-        mock_send_keys.assert_called_once()
-        call_args = mock_send_keys.call_args[0]
-        assert call_args[0] == mock_session
-        assert call_args[1] == "Transcribed text"
+        assert result == "Transcribed text"
 
     finally:
         Path(audio_path).unlink(missing_ok=True)
@@ -304,43 +279,29 @@ async def test_handle_voice_transcribes_without_feedback_channel():
     try:
         mock_send_feedback = AsyncMock(return_value=None)
 
-        # Mock session with output_message_id
+        # Mock session with tmux name
         mock_session = MagicMock()
         mock_session.session_id = "test-session-123"
-        mock_session.origin_adapter = "redis"
         mock_session.tmux_session_name = "tc_test"
-        mock_session.adapter_metadata.telegram.output_message_id = "output-456"
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
-            patch("teleclaude.core.voice_message_handler.db.get_ux_state", new_callable=AsyncMock) as mock_get_ux,
             patch(
                 "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
-            patch("teleclaude.core.voice_message_handler.db.update_last_activity", new_callable=AsyncMock),
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
                 new_callable=AsyncMock,
             ) as mock_transcribe,
-            patch(
-                "teleclaude.core.voice_message_handler.terminal_io.send_text",
-                new_callable=AsyncMock,
-            ) as mock_send_keys,
         ):
             mock_get.return_value = mock_session
-            mock_get_ux.return_value = None
             mock_polling.return_value = True
             mock_transcribe.return_value = "Transcribed text"
-            mock_send_keys.return_value = True
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
 
-        # Verify transcription forwarded to terminal even without feedback
-        mock_send_keys.assert_called_once()
-        call_args = mock_send_keys.call_args[0]
-        assert call_args[0] == mock_session
-        assert call_args[1] == "Transcribed text"
+        assert result == "Transcribed text"
 
         # Verify temp file cleaned up
         assert not Path(audio_path).exists()
@@ -362,11 +323,10 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
     try:
         mock_send_feedback = AsyncMock(return_value="msg-123")
 
-        # Mock session with output_message_id
+        # Mock session with tmux name
         mock_session = MagicMock()
         mock_session.session_id = "test-session-123"
-        mock_session.origin_adapter = "telegram"
-        mock_session.adapter_metadata.telegram.output_message_id = "output-456"
+        mock_session.tmux_session_name = "tc_test"
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
@@ -383,12 +343,13 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
             mock_transcribe.return_value = None  # Transcription failed
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
 
         # Verify error message sent
         assert mock_send_feedback.call_count >= 2  # "Transcribing..." + error
         last_call = mock_send_feedback.call_args_list[-1]
         assert "failed" in last_call[0][1].lower()
+        assert result is None
 
         # Verify temp file cleaned up
         assert not Path(audio_path).exists()

@@ -278,6 +278,9 @@ class VoiceEventContext:
     session_id: str
     file_path: str = ""
     duration: Optional[float] = None
+    message_id: Optional[str] = None
+    message_thread_id: Optional[int] = None
+    adapter_type: Optional[str] = None
 
 
 @dataclass

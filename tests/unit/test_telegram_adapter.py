@@ -438,3 +438,46 @@ class TestMessageNotModified:
         # Should return False (message was deleted)
         assert result is False
         assert mock_bot.edit_message_text.call_count == 1  # No retry for BadRequest
+
+
+class TestTopicOwnership:
+    """Tests for topic ownership heuristics."""
+
+    def test_topic_title_mentions_this_computer(self, telegram_adapter):
+        telegram_adapter.computer_name = "test_computer"
+        assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: Codex-slow@test_computer - resume abc")
+        assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: $test_computer - New session")
+        assert not telegram_adapter._topic_title_mentions_this_computer(
+            "TeleClaude: Codex-slow@other_computer - resume abc"
+        )
+
+    def test_topic_owned_by_this_bot_from_reply_title(self, telegram_adapter):
+        telegram_adapter.computer_name = "test_computer"
+        update = MagicMock()
+        message = MagicMock()
+        reply = MagicMock()
+        forum_created = MagicMock()
+        forum_created.name = "TeleClaude: Codex-slow@test_computer - resume abc"
+        reply.forum_topic_created = forum_created
+        message.reply_to_message = reply
+        message.forum_topic_created = None
+        update.effective_message = message
+
+        assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=123) is True
+
+    def test_topic_owned_by_this_bot_uses_cache_fallback(self, telegram_adapter):
+        telegram_adapter.computer_name = "test_computer"
+        update = MagicMock()
+        update.effective_message = MagicMock()
+        update.effective_message.forum_topic_created = None
+        update.effective_message.reply_to_message = None
+
+        cached_message = MagicMock()
+        forum_created = MagicMock()
+        forum_created.name = "TeleClaude: $test_computer - New session"
+        cached_message.forum_topic_created = forum_created
+        cached_message.reply_to_message = None
+
+        telegram_adapter._topic_message_cache[456] = [cached_message]
+
+        assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=456) is True

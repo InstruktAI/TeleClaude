@@ -994,6 +994,41 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
 
         return sessions[0]
 
+    def _extract_topic_title(self, message: Message | None) -> Optional[str]:
+        """Extract topic title from a Telegram message or its reply chain."""
+        if not message:
+            return None
+
+        forum_created = message.forum_topic_created
+        title = forum_created.name if forum_created else None
+        if title:
+            return str(title)
+
+        reply = message.reply_to_message
+        forum_created = reply.forum_topic_created if reply else None
+        title = forum_created.name if forum_created else None
+        if title:
+            return str(title)
+
+        return None
+
+    def _topic_title_mentions_this_computer(self, title: str) -> bool:
+        """Return True if the topic title includes this computer's identifier."""
+        return f"@{self.computer_name}" in title or f"${self.computer_name}" in title
+
+    def _topic_owned_by_this_bot(self, update: Update, topic_id: Optional[int]) -> bool:
+        """Best-effort ownership check to avoid cross-bot deletions."""
+        title = self._extract_topic_title(update.effective_message)
+        if not title and topic_id is not None:
+            cached = self._topic_message_cache.get(topic_id, [])
+            for message in reversed(cached):
+                title = self._extract_topic_title(message)
+                if title:
+                    break
+        if not title:
+            return False
+        return self._topic_title_mentions_this_computer(title)
+
     async def _require_session_from_topic(self, update: Update) -> Optional[Session]:
         """Get session from topic, with error feedback if not found.
 
@@ -1028,7 +1063,10 @@ class TelegramAdapter(UiAdapter):  # pylint: disable=too-many-instance-attribute
             logger.warning("No session found for topic_id %s", thread_id)
 
         if thread_id and update.effective_user and update.effective_user.id in self.user_whitelist:
-            await self._delete_orphan_topic(thread_id)
+            if self._topic_owned_by_this_bot(update, thread_id):
+                await self._delete_orphan_topic(thread_id)
+            else:
+                logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", thread_id)
             return None
 
         try:
@@ -2109,7 +2147,11 @@ Usage:
                 and update.effective_message
                 and update.effective_message.message_thread_id
             ):
-                await self._delete_orphan_topic(update.effective_message.message_thread_id)
+                thread_id = update.effective_message.message_thread_id
+                if self._topic_owned_by_this_bot(update, thread_id):
+                    await self._delete_orphan_topic(thread_id)
+                else:
+                    logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", thread_id)
             return
         if not update.effective_message or not update.effective_user:
             logger.warning("Missing effective_message or effective_user in update")
@@ -2204,6 +2246,8 @@ Usage:
                 payload={
                     "session_id": session.session_id,
                     "file_path": str(temp_file_path),
+                    "message_id": str(message.message_id),
+                    "message_thread_id": message.message_thread_id,
                 },
                 metadata=self._metadata(),
             )
@@ -2313,7 +2357,10 @@ Usage:
 
         if not sessions:
             logger.warning("No session found for topic %s", topic_id)
-            await self._delete_orphan_topic(topic_id)
+            if self._topic_owned_by_this_bot(update, topic_id):
+                await self._delete_orphan_topic(topic_id)
+            else:
+                logger.info("Skipping orphan topic delete for topic %s (not owned by this bot)", topic_id)
             return
 
         session = sessions[0]

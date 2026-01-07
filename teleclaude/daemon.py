@@ -771,11 +771,27 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             context: Voice event context (Pydantic)
         """
         # Handle voice message using utility function
-        await voice_message_handler.handle_voice(
+        transcribed = await voice_message_handler.handle_voice(
             session_id=context.session_id,
             audio_path=context.file_path,
             context=context,
             send_feedback=self._send_feedback_callback,  # type: ignore[arg-type]
+        )
+        if not transcribed:
+            return
+
+        metadata = MessageMetadata(
+            adapter_type=context.adapter_type,
+            message_thread_id=context.message_thread_id,
+        )
+        await self.client.handle_event(
+            event=TeleClaudeEvents.MESSAGE,
+            payload={
+                "session_id": context.session_id,
+                "text": transcribed,
+                "message_id": context.message_id,
+            },
+            metadata=metadata,
         )
 
     async def _handle_session_terminated(self, _event: str, context: SessionLifecycleContext) -> None:
