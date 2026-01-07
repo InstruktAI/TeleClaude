@@ -611,14 +611,14 @@ class TeleClaudeMCPServer:
                     description=(
                         "Send a file to the specified TeleClaude session. "
                         "Use this to send files for download (logs, reports, screenshots, etc.). "
-                        "Get session_id from TELECLAUDE_SESSION_ID environment variable."
+                        "Get session_id from TMPDIR/teleclaude_session_id (injected by mcp-wrapper)."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "session_id": {
                                 "type": "string",
-                                "description": "TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)",
+                                "description": "TeleClaude session UUID (from TMPDIR/teleclaude_session_id)",
                             },
                             "file_path": {
                                 "type": "string",
@@ -647,7 +647,7 @@ class TeleClaudeMCPServer:
                         "properties": {
                             "session_id": {
                                 "type": "string",
-                                "description": "TeleClaude session UUID (from TELECLAUDE_SESSION_ID env var)",
+                                "description": "TeleClaude session UUID (from TMPDIR/teleclaude_session_id)",
                             },
                             "content": {
                                 "type": "string",

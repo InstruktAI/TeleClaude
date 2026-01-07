@@ -28,7 +28,6 @@ logger = get_logger("teleclaude.mcp_wrapper")
 MCP_SOCKET = "/tmp/teleclaude.sock"
 # Map parameter names to env var names. Special value None means use os.getcwd()
 CONTEXT_TO_INJECT: dict[str, str | None] = {
-    "caller_session_id": "TELECLAUDE_SESSION_ID",
     "cwd": None,  # Special: inject os.getcwd() instead of env var
 }
 RECONNECT_DELAY = 5
@@ -112,10 +111,10 @@ def _extract_request_meta(raw_line: bytes) -> tuple[object | None, str | None, s
 
 def _read_session_id_marker() -> str | None:
     """Read TeleClaude session ID from the per-session TMPDIR marker file."""
-    tmpdir = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
-    if not tmpdir:
+    tmpdir_value = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
+    if not tmpdir_value:
         return None
-    marker = Path(tmpdir) / "teleclaude_session_id"
+    marker = Path(tmpdir_value) / "teleclaude_session_id"
     try:
         value = marker.read_text(encoding="utf-8").strip()
     except OSError:
@@ -254,10 +253,13 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
             env_value = os.environ.get(env_var)
             if env_value:
                 arguments[param_name] = env_value
-            elif param_name == "caller_session_id":
-                marker_value = _read_session_id_marker()
-                if marker_value:
-                    arguments[param_name] = marker_value
+
+    caller_existing = arguments.get("caller_session_id")
+    has_caller = caller_existing is not None and (not isinstance(caller_existing, str) or caller_existing != "")
+    if not has_caller:
+        marker_value = _read_session_id_marker()
+        if marker_value:
+            arguments["caller_session_id"] = marker_value
 
     params["arguments"] = arguments
     return params

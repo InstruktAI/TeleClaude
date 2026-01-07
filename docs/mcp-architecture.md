@@ -24,7 +24,7 @@ TeleClaude Daemon
 - **Hybrid mode** - Waits 500ms for backend; uses cache if unavailable
 - **Auto-reconnection** - Transparently reconnects to backend when it restarts
 - **Tool filtering** - Hides internal tools (e.g., `teleclaude__handle_agent_event`) from clients
-- **Context injection** - Automatically injects `TELECLAUDE_SESSION_ID` into tool calls
+- **Context injection** - Injects `caller_session_id` from `TMPDIR/teleclaude_session_id` into tool calls
 
 **Operation**:
 
@@ -157,5 +157,5 @@ make restart
 
 **Context injection**:
 
-- `TELECLAUDE_SESSION_ID` env var automatically added to tool call arguments
+- `caller_session_id` is read from `TMPDIR/teleclaude_session_id` and injected into tool call arguments
 - Enables AI-to-AI caller identification in remote sessions

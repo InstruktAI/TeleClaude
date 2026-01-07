@@ -539,15 +539,22 @@ def test_inject_context_does_not_use_tmpdir_path_fallback(monkeypatch: pytest.Mo
     assert "caller_session_id" not in out["arguments"]
 
 
-def test_inject_context_overrides_blank_caller_session_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_inject_context_overrides_blank_caller_session_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     wrapper = _load_wrapper_module(monkeypatch)
 
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "session-123")
+    session_id = "session-123"
+    tmpdir = tmp_path / "session_tmp"
+    tmpdir.mkdir()
+    (tmpdir / "teleclaude_session_id").write_text(session_id, encoding="utf-8")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
+    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMP", raising=False)
+    monkeypatch.delenv("TEMP", raising=False)
 
     params_empty = {"arguments": {"caller_session_id": ""}}
     out_empty = wrapper.inject_context(params_empty)
-    assert out_empty["arguments"]["caller_session_id"] == "session-123"
+    assert out_empty["arguments"]["caller_session_id"] == session_id
 
     params_none = {"arguments": {"caller_session_id": None}}
     out_none = wrapper.inject_context(params_none)
-    assert out_none["arguments"]["caller_session_id"] == "session-123"
+    assert out_none["arguments"]["caller_session_id"] == session_id

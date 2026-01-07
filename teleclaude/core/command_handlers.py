@@ -339,7 +339,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     cols, rows = parsed_size if parsed_size else (120, 40)
     voice_env_vars = get_voice_env_vars(voice) if voice else {}
 
-    # Inject TELECLAUDE_SESSION_ID so mcp-wrapper knows who it is
+    # Inject TELECLAUDE_SESSION_ID for hook routing; mcp-wrapper uses TMPDIR marker.
     env_vars = voice_env_vars.copy()
     env_vars["TELECLAUDE_SESSION_ID"] = session_id
 
