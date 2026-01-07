@@ -184,7 +184,7 @@ def format_complete(slug: str, archive_path: str) -> str:
     """Format a 'complete' message indicating work item is finalized."""
     return f"""COMPLETE: todos/{slug} has been finalized and delivered to {archive_path}/
 
-NEXT: Call teleclaude__next_work(slug="{slug}") to continue with more work."""
+NEXT: Call teleclaude__next_work() to continue with more work."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
@@ -754,7 +754,7 @@ def build_git_hook_env(cwd: str, base_env: Mapping[str, str] | None = None) -> d
     """Build env vars so git hooks resolve repo-local venv tools."""
     env = dict(base_env or os.environ)
     path_raw = env.get("PATH", "")
-    venv_bin = ".venv/bin"
+    venv_bin = str(Path(cwd) / ".venv" / "bin")
 
     path_parts = [p for p in path_raw.split(os.pathsep) if p and p != venv_bin]
     path_parts.insert(0, venv_bin)
@@ -1104,6 +1104,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     # 9. Review approved - dispatch finalize
+    if has_uncommitted_changes(cwd, resolved_slug):
+        return format_uncommitted_changes(resolved_slug)
     agent, mode = await get_available_agent(db, "finalize", WORK_FALLBACK)
     return format_tool_call(
         command="next-finalize",
@@ -1112,5 +1114,5 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         agent=agent,
         thinking_mode=mode,
         subfolder="",  # Empty = main repo, NOT worktree
-        next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
+        next_call="teleclaude__next_work",
     )
