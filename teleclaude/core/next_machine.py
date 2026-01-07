@@ -41,7 +41,7 @@ POST_COMPLETION: dict[str, str] = {
 1. Verify bugs fixed and tests pass
 2. If success:
    - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}()
+   - Call {next_call}
 3. If bugs remain or tests fail:
    - Keep session alive and guide worker to resolution""",
     "next-build": """WHEN WORKER COMPLETES:
@@ -49,7 +49,7 @@ POST_COMPLETION: dict[str, str] = {
 2. If success:
    - teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
    - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}()
+   - Call {next_call}
 3. If failure or blocker:
    - Keep session alive and guide worker to resolution""",
     "next-review": """WHEN WORKER COMPLETES:
@@ -58,20 +58,20 @@ POST_COMPLETION: dict[str, str] = {
    - If "[x] APPROVE": teleclaude__mark_phase(slug="{args}", phase="review", status="approved")
    - If "[x] REQUEST CHANGES": teleclaude__mark_phase(slug="{args}", phase="review", status="changes_requested")
 3. teleclaude__end_session(computer="local", session_id="<session_id>")
-4. Call {next_call}()""",
+4. Call {next_call}""",
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Verify fixes applied and tests pass
 2. If fixes complete:
    - teleclaude__mark_phase(slug="{args}", phase="review", status="pending")
    - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}()
+   - Call {next_call}
 3. If fixes incomplete:
    - Keep session alive and guide worker to finish""",
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Verify merge and archive succeeded
 2. If success:
    - teleclaude__end_session(computer="local", session_id="<session_id>")
-   - Call {next_call}()
+   - Call {next_call}
 3. If failed:
    - Keep session alive and help resolve""",
 }
@@ -105,8 +105,11 @@ def format_tool_call(
     # Get post-completion instructions for this command
     post_completion = POST_COMPLETION.get(command, "")
     if post_completion:
+        next_call_display = next_call.strip()
+        if next_call_display and "(" not in next_call_display:
+            next_call_display = f"{next_call_display}()"
         # Substitute {args} and {next_call} placeholders
-        post_completion = post_completion.format(args=args, next_call=next_call)
+        post_completion = post_completion.format(args=args, next_call=next_call_display)
 
     result = f"""Before running the command below, read ~/.agents/commands/{command}.md if you haven't already.
 
@@ -1037,7 +1040,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
-            next_call="teleclaude__next_work",
+            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
     # 8. Check review status
@@ -1052,7 +1055,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 agent=agent,
                 thinking_mode=mode,
                 subfolder=f"trees/{resolved_slug}",
-                next_call="teleclaude__next_work",
+                next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
             )
         # Review not started or still pending
         if is_main_ahead(cwd, resolved_slug):
@@ -1060,7 +1063,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 "MAIN_AHEAD",
                 f"main has commits not in trees/{resolved_slug}. Sync the worktree with main before review.",
                 next_call=(
-                    f"Merge or rebase main into trees/{resolved_slug}, then call teleclaude__next_work() again."
+                    f'Merge or rebase main into trees/{resolved_slug}, then call teleclaude__next_work(slug="{resolved_slug}") again.'
                 ),
             )
         agent, mode = await get_available_agent(db, "review", WORK_FALLBACK)
@@ -1071,7 +1074,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             agent=agent,
             thinking_mode=mode,
             subfolder=f"trees/{resolved_slug}",
-            next_call="teleclaude__next_work",
+            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
             note=REVIEW_DIFF_NOTE,
         )
 
@@ -1084,5 +1087,5 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         agent=agent,
         thinking_mode=mode,
         subfolder="",  # Empty = main repo, NOT worktree
-        next_call="teleclaude__next_work",
+        next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
     )

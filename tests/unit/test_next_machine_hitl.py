@@ -235,3 +235,18 @@ def test_format_tool_call_gemini_no_prefix():
     )
     assert 'command="next-review"' in result
     assert "/prompts:" not in result
+
+
+def test_format_tool_call_next_call_with_args():
+    """format_tool_call preserves next_call arguments without double parentheses."""
+    result = format_tool_call(
+        command="next-build",
+        args="test-slug",
+        project="/tmp/project",
+        agent="claude",
+        thinking_mode="med",
+        subfolder="trees/test-slug",
+        next_call='teleclaude__next_work(slug="test-slug")',
+    )
+    assert 'Call teleclaude__next_work(slug="test-slug")' in result
+    assert 'Call teleclaude__next_work(slug="test-slug")()' not in result
