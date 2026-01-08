@@ -330,6 +330,34 @@ async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_conn
     dummy_writer.wait_closed.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_check_mcp_socket_health_returns_unhealthy_within_probe_interval_after_failure():
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.mcp_server = MagicMock()
+    daemon.mcp_server.health_snapshot = AsyncMock(
+        return_value={
+            "is_serving": True,
+            "socket_exists": True,
+            "active_connections": 1,
+            "last_accept_age_s": 999.0,
+        }
+    )
+    daemon._mcp_restart_lock = asyncio.Lock()
+    daemon._last_mcp_restart_at = 0.0
+    daemon._last_mcp_probe_at = 123.0
+    daemon._last_mcp_probe_ok = False
+
+    with (
+        patch("teleclaude.daemon.asyncio.get_running_loop") as mock_loop,
+        patch("teleclaude.daemon.asyncio.open_unix_connection", new_callable=AsyncMock) as mock_open,
+    ):
+        mock_loop.return_value.time.return_value = 123.5
+        healthy = await TeleClaudeDaemon._check_mcp_socket_health(daemon)
+
+    assert healthy is False
+    mock_open.assert_not_called()
+
+
 def test_summarize_output_change_reports_diff():
     """_summarize_output_change should report a diff index and snippets."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)

@@ -177,7 +177,7 @@ def format_prepared(slug: str) -> str:
     """Format a 'prepared' message indicating work item is ready."""
     return f"""PREPARED: todos/{slug} is ready for work.
 
-ASK USER: Do you want to continue with more preparation work, or start the build/review cycle with teleclaude__next_work()?"""
+ASK USER: Do you want to continue with more preparation work, or start the build/review cycle with teleclaude__next_work(slug="{slug}")?"""
 
 
 def format_complete(slug: str, archive_path: str) -> str:

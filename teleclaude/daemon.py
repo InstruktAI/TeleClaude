@@ -259,6 +259,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._mcp_restart_attempts = 0
         self._mcp_restart_window_start = 0.0
         self._last_mcp_probe_at = 0.0
+        self._last_mcp_probe_ok: bool | None = None
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.terminal_outbox_task: asyncio.Task[object] | None = None
@@ -428,22 +429,26 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 return True
             if active_connections > 0:
                 if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
-                    return True
+                    return self._last_mcp_probe_ok is not False
                 logger.warning(
                     "MCP socket accept stale; probing",
                     active_connections=active_connections,
                     last_accept_age_s=last_accept_age,
                 )
                 self._last_mcp_probe_at = now
-                return await self._probe_mcp_socket(str(socket_path))
+                probe_ok = await self._probe_mcp_socket(str(socket_path))
+                self._last_mcp_probe_ok = probe_ok
+                return probe_ok
             if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
-                return True
+                return self._last_mcp_probe_ok is not False
 
         if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
-            return True
+            return self._last_mcp_probe_ok is not False
 
         self._last_mcp_probe_at = now
-        return await self._probe_mcp_socket(str(socket_path))
+        probe_ok = await self._probe_mcp_socket(str(socket_path))
+        self._last_mcp_probe_ok = probe_ok
+        return probe_ok
 
     async def _mcp_watch_loop(self) -> None:
         failures = 0
