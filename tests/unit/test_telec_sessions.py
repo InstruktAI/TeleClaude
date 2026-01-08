@@ -96,18 +96,25 @@ def test_resolve_session_selection_multiple_matches() -> None:
 
 
 def test_load_sessions_parses_ux_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import Path
+
     monkeypatch.setattr(telec, "_tmux_session_exists", lambda _: True)
 
     conn = sqlite3.connect(":memory:")
     try:
-        _create_sessions_table(conn)
-        ux_state = json.dumps({"active_agent": "claude", "thinking_mode": "fast"})
+        # Create schema with all columns after migration
+        schema_path = Path(__file__).parent.parent.parent / "teleclaude" / "core" / "schema.sql"
+        with open(schema_path, encoding="utf-8") as f:
+            conn.executescript(f.read())
+
+        # Insert with new schema columns
         conn.execute(
             """
             INSERT INTO sessions (
                 session_id, title, origin_adapter, tmux_session_name,
-                working_directory, last_activity, created_at, ux_state
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                working_directory, last_activity, created_at,
+                computer_name, terminal_size, active_agent, thinking_mode
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "abc12345",
@@ -117,7 +124,10 @@ def test_load_sessions_parses_ux_state(monkeypatch: pytest.MonkeyPatch) -> None:
                 "/tmp",
                 "2025-01-01 10:00:00",
                 "2025-01-01 09:00:00",
-                ux_state,
+                "TestPC",
+                "80x24",
+                "claude",
+                "fast",
             ),
         )
         conn.commit()

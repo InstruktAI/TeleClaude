@@ -184,9 +184,10 @@ async def test_agent_then_message_waits_settle_delay():
         patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
     ):
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
+            return_value=MagicMock(
+                tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="gemini"
+            )
         )
-        mock_db.get_ux_state = AsyncMock(return_value=MagicMock(active_agent="gemini"))
         mock_db.update_last_activity = AsyncMock()
         mock_running.return_value = True
         mock_send_keys.return_value = True
@@ -226,9 +227,10 @@ async def test_agent_then_message_times_out_on_no_output_change():
         patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock),
     ):
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", terminal_size="80x24")
+            return_value=MagicMock(
+                tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="claude"
+            )
         )
-        mock_db.get_ux_state = AsyncMock(return_value=MagicMock(active_agent="claude"))
         mock_db.update_last_activity = AsyncMock()
         mock_running.return_value = True
         mock_send_keys.return_value = True
@@ -373,7 +375,6 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     """Agent STOP should use stored transcript path when payload omits it."""
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
-    from teleclaude.core.ux_state import SessionUXState
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -392,15 +393,16 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     )
     context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
 
+    mock_session = MagicMock()
+    mock_session.active_agent = "gemini"
+    mock_session.native_log_file = "/tmp/native.json"
+
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
     ):
-        mock_db.get_ux_state = AsyncMock(
-            return_value=SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json")
-        )
-        mock_db.update_ux_state = AsyncMock()
-        mock_db.get_session = AsyncMock(return_value=MagicMock())
+        mock_db.update_session = AsyncMock()
+        mock_db.get_session = AsyncMock(return_value=mock_session)
         mock_summarize.return_value = ("title", "summary")
 
         await daemon._process_agent_stop(context)
@@ -413,7 +415,6 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
     """Agent STOP should persist native_session_id when provided."""
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
-    from teleclaude.core.ux_state import SessionUXState
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -432,20 +433,21 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
     )
     context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
 
+    mock_session = MagicMock()
+    mock_session.active_agent = "gemini"
+    mock_session.native_log_file = "/tmp/native.json"
+
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
     ):
-        mock_db.get_ux_state = AsyncMock(
-            return_value=SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json")
-        )
-        mock_db.update_ux_state = AsyncMock()
-        mock_db.get_session = AsyncMock(return_value=MagicMock())
+        mock_db.update_session = AsyncMock()
+        mock_db.get_session = AsyncMock(return_value=mock_session)
         mock_summarize.return_value = ("title", "summary")
 
         await daemon._process_agent_stop(context)
 
-        mock_db.update_ux_state.assert_awaited_once_with("tele-123", native_session_id="native-123")
+        mock_db.update_session.assert_awaited_once_with("tele-123", native_session_id="native-123")
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
 
 
@@ -455,7 +457,6 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
     from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
-    from teleclaude.core.ux_state import SessionUXState
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -483,16 +484,16 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="24419")
         ),
+        active_agent="gemini",
+        native_log_file="/tmp/native.json",
+        tui_capture_started=False,
     )
-
-    ux_state = SessionUXState(active_agent="gemini", native_log_file="/tmp/native.json", tui_capture_started=False)
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
     ):
-        mock_db.get_ux_state = AsyncMock(return_value=ux_state)
-        mock_db.update_ux_state = AsyncMock()
+        mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=session)
         mock_summarize.return_value = ("title", "summary")
 
@@ -586,7 +587,6 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.models import Session
-    from teleclaude.core.ux_state import SessionUXState
     from teleclaude.daemon import TeleClaudeDaemon
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
@@ -615,8 +615,7 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
 
     with patch("teleclaude.daemon.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState())
-        mock_db.update_ux_state = AsyncMock(side_effect=record_update)
+        mock_db.update_session = AsyncMock(side_effect=record_update)
 
         await daemon._dispatch_hook_event(
             session_id="sess-tty",

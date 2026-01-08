@@ -197,7 +197,6 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
@@ -233,7 +232,6 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=False),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
@@ -269,7 +267,6 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
@@ -303,7 +300,6 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.db.get_ux_state", return_value=mock_ux_state),
             patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
         ):

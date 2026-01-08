@@ -24,12 +24,22 @@ def mock_mcp_server():
 
     mock_terminal_bridge = MagicMock()
 
-    with patch("teleclaude.mcp_server.config") as mock_config:
+    # Mock caller session for db.get_session
+    mock_caller_session = MagicMock()
+    mock_caller_session.active_agent = "claude"
+    mock_caller_session.thinking_mode = "slow"
+
+    with (
+        patch("teleclaude.mcp_server.config") as mock_config,
+        patch("teleclaude.mcp.handlers.db") as mock_db,
+    ):
         mock_config.computer.name = "TestComputer"
         mock_config.mcp.socket_path = "/tmp/test.sock"
+        mock_db.get_session = AsyncMock(return_value=mock_caller_session)
+
         server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
 
-    yield server
+        yield server
 
 
 @pytest.mark.asyncio

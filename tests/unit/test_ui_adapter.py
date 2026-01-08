@@ -327,16 +327,14 @@ class TestCleanupFeedbackMessages:
             origin_adapter="telegram",
             title="Test Session",
         )
-        await test_db.update_ux_state(
-            session.session_id,
-            pending_feedback_deletions=["msg-1", "msg-2", "msg-3"],
-        )
+        for msg_id in ["msg-1", "msg-2", "msg-3"]:
+            await test_db.add_pending_feedback_deletion(session.session_id, msg_id)
 
         await adapter.cleanup_feedback_messages(session)
 
         assert adapter._delete_message_mock.call_count == 3
-        ux_state = await test_db.get_ux_state(session.session_id)
-        assert ux_state.pending_feedback_deletions == []
+        pending = await test_db.get_pending_feedback_deletions(session.session_id)
+        assert pending == []
 
     async def test_handles_delete_failures_gracefully(self, test_db):
         """Test handling delete failures without raising."""
@@ -348,16 +346,13 @@ class TestCleanupFeedbackMessages:
             origin_adapter="telegram",
             title="Test Session",
         )
-        await test_db.update_ux_state(
-            session.session_id,
-            pending_feedback_deletions=["msg-1"],
-        )
+        await test_db.add_pending_feedback_deletion(session.session_id, "msg-1")
 
         # Should not raise
         await adapter.cleanup_feedback_messages(session)
 
-        ux_state = await test_db.get_ux_state(session.session_id)
-        assert ux_state.pending_feedback_deletions == []
+        pending = await test_db.get_pending_feedback_deletions(session.session_id)
+        assert pending == []
 
 
 class TestFormatMessage:

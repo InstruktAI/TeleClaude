@@ -10,18 +10,13 @@ import pytest
 @pytest.fixture
 async def mock_initialized_db(monkeypatch):
     """Fixture to provide a mocked, initialized database connection."""
-    import aiosqlite
-
     from teleclaude.core.db import Db
 
-    # Create an in-memory SQLite database
-    mock_conn = await aiosqlite.connect(":memory:")
-    await mock_conn.execute("CREATE TABLE sessions (session_id TEXT PRIMARY KEY, ux_state TEXT)")
-    await mock_conn.commit()
-
-    # Create a mock Db instance that uses our in-memory connection
+    # Create a Db instance with in-memory database
     mock_db_instance = Db(":memory:")
-    mock_db_instance._db = mock_conn  # Directly set the connection
+
+    # Initialize with proper schema (includes all columns after migration)
+    await mock_db_instance.initialize()
 
     # Patch the global db object in command_handlers module
     monkeypatch.setattr("teleclaude.core.command_handlers.db", mock_db_instance)
@@ -29,7 +24,7 @@ async def mock_initialized_db(monkeypatch):
 
     yield mock_db_instance
 
-    await mock_conn.close()
+    await mock_db_instance.close()
 
 
 @pytest.mark.asyncio

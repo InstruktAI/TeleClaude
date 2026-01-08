@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -33,7 +32,6 @@ def _insert_terminal_session(
     tty_path: str,
 ) -> None:
     adapter_metadata = SessionAdapterMetadata().to_json()
-    ux_state = json.dumps({"native_tty_path": tty_path})
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
@@ -41,7 +39,7 @@ def _insert_terminal_session(
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, created_at,
-                last_activity, terminal_size, working_directory, description, ux_state
+                last_activity, terminal_size, working_directory, description, native_tty_path
             ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?, ?)
             """,
             (
@@ -54,7 +52,7 @@ def _insert_terminal_session(
                 "160x80",
                 "~",
                 "Terminal-origin session",
-                ux_state,
+                tty_path,
             ),
         )
         conn.commit()
@@ -85,7 +83,7 @@ def test_ensure_terminal_session_creates_new_when_missing(tmp_path: Path, monkey
             SELECT session_id
             FROM sessions
             WHERE origin_adapter = 'terminal'
-              AND json_extract(ux_state, '$.native_tty_path') = ?
+              AND native_tty_path = ?
             """,
             (tty_path,),
         ).fetchone()

@@ -486,8 +486,8 @@ class TestNotificationFlag:
         )
         await test_db.set_notification_flag(session.session_id, True)
 
-        # Update other UX state fields
-        await test_db.update_ux_state(session.session_id, output_message_id="msg123")
+        # Update other session fields
+        await test_db.update_session(session.session_id, output_message_id="msg123")
 
         # Verify notification flag still set
         flag_value = await test_db.get_notification_flag(session.session_id)
