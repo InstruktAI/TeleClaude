@@ -908,12 +908,22 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
 
     # 1.5. Ensure slug exists in roadmap before preparing
     if not slug_in_roadmap(cwd, resolved_slug):
-        note = (
-            f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. "
+        has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
+        has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
+        missing_docs: list[str] = []
+        if not has_requirements:
+            missing_docs.append("requirements.md")
+        if not has_impl_plan:
+            missing_docs.append("implementation-plan.md")
+        docs_clause = " and commit."
+        if missing_docs:
+            docs_list = " and ".join(missing_docs)
+            docs_clause = f" before writing {docs_list} and commit."
+        next_step = (
             "Discuss with the user where it should appear in the list and get approval, "
-            "then add it to the roadmap before writing requirements.md and "
-            "implementation-plan.md and commit."
+            f"then add it to the roadmap{docs_clause}"
         )
+        note = f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. {next_step}"
         if hitl:
             return format_hitl_guidance(note)
 

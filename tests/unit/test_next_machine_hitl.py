@@ -106,7 +106,10 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap():
     cwd = "/tmp/test"
     slug = "test-slug"
 
-    with patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False):
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+    ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert "not in todos/roadmap.md" in result
         assert "add it to the roadmap" in result
@@ -122,11 +125,29 @@ async def test_next_prepare_autonomous_slug_missing_from_roadmap():
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
-    with patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False):
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+    ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
         assert f'args="{slug}"' in result
         assert "not in todos/roadmap.md" in result
+
+
+@pytest.mark.asyncio
+async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False),
+        patch("teleclaude.core.next_machine.check_file_exists", return_value=True),
+    ):
+        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
+        assert "not in todos/roadmap.md" in result
+        assert "add it to the roadmap and commit" in result
 
 
 # =============================================================================
