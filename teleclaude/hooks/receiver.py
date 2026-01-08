@@ -400,7 +400,8 @@ def main() -> None:
                     native_session_id=native_session_id,
                 )
             else:
-                sys.exit(1)
+                # No TeleClaude session found - this is valid for standalone Claude sessions
+                sys.exit(0)
 
     normalize_payload = _get_adapter(args.agent)
     try:
