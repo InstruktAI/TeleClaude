@@ -44,7 +44,6 @@ The resilient MCP wrapper (`bin/mcp-wrapper.py`) provides:
 
 - **Zero-downtime restarts** - Cached handshake response while backend reconnects
 - **Automatic reconnection** - Transparent backend connection recovery
-- **Tool filtering** - Internal tools (like `teleclaude__handle_agent_event`) hidden from clients
 
 See [docs/mcp-architecture.md](docs/mcp-architecture.md) for implementation details.
 

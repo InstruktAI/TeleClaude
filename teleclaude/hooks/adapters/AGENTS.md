@@ -51,16 +51,18 @@ Notification fields:
 
 ## TeleClaude adapter mapping (Gemini → internal hook payloads)
 
-TeleClaude only consumes a **subset** of hook events and forwards them as
-`teleclaude__handle_agent_event` with the following internal shape:
+TeleClaude only consumes a **subset** of hook events. The receiver writes them
+to the `hook_outbox` database table with the following internal shape:
 
 ```
 {
   "session_id": "<teleclaude_session_id>",
   "event_type": "session_start|stop|session_end|notification",
-  "data": { ...original hook payload... }
+  "data": { ...normalized hook payload... }
 }
 ```
+
+The daemon's `_hook_outbox_worker` processes queued events and dispatches them.
 
 Mapping rules (Gemini):
 

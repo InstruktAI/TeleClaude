@@ -38,7 +38,8 @@ TeleClaude is a multi-platform terminal bridge daemon enabling remote terminal a
 **Key Capabilities:**
 
 - Remote terminal access via Telegram topics
-- AI-to-AI cross-computer communication via Redis
+- AI-to-AI collaboration (local or cross-computer)
+- Cross-computer communication via Redis
 - Session persistence across daemon restarts
 - Real-time output streaming
 - Multi-adapter broadcasting (origin + observers)

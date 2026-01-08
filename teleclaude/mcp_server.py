@@ -23,7 +23,7 @@ from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
-from teleclaude.core.events import AgentHookEvents, CommandEventContext, TeleClaudeEvents
+from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs, ThinkingMode
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
@@ -714,32 +714,6 @@ class TeleClaudeMCPServer:
                     },
                 ),
                 Tool(
-                    name="teleclaude__handle_agent_event",
-                    title="TeleClaude: Handle Agent Event",
-                    description=(
-                        "Emit Agent events to registered listeners. "
-                        "USED BY HOOKS, AND FOR INTERNAL USE ONLY, so do not call yourself."
-                    ),
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "session_id": {
-                                "type": "string",
-                                "description": "TeleClaude session UUID",
-                            },
-                            "event_type": {
-                                "type": "string",
-                                "description": "Type of Agent event (e.g., 'stop', 'compact')",
-                            },
-                            "data": {
-                                "type": "object",
-                                "description": "Event-specific data",
-                            },
-                        },
-                        "required": ["session_id", "event_type", "data"],
-                    },
-                ),
-                Tool(
                     name="teleclaude__next_prepare",
                     description="Phase A state machine: Check preparation state and return instructions. Checks for requirements.md and implementation-plan.md, returns exact command to dispatch. If roadmap is empty, dispatches roadmap grooming. Call this to prepare a work item before building.",
                     inputSchema={
@@ -877,18 +851,7 @@ class TeleClaudeMCPServer:
             # Extract context (injected by wrapper) - handlers don't need to parse this
             caller_session_id = str(arguments.pop("caller_session_id")) if arguments.get("caller_session_id") else None
 
-            if name == "teleclaude__handle_agent_event":
-                event_type = str(arguments.get("event_type", "")) if arguments else ""
-                session_id = str(arguments.get("session_id", "")) if arguments else ""
-                logger.debug(
-                    "MCP tool call",
-                    tool=name,
-                    session=session_id[:8],
-                    event=event_type,
-                    caller=caller_session_id,
-                )
-            else:
-                logger.trace("MCP tool call", tool=name, caller=caller_session_id)
+            logger.debug("MCP tool call", tool=name, caller=caller_session_id)
             if name == "teleclaude__help":
                 text = (
                     "TeleClaude MCP Server\n"
@@ -993,13 +956,6 @@ class TeleClaudeMCPServer:
                 session_id = str(arguments.get("session_id", "")) if arguments else ""
                 result = await self.teleclaude__end_session(computer, session_id)
                 return [TextContent(type="text", text=json.dumps(result, default=str))]
-            elif name == "teleclaude__handle_agent_event":
-                session_id = str(arguments.get("session_id", "")) if arguments else ""
-                event_type = str(arguments.get("event_type", "")) if arguments else ""
-                data_obj = arguments.get("data") if arguments else None
-                data = dict(data_obj) if isinstance(data_obj, dict) else {}
-                result_text = await self.teleclaude__handle_agent_event(session_id, event_type, data)
-                return [TextContent(type="text", text=result_text)]
             elif name == "teleclaude__next_prepare":
                 slug = cast(Optional[str], arguments.get("slug"))
                 hitl = cast(bool, arguments.get("hitl", True))
@@ -2412,97 +2368,6 @@ class TeleClaudeMCPServer:
         except Exception as e:
             logger.error("Failed to end session: %s", e)
             return {"status": "error", "message": f"Failed to end session: {str(e)}"}
-
-    async def teleclaude__handle_agent_event(
-        self,
-        session_id: str,
-        event_type: str,
-        data: dict[str, object],  # noqa: loose-dict - Agent hook boundary
-    ) -> str:
-        """Emit Agent event to registered listeners (called by agent hooks).
-
-        Args:
-            session_id: TeleClaude session UUID
-            event_type: Type of Claude event (e.g., "stop", "compact", "session_start")
-            data: Event-specific data
-
-        Returns:
-            Success message
-        """
-        # Verify session exists
-        session = await db.get_session(session_id)
-        if not session:
-            raise ValueError(f"TeleClaude session {session_id} not found")
-
-        transcript_path = data.get("transcript_path")
-        if isinstance(transcript_path, str) and transcript_path:
-            await db.update_ux_state(session_id, native_log_file=transcript_path)
-
-        # Unknown events (e.g., Gemini's BeforeAgent) - transcript_path already saved above, just return
-        if event_type not in AgentHookEvents.ALL:
-            logger.debug("Transcript capture event handled", event=event_type, session=session_id[:8])
-            return "OK"
-
-        if event_type == AgentHookEvents.AGENT_ERROR:
-            event_payload = cast(
-                dict[str, object],  # noqa: loose-dict - Event payload to adapter_client
-                {
-                    "session_id": session_id,
-                    "message": str(data["message"]),
-                    "source": str(data["source"]) if "source" in data else None,
-                    "details": cast(dict[str, object] | None, data["details"]) if "details" in data else None,  # noqa: loose-dict - Hook detail boundary
-                },
-            )
-            event_type_name = TeleClaudeEvents.ERROR
-        else:
-            event_payload = cast(
-                dict[str, object],  # noqa: loose-dict - Event payload to adapter_client
-                {"session_id": session_id, "event_type": event_type, "data": data},
-            )
-            event_type_name = TeleClaudeEvents.AGENT_EVENT
-
-        async def _emit() -> None:
-            loop = asyncio.get_running_loop()
-            start = loop.time()
-            logger.debug("Agent event dispatch start", session=session_id[:8], event=event_type)
-            try:
-                response = await self.client.handle_event(
-                    event_type_name,
-                    event_payload,
-                    MessageMetadata(adapter_type="internal"),
-                )
-                elapsed = loop.time() - start
-                status = response.get("status") if isinstance(response, dict) else None
-                logger.debug(
-                    "Agent event dispatch done",
-                    session=session_id[:8],
-                    event=event_type,
-                    elapsed=round(elapsed, 3),
-                    status=status,
-                )
-                logger.trace("Agent event emitted", session=session_id[:8], event=event_type)
-                if isinstance(response, dict) and response.get("status") == "error":
-                    raise ValueError(str(response.get("error")))
-            except Exception as exc:
-                elapsed = loop.time() - start
-                logger.error(
-                    "Agent event dispatch failed",
-                    session=session_id[:8],
-                    event=event_type,
-                    elapsed=round(elapsed, 3),
-                    error=str(exc),
-                )
-                raise
-
-        task = asyncio.create_task(_emit())
-        logger.debug(
-            "Agent event queued",
-            session=session_id[:8],
-            event=event_type,
-            pending_tasks=len(self._background_tasks) + 1,
-        )
-        self._track_background_task(task, "agent_event")
-        return "OK"
 
     # =========================================================================
     # Next Machine Tools - Deterministic workflow state machine

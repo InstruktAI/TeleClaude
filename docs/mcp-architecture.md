@@ -24,7 +24,6 @@ TeleClaude Daemon
 - **Persistent tool cache** - Stores the last good `tools/list` response on disk and serves it only while the daemon is down
 - **Hybrid mode** - Waits 500ms for backend; uses cache if unavailable
 - **Auto-reconnection** - Transparently reconnects to backend when it restarts
-- **Tool filtering** - Hides internal tools (e.g., `teleclaude__handle_agent_event`) from clients
 - **Context injection** - Injects `caller_session_id` from `TMPDIR/teleclaude_session_id` into tool calls
 
 **Operation**:
@@ -38,7 +37,7 @@ TeleClaude Daemon
 
 **Purpose**: Actual MCP tool implementation using `mcp` library.
 
-**Provides 11 public tools**:
+**Public tools**:
 
 - `teleclaude__list_computers` - List available remote computers
 - `teleclaude__list_projects` - List trusted project directories on a computer
@@ -51,10 +50,6 @@ TeleClaude Daemon
 - `teleclaude__send_result` - Send formatted results as separate message (MarkdownV2)
 - `teleclaude__stop_notifications` - Unsubscribe from session events
 - `teleclaude__end_session` - Gracefully terminate a session
-
-**Plus 1 internal tool** (hidden from clients):
-
-- `teleclaude__handle_agent_event` - Used by hooks to emit events
 
 **Integration**:
 
@@ -95,15 +90,6 @@ Monitor MCP operations:
 ```bash
 . .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
 ```
-
-## Tool Filtering
-
-Internal tools are filtered at two points:
-
-1. **Wrapper cached response** - `teleclaude__handle_agent_event` excluded from `TOOL_NAMES`
-2. **Runtime filtering** - Wrapper intercepts `tools/list` responses and removes internal tools
-
-This ensures internal tools remain functional for hooks while being invisible to MCP clients.
 
 ## Debugging
 

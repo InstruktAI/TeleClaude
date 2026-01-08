@@ -1,23 +1,30 @@
 # Multi-Computer Setup Guide
 
-This guide explains how to set up TeleClaude for AI-to-AI communication across multiple computers using the MCP (Model Context Protocol) server.
+This guide explains how to deploy TeleClaude across multiple computers, enabling cross-computer session management and AI collaboration.
+
+> **See also:** [AI-to-AI Collaboration Protocol](./ai-to-ai-protocol.md) for how AIs delegate work to each other (works on single or multiple computers).
 
 ## Overview
 
-**What is AI-to-AI communication?**
+**What is multi-computer TeleClaude?**
 
-TeleClaude enables Claude Code running on different computers to communicate with each other via Telegram as a distributed message bus. For example:
+TeleClaude can run on multiple computers that communicate via Redis pub/sub. Each computer:
+- Runs its own TeleClaude daemon
+- Has its own Telegram bot
+- Can host sessions started by users OR other AIs
 
-- Claude Code on your **macbook** can ask Claude Code on your **workstation** to check logs
-- Claude Code on your **server** can ask Claude Code on your **laptop** to run tests
-- Multiple computers can collaborate on complex tasks
+**Use cases:**
 
-**How it works:**
+- Start a session on your **workstation** from your **laptop**
+- Have an AI on **macbook** delegate work to an AI on **server**
+- Monitor all computers' sessions from a single Telegram supergroup
+
+**Architecture:**
 
 1. Each computer runs its own TeleClaude daemon with a unique bot token
 2. All bots join the same Telegram supergroup
-3. Computers discover each other via heartbeat messages
-4. Claude Code uses MCP tools to send commands and receive streaming responses
+3. Computers discover each other via heartbeat messages in Redis
+4. MCP tools route requests to the appropriate computer
 
 ---
 
@@ -335,7 +342,7 @@ claude
 
 ---
 
-## Testing AI-to-AI Communication
+## Testing Cross-Computer Communication
 
 ### Basic Test: List Computers
 

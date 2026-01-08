@@ -35,28 +35,6 @@ def mock_mcp_server():
 
 
 @pytest.mark.asyncio
-async def test_handle_agent_event_error_dispatches_error_event(mock_mcp_server):
-    """error event routes to TeleClaude error handler."""
-    from teleclaude.core.events import TeleClaudeEvents
-
-    server = mock_mcp_server
-    server.client.handle_event = AsyncMock(return_value={"status": "success"})
-
-    with patch("teleclaude.mcp_server.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=MagicMock())
-
-        result = await server.teleclaude__handle_agent_event(
-            "sess-2", "error", {"message": "boom", "source": "hook", "details": {"x": 1}}
-        )
-
-    assert result == "OK"
-    await asyncio.sleep(0)
-    server.client.handle_event.assert_awaited_once()
-    called_event = server.client.handle_event.call_args.args[0]
-    assert called_event == TeleClaudeEvents.ERROR
-
-
-@pytest.mark.asyncio
 async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_server):
     """Test that list_computers returns online computers from heartbeat."""
     server = mock_mcp_server
@@ -169,63 +147,6 @@ async def test_teleclaude_send_message_forwards_to_handler(mock_mcp_server):
 
     # Verify handle_event was called
     server.client.handle_event.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_teleclaude_handle_agent_event_sends_to_session(mock_mcp_server):
-    """Test that handle_agent_event sends event to session."""
-    server = mock_mcp_server
-
-    # Mock db.get_session to return valid session
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-
-    with patch("teleclaude.mcp_server.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_db.update_ux_state = AsyncMock()
-        server.client.handle_event = AsyncMock(return_value=None)
-
-        result = await server.teleclaude__handle_agent_event(
-            session_id="test-session-123",
-            event_type="notification",
-            data={
-                "session_id": "native-123",
-                "transcript_path": "/tmp/native-123.jsonl",
-                "message": "Test notification",
-            },
-        )
-
-        assert result == "OK"
-        mock_db.update_ux_state.assert_awaited_once_with("test-session-123", native_log_file="/tmp/native-123.jsonl")
-        await asyncio.sleep(0)
-        server.client.handle_event.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_teleclaude_handle_agent_event_ignores_unknown_events_but_persists_transcript(mock_mcp_server):
-    """Unknown agent events should be ignored but still persist transcript_path when provided."""
-    server = mock_mcp_server
-
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-
-    with patch("teleclaude.mcp_server.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_db.update_ux_state = AsyncMock()
-        server.client.handle_event = AsyncMock(return_value=None)
-
-        result = await server.teleclaude__handle_agent_event(
-            session_id="test-session-123",
-            event_type="after_model",
-            data={
-                "session_id": "native-123",
-                "transcript_path": "/tmp/native-123.jsonl",
-            },
-        )
-
-        assert result == "OK"
-        mock_db.update_ux_state.assert_awaited_once_with("test-session-123", native_log_file="/tmp/native-123.jsonl")
-        server.client.handle_event.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -359,17 +280,6 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
             assert "not found" in result
         finally:
             Path(test_file).unlink(missing_ok=True)
-
-    # Test handle_agent_event with invalid session
-    with patch("teleclaude.mcp_server.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=None)
-
-        with pytest.raises(ValueError, match="not found"):
-            await server.teleclaude__handle_agent_event(
-                session_id="nonexistent-session",
-                event_type="notification",
-                data={},
-            )
 
 
 @pytest.mark.asyncio

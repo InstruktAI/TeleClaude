@@ -131,7 +131,6 @@ def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
 # Mutable cache so long-lived wrapper processes can refresh after code updates.
 _TOOL_CACHE_MTIME: float | None = None
 TOOL_LIST_CACHE: list[ToolSpec] | None = None
-_INTERNAL_TOOL_NAME = "teleclaude__handle_agent_event"
 
 
 def _resolve_tool_cache_path() -> Path:
@@ -208,16 +207,6 @@ def _persist_tool_cache(path: Path, tools: list[ToolSpec]) -> bool:
         return False
 
 
-def _filter_internal_tools(tools: list[object]) -> list[object]:
-    """Remove internal-only tools from a tools/list payload."""
-    filtered: list[object] = []
-    for tool in tools:
-        if isinstance(tool, dict) and tool.get("name") == _INTERNAL_TOOL_NAME:
-            continue
-        filtered.append(tool)
-    return filtered
-
-
 def refresh_tool_cache_if_needed(force: bool = False) -> None:
     """Refresh cached tools list if the persisted cache changed."""
     global _TOOL_CACHE_MTIME, TOOL_LIST_CACHE  # pylint: disable=global-statement
@@ -235,7 +224,7 @@ def refresh_tool_cache_if_needed(force: bool = False) -> None:
     tools = _load_tool_cache(TOOL_CACHE_PATH)
     if not tools:
         return
-    TOOL_LIST_CACHE = _filter_internal_tools(tools)  # type: ignore[assignment]
+    TOOL_LIST_CACHE = tools
     _TOOL_CACHE_MTIME = mtime
     logger.info("Tool cache loaded from disk (count=%d)", len(TOOL_LIST_CACHE))
 
@@ -259,18 +248,14 @@ def _update_tool_cache(tools: list[object], source: str) -> list[ToolSpec] | Non
     if not normalized:
         logger.warning("Ignoring invalid tools list from %s", source)
         return None
-    filtered = _filter_internal_tools(normalized)
-    if not filtered:
-        logger.warning("Ignoring empty tools list from %s", source)
-        return None
-    TOOL_LIST_CACHE = filtered  # type: ignore[assignment]
-    if _persist_tool_cache(TOOL_CACHE_PATH, filtered):  # type: ignore[arg-type]
+    TOOL_LIST_CACHE = normalized
+    if _persist_tool_cache(TOOL_CACHE_PATH, normalized):
         try:
             _TOOL_CACHE_MTIME = TOOL_CACHE_PATH.stat().st_mtime
         except Exception:
             _TOOL_CACHE_MTIME = None
-    logger.info("Tool cache updated (%s, count=%d)", source, len(filtered))
-    return filtered  # type: ignore[return-value]
+    logger.info("Tool cache updated (%s, count=%d)", source, len(normalized))
+    return normalized
 
 
 # Initialize cache at import time
@@ -970,26 +955,6 @@ class MCPProxy:
                                     elapsed=round(asyncio.get_running_loop().time() - started_at, 3),
                                 )
                             continue
-
-                    # Filter internal tools from tools/list responses
-                    try:
-                        if msg is None:
-                            msg = json.loads(line.decode())
-                        if (
-                            isinstance(msg, dict)
-                            and "result" in msg
-                            and isinstance(msg.get("result"), dict)
-                            and "tools" in msg["result"]
-                        ):
-                            # This is a tools/list response - filter internal tools
-                            tools = msg["result"]["tools"]
-                            if isinstance(tools, list):
-                                msg["result"]["tools"] = _filter_internal_tools(tools)
-                                line = (json.dumps(msg) + "\n").encode()
-                                logger.debug("Filtered internal tools from tools/list response")
-                    except (json.JSONDecodeError, KeyError):
-                        # Not a JSON message or not a tools response - pass through unchanged
-                        pass
 
                     sys.stdout.buffer.write(line)
                     sys.stdout.buffer.flush()

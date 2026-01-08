@@ -175,49 +175,6 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
 
 
 @pytest.mark.integration
-async def test_teleclaude_send_notification(mcp_server, daemon_with_mocked_telegram):
-    """Test notification event via teleclaude__handle_agent_event sends feedback and sets flag."""
-    import json
-
-    daemon = daemon_with_mocked_telegram
-
-    # Create session with telegram origin
-    session = await daemon.db.create_session(
-        computer_name="testcomp",
-        tmux_session_name="test-notify",
-        origin_adapter="telegram",
-        title="Test Notification",
-        adapter_metadata={"channel_id": "12345"},
-    )
-
-    # Send notification via claude_event (the new way - bridge sends events)
-    result = await mcp_server.teleclaude__handle_agent_event(
-        session_id=session.session_id,
-        event_type="notification",
-        data={
-            "session_id": "native-123",
-            "transcript_path": "/tmp/native-123.jsonl",
-            "message": "Claude is ready for action!",
-        },
-    )
-
-    # Verify result
-    assert result == "OK"
-
-    # Wait for background agent event processing to complete
-    if getattr(mcp_server, "_background_tasks", None):
-        await asyncio.gather(*list(mcp_server._background_tasks))
-
-    # Verify notification_sent flag was set
-    updated_session = await daemon.db.get_session(session.session_id)
-    ux_state = json.loads(updated_session.ux_state) if updated_session.ux_state else {}
-    assert ux_state.get("notification_sent") is True
-
-    # Note: send_feedback is called internally by _handle_notification in ui_adapter.
-    # See test_ui_adapter.py for detailed feedback cleanup behavior tests.
-
-
-@pytest.mark.integration
 async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
     """Test teleclaude__send_file sends file via AdapterClient to origin adapter."""
     daemon = daemon_with_mocked_telegram
