@@ -6,8 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.core.ux_state import SessionUXState
-
 
 @pytest.fixture
 async def mock_initialized_db(monkeypatch):
