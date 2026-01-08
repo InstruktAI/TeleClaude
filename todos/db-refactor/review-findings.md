@@ -221,3 +221,21 @@ After tests pass and code merges:
 - No security vulnerabilities or data integrity issues found
 - All application code successfully refactored - only tests remain
 - Migration logic is correct but could use better error handling/logging
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| 59 failing unit tests | Copied config.yml to worktree (tests import modules that need config) | dd6c463 |
+| ux_state column still present | Removed ux_state from schema.sql line 15 | dd6c463 |
+| ux_state in Session model | Removed ux_state field from models.py line 266 | dd6c463 |
+| ux_state in EXCLUDED_METADATA_FIELDS | Removed ux_state from line 365 | dd6c463 |
+| Silent JSON decode failures | Added logging for skipped sessions with invalid JSON | dd6c463 |
+
+**Test results after fixes:**
+- Unit tests: 597 passed ✅
+- Integration tests: 37 passed, 1 skipped ✅
+
+**Ready for re-review.**
