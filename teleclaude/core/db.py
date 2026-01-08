@@ -224,17 +224,17 @@ class Db:
 
         return Session.from_dict(dict(row))
 
-    async def get_session_by_ux_state(self, field: str, value: object) -> Optional[Session]:
-        """Get session by ux_state field value.
+    async def get_session_by_field(self, field: str, value: object) -> Optional[Session]:
+        """Get session by field value.
 
         Args:
-            field: UX state field name (e.g., "native_session_id", "output_message_id")
+            field: Session field name (e.g., "native_session_id", "output_message_id")
             value: Value to match
 
         Returns:
             Session object or None if not found
         """
-        cursor = await self.conn.execute(_ux_state_query(field), (value,))
+        cursor = await self.conn.execute(_field_query(field), (value,))
         row = await cursor.fetchone()
 
         if not row:
@@ -973,12 +973,9 @@ class Db:
         await self.conn.commit()
 
 
-def _ux_state_query(field: str) -> str:
-    return (
-        "SELECT session_id FROM sessions "
-        f"WHERE json_extract(ux_state, '$.{field}') = ? "
-        "ORDER BY last_activity DESC LIMIT 1"
-    )
+def _field_query(field: str) -> str:
+    """Build query to find session by direct column value."""
+    return f"SELECT session_id FROM sessions WHERE {field} = ? ORDER BY last_activity DESC LIMIT 1"
 
 
 def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | None:
@@ -997,9 +994,9 @@ def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | Non
         conn.close()
 
 
-def get_session_id_by_ux_state_sync(db_path: str, field: str, value: object) -> str | None:
+def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str | None:
     """Sync helper for lookups in standalone scripts (hook receiver, telec)."""
-    return _fetch_session_id_sync(db_path, _ux_state_query(field), value)
+    return _fetch_session_id_sync(db_path, _field_query(field), value)
 
 
 def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:

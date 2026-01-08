@@ -22,7 +22,7 @@ from teleclaude.config import config
 from teleclaude.core import session_cleanup
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import normalize_agent_name
-from teleclaude.core.db import db, get_session_id_by_ux_state_sync
+from teleclaude.core.db import db, get_session_id_by_field_sync
 from teleclaude.core.events import TeleClaudeEvents, parse_command_string
 from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.terminal_events import (
@@ -379,10 +379,10 @@ def _get_session_entry_by_id(db_path: str, session_id: str) -> SessionListEntry 
 
 
 def _find_session_id_for_tty(db_path: str, tty_path: str) -> str | None:
-    session_id = get_session_id_by_ux_state_sync(db_path, "native_tty_path", tty_path)
+    session_id = get_session_id_by_field_sync(db_path, "native_tty_path", tty_path)
     if session_id:
         return session_id
-    return get_session_id_by_ux_state_sync(db_path, "tmux_tty_path", tty_path)
+    return get_session_id_by_field_sync(db_path, "tmux_tty_path", tty_path)
 
 
 def _wait_for_tmux_session(session_name: str, timeout_s: float = 5.0) -> bool:

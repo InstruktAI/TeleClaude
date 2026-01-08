@@ -29,8 +29,8 @@ from adapters import gemini as gemini_adapter  # noqa: E402
 from teleclaude.config import config  # noqa: E402
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
 from teleclaude.core.db import (  # noqa: E402
+    get_session_id_by_field_sync,
     get_session_id_by_tmux_name_sync,
-    get_session_id_by_ux_state_sync,
 )
 
 configure_logging("teleclaude")
@@ -263,12 +263,12 @@ def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str |
 
 def _find_session_by_native_id(native_session_id: str) -> str | None:
     """Locate a TeleClaude session by stored native_session_id."""
-    return get_session_id_by_ux_state_sync(config.database.path, "native_session_id", native_session_id)
+    return get_session_id_by_field_sync(config.database.path, "native_session_id", native_session_id)
 
 
 def _find_session_by_log_path(native_log_file: str) -> str | None:
     """Locate a TeleClaude session by stored native_log_file."""
-    return get_session_id_by_ux_state_sync(config.database.path, "native_log_file", native_log_file)
+    return get_session_id_by_field_sync(config.database.path, "native_log_file", native_log_file)
 
 
 def _find_session_by_tmux_name(tmux_name: str) -> str | None:
