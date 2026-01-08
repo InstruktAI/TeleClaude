@@ -19,3 +19,9 @@
 ## Database Schema
 
 (No active items - db-refactor completed and delivered)
+
+## CLI Enhancements
+
+- [.] telec-enhancements
+      Transform telec into rich TUI with REST API, multi-tab interface, cross-computer visibility.
+      Depends on: db-refactor (for last_message_sent, last_feedback_received columns)

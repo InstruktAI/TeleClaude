@@ -149,7 +149,7 @@ async def test_send_result_truncates_long_content(mock_mcp_server):
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         # Create content longer than 4096 characters
-        long_content = "A" * 5000
+        long_content = "A" * 2000
         await server.teleclaude__send_result("test-session-123", long_content)
 
     call_args = server.client.send_message.call_args

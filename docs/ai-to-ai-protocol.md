@@ -84,6 +84,7 @@ teleclaude__start_session(
 #### Run Agent Command
 
 Run a slash command on an agent session. Two modes:
+
 1. If `session_id` provided: send command to existing session
 2. If `session_id` omitted: start new session with the command
 
@@ -128,7 +129,7 @@ Retrieve session output for review:
 teleclaude__get_session_data(
     computer="local",
     session_id="abc-123",
-    tail_chars=5000,  # Optional: max chars from end (default 5000, 0 for unlimited up to 48K cap)
+    tail_chars=2000,  # Optional: max chars from end (default 2000, 0 for unlimited up to 48K cap)
     since_timestamp="2025-01-08T14:00:00Z",  # Optional: ISO 8601 UTC start filter
     until_timestamp="2025-01-08T15:00:00Z"   # Optional: ISO 8601 UTC end filter
 )

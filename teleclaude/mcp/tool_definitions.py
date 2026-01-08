@@ -258,7 +258,7 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "Retrieve session data from a remote computer's Claude Code session. "
                 "Reads from the claude_session_file which contains complete session history. "
-                "By default returns last 5000 chars. Use timestamp filters to scrub through history. "
+                "By default returns last 2000 chars. Use timestamp filters to scrub through history. "
                 "Returns `status: 'error'` if session has ended or is missing (no transcript returned). "
                 "**Use this to check on delegated work** after teleclaude__send_message. "
                 "**Supervising Worker AI Sessions:** "
@@ -295,7 +295,7 @@ def get_tool_definitions() -> list[Tool]:
                     "tail_chars": {
                         "type": "integer",
                         "description": (
-                            "Max characters to return from end of transcript. Default: 5000. "
+                            "Max characters to return from end of transcript. Default: 2000. "
                             "Set to 0 for unlimited request, but responses are capped at 48,000 chars. "
                             "Use since_timestamp / until_timestamp to fetch more."
                         ),

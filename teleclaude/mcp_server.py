@@ -374,7 +374,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 since = self._str_arg(arguments, "since_timestamp") or None
                 until = self._str_arg(arguments, "until_timestamp") or None
                 tail_obj = arguments.get("tail_chars") if arguments else None
-                tail = int(tail_obj) if isinstance(tail_obj, (int, str)) else 5000
+                tail = int(tail_obj) if isinstance(tail_obj, (int, str)) else 2000
                 return self._json_response(
                     await self.teleclaude__get_session_data(
                         self._str_arg(arguments, "computer"),
