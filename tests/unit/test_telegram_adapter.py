@@ -167,7 +167,7 @@ class TestChannelManagement:
 
         # Mock db.get_session to return session without topic_id (first creation)
         with (
-            patch("teleclaude.adapters.telegram_adapter.db") as mock_db,
+            patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db,
             patch.object(telegram_adapter, "_wait_for_topic_ready", new_callable=AsyncMock) as mock_wait,
         ):
             mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -185,7 +185,7 @@ class TestChannelManagement:
         telegram_adapter._topic_ready_cache.clear()
         telegram_adapter._topic_ready_events[topic_id] = asyncio.Event()
 
-        monkeypatch.setattr("teleclaude.adapters.telegram_adapter.TOPIC_READY_TIMEOUT_S", 0.0)
+        monkeypatch.setattr("teleclaude.adapters.telegram.channel_ops.TOPIC_READY_TIMEOUT_S", 0.0)
 
         await telegram_adapter._wait_for_topic_ready(topic_id, "Slow Topic")
 
@@ -223,7 +223,7 @@ class TestChannelManagement:
             adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=999)),
         )
 
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_db:
+        with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session_with_topic)
             mock_db.update_session = AsyncMock()
             result = await telegram_adapter.create_channel(mock_session, "Test Topic", ChannelMetadata())

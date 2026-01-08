@@ -30,7 +30,7 @@ def mock_mcp_server():
         server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
 
     # Patch db.get_ux_state on the module - stays active for test duration
-    with patch("teleclaude.mcp_server.db.get_ux_state", new=AsyncMock(return_value=None)):
+    with patch("teleclaude.mcp.handlers.db.get_ux_state", new=AsyncMock(return_value=None)):
         yield server
 
 
@@ -40,7 +40,7 @@ async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_serve
     server = mock_mcp_server
 
     # Mock handle_get_computer_info for local computer
-    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.handle_get_computer_info = AsyncMock(
             return_value={
                 "user": "testuser",
@@ -71,7 +71,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
     """Test that list_sessions formats session data for MCP."""
     server = mock_mcp_server
 
-    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.handle_list_sessions = AsyncMock(
             return_value=[
                 {
@@ -103,7 +103,7 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
         return_value={"status": "success", "data": {"session_id": "new-session-456"}}
     )
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_ux_state = AsyncMock(return_value=None)
         mock_db.get_session = AsyncMock(return_value=None)
 
@@ -166,7 +166,7 @@ async def test_teleclaude_send_file_handles_upload(mock_mcp_server):
         mock_session = MagicMock()
         mock_session.session_id = "test-session-123"
 
-        with patch("teleclaude.mcp_server.db") as mock_db:
+        with patch("teleclaude.mcp.handlers.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=mock_session)
             server.client.send_file = AsyncMock(return_value="file-msg-123")
 
@@ -188,7 +188,7 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
     """Test that get_session_data returns formatted transcript."""
     server = mock_mcp_server
 
-    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.handle_get_session_data = AsyncMock(
             return_value={
                 "status": "success",
@@ -216,7 +216,7 @@ async def test_teleclaude_get_session_data_caps_large_transcripts(mock_mcp_serve
 
     oversized = "x" * (MCP_SESSION_DATA_MAX_CHARS + 100)
 
-    with patch("teleclaude.mcp_server.command_handlers") as mock_handlers:
+    with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.handle_get_session_data = AsyncMock(
             return_value={
                 "status": "success",
@@ -260,7 +260,7 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
     server = mock_mcp_server
 
     # Test send_file with invalid session
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=None)
 
         # Create temp file for the test
@@ -292,7 +292,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     # Mock handle_event to return success with session_id
     server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "agent-test-123"}})
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_ux_state = AsyncMock(return_value=None)
         mock_db.get_session = AsyncMock(return_value=None)
 
@@ -611,7 +611,7 @@ async def test_mark_phase_blocks_on_uncommitted_changes(mock_mcp_server, tmp_pat
     worktree_path = tmp_path / "trees" / slug
     worktree_path.mkdir(parents=True, exist_ok=True)
 
-    with patch("teleclaude.mcp_server.has_uncommitted_changes", return_value=True):
+    with patch("teleclaude.mcp.handlers.has_uncommitted_changes", return_value=True):
         result = await server.teleclaude__mark_phase(
             slug=slug,
             phase="build",

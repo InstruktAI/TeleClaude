@@ -15,3 +15,8 @@
 
 - [.] ui-event-queue-per-adapter
       Create per-adapter UI event queues to avoid cross-adapter bleed.
+
+## Database Schema
+
+- [.] db-refactor
+      Eliminate ux_state JSON blob - migrate to proper columns and normalized tables.

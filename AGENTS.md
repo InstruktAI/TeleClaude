@@ -189,11 +189,31 @@ ALWAYS run `make test` after changing code!
 3. Only report "Done" after automated tests pass
 4. ❌ **NEVER rely on manual inspection** - write automated tests instead
 
-### Master Bot Pattern (Multi-Computer Setup)
+### Multi-Computer Telegram Architecture
+
+**How multi-computer Telegram works:**
+
+- Each computer runs its own bot that polls Telegram **independently**
+- Each bot handles only messages assigned to it (topic ownership, session assignment)
+- **There is NO central routing** - bots do NOT route messages to each other
+- Redis is **NOT required** for multi-computer Telegram operation
+
+**What Redis is for (optional):**
+
+Redis is only needed for AI-to-AI collaboration via MCP tools:
+- `teleclaude__start_session(computer="remote")` - Start session on another computer
+- `teleclaude__send_message()` - Send message to remote session
+- `teleclaude__get_session_data()` - Read remote session output
+
+Without Redis, each computer works independently via Telegram.
+
+### Master Bot Pattern (Command Registration)
 
 **CRITICAL DESIGN PATTERN for multi-computer deployments:**
 
 When running TeleClaude on multiple computers with different bots in the same Telegram supergroup, **ONLY the master computer registers Telegram commands**. This prevents duplicate command entries in Telegram's UI.
+
+**Important:** The "master" concept is ONLY about command registration - it does NOT route messages.
 
 **Configuration:**
 

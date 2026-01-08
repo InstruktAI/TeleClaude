@@ -8,23 +8,33 @@ This guide explains how to deploy TeleClaude across multiple computers, enabling
 
 **What is multi-computer TeleClaude?**
 
-TeleClaude can run on multiple computers that communicate via Redis pub/sub. Each computer:
+TeleClaude can run on multiple computers, each with its own Telegram bot. Each computer:
 - Runs its own TeleClaude daemon
-- Has its own Telegram bot
+- Has its own Telegram bot that polls independently
+- Handles only messages assigned to it (topic ownership, session assignment)
 - Can host sessions started by users OR other AIs
 
 **Use cases:**
 
-- Start a session on your **workstation** from your **laptop**
-- Have an AI on **macbook** delegate work to an AI on **server**
-- Monitor all computers' sessions from a single Telegram supergroup
+- Interact with multiple computers from a single Telegram supergroup
+- Each computer handles its own sessions independently
+- Optionally: Use Redis for AI-to-AI collaboration (MCP tools)
 
 **Architecture:**
 
 1. Each computer runs its own TeleClaude daemon with a unique bot token
 2. All bots join the same Telegram supergroup
-3. Computers discover each other via heartbeat messages in Redis
-4. MCP tools route requests to the appropriate computer
+3. Each bot polls Telegram independently and handles its assigned messages
+4. **No central routing** - bots do NOT route messages to each other via Telegram
+
+**Optional Redis for AI-to-AI:**
+
+Redis is NOT required for multi-computer Telegram. It's only needed if you want AI-to-AI collaboration via MCP tools:
+- `teleclaude__start_session(computer="remote")` - Start session on another computer
+- `teleclaude__send_message()` - Send to remote session
+- `teleclaude__get_session_data()` - Read remote session output
+
+Without Redis, each computer works independently via Telegram.
 
 ---
 

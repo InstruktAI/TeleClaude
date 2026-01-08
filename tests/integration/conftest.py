@@ -234,6 +234,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.adapters.redis_adapter",
         "teleclaude.daemon",
         "teleclaude.mcp_server",
+        "teleclaude.mcp.handlers",
         "teleclaude.core.polling_coordinator",
         "teleclaude.core.command_handlers",
         "teleclaude.core.session_cleanup",

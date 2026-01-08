@@ -30,7 +30,7 @@ async def test_send_result_with_valid_content(mock_mcp_server):
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         result = await server.teleclaude__send_result("test-session-123", "# Test Result\n\nSome content")
@@ -68,7 +68,7 @@ async def test_send_result_with_missing_session(mock_mcp_server):
     """Test that missing session returns error."""
     server = mock_mcp_server
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=None)
 
         result = await server.teleclaude__send_result("nonexistent-session", "Some content")
@@ -85,7 +85,7 @@ async def test_send_result_converts_bold_to_telegram_format(mock_mcp_server):
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         await server.teleclaude__send_result("test-session-123", "**bold text**")
@@ -104,7 +104,7 @@ async def test_send_result_converts_headers(mock_mcp_server):
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         await server.teleclaude__send_result("test-session-123", "# Header Title")
@@ -124,7 +124,7 @@ async def test_send_result_adds_md_language_to_plain_code_blocks(mock_mcp_server
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         # Tables get wrapped in plain ``` by the library
@@ -145,7 +145,7 @@ async def test_send_result_truncates_long_content(mock_mcp_server):
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         # Create content longer than 4096 characters
@@ -165,7 +165,7 @@ async def test_send_result_uses_markdownv2_parse_mode(mock_mcp_server):
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         await server.teleclaude__send_result("test-session-123", "Test content")
@@ -185,7 +185,7 @@ async def test_send_result_fallback_to_plain_text_on_markdown_error(mock_mcp_ser
     # First call raises exception (MarkdownV2 parse error), second succeeds (plain text)
     server.client.send_message = AsyncMock(side_effect=[Exception("Parse error"), "msg-456"])
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         result = await server.teleclaude__send_result("test-session-123", "Test content")
@@ -207,7 +207,7 @@ async def test_send_result_error_on_complete_failure(mock_mcp_server):
     # Both calls fail
     server.client.send_message = AsyncMock(side_effect=Exception("Network error"))
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         result = await server.teleclaude__send_result("test-session-123", "Test content")
@@ -223,7 +223,7 @@ async def test_send_result_handles_nested_backticks_in_code_blocks(mock_mcp_serv
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         # Content with nested code block example
@@ -249,7 +249,7 @@ async def test_send_result_html_mode_uses_html_parse_mode(mock_mcp_server):
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         # HTML content with link
@@ -272,7 +272,7 @@ async def test_send_result_default_output_format_is_markdown(mock_mcp_server):
 
     mock_session = MagicMock()
 
-    with patch("teleclaude.mcp_server.db") as mock_db:
+    with patch("teleclaude.mcp.handlers.db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
 
         # Call without output_format - should default to markdown
