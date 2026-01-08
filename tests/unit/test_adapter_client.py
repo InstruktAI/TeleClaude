@@ -551,11 +551,10 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
 @pytest.mark.asyncio
 async def test_send_feedback_routes_to_last_input_adapter():
     """Test feedback routes to last_input_adapter when origin is non-UI."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import AsyncMock
 
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import MessageMetadata, Session
-    from teleclaude.core.ux_state import SessionUXState
 
     client = AdapterClient()
 
@@ -572,13 +571,10 @@ async def test_send_feedback_routes_to_last_input_adapter():
         tmux_session_name="tc_session_789",
         origin_adapter="redis",
         title="Test Session",
+        last_input_adapter="telegram",
     )
 
-    with patch(
-        "teleclaude.core.adapter_client.db.get_ux_state",
-        new=AsyncMock(return_value=SessionUXState(last_input_adapter="telegram")),
-    ):
-        message_id = await client.send_feedback(session, "hello", MessageMetadata())
+    message_id = await client.send_feedback(session, "hello", MessageMetadata())
 
     assert message_id == "tg-msg-1"
     origin_adapter.send_feedback.assert_not_called()
@@ -588,11 +584,8 @@ async def test_send_feedback_routes_to_last_input_adapter():
 @pytest.mark.asyncio
 async def test_send_feedback_falls_back_to_origin_ui():
     """Test feedback falls back to origin adapter when last_input_adapter isn't UI."""
-    from unittest.mock import AsyncMock, patch
-
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import MessageMetadata, Session
-    from teleclaude.core.ux_state import SessionUXState
 
     client = AdapterClient()
 
@@ -605,13 +598,10 @@ async def test_send_feedback_falls_back_to_origin_ui():
         tmux_session_name="tc_session_790",
         origin_adapter="telegram",
         title="Test Session",
+        last_input_adapter="redis",
     )
 
-    with patch(
-        "teleclaude.core.adapter_client.db.get_ux_state",
-        new=AsyncMock(return_value=SessionUXState(last_input_adapter="redis")),
-    ):
-        message_id = await client.send_feedback(session, "hello", MessageMetadata())
+    message_id = await client.send_feedback(session, "hello", MessageMetadata())
 
     assert message_id == "tg-msg-2"
     origin_adapter.send_feedback.assert_called_once()

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.models import MessageMetadata, Session, SessionAdapterMetadata
-from teleclaude.core.ux_state import SessionUXState
 
 
 class DummyUiAdapter(UiAdapter):
@@ -116,7 +113,6 @@ async def test_terminal_origin_send_feedback_broadcasts_without_target():
     client.register_adapter("telegram", adapter)
     session = _make_terminal_session()
 
-    with patch("teleclaude.core.adapter_client.db.get_ux_state", new=AsyncMock(return_value=SessionUXState())):
-        await client.send_feedback(session, "summary", MessageMetadata())
+    await client.send_feedback(session, "summary", MessageMetadata())
 
     assert adapter.sent_feedback == ["summary"]
