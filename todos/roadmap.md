@@ -13,5 +13,5 @@
 
 ## UI Event Queue
 
-- [ ] ui-event-queue-per-adapter
+- [.] ui-event-queue-per-adapter
       Create per-adapter UI event queues to avoid cross-adapter bleed.
