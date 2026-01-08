@@ -376,6 +376,17 @@ def check_file_exists(cwd: str, relative_path: str) -> bool:
     return (Path(cwd) / relative_path).exists()
 
 
+def slug_in_roadmap(cwd: str, slug: str) -> bool:
+    """Check if a slug exists in todos/roadmap.md."""
+    roadmap_path = Path(cwd) / "todos" / "roadmap.md"
+    if not roadmap_path.exists():
+        return False
+
+    content = roadmap_path.read_text(encoding="utf-8")
+    pattern = re.compile(rf"^-\s+\[[ .>x]\]\s+{re.escape(slug)}(\s|$)", re.MULTILINE)
+    return bool(pattern.search(content))
+
+
 def has_pending_bugs(cwd: str) -> bool:
     """Check if todos/bugs.md has unchecked items.
 
@@ -892,6 +903,29 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             thinking_mode=mode,
             subfolder="",
             note="Roadmap is empty or no item selected. Groom the roadmap to add work items.",
+            next_call="teleclaude__next_prepare",
+        )
+
+    # 1.5. Ensure slug exists in roadmap before preparing
+    if not slug_in_roadmap(cwd, resolved_slug):
+        note = (
+            f"Preparing: {resolved_slug}. This slug is not in todos/roadmap.md. "
+            "Discuss with the user where it should appear in the list and get approval, "
+            "then add it to the roadmap before writing requirements.md and "
+            "implementation-plan.md and commit."
+        )
+        if hitl:
+            return format_hitl_guidance(note)
+
+        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+        return format_tool_call(
+            command="next-prepare",
+            args=resolved_slug,
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder="",
+            note=note,
             next_call="teleclaude__next_prepare",
         )
 

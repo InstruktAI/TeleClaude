@@ -35,7 +35,10 @@ async def test_next_prepare_hitl_missing_requirements():
     cwd = "/tmp/test"
     slug = "test-slug"
 
-    with patch("teleclaude.core.next_machine.check_file_exists", return_value=False):
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+    ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
         assert "Write todos/test-slug/requirements.md" in result
@@ -53,7 +56,10 @@ async def test_next_prepare_hitl_missing_impl_plan():
             return True
         return False
 
-    with patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists):
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
+    ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"Preparing: {slug}" in result
         assert "Write todos/test-slug/implementation-plan.md" in result
@@ -66,7 +72,10 @@ async def test_next_prepare_hitl_both_exist():
     cwd = "/tmp/test"
     slug = "test-slug"
 
-    with patch("teleclaude.core.next_machine.check_file_exists", return_value=True):
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.check_file_exists", return_value=True),
+    ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"PREPARED: todos/{slug} is ready for work." in result
 
@@ -81,11 +90,43 @@ async def test_next_prepare_autonomous_dispatch():
     db.clear_expired_agent_availability.return_value = None
     db.get_agent_availability.return_value = {"available": True}
 
-    with patch("teleclaude.core.next_machine.check_file_exists", return_value=False):
+    with (
+        patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
+        patch("teleclaude.core.next_machine.check_file_exists", return_value=False),
+    ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
         assert "teleclaude__run_agent_command" in result
         assert f'args="{slug}"' in result
         assert 'command="next-prepare"' in result
+
+
+@pytest.mark.asyncio
+async def test_next_prepare_hitl_slug_missing_from_roadmap():
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+
+    with patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False):
+        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
+        assert "not in todos/roadmap.md" in result
+        assert "add it to the roadmap" in result
+        assert "Before proceeding, read ~/.agents/commands/next-prepare.md" in result
+
+
+@pytest.mark.asyncio
+async def test_next_prepare_autonomous_slug_missing_from_roadmap():
+    db = MagicMock(spec=Db)
+    cwd = "/tmp/test"
+    slug = "test-slug"
+
+    db.clear_expired_agent_availability.return_value = None
+    db.get_agent_availability.return_value = {"available": True}
+
+    with patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=False):
+        result = await next_prepare(db, slug=slug, cwd=cwd, hitl=False)
+        assert "teleclaude__run_agent_command" in result
+        assert f'args="{slug}"' in result
+        assert "not in todos/roadmap.md" in result
 
 
 # =============================================================================
