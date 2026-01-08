@@ -484,13 +484,17 @@ class MCPProxy:
             # No running loop yet; fall back to direct logging.
             logger.info("Scheduling reconnect (%s)", reason)
 
+        # When triggered by "initialize", handle_initialize() handles the handshake directly,
+        # so we skip _startup_resync() to avoid duplicate initialize requests.
+        skip_resync = reason == "initialize"
+
         async def _runner() -> None:
             async with self._reconnect_lock:
                 try:
                     await self.reconnect()
                 except Exception as exc:  # pragma: no cover - defensive
                     logger.error("Reconnect task failed: %s", exc)
-                if not self.shutdown.is_set():
+                if not self.shutdown.is_set() and not skip_resync:
                     await self._startup_resync()
 
         self._reconnect_task = asyncio.create_task(_runner())
