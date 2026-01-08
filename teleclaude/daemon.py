@@ -566,23 +566,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         transcript_path = data.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
-            await db.update_ux_state(session_id, native_log_file=transcript_path)
+            await db.update_session(session_id, native_log_file=transcript_path)
 
         teleclaude_pid = data.get("teleclaude_pid")
         teleclaude_tty = data.get("teleclaude_tty")
         if isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str):
-            existing_ux_state = await db.get_ux_state(session_id)
             updates: dict[str, object] = {}  # noqa: loose-dict - Hook payload is dynamic JSON
             if isinstance(teleclaude_pid, int):
                 updates["native_pid"] = teleclaude_pid
             if isinstance(teleclaude_tty, str):
-                if existing_ux_state.native_tty_path:
-                    if existing_ux_state.native_tty_path != teleclaude_tty:
+                if session.native_tty_path:
+                    if session.native_tty_path != teleclaude_tty:
                         updates["tmux_tty_path"] = teleclaude_tty
                 else:
                     updates["native_tty_path"] = teleclaude_tty
             if updates:
-                await db.update_ux_state(session_id, **updates)
+                await db.update_session(session_id, **updates)
 
         await self._ensure_output_polling(session)
 
@@ -913,21 +912,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         try:
-            ux_state = await db.get_ux_state(session_id)
-            if not ux_state.active_agent:
+            session = await db.get_session(session_id)
+            if not session or not session.active_agent:
                 raise ValueError(f"Session {session_id[:8]} missing active_agent metadata")
 
             native_session_id = str(payload.session_id) if payload.session_id else ""
             if native_session_id:
-                await db.update_ux_state(session_id, native_session_id=native_session_id)
-                ux_state.native_session_id = native_session_id
+                await db.update_session(session_id, native_session_id=native_session_id)
 
-            transcript_path = payload.transcript_path or ux_state.native_log_file
+            transcript_path = payload.transcript_path or session.native_log_file
             if not transcript_path:
                 raise ValueError(f"Session {session_id[:8]} missing transcript path on stop event")
             payload.transcript_path = transcript_path
 
-            agent_name = AgentName.from_str(ux_state.active_agent)
+            agent_name = AgentName.from_str(session.active_agent)
             title, summary = await summarize(agent_name, transcript_path)
 
             payload.summary = summary
@@ -1025,8 +1023,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     except ValueError:
                         pass
 
-                ux_state = await db.get_ux_state(session_id)
-                active_agent = ux_state.active_agent if ux_state else None
+                active_agent = session.active_agent
 
                 sanitized_message = terminal_io.wrap_bracketed_paste(message)
                 pasted = await terminal_io.send_text(
@@ -1868,8 +1865,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
 
         # Get active agent for agent-specific escaping
-        ux_state = await db.get_ux_state(session_id)
-        active_agent = ux_state.active_agent if ux_state else None
+        active_agent = session.active_agent
 
         sanitized_text = terminal_io.wrap_bracketed_paste(text)
 

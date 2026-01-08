@@ -59,11 +59,10 @@ class CodexWatcher:
         """Re-attach to existing Codex sessions with known log files after restart."""
         sessions = await self._db.get_active_sessions()
         for session in sessions:
-            ux_state = await self._db.get_ux_state(session.session_id)
-            if ux_state.active_agent != "codex" or not ux_state.native_log_file:
+            if session.active_agent != "codex" or not session.native_log_file:
                 continue
 
-            file_path = Path(ux_state.native_log_file).expanduser()
+            file_path = Path(session.native_log_file).expanduser()
             if file_path in self._watched_files:
                 continue
 
@@ -201,9 +200,8 @@ class CodexWatcher:
         for other in all_sessions:
             if other.session_id == session.session_id:
                 continue
-            ux_state = await self._db.get_ux_state(other.session_id)
-            if ux_state.native_log_file == str(file_path):
-                await self._db.update_ux_state(
+            if other.native_log_file == str(file_path):
+                await self._db.update_session(
                     other.session_id,
                     native_log_file=None,
                     native_session_id=None,
@@ -213,14 +211,13 @@ class CodexWatcher:
         if not native_id:
             raise ValueError(f"Session log {file_path} missing native_session_id for Codex")
 
-        ux_state = await self._db.get_ux_state(session.session_id)
-        previous_log = ux_state.native_log_file if ux_state else None
+        previous_log = session.native_log_file
         if previous_log:
             previous_path = Path(previous_log).expanduser()
             self._watched_files.discard(previous_path)
             self._file_positions.pop(previous_path, None)
 
-        await self._db.update_ux_state(
+        await self._db.update_session(
             session.session_id,
             native_log_file=str(file_path),
             native_session_id=native_id,
@@ -266,8 +263,7 @@ class CodexWatcher:
                 session = None
                 active_sessions = await self._db.list_sessions()
                 for candidate in active_sessions:
-                    ux_state = await self._db.get_ux_state(candidate.session_id)
-                    if ux_state.native_log_file == str(file_path):
+                    if candidate.native_log_file == str(file_path):
                         session = candidate
                         break
 
@@ -296,10 +292,9 @@ class CodexWatcher:
                         # Parse and emit events (only if JSON parsing succeeded)
                         for event in self._parser.parse_line(line):
                             payload_data = event.data.copy()
-                            ux_state = await self._db.get_ux_state(session.session_id)
-                            if not ux_state.native_session_id:
+                            if not session.native_session_id:
                                 raise ValueError(f"Session {session.session_id[:8]} missing native_session_id")
-                            payload_data["session_id"] = ux_state.native_session_id
+                            payload_data["session_id"] = session.native_session_id
                             payload_data["transcript_path"] = str(file_path)
 
                             await self.client.handle_event(
