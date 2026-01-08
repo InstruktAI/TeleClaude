@@ -33,7 +33,6 @@ from teleclaude.core.terminal_events import (
     TerminalOutboxResponse,
 )
 from teleclaude.core.terminal_sessions import terminal_tmux_name_for_session
-from teleclaude.core.ux_state import SessionUXState, UXStatePayload
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -411,7 +410,7 @@ def _load_sessions(conn: sqlite3.Connection) -> list[SessionListEntry]:
     cursor = conn.execute(
         """
         SELECT session_id, title, origin_adapter, tmux_session_name,
-               working_directory, last_activity, created_at, ux_state
+               working_directory, last_activity, created_at, active_agent, thinking_mode
         FROM sessions
         ORDER BY last_activity DESC
         """
@@ -426,15 +425,8 @@ def _load_sessions(conn: sqlite3.Connection) -> list[SessionListEntry]:
         working_directory = str(row[4]) if row[4] else None
         last_activity = _parse_datetime(row[5])
         created_at = _parse_datetime(row[6])
-        ux_state_raw = row[7]
-        ux_state = SessionUXState()
-        if isinstance(ux_state_raw, str) and ux_state_raw:
-            try:
-                parsed_raw: object = json.loads(ux_state_raw)
-                if isinstance(parsed_raw, dict):
-                    ux_state = SessionUXState.from_dict(cast(UXStatePayload, parsed_raw))
-            except Exception:
-                ux_state = SessionUXState()
+        active_agent = str(row[7]) if row[7] else None
+        thinking_mode = str(row[8]) if row[8] else None
         entries.append(
             SessionListEntry(
                 index=idx,
@@ -445,8 +437,8 @@ def _load_sessions(conn: sqlite3.Connection) -> list[SessionListEntry]:
                 working_directory=working_directory,
                 last_activity=last_activity,
                 created_at=created_at,
-                active_agent=ux_state.active_agent if ux_state else None,
-                thinking_mode=ux_state.thinking_mode if ux_state else None,
+                active_agent=active_agent,
+                thinking_mode=thinking_mode,
                 tmux_ready=_tmux_session_exists(tmux_name),
             )
         )

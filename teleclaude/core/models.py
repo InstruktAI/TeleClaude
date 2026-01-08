@@ -263,8 +263,25 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     terminal_size: str = "160x80"
     working_directory: str = "~"
     description: Optional[str] = None
-    ux_state: Optional[str] = None  # JSON blob for session-level UX state
+    ux_state: Optional[str] = None  # JSON blob for session-level UX state - DEPRECATED, will be removed
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI
+    # UX state fields (migrated from JSON blob)
+    output_message_id: Optional[str] = None
+    last_input_adapter: Optional[str] = None
+    notification_sent: bool = False
+    native_session_id: Optional[str] = None
+    native_log_file: Optional[str] = None
+    active_agent: Optional[str] = None
+    thinking_mode: Optional[str] = None
+    native_tty_path: Optional[str] = None
+    tmux_tty_path: Optional[str] = None
+    native_pid: Optional[int] = None
+    tui_log_file: Optional[str] = None
+    tui_capture_started: bool = False
+    last_message_sent: Optional[str] = None
+    last_message_sent_at: Optional[datetime] = None
+    last_feedback_received: Optional[str] = None
+    last_feedback_received_at: Optional[datetime] = None
 
     def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
@@ -274,6 +291,10 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
             data["last_activity"] = self.last_activity.isoformat()
+        if self.last_message_sent_at:
+            data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
+        if self.last_feedback_received_at:
+            data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
         # Convert SessionAdapterMetadata (dataclass) to JSON string for DB storage
         adapter_meta = self.adapter_metadata
         if isinstance(adapter_meta, dict):
@@ -293,6 +314,20 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             datetime.fromisoformat(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
         )
 
+        last_message_sent_at_raw = data.get("last_message_sent_at")
+        last_message_sent_at = (
+            datetime.fromisoformat(last_message_sent_at_raw)
+            if isinstance(last_message_sent_at_raw, str)
+            else last_message_sent_at_raw
+        )
+
+        last_feedback_received_at_raw = data.get("last_feedback_received_at")
+        last_feedback_received_at = (
+            datetime.fromisoformat(last_feedback_received_at_raw)
+            if isinstance(last_feedback_received_at_raw, str)
+            else last_feedback_received_at_raw
+        )
+
         # Parse adapter_metadata JSON to SessionAdapterMetadata
         adapter_metadata: SessionAdapterMetadata
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
@@ -300,9 +335,19 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
         else:
             adapter_metadata = SessionAdapterMetadata()
 
-        # Convert initiated_by_ai from SQLite integer (0/1) to Python bool
+        # Convert initiated_by_ai and other boolean flags from SQLite integer (0/1) to Python bool
         ia_val = data.get("initiated_by_ai")
         initiated_by_ai = bool(ia_val) if isinstance(ia_val, int) else ia_val
+
+        notification_sent_val = data.get("notification_sent")
+        notification_sent = (
+            bool(notification_sent_val) if isinstance(notification_sent_val, int) else notification_sent_val
+        )
+
+        tui_capture_started_val = data.get("tui_capture_started")
+        tui_capture_started = (
+            bool(tui_capture_started_val) if isinstance(tui_capture_started_val, int) else tui_capture_started_val
+        )
 
         # Filter to only Session's known fields (handles schema evolution/deprecated columns)
         known_fields = {
@@ -319,12 +364,33 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "description",
             "ux_state",
             "initiated_by_ai",
+            # UX state fields
+            "output_message_id",
+            "last_input_adapter",
+            "notification_sent",
+            "native_session_id",
+            "native_log_file",
+            "active_agent",
+            "thinking_mode",
+            "native_tty_path",
+            "tmux_tty_path",
+            "native_pid",
+            "tui_log_file",
+            "tui_capture_started",
+            "last_message_sent",
+            "last_message_sent_at",
+            "last_feedback_received",
+            "last_feedback_received_at",
         }
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
         filtered_data["adapter_metadata"] = adapter_metadata
         filtered_data["created_at"] = created_at
         filtered_data["last_activity"] = last_activity
         filtered_data["initiated_by_ai"] = initiated_by_ai
+        filtered_data["last_message_sent_at"] = last_message_sent_at
+        filtered_data["last_feedback_received_at"] = last_feedback_received_at
+        filtered_data["notification_sent"] = notification_sent
+        filtered_data["tui_capture_started"] = tui_capture_started
 
         return cls(**filtered_data)  # type: ignore[arg-type]
 

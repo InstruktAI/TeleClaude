@@ -13,7 +13,6 @@ from teleclaude.core.agent_parsers import CodexParser
 from teleclaude.core.db import Db, db
 from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.ux_state import SessionUXState
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -91,30 +90,29 @@ class CodexWatcher:
         if not files:
             return
 
-        codex_sessions: list[tuple["Session", SessionUXState]] = []
+        codex_sessions: list["Session"] = []
         for session in await self._db.get_active_sessions():
-            ux_state = await self._db.get_ux_state(session.session_id)
-            if ux_state.active_agent == "codex":
-                codex_sessions.append((session, ux_state))
+            if session.active_agent == "codex":
+                codex_sessions.append(session)
 
         if not codex_sessions:
             return
 
         # Sort by creation time so earlier sessions get first pick of files
-        def get_created_at(item: tuple["Session", SessionUXState]) -> datetime:
-            return item[0].created_at if item[0].created_at else datetime.min
+        def get_created_at(item: "Session") -> datetime:
+            return item.created_at if item.created_at else datetime.min
 
         codex_sessions.sort(key=get_created_at)
 
         # Build map of files claimed by each session
         claimed_files: dict[str, str] = {}  # file_path -> session_id
-        for session, ux_state in codex_sessions:
-            if ux_state.native_log_file:
-                claimed_files[ux_state.native_log_file] = session.session_id
+        for session in codex_sessions:
+            if session.native_log_file:
+                claimed_files[session.native_log_file] = session.session_id
 
         # Process each session with exclusive file selection
-        for session, ux_state in codex_sessions:
-            current_file = ux_state.native_log_file
+        for session in codex_sessions:
+            current_file = session.native_log_file
 
             # Get files available to this session (not claimed by OTHER sessions)
             available_files = [

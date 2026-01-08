@@ -299,7 +299,7 @@ class UiAdapter(BaseAdapter):
 
         Args:
             session: Session object
-            ux_state: UX state containing native_session_id
+            ux_state: Unused (kept for compatibility during migration)
 
         Returns:
             Formatted session ID lines (may be empty string if no IDs)
@@ -310,11 +310,10 @@ class UiAdapter(BaseAdapter):
         if session.session_id:
             lines.append(f"📋 tc: {session.session_id}")
 
-        # Native agent session ID (from ux_state - set when any agent starts)
-        native_id = ux_state.native_session_id if ux_state else None
-        if native_id:
-            agent_name = ux_state.active_agent or "ai"
-            lines.append(f"🤖 {agent_name}: {native_id}")
+        # Native agent session ID (from session - set when any agent starts)
+        if session.native_session_id:
+            agent_name = session.active_agent or "ai"
+            lines.append(f"🤖 {agent_name}: {session.native_session_id}")
 
         return "\n".join(lines)
 

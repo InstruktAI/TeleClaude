@@ -12,8 +12,25 @@ CREATE TABLE IF NOT EXISTS sessions (
     terminal_size TEXT DEFAULT '80x24',
     working_directory TEXT DEFAULT '~',
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
-    ux_state TEXT,  -- JSON blob: {output_message_id, native_log_file, ...}
+    ux_state TEXT,  -- JSON blob: {output_message_id, native_log_file, ...} - DEPRECATED, will be removed
     initiated_by_ai BOOLEAN DEFAULT 0,  -- 0 = human-initiated (Opus), 1 = AI-initiated (Sonnet)
+    -- UX state fields (migrated from JSON blob)
+    output_message_id TEXT,
+    last_input_adapter TEXT,
+    notification_sent INTEGER DEFAULT 0,
+    native_session_id TEXT,
+    native_log_file TEXT,
+    active_agent TEXT,
+    thinking_mode TEXT,
+    native_tty_path TEXT,
+    tmux_tty_path TEXT,
+    native_pid INTEGER,
+    tui_log_file TEXT,
+    tui_capture_started INTEGER DEFAULT 0,
+    last_message_sent TEXT,
+    last_message_sent_at TEXT,
+    last_feedback_received TEXT,
+    last_feedback_received_at TEXT,
     UNIQUE(computer_name, tmux_session_name)
 );
 
@@ -34,6 +51,20 @@ CREATE TABLE IF NOT EXISTS voice_assignments (
 
 -- Index for TTL cleanup queries
 CREATE INDEX IF NOT EXISTS idx_voice_assignments_assigned_at ON voice_assignments(assigned_at);
+
+-- Pending message deletions (replaces pending_deletions/pending_feedback_deletions lists from ux_state)
+CREATE TABLE IF NOT EXISTS pending_message_deletions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    deletion_type TEXT NOT NULL CHECK(deletion_type IN ('user_input', 'feedback')),
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, message_id, deletion_type),
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_deletions_session
+    ON pending_message_deletions(session_id);
 
 -- Key-value store for system settings
 CREATE TABLE IF NOT EXISTS system_settings (

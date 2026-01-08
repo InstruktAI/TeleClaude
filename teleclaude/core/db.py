@@ -335,8 +335,8 @@ class Db:
         Returns:
             Message ID of output message, or None if not set
         """
-        ux_state = await self.get_ux_state(session_id)
-        return ux_state.output_message_id
+        session = await self.get_session(session_id)
+        return session.output_message_id if session else None
 
     async def set_output_message_id(self, session_id: str, message_id: Optional[str]) -> None:
         """Set output message ID for session.
@@ -345,7 +345,7 @@ class Db:
             session_id: Session identifier
             message_id: Message ID of the output message (or None to clear)
         """
-        await self.update_ux_state(session_id, output_message_id=message_id)
+        await self.update_session(session_id, output_message_id=message_id)
 
     async def get_pending_deletions(self, session_id: str) -> list[str]:
         """Get list of pending deletion message IDs for session.
@@ -356,8 +356,12 @@ class Db:
         Returns:
             List of message IDs to delete (empty list if none)
         """
-        ux_state = await self.get_ux_state(session_id)
-        return ux_state.pending_deletions
+        cursor = await self.conn.execute(
+            "SELECT message_id FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'user_input'",
+            (session_id,),
+        )
+        rows = await cursor.fetchall()
+        return [str(row[0]) for row in rows]  # type: ignore[misc]  # sqlite rows are untyped
 
     async def add_pending_deletion(self, session_id: str, message_id: str) -> None:
         """Add message ID to pending deletions for session.
@@ -369,10 +373,11 @@ class Db:
             session_id: Session identifier
             message_id: Message ID to delete later
         """
-        current = await self.get_pending_deletions(session_id)
-        current.append(message_id)
-
-        await self.update_ux_state(session_id, pending_deletions=current)
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, 'user_input')",
+            (session_id, message_id),
+        )
+        await self.conn.commit()
 
     async def clear_pending_deletions(self, session_id: str) -> None:
         """Clear all pending deletions for session.
@@ -382,8 +387,11 @@ class Db:
         Args:
             session_id: Session identifier
         """
-
-        await self.update_ux_state(session_id, pending_deletions=[])
+        await self.conn.execute(
+            "DELETE FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'user_input'",
+            (session_id,),
+        )
+        await self.conn.commit()
 
     async def get_pending_feedback_deletions(self, session_id: str) -> list[str]:
         """Get list of pending feedback deletion message IDs for session.
@@ -394,8 +402,12 @@ class Db:
         Returns:
             List of feedback message IDs to delete (empty list if none)
         """
-        ux_state_data = await self.get_ux_state(session_id)
-        return ux_state_data.pending_feedback_deletions
+        cursor = await self.conn.execute(
+            "SELECT message_id FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'feedback'",
+            (session_id,),
+        )
+        rows = await cursor.fetchall()
+        return [str(row[0]) for row in rows]  # type: ignore[misc]  # sqlite rows are untyped
 
     async def add_pending_feedback_deletion(self, session_id: str, message_id: str) -> None:
         """Add message ID to pending feedback deletions for session.
@@ -407,10 +419,11 @@ class Db:
             session_id: Session identifier
             message_id: Feedback message ID to delete later
         """
-        current = await self.get_pending_feedback_deletions(session_id)
-        current.append(message_id)
-
-        await self.update_ux_state(session_id, pending_feedback_deletions=current)
+        await self.conn.execute(
+            "INSERT OR IGNORE INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, 'feedback')",
+            (session_id, message_id),
+        )
+        await self.conn.commit()
 
     async def clear_pending_feedback_deletions(self, session_id: str) -> None:
         """Clear all pending feedback deletions for session.
@@ -420,8 +433,11 @@ class Db:
         Args:
             session_id: Session identifier
         """
-
-        await self.update_ux_state(session_id, pending_feedback_deletions=[])
+        await self.conn.execute(
+            "DELETE FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'feedback'",
+            (session_id,),
+        )
+        await self.conn.commit()
 
     async def delete_session(self, session_id: str) -> None:
         """Delete session and handle event.
@@ -598,7 +614,7 @@ class Db:
             session_id: Session ID
             value: Flag value (True = notification sent, False = cleared)
         """
-        await self.update_ux_state(session_id, notification_sent=value)
+        await self.update_session(session_id, notification_sent=1 if value else 0)
 
     async def clear_notification_flag(self, session_id: str) -> None:
         """Clear notification_sent flag in UX state.
@@ -608,7 +624,7 @@ class Db:
         Args:
             session_id: Session ID
         """
-        await self.update_ux_state(session_id, notification_sent=False)
+        await self.update_session(session_id, notification_sent=0)
 
     async def get_notification_flag(self, session_id: str) -> bool:
         """Get notification_sent flag from UX state.
@@ -619,8 +635,8 @@ class Db:
         Returns:
             True if notification was sent, False otherwise
         """
-        ux_state_data = await self.get_ux_state(session_id)
-        return ux_state_data.notification_sent
+        session = await self.get_session(session_id)
+        return bool(session.notification_sent) if session else False
 
     async def get_system_setting(self, key: str) -> Optional[str]:
         """Get system setting value by key.
