@@ -131,10 +131,14 @@ class CallbackHandlersMixin:
             return
 
         try:
+            # Get session for metadata
+            session = await db.get_session(session_id)
+            if not session:
+                return
+
             # Check if there's a session transcript
-            ux_state = await db.get_ux_state(session_id)
-            native_log_file = ux_state.native_log_file if ux_state else None
-            agent_value = ux_state.active_agent if ux_state else None
+            native_log_file = session.native_log_file
+            agent_value = session.active_agent
             if not agent_value:
                 await query.edit_message_text(
                     "❌ Active agent unknown for this session",
@@ -147,11 +151,6 @@ class CallbackHandlersMixin:
                 await query.edit_message_text(f"❌ {exc}", parse_mode="Markdown")
                 return
             parser_info = get_transcript_parser_info(agent_name)
-
-            # Get session for metadata
-            session = await db.get_session(session_id)
-            if not session:
-                return
 
             # Clean up previous feedback messages (notifications, etc.) before sending download
             await self.cleanup_feedback_messages(session)

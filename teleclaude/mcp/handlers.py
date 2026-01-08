@@ -833,9 +833,9 @@ class MCPHandlersMixin:
         """Get caller's agent and mode info for AI-to-AI title format."""
         if not caller_session_id:
             return None, None
-        caller_ux = await db.get_ux_state(caller_session_id)
-        if caller_ux:
-            return caller_ux.active_agent, caller_ux.thinking_mode
+        caller_session = await db.get_session(caller_session_id)
+        if caller_session:
+            return caller_session.active_agent, caller_session.thinking_mode
         return None, None
 
     def _extract_session_id(self, result: object) -> str | None:

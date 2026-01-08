@@ -29,7 +29,6 @@ from teleclaude.core.voice_message_handler import handle_voice
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
-    from teleclaude.core.ux_state import SessionUXState
 
 from teleclaude.utils import (
     format_active_status_line,
@@ -180,8 +179,6 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
-        ux_state = await db.get_ux_state(session.session_id)
-
         # Truncate to platform limit
         is_truncated = len(output) > self.max_message_size
         terminal_output = output[-self.max_message_size :] if is_truncated else output
@@ -214,7 +211,7 @@ class UiAdapter(BaseAdapter):
             )
 
         # Build session ID lines for footer
-        session_id_lines = self._build_session_id_lines(session, ux_state)
+        session_id_lines = self._build_session_id_lines(session)
 
         # Format message (base + platform-specific formatting)
         full_status = f"{session_id_lines}\n{status_line}" if session_id_lines else status_line
@@ -238,7 +235,7 @@ class UiAdapter(BaseAdapter):
             display_output = self.format_message(terminal_output, full_status)
 
         # Platform-specific metadata (inline keyboards, etc.)
-        metadata = self._build_output_metadata(session, is_truncated, ux_state)
+        metadata = self._build_output_metadata(session, is_truncated)
         if render_markdown and not metadata.parse_mode:
             metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == "telegram" else "Markdown"
 
@@ -275,9 +272,7 @@ class UiAdapter(BaseAdapter):
         message_parts.append(status_line)
         return "\n".join(message_parts)
 
-    def _build_output_metadata(
-        self, _session: "Session", _is_truncated: bool, _ux_state: "SessionUXState"
-    ) -> MessageMetadata:
+    def _build_output_metadata(self, _session: "Session", _is_truncated: bool) -> MessageMetadata:
         """Build platform-specific metadata for output messages.
 
         Override in subclasses to add inline keyboards, buttons, etc.
@@ -285,21 +280,19 @@ class UiAdapter(BaseAdapter):
         Args:
             session: Session object
             is_truncated: Whether output was truncated
-            ux_state: Current UX state (for checking Claude session, etc.)
 
         Returns:
             Platform-specific MessageMetadata
         """
         return MessageMetadata()  # Default: no extra metadata
 
-    def _build_session_id_lines(self, session: "Session", ux_state: "SessionUXState") -> str:
+    def _build_session_id_lines(self, session: "Session") -> str:
         """Build session ID lines for status footer.
 
         Shows TeleClaude session ID and native agent session ID (if available).
 
         Args:
             session: Session object
-            ux_state: Unused (kept for compatibility during migration)
 
         Returns:
             Formatted session ID lines (may be empty string if no IDs)
@@ -376,8 +369,7 @@ class UiAdapter(BaseAdapter):
 
     async def cleanup_feedback_messages(self, session: "Session") -> None:
         """Delete temporary feedback messages - default implementation."""
-        ux_state = await db.get_ux_state(session.session_id)
-        pending_feedback = ux_state.pending_feedback_deletions or []
+        pending_feedback = await db.get_pending_feedback_deletions(session.session_id)
 
         if not pending_feedback:
             return
@@ -390,7 +382,7 @@ class UiAdapter(BaseAdapter):
                 logger.warning("Failed to delete message %s: %s", message_id, e)
 
         # Clear pending feedback deletions
-        await db.update_ux_state(session.session_id, pending_feedback_deletions=[])
+        await db.clear_pending_feedback_deletions(session.session_id)
 
     # ==================== Voice Support ====================
 

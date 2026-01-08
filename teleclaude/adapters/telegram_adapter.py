@@ -48,7 +48,6 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.ux_state import (
-    SessionUXState,
     get_system_ux_state,
     update_system_ux_state,
 )
@@ -293,16 +292,14 @@ class TelegramAdapter(
 
         return "\n".join(lines)
 
-    def _build_output_metadata(
-        self, session: "Session", _is_truncated: bool, ux_state: SessionUXState
-    ) -> MessageMetadata:
+    def _build_output_metadata(self, session: "Session", _is_truncated: bool) -> MessageMetadata:
         """Build Telegram-specific metadata with inline keyboard for downloads.
 
         Overrides UiAdapter._build_output_metadata().
         Shows download button only when there's an Agent session to download.
         """
         # Add download button if Agent session available
-        if ux_state.native_log_file:
+        if session.native_log_file:
             keyboard = [
                 [
                     InlineKeyboardButton(
