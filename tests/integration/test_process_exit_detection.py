@@ -24,15 +24,16 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
     )
 
     # Simulate process running - set output_message_id
-    await daemon.db.update_ux_state(session.session_id, output_message_id="msg-123")
+    await daemon.db.update_session(session.session_id, output_message_id="msg-123")
 
     # Create output file (kept for downloads)
     output_file = tmp_path / f"{session.session_id[:8]}.txt"
     output_file.write_text("test output")
 
     # Process is running
-    ux_state = await daemon.db.get_ux_state(session.session_id)
-    output_message_id = ux_state.output_message_id
+    updated_session = await daemon.db.get_session(session.session_id)
+    assert updated_session
+    output_message_id = updated_session.output_message_id
     assert output_message_id == "msg-123"
     assert output_file.exists()
 
@@ -42,14 +43,15 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
     assert is_process_running is True
 
     # Simulate process exit - clear output_message_id (daemon.py:1253)
-    await daemon.db.update_ux_state(session.session_id, output_message_id=None)
+    await daemon.db.update_session(session.session_id, output_message_id=None)
 
     # Output file still exists (kept for download button)
     assert output_file.exists()
 
     # But process is no longer running
-    ux_state = await daemon.db.get_ux_state(session.session_id)
-    output_message_id = ux_state.output_message_id
+    updated_session = await daemon.db.get_session(session.session_id)
+    assert updated_session
+    output_message_id = updated_session.output_message_id
     assert output_message_id is None
 
     has_output_message = bool(output_message_id)
@@ -78,11 +80,12 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
     )
 
     # Set output_message_id (polling active)
-    await daemon.db.update_ux_state(session.session_id, output_message_id="msg-456")
+    await daemon.db.update_session(session.session_id, output_message_id="msg-456")
 
     # Verify it was stored
-    ux_state = await daemon.db.get_ux_state(session.session_id)
-    stored_id = ux_state.output_message_id
+    updated_session = await daemon.db.get_session(session.session_id)
+    assert updated_session
+    stored_id = updated_session.output_message_id
     assert stored_id == "msg-456"
 
     # Simulate daemon restart - create new manager with same database
@@ -93,8 +96,9 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
     await new_manager.initialize()
 
     # output_message_id should persist (from database)
-    ux_state = await new_manager.get_ux_state(session.session_id)
-    output_message_id = ux_state.output_message_id
+    persisted_session = await new_manager.get_session(session.session_id)
+    assert persisted_session
+    output_message_id = persisted_session.output_message_id
     assert output_message_id == "msg-456"
 
     # Process detection still works

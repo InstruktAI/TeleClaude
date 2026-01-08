@@ -36,8 +36,8 @@ async def test_feedback_messages_cleaned_on_new_feedback(daemon_with_mocked_tele
     await daemon.db.add_pending_feedback_deletion(session.session_id, old_feedback_msg_id)
 
     # Verify old feedback message is tracked
-    ux_state = await daemon.db.get_ux_state(session.session_id)
-    assert old_feedback_msg_id in ux_state.pending_feedback_deletions
+    pending_feedback = await daemon.db.get_pending_feedback_deletions(session.session_id)
+    assert old_feedback_msg_id in pending_feedback
 
     # Get telegram adapter to check delete_message calls
     telegram_adapter = daemon.client.adapters["telegram"]
@@ -94,8 +94,8 @@ async def test_feedback_messages_not_cleaned_on_user_input(daemon_with_mocked_te
     await daemon.db.add_pending_feedback_deletion(session.session_id, feedback_msg_id)
 
     # Verify it's tracked
-    ux_state = await daemon.db.get_ux_state(session.session_id)
-    assert feedback_msg_id in ux_state.pending_feedback_deletions
+    pending_feedback = await daemon.db.get_pending_feedback_deletions(session.session_id)
+    assert feedback_msg_id in pending_feedback
 
     # Get telegram adapter
     telegram_adapter = daemon.client.adapters["telegram"]
@@ -126,5 +126,5 @@ async def test_feedback_messages_not_cleaned_on_user_input(daemon_with_mocked_te
     assert len(feedback_delete_calls) == 0, "Feedback message should NOT be deleted on user input"
 
     # Verify feedback is still in pending_feedback_deletions
-    ux_state = await daemon.db.get_ux_state(session.session_id)
-    assert feedback_msg_id in ux_state.pending_feedback_deletions, "Feedback should still be tracked"
+    pending_feedback = await daemon.db.get_pending_feedback_deletions(session.session_id)
+    assert feedback_msg_id in pending_feedback, "Feedback should still be tracked"

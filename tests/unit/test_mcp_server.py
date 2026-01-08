@@ -29,9 +29,7 @@ def mock_mcp_server():
         mock_config.mcp.socket_path = "/tmp/test.sock"
         server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
 
-    # Patch db.get_ux_state on the module - stays active for test duration
-    with patch("teleclaude.mcp.handlers.db.get_ux_state", new=AsyncMock(return_value=None)):
-        yield server
+    yield server
 
 
 @pytest.mark.asyncio
@@ -104,7 +102,6 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     )
 
     with patch("teleclaude.mcp.handlers.db") as mock_db:
-        mock_db.get_ux_state = AsyncMock(return_value=None)
         mock_db.get_session = AsyncMock(return_value=None)
 
         result = await server.teleclaude__start_session(
@@ -293,7 +290,6 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "agent-test-123"}})
 
     with patch("teleclaude.mcp.handlers.db") as mock_db:
-        mock_db.get_ux_state = AsyncMock(return_value=None)
         mock_db.get_session = AsyncMock(return_value=None)
 
         # Test 1: Gemini agent
