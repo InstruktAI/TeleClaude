@@ -1030,12 +1030,12 @@ class MCPProxy:
                     await asyncio.wait_for(self.connected.wait(), timeout=timeout)
                     # Backend is ready! Forward the initialize request
                     logger.info("Backend ready, proxying initialize request")
+                    # Clear resync flag BEFORE writing to prevent race with _startup_resync()
+                    self._needs_backend_resync = False
+                    self._suppress_backend_init_messages = False
                     if self.writer:
                         self.writer.write(line)
                         await self.writer.drain()
-                    # Don't send cached response - let backend handle it
-                    self._needs_backend_resync = False
-                    self._suppress_backend_init_messages = False
                 except asyncio.TimeoutError:
                     # Backend not ready yet, send cached response for zero-downtime
                     refresh_tool_cache_if_needed()

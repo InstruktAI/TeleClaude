@@ -36,7 +36,8 @@ def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
     assert data["details"] == {"agent": "claude", "event_type": "stop"}
 
 
-def test_receiver_requires_session_id(monkeypatch):
+def test_receiver_exits_cleanly_without_session(monkeypatch):
+    """Standalone sessions (not started via TeleClaude) should exit cleanly."""
     from teleclaude.hooks import receiver
 
     sent = []
@@ -53,11 +54,12 @@ def test_receiver_requires_session_id(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0  # Clean exit for standalone sessions
     assert not sent
 
 
-def test_receiver_requires_session_id_without_recovery(monkeypatch):
+def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
+    """When tmux recovery fails, exit cleanly (standalone session)."""
     from teleclaude.hooks import receiver
 
     sent = []
@@ -75,11 +77,12 @@ def test_receiver_requires_session_id_without_recovery(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0  # Clean exit for standalone sessions
     assert not sent
 
 
-def test_receiver_recovers_when_env_session_missing(monkeypatch):
+def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
+    """When env session ID doesn't exist in DB and recovery fails, exit cleanly."""
     from teleclaude.hooks import receiver
 
     sent = []
@@ -98,7 +101,7 @@ def test_receiver_recovers_when_env_session_missing(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         receiver.main()
 
-    assert exc.value.code == 1
+    assert exc.value.code == 0  # Clean exit for standalone sessions
     assert not sent
 
 

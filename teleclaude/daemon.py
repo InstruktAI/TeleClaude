@@ -424,6 +424,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 return False
 
             if last_accept_age is not None and last_accept_age <= MCP_SOCKET_HEALTH_ACCEPT_GRACE_S:
+                logger.debug(
+                    "MCP socket healthy (recent accept)",
+                    last_accept_age_s=last_accept_age,
+                )
                 return True
             if active_connections > 0:
                 if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
@@ -465,6 +469,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
             healthy = await self._check_mcp_socket_health()
             if healthy:
+                if failures > 0:
+                    logger.debug(
+                        "MCP socket health recovered",
+                        previous_failures=failures,
+                    )
                 failures = 0
                 continue
 
