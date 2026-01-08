@@ -299,47 +299,74 @@ def configure_codex(repo_root: Path) -> None:
             return
 
         existing_notify = config.get("notify")
+        skip_notify_update = False
         if existing_notify == notify_value:
             print(f"Codex notify hook already configured in {config_path}")
-            return
+            skip_notify_update = True
 
-        # Update or add notify line using text manipulation to preserve formatting
-        notify_line = f'notify = {json.dumps(notify_value)}'
-        if "notify" in config:
-            # Check if existing notify is our hook (contains receiver.py and --agent codex)
-            is_our_hook = (
-                isinstance(existing_notify, list)
-                and len(existing_notify) >= 4
-                and "receiver.py" in str(existing_notify[1])
-                and existing_notify[2:4] == ["--agent", "codex"]
-            )
-            if not is_our_hook:
-                print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
-                print(f"  Existing: {existing_notify}")
-                return
-            # Replace our existing notify line with updated paths
-            content = re.sub(
-                r'^notify\s*=\s*\[.*?\]',
-                notify_line,
-                content,
-                count=1,
-                flags=re.MULTILINE,
-            )
-        else:
-            # Add notify after any comments at the top, before first section
-            first_section = re.search(r'^\[', content, re.MULTILINE)
-            if first_section:
-                insert_pos = first_section.start()
-                content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
-            else:
-                content = content.rstrip() + "\n\n" + notify_line + "\n"
+        if not skip_notify_update:
+            # Update or add notify line using text manipulation to preserve formatting
+            notify_line = f'notify = {json.dumps(notify_value)}'
+            if "notify" in config:
+                # Check if existing notify is our hook (contains receiver.py and --agent codex)
+                is_our_hook = (
+                    isinstance(existing_notify, list)
+                    and len(existing_notify) >= 4
+                    and "receiver.py" in str(existing_notify[1])
+                    and existing_notify[2:4] == ["--agent", "codex"]
+                )
+                if not is_our_hook:
+                    print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
+                    print(f"  Existing: {existing_notify}")
+                    skip_notify_update = True
+                else:
+                    # Replace our existing notify line with updated paths
+                    content = re.sub(
+                        r'^notify\s*=\s*\[.*?\]',
+                        notify_line,
+                        content,
+                        count=1,
+                        flags=re.MULTILINE,
+                    )
+            if not skip_notify_update and "notify" not in config:
+                # Add notify after any comments at the top, before first section
+                first_section = re.search(r'^\[', content, re.MULTILINE)
+                if first_section:
+                    insert_pos = first_section.start()
+                    content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
+                else:
+                    content = content.rstrip() + "\n\n" + notify_line + "\n"
     else:
         # Create new config with just the notify hook
         notify_line = f'notify = {json.dumps(notify_value)}'
         content = f"# Codex CLI configuration\n\n{notify_line}\n"
 
+    content = ensure_codex_mcp_config(content, repo_root)
     config_path.write_text(content)
     print(f"Codex notify hook configured in {config_path}")
+
+
+def ensure_codex_mcp_config(content: str, repo_root: Path) -> str:
+    """Ensure Codex MCP server config points at the repo venv wrapper."""
+    venv_python = repo_root / ".venv" / "bin" / "python"
+    wrapper_path = repo_root / "bin" / "mcp-wrapper.py"
+
+    desired_block = (
+        "# TeleClaude MCP Server\n"
+        "[mcp_servers.teleclaude]\n"
+        "type = \"stdio\"\n"
+        f"command = \"{venv_python}\"\n"
+        f"args = [\"{wrapper_path}\"]\n"
+    )
+
+    section_name = "mcp_servers.teleclaude"
+    section_pattern = re.compile(
+        rf"(?ms)^(?:# TeleClaude MCP Server\n)?\[{re.escape(section_name)}\]\n"
+        r"(?:^(?!\[).*$\n?)*"
+    )
+    content = section_pattern.sub("", content)
+    content = content.rstrip() + "\n\n" + desired_block
+    return content
 
 
 def main() -> None:

@@ -75,6 +75,8 @@ def test_configure_codex_writes_notify_hook(tmp_path, monkeypatch):
     assert notify[2] == "--agent"
     assert notify[3] == "codex"
     assert "receiver.py" in notify[1]
+    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
+    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][0]
 
 
 def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
@@ -100,6 +102,8 @@ def test_configure_codex_preserves_existing_config(tmp_path, monkeypatch):
     # New notify hook added
     assert "notify" in data
     assert "receiver.py" in data["notify"][1]
+    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
+    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][0]
 
 
 def test_configure_codex_is_idempotent(tmp_path, monkeypatch):
@@ -134,6 +138,8 @@ def test_configure_codex_is_idempotent(tmp_path, monkeypatch):
     assert data_after_second["mcp_servers"]["test"]["type"] == "stdio"
     assert "notify" in data_after_second
     assert len(data_after_second["notify"]) == 4
+    assert data_after_second["mcp_servers"]["teleclaude"]["type"] == "stdio"
+    assert "mcp-wrapper.py" in data_after_second["mcp_servers"]["teleclaude"]["args"][0]
 
 
 def test_configure_codex_updates_our_hook_when_paths_change(tmp_path, monkeypatch):
@@ -162,6 +168,8 @@ def test_configure_codex_updates_our_hook_when_paths_change(tmp_path, monkeypatc
     # Old paths gone
     assert "/old/venv/python" not in str(data["notify"])
     assert "/old/path/" not in str(data["notify"])
+    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
+    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][0]
 
 
 def test_configure_codex_skips_foreign_notify_hook(tmp_path, monkeypatch, capsys):
@@ -178,13 +186,40 @@ def test_configure_codex_skips_foreign_notify_hook(tmp_path, monkeypatch, capsys
     codex_config = codex_dir / "config.toml"
     foreign_hook = '["/usr/bin/python", "/their/custom/script.py", "--some", "args"]'
     codex_config.write_text(f'model = "gpt-4"\nnotify = {foreign_hook}\n')
-    original_content = codex_config.read_text()
-
     install_hooks.configure_codex(repo_root)
 
-    # Config should be unchanged - we don't clobber foreign hooks
-    assert codex_config.read_text() == original_content
+    data = tomllib.loads(codex_config.read_text())
+    assert data["notify"] == ["/usr/bin/python", "/their/custom/script.py", "--some", "args"]
+    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
+    assert "mcp-wrapper.py" in data["mcp_servers"]["teleclaude"]["args"][0]
 
     # Warning should be printed
     captured = capsys.readouterr()
     assert "not ours" in captured.out
+
+
+def test_configure_codex_replaces_existing_mcp_block(tmp_path, monkeypatch):
+    """Existing MCP block is replaced with the repo venv config."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    hook_python = tmp_path / "python"
+    hook_python.write_text("#!/usr/bin/env python3\n")
+    monkeypatch.setenv("TELECLAUDE_HOOK_PYTHON", str(hook_python))
+    repo_root = Path(__file__).resolve().parents[2]
+
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(parents=True)
+    codex_config = codex_dir / "config.toml"
+    codex_config.write_text(
+        'model = "gpt-4"\n\n'
+        "[mcp_servers.teleclaude]\n"
+        'type = "stdio"\n'
+        'command = "python3"\n'
+        'args = ["/old/path/mcp-wrapper.py"]\n'
+    )
+
+    install_hooks.configure_codex(repo_root)
+
+    data = tomllib.loads(codex_config.read_text())
+    assert data["mcp_servers"]["teleclaude"]["type"] == "stdio"
+    assert str(repo_root / ".venv" / "bin" / "python") == data["mcp_servers"]["teleclaude"]["command"]
+    assert str(repo_root / "bin" / "mcp-wrapper.py") in data["mcp_servers"]["teleclaude"]["args"][0]
