@@ -159,7 +159,7 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             mock_db.create_session = AsyncMock(return_value=mock_session)
             mock_db.get_session = AsyncMock(return_value=mock_session)
             mock_db.assign_voice = AsyncMock()
-            mock_db.update_ux_state = AsyncMock()
+            mock_db.update_session = AsyncMock()
             mock_tb.create_tmux_session = AsyncMock(return_value=True)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
@@ -172,7 +172,7 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             assert tmux_kwargs.get("cols") == 200
             assert tmux_kwargs.get("rows") == 55
 
-            update_args, update_kwargs = mock_db.update_ux_state.call_args
+            update_args, update_kwargs = mock_db.update_session.call_args
             assert update_args[0] == create_kwargs.get("session_id")
             assert update_kwargs.get("native_tty_path") == "/dev/pts/7"
             assert update_kwargs.get("native_pid") == 4242
@@ -200,7 +200,7 @@ async def test_handle_new_session_validates_working_dir():
         patch.object(command_handlers, "terminal_bridge") as mock_tb,
         patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
-        patch("teleclaude.core.session_cleanup.db.update_ux_state", new_callable=AsyncMock),
+        patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
     ):
         mock_config.computer.name = "TestComputer"
         mock_config.computer.default_working_dir = "/home/user"
@@ -412,9 +412,12 @@ async def test_handle_list_sessions_formats_output():
         s.last_activity = datetime.now()
         mock_sessions.append(s)
 
+    # Set thinking_mode on mock sessions
+    for s in mock_sessions:
+        s.thinking_mode = "med"
+
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.list_sessions = AsyncMock(return_value=mock_sessions)
-        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState(thinking_mode="med"))
 
         result = await command_handlers.handle_list_sessions()
 
@@ -440,16 +443,13 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session.working_directory = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
-
-    mock_ux_state = MagicMock()
-    mock_ux_state.native_log_file = None  # No file yet
+    mock_session.native_log_file = None  # No file yet
 
     mock_context = MagicMock(spec=EventContext)
     mock_context.session_id = "test-session-123"
 
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
 
         result = await command_handlers.handle_get_session_data(mock_context, [])
 
@@ -492,16 +492,14 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
     }
     nested_path.write_text(json.dumps(gemini_payload), encoding="utf-8")
 
-    mock_ux_state = MagicMock()
-    mock_ux_state.native_log_file = str(nested_path)
-    mock_ux_state.active_agent = "gemini"
+    mock_session.native_log_file = str(nested_path)
+    mock_session.active_agent = "gemini"
 
     mock_context = MagicMock(spec=EventContext)
     mock_context.session_id = "test-session-456"
 
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
 
         result = await command_handlers.handle_get_session_data(mock_context)
 
@@ -665,11 +663,11 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
     """Ensure /codex deep maps to the deep model flag."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
-    from teleclaude.core.ux_state import SessionUXState
 
     mock_session = MagicMock()
     mock_session.session_id = "deep-session-123"
     mock_session.tmux_session_name = "tc_test"
+    mock_session.thinking_mode = "slow"
 
     mock_context = MagicMock(spec=EventContext)
     mock_context.message_id = "msg-deep"
@@ -682,8 +680,7 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
     ):
         mock_config.agents.get.return_value = MagicMock()
-        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState(thinking_mode="slow"))
-        mock_db.update_ux_state = AsyncMock()
+        mock_db.update_session = AsyncMock()
         mock_get_agent_command.return_value = "codex -m deep"
 
         await command_handlers.handle_agent_start.__wrapped__(
@@ -702,11 +699,11 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
     """Ensure deep is rejected for non-codex agents."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
-    from teleclaude.core.ux_state import SessionUXState
 
     mock_session = MagicMock()
     mock_session.session_id = "deep-session-456"
     mock_session.tmux_session_name = "tc_test"
+    mock_session.thinking_mode = "slow"
 
     mock_context = MagicMock(spec=EventContext)
     mock_context.message_id = "msg-deep"
@@ -720,8 +717,7 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
     ):
         mock_config.agents.get.return_value = MagicMock()
-        mock_db.get_ux_state = AsyncMock(return_value=SessionUXState(thinking_mode="slow"))
-        mock_db.update_ux_state = AsyncMock()
+        mock_db.update_session = AsyncMock()
 
         await command_handlers.handle_agent_start.__wrapped__(
             mock_session, mock_context, "claude", ["deep"], mock_client, mock_execute
@@ -738,11 +734,12 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
     from teleclaude.config import AgentConfig
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
-    from teleclaude.core.ux_state import SessionUXState
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
     mock_session.tmux_session_name = "tc_test"
+    mock_session.native_session_id = "native-123-abc"
+    mock_session.thinking_mode = "slow"
 
     mock_context = MagicMock(spec=EventContext)
     mock_execute = AsyncMock(return_value=True)
@@ -764,18 +761,12 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
         continue_template="",
     )
 
-    # Mock UX state with native session ID
-    mock_ux_state = MagicMock(spec=SessionUXState)
-    mock_ux_state.native_session_id = "native-123-abc"
-    mock_ux_state.thinking_mode = "slow"
-
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
     ):
         mock_config.agents.get.return_value = mock_agent_config
-        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
-        mock_db.update_ux_state = AsyncMock()
+        mock_db.update_session = AsyncMock()
 
         await command_handlers.handle_agent_resume.__wrapped__(
             mock_session, mock_context, "gemini", [], mock_client, mock_execute
@@ -797,11 +788,12 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     from teleclaude.config import AgentConfig
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
-    from teleclaude.core.ux_state import SessionUXState
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-continue-123"
     mock_session.tmux_session_name = "tc_test"
+    mock_session.native_session_id = None
+    mock_session.thinking_mode = "slow"
 
     mock_context = MagicMock(spec=EventContext)
     mock_context.message_id = "msg-continue-123"
@@ -820,18 +812,12 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
         continue_template="{base_cmd} --continue",
     )
 
-    # Mock UX state without native session ID
-    mock_ux_state = MagicMock(spec=SessionUXState)
-    mock_ux_state.native_session_id = None
-    mock_ux_state.thinking_mode = "slow"
-
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
     ):
         mock_config.agents.get.return_value = mock_agent_config
-        mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
-        mock_db.update_ux_state = AsyncMock()
+        mock_db.update_session = AsyncMock()
 
         await command_handlers.handle_agent_resume.__wrapped__(
             mock_session, mock_context, "claude", [], mock_client, mock_execute
