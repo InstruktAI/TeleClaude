@@ -310,7 +310,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     )
 
     if adapter_type == "terminal" and (terminal_meta.tty_path or terminal_meta.parent_pid is not None):
-        await db.update_ux_state(
+        await db.update_session(
             session_id,
             native_tty_path=terminal_meta.tty_path,
             native_pid=terminal_meta.parent_pid,
@@ -383,14 +383,13 @@ async def handle_list_sessions() -> list[SessionListItem]:
 
     summaries: list[SessionSummary] = []
     for s in sessions:
-        ux_state = await db.get_ux_state(s.session_id)
         summaries.append(
             SessionSummary(
                 session_id=s.session_id,
                 origin_adapter=s.origin_adapter,
                 title=s.title,
                 working_directory=s.working_directory,
-                thinking_mode=ux_state.thinking_mode or ThinkingMode.SLOW.value,
+                thinking_mode=s.thinking_mode or ThinkingMode.SLOW.value,
                 status="active",
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
@@ -521,18 +520,17 @@ async def handle_get_session_data(
         logger.error("Session %s not found", session_id[:8])
         return {"status": "error", "error": "Session not found"}
 
-    # Get ux_state to get native_log_file
-    ux_state = await db.get_ux_state(session_id)
-    if not ux_state or not ux_state.native_log_file:
+    # Get native_log_file from session
+    if not session.native_log_file:
         logger.error("No native_log_file for session %s", session_id[:8])
         return {"status": "error", "error": "Session file not found"}
 
-    native_log_file = Path(ux_state.native_log_file)
+    native_log_file = Path(session.native_log_file)
     if not native_log_file.exists():
         logger.error("Native session file does not exist: %s", native_log_file)
         return {"status": "error", "error": "Session file does not exist"}
 
-    raw_agent_name = ux_state.active_agent
+    raw_agent_name = session.active_agent
     if not raw_agent_name:
         logger.error("Session %s missing active_agent metadata", session_id[:8])
         return {"status": "error", "error": "Active agent unknown"}
@@ -699,8 +697,7 @@ async def handle_escape_command(
         is_process_running = await terminal_io.is_process_running(session)
 
         # Get active agent for agent-specific escaping
-        ux_state = await db.get_ux_state(session.session_id)
-        active_agent = ux_state.active_agent if ux_state else None
+        active_agent = session.active_agent
 
         # Send text + ENTER
         sanitized_text = terminal_io.wrap_bracketed_paste(text)
@@ -1218,8 +1215,7 @@ async def handle_agent_start(
         return
 
     # Prefer per-session stored thinking_mode if user didn't specify one.
-    ux_state = await db.get_ux_state(session.session_id)
-    stored_mode_raw = ux_state.thinking_mode if ux_state and isinstance(ux_state.thinking_mode, str) else None
+    stored_mode_raw = session.thinking_mode if isinstance(session.thinking_mode, str) else None
     stored_mode = stored_mode_raw or ThinkingMode.SLOW.value
 
     user_args = list(args)
@@ -1242,7 +1238,7 @@ async def handle_agent_start(
     )
 
     # Persist chosen thinking_mode so subsequent MCP calls (or resumes) can reuse it.
-    await db.update_ux_state(session.session_id, thinking_mode=start_args.thinking_mode.value)
+    await db.update_session(session.session_id, thinking_mode=start_args.thinking_mode.value)
 
     # Include interactive flag when there's a prompt (user_args contains the prompt)
     has_prompt = bool(start_args.user_args)
@@ -1263,7 +1259,7 @@ async def handle_agent_start(
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
     # Save active agent and clear previous native session bindings.
-    await db.update_ux_state(
+    await db.update_session(
         session.session_id,
         active_agent=agent_name,
         thinking_mode=start_args.thinking_mode.value,
@@ -1309,12 +1305,9 @@ async def handle_agent_resume(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute terminal command
     """
-    # Get UX state first - needed for both active_agent fallback and native_session_id
-    ux_state = await db.get_ux_state(session.session_id)
-
     # If no agent_name provided, use active_agent from session
     if not agent_name:
-        active = ux_state.active_agent if ux_state else None
+        active = session.active_agent
         if not active:
             await client.send_feedback(session, "No active agent to resume", MessageMetadata())
             return
@@ -1325,10 +1318,10 @@ async def handle_agent_resume(
         await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
         return
 
-    thinking_raw = ux_state.thinking_mode if ux_state and isinstance(ux_state.thinking_mode, str) else None
+    thinking_raw = session.thinking_mode if isinstance(session.thinking_mode, str) else None
     resume_args = AgentResumeArgs(
         agent_name=agent_name,
-        native_session_id=ux_state.native_session_id if ux_state else None,
+        native_session_id=session.native_session_id,
         thinking_mode=ThinkingMode(thinking_raw) if thinking_raw else ThinkingMode.SLOW,
     )
 
@@ -1345,8 +1338,8 @@ async def handle_agent_resume(
     else:
         logger.info("Continuing latest %s session (no native session ID in database)", agent_name)
 
-    # Save active agent to UX state
-    await db.update_ux_state(session.session_id, active_agent=agent_name)
+    # Save active agent
+    await db.update_session(session.session_id, active_agent=agent_name)
 
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))
@@ -1367,9 +1360,8 @@ async def handle_agent_restart(
     Requires native_session_id to be present (fail fast otherwise).
     """
     _ = args  # unused (kept for parity with other agent handlers)
-    ux_state = await db.get_ux_state(session.session_id)
-    active_agent = ux_state.active_agent if ux_state else None
-    native_session_id = ux_state.native_session_id if ux_state else None
+    active_agent = session.active_agent
+    native_session_id = session.native_session_id
 
     target_agent = agent_name or active_agent
     if not target_agent:
@@ -1417,7 +1409,7 @@ async def handle_agent_restart(
 
     restart_cmd = get_agent_command(
         agent=target_agent,
-        thinking_mode=(ux_state.thinking_mode if ux_state and ux_state.thinking_mode else "slow"),
+        thinking_mode=(session.thinking_mode if session.thinking_mode else "slow"),
         exec=False,
         native_session_id=native_session_id,
     )
