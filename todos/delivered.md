@@ -11,3 +11,4 @@
 | 2025-12-31 | next-prepare-hitl | HITL Support for next_prepare MCP Tool       | DELIVERED | 75ced1f | done/007-next-prepare-hitl |
 | 2026-01-02 | reduce-loose-dict-typings | Reduce loose dict typings to zero guardrails warnings | DELIVERED | 2e4b655 | done/009-reduce-loose-dict-typings |
 | 2026-01-03 | state-machine-refinement | State Machine Refinement              | DELIVERED | 3631176 | done/008-state-machine-refinement |
+| 2026-01-09 | db-refactor | Eliminate ux_state JSON Blob | DELIVERED | f9e45fb | done/010-db-refactor |
