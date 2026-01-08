@@ -57,3 +57,4 @@ workspace/
 *.local.json
 trees/
 worktrees/
+.state.json

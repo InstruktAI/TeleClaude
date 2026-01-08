@@ -15,7 +15,7 @@ def parse_claude_transcript(
     title: str,
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
-    tail_chars: int = 5000,
+    tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
     """Convert Claude Code JSONL transcript to markdown with filtering.
@@ -25,7 +25,7 @@ def parse_claude_transcript(
         title: Session title for header
         since_timestamp: Optional ISO 8601 UTC start filter (inclusive)
         until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
-        tail_chars: Max characters to return from end (default 5000, 0 for unlimited)
+        tail_chars: Max characters to return from end (default 2000, 0 for unlimited)
 
     Returns:
         Markdown formatted conversation with timestamps on each section
@@ -53,7 +53,7 @@ def parse_codex_transcript(
     title: str,
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
-    tail_chars: int = 5000,
+    tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
     """Convert Codex JSONL transcript to markdown with filtering."""
@@ -82,7 +82,7 @@ def parse_gemini_transcript(
     title: str,
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
-    tail_chars: int = 5000,
+    tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
     """Convert Gemini JSON transcript into markdown."""
@@ -606,7 +606,7 @@ def parse_session_transcript(
     agent_name: AgentName,
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
-    tail_chars: int = 5000,
+    tail_chars: int = 2000,
     escape_triple_backticks: bool = False,
     collapse_tool_results: bool = False,
 ) -> str:
@@ -618,7 +618,7 @@ def parse_session_transcript(
         agent_name: Agent type for parser selection
         since_timestamp: Optional ISO 8601 UTC start filter (inclusive)
         until_timestamp: Optional ISO 8601 UTC end filter (inclusive)
-        tail_chars: Max characters to return from end (default 5000, 0 for unlimited)
+        tail_chars: Max characters to return from end (default 2000, 0 for unlimited)
         escape_triple_backticks: If True, escape ``` to avoid breaking outer code blocks
     """
 

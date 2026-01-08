@@ -34,10 +34,7 @@ from teleclaude.core.session_utils import build_session_title, ensure_unique_tit
 from teleclaude.core.terminal_events import TerminalEventMetadata
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
-from teleclaude.utils.transcript import (
-    get_transcript_parser_info,
-    parse_session_transcript,
-)
+from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -493,7 +490,7 @@ async def handle_get_session_data(
     context: EventContext,
     since_timestamp: Optional[str] = None,
     until_timestamp: Optional[str] = None,
-    tail_chars: int = 5000,
+    tail_chars: int = 2000,
 ) -> SessionDataPayload:
     """Get session data from native_log_file.
 
@@ -505,7 +502,7 @@ async def handle_get_session_data(
         context: Command context with session_id
         since_timestamp: Optional ISO 8601 UTC start filter
         until_timestamp: Optional ISO 8601 UTC end filter
-        tail_chars: Max chars to return (default 5000, 0 for unlimited)
+        tail_chars: Max chars to return (default 2000, 0 for unlimited)
 
     Returns:
         Dict with session data and markdown-formatted messages
