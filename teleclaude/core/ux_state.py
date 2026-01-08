@@ -8,7 +8,7 @@ Provides unified interface for storing/retrieving UX state in either:
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, TypedDict, cast
+from typing import Optional
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -37,106 +37,6 @@ class UXStateContext(Enum):
 
     SYSTEM = "system"
     SESSION = "session"
-
-
-@dataclass
-class SessionUXState:
-    """Typed UX state for sessions."""
-
-    output_message_id: Optional[str] = None
-    pending_deletions: list[str] = field(default_factory=list)  # User input messages
-    pending_feedback_deletions: list[str] = field(default_factory=list)  # Feedback messages
-    last_input_adapter: Optional[str] = None  # Adapter that last received user input
-    notification_sent: bool = False  # Agent notification hook flag
-    native_session_id: Optional[str] = None  # Native agent session ID
-    native_log_file: Optional[str] = None  # Path to native agent session .jsonl file
-    active_agent: Optional[str] = None  # Name of the active agent (e.g. "claude", "gemini")
-    thinking_mode: Optional[str] = None  # Model tier: "fast", "med", "slow" (MCP terminology)
-    native_tty_path: Optional[str] = None  # TTY path for agent CLI (non-tmux)
-    tmux_tty_path: Optional[str] = None  # tmux pane TTY path (terminal-origin sessions)
-    native_pid: Optional[int] = None  # Parent PID for agent CLI (non-tmux)
-    tui_log_file: Optional[str] = None  # Path to raw TUI output log
-    tui_capture_started: bool = False  # Whether TUI capture was initiated
-
-    @classmethod
-    def from_dict(cls, data: "UXStatePayload") -> "SessionUXState":
-        """Create SessionUXState from dict."""
-        output_message_id_raw: object = data.get("output_message_id")
-        pending_deletions_raw: object = data.get("pending_deletions", [])
-        pending_feedback_deletions_raw: object = data.get("pending_feedback_deletions", [])
-        last_input_adapter_raw: object = data.get("last_input_adapter")
-
-        native_session_id_raw: object = data.get("native_session_id")
-        native_log_file_raw: object = data.get("native_log_file")
-        native_tty_path_raw: object = data.get("native_tty_path")
-        tmux_tty_path_raw: object = data.get("tmux_tty_path")
-        native_pid_raw: object = data.get("native_pid")
-        tui_log_file_raw: object = data.get("tui_log_file")
-        tui_capture_started_raw: object = data.get("tui_capture_started")
-
-        active_agent_raw: object = data.get("active_agent")
-        thinking_mode_raw: object = data.get("thinking_mode")
-
-        native_pid_value: int | None = None
-        if isinstance(native_pid_raw, int):
-            native_pid_value = native_pid_raw
-        elif isinstance(native_pid_raw, str) and native_pid_raw.isdigit():
-            native_pid_value = int(native_pid_raw)
-
-        return cls(
-            output_message_id=(str(output_message_id_raw) if output_message_id_raw else None),
-            pending_deletions=(list(pending_deletions_raw) if isinstance(pending_deletions_raw, list) else []),
-            pending_feedback_deletions=(
-                list(pending_feedback_deletions_raw) if isinstance(pending_feedback_deletions_raw, list) else []
-            ),
-            last_input_adapter=(str(last_input_adapter_raw) if last_input_adapter_raw else None),
-            notification_sent=bool(data.get("notification_sent", False)),
-            native_session_id=(str(native_session_id_raw) if native_session_id_raw else None),
-            native_log_file=str(native_log_file_raw) if native_log_file_raw else None,
-            active_agent=str(active_agent_raw) if active_agent_raw else None,
-            thinking_mode=str(thinking_mode_raw) if thinking_mode_raw else None,
-            native_tty_path=str(native_tty_path_raw) if native_tty_path_raw else None,
-            tmux_tty_path=str(tmux_tty_path_raw) if tmux_tty_path_raw else None,
-            native_pid=native_pid_value,
-            tui_log_file=str(tui_log_file_raw) if tui_log_file_raw else None,
-            tui_capture_started=bool(tui_capture_started_raw),
-        )
-
-    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
-        """Convert to dict for JSON storage."""
-        return {
-            "output_message_id": self.output_message_id,
-            "pending_deletions": self.pending_deletions,
-            "pending_feedback_deletions": self.pending_feedback_deletions,
-            "last_input_adapter": self.last_input_adapter,
-            "notification_sent": self.notification_sent,
-            "native_session_id": self.native_session_id,
-            "native_log_file": self.native_log_file,
-            "active_agent": self.active_agent,
-            "thinking_mode": self.thinking_mode,
-            "native_tty_path": self.native_tty_path,
-            "tmux_tty_path": self.tmux_tty_path,
-            "native_pid": self.native_pid,
-            "tui_log_file": self.tui_log_file,
-            "tui_capture_started": self.tui_capture_started,
-        }
-
-
-class UXStatePayload(TypedDict, total=False):
-    output_message_id: str
-    pending_deletions: list[str]
-    pending_feedback_deletions: list[str]
-    last_input_adapter: str
-    notification_sent: bool
-    native_session_id: str
-    native_log_file: str
-    active_agent: str
-    thinking_mode: str
-    native_tty_path: str
-    tmux_tty_path: str
-    native_pid: int | str
-    tui_log_file: str
-    tui_capture_started: bool
 
 
 @dataclass
@@ -183,35 +83,6 @@ class SystemUXState:
         }
 
 
-async def get_session_ux_state(db: aiosqlite.Connection, session_id: str) -> SessionUXState:
-    """Get typed UX state for session.
-
-    Args:
-        db: Database connection
-        session_id: Session identifier
-
-    Returns:
-        SessionUXState (with defaults if not found)
-    """
-    try:
-        # Load from sessions table
-        cursor = await db.execute("SELECT ux_state FROM sessions WHERE session_id = ?", (session_id,))
-        row = await cursor.fetchone()
-        if row and row[0]:  # type: ignore[misc]  # Row access is Any from aiosqlite
-            data_raw: object = json.loads(row[0])  # type: ignore[misc]  # Row access is Any from aiosqlite
-            if not isinstance(data_raw, dict):
-                logger.warning("Invalid ux_state format for session %s", session_id[:8])
-                return SessionUXState()
-            data = cast(UXStatePayload, data_raw)
-            return SessionUXState.from_dict(data)
-
-        return SessionUXState()
-
-    except Exception as e:
-        logger.warning("Failed to retrieve session UX state: %s", e)
-        return SessionUXState()
-
-
 async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
     """Get typed UX state for system.
 
@@ -238,88 +109,6 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
     except Exception as e:
         logger.warning("Failed to retrieve system UX state: %s", e)
         return SystemUXState()
-
-
-async def update_session_ux_state(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # UX state has many optional fields
-    db: aiosqlite.Connection,
-    session_id: str,
-    *,
-    output_message_id: Optional[str] | object = _UNSET,
-    pending_deletions: list[str] | object = _UNSET,
-    pending_feedback_deletions: list[str] | object = _UNSET,
-    last_input_adapter: Optional[str] | object = _UNSET,
-    notification_sent: bool | object = _UNSET,
-    native_session_id: Optional[str] | object = _UNSET,
-    native_log_file: Optional[str] | object = _UNSET,
-    active_agent: Optional[str] | object = _UNSET,
-    thinking_mode: Optional[str] | object = _UNSET,
-    native_tty_path: Optional[str] | object = _UNSET,
-    tmux_tty_path: Optional[str] | object = _UNSET,
-    native_pid: Optional[int] | object = _UNSET,
-    tui_log_file: Optional[str] | object = _UNSET,
-    tui_capture_started: bool | object = _UNSET,
-) -> None:
-    """Update session UX state (merges with existing).
-
-    Args:
-        db: Database connection
-        session_id: Session identifier
-        output_message_id: Output message ID (optional)
-        pending_deletions: List of user input message IDs pending deletion (optional)
-        pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
-        last_input_adapter: Adapter that last received user input (optional)
-        notification_sent: Whether Agent notification was sent (optional)
-        native_session_id: Native agent session ID (optional)
-        native_log_file: Path to native agent log file (optional)
-        active_agent: Name of the active agent (optional)
-        tui_log_file: Raw TUI log file path (optional)
-        tui_capture_started: Whether TUI capture was initiated (optional)
-    """
-    try:
-        # Load existing state
-        existing = await get_session_ux_state(db, session_id)
-
-        # Apply updates (only update fields that were provided)
-        if output_message_id is not _UNSET:
-            existing.output_message_id = output_message_id  # type: ignore
-        if pending_deletions is not _UNSET:
-            existing.pending_deletions = pending_deletions  # type: ignore
-        if pending_feedback_deletions is not _UNSET:
-            existing.pending_feedback_deletions = pending_feedback_deletions  # type: ignore
-        if last_input_adapter is not _UNSET:
-            existing.last_input_adapter = last_input_adapter  # type: ignore
-        if notification_sent is not _UNSET:
-            existing.notification_sent = notification_sent  # type: ignore
-        if native_session_id is not _UNSET:
-            existing.native_session_id = native_session_id  # type: ignore
-        if native_log_file is not _UNSET:
-            existing.native_log_file = native_log_file  # type: ignore
-        if active_agent is not _UNSET:
-            existing.active_agent = active_agent  # type: ignore
-        if thinking_mode is not _UNSET:
-            existing.thinking_mode = thinking_mode  # type: ignore
-        if native_tty_path is not _UNSET:
-            existing.native_tty_path = native_tty_path  # type: ignore
-        if tmux_tty_path is not _UNSET:
-            existing.tmux_tty_path = tmux_tty_path  # type: ignore
-        if native_pid is not _UNSET:
-            existing.native_pid = native_pid  # type: ignore
-        if tui_log_file is not _UNSET:
-            existing.tui_log_file = tui_log_file  # type: ignore
-        if tui_capture_started is not _UNSET:
-            existing.tui_capture_started = tui_capture_started  # type: ignore
-
-        # Store
-        ux_state_json = json.dumps(existing.to_dict())
-        await db.execute(
-            "UPDATE sessions SET ux_state = ? WHERE session_id = ?",
-            (ux_state_json, session_id),
-        )
-        await db.commit()
-        logger.trace("Updated session %s UX state", session_id[:8])
-
-    except Exception as e:
-        logger.error("Failed to update session UX state: %s", e)
 
 
 async def update_system_ux_state(

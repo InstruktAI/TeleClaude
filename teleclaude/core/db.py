@@ -13,11 +13,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 
-from . import ux_state
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata
 from .terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload
-from .ux_state import SessionUXState, update_session_ux_state
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -543,67 +541,6 @@ class Db:
         all_sessions = [Session.from_dict(dict(row)) for row in rows]
 
         return all_sessions
-
-    async def get_ux_state(self, session_id: str) -> SessionUXState:
-        """Get UX state for session.
-
-        Args:
-            session_id: Session ID
-
-        Returns:
-            SessionUXState (with defaults if not found)
-        """
-        return await ux_state.get_session_ux_state(self.conn, session_id)
-
-    async def update_ux_state(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # UX state has many optional fields
-        self,
-        session_id: str,
-        *,
-        output_message_id: Optional[str] | object = ux_state._UNSET,
-        pending_deletions: list[str] | object = ux_state._UNSET,
-        pending_feedback_deletions: list[str] | object = ux_state._UNSET,
-        last_input_adapter: Optional[str] | object = ux_state._UNSET,
-        notification_sent: bool | object = ux_state._UNSET,
-        native_session_id: Optional[str] | object = ux_state._UNSET,
-        native_log_file: Optional[str] | object = ux_state._UNSET,
-        active_agent: Optional[str] | object = ux_state._UNSET,
-        thinking_mode: Optional[str] | object = ux_state._UNSET,
-        native_tty_path: Optional[str] | object = ux_state._UNSET,
-        tmux_tty_path: Optional[str] | object = ux_state._UNSET,
-        native_pid: Optional[int] | object = ux_state._UNSET,
-        tui_log_file: Optional[str] | object = ux_state._UNSET,
-        tui_capture_started: bool | object = ux_state._UNSET,
-    ) -> None:
-        """Update UX state for session (merges with existing).
-
-        Args:
-            session_id: Session ID
-            output_message_id: Output message ID (optional)
-        pending_deletions: List of user input message IDs pending deletion (optional)
-        pending_feedback_deletions: List of feedback message IDs pending deletion (optional)
-        notification_sent: Whether Agent notification was sent (optional)
-            native_session_id: Native agent session ID (optional)
-            native_log_file: Path to native agent log file (optional)
-            active_agent: Name of the active agent (optional)
-        """
-        await update_session_ux_state(
-            self.conn,
-            session_id,
-            output_message_id=output_message_id,
-            pending_deletions=pending_deletions,
-            pending_feedback_deletions=pending_feedback_deletions,
-            last_input_adapter=last_input_adapter,
-            notification_sent=notification_sent,
-            native_session_id=native_session_id,
-            native_log_file=native_log_file,
-            active_agent=active_agent,
-            thinking_mode=thinking_mode,
-            native_tty_path=native_tty_path,
-            tmux_tty_path=tmux_tty_path,
-            native_pid=native_pid,
-            tui_log_file=tui_log_file,
-            tui_capture_started=tui_capture_started,
-        )
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:
         """Set notification_sent flag in UX state.
