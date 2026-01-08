@@ -9,7 +9,6 @@ import pytest
 
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.models import Session
-from teleclaude.core.ux_state import SessionUXState
 
 
 @pytest.mark.asyncio
@@ -28,6 +27,8 @@ async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
         terminal_size="120x40",
         created_at=datetime.now(UTC),
         last_activity=datetime.now(UTC),
+        active_agent="codex",
+        native_log_file=None,
     )
 
     old_file = tmp_path / "old.jsonl"
@@ -42,9 +43,8 @@ async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
     os.utime(old_file, (old_mtime, old_mtime))
 
     watcher._db.get_active_sessions = AsyncMock(return_value=[session])
-    watcher._db.get_ux_state = AsyncMock(return_value=SessionUXState(active_agent="codex", native_log_file=None))
     watcher._db.list_sessions = AsyncMock(return_value=[])
-    watcher._db.update_ux_state = AsyncMock()
+    watcher._db.update_session = AsyncMock()
 
     with patch(
         "teleclaude.core.codex_watcher.config.agents",
@@ -71,15 +71,14 @@ async def test_rehydrate_watcher_attaches_existing_log(tmp_path: Path) -> None:
         terminal_size="120x40",
         created_at=datetime.now(UTC),
         last_activity=datetime.now(UTC),
+        active_agent="codex",
+        native_log_file=str(tmp_path / "codex.jsonl"),
     )
 
     log_file = tmp_path / "codex.jsonl"
     log_file.write_text('{"type":"response_item","payload":{"role":"assistant","content":[]}}\n', encoding="utf-8")
 
-    ux_state = SessionUXState(active_agent="codex", native_log_file=str(log_file))
-
     watcher._db.get_active_sessions = AsyncMock(return_value=[session])
-    watcher._db.get_ux_state = AsyncMock(return_value=ux_state)
 
     await watcher._rehydrate_watched_files()  # pylint: disable=protected-access
 
