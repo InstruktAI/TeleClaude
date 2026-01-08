@@ -239,3 +239,84 @@ def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
         logger.info("Found %d stale target(s) for health check", len(stale_targets))
 
     return stale_targets
+
+
+async def _notify_listeners(target_session_id: str, message: str) -> int:
+    """Internal: notify all listeners with a pre-built message.
+
+    Args:
+        target_session_id: Session whose listeners to notify
+        message: The notification message to send
+
+    Returns:
+        Number of listeners successfully notified
+    """
+    from teleclaude.core.terminal_delivery import deliver_listener_message
+
+    listeners = get_listeners(target_session_id)
+    if not listeners:
+        logger.debug("No listeners for session %s", target_session_id[:8])
+        return 0
+
+    success_count = 0
+    for listener in listeners:
+        delivered = await deliver_listener_message(
+            listener.caller_session_id,
+            listener.caller_tmux_session,
+            message,
+        )
+        if delivered:
+            logger.info("Notified caller %s", listener.caller_session_id[:8])
+            success_count += 1
+        else:
+            logger.warning("Failed to notify caller %s", listener.caller_session_id[:8])
+
+    return success_count
+
+
+async def notify_stop(
+    target_session_id: str,
+    computer: str,
+    title: str | None = None,
+) -> int:
+    """Notify listeners that a session finished its turn.
+
+    Args:
+        target_session_id: Session that finished
+        computer: Computer name where session runs (for actionable command)
+        title: Optional title/summary of the turn
+
+    Returns:
+        Number of listeners successfully notified
+    """
+    title_part = f' "{title}"' if title else ""
+    location_part = f" on {computer}" if computer != "local" else ""
+    message = (
+        f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
+        f"Use teleclaude__get_session_data(computer='{computer}', "
+        f"session_id='{target_session_id}') to inspect."
+    )
+    return await _notify_listeners(target_session_id, message)
+
+
+async def notify_input_request(
+    target_session_id: str,
+    computer: str,
+    input_message: str,
+) -> int:
+    """Notify listeners that a session needs input.
+
+    Args:
+        target_session_id: Session that needs input
+        computer: Computer name where session runs (for actionable command)
+        input_message: The input request message from the session
+
+    Returns:
+        Number of listeners successfully notified
+    """
+    message = (
+        f"Session {target_session_id[:8]} on {computer} needs input: {input_message} "
+        f"Use teleclaude__send_message(computer='{computer}', session_id='{target_session_id}', "
+        f"message='your response') to respond."
+    )
+    return await _notify_listeners(target_session_id, message)

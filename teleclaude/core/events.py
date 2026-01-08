@@ -94,6 +94,7 @@ class AgentNotificationPayload:
     transcript_path: str
     message: str
     raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    source_computer: str | None = None
 
 
 @dataclass

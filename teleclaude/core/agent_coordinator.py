@@ -22,7 +22,7 @@ from teleclaude.core.events import (
     AgentStopPayload,
 )
 from teleclaude.core.models import MessageMetadata
-from teleclaude.core.session_listeners import get_listeners
+from teleclaude.core.session_listeners import notify_input_request, notify_stop
 from teleclaude.core.session_utils import update_title_with_agent
 
 if TYPE_CHECKING:
@@ -113,19 +113,22 @@ class AgentCoordinator:
 
         # 2. Forward to remote initiator (AI-to-AI across computers)
         if not (source_computer and source_computer != config.computer.name):
-            await self._forward_stop_to_initiator(session_id, title=title)
+            await self._forward_stop_to_initiator(session_id)
 
     async def handle_notification(self, context: AgentEventContext) -> None:
         """Handle notification event - input request."""
         session_id = context.session_id
         payload = cast(AgentNotificationPayload, context.data)
         message = payload.message
+        source_computer = payload.source_computer
 
         # 1. Notify local listeners
-        await self._forward_notification_to_listeners(session_id, str(message))
+        computer = source_computer or "local"
+        await notify_input_request(session_id, computer, str(message))
 
-        # 2. Forward to remote initiator
-        await self._forward_notification_to_initiator(session_id, str(message))
+        # 2. Forward to remote initiator (skip if already forwarded from remote)
+        if not source_computer:
+            await self._forward_notification_to_initiator(session_id, str(message))
 
         # Update notification flag
         await db.set_notification_flag(session_id, True)
@@ -145,33 +148,17 @@ class AgentCoordinator:
         source_computer: str | None = None,
     ) -> None:
         """Notify local listeners via terminal injection."""
-        listeners = get_listeners(target_session_id)
-        if not listeners:
-            return
-
         target_session = await db.get_session(target_session_id)
         display_title = title or (target_session.title if target_session else "Unknown")
-        computer_name = source_computer or "local"
-        location_part = f" on {source_computer}" if source_computer else ""
+        computer = source_computer or "local"
+        await notify_stop(target_session_id, computer, title=display_title)
 
-        for listener in listeners:
-            title_part = f' "{display_title}"' if title else f" ({display_title})"
-            notification = (
-                f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
-                f"Use teleclaude__get_session_data(computer='{computer_name}', "
-                f"session_id='{target_session_id}') to inspect."
-            )
+    async def _forward_stop_to_initiator(self, session_id: str) -> None:
+        """Forward stop event to remote initiator via Redis.
 
-            delivered = await self._deliver_listener_message(
-                listener.caller_session_id, listener.caller_tmux_session, notification
-            )
-            if delivered:
-                logger.info("Notified caller %s", listener.caller_session_id[:8])
-            else:
-                logger.warning("Failed to notify caller %s", listener.caller_session_id[:8])
-
-    async def _forward_stop_to_initiator(self, session_id: str, *, title: str | None = None) -> None:
-        """Forward stop event to remote initiator via Redis."""
+        Uses session.title from DB (stable, canonical) rather than
+        freshly generated title from summarizer.
+        """
         session = await db.get_session(session_id)
         if not session:
             return
@@ -184,9 +171,10 @@ class AgentCoordinator:
         if initiator_computer == config.computer.name:
             return
 
+        # Use stable title from session record
         title_arg = ""
-        if title:
-            title_b64 = base64.b64encode(title.encode()).decode()
+        if session.title:
+            title_b64 = base64.b64encode(session.title.encode()).decode()
             title_arg = f" {title_b64}"
 
         try:
@@ -198,27 +186,6 @@ class AgentCoordinator:
             logger.info("Forwarded stop to %s", initiator_computer)
         except Exception as e:
             logger.warning("Failed to forward stop to %s: %s", initiator_computer, e)
-
-    async def _forward_notification_to_listeners(self, target_session_id: str, message: str) -> None:
-        """Forward notification to local listeners."""
-        listeners = get_listeners(target_session_id)
-        for listener in listeners:
-            notification = (
-                f"Session {target_session_id[:8]} needs input: {message} "
-                f"Use teleclaude__send_message(computer='local', session_id='{target_session_id}', "
-                f"message='your response') to respond."
-            )
-            delivered = await self._deliver_listener_message(
-                listener.caller_session_id, listener.caller_tmux_session, notification
-            )
-            if not delivered:
-                logger.warning("Failed to notify caller %s", listener.caller_session_id[:8])
-
-    async def _deliver_listener_message(self, session_id: str, tmux_session: str, message: str) -> bool:
-        """Deliver a notification to a listener via terminal delivery sink."""
-        from teleclaude.core.terminal_delivery import deliver_listener_message
-
-        return await deliver_listener_message(session_id, tmux_session, message)
 
     async def _forward_notification_to_initiator(self, session_id: str, message: str) -> None:
         """Forward notification to remote initiator."""

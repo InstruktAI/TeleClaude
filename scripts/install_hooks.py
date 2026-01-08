@@ -111,10 +111,6 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent claude session_start",
         },
-        "Notification": {
-            "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent claude notification",
-        },
         "Stop": {
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent claude stop",
@@ -135,24 +131,12 @@ def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
             "command": f"{python_exe} {receiver_script} --agent gemini session_start",
             "description": "Notify TeleClaude of session start",
         },
-        "Notification": {
-            "name": "teleclaude-notification",
-            "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent gemini notification",
-            "description": "Notify TeleClaude of user input request",
-        },
         # AfterAgent fires when agent loop ends = turn completion = stop event
         "AfterAgent": {
             "name": "teleclaude-stop",
             "type": "command",
             "command": f"{python_exe} {receiver_script} --agent gemini stop",
             "description": "Notify TeleClaude of turn completion",
-        },
-        "SessionEnd": {
-            "name": "teleclaude-session-end",
-            "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent gemini session_end",
-            "description": "Notify TeleClaude of session end",
         },
     }
 

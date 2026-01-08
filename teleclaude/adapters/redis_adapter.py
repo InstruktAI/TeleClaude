@@ -830,6 +830,33 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     "data": event_data,
                 }
                 logger.debug("Emitting AGENT_EVENT stop for remote session %s", target_session_id[:8])
+            elif cmd_name == "input_notification":
+                # Format: "/input_notification {session_id} {computer} {message_b64}"
+                if len(args) < 3:
+                    logger.warning("input_notification received with insufficient args: %s", args)
+                    return
+
+                target_session_id = args[0]
+                source_computer = args[1]
+                try:
+                    message = base64.b64decode(args[2]).decode()
+                except Exception:
+                    logger.warning("input_notification: failed to decode message")
+                    return
+
+                event_type = TeleClaudeEvents.AGENT_EVENT
+                event_data = {
+                    "session_id": target_session_id,
+                    "source_computer": source_computer,
+                    "message": message,
+                }
+
+                payload_obj = {
+                    "session_id": target_session_id,
+                    "event_type": AgentHookEvents.AGENT_NOTIFICATION,
+                    "data": event_data,
+                }
+                logger.debug("Emitting AGENT_EVENT notification for remote session %s", target_session_id[:8])
             elif event_type == TeleClaudeEvents.MESSAGE:
                 payload_obj = MessagePayload(session_id=session_id, text=" ".join(args) if args else "")
                 logger.debug(

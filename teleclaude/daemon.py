@@ -2,7 +2,6 @@
 
 import asyncio
 import atexit
-import base64
 import fcntl
 import hashlib
 import json
@@ -54,9 +53,8 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.file_handler import handle_file
-from teleclaude.core.models import MessageMetadata, Session, SessionCommandContext
+from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_listeners import get_listeners
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
 from teleclaude.core.terminal_events import (
@@ -1340,155 +1338,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await update_status(exception_payload)
 
     async def _handle_health_check(self) -> None:
-        """Handle health check system command."""
+        """Handle health check requested."""
         logger.info("Health check requested")
-
-    async def _handle_stop_notification(self, _event: str, context: SessionCommandContext) -> None:
-        """Handle stop_notification event - forwarded stop event from remote computer.
-
-        When a remote session (AI-to-AI) stops, the target computer forwards the stop
-        event to the initiator's computer so the listener can fire.
-
-        Args:
-            _event: Event type (always "stop_notification")
-            context: Session command context - session_id is in args[0], not context.session_id
-        """
-        # The session_id is passed as command argument: "/stop_notification {session_id} {computer} [title_b64]"
-        # It's in args, not context.session_id (which is empty for forwarded commands)
-        if not context.args:
-            logger.warning("stop_notification received without session_id argument")
-            return
-        target_session_id = context.args[0]
-        # Second arg is optional source computer name (for actionable notifications)
-        source_computer = context.args[1] if len(context.args) > 1 else "remote"
-        # Third arg is optional base64-encoded title from stop payload
-        title: str | None = None
-        if len(context.args) > 2:
-            try:
-                title = base64.b64decode(context.args[2]).decode()
-            except Exception:
-                pass  # Invalid base64, ignore
-
-        logger.info(
-            "Received stop_notification for remote session %s from %s (title: %s)",
-            target_session_id[:8],
-            source_computer,
-            title[:30] if title else "none",
-        )
-
-        # Get listeners (don't pop - session is still active, Claude just finished its turn)
-        # Listeners are only removed when session is terminated (in _handle_session_terminated)
-        listeners = get_listeners(target_session_id)
-        if not listeners:
-            logger.debug("No listeners for remote session %s", target_session_id[:8])
-            return
-
-        for listener in listeners:
-            # Build actionable notification message with exact command to run
-            # Note: "Stop" means Claude finished its turn, not that the session ended
-            # Include title if available for richer context
-            title_part = f' "{title}"' if title else ""
-            notification = (
-                f"Session {target_session_id[:8]} on {source_computer}{title_part} finished its turn. "
-                f"Retrieve results: teleclaude__get_session_data("
-                f'computer="{source_computer}", session_id="{target_session_id}")'
-            )
-
-            success = await self._deliver_listener_message(
-                listener.caller_session_id,
-                listener.caller_tmux_session,
-                notification,
-            )
-
-            if success:
-                logger.info(
-                    "Notified caller %s about remote session %s completion",
-                    listener.caller_session_id[:8],
-                    target_session_id[:8],
-                )
-            else:
-                logger.warning(
-                    "Failed to notify caller %s",
-                    listener.caller_session_id[:8],
-                )
-
-    async def _handle_input_notification(self, _event: str, context: SessionCommandContext) -> None:
-        """Handle input_notification event - forwarded input request from remote computer.
-
-        When a remote session (AI-to-AI) asks a question via AskUserQuestion or similar,
-        the target computer forwards the notification so the caller can respond.
-
-        Unlike stop_notification, this does NOT pop listeners - the session is still
-        active and waiting for a response.
-
-        Args:
-            _event: Event type (always "input_notification")
-            context: Session command context - session_id is in args[0], not context.session_id
-        """
-        # Command format: "/input_notification {session_id} {computer} {message_b64}"
-        if len(context.args) < 3:
-            logger.warning("input_notification received with insufficient arguments: %s", context.args)
-            return
-
-        target_session_id = context.args[0]
-        source_computer = context.args[1]
-
-        # Decode base64 message
-        try:
-            message = base64.b64decode(context.args[2]).decode()
-        except Exception as e:
-            logger.warning("Failed to decode input_notification message: %s", e)
-            return
-
-        logger.info(
-            "Received input_notification for remote session %s from %s: %s",
-            target_session_id[:8],
-            source_computer,
-            message[:50],
-        )
-
-        # Get listeners (don't pop - session is still active)
-        listeners = get_listeners(target_session_id)
-        if not listeners:
-            logger.debug("No listeners for remote session %s", target_session_id[:8])
-            return
-
-        for listener in listeners:
-            # Build actionable notification message with exact command to respond
-            notification = (
-                f"Session {target_session_id[:8]} on {source_computer} needs input: {message} "
-                f"Use teleclaude__send_message("
-                f'computer="{source_computer}", session_id="{target_session_id}", '
-                f'message="your response") to respond.'
-            )
-
-            success = await self._deliver_listener_message(
-                listener.caller_session_id,
-                listener.caller_tmux_session,
-                notification,
-            )
-
-            if success:
-                logger.info(
-                    "Forwarded input request from %s to listener %s",
-                    target_session_id[:8],
-                    listener.caller_session_id[:8],
-                )
-            else:
-                logger.warning(
-                    "Failed to forward input request to listener %s",
-                    listener.caller_session_id[:8],
-                )
 
     def _get_output_file_path(self, session_id: str) -> Path:
         """Get output file path for a session (delegates to session_utils)."""
         return get_output_file(session_id)
-
-    async def _deliver_listener_message(self, session_id: str, tmux_session: str, message: str) -> bool:
-        """Deliver a notification to a listener via terminal delivery sink."""
-        from teleclaude.core.terminal_delivery import deliver_listener_message
-
-        return await deliver_listener_message(session_id, tmux_session, message)
 
     async def _send_feedback_callback(
         self,

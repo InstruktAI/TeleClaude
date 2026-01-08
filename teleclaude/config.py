@@ -31,7 +31,8 @@ if not _dotenv_path.is_absolute():
     _dotenv_path = (_project_root / _dotenv_path).resolve()
 
 load_dotenv(_dotenv_path)
-os.environ.setdefault("WORKING_DIR", str(_project_root))
+WORKING_DIR = str(_project_root)
+os.environ.setdefault("WORKING_DIR", WORKING_DIR)
 
 
 @dataclass
@@ -165,7 +166,7 @@ class Config:
 # Default configuration values (single source of truth)
 DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration structure
     "database": {
-        "path": "${WORKING_DIR}/teleclaude.db",
+        "path": f"{WORKING_DIR}/teleclaude.db",
     },
     "computer": {
         "name": "unknown",
