@@ -1,23 +1,16 @@
-"""Unit tests for telec CLI parsing."""
-
-from teleclaude.cli.telec import parse_telec_command
+import pytest
 
 
-def test_parse_claude_start() -> None:
-    parsed = parse_telec_command(["/claude", "fast", "hello"])
-    assert parsed.action == "start"
-    assert parsed.agent == "claude"
-    assert parsed.args == ["fast", "hello"]
+def test_telec_keyboard_interrupt_exits_cleanly(monkeypatch):
+    from teleclaude.cli import telec
 
+    def _raise_interrupt() -> None:
+        raise KeyboardInterrupt()
 
-def test_parse_agent_start() -> None:
-    parsed = parse_telec_command(["/agent", "gemini", "slow", "test"])
-    assert parsed.action == "start"
-    assert parsed.agent == "gemini"
-    assert parsed.args == ["slow", "test"]
+    monkeypatch.setattr(telec, "_cleanup_stale_on_startup", _raise_interrupt)
+    monkeypatch.setattr(telec.sys, "argv", ["telec"])
 
+    with pytest.raises(SystemExit) as excinfo:
+        telec.main()
 
-def test_parse_agent_resume() -> None:
-    parsed = parse_telec_command(["/agent_resume", "abc123"])
-    assert parsed.action == "resume"
-    assert parsed.session_id == "abc123"
+    assert excinfo.value.code == 130

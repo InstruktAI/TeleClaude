@@ -727,7 +727,7 @@ def _cleanup_stale_on_startup() -> None:
         sys.stderr.write(f"telec: cleanup skipped ({exc})\n")
 
 
-def main() -> None:
+def _main_impl() -> None:
     argv = sys.argv[1:]
     db_path = config.database.path
 
@@ -885,6 +885,13 @@ def main() -> None:
 
     sys.stderr.write("telec error: unsupported command\n")
     sys.exit(1)
+
+
+def main() -> None:
+    try:
+        _main_impl()
+    except KeyboardInterrupt:
+        sys.exit(130)
 
 
 if __name__ == "__main__":
