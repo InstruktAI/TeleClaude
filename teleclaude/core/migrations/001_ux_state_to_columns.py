@@ -3,8 +3,11 @@
 # mypy: disable-error-code="misc"
 
 import json
+import logging
 
 import aiosqlite
+
+logger = logging.getLogger(__name__)
 
 
 async def migrate(db: aiosqlite.Connection) -> None:
@@ -28,7 +31,8 @@ async def migrate(db: aiosqlite.Connection) -> None:
 
         try:
             ux = json.loads(ux_state_raw)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.warning(f"Skipping session {session_id} - invalid ux_state JSON: {e}")
             continue
 
         # Update scalar columns

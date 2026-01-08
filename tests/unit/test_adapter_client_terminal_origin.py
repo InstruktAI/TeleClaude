@@ -88,7 +88,6 @@ def _make_terminal_session() -> Session:
         terminal_size="80x24",
         working_directory="~",
         description=None,
-        ux_state=None,
         initiated_by_ai=False,
     )
 

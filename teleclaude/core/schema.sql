@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     terminal_size TEXT DEFAULT '80x24',
     working_directory TEXT DEFAULT '~',
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
-    ux_state TEXT,  -- JSON blob: {output_message_id, native_log_file, ...} - DEPRECATED, will be removed
     initiated_by_ai BOOLEAN DEFAULT 0,  -- 0 = human-initiated (Opus), 1 = AI-initiated (Sonnet)
     -- UX state fields (migrated from JSON blob)
     output_message_id TEXT,

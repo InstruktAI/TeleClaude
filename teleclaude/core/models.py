@@ -263,7 +263,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     terminal_size: str = "160x80"
     working_directory: str = "~"
     description: Optional[str] = None
-    ux_state: Optional[str] = None  # JSON blob for session-level UX state - DEPRECATED, will be removed
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI
     # UX state fields (migrated from JSON blob)
     output_message_id: Optional[str] = None
@@ -362,7 +361,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "terminal_size",
             "working_directory",
             "description",
-            "ux_state",
             "initiated_by_ai",
             # UX state fields
             "output_message_id",
