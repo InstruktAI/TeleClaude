@@ -18,5 +18,5 @@
 
 ## Database Schema
 
-- [.] db-refactor
+- [>] db-refactor
       Eliminate ux_state JSON blob - migrate to proper columns and normalized tables.
