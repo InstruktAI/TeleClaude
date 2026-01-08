@@ -41,7 +41,7 @@ Get projects on a specific computer:
 
 ```python
 teleclaude__list_projects(computer="workstation")
-# Returns: [{"path": "/home/user/myapp", "name": "myapp"}, ...]
+# Returns: [{"name": "myapp", "desc": "My application", "location": "/home/user/myapp"}, ...]
 ```
 
 #### List Sessions
@@ -66,7 +66,8 @@ teleclaude__start_session(
     project_dir="/path/to/project",
     title="Implement feature X",
     message="Please implement the login form",
-    agent="claude"
+    agent="claude",
+    thinking_mode="slow"  # "fast", "med", or "slow" (default: "slow")
 )
 
 # Remote AI-to-AI (different computer)
@@ -75,22 +76,34 @@ teleclaude__start_session(
     project_dir="/home/user/project",
     title="Run tests",
     message="Run the test suite and report failures",
-    agent="claude"
+    agent="claude",
+    thinking_mode="med"
 )
 ```
 
 #### Run Agent Command
 
-Start a session with a specific agent slash command:
+Run a slash command on an agent session. Two modes:
+1. If `session_id` provided: send command to existing session
+2. If `session_id` omitted: start new session with the command
 
 ```python
+# Start new session with command
 teleclaude__run_agent_command(
     computer="local",
-    project_dir="/path/to/project",
-    title="Build feature",
-    command="/next-build",
+    command="next-build",  # Leading / is stripped automatically
     args="auth-system",
-    agent="claude"
+    project="/path/to/project",  # Required when starting new session
+    agent="claude",
+    thinking_mode="slow",  # "fast", "med", or "slow"
+    subfolder="trees/my-feature"  # Optional: worktree subfolder
+)
+
+# Send command to existing session
+teleclaude__run_agent_command(
+    computer="local",
+    command="compact",
+    session_id="abc-123"
 )
 ```
 
@@ -103,6 +116,7 @@ teleclaude__send_message(
     computer="local",
     session_id="abc-123",
     message="Focus on edge cases in the validation logic"
+    # caller_session_id is auto-injected by MCP wrapper for listener registration
 )
 ```
 
@@ -114,18 +128,21 @@ Retrieve session output for review:
 teleclaude__get_session_data(
     computer="local",
     session_id="abc-123",
-    last_n_chars=5000  # Optional: limit output size
+    tail_chars=5000,  # Optional: max chars from end (default 5000, 0 for unlimited up to 48K cap)
+    since_timestamp="2025-01-08T14:00:00Z",  # Optional: ISO 8601 UTC start filter
+    until_timestamp="2025-01-08T15:00:00Z"   # Optional: ISO 8601 UTC end filter
 )
 ```
 
 #### Stop Notifications
 
-Unsubscribe from session events without ending it:
+Unsubscribe from session events without ending it (session continues running):
 
 ```python
 teleclaude__stop_notifications(
     computer="local",
-    session_id="abc-123"
+    session_id="abc-123",
+    caller_session_id="def-456"  # Required: your session ID (auto-injected by MCP wrapper)
 )
 ```
 
@@ -156,13 +173,13 @@ teleclaude__send_file(
 
 #### Send Result
 
-Send structured result data to a session:
+Send formatted result to user as a separate Telegram message (not in streaming output):
 
 ```python
 teleclaude__send_result(
     session_id="abc-123",
-    result="Build completed successfully",
-    metadata={"tests_passed": 42, "coverage": "87%"}
+    content="## Build Results\n\n✅ All tests passed\n- 42 tests\n- 87% coverage",
+    output_format="markdown"  # or "html"
 )
 ```
 
@@ -221,24 +238,24 @@ teleclaude__mark_phase(
 
 #### Set Dependencies
 
-Define dependencies between work items:
+Define dependencies between work items (replaces all dependencies; use `after=[]` to clear):
 
 ```python
 teleclaude__set_dependencies(
     slug="auth-system",
-    depends_on=["database-schema", "user-model"]
+    after=["database-schema", "user-model"]
 )
 ```
 
 #### Mark Agent Unavailable
 
-Mark an agent as temporarily unavailable (rate limits, errors):
+Mark an agent as temporarily unavailable (rate limits, quota exhaustion, outages):
 
 ```python
 teleclaude__mark_agent_unavailable(
-    computer="workstation",
-    duration_hours=4,
-    reason="Rate limit exceeded"
+    agent="claude",  # "claude", "gemini", or "codex"
+    reason="rate_limited",
+    unavailable_until="2025-01-08T18:30:00Z"  # ISO 8601 UTC; defaults to 30min from now if omitted
 )
 ```
 
