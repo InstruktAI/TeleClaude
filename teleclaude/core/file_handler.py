@@ -125,8 +125,7 @@ async def handle_file(
         logger.info("Appending caption to file input: %s", context.caption.strip()[:50])
 
     # Get active agent for agent-specific escaping
-    ux_state = await db.get_ux_state(session_id)
-    active_agent = ux_state.active_agent if ux_state else None
+    active_agent = session.active_agent
 
     # Automatic detection: if process running, no marker
     sanitized_text = terminal_io.wrap_bracketed_paste(input_text)

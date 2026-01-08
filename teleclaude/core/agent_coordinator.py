@@ -48,7 +48,7 @@ class AgentCoordinator:
             "native_log_file": str(native_log_file),
         }
 
-        await db.update_ux_state(context.session_id, **update_kwargs)
+        await db.update_session(context.session_id, **update_kwargs)
 
         # Copy voice assignment if available
         voice = await db.get_voice(context.session_id)
@@ -75,16 +75,15 @@ class AgentCoordinator:
         if f"${config.computer.name}" not in session.title:
             return  # Already has new format or different computer
 
-        # Get agent info from UX state
-        ux_state = await db.get_ux_state(session_id)
-        if not ux_state or not ux_state.active_agent or not ux_state.thinking_mode:
+        # Get agent info from session
+        if not session.active_agent or not session.thinking_mode:
             return  # No agent info available
 
         # Build new title with agent info
         new_title = update_title_with_agent(
             session.title,
-            ux_state.active_agent,
-            ux_state.thinking_mode,
+            session.active_agent,
+            session.thinking_mode,
             config.computer.name,
         )
 

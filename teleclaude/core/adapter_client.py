@@ -308,8 +308,7 @@ class AdapterClient:
                 target_adapter_type = metadata.adapter_type
 
         if target_adapter_type is None:
-            ux_state = await db.get_ux_state(session.session_id)
-            last_input_adapter = ux_state.last_input_adapter
+            last_input_adapter = session.last_input_adapter
             if last_input_adapter and last_input_adapter in self.adapters:
                 candidate = self.adapters[last_input_adapter]
                 if isinstance(candidate, UiAdapter):
@@ -804,7 +803,7 @@ class AdapterClient:
                 TeleClaudeEvents.VOICE,
                 TeleClaudeEvents.FILE,
             ):
-                await db.update_ux_state(session.session_id, last_input_adapter=metadata.adapter_type)
+                await db.update_session(session.session_id, last_input_adapter=metadata.adapter_type)
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = cast(str | None, payload.get("message_id"))
