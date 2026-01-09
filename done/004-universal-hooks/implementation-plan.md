@@ -2,7 +2,7 @@
 
 ## Group 1: Configuration & Foundation
 
-- [x] **Define Agent Log Paths:** Update `config.py` and `config.yml.sample` to include `session_dir` and `log_pattern` for each agent.
+- [x] **Define Agent Log Paths:** Update `config.py` and `config.sample.yml` to include `session_dir` and `log_pattern` for each agent.
 - [x] **Create SessionWatcher Class:** Scaffold `teleclaude/core/session_watcher.py` with polling/watching logic.
 - [x] **Define LogParser Interface:** Create `teleclaude/core/parsers.py` with abstract base class for log parsing.
 

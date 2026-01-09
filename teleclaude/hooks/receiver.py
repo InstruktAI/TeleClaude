@@ -368,7 +368,7 @@ def main() -> None:
         if os.getenv("TMUX"):
             try:
                 tmux_result = subprocess.run(
-                    ["tmux", "display-message", "-p", "#{session_name}"],
+                    [config.computer.tmux_binary, "display-message", "-p", "#{session_name}"],
                     capture_output=True,
                     text=True,
                     timeout=1.0,

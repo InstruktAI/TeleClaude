@@ -8,6 +8,7 @@ import sys
 
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.tui.app import TelecApp
+from teleclaude.config import config
 
 
 def main() -> None:
@@ -21,16 +22,17 @@ def main() -> None:
     # TUI mode - ensure we're in tmux for pane preview
     if not os.environ.get("TMUX"):
         # Check if TUI session already exists - adopt it instead of creating new
+        tmux = config.computer.tmux_binary
         result = subprocess.run(
-            ["tmux", "has-session", "-t", "tc_tui"],
+            [tmux, "has-session", "-t", "tc_tui"],
             capture_output=True,
         )
         if result.returncode == 0:
             # Existing TUI found - attach to it
-            os.execlp("tmux", "tmux", "attach", "-t", "tc_tui")
+            os.execlp(tmux, tmux, "attach", "-t", "tc_tui")
         else:
             # No TUI running - create new named session
-            os.execlp("tmux", "tmux", "new-session", "-s", "tc_tui", "telec")
+            os.execlp(tmux, tmux, "new-session", "-s", "tc_tui", "telec")
 
     try:
         asyncio.run(_run_tui())
@@ -125,7 +127,7 @@ async def _quick_start(api: TelecAPIClient, agent: str, mode: str, prompt: str |
         if tmux_session:
             await api.close()
             # Attach to the tmux session
-            subprocess.run(["tmux", "attach", "-t", str(tmux_session)], check=False)
+            subprocess.run([config.computer.tmux_binary, "attach", "-t", str(tmux_session)], check=False)
         else:
             print(f"Error: {result}")
     finally:

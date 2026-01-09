@@ -139,48 +139,60 @@ async def summarize(agent_name: AgentName, transcript_path: str) -> tuple[str | 
 2. **summary** (1-2 sentences, first person "I..."): What the agent just did based on its responses above.
 """
 
+    errors: list[str] = []
+
+    # Try Anthropic first
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if api_key:
-        anthropic_client = AsyncAnthropic(api_key=api_key)
-        response = await anthropic_client.beta.messages.create(
-            model=SUMMARY_MODEL_ANTHROPIC,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-            betas=["structured-outputs-2025-11-13"],
-            output_format={
-                "type": "json_schema",
-                "schema": {
-                    "type": SUMMARY_SCHEMA["type"],
-                    "properties": SUMMARY_SCHEMA["properties"],
-                    "required": SUMMARY_SCHEMA["required"],
-                    "additionalProperties": SUMMARY_SCHEMA["additionalProperties"],
+        try:
+            anthropic_client = AsyncAnthropic(api_key=api_key)
+            response = await anthropic_client.beta.messages.create(
+                model=SUMMARY_MODEL_ANTHROPIC,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+                betas=["structured-outputs-2025-11-13"],
+                output_format={
+                    "type": "json_schema",
+                    "schema": {
+                        "type": SUMMARY_SCHEMA["type"],
+                        "properties": SUMMARY_SCHEMA["properties"],
+                        "required": SUMMARY_SCHEMA["required"],
+                        "additionalProperties": SUMMARY_SCHEMA["additionalProperties"],
+                    },
                 },
-            },
-        )
-        text = response.content[0].text  # type: ignore[union-attr]
-        return _parse_response(text)
+            )
+            text = response.content[0].text  # type: ignore[union-attr]
+            return _parse_response(text)
+        except Exception as e:
+            errors.append(f"Anthropic: {e}")
 
+    # Fallback to OpenAI
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
-        openai_client = AsyncOpenAI(api_key=openai_key)
-        response_format: ResponseFormatJSONSchema = {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "summary",
-                "schema": SUMMARY_SCHEMA,
-                "strict": True,
-            },
-        }
-        response = await openai_client.chat.completions.create(
-            model=SUMMARY_MODEL_OPENAI,
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-            response_format=response_format,
-        )
-        response_any = cast(Any, response)
-        text = response_any.choices[0].message.content or ""
-        return _parse_response(text)
+        try:
+            openai_client = AsyncOpenAI(api_key=openai_key)
+            response_format: ResponseFormatJSONSchema = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "summary",
+                    "schema": SUMMARY_SCHEMA,
+                    "strict": True,
+                },
+            }
+            response = await openai_client.chat.completions.create(
+                model=SUMMARY_MODEL_OPENAI,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+                response_format=response_format,
+            )
+            response_any = cast(Any, response)
+            text = response_any.choices[0].message.content or ""
+            return _parse_response(text)
+        except Exception as e:
+            errors.append(f"OpenAI: {e}")
 
+    if errors:
+        raise RuntimeError(f"All summarizers failed: {'; '.join(errors)}")
     raise RuntimeError("No summarizer available (missing API key)")
 
 

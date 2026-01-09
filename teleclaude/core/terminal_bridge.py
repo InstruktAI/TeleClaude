@@ -19,6 +19,8 @@ from typing import Dict, List, Optional
 import psutil
 from instrukt_ai_logging import get_logger
 
+from teleclaude.config import config
+
 logger = get_logger(__name__)
 
 # User's shell basename, computed once at import
@@ -148,7 +150,7 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
 
         # Ensure detach does NOT destroy the session (respect persistent TC sessions).
         try:
-            option_cmd = ["tmux", "set-option", "-t", name, "destroy-unattached", "off"]
+            option_cmd = [config.computer.tmux_binary, "set-option", "-t", name, "destroy-unattached", "off"]
             opt_result = await asyncio.create_subprocess_exec(
                 *option_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
@@ -159,7 +161,7 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
                     name,
                     opt_err.decode().strip(),
                 )
-            hook_cmd = ["tmux", "set-hook", "-t", name, "client-detached", "run-shell true"]
+            hook_cmd = [config.computer.tmux_binary, "set-hook", "-t", name, "client-detached", "run-shell true"]
             hook_result = await asyncio.create_subprocess_exec(
                 *hook_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
@@ -196,7 +198,7 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
     """
     try:
         for var_name, var_value in env_vars.items():
-            cmd = ["tmux", "setenv", "-t", session_name, var_name, var_value]
+            cmd = [config.computer.tmux_binary, "setenv", "-t", session_name, var_name, var_value]
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
@@ -363,7 +365,7 @@ def pid_is_alive(pid: int) -> bool:
 async def get_pane_tty(session_name: str) -> Optional[str]:
     """Get tty path for the tmux pane backing a session."""
     try:
-        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_tty}"]
+        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_tty}"]
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -388,7 +390,7 @@ async def get_pane_tty(session_name: str) -> Optional[str]:
 async def get_pane_pid(session_name: str) -> Optional[int]:
     """Get shell PID for the tmux pane backing a session."""
     try:
-        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_pid}"]
+        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_pid}"]
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -426,7 +428,7 @@ async def _send_keys_tmux(
     # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
     # start a long-lived process that would inherit the pipe, so this is safe.
     # -l flag sends keys literally
-    cmd_text = ["tmux", "send-keys", "-t", session_name, "-l", "--", send_text]
+    cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
     result = await asyncio.create_subprocess_exec(
         *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
@@ -446,7 +448,7 @@ async def _send_keys_tmux(
 
     # Send Enter key once if requested
     if send_enter:
-        cmd_enter = ["tmux", "send-keys", "-t", session_name, "C-m"]
+        cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
         result = await asyncio.create_subprocess_exec(
             *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -478,7 +480,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
         if signal == "SIGKILL":
             # SIGKILL requires finding the process PID and killing it directly
             # Get the shell PID in the tmux pane
-            cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_pid}"]
+            cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_pid}"]
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
@@ -548,7 +550,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
             logger.error("Unsupported signal: %s", signal)
             return False
 
-        cmd = ["tmux", "send-keys", "-t", session_name, key]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, key]
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -581,7 +583,7 @@ async def send_escape(session_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "send-keys", "-t", session_name, "Escape"]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "Escape"]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -605,7 +607,7 @@ async def send_ctrl_key(session_name: str, key: str) -> bool:
     try:
         # tmux notation for control keys: C-<key>
         ctrl_key = f"C-{key.lower()}"
-        cmd = ["tmux", "send-keys", "-t", session_name, ctrl_key]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, ctrl_key]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -626,7 +628,7 @@ async def send_tab(session_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "send-keys", "-t", session_name, "Tab"]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "Tab"]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -654,7 +656,7 @@ async def send_shift_tab(session_name: str, count: int = 1) -> bool:
             return False
 
         # tmux send-keys with -N flag for repeat count
-        cmd = ["tmux", "send-keys", "-t", session_name, "-N", str(count), "BTab"]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-N", str(count), "BTab"]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -682,7 +684,7 @@ async def send_backspace(session_name: str, count: int = 1) -> bool:
             return False
 
         # tmux send-keys with -N flag for repeat count
-        cmd = ["tmux", "send-keys", "-t", session_name, "-N", str(count), "BSpace"]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-N", str(count), "BSpace"]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -703,7 +705,7 @@ async def send_enter(session_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "send-keys", "-t", session_name, "C-m"]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -739,7 +741,7 @@ async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> b
 
         # tmux send-keys with -N flag for repeat count
         key_name = valid_directions[direction]
-        cmd = ["tmux", "send-keys", "-t", session_name, "-N", str(count), key_name]
+        cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-N", str(count), key_name]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -764,7 +766,7 @@ async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
         # -p = print to stdout
         # -S = start line (-10000 = last 10000 lines from scrollback, - = entire history)
         # -J = preserve trailing spaces (better for capturing exact output)
-        cmd = ["tmux", "capture-pane", "-t", session_name, "-p", "-J"]
+        cmd = [config.computer.tmux_binary, "capture-pane", "-t", session_name, "-p", "-J"]
 
         if lines:
             # Capture specific number of lines from scrollback
@@ -804,7 +806,7 @@ async def kill_session(session_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "kill-session", "-t", session_name]
+        cmd = [config.computer.tmux_binary, "kill-session", "-t", session_name]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -822,7 +824,7 @@ async def list_tmux_sessions() -> List[str]:
         List of session names
     """
     try:
-        cmd = ["tmux", "list-sessions", "-F", "#{session_name}"]
+        cmd = [config.computer.tmux_binary, "list-sessions", "-F", "#{session_name}"]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -851,7 +853,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
         True if session exists, False otherwise
     """
     try:
-        cmd = ["tmux", "has-session", "-t", session_name]
+        cmd = [config.computer.tmux_binary, "has-session", "-t", session_name]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -864,7 +866,10 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                 try:
                     # Get all tmux sessions
                     tmux_list_result = await asyncio.create_subprocess_exec(
-                        "tmux", "list-sessions", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                        config.computer.tmux_binary,
+                        "list-sessions",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
                     )
                     tmux_list_stdout, _ = await tmux_list_result.communicate()
                     tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
@@ -915,7 +920,7 @@ async def get_current_command(session_name: str) -> Optional[str]:
         Command name (e.g., "zsh", "claude", "vim") or None if detection failed
     """
     try:
-        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_current_command}"]
+        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_current_command}"]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -969,7 +974,7 @@ async def is_process_running(session_name: str) -> bool:
 async def is_pane_dead(session_name: str) -> bool:
     """Return True if all tmux panes are marked dead (shell exited)."""
     try:
-        cmd = ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_dead}"]
+        cmd = [config.computer.tmux_binary, "list-panes", "-t", session_name, "-F", "#{pane_dead}"]
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -996,7 +1001,7 @@ async def rename_session(old_name: str, new_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "rename-session", "-t", old_name, new_name]
+        cmd = [config.computer.tmux_binary, "rename-session", "-t", old_name, new_name]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -1017,7 +1022,7 @@ async def get_session_pane_id(session_name: str) -> Optional[str]:
         Pane ID or None
     """
     try:
-        cmd = ["tmux", "list-panes", "-t", session_name, "-F", "#{pane_id}"]
+        cmd = [config.computer.tmux_binary, "list-panes", "-t", session_name, "-F", "#{pane_id}"]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -1045,7 +1050,7 @@ async def start_pipe_pane(session_name: str, command: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "pipe-pane", "-t", session_name, "-o", command]
+        cmd = [config.computer.tmux_binary, "pipe-pane", "-t", session_name, "-o", command]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -1066,7 +1071,7 @@ async def stop_pipe_pane(session_name: str) -> bool:
         True if successful, False otherwise
     """
     try:
-        cmd = ["tmux", "pipe-pane", "-t", session_name]
+        cmd = [config.computer.tmux_binary, "pipe-pane", "-t", session_name]
         result = await asyncio.create_subprocess_exec(*cmd)
         await result.wait()
 
@@ -1087,7 +1092,7 @@ async def get_pane_title(session_name: str) -> Optional[str]:
         Pane title string or None if failed
     """
     try:
-        cmd = ["tmux", "display-message", "-p", "-t", session_name, "#{pane_title}"]
+        cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_title}"]
         result = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -1116,7 +1121,7 @@ async def get_current_directory(session_name: str) -> Optional[str]:
         Current directory path or None if failed
     """
     try:
-        cmd = ["tmux", "display", "-p", "-t", session_name, "#{pane_current_path}"]
+        cmd = [config.computer.tmux_binary, "display", "-p", "-t", session_name, "#{pane_current_path}"]
         result = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,

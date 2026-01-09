@@ -723,7 +723,6 @@ terminal:
 
 polling:
   idle_notification_seconds: 60
-
 ```
 
 ### Daemon Management
@@ -797,7 +796,7 @@ Generated from `config/ai.instrukt.teleclaude.daemon.plist.template`:
 
 ### Configuration
 
-- `config.yml.sample` - Configuration template
+- `config.sample.yml` - Configuration template
 - `.env.sample` - Environment variables template
 
 ---

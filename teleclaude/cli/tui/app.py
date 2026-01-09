@@ -21,10 +21,31 @@ nest_asyncio.apply()
 
 logger = get_logger(__name__)
 
+# Key name mapping for debug logging
+KEY_NAMES = {
+    curses.KEY_UP: "KEY_UP",
+    curses.KEY_DOWN: "KEY_DOWN",
+    curses.KEY_LEFT: "KEY_LEFT",
+    curses.KEY_RIGHT: "KEY_RIGHT",
+    curses.KEY_ENTER: "KEY_ENTER",
+    10: "ENTER(10)",
+    13: "ENTER(13)",
+    27: "ESCAPE",
+}
+
 
 # Notification durations in seconds
 NOTIFICATION_DURATION_INFO = 3.0
 NOTIFICATION_DURATION_ERROR = 5.0
+
+
+def _key_name(key: int) -> str:
+    """Get human-readable key name for logging."""
+    if key in KEY_NAMES:
+        return KEY_NAMES[key]
+    if 32 <= key < 127:
+        return f"'{chr(key)}'({key})"
+    return f"KEY({key})"
 
 
 @dataclass
@@ -131,6 +152,7 @@ class TelecApp:
 
     async def refresh_data(self) -> None:
         """Refresh all data from API."""
+        logger.debug("Refreshing data from API...")
         try:
             computers, projects, sessions, availability = await asyncio.gather(
                 self.api.list_computers(),  # type: ignore[attr-defined]
@@ -139,16 +161,29 @@ class TelecApp:
                 self.api.get_agent_availability(),  # type: ignore[attr-defined]
             )
 
+            logger.debug(
+                "API returned: %d computers, %d projects, %d sessions",
+                len(computers),
+                len(projects),
+                len(sessions),
+            )
+
             self.agent_availability = availability  # type: ignore[assignment]
 
             # Refresh ALL views with data (not just current)
-            for view in self.views.values():
+            for view_num, view in self.views.items():
                 await view.refresh(computers, projects, sessions)  # type: ignore[arg-type]
+                logger.debug(
+                    "View %d refreshed: flat_items=%d",
+                    view_num,
+                    len(view.flat_items),
+                )
 
             # Update footer with new availability
             self.footer = Footer(self.agent_availability)
+            logger.debug("Data refresh complete")
         except Exception as e:
-            logger.error("Failed to refresh data: %s", e)
+            logger.error("Failed to refresh data: %s", e, exc_info=True)
             self.notify(f"Refresh failed: {e}", "error")
 
     def notify(self, message: str, level: str = "info") -> None:
@@ -214,38 +249,55 @@ class TelecApp:
             key: Key code
             stdscr: Curses screen object
         """
+        key_str = _key_name(key)
+        logger.debug("Key pressed: %s, current_view=%d", key_str, self.current_view)
+
         if key == ord("q"):
+            logger.debug("Quit requested")
             self.cleanup()
             self.running = False
 
         # Escape - always go back in focus stack
         elif key == 27:  # Escape
+            logger.debug("Escape: popping focus stack")
             if self.focus.pop():
                 view = self.views.get(self.current_view)
                 if view:
                     view.rebuild_for_focus()
+                    logger.debug("Focus popped, view rebuilt")
 
         # Left Arrow - collapse session or go back in focus stack
         elif key == curses.KEY_LEFT:
             view = self.views.get(self.current_view)
+            logger.debug("Left arrow: view=%s", type(view).__name__ if view else None)
             # Try to collapse session first (SessionsView only)
-            if view and hasattr(view, "collapse_selected") and view.collapse_selected():
-                pass  # Session collapsed
+            if view and hasattr(view, "collapse_selected"):
+                collapsed = view.collapse_selected()
+                logger.debug("collapse_selected() returned %s", collapsed)
+                if collapsed:
+                    pass  # Session collapsed
+                elif self.focus.pop():
+                    # Go back in focus stack
+                    view.rebuild_for_focus()
+                    logger.debug("Focus popped after collapse_selected returned False")
             elif self.focus.pop():
-                # Go back in focus stack
                 if view:
                     view.rebuild_for_focus()
 
         # Right Arrow - drill down into selected item
         elif key == curses.KEY_RIGHT:
             view = self.views.get(self.current_view)
+            logger.debug("Right arrow: view=%s", type(view).__name__ if view else None)
             if view:
-                view.drill_down()
+                result = view.drill_down()
+                logger.debug("drill_down() returned %s", result)
 
         # View switching with number keys
         elif key == ord("1"):
+            logger.debug("Switching to view 1 (Sessions)")
             self._switch_view(1)
         elif key == ord("2"):
+            logger.debug("Switching to view 2 (Preparation)")
             self._switch_view(2)
 
         # Navigation - delegate to current view
@@ -253,24 +305,35 @@ class TelecApp:
             view = self.views.get(self.current_view)
             if view:
                 view.move_up()
+                logger.debug("move_up: selected_index=%d", view.selected_index)
         elif key == curses.KEY_DOWN:
             view = self.views.get(self.current_view)
             if view:
                 view.move_down()
+                logger.debug("move_down: selected_index=%d", view.selected_index)
 
         # Common actions
         elif key in (curses.KEY_ENTER, 10, 13):
             view = self.views.get(self.current_view)
+            logger.debug("Enter: view=%s", type(view).__name__ if view else None)
             if view:
                 view.handle_enter(stdscr)
         elif key == ord("r"):
+            logger.debug("Refresh requested")
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
         # View-specific actions
         else:
             view = self.views.get(self.current_view)
+            logger.debug(
+                "Delegating key %s to view.handle_key(), view=%s",
+                key_str,
+                type(view).__name__ if view else None,
+            )
             if view:
                 view.handle_key(key, stdscr)
+            else:
+                logger.warning("No view found for current_view=%d", self.current_view)
 
     def _switch_view(self, view_num: int) -> None:
         """Switch to a different view.
@@ -279,14 +342,23 @@ class TelecApp:
             view_num: View number (1 or 2)
         """
         if view_num in self.views:
+            logger.debug("Switching from view %d to view %d", self.current_view, view_num)
             self.current_view = view_num
             self.tab_bar.set_active(view_num)
             # Rebuild the new view with current focus
             view = self.views.get(view_num)
             if view:
                 view.rebuild_for_focus()
+                logger.debug(
+                    "View %d rebuilt: flat_items=%d, selected_index=%d",
+                    view_num,
+                    len(view.flat_items),
+                    view.selected_index,
+                )
             # Update panes (shows sessions in view 1, hides in view 2)
             self.update_session_panes()
+        else:
+            logger.warning("Attempted to switch to non-existent view %d", view_num)
 
     def _render(self, stdscr: object) -> None:
         """Render current view with banner, tab bar, and footer.

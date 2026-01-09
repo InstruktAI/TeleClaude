@@ -75,6 +75,7 @@ class ComputerConfig:  # pylint: disable=too-many-instance-attributes  # Config 
     is_master: bool
     trusted_dirs: list[TrustedDir]
     host: str | None = None  # Optional hostname/IP for SSH remote execution
+    tmux_binary: str = "tmux"  # Path to tmux binary or wrapper
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
         """Get all trusted directories including default_working_dir.
@@ -177,6 +178,7 @@ DEFAULT_CONFIG: dict[str, object] = {  # noqa: loose-dict - YAML configuration s
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
+        "tmux_binary": "tmux",
     },
     "redis": {
         "enabled": False,
@@ -293,6 +295,7 @@ def _build_config(raw: dict[str, object]) -> Config:  # noqa: loose-dict - YAML 
             is_master=bool(comp_raw["is_master"]),  # type: ignore[index,misc]
             trusted_dirs=_parse_trusted_dirs(list(comp_raw["trusted_dirs"])),  # type: ignore[index,misc]
             host=str(comp_raw["host"]) if comp_raw["host"] else None,  # type: ignore[index,misc]
+            tmux_binary=str(comp_raw["tmux_binary"]),  # type: ignore[index,misc]
         ),
         redis=RedisConfig(
             enabled=bool(redis_raw["enabled"]),  # type: ignore[index,misc]

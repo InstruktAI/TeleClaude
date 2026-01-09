@@ -9,10 +9,15 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.tui.todos import parse_roadmap
+from teleclaude.config import config
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -83,7 +88,13 @@ class PreparationView:
             projects: List of projects
             sessions: List of sessions (unused)
         """
+        logger.debug(
+            "PreparationView.refresh: %d computers, %d projects",
+            len(computers),
+            len(projects),
+        )
         self.tree = self._build_tree(computers, projects)
+        logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
     def _build_tree(
@@ -147,6 +158,11 @@ class PreparationView:
 
     def rebuild_for_focus(self) -> None:
         """Rebuild flat_items based on current focus context."""
+        logger.debug(
+            "PreparationView.rebuild_for_focus: focus.computer=%s, expanded_todos=%s",
+            self.focus.computer,
+            self.expanded_todos,
+        )
         nodes = self.tree
 
         # Filter by focused computer
@@ -154,12 +170,15 @@ class PreparationView:
             for node in self.tree:
                 if node.type == "computer" and node.data.get("name") == self.focus.computer:
                     nodes = [node]
+                    logger.debug("Filtered to computer '%s'", self.focus.computer)
                     break
             else:
                 nodes = []
+                logger.warning("Computer '%s' not found in tree", self.focus.computer)
 
         # Flatten tree (computers and projects always expanded)
         self.flat_items = self._flatten_tree(nodes, base_depth=0)
+        logger.debug("Flattened to %d items", len(self.flat_items))
 
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
@@ -268,9 +287,11 @@ class PreparationView:
             True if collapsed, False otherwise
         """
         if not self.flat_items or self.selected_index >= len(self.flat_items):
+            logger.debug("collapse_selected: no items or invalid index")
             return False
 
         item = self.flat_items[self.selected_index]
+        logger.debug("collapse_selected: item.type=%s", item.type)
 
         # If on a file, collapse parent todo
         if item.type == "file":
@@ -278,7 +299,9 @@ class PreparationView:
             if slug in self.expanded_todos:
                 self.expanded_todos.discard(slug)
                 self.rebuild_for_focus()
+                logger.debug("collapse_selected: collapsed file's parent todo %s", slug)
                 return True
+            logger.debug("collapse_selected: file's parent todo not expanded")
             return False
 
         if item.type == "todo":
@@ -286,9 +309,12 @@ class PreparationView:
             if slug in self.expanded_todos:
                 self.expanded_todos.discard(slug)
                 self.rebuild_for_focus()
+                logger.debug("collapse_selected: collapsed todo %s", slug)
                 return True
+            logger.debug("collapse_selected: todo already collapsed")
             return False  # Already collapsed
 
+        logger.debug("collapse_selected: not a collapsible item type")
         return False
 
     def drill_down(self) -> bool:
@@ -298,14 +324,17 @@ class PreparationView:
             True if action taken, False otherwise
         """
         if not self.flat_items or self.selected_index >= len(self.flat_items):
+            logger.debug("drill_down: no items or invalid index")
             return False
 
         item = self.flat_items[self.selected_index]
+        logger.debug("drill_down: item.type=%s", item.type)
 
         if item.type == "computer":
             self.focus.push("computer", str(item.data.get("name", "")))
             self.rebuild_for_focus()
             self.selected_index = 0
+            logger.debug("drill_down: pushed computer focus")
             return True
         if item.type == "todo":
             # Expand todo to show file children
@@ -313,19 +342,27 @@ class PreparationView:
             if slug not in self.expanded_todos:
                 self.expanded_todos.add(slug)
                 self.rebuild_for_focus()
+                logger.debug("drill_down: expanded todo %s", slug)
                 return True
+            logger.debug("drill_down: todo already expanded")
             return False  # Already expanded
+        logger.debug("drill_down: no action for type=%s", item.type)
         return False
 
     def expand_all(self) -> None:
         """Expand all todos."""
+        logger.debug("expand_all: expanding all todos (currently %d items)", len(self.flat_items))
+        count = 0
         for item in self.flat_items:
             if item.type == "todo":
                 self.expanded_todos.add(str(item.data.get("slug", "")))
+                count += 1
+        logger.debug("expand_all: expanded %d todos, now expanded_todos=%s", count, self.expanded_todos)
         self.rebuild_for_focus()
 
     def collapse_all(self) -> None:
         """Collapse all todos."""
+        logger.debug("collapse_all: clearing expanded_todos (was %s)", self.expanded_todos)
         self.expanded_todos.clear()
         self.rebuild_for_focus()
 
@@ -413,8 +450,9 @@ class PreparationView:
         curses.endwin()
 
         # Split window horizontally and attach to the new session
+        tmux = config.computer.tmux_binary
         subprocess.run(
-            ["tmux", "split-window", "-h", f"tmux attach -t {tmux_session_name}"],
+            [tmux, "split-window", "-h", f"{tmux} attach -t {tmux_session_name}"],
             check=False,
         )
 
@@ -478,23 +516,33 @@ class PreparationView:
             key: Key code
             stdscr: Curses screen object
         """
+        key_char = chr(key) if 32 <= key < 127 else f"({key})"
+        logger.debug("PreparationView.handle_key: key=%s (%d)", key_char, key)
+
         # Global expand/collapse
         if key == ord("+") or key == ord("="):
+            logger.debug("handle_key: expand_all triggered")
             self.expand_all()
             return
         if key == ord("-"):
+            logger.debug("handle_key: collapse_all triggered")
             self.collapse_all()
             return
 
         item = self._get_selected()
         if not item:
+            logger.debug("handle_key: no item selected, ignoring key")
             return
+
+        logger.debug("handle_key: selected item.type=%s", item.type)
 
         # File-specific actions
         if item.type == "file":
             if key == ord("v") and item.data.get("exists"):
+                logger.debug("handle_key: viewing file")
                 self._view_file(item.data, stdscr)
             elif key == ord("e"):
+                logger.debug("handle_key: editing file")
                 self._edit_file(item.data, stdscr)
             return
 

@@ -1,0 +1,49 @@
+computer:
+  name: Mac # Unique computer identifier for multi-computer MCP communication
+  user: { USER } # System user running the daemon (interpolated during make init)
+  role: development # Computer role: development, production, testing, api-server, etc. (shown in MCP computer list)
+  bot_username: teleclaude_mac_bot # Bot username for computer registry (must match TELEGRAM_BOT_USERNAME)
+  is_master: false # Master computer advertises full command list in Telegram autocomplete. Set to true on ONE computer only to avoid duplicates. All computers still handle all commands.
+  default_working_dir: ${WORKING_DIR}
+  timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
+  host: null # Optional hostname/IP for SSH remote execution (null = local computer)
+  # Special build to allow full disk access on MacOS. Defaults to "tmux".
+  tmux_binary: ${WORKING_DIR}/bin/tmux-wrapper.sh # Path to tmux binary or wrapper (default: "tmux"). Use custom wrapper for macOS full disk access.
+  # Trusted directories with metadata for AI understanding
+  # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
+  # Note: default_working_dir is automatically included with desc "TeleClaude folder"
+  trusted_dirs:
+    - name: documents
+      desc: personal documents
+      path: ${HOME}/Documents
+    - name: projects
+      desc: coding projects
+      path: ${HOME}/Projects
+
+database:
+  path: ${WORKING_DIR}/teleclaude.db
+
+telegram:
+  # Whitelist of trusted bots (security for AI-to-AI communication)
+  trusted_bots:
+    - teleclaude_mac_bot
+    - teleclaude_workstation_bot
+    - teleclaude_server_bot
+    # Add other computer bot usernames here
+
+agents:
+  claude:
+    # Special claude code wrapper to allow full disk access on MacOS. Defaults to "claude --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}''".
+    command: '${WORKING_DIR}/bin/ClaudeLauncher.app/Contents/MacOS/claude-launcher --dangerously-skip-permissions --settings ''{"forceLoginMethod": "claudeai"}'''
+  gemini:
+    # Special gemini build to allow full disk access on MacOS. Defaults to "gemini --yolo".
+    command: '${WORKING_DIR}/bin/GeminiLauncher.app/Contents/MacOS/gemini-launcher --yolo'
+  codex:
+    # Special codex build to allow full disk access on MacOS. Defaults to "codex --dangerously-bypass-approvals-and-sandbox --search".
+    command: '${WORKING_DIR}/bin/CodexLauncher.app/Contents/MacOS/codex-launcher --dangerously-bypass-approvals-and-sandbox --search'
+
+# Redis Configuration (for AI-to-AI communication)
+redis:
+  enabled: true # Enable Redis adapter for cross-computer messaging
+  url: redis://redis.srv.instrukt.ai:6379
+  password: ${REDIS_PASSWORD} # Set in .env

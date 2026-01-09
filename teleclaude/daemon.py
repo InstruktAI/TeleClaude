@@ -20,7 +20,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.constants import MCP_SOCKET_PATH
+from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -61,6 +61,7 @@ from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutb
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.utils.transcript import parse_session_transcript
 
 
 # TypedDict definitions for deployment status payloads
@@ -923,7 +924,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             payload.transcript_path = transcript_path
 
             agent_name = AgentName.from_str(session.active_agent)
-            title, summary = await summarize(agent_name, transcript_path)
+
+            # Try AI summarization, fall back to raw transcript on API failure
+            try:
+                title, summary = await summarize(agent_name, transcript_path)
+            except Exception as sum_err:
+                logger.warning(
+                    "Summarization failed for %s, falling back to raw transcript: %s", session_id[:8], sum_err
+                )
+                title = None
+                summary = parse_session_transcript(
+                    transcript_path, title="", agent_name=agent_name, tail_chars=UI_MESSAGE_MAX_CHARS
+                )
 
             payload.summary = summary
             payload.title = title

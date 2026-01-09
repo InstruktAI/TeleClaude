@@ -201,6 +201,7 @@ ALWAYS run `make test` after changing code!
 **What Redis is for (optional):**
 
 Redis is only needed for AI-to-AI collaboration via MCP tools:
+
 - `teleclaude__start_session(computer="remote")` - Start session on another computer
 - `teleclaude__send_message()` - Send message to remote session
 - `teleclaude__get_session_data()` - Read remote session output
@@ -350,7 +351,7 @@ The wrapper automatically uses `.rsyncignore` to protect `config.yml`, `.env`, d
 - All remote computers must be defined in `config.yml` under `remote_computers`
 - Script ONLY accepts computer shorthand names from config (prevents mistakes)
 - Each computer has: `user`, `host`, `ip`, `teleclaude_path`
-- Example in `config.yml.sample`
+- Example in `config.sample.yml`
 
 **1. Make changes locally** (on development machine)
 

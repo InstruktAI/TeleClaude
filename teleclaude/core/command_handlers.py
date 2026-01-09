@@ -1272,12 +1272,15 @@ async def handle_agent_start(
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
     # Save active agent and clear previous native session bindings.
+    # Also save initial prompt as last_message_sent for TUI display (nested sessions)
+    initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
     await db.update_session(
         session.session_id,
         active_agent=agent_name,
         thinking_mode=start_args.thinking_mode.value,
         native_session_id=None,
         native_log_file=None,
+        last_message_sent=initial_prompt[:200] if initial_prompt else None,
     )
 
     # Update session title to include agent info (replaces $Computer with Agent-mode@Computer)

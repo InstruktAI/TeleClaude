@@ -7,6 +7,8 @@ import curses
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
@@ -14,6 +16,8 @@ from teleclaude.cli.tui.widgets.modal import StartSessionModal
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
+
+logger = get_logger(__name__)
 
 
 def _relative_time(iso_timestamp: str | None) -> str:
@@ -94,6 +98,13 @@ class SessionsView:
             projects: List of projects
             sessions: List of sessions
         """
+        logger.debug(
+            "SessionsView.refresh: %d computers, %d projects, %d sessions",
+            len(computers),
+            len(projects),
+            len(sessions),
+        )
+
         # Store sessions for child lookup
         self._sessions = sessions
 
@@ -101,6 +112,7 @@ class SessionsView:
         self._update_activity_state(sessions)
 
         self.tree = build_tree(computers, projects, sessions)
+        logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
     def _update_activity_state(self, sessions: list[dict[str, object]]) -> None:  # guard: loose-dict
@@ -179,6 +191,12 @@ class SessionsView:
 
     def rebuild_for_focus(self) -> None:
         """Rebuild flat_items based on current focus context."""
+        logger.debug(
+            "SessionsView.rebuild_for_focus: focus.computer=%s, focus.project=%s",
+            self.focus.computer,
+            self.focus.project,
+        )
+
         # Start from root and filter based on focus
         nodes = self.tree
 
@@ -187,20 +205,25 @@ class SessionsView:
             for node in self.tree:
                 if node.type == "computer" and node.data.get("name") == self.focus.computer:
                     nodes = node.children
+                    logger.debug("Filtered to computer '%s': %d children", self.focus.computer, len(nodes))
                     break
             else:
                 nodes = []  # Computer not found
+                logger.warning("Computer '%s' not found in tree", self.focus.computer)
 
         # If also focused on a project, filter to that project's children
         if self.focus.project and nodes:
             for node in nodes:
                 if node.type == "project" and node.data.get("path") == self.focus.project:
                     nodes = node.children
+                    logger.debug("Filtered to project '%s': %d children", self.focus.project, len(nodes))
                     break
             else:
                 nodes = []  # Project not found
+                logger.warning("Project '%s' not found in tree", self.focus.project)
 
         self.flat_items = self._flatten_tree(nodes, base_depth=0)
+        logger.debug("Flattened to %d items", len(self.flat_items))
 
         # Reset selection if out of bounds
         if self.selected_index >= len(self.flat_items):
@@ -273,23 +296,29 @@ class SessionsView:
             True if action taken, False if not possible
         """
         if not self.flat_items or self.selected_index >= len(self.flat_items):
+            logger.debug("drill_down: no items or invalid index")
             return False
 
         item = self.flat_items[self.selected_index]
+        logger.debug("drill_down: item.type=%s", item.type)
 
         if item.type == "computer":
             self.focus.push("computer", str(item.data.get("name", "")))
             self.rebuild_for_focus()
             self.selected_index = 0
+            logger.debug("drill_down: pushed computer focus")
             return True
         if item.type == "session":
             # Expand this session (if not already expanded)
             session_id = str(item.data.get("session_id", ""))
             if session_id in self.collapsed_sessions:
                 self.collapsed_sessions.discard(session_id)
+                logger.debug("drill_down: expanded session %s", session_id[:8])
                 return True
+            logger.debug("drill_down: session already expanded")
             return False  # Already expanded
         # Projects don't drill down - sessions are visible as children
+        logger.debug("drill_down: no action for type=%s", item.type)
         return False
 
     def collapse_selected(self) -> bool:
@@ -299,24 +328,33 @@ class SessionsView:
             True if collapsed, False if not a session or already collapsed
         """
         if not self.flat_items or self.selected_index >= len(self.flat_items):
+            logger.debug("collapse_selected: no items or invalid index")
             return False
 
         item = self.flat_items[self.selected_index]
+        logger.debug("collapse_selected: item.type=%s", item.type)
+
         if item.type == "session":
             session_id = str(item.data.get("session_id", ""))
             if session_id not in self.collapsed_sessions:
                 self.collapsed_sessions.add(session_id)
+                logger.debug("collapse_selected: collapsed session %s", session_id[:8])
                 return True
+            logger.debug("collapse_selected: session already collapsed")
             return False  # Already collapsed - let navigation take over
+        logger.debug("collapse_selected: not a session, returning False")
         return False
 
     def expand_all(self) -> None:
         """Expand all sessions (show input/output)."""
+        logger.debug("expand_all: clearing collapsed_sessions (was %d)", len(self.collapsed_sessions))
         self.collapsed_sessions.clear()
 
     def collapse_all(self) -> None:
         """Collapse all sessions (hide input/output)."""
+        logger.debug("collapse_all: collecting all session IDs")
         self._collect_all_session_ids(self.tree)
+        logger.debug("collapse_all: collapsed_sessions now has %d entries", len(self.collapsed_sessions))
 
     def _collect_all_session_ids(self, nodes: list[TreeNode]) -> None:
         """Recursively collect all session IDs into collapsed_sessions.
@@ -401,28 +439,39 @@ class SessionsView:
             key: Key code
             stdscr: Curses screen object
         """
+        key_char = chr(key) if 32 <= key < 127 else f"({key})"
+        logger.debug("SessionsView.handle_key: key=%s (%d)", key_char, key)
+
         # Global expand/collapse (works even with no selection)
         if key == ord("+") or key == ord("="):  # = for convenience (shift not needed)
+            logger.debug("handle_key: expand_all triggered")
             self.expand_all()
             return
         if key == ord("-"):
+            logger.debug("handle_key: collapse_all triggered")
             self.collapse_all()
             return
 
         if not self.flat_items or self.selected_index >= len(self.flat_items):
+            logger.debug("handle_key: no items or invalid index, ignoring key")
             return
 
         selected = self.flat_items[self.selected_index]
+        logger.debug("handle_key: selected.type=%s", selected.type)
 
         if key == ord("n"):
             # Start new session - only on project
             if selected.type == "project":
+                logger.debug("handle_key: starting new session on project")
                 self._start_session_for_project(stdscr, selected.data)
+            else:
+                logger.debug("handle_key: 'n' ignored, not on a project")
             return
 
         if key == ord("k"):
             # Kill selected session
             if selected.type != "session":
+                logger.debug("handle_key: 'k' ignored, not on a session")
                 return  # Only kill sessions, not computers/projects
 
             # Confirm kill
@@ -459,19 +508,33 @@ class SessionsView:
             height: Available height
             width: Screen width
         """
+        logger.debug(
+            "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d",
+            start_row,
+            height,
+            width,
+            len(self.flat_items),
+        )
+
         if not self.flat_items:
             msg = "(no items)"
+            logger.debug("render: no items to display")
             stdscr.addstr(start_row, 2, msg, curses.A_DIM)  # type: ignore[attr-defined]
             return
 
         row = start_row
+        items_rendered = 0
         for i, item in enumerate(self.flat_items):
             if row >= start_row + height:
+                logger.debug("render: stopped at row %d (out of space), rendered %d items", row, items_rendered)
                 break  # No more space
 
             is_selected = i == self.selected_index
             lines_used = self._render_item(stdscr, row, item, width, is_selected)
             row += lines_used
+            items_rendered += 1
+
+        logger.debug("render: rendered %d of %d items", items_rendered, len(self.flat_items))
 
     def _render_item(self, stdscr: object, row: int, item: TreeNode, width: int, selected: bool) -> int:
         """Render a single tree item.
@@ -559,44 +622,52 @@ class SessionsView:
         line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
         try:
             stdscr.addstr(row, 0, line1[:width], title_attr)  # type: ignore[attr-defined]
-        except curses.error:
-            pass
+        except curses.error as e:
+            logger.warning("curses error rendering session title at row %d: %s", row, e)
 
-        # If collapsed, only show line 1
+        # If collapsed, only show title line
         if is_collapsed:
             return 1
 
         lines_used = 1
+
+        # Calculate content indent (align with agent name)
+        # indent + "[X] ▶ " = where agent starts
+        content_indent = indent + "      "  # 6 chars for "[X] ▶ "
+
+        # Line 2 (expanded only): ID: <full_session_id>
+        line2 = f"{content_indent}ID: {session_id}"
+        try:
+            stdscr.addstr(row + lines_used, 0, line2[:width], normal_attr)  # type: ignore[attr-defined]
+        except curses.error as e:
+            logger.warning("curses error rendering session ID at row %d: %s", row + lines_used, e)
+        lines_used += 1
 
         # Determine which field is "active" (highlight) based on state tracking
         active = self._active_field.get(session_id, "none")
         input_attr = highlight_attr if active == "input" else muted_attr
         output_attr = highlight_attr if active == "output" else muted_attr
 
-        # Calculate content indent (align with agent name)
-        # indent + "[X] ▶ " = where agent starts
-        content_indent = indent + "      "  # 6 chars for "[X] ▶ "
-
-        # Line 2: Last input (only if content exists)
+        # Line 3: Last input (only if content exists)
         last_input = str(session.get("last_input") or "").strip()
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            line2 = f"{content_indent}last input: {input_text}"
+            line3 = f"{content_indent}last input: {input_text}"
             try:
-                stdscr.addstr(row + lines_used, 0, line2[:width], input_attr)  # type: ignore[attr-defined]
-            except curses.error:
-                pass
+                stdscr.addstr(row + lines_used, 0, line3[:width], input_attr)  # type: ignore[attr-defined]
+            except curses.error as e:
+                logger.warning("curses error rendering session input at row %d: %s", row + lines_used, e)
             lines_used += 1
 
-        # Line 3: Last output (only if content exists)
+        # Line 4: Last output (only if content exists)
         last_output = str(session.get("last_output") or "").strip()
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line3 = f"{content_indent}last output: {output_text}"
+            line4 = f"{content_indent}last output: {output_text}"
             try:
-                stdscr.addstr(row + lines_used, 0, line3[:width], output_attr)  # type: ignore[attr-defined]
-            except curses.error:
-                pass
+                stdscr.addstr(row + lines_used, 0, line4[:width], output_attr)  # type: ignore[attr-defined]
+            except curses.error as e:
+                logger.warning("curses error rendering session output at row %d: %s", row + lines_used, e)
             lines_used += 1
 
         return lines_used

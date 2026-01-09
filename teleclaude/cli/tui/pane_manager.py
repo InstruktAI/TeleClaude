@@ -6,6 +6,8 @@ import os
 import subprocess
 from dataclasses import dataclass
 
+from teleclaude.config import config
+
 
 @dataclass
 class PaneState:
@@ -56,7 +58,7 @@ class TmuxPaneManager:
         """
         try:
             result = subprocess.run(
-                ["tmux", *args],
+                [config.computer.tmux_binary, *args],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -97,11 +99,11 @@ class TmuxPaneManager:
         self._cleanup_panes()
 
         # Create parent pane on the right (50% width)
-        # Use env -u TMUX to unset TMUX so nested attach works
-        # Wrap in sh -c to show errors if attach fails
+        # Use TERM=tmux-256color for proper rendering, -u for UTF-8
+        # Hide nested status bar with "set status off"
+        tmux = config.computer.tmux_binary
         attach_cmd = (
-            f"sh -c 'env -u TMUX tmux attach-session -t {tmux_session_name} || "
-            f'{{ echo "Failed to attach to {tmux_session_name}"; sleep 3; }}\''
+            f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {tmux_session_name} \\; set status off"
         )
         parent_pane_id = self._run_tmux(
             "split-window",
@@ -117,10 +119,7 @@ class TmuxPaneManager:
 
         # If there's a child session, split the right pane vertically
         if child_tmux_session_name and parent_pane_id:
-            child_attach_cmd = (
-                f"sh -c 'env -u TMUX tmux attach-session -t {child_tmux_session_name} || "
-                f'{{ echo "Failed to attach to {child_tmux_session_name}"; sleep 3; }}\''
-            )
+            child_attach_cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {child_tmux_session_name} \\; set status off"
             child_pane_id = self._run_tmux(
                 "split-window",
                 "-t",
@@ -209,10 +208,8 @@ class TmuxPaneManager:
 
         # Create new child pane if requested
         if child_tmux_session_name and self.state.parent_pane_id:
-            child_attach_cmd = (
-                f"sh -c 'env -u TMUX tmux attach-session -t {child_tmux_session_name} || "
-                f'{{ echo "Failed to attach to {child_tmux_session_name}"; sleep 3; }}\''
-            )
+            tmux = config.computer.tmux_binary
+            child_attach_cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {child_tmux_session_name} \\; set status off"
             child_pane_id = self._run_tmux(
                 "split-window",
                 "-t",

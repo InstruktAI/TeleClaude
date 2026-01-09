@@ -158,7 +158,7 @@ This handles:
 
 To add features that use configuration values (like `trusted_dirs`):
 
-1. **Add to `config.yml.sample`** with comments and examples
+1. **Add to `config.sample.yml`** with comments and examples
 2. **Pass from daemon to adapter** in adapter config:
    ```python
    adapter_config = {
@@ -190,6 +190,7 @@ To add features that use configuration values (like `trusted_dirs`):
 
 1. Update `teleclaude/core/schema.sql`
 2. Add migration logic in `SessionManager.initialize()`:
+
    ```python
    # Check if column exists
    cursor = await self.db.execute("PRAGMA table_info(sessions)")
@@ -199,16 +200,17 @@ To add features that use configuration values (like `trusted_dirs`):
        await self.db.execute("ALTER TABLE sessions ADD COLUMN new_column TEXT")
        await self.db.commit()
    ```
+
 3. Test with existing database (daemon should auto-migrate on startup)
 4. Update `models.py` if data classes change
 
 ### Adding New Configuration Options
 
-1. Add to `config.yml.sample` with comments and example values:
+1. Add to `config.sample.yml` with comments and example values:
    ```yaml
    new_feature:
      enabled: true
-     option: "value"  # Description of what this does
+     option: 'value' # Description of what this does
    ```
 2. Document in `docs/architecture.md` or relevant doc
 3. Access via `self.config[key]` in daemon
@@ -223,6 +225,7 @@ To add features that use configuration values (like `trusted_dirs`):
 ## Code Standards
 
 See global directives (automatically loaded for all projects):
+
 - `~/.claude/docs/development/coding-directives.md`
 - `~/.claude/docs/development/testing-directives.md`
 
@@ -243,8 +246,8 @@ See global directives (automatically loaded for all projects):
 3. **Run linting**: `make lint`
 4. **Run tests**: `make test`
 5. **Restart daemon**: `make restart`
-3. **Verify**: `make status`
-4. **Monitor logs`: `tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log` (or `instrukt-ai-logs teleclaude --since 10m`)
+6. **Verify**: `make status`
+7. \*\*Monitor logs`: `tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log`(or`instrukt-ai-logs teleclaude --since 10m`)
 
 **Never stop the service to check logs** - use `tail -f` instead.
 

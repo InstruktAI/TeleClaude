@@ -55,6 +55,9 @@ def build_tree(
         comp_name = computer.get("name", "")
         comp_projects = [p for p in projects if p.get("computer") == comp_name]
 
+        # Track matched sessions to find orphans later
+        matched_session_ids: set[str] = set()
+
         for project in comp_projects:
             proj_node = TreeNode(
                 type="project",
@@ -71,6 +74,38 @@ def build_tree(
             ]
 
             for idx, session in enumerate(proj_sessions, 1):
+                sess_node = _build_session_node(session, idx, 2, proj_node, sessions_by_initiator)
+                proj_node.children.append(sess_node)
+                session_id = session.get("session_id")
+                if session_id:
+                    matched_session_ids.add(str(session_id))
+
+            comp_node.children.append(proj_node)
+
+        # Find orphan sessions (not matched to any project) and group by working_directory
+        orphan_sessions = [
+            s
+            for s in root_sessions
+            if s.get("computer") == comp_name and str(s.get("session_id", "")) not in matched_session_ids
+        ]
+
+        # Group orphans by their working_directory to create project nodes
+        orphans_by_path: dict[str, list[dict[str, object]]] = {}  # guard: loose-dict
+        for session in orphan_sessions:
+            wd = str(session.get("working_directory", "~"))
+            orphans_by_path.setdefault(wd, []).append(session)
+
+        # Create project nodes for each unique working_directory
+        for wd_path, wd_sessions in orphans_by_path.items():
+            proj_node = TreeNode(
+                type="project",
+                data={"path": wd_path, "computer": comp_name},
+                depth=1,
+                children=[],
+                parent=comp_node,
+            )
+
+            for idx, session in enumerate(wd_sessions, 1):
                 sess_node = _build_session_node(session, idx, 2, proj_node, sessions_by_initiator)
                 proj_node.children.append(sess_node)
 

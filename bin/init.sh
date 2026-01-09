@@ -173,8 +173,8 @@ setup_config() {
         exit 1
     fi
 
-    if [ ! -f "$INSTALL_DIR/config.yml.sample" ]; then
-        print_error "config.yml.sample not found"
+    if [ ! -f "$INSTALL_DIR/config.sample.yml" ]; then
+        print_error "config.sample.yml not found"
         exit 1
     fi
 
@@ -266,7 +266,7 @@ EOF
 
     # Create config.yml if needed
     if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-        cp "$INSTALL_DIR/config.yml.sample" "$INSTALL_DIR/config.yml"
+        cp "$INSTALL_DIR/config.sample.yml" "$INSTALL_DIR/config.yml"
 
         # Update computer name and user in config.yml
         if command -v sed &> /dev/null; then
