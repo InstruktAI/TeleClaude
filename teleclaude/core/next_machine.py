@@ -45,22 +45,30 @@ POST_COMPLETION: dict[str, str] = {
    - teleclaude__end_session(computer="local", session_id="<session_id>")
    - Call {next_call}
 3. If bugs remain or tests fail:
-   - Keep session alive and guide worker to resolution""",
+   - Keep session alive and guide worker to resolution
+""",
     "next-build": """WHEN WORKER COMPLETES:
-1. Verify worker reports success with passing tests
-2. If success:
+1. MANDATORY VERIFICATION - Never trust worker self-reports:
+     - Run linter
+     - Run tests
+     - Commits with --no-verify indicate incomplete work
+     - If checks fail, work is NOT done
+2a. If verification FAILS:
+    - Keep session alive and guide worker to resolution
+    - Only mark phase when YOUR verification passes    
+2b. If success:
    - teleclaude__mark_phase(slug="{args}", phase="build", status="complete")
    - teleclaude__end_session(computer="local", session_id="<session_id>")
    - Call {next_call}
-3. If failure or blocker:
-   - Keep session alive and guide worker to resolution""",
+""",
     "next-review": """WHEN WORKER COMPLETES:
 1. Read trees/{args}/todos/{args}/review-findings.md
 2. Relay verdict to state:
    - If "[x] APPROVE": teleclaude__mark_phase(slug="{args}", phase="review", status="approved")
    - If "[x] REQUEST CHANGES": teleclaude__mark_phase(slug="{args}", phase="review", status="changes_requested")
 3. teleclaude__end_session(computer="local", session_id="<session_id>")
-4. Call {next_call}""",
+4. Call {next_call}
+""",
     "next-fix-review": """WHEN WORKER COMPLETES:
 1. Verify fixes applied and tests pass
 2. If fixes complete:
@@ -68,7 +76,8 @@ POST_COMPLETION: dict[str, str] = {
    - teleclaude__end_session(computer="local", session_id="<session_id>")
    - Call {next_call}
 3. If fixes incomplete:
-   - Keep session alive and guide worker to finish""",
+   - Keep session alive and guide worker to finish
+""",
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Verify merge and archive succeeded
 2. If success:

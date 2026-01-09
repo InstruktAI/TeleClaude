@@ -25,7 +25,7 @@ from teleclaude.core import (
     command_handlers,
     polling_coordinator,
     session_cleanup,
-    terminal_bridge,  # Imported for test mocking
+    terminal_bridge,
     terminal_io,
     voice_message_handler,
 )
@@ -57,11 +57,7 @@ from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
-from teleclaude.core.terminal_events import (
-    TerminalOutboxMetadata,
-    TerminalOutboxPayload,
-    TerminalOutboxResponse,
-)
+from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload, TerminalOutboxResponse
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
@@ -1206,12 +1202,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
             if changed:
                 summary = self._summarize_output_change(before_tail, after_tail)
-                logger.info(
+                logger.debug(
                     "agent_then_message acceptance output change: %s",
                     summary,
                 )
                 return True
-            logger.info(
+            logger.trace(
                 "agent_then_message no output change after enter attempt %d: tail=%s",
                 attempt + 1,
                 repr(after_tail[-160:]) if after_tail else "''",
