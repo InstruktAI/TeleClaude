@@ -12,3 +12,4 @@
 | 2026-01-02 | reduce-loose-dict-typings | Reduce loose dict typings to zero guardrails warnings | DELIVERED | 2e4b655 | done/009-reduce-loose-dict-typings |
 | 2026-01-03 | state-machine-refinement | State Machine Refinement              | DELIVERED | 3631176 | done/008-state-machine-refinement |
 | 2026-01-09 | db-refactor | Eliminate ux_state JSON Blob | DELIVERED | f9e45fb | done/010-db-refactor |
+| 2026-01-09 | telec-enhancements | telec: TUI Client for TeleClaude | DELIVERED | ceb9e4f | done/011-telec-enhancements |
