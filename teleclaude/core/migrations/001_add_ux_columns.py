@@ -1,27 +1,69 @@
-"""Migrate ux_state JSON blob to proper columns."""
+"""Add UX state columns to sessions table and migrate data from ux_state JSON."""
 
 # mypy: disable-error-code="misc"
+# Migration files handle untyped JSON data and sqlite rows
 
 import json
-import logging
+from typing import cast
 
 import aiosqlite
+from instrukt_ai_logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+# Columns to add (name -> type definition)
+REQUIRED_COLUMNS = {
+    "output_message_id": "TEXT",
+    "last_input_adapter": "TEXT",
+    "notification_sent": "INTEGER DEFAULT 0",
+    "native_session_id": "TEXT",
+    "native_log_file": "TEXT",
+    "active_agent": "TEXT",
+    "thinking_mode": "TEXT",
+    "native_tty_path": "TEXT",
+    "tmux_tty_path": "TEXT",
+    "native_pid": "INTEGER",
+    "tui_log_file": "TEXT",
+    "tui_capture_started": "INTEGER DEFAULT 0",
+    "last_message_sent": "TEXT",
+    "last_message_sent_at": "TEXT",
+    "last_feedback_received": "TEXT",
+    "last_feedback_received_at": "TEXT",
+}
 
 
-async def migrate(db: aiosqlite.Connection) -> None:
-    """Migrate ux_state JSON blob to columns.
+async def up(db: aiosqlite.Connection) -> None:
+    """Add UX columns and migrate data from ux_state JSON blob."""
+    # Get current columns
+    cursor = await db.execute("PRAGMA table_info(sessions)")
+    rows = await cursor.fetchall()
+    existing_columns: set[str] = set()
+    for row in rows:
+        col_name = cast(str, row[1])
+        existing_columns.add(col_name)
 
-    Migrates:
-    - Scalar fields from ux_state JSON → session columns
-    - pending_deletions list → pending_message_deletions table (deletion_type='user_input')
-    - pending_feedback_deletions list → pending_message_deletions table (deletion_type='feedback')
-    """
-    # Fetch all sessions with ux_state
+    # Add missing columns
+    added_columns: list[str] = []
+    for column_name, column_type in REQUIRED_COLUMNS.items():
+        if column_name not in existing_columns:
+            await db.execute(f"ALTER TABLE sessions ADD COLUMN {column_name} {column_type}")
+            added_columns.append(column_name)
+
+    if added_columns:
+        await db.commit()
+        logger.info("Added columns: %s", ", ".join(added_columns))
+
+    # Migrate data from ux_state JSON if column exists
+    if "ux_state" in existing_columns:
+        await _migrate_ux_state_data(db)
+
+
+async def _migrate_ux_state_data(db: aiosqlite.Connection) -> None:
+    """Migrate data from ux_state JSON blob to individual columns."""
     cursor = await db.execute("SELECT session_id, ux_state FROM sessions WHERE ux_state IS NOT NULL")
     rows = await cursor.fetchall()
 
+    migrated_count = 0
     for row in rows:
         session_id = row[0]
         ux_state_raw = row[1]
@@ -32,7 +74,7 @@ async def migrate(db: aiosqlite.Connection) -> None:
         try:
             ux = json.loads(ux_state_raw)
         except json.JSONDecodeError as e:
-            logger.warning(f"Skipping session {session_id} - invalid ux_state JSON: {e}")
+            logger.warning("Skipping session %s - invalid ux_state JSON: %s", session_id, e)
             continue
 
         # Update scalar columns
@@ -52,7 +94,7 @@ async def migrate(db: aiosqlite.Connection) -> None:
                 tui_log_file = ?,
                 tui_capture_started = ?
             WHERE session_id = ?
-        """,
+            """,
             (
                 ux.get("output_message_id"),
                 ux.get("last_input_adapter"),
@@ -77,7 +119,7 @@ async def migrate(db: aiosqlite.Connection) -> None:
                 INSERT OR IGNORE INTO pending_message_deletions
                     (session_id, message_id, deletion_type)
                 VALUES (?, ?, 'user_input')
-            """,
+                """,
                 (session_id, msg_id),
             )
 
@@ -88,8 +130,12 @@ async def migrate(db: aiosqlite.Connection) -> None:
                 INSERT OR IGNORE INTO pending_message_deletions
                     (session_id, message_id, deletion_type)
                 VALUES (?, ?, 'feedback')
-            """,
+                """,
                 (session_id, msg_id),
             )
 
+        migrated_count += 1
+
     await db.commit()
+    if migrated_count > 0:
+        logger.info("Migrated ux_state data for %d sessions", migrated_count)

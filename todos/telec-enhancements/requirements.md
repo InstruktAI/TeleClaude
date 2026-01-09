@@ -8,15 +8,17 @@ Current `telec` CLI:
 3. Limited TUI - just a session picker
 4. Can't interact with sessions on remote computers
 5. No visibility into AI-to-AI delegation chains
+6. No visibility into planned work (todos/roadmap)
 
 ## Goal
 
 Transform `telec` into a rich TUI client that:
 1. Connects to the daemon via REST API (Unix socket)
-2. Provides a single unified project-centric view
+2. Provides two views: Sessions (running work) and Preparation (planned work)
 3. Shows AI-to-AI session hierarchies (delegated sessions nested under initiators)
-4. Supports remote session attachment via SSH
-5. Shows agent availability in persistent footer
+4. Shows todos with their status and allows starting/preparing work
+5. Supports remote session attachment via SSH
+6. Shows agent availability in persistent footer
 
 ## Architecture
 
@@ -25,8 +27,9 @@ Transform `telec` into a rich TUI client that:
 │                            telec TUI                                     │
 │                                                                          │
 │  - Connects to REST API socket (/tmp/teleclaude-api.sock)               │
-│  - Single unified curses interface                                      │
+│  - Two views: Sessions (1) and Preparation (2)                          │
 │  - SSH for remote session attachment                                    │
+│  - glow for markdown viewing, $EDITOR for editing                       │
 └─────────────────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -41,19 +44,31 @@ Transform `telec` into a rich TUI client that:
 │  GET  /sessions/{id}/transcript    - Get session transcript             │
 │  GET  /computers                   - List online computers              │
 │  GET  /projects                    - List projects from all computers   │
+│  GET  /projects/{path}/todos       - List todos for a project           │
 │  GET  /agents/availability         - Get agent availability status      │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## TUI Layout
+## View Navigation
+
+Two views, switchable via number keys:
+
+- `1` - Sessions view (running work)
+- `2` - Preparation view (planned work)
+
+Both views share the same tree structure: Computer → Project → Items
+
+---
+
+## View 1: Sessions
 
 ### Project-Centric Unified View
 
-Single view showing computers → projects → sessions in a tree structure.
+Shows computers → projects → sessions in a tree structure.
 Sessions with `initiator_session_id` are nested under their parent session.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
+┌─ [1] Sessions  [2] Preparation ─────────────────────────────────────────┐
 │ macbook                                                          online │
 │   ~/apps/TeleClaude                                                     │
 │     ├─ [1] claude/slow  "Orchestrate feature"                    5m ago │
@@ -110,7 +125,6 @@ Each session shows 2-3 lines:
 
 This indicates state at a glance:
 - Input bright, Output muted → session is idle, waiting for input
-- Input muted, Output bright → impossible (output always follows input)
 - Input bright, no Output line → session is actively processing
 
 ### AI-to-AI Session Hierarchy
@@ -120,6 +134,126 @@ Sessions are nested based on `initiator_session_id`:
 - Index numbering reflects hierarchy: parent `[1]`, children `[1.1]`, `[1.2]`
 - Enables visualization of orchestrator → worker delegation chains
 
+### Sessions Action Bar
+
+- `Enter` - Attach to session / Start session (on project with no sessions)
+- `n` - New session (opens modal)
+- `m` - Send message to selected session
+- `k` - Kill/end selected session
+- `t` - View transcript
+- `r` - Refresh
+
+---
+
+## View 2: Preparation
+
+### Todo-Centric View
+
+Shows computers → projects → todos from `todos/roadmap.md`.
+Flat list (no dependency nesting - dependencies are managed conversationally by AI).
+
+```
+┌─ [1] Sessions  [2] Preparation ─────────────────────────────────────────┐
+│ macbook                                                          online │
+│   ~/apps/TeleClaude                                                     │
+│     ├─ [ ] test-cleanup                                         pending │
+│     │    Define and enforce test quality standards                      │
+│     │    requirements: ✗  impl-plan: ✗                                  │
+│     │                                                                   │
+│     ├─ [.] ui-event-queue-per-adapter                             ready │
+│     │    Create per-adapter UI event queues                             │
+│     │    requirements: ✓  impl-plan: ✓                                  │
+│     │                                                                   │
+│     ├─ [>] db-refactor                                      in progress │
+│     │    Eliminate ux_state JSON blob                                   │
+│     │    requirements: ✓  impl-plan: ✓                                  │
+│     │                                                                   │
+│     └─ [.] telec-enhancements                                     ready │
+│          Transform telec into rich TUI                                  │
+│          requirements: ✓  impl-plan: ✓                                  │
+│                                                                         │
+│ raspi                                                            online │
+│   ~/apps/TeleClaude                                                     │
+│     └─ (same todos - shared repo)                                       │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│ [s] Start Work  [p] Prepare  [v/V] View  [e/E] Edit  [r] Refresh        │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Agents: claude ✓  gemini ✓  codex ✗ (2h 15m)             │ Last: 5s ago│
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Todo Display
+
+Each todo shows 3 lines:
+
+**Line 1: Status and Slug**
+- Status indicator: `[ ]` pending, `[.]` ready, `[>]` in progress
+- Slug name
+- Status label (pending/ready/in progress)
+
+**Line 2: Description**
+- From roadmap.md (text after the slug line)
+- Truncated to ~80 characters
+
+**Line 3: File Status**
+- `requirements: ✓/✗` - whether requirements.md exists
+- `impl-plan: ✓/✗` - whether implementation-plan.md exists
+
+### Todo Parsing
+
+Todos are parsed from `todos/roadmap.md`:
+
+```markdown
+- [ ] slug-name
+      Description text here
+```
+
+Pattern: `^-\s+\[([ .>])\]\s+(\S+)` extracts status and slug.
+Description is the indented text following the slug line.
+
+### Preparation Action Bar
+
+- `s` - Start Work: Run `/prime-orchestrator {slug}` (only for `[.]` ready items)
+- `p` - Prepare: Run `/next-prepare {slug}` (any status)
+- `v` - View requirements.md (opens in `glow`)
+- `V` - View implementation-plan.md (opens in `glow`)
+- `e` - Edit requirements.md (opens in `$EDITOR`)
+- `E` - Edit implementation-plan.md (opens in `$EDITOR`)
+- `r` - Refresh
+
+### External Tool Integration
+
+**Viewing markdown (glow):**
+```python
+curses.endwin()  # Suspend TUI
+subprocess.run(["glow", f"todos/{slug}/requirements.md"])
+curses.doupdate()  # Resume TUI
+```
+
+**Editing files ($EDITOR):**
+```python
+curses.endwin()
+editor = os.environ.get("EDITOR", "vim")
+subprocess.run([editor, f"todos/{slug}/requirements.md"])
+curses.doupdate()
+```
+
+### Action Availability
+
+| Action | Available when |
+|--------|----------------|
+| Start Work (`s`) | Status is `[.]` (ready) AND requirements.md exists AND impl-plan.md exists |
+| Prepare (`p`) | Always |
+| View requirements (`v`) | requirements.md exists |
+| View impl-plan (`V`) | implementation-plan.md exists |
+| Edit requirements (`e`) | Always (creates if missing) |
+| Edit impl-plan (`E`) | Always (creates if missing) |
+
+---
+
+## Shared Components
+
 ### Computer Display
 
 - Only online computers are shown
@@ -128,24 +262,18 @@ Sessions are nested based on `initiator_session_id`:
 
 ### Navigation
 
+- `1` / `2` - Switch views
 - `↑/↓` or arrow keys - Navigate between items
 - `Tab` - Move between sections
-- `Enter` - Context-sensitive action (attach to session, start session on empty project)
-
-### Action Bar
-
-Shown at bottom, actions apply to selected item:
-- `Enter` - Attach to session / Start session (on project with no sessions)
-- `n` - New session (opens modal)
-- `m` - Send message to selected session
-- `k` - Kill/end selected session
-- `t` - View transcript
-- `r` - Refresh
+- `Enter` - Context-sensitive action
+- `r` - Refresh current view
 
 ### Persistent Footer
 
 - Agent availability: `✓` = available, `✗ (Xh Ym)` = unavailable with countdown
 - Last refresh timestamp
+
+---
 
 ## Start Session Modal
 
@@ -178,13 +306,15 @@ Shown at bottom, actions apply to selected item:
 - Arrow keys skip over unavailable agents (cannot be selected)
 - Prevents users from attempting to start sessions with rate-limited agents
 
-### Navigation
+### Modal Navigation
 
 - `↑/↓` - Move between field groups
 - `←/→` - Select within a group (skips unavailable agents)
 - `Tab` - Move between groups
 - `Enter` - Start session
 - `Esc` - Cancel
+
+---
 
 ## Functional Requirements
 
@@ -195,7 +325,7 @@ Connect to daemon via Unix socket (`/tmp/teleclaude-api.sock`).
 **On startup:**
 1. Connect to API socket
 2. Fetch sessions, computers, projects, agent availability
-3. Build unified tree view
+3. Build unified tree view for current view
 
 ### FR-2: Session Attachment
 
@@ -215,20 +345,35 @@ ssh -t <user>@<host> "tmux attach -t <tmux_session_name>"
 - Unavailable agents disabled in start modal (grayed out, not selectable)
 - Footer: `✓` = available, `✗ (Xh Ym)` = unavailable with countdown
 
-### FR-4: CLI Shortcuts
+### FR-4: Todo Parsing
+
+- Parse `todos/roadmap.md` for slug, status, description
+- Check file existence: `todos/{slug}/requirements.md`, `todos/{slug}/implementation-plan.md`
+- No dependency parsing (handled conversationally by AI)
+
+### FR-5: External Tool Launch
+
+- Suspend TUI with `curses.endwin()`
+- Launch external tool (glow, $EDITOR, tmux attach, ssh)
+- Resume TUI with `curses.doupdate()` when tool exits
+
+### FR-6: CLI Shortcuts
 
 ```bash
-telec                          # Open TUI
+telec                          # Open TUI (Sessions view)
 telec /list                    # List sessions (stdout, no TUI)
 telec /claude [mode] [prompt]  # Start Claude session
 telec /gemini [mode] [prompt]  # Start Gemini session
 telec /codex [mode] [prompt]   # Start Codex session
 ```
 
+---
+
 ## Non-Functional Requirements
 
 ### NFR-1: Performance
 - Startup: < 1s to first render
+- View switch: < 200ms
 - API call timeout: 5s
 
 ### NFR-2: Terminal Compatibility
@@ -238,25 +383,46 @@ telec /codex [mode] [prompt]   # Start Codex session
 - Works inside tmux
 
 ### NFR-3: Navigation
-- Full keyboard navigation (arrows + Tab)
-- Consistent keybindings throughout
+- Full keyboard navigation (arrows + Tab + number keys)
+- Consistent keybindings across views
+
+### NFR-4: External Dependencies
+- `glow` for markdown viewing (graceful degradation if missing)
+- `$EDITOR` for file editing (fallback to `vim`)
+
+---
 
 ## Dependencies
 
 - **db-refactor** - provides `last_input`, `last_output` columns
 - Daemon running with REST API enabled
 - SSH keys configured for remote computers
+- `glow` installed for markdown viewing (optional but recommended)
+
+---
 
 ## Success Criteria
 
+### Sessions View
 - [ ] TUI displays unified project-centric tree view
 - [ ] Sessions nested under their projects
 - [ ] AI-to-AI sessions nested under initiator sessions
 - [ ] Session lines show last input/output with color coding
-- [ ] Footer shows agent availability
 - [ ] Can attach to local sessions via tmux
 - [ ] Can attach to remote sessions via SSH
 - [ ] Start session modal with agent/mode selection
 - [ ] Unavailable agents disabled in modal
+
+### Preparation View
+- [ ] Todos parsed from roadmap.md
+- [ ] Todo lines show status, description, file existence
+- [ ] Start Work action launches orchestrator (ready items only)
+- [ ] Prepare action launches architect session
+- [ ] View actions open glow for markdown rendering
+- [ ] Edit actions open $EDITOR
+
+### Shared
+- [ ] View switching with `1` / `2` keys
+- [ ] Footer shows agent availability
 - [ ] All navigation works with keyboard
 - [ ] CLI shortcuts work (`/list`, `/claude`, `/gemini`, `/codex`)

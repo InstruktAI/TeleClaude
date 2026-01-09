@@ -163,37 +163,47 @@ async def test_new_session_auto_command_agent_then_message():
 
 
 @pytest.mark.asyncio
-async def test_agent_then_message_waits_settle_delay():
-    """agent_then_message should pause before injecting message."""
+async def test_agent_then_message_waits_for_stabilization():
+    """agent_then_message should wait for TUI to stabilize before injecting message."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
 
+    call_order: list[str] = []
+
+    async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        call_order.append("wait_for_stable")
+        return True, "stable output"
+
+    async def mock_send_text(*_args: object, **_kwargs: object) -> bool:
+        call_order.append("inject_message")
+        return True
+
+    async def mock_confirm(*_args: object, **_kwargs: object) -> bool:
+        call_order.append("confirm_acceptance")
+        return True
+
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send_keys,
-        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_contains", new_callable=AsyncMock) as mock_echo,
-        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_change", new_callable=AsyncMock) as mock_banner,
-        patch("teleclaude.daemon.TeleClaudeDaemon._confirm_command_acceptance", new_callable=AsyncMock) as mock_accept,
-        patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 2.5),
-        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0.0),
-        patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
+        patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
+        # Patch delays to make test fast
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_STABILIZE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
     ):
+        mock_running.return_value = True
+        mock_send.side_effect = mock_send_text
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(
                 tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="gemini"
             )
         )
         mock_db.update_last_activity = AsyncMock()
-        mock_running.return_value = True
-        mock_send_keys.return_value = True
-        mock_echo.return_value = (True, "/prime-architect")
-        mock_banner.return_value = (True, "banner")
-        mock_accept.return_value = True
 
         result = await daemon._handle_agent_then_message(
             "sess-123",
@@ -201,42 +211,90 @@ async def test_agent_then_message_waits_settle_delay():
         )
 
         assert result["status"] == "success"
-        mock_sleep.assert_any_await(2.5)
+        # Verify order: stabilize -> inject -> confirm
+        assert call_order == ["wait_for_stable", "inject_message", "confirm_acceptance"]
 
 
 @pytest.mark.asyncio
-async def test_agent_then_message_times_out_on_no_output_change():
-    """agent_then_message should fail if output never changes after enter."""
+async def test_agent_then_message_proceeds_after_stabilization_timeout():
+    """agent_then_message should proceed even if stabilization times out."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
 
+    async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        # Simulate stabilization timeout
+        return False, "still changing"
+
+    async def mock_confirm(*_args: object, **_kwargs: object) -> bool:
+        return True
+
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send_keys,
-        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_contains", new_callable=AsyncMock) as mock_echo,
-        patch("teleclaude.daemon.TeleClaudeDaemon._wait_for_output_change", new_callable=AsyncMock) as mock_banner,
-        patch("teleclaude.daemon.TeleClaudeDaemon._confirm_command_acceptance", new_callable=AsyncMock) as mock_accept,
-        patch("teleclaude.daemon.AGENT_START_POLL_INTERVAL_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_POST_BANNER_DELAY_S", 0.0),
-        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0.0),
-        patch("teleclaude.daemon.asyncio.sleep", new_callable=AsyncMock),
+        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
+        patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
+        # Patch delays to make test fast
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_STABILIZE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
     ):
+        mock_running.return_value = True
+        mock_send.return_value = True
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(
                 tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="claude"
             )
         )
         mock_db.update_last_activity = AsyncMock()
+
+        result = await daemon._handle_agent_then_message(
+            "sess-123",
+            ["claude", "slow", "/next-work"],
+        )
+
+        # Should still succeed - stabilization timeout is not fatal
+        assert result["status"] == "success"
+        mock_send.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_agent_then_message_fails_on_command_acceptance_timeout():
+    """agent_then_message should fail if command acceptance times out."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon._poll_and_send_output = AsyncMock()
+
+    async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        return True, "stable output"
+
+    async def mock_confirm(*_args: object, **_kwargs: object) -> bool:
+        return False  # Simulate timeout
+
+    with (
+        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
+        patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
+        # Patch delays to make test fast
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_STABILIZE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
+    ):
         mock_running.return_value = True
-        mock_send_keys.return_value = True
-        mock_echo.return_value = (True, "/next-work")
-        mock_banner.return_value = (True, "banner")
-        mock_accept.return_value = False
+        mock_send.return_value = True
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(
+                tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="claude"
+            )
+        )
+        mock_db.update_last_activity = AsyncMock()
 
         result = await daemon._handle_agent_then_message(
             "sess-123",

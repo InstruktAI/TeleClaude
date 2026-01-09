@@ -55,7 +55,9 @@ class Db:
         self._client: Optional["AdapterClient"] = None
 
     async def initialize(self) -> None:
-        """Initialize database and create tables (greenfield - no migrations)."""
+        """Initialize database, create tables, and run migrations."""
+        from teleclaude.core.migrations.runner import run_pending_migrations
+
         # Ensure parent directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -63,13 +65,17 @@ class Db:
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
 
-        # Load and execute clean schema (no migrations!)
+        # Load and execute base schema (CREATE TABLE IF NOT EXISTS - safe for existing DBs)
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path, "r", encoding="utf-8") as f:
             schema_sql = f.read()
 
         await self._db.executescript(schema_sql)
         await self._db.commit()
+
+        # Run pending migrations (adds columns, migrates data)
+        await run_pending_migrations(self._db)
+
         await self._normalize_adapter_metadata()
 
     async def _normalize_adapter_metadata(self) -> None:

@@ -2,7 +2,12 @@
 
 ## Overview
 
-Transform `telec` from a SQLite-polling CLI into a rich TUI client using REST API over Unix socket. Single unified project-centric view with AI-to-AI session nesting.
+Transform `telec` from a SQLite-polling CLI into a rich TUI client using REST API over Unix socket. Two views switchable via number keys:
+
+1. **Sessions View** (`1`): Project-centric tree with AI-to-AI session nesting
+2. **Preparation View** (`2`): Todo-centric tree showing planned work from `todos/roadmap.md`
+
+Both views share the same tree structure: Computer → Project → Items (sessions or todos).
 
 ## Phase 1: REST API (Daemon Side)
 
@@ -102,6 +107,14 @@ async def get_agent_availability():
     """Get agent availability from database."""
     # Direct DB read
     ...
+
+
+@router.get("/projects/{path:path}/todos")
+async def list_todos(path: str, computer: str):
+    """List todos from roadmap.md for a project."""
+    # Parse todos/roadmap.md at the project path
+    # Return list of TodoResponse
+    ...
 ```
 
 ### 1.3 Request/Response Models
@@ -159,6 +172,14 @@ class AgentAvailability(BaseModel):
     available: bool
     unavailable_until: str | None
     reason: str | None
+
+
+class TodoResponse(BaseModel):
+    slug: str
+    status: str  # "pending", "ready", "in_progress"
+    description: str | None
+    has_requirements: bool
+    has_impl_plan: bool
 ```
 
 ### 1.4 Integrate API into Daemon
@@ -273,6 +294,15 @@ class TelecAPIClient:
         resp = await self._client.get("/agents/availability")
         resp.raise_for_status()
         return resp.json()
+
+    async def list_todos(self, project_path: str, computer: str) -> list[dict]:
+        """List todos from roadmap.md for a project."""
+        resp = await self._client.get(
+            f"/projects/{project_path}/todos",
+            params={"computer": computer},
+        )
+        resp.raise_for_status()
+        return resp.json()
 ```
 
 ## Phase 3: TUI Framework
@@ -285,11 +315,17 @@ teleclaude/cli/
 ├── api_client.py         # HTTP client (new)
 └── tui/                   # TUI components (new)
     ├── __init__.py
-    ├── app.py            # Main TUI app
+    ├── app.py            # Main TUI app with view switching
     ├── tree.py           # Project-centric tree builder
+    ├── todos.py          # Todo parsing from roadmap.md
+    ├── views/
+    │   ├── __init__.py
+    │   ├── sessions.py   # Sessions view (View 1)
+    │   └── preparation.py # Preparation view (View 2)
     ├── widgets/
     │   ├── __init__.py
     │   ├── footer.py     # Status footer
+    │   ├── tab_bar.py    # View tab bar [1] Sessions  [2] Preparation
     │   └── modal.py      # Start session modal
     └── theme.py          # Agent colors and styling
 ```
@@ -439,39 +475,129 @@ def _build_session_node(
     return node
 ```
 
-### 3.4 Main TUI App
+### 3.4 Todo Parser
+
+`teleclaude/cli/tui/todos.py`:
+
+```python
+"""Parse todos from roadmap.md."""
+
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass
+class TodoItem:
+    """Parsed todo item from roadmap.md."""
+    slug: str
+    status: str  # "pending", "ready", "in_progress"
+    description: str | None
+    has_requirements: bool
+    has_impl_plan: bool
+
+
+# Status marker mapping
+STATUS_MAP = {
+    " ": "pending",
+    ".": "ready",
+    ">": "in_progress",
+}
+
+
+def parse_roadmap(project_path: str) -> list[TodoItem]:
+    """Parse todos from todos/roadmap.md.
+
+    Pattern: ^-\s+\[([ .>])\]\s+(\S+)
+    Description is the indented text following the slug line.
+    """
+    roadmap_path = Path(project_path) / "todos" / "roadmap.md"
+    if not roadmap_path.exists():
+        return []
+
+    content = roadmap_path.read_text()
+    todos = []
+
+    # Pattern for todo line: - [ ] slug-name
+    pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
+
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        match = pattern.match(line)
+        if match:
+            status_char = match.group(1)
+            slug = match.group(2)
+
+            # Extract description (next indented lines)
+            description = ""
+            for j in range(i + 1, len(lines)):
+                next_line = lines[j]
+                if next_line.startswith("      "):  # 6 spaces = indented
+                    description += next_line.strip() + " "
+                elif next_line.strip() == "":
+                    continue
+                else:
+                    break
+
+            # Check for requirements.md and implementation-plan.md
+            todos_dir = Path(project_path) / "todos" / slug
+            has_requirements = (todos_dir / "requirements.md").exists()
+            has_impl_plan = (todos_dir / "implementation-plan.md").exists()
+
+            todos.append(TodoItem(
+                slug=slug,
+                status=STATUS_MAP.get(status_char, "pending"),
+                description=description.strip() or None,
+                has_requirements=has_requirements,
+                has_impl_plan=has_impl_plan,
+            ))
+
+    return todos
+```
+
+### 3.5 Main TUI App
 
 `teleclaude/cli/tui/app.py`:
 
 ```python
-"""Main TUI application."""
+"""Main TUI application with view switching."""
 
 import asyncio
 import curses
+import os
+import subprocess
 
 from .tree import build_tree, TreeNode
+from .todos import parse_roadmap
+from .views.sessions import SessionsView
+from .views.preparation import PreparationView
 from .widgets.footer import Footer
+from .widgets.tab_bar import TabBar
 from .widgets.modal import StartSessionModal
 from .theme import init_colors, AGENT_COLORS
 
 
 class TelecApp:
-    """Main TUI application - unified project-centric view."""
+    """Main TUI application with view switching (1=Sessions, 2=Preparation)."""
 
     def __init__(self, api_client):
         self.api = api_client
-        self.tree: list[TreeNode] = []
-        self.flat_items: list[TreeNode] = []  # Flattened for navigation
-        self.selected_index = 0
-        self.scroll_offset = 0
+        self.current_view = 1  # 1=Sessions, 2=Preparation
+        self.views = {}
+        self.tab_bar = TabBar()
         self.footer = None
         self.running = True
         self.agent_availability = {}
 
     async def initialize(self) -> None:
-        """Load initial data."""
+        """Load initial data and create views."""
         await self.api.connect()
         await self.refresh_data()
+
+        # Create views
+        self.views[1] = SessionsView(self.api, self.agent_availability)
+        self.views[2] = PreparationView(self.api, self.agent_availability)
 
     async def refresh_data(self) -> None:
         """Refresh all data from API."""
@@ -483,17 +609,12 @@ class TelecApp:
         )
 
         self.agent_availability = availability
-        self.tree = build_tree(computers, projects, sessions)
-        self.flat_items = self._flatten_tree(self.tree)
         self.footer = Footer(self.agent_availability)
 
-    def _flatten_tree(self, nodes: list[TreeNode]) -> list[TreeNode]:
-        """Flatten tree for navigation."""
-        result = []
-        for node in nodes:
-            result.append(node)
-            result.extend(self._flatten_tree(node.children))
-        return result
+        # Refresh current view
+        current = self.views.get(self.current_view)
+        if current:
+            await current.refresh(computers, projects, sessions)
 
     def run(self, stdscr) -> None:
         """Main event loop."""
@@ -509,21 +630,34 @@ class TelecApp:
         """Handle key press."""
         if key == ord('q'):
             self.running = False
+
+        # View switching with number keys
+        elif key == ord('1'):
+            self._switch_view(1)
+        elif key == ord('2'):
+            self._switch_view(2)
+
+        # Navigation - delegate to current view
         elif key == curses.KEY_UP:
-            self.selected_index = max(0, self.selected_index - 1)
+            self.views[self.current_view].move_up()
         elif key == curses.KEY_DOWN:
-            self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
+            self.views[self.current_view].move_down()
+
+        # Common actions
         elif key in (curses.KEY_ENTER, 10, 13):
-            self._handle_enter(stdscr)
-        elif key == ord('n'):
-            self._new_session(stdscr)
-        elif key == ord('m'):
-            self._send_message(stdscr)
-        elif key == ord('k'):
-            self._kill_session()
-        elif key == ord('t'):
-            self._view_transcript(stdscr)
+            self.views[self.current_view].handle_enter(stdscr)
         elif key == ord('r'):
+            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
+        # View-specific actions
+        else:
+            self.views[self.current_view].handle_key(key, stdscr)
+
+    def _switch_view(self, view_num: int) -> None:
+        """Switch to a different view."""
+        if view_num in self.views:
+            self.current_view = view_num
+            self.tab_bar.set_active(view_num)
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
     def _handle_enter(self, stdscr) -> None:
@@ -559,28 +693,27 @@ class TelecApp:
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
     def _render(self, stdscr) -> None:
-        """Render the unified view."""
+        """Render current view with tab bar and footer."""
         stdscr.clear()
         height, width = stdscr.getmaxyx()
 
-        # Reserve space for action bar and footer
-        content_height = height - 4
+        # Row 0: Tab bar
+        self.tab_bar.render(stdscr, 0, width)
 
-        # Render tree items
-        visible_start = self.scroll_offset
-        visible_end = min(len(self.flat_items), visible_start + content_height)
+        # Rows 1 to height-4: View content
+        content_height = height - 5
+        current = self.views.get(self.current_view)
+        if current:
+            current.render(stdscr, 1, content_height, width)
 
-        for i, item in enumerate(self.flat_items[visible_start:visible_end]):
-            row = i
-            is_selected = (visible_start + i) == self.selected_index
-            self._render_item(stdscr, row, item, width, is_selected)
+        # Row height-3: Separator
+        stdscr.addstr(height - 3, 0, "─" * width)
 
-        # Render action bar
-        action_bar = "[Enter] Attach/Start  [n] New  [m] Message  [k] Kill  [t] Transcript  [r] Refresh"
-        stdscr.addstr(height - 3, 0, "-" * width)
+        # Row height-2: Action bar (view-specific)
+        action_bar = current.get_action_bar() if current else ""
         stdscr.addstr(height - 2, 0, action_bar[:width])
 
-        # Render footer
+        # Row height-1: Footer
         if self.footer:
             self.footer.render(stdscr, height - 1, width)
 
@@ -887,6 +1020,373 @@ class Footer:
             return "?"
 ```
 
+### 3.7 Tab Bar Widget
+
+`teleclaude/cli/tui/widgets/tab_bar.py`:
+
+```python
+"""Tab bar widget for view switching."""
+
+import curses
+
+
+class TabBar:
+    """Tab bar showing [1] Sessions  [2] Preparation."""
+
+    def __init__(self):
+        self.active = 1
+
+    def set_active(self, view_num: int) -> None:
+        """Set active view."""
+        self.active = view_num
+
+    def render(self, stdscr, row: int, width: int) -> None:
+        """Render tab bar."""
+        # Format: ─ [1] Sessions  [2] Preparation ────────────
+        sessions_attr = curses.A_BOLD if self.active == 1 else 0
+        prep_attr = curses.A_BOLD if self.active == 2 else 0
+
+        stdscr.addstr(row, 0, "─ ")
+        stdscr.addstr(row, 2, "[1] Sessions", sessions_attr)
+        stdscr.addstr(row, 16, "  ")
+        stdscr.addstr(row, 18, "[2] Preparation", prep_attr)
+        stdscr.addstr(row, 35, " " + "─" * (width - 36))
+```
+
+### 3.8 Sessions View
+
+`teleclaude/cli/tui/views/sessions.py`:
+
+```python
+"""Sessions view - shows running AI sessions."""
+
+import asyncio
+import curses
+
+from ..tree import build_tree, TreeNode
+from ..theme import AGENT_COLORS
+from ..widgets.modal import StartSessionModal
+
+
+class SessionsView:
+    """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
+
+    def __init__(self, api, agent_availability: dict):
+        self.api = api
+        self.agent_availability = agent_availability
+        self.tree: list[TreeNode] = []
+        self.flat_items: list[TreeNode] = []
+        self.selected_index = 0
+        self.scroll_offset = 0
+
+    async def refresh(self, computers: list, projects: list, sessions: list) -> None:
+        """Refresh view data."""
+        self.tree = build_tree(computers, projects, sessions)
+        self.flat_items = self._flatten_tree(self.tree)
+
+    def _flatten_tree(self, nodes: list[TreeNode]) -> list[TreeNode]:
+        """Flatten tree for navigation."""
+        result = []
+        for node in nodes:
+            result.append(node)
+            result.extend(self._flatten_tree(node.children))
+        return result
+
+    def get_action_bar(self) -> str:
+        """Return action bar string for this view."""
+        return "[Enter] Attach/Start  [n] New  [m] Message  [k] Kill  [t] Transcript  [r] Refresh"
+
+    def move_up(self) -> None:
+        """Move selection up."""
+        self.selected_index = max(0, self.selected_index - 1)
+
+    def move_down(self) -> None:
+        """Move selection down."""
+        self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
+
+    def handle_enter(self, stdscr) -> None:
+        """Handle Enter key."""
+        if not self.flat_items:
+            return
+        item = self.flat_items[self.selected_index]
+        if item.type == "session":
+            self._attach_session(item.data)
+        elif item.type == "project":
+            self._start_session_for_project(stdscr, item.data)
+
+    def handle_key(self, key: int, stdscr) -> None:
+        """Handle view-specific keys."""
+        if key == ord('n'):
+            self._new_session(stdscr)
+        elif key == ord('m'):
+            self._send_message(stdscr)
+        elif key == ord('k'):
+            self._kill_session()
+        elif key == ord('t'):
+            self._view_transcript(stdscr)
+
+    def render(self, stdscr, start_row: int, height: int, width: int) -> None:
+        """Render view content."""
+        visible_start = self.scroll_offset
+        visible_end = min(len(self.flat_items), visible_start + height)
+
+        for i, item in enumerate(self.flat_items[visible_start:visible_end]):
+            row = start_row + i
+            is_selected = (visible_start + i) == self.selected_index
+            self._render_item(stdscr, row, item, width, is_selected)
+
+    def _render_item(self, stdscr, row: int, item: TreeNode, width: int, selected: bool) -> None:
+        """Render a single tree item."""
+        indent = "  " * item.depth
+        attr = curses.A_REVERSE if selected else 0
+
+        if item.type == "computer":
+            line = f"{indent}{item.data['name']:<50} online"
+            stdscr.addstr(row, 0, line[:width], attr)
+        elif item.type == "project":
+            path = item.data.get("path", "")
+            sessions_text = "(no sessions)" if not item.children else ""
+            line = f"{indent}{path} {sessions_text}"
+            stdscr.addstr(row, 0, line[:width], attr)
+        elif item.type == "session":
+            self._render_session(stdscr, row, item, width, selected)
+
+    def _render_session(self, stdscr, row: int, item: TreeNode, width: int, selected: bool) -> None:
+        """Render session with input/output lines."""
+        session = item.data
+        indent = "  " * item.depth
+        agent = session.get("active_agent", "?")
+        mode = session.get("thinking_mode", "?")
+        title = session.get("title", "Untitled")[:30]
+        idx = session.get("display_index", "?")
+
+        colors = AGENT_COLORS.get(agent, {"bright": 7, "muted": 7})
+        has_output = bool(session.get("last_output"))
+        attr = curses.A_REVERSE if selected else 0
+
+        # Line 1: Identifier
+        line1 = f"{indent}[{idx}] {agent}/{mode}  \"{title}\""
+        stdscr.addstr(row, 0, line1[:width], attr)
+
+        # Lines 2-3: Input/Output (simplified - full implementation uses curses color pairs)
+
+    # Helper methods (_attach_session, _start_session_for_project, etc.) same as before
+```
+
+### 3.9 Preparation View
+
+`teleclaude/cli/tui/views/preparation.py`:
+
+```python
+"""Preparation view - shows planned work from todos/roadmap.md."""
+
+import asyncio
+import curses
+import os
+import subprocess
+
+from ..tree import TreeNode
+from ..todos import parse_roadmap
+
+
+class PreparationView:
+    """View 2: Preparation - todo-centric tree."""
+
+    STATUS_MARKERS = {
+        "pending": "[ ]",
+        "ready": "[.]",
+        "in_progress": "[>]",
+    }
+
+    def __init__(self, api, agent_availability: dict):
+        self.api = api
+        self.agent_availability = agent_availability
+        self.flat_items: list[dict] = []  # Flattened todos
+        self.selected_index = 0
+        self.scroll_offset = 0
+
+    async def refresh(self, computers: list, projects: list, sessions: list) -> None:
+        """Refresh view data - parse todos for each project."""
+        self.flat_items = []
+
+        for computer in computers:
+            self.flat_items.append({
+                "type": "computer",
+                "name": computer["name"],
+                "depth": 0,
+            })
+
+            comp_projects = [p for p in projects if p["computer"] == computer["name"]]
+            for project in comp_projects:
+                self.flat_items.append({
+                    "type": "project",
+                    "path": project["path"],
+                    "computer": computer["name"],
+                    "depth": 1,
+                })
+
+                # Parse todos from this project's roadmap.md
+                todos = parse_roadmap(project["path"])
+                for todo in todos:
+                    self.flat_items.append({
+                        "type": "todo",
+                        "slug": todo.slug,
+                        "status": todo.status,
+                        "description": todo.description,
+                        "has_requirements": todo.has_requirements,
+                        "has_impl_plan": todo.has_impl_plan,
+                        "project_path": project["path"],
+                        "computer": computer["name"],
+                        "depth": 2,
+                    })
+
+    def get_action_bar(self) -> str:
+        """Return action bar string for this view."""
+        return "[s] Start Work  [p] Prepare  [v/V] View  [e/E] Edit  [r] Refresh"
+
+    def move_up(self) -> None:
+        """Move selection up."""
+        self.selected_index = max(0, self.selected_index - 1)
+
+    def move_down(self) -> None:
+        """Move selection down."""
+        self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
+
+    def handle_enter(self, stdscr) -> None:
+        """Handle Enter - same as Start Work for ready items."""
+        item = self._get_selected()
+        if item and item["type"] == "todo" and item["status"] == "ready":
+            self._start_work(stdscr, item)
+
+    def handle_key(self, key: int, stdscr) -> None:
+        """Handle view-specific keys."""
+        item = self._get_selected()
+        if not item or item["type"] != "todo":
+            return
+
+        if key == ord('s') and item["status"] == "ready":
+            self._start_work(stdscr, item)
+        elif key == ord('p'):
+            self._prepare(stdscr, item)
+        elif key == ord('v') and item["has_requirements"]:
+            self._view_file(stdscr, item, "requirements.md")
+        elif key == ord('V') and item["has_impl_plan"]:
+            self._view_file(stdscr, item, "implementation-plan.md")
+        elif key == ord('e'):
+            self._edit_file(stdscr, item, "requirements.md")
+        elif key == ord('E'):
+            self._edit_file(stdscr, item, "implementation-plan.md")
+
+    def _get_selected(self) -> dict | None:
+        """Get currently selected item."""
+        if 0 <= self.selected_index < len(self.flat_items):
+            return self.flat_items[self.selected_index]
+        return None
+
+    def _start_work(self, stdscr, item: dict) -> None:
+        """Start work on a ready todo via /prime-orchestrator."""
+        curses.endwin()
+        # Start a Claude session with /prime-orchestrator command
+        slug = item["slug"]
+        asyncio.get_event_loop().run_until_complete(
+            self.api.create_session(
+                computer=item["computer"],
+                project_dir=item["project_path"],
+                agent="claude",
+                thinking_mode="slow",
+                message=f"/prime-orchestrator {slug}",
+            )
+        )
+        curses.doupdate()
+
+    def _prepare(self, stdscr, item: dict) -> None:
+        """Prepare a todo via /next-prepare."""
+        curses.endwin()
+        slug = item["slug"]
+        asyncio.get_event_loop().run_until_complete(
+            self.api.create_session(
+                computer=item["computer"],
+                project_dir=item["project_path"],
+                agent="claude",
+                thinking_mode="slow",
+                message=f"/next-prepare {slug}",
+            )
+        )
+        curses.doupdate()
+
+    def _view_file(self, stdscr, item: dict, filename: str) -> None:
+        """View a file in glow."""
+        curses.endwin()
+        filepath = os.path.join(item["project_path"], "todos", item["slug"], filename)
+        subprocess.run(["glow", filepath])
+        curses.doupdate()
+
+    def _edit_file(self, stdscr, item: dict, filename: str) -> None:
+        """Edit a file in $EDITOR."""
+        curses.endwin()
+        filepath = os.path.join(item["project_path"], "todos", item["slug"], filename)
+        editor = os.environ.get("EDITOR", "vim")
+        subprocess.run([editor, filepath])
+        curses.doupdate()
+
+    def render(self, stdscr, start_row: int, height: int, width: int) -> None:
+        """Render view content."""
+        visible_start = self.scroll_offset
+        visible_end = min(len(self.flat_items), visible_start + height)
+
+        row = start_row
+        for i in range(visible_start, visible_end):
+            item = self.flat_items[i]
+            is_selected = i == self.selected_index
+            lines = self._render_item(stdscr, row, item, width, is_selected)
+            row += lines
+
+    def _render_item(self, stdscr, row: int, item: dict, width: int, selected: bool) -> int:
+        """Render a single item. Returns number of lines used."""
+        indent = "  " * item["depth"]
+        attr = curses.A_REVERSE if selected else 0
+
+        if item["type"] == "computer":
+            line = f"{indent}{item['name']:<50} online"
+            stdscr.addstr(row, 0, line[:width], attr)
+            return 1
+
+        elif item["type"] == "project":
+            line = f"{indent}{item['path']}"
+            stdscr.addstr(row, 0, line[:width], attr)
+            return 1
+
+        elif item["type"] == "todo":
+            return self._render_todo(stdscr, row, item, width, selected)
+
+        return 1
+
+    def _render_todo(self, stdscr, row: int, item: dict, width: int, selected: bool) -> int:
+        """Render a todo item (3 lines)."""
+        indent = "  " * item["depth"]
+        attr = curses.A_REVERSE if selected else 0
+
+        # Line 1: Status marker and slug
+        marker = self.STATUS_MARKERS.get(item["status"], "[ ]")
+        status_label = item["status"]
+        line1 = f"{indent}{marker} {item['slug']:<40} {status_label}"
+        stdscr.addstr(row, 0, line1[:width], attr if selected else 0)
+
+        # Line 2: Description
+        if item.get("description"):
+            desc = item["description"][:75]
+            line2 = f"{indent}     {desc}"
+            stdscr.addstr(row + 1, 0, line2[:width])
+
+        # Line 3: File status
+        req_status = "✓" if item["has_requirements"] else "✗"
+        impl_status = "✓" if item["has_impl_plan"] else "✗"
+        line3 = f"{indent}     requirements: {req_status}  impl-plan: {impl_status}"
+        stdscr.addstr(row + 2, 0, line3[:width])
+
+        return 3  # Uses 3 lines
+```
+
 ## Phase 4: Entry Point
 
 ### 4.1 Update telec.py
@@ -1026,6 +1526,8 @@ After telec TUI is stable:
 - `tests/unit/test_api_client.py` - HTTP client methods
 - `tests/unit/test_tui_tree.py` - Tree building and AI-to-AI nesting
 - `tests/unit/test_tui_modal.py` - Modal behavior, unavailable agent handling
+- `tests/unit/test_tui_todos.py` - Todo parsing from roadmap.md
+- `tests/unit/test_tui_views.py` - View switching and rendering
 
 ### Integration Tests
 
@@ -1033,6 +1535,7 @@ After telec TUI is stable:
 
 ### Manual Testing
 
+#### Sessions View
 1. Start daemon, verify API socket created
 2. `curl --unix-socket /tmp/teleclaude-api.sock http://localhost/sessions`
 3. Launch telec, verify unified tree renders
@@ -1046,28 +1549,52 @@ After telec TUI is stable:
 11. Verify footer shows agent status
 12. Test CLI shortcuts: `telec /list`, `telec /claude slow "hello"`
 
+#### Preparation View
+13. Press `2` to switch to Preparation view
+14. Verify todos are parsed from todos/roadmap.md
+15. Verify status markers: `[ ]` pending, `[.]` ready, `[>]` in progress
+16. Verify file status shows ✓/✗ for requirements.md and implementation-plan.md
+17. Press `v` to view requirements.md in glow
+18. Press `V` to view implementation-plan.md in glow
+19. Press `e` to edit requirements.md in $EDITOR
+20. Press `E` to edit implementation-plan.md in $EDITOR
+21. Press `s` on a ready item to start work (launches /prime-orchestrator)
+22. Press `p` on any item to prepare (launches /next-prepare)
+23. Press `1` to switch back to Sessions view
+
+#### View Switching
+24. Verify tab bar shows active view in bold
+25. Verify action bar changes between views
+26. Verify navigation state is preserved per view
+
 ## Checklist
 
 ### Phase 1: REST API
 - [ ] Create `teleclaude/api/__init__.py`
 - [ ] Create `teleclaude/api/routes.py`
 - [ ] Create `teleclaude/api/models.py`
+- [ ] Add `/projects/{path}/todos` endpoint
 - [ ] Integrate uvicorn into daemon startup
 - [ ] Test API with curl
 
 ### Phase 2: API Client
 - [ ] Create `teleclaude/cli/api_client.py`
+- [ ] Add `list_todos()` method
 - [ ] Test client connectivity
 
 ### Phase 3: TUI
 - [ ] Create `teleclaude/cli/tui/` structure
 - [ ] Create `teleclaude/cli/tui/theme.py` with agent colors
 - [ ] Create `teleclaude/cli/tui/tree.py` with AI-to-AI nesting
-- [ ] Implement `TelecApp` main loop
-- [ ] Implement unified tree view rendering
+- [ ] Create `teleclaude/cli/tui/todos.py` with roadmap.md parsing
+- [ ] Create `teleclaude/cli/tui/views/sessions.py`
+- [ ] Create `teleclaude/cli/tui/views/preparation.py`
+- [ ] Implement `TelecApp` main loop with view switching (`1`/`2` keys)
+- [ ] Implement `TabBar` widget
 - [ ] Implement color coding (bright/muted based on last activity)
 - [ ] Implement `StartSessionModal` with unavailable agent handling
 - [ ] Implement `Footer` widget
+- [ ] Implement external tool launch (glow, $EDITOR) with TUI suspend/resume
 
 ### Phase 4: Entry Point
 - [ ] Update `telec.py` with TUI and CLI shortcuts

@@ -129,7 +129,7 @@ TERMINAL_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("TERMINAL_OUTBOX_MAX_BACK
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
 AGENT_START_POLL_INTERVAL_S = 0.5
-AGENT_START_SETTLE_DELAY_S = 1.0
+AGENT_START_SETTLE_DELAY_S = 0.5  # Initial delay after process starts
 AGENT_START_CONFIRM_ENTER_DELAY_S = 1.0
 AGENT_START_CONFIRM_ENTER_ATTEMPTS = 4
 AGENT_START_OUTPUT_CAPTURE_LINES = 200
@@ -138,9 +138,9 @@ AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
 AGENT_START_POST_INJECT_DELAY_S = 1.0
-AGENT_START_INPUT_ECHO_TIMEOUT_S = 2.5
-AGENT_START_BANNER_TIMEOUT_S = 3.0
-AGENT_START_POST_BANNER_DELAY_S = 5.0
+AGENT_START_STABILIZE_TIMEOUT_S = 15.0  # Max wait for output to stop changing (MCP loading)
+AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stable"
+AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
 
 logger = get_logger("teleclaude.daemon")
 
@@ -984,7 +984,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return {"status": "error", "message": f"Unknown or malformed auto_command: {auto_command}"}
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
-        """Start agent, wait for tmux to leave shell, then inject message."""
+        """Start agent, wait for TUI to stabilize, then inject message."""
         if len(args) < 3:
             return {"status": "error", "message": "agent_then_message requires agent, thinking_mode, message"}
 
@@ -1009,83 +1009,76 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
+        # Step 1: Wait for agent process to start
         deadline = time.monotonic() + AGENT_START_TIMEOUT_S
         while time.monotonic() < deadline:
             is_running = await terminal_io.is_process_running(session)
             if is_running:
-                await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
-                logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
-
-                cols, rows = 80, 24
-                if session.terminal_size and "x" in session.terminal_size:
-                    try:
-                        cols, rows = map(int, session.terminal_size.split("x"))
-                    except ValueError:
-                        pass
-
-                active_agent = session.active_agent
-
-                sanitized_message = terminal_io.wrap_bracketed_paste(message)
-                pasted = await terminal_io.send_text(
-                    session,
-                    sanitized_message,
-                    working_dir=session.working_directory,
-                    cols=cols,
-                    rows=rows,
-                    send_enter=False,
-                    active_agent=active_agent,
-                )
-                if not pasted:
-                    return {"status": "error", "message": "Failed to paste command into tmux"}
-
-                echoed, _ = await self._wait_for_output_contains(
-                    session,
-                    message,
-                    AGENT_START_INPUT_ECHO_TIMEOUT_S,
-                )
-                if not echoed:
-                    logger.warning(
-                        "agent_then_message timed out waiting for input echo (session=%s)",
-                        session_id[:8],
-                    )
-                    return {"status": "error", "message": "Timeout waiting for input echo"}
-
-                before_tail, before_digest = await self._pane_output_snapshot(session)
-                banner_changed, banner_tail = await self._wait_for_output_change(
-                    session,
-                    before_tail,
-                    before_digest,
-                    AGENT_START_BANNER_TIMEOUT_S,
-                )
-                if not banner_changed:
-                    logger.warning(
-                        "agent_then_message timed out waiting for banner output (session=%s) tail=%s",
-                        session_id[:8],
-                        repr(banner_tail[-160:]) if banner_tail else "''",
-                    )
-                    return {"status": "error", "message": "Timeout waiting for agent banner"}
-
-                await asyncio.sleep(AGENT_START_POST_BANNER_DELAY_S)
-                await asyncio.sleep(AGENT_START_POST_INJECT_DELAY_S)
-                await db.update_last_activity(session_id)
-                await self._poll_and_send_output(session_id, session.tmux_session_name)
-
-                accepted = await self._confirm_command_acceptance(session)
-                if not accepted:
-                    logger.warning(
-                        "agent_then_message timed out waiting for output change (session=%s)",
-                        session_id[:8],
-                    )
-                    return {"status": "error", "message": "Timeout waiting for command acceptance"}
-
-                return {"status": "success", "message": "Message injected after agent start"}
+                break
             await asyncio.sleep(AGENT_START_POLL_INTERVAL_S)
+        else:
+            logger.warning("agent_then_message timed out waiting for agent start (session=%s)", session_id[:8])
+            return {"status": "error", "message": "Timeout waiting for agent to start"}
 
-        logger.warning(
-            "agent_then_message timed out waiting for agent start (session=%s)",
-            session_id[:8],
+        # Step 2: Initial settle delay
+        await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
+
+        # Step 3: Wait for output to stabilize (TUI banner + MCP loading complete)
+        logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id[:8])
+        stabilized, _stable_tail = await self._wait_for_output_stable(
+            session,
+            AGENT_START_STABILIZE_TIMEOUT_S,
+            AGENT_START_STABILIZE_QUIET_S,
         )
-        return {"status": "error", "message": "Timeout waiting for agent to start"}
+        if not stabilized:
+            logger.warning(
+                "agent_then_message: stabilization timed out after %.1fs, proceeding anyway (session=%s)",
+                AGENT_START_STABILIZE_TIMEOUT_S,
+                session_id[:8],
+            )
+
+        # Step 4: Post-stabilization safety buffer
+        await asyncio.sleep(AGENT_START_POST_STABILIZE_DELAY_S)
+
+        # Step 5: Now inject the message (TUI should be ready)
+        logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
+        cols, rows = 80, 24
+        if session.terminal_size and "x" in session.terminal_size:
+            try:
+                cols, rows = map(int, session.terminal_size.split("x"))
+            except ValueError:
+                pass
+
+        active_agent = session.active_agent
+
+        sanitized_message = terminal_io.wrap_bracketed_paste(message)
+        pasted = await terminal_io.send_text(
+            session,
+            sanitized_message,
+            working_dir=session.working_directory,
+            cols=cols,
+            rows=rows,
+            send_enter=False,
+            active_agent=active_agent,
+        )
+        if not pasted:
+            return {"status": "error", "message": "Failed to paste command into tmux"}
+
+        # Step 6: Small delay before sending Enter
+        await asyncio.sleep(AGENT_START_POST_INJECT_DELAY_S)
+        await db.update_last_activity(session_id)
+        await self._poll_and_send_output(session_id, session.tmux_session_name)
+
+        # Step 7: Send Enter and wait for command acceptance
+        accepted = await self._confirm_command_acceptance(session)
+        if not accepted:
+            logger.warning(
+                "agent_then_message timed out waiting for command acceptance (session=%s)",
+                session_id[:8],
+            )
+            return {"status": "error", "message": "Timeout waiting for command acceptance"}
+
+        return {"status": "success", "message": "Message injected after agent start"}
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
         output = await terminal_bridge.capture_pane(
@@ -1097,6 +1090,45 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
         digest = hashlib.sha256(tail.encode("utf-8", errors="replace")).hexdigest()
         return tail, digest
+
+    async def _wait_for_output_stable(
+        self,
+        session: Session,
+        timeout_s: float,
+        quiet_s: float,
+    ) -> tuple[bool, str]:
+        """Wait for output to stop changing (stabilize).
+
+        Polls tmux output and waits until it hasn't changed for `quiet_s` seconds.
+        This detects when TUI banner + MCP loading is complete.
+
+        Args:
+            session: The session to monitor
+            timeout_s: Maximum time to wait for stabilization
+            quiet_s: How long output must be unchanged to be considered stable
+
+        Returns:
+            Tuple of (stabilized, last_output_tail)
+        """
+        deadline = time.monotonic() + timeout_s
+        last_tail, last_digest = await self._pane_output_snapshot(session)
+        quiet_since = time.monotonic()
+
+        while time.monotonic() < deadline:
+            await asyncio.sleep(AGENT_START_OUTPUT_POLL_INTERVAL_S)
+            current_tail, current_digest = await self._pane_output_snapshot(session)
+
+            if current_digest != last_digest:
+                # Output changed - reset quiet timer
+                last_tail, last_digest = current_tail, current_digest
+                quiet_since = time.monotonic()
+            elif time.monotonic() - quiet_since >= quiet_s:
+                # Output has been stable for quiet_s seconds
+                logger.debug("Output stabilized after %.1fs quiet", quiet_s)
+                return True, current_tail
+
+        logger.debug("Output stabilization timed out after %.1fs", timeout_s)
+        return False, last_tail
 
     @staticmethod
     def _summarize_output_change(before: str, after: str) -> OutputChangeSummary:
