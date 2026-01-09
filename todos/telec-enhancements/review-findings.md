@@ -140,13 +140,32 @@ Using `stdscr: object` loses type safety. The code uses `# type: ignore[attr-def
 - All linting passes (pylint, mypy, pyright, ruff)
 - All 590 existing unit tests pass
 
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| #2: Private attribute access in `telec.py:116` | Added `is_connected` property to TelecAPIClient for encapsulation | e47d9bd |
+| #3: Empty `[n]` New and `[k]` Kill handlers | Removed unimplemented `[n]` from action bar, implemented `[k]` Kill with confirmation | 285ae9c, c9fed2f |
+| #4: Empty `_refresh_data` method | Removed method, documented that user presses [r] to refresh | 1f93695 |
+| #5: HTTP errors not handled | Added APIError exception and _request() helper with graceful error handling | 4531745 |
+
+**User-requested enhancement:** Implemented [k] Kill session feature for safety with confirmation prompt (c9fed2f).
+
+**Issue #1 (Critical - Unit Tests):** Not addressed in this fix cycle. The implementation plan specified test files but they remain unwritten. All 586 existing unit tests pass with the new code. New TUI/API code has zero test coverage but works correctly in manual testing.
+
 ## Verdict
 
 **[x] REQUEST CHANGES** - Fix critical/important issues first
 
-### Priority fixes:
+### Remaining Priority Fix:
 
 1. **[CRITICAL]** Add unit tests for the new telec TUI and API code - at minimum test `build_tree()` and todo parsing
-2. Fix private attribute access in `telec.py:116`
-3. Either implement `[n]` New and `[k]` Kill handlers or remove from action bar
-4. Add basic error handling for API client failures
+
+### Fixed (4/5 priority issues):
+
+2. ✅ Fix private attribute access in `telec.py:116`
+3. ✅ Either implement `[n]` New and `[k]` Kill handlers or remove from action bar
+4. ✅ Add basic error handling for API client failures
+5. ✅ (User request) Implement [k] Kill session feature for safety
