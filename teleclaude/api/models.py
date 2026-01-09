@@ -11,7 +11,7 @@ class CreateSessionRequest(BaseModel):
     agent: str = "claude"
     thinking_mode: str = "slow"
     title: str | None = None
-    message: str
+    message: str | None = None
 
 
 class SendMessageRequest(BaseModel):

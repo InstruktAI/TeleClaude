@@ -57,13 +57,11 @@ class TestCreateSession:
             origin_adapter="telegram",
             title="Custom Title",
             adapter_metadata=metadata,
-            terminal_size="120x40",
             working_directory="/home/user",
         )
 
         assert session.title == "Custom Title"
         assert session.adapter_metadata == metadata
-        assert session.terminal_size == "120x40"
         assert session.working_directory == "/home/user"
 
 
@@ -167,11 +165,11 @@ class TestUpdateSession:
         """Test updating multiple fields at once."""
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
-        await test_db.update_session(session.session_id, title="Updated Title", terminal_size="100x30")
+        await test_db.update_session(session.session_id, title="Updated Title", working_directory="/new/path")
 
         updated = await test_db.get_session(session.session_id)
         assert updated.title == "Updated Title"
-        assert updated.terminal_size == "100x30"
+        assert updated.working_directory == "/new/path"
 
     @pytest.mark.asyncio
     async def test_update_no_fields(self, test_db):

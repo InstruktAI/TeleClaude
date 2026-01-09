@@ -260,7 +260,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
-    terminal_size: str = "160x80"
     working_directory: str = "~"
     description: Optional[str] = None
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI
@@ -360,7 +359,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "adapter_metadata",
             "created_at",
             "last_activity",
-            "terminal_size",
             "working_directory",
             "description",
             "initiated_by_ai",

@@ -199,9 +199,7 @@ async def test_agent_then_message_waits_for_stabilization():
         mock_running.return_value = True
         mock_send.side_effect = mock_send_text
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(
-                tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="gemini"
-            )
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="gemini")
         )
         mock_db.update_last_activity = AsyncMock()
 
@@ -245,9 +243,7 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
         mock_running.return_value = True
         mock_send.return_value = True
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(
-                tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="claude"
-            )
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="claude")
         )
         mock_db.update_last_activity = AsyncMock()
 
@@ -290,9 +286,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
         mock_running.return_value = True
         mock_send.return_value = True
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(
-                tmux_session_name="tc_123", working_directory=".", terminal_size="80x24", active_agent="claude"
-            )
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="claude")
         )
         mock_db.update_last_activity = AsyncMock()
 

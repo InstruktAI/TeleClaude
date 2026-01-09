@@ -129,7 +129,6 @@ AGENT_START_POLL_INTERVAL_S = 0.5
 AGENT_START_SETTLE_DELAY_S = 0.5  # Initial delay after process starts
 AGENT_START_CONFIRM_ENTER_DELAY_S = 1.0
 AGENT_START_CONFIRM_ENTER_ATTEMPTS = 4
-AGENT_START_OUTPUT_CAPTURE_LINES = 200
 AGENT_START_OUTPUT_TAIL_CHARS = 4000
 AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
@@ -1055,12 +1054,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Step 5: Now inject the message (TUI should be ready)
         logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
-        cols, rows = 80, 24
-        if session.terminal_size and "x" in session.terminal_size:
-            try:
-                cols, rows = map(int, session.terminal_size.split("x"))
-            except ValueError:
-                pass
 
         active_agent = session.active_agent
 
@@ -1069,8 +1062,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session,
             sanitized_message,
             working_dir=session.working_directory,
-            cols=cols,
-            rows=rows,
             send_enter=False,
             active_agent=active_agent,
         )
@@ -1094,10 +1085,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return {"status": "success", "message": "Message injected after agent start"}
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
-        output = await terminal_bridge.capture_pane(
-            session.tmux_session_name,
-            lines=AGENT_START_OUTPUT_CAPTURE_LINES,
-        )
+        output = await terminal_bridge.capture_pane(session.tmux_session_name)
         if not output:
             return "", ""
         tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
@@ -1531,21 +1519,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.error("Session %s not found", session_id[:8])
             return False
 
-        # Get terminal size
-        cols, rows = 80, 24
-        if session.terminal_size and "x" in session.terminal_size:
-            try:
-                cols, rows = map(int, session.terminal_size.split("x"))
-            except ValueError:
-                pass
-
         sanitized_command = terminal_io.wrap_bracketed_paste(command)
         success = await terminal_io.send_text(
             session,
             sanitized_command,
             working_dir=session.working_directory,
-            cols=cols,
-            rows=rows,
         )
 
         if not success:
@@ -1942,14 +1920,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Session %s was stale and has been cleaned up", session_id[:8])
             return
 
-        # Parse terminal size (e.g., "80x24" -> cols=80, rows=24)
-        cols, rows = 80, 24
-        if session.terminal_size and "x" in session.terminal_size:
-            try:
-                cols, rows = map(int, session.terminal_size.split("x"))
-            except ValueError:
-                pass
-
         # Get active agent for agent-specific escaping
         active_agent = session.active_agent
 
@@ -1960,8 +1930,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session,
             sanitized_text,
             working_dir=session.working_directory,
-            cols=cols,
-            rows=rows,
             active_agent=active_agent,
         )
 

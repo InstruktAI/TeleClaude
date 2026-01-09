@@ -180,7 +180,7 @@ class MCPHandlersMixin:
         computer: str,
         project_dir: str,
         title: str,
-        message: str,
+        message: str | None = None,
         caller_session_id: str | None = None,
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
@@ -196,7 +196,7 @@ class MCPHandlersMixin:
         self,
         project_dir: str,
         title: str,
-        message: str,
+        message: str | None = None,
         caller_session_id: str | None = None,
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
@@ -232,18 +232,25 @@ class MCPHandlersMixin:
         logger.info("Local session created: %s", session_id[:8])
         await self._register_listener_if_present(session_id, caller_session_id)
 
-        # Start agent in background
-        async def _run_agent_start() -> None:
-            try:
-                await self.client.handle_event(
-                    TeleClaudeEvents.AGENT_START,
-                    {"session_id": session_id, "args": [agent, thinking_mode.value, message]},
-                    MessageMetadata(adapter_type="redis"),
-                )
-            except Exception as exc:
-                logger.error("Failed to dispatch AGENT_START for session %s: %s", session_id[:8], exc)
+        # Start agent in background if message provided (None = skip agent start entirely)
+        if message is not None:
+            # Build args: [agent, mode] or [agent, mode, prompt] if prompt non-empty
+            agent_args: list[str] = [agent, thinking_mode.value]
+            if message:
+                agent_args.append(message)
 
-        self._track_background_task(asyncio.create_task(_run_agent_start()), f"agent_start:{session_id[:8]}")
+            async def _run_agent_start() -> None:
+                try:
+                    await self.client.handle_event(
+                        TeleClaudeEvents.AGENT_START,
+                        {"session_id": session_id, "args": agent_args},
+                        MessageMetadata(adapter_type="redis"),
+                    )
+                except Exception as exc:
+                    logger.error("Failed to dispatch AGENT_START for session %s: %s", session_id[:8], exc)
+
+            self._track_background_task(asyncio.create_task(_run_agent_start()), f"agent_start:{session_id[:8]}")
+
         return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": "success"}
 
     async def _start_remote_session(
@@ -251,7 +258,7 @@ class MCPHandlersMixin:
         computer: str,
         project_dir: str,
         title: str,
-        message: str,
+        message: str | None = None,
         caller_session_id: str | None = None,
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
@@ -291,13 +298,18 @@ class MCPHandlersMixin:
 
             await self._register_remote_listener(remote_session_id, caller_session_id)
 
-            quoted_message = shlex.quote(message)
-            await self.client.send_request(
-                computer_name=computer,
-                command=f"/{TeleClaudeEvents.AGENT_START} {agent} {thinking_mode.value} {quoted_message}",
-                metadata=MessageMetadata(),
-                session_id=str(remote_session_id),
-            )
+            # Start agent if message provided (None = skip agent start entirely)
+            if message is not None:
+                # Build command: /agent_start agent mode [prompt]
+                cmd_parts = [f"/{TeleClaudeEvents.AGENT_START}", agent, thinking_mode.value]
+                if message:
+                    cmd_parts.append(shlex.quote(message))
+                await self.client.send_request(
+                    computer_name=computer,
+                    command=" ".join(cmd_parts),
+                    metadata=MessageMetadata(),
+                    session_id=str(remote_session_id),
+                )
 
             return {"session_id": remote_session_id, "status": "success"}
 

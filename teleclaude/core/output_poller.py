@@ -23,17 +23,6 @@ IDLE_SUMMARY_INTERVAL_S = 60.0
 PROCESS_START_GRACE_S = 3.0
 
 
-def _parse_terminal_rows(value: str | None) -> int | None:
-    if value and "x" in value:
-        try:
-            _cols_str, rows_str = value.split("x", 1)
-            rows = int(rows_str)
-            return rows if rows > 0 else None
-        except ValueError:
-            return None
-    return None
-
-
 @dataclass
 class OutputEvent:
     """Base class for output events."""
@@ -110,7 +99,6 @@ class OutputPoller:
         suppressed_idle_ticks = 0
         last_summary_time: float | None = None
         idle_summary_interval = IDLE_SUMMARY_INTERVAL_S
-        terminal_rows: int | None = None
 
         try:
             # Initial delay before first poll (1s to catch fast commands)
@@ -120,12 +108,6 @@ class OutputPoller:
             last_yield_time = started_at  # Track when we last yielded (wall-clock, not tick-based)
             last_summary_time = started_at
             logger.trace("Polling started for %s", session_id[:8])
-
-            try:
-                session = await db.get_session(session_id)
-                terminal_rows = _parse_terminal_rows(session.terminal_size) if session else None
-            except Exception:
-                terminal_rows = None
 
             def maybe_log_idle_summary(force: bool = False) -> None:
                 nonlocal last_summary_time, suppressed_idle_ticks
@@ -209,7 +191,7 @@ class OutputPoller:
 
                 session_existed_last_poll = session_exists_now
 
-                captured_output = await terminal_bridge.capture_pane(tmux_session_name, lines=terminal_rows)
+                captured_output = await terminal_bridge.capture_pane(tmux_session_name)
                 output_changed = captured_output != previous_output
                 current_cleaned = captured_output
 

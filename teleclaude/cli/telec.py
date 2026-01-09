@@ -102,7 +102,7 @@ async def _quick_start(api: TelecAPIClient, agent: str, mode: str, prompt: str |
         api: API client
         agent: Agent name (claude, gemini, codex)
         mode: Thinking mode (fast, med, slow)
-        prompt: Initial prompt
+        prompt: Initial prompt (optional - if None, starts interactive session)
     """
     await api.connect()
     try:
@@ -110,17 +110,12 @@ async def _quick_start(api: TelecAPIClient, agent: str, mode: str, prompt: str |
         project_dir = os.getcwd()
         computer = "local"
 
-        if not prompt:
-            print("Error: prompt required")
-            print("Usage: telec /claude slow 'your prompt here'")
-            return
-
         result = await api.create_session(
             computer=computer,
             project_dir=project_dir,
             agent=agent,
             thinking_mode=mode,
-            message=prompt,
+            message=prompt or "",  # Empty string starts agent in interactive mode
         )
 
         tmux_session = result.get("tmux_session_name")
@@ -145,9 +140,9 @@ def _usage() -> str:
         "Usage:\n"
         "  telec                          # Open TUI (Sessions view)\n"
         "  telec /list                    # List sessions (stdout, no TUI)\n"
-        "  telec /claude [mode] [prompt]  # Start Claude session\n"
-        "  telec /gemini [mode] [prompt]  # Start Gemini session\n"
-        "  telec /codex [mode] [prompt]   # Start Codex session\n"
+        "  telec /claude [mode] [prompt]  # Start Claude (mode: fast/med/slow, prompt optional)\n"
+        "  telec /gemini [mode] [prompt]  # Start Gemini (mode: fast/med/slow, prompt optional)\n"
+        "  telec /codex [mode] [prompt]   # Start Codex (mode: fast/med/slow/deep, prompt optional)\n"
     )
 
 

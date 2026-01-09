@@ -146,13 +146,14 @@ def get_tool_definitions() -> list[Tool]:
                     "message": {
                         "type": "string",
                         "description": (
-                            "The initial task or prompt to send to the agent "
+                            "Optional initial task or prompt to send to the agent "
                             "(e.g., 'Read README and summarize', 'Trace message flow from Telegram to session'). "
-                            "Session starts immediately processing this message."
+                            "If provided, session starts immediately processing this message. "
+                            "If omitted, starts an interactive session waiting for user input."
                         ),
                     },
                 },
-                "required": ["computer", "project_dir", "title", "message"],
+                "required": ["computer", "project_dir", "title"],
             },
         ),
         Tool(

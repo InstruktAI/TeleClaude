@@ -11,8 +11,11 @@ from teleclaude.core import terminal_bridge
 @pytest.fixture(autouse=True)
 def setup_config():
     """Initialize config for all tests."""
-    # Mock _SHELL_NAME for consistent test behavior
-    with patch.object(terminal_bridge, "_SHELL_NAME", "zsh"):
+    # Mock _SHELL_NAME for consistent test behavior and tmux_binary for predictable commands
+    with (
+        patch.object(terminal_bridge, "_SHELL_NAME", "zsh"),
+        patch.object(terminal_bridge.config.computer, "tmux_binary", "tmux"),
+    ):
         yield
 
 

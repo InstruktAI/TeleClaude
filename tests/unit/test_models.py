@@ -89,7 +89,6 @@ class TestSession:
             adapter_metadata=metadata,
             created_at=now,
             last_activity=now,
-            terminal_size="100x30",
             working_directory="/home/user",
         )
 
@@ -103,7 +102,6 @@ class TestSession:
         assert restored.tmux_session_name == original.tmux_session_name
         assert restored.origin_adapter == original.origin_adapter
         assert restored.title == original.title
-        assert restored.terminal_size == original.terminal_size
         assert restored.working_directory == original.working_directory
 
     def test_session_from_dict_parses_string_topic_id(self):

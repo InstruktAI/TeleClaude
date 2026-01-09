@@ -148,7 +148,6 @@ class Db:
         origin_adapter: str,
         title: str,
         adapter_metadata: Optional[SessionAdapterMetadata] = None,
-        terminal_size: str = "160x80",
         working_directory: str = "~",
         description: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -163,7 +162,6 @@ class Db:
             origin_adapter: Origin adapter type (e.g., "telegram", "redis")
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
-            terminal_size: Terminal dimensions (e.g., '80x24')
             working_directory: Initial working directory
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
@@ -185,7 +183,6 @@ class Db:
             adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
             created_at=now,
             last_activity=now,
-            terminal_size=terminal_size,
             working_directory=working_directory,
             description=description,
             working_slug=working_slug,
@@ -198,9 +195,9 @@ class Db:
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, created_at,
-                last_activity, terminal_size, working_directory, description,
+                last_activity, working_directory, description,
                 working_slug, initiator_session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -211,7 +208,6 @@ class Db:
                 data["adapter_metadata"],
                 data["created_at"],
                 data["last_activity"],
-                data["terminal_size"],
                 data["working_directory"],
                 data["description"],
                 data["working_slug"],

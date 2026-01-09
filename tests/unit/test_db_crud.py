@@ -28,7 +28,6 @@ async def test_session_manager_crud():
             tmux_session_name="test-session-crud",
             origin_adapter="telegram",
             title="Test Session",
-            terminal_size="80x24",
             working_directory="~",
         )
 

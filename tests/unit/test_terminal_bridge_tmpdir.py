@@ -39,8 +39,6 @@ async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypa
         ok = await terminal_bridge.create_tmux_session(
             name="tc_test",
             working_dir=str(tmp_path),
-            cols=80,
-            rows=24,
             session_id="abc123",
             env_vars=original_env,
         )
@@ -54,7 +52,8 @@ async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypa
     assert expected_tmpdir.is_dir()
 
     called_args = mock_exec.call_args_list[0][0]
-    assert called_args[0] == "tmux"
+    # Check the first arg is some tmux binary (could be custom launcher or just "tmux")
+    assert "tmux" in called_args[0]
     assert "-e" in called_args
     assert f"TMPDIR={expected_tmpdir}" in called_args
     assert f"TMP={expected_tmpdir}" in called_args

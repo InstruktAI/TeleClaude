@@ -130,7 +130,6 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             "terminal": {
                 "tty_path": "/dev/pts/7",
                 "parent_pid": 4242,
-                "terminal_size": "200x55",
             }
         },
     )
@@ -160,15 +159,8 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
 
             await command_handlers.handle_create_session(mock_context, ["Test"], mock_metadata, mock_client)
 
-            _, create_kwargs = mock_db.create_session.call_args
-            assert create_kwargs.get("terminal_size") == "200x55"
-
-            _, tmux_kwargs = mock_tb.create_tmux_session.call_args
-            assert tmux_kwargs.get("cols") == 200
-            assert tmux_kwargs.get("rows") == 55
-
             update_args, update_kwargs = mock_db.update_session.call_args
-            assert update_args[0] == create_kwargs.get("session_id")
+            assert update_args[0] == mock_db.create_session.call_args[1].get("session_id")
             assert update_kwargs.get("native_tty_path") == "/dev/pts/7"
             assert update_kwargs.get("native_pid") == 4242
 

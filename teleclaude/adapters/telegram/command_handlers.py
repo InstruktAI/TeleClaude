@@ -1,6 +1,6 @@
 """Command handlers mixin for Telegram adapter.
 
-Handles slash commands like /new_session, /claude, /resize, /rename, /cd.
+Handles slash commands like /new_session, /claude, /rename, /cd.
 """
 
 from __future__ import annotations
@@ -126,40 +126,6 @@ class CommandHandlersMixin:
         ) -> None:
             """Handle simple command - stub for type checking."""
             ...
-
-    async def _handle_resize(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /resize command - resize terminal."""
-        session = await self._get_session_from_topic(update)
-
-        if not session:
-            return
-
-        # After successful session fetch, effective_user and effective_message are guaranteed non-None
-        assert update.effective_user is not None
-        assert update.effective_message is not None
-
-        # Get size argument
-        size_arg = context.args[0] if context.args else None
-
-        if not size_arg:
-            # Track command message for deletion and show available presets
-            await self._pre_handle_user_input(session)
-            await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-            current_size = session.terminal_size or "80x24"
-            presets_text = f"""
-**Terminal Size Presets:**
-
-/resize small - 80x24 (classic)
-/resize medium - 120x40 (comfortable)
-/resize large - 160x60 (spacious)
-/resize wide - 200x80 (ultrawide)
-
-Current size: {current_size}
-            """
-            await self.send_feedback(session, presets_text, MessageMetadata(parse_mode="Markdown"))
-            return
-
-        # resize is adapter-specific - handled internally, no daemon event needed
 
     async def _handle_rename(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /rename command - rename session."""

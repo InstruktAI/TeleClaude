@@ -78,11 +78,9 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
     return session_tmp
 
 
-async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Tmux session creation requires multiple parameters
+async def create_tmux_session(
     name: str,
     working_dir: str,
-    cols: int = 80,
-    rows: int = 24,
     session_id: Optional[str] = None,
     env_vars: Optional[Dict[str, str]] = None,
 ) -> bool:
@@ -90,12 +88,11 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
 
     Tmux automatically uses the $SHELL environment variable to determine which shell to use.
     No explicit shell parameter needed - tmux handles this natively.
+    Terminal size is not specified - tmux uses its default (80x24) which is fine for AI TUIs.
 
     Args:
         name: Session name
         working_dir: Initial working directory
-        cols: Terminal columns
-        rows: Terminal rows
         session_id: TeleClaude session ID (injected as TELECLAUDE_SESSION_ID env var)
         env_vars: Additional environment variables to inject (e.g., TTS voice config)
 
@@ -118,17 +115,13 @@ async def create_tmux_session(  # pylint: disable=too-many-arguments,too-many-po
         # No need for explicit shell command - tmux creates proper PTY with user's default shell
 
         cmd = [
-            "tmux",
+            config.computer.tmux_binary,
             "new-session",
             "-d",  # Detached
             "-s",
             name,  # Session name
             "-c",
             working_dir,  # Working directory
-            "-x",
-            str(cols),  # Width
-            "-y",
-            str(rows),  # Height
         ]
 
         # Inject TeleClaude session ID as env var (for Claude Code hook integration)
@@ -222,13 +215,11 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
         return False
 
 
-async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Terminal control requires multiple parameters
+async def send_keys(
     session_name: str,
     text: str,
     session_id: Optional[str] = None,
     working_dir: str = "~",
-    cols: int = 80,
-    rows: int = 24,
     send_enter: bool = True,
     active_agent: Optional[str] = None,
 ) -> bool:
@@ -243,8 +234,6 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         text: Text to send
         session_id: TeleClaude session ID (used for env var + TMPDIR injection on tmux recreation)
         working_dir: Working directory if creating new session (default: ~)
-        cols: Terminal columns if creating new session (default: 80)
-        rows: Terminal rows if creating new session (default: 24)
         send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
         active_agent: Active agent name (e.g., "gemini") for agent-specific escaping
 
@@ -258,8 +247,6 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
             success = await create_tmux_session(
                 name=session_name,
                 working_dir=working_dir,
-                cols=cols,
-                rows=rows,
                 session_id=session_id,
             )
             if not success:
@@ -752,28 +739,20 @@ async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> b
         return False
 
 
-async def capture_pane(session_name: str, lines: Optional[int] = None) -> str:
+async def capture_pane(session_name: str) -> str:
     """Capture pane output from tmux session.
 
     Args:
         session_name: Session name
-        lines: Number of lines to capture from scrollback (None = entire scrollback buffer)
 
     Returns:
         Captured output as string
     """
     try:
         # -p = print to stdout
-        # -S = start line (-10000 = last 10000 lines from scrollback, - = entire history)
+        # -S - = capture entire scrollback buffer (from beginning to end)
         # -J = preserve trailing spaces (better for capturing exact output)
-        cmd = [config.computer.tmux_binary, "capture-pane", "-t", session_name, "-p", "-J"]
-
-        if lines:
-            # Capture specific number of lines from scrollback
-            cmd.extend(["-S", f"-{lines}"])
-        else:
-            # Capture entire scrollback buffer (from beginning to end)
-            cmd.extend(["-S", "-"])
+        cmd = [config.computer.tmux_binary, "capture-pane", "-t", session_name, "-p", "-J", "-S", "-"]
 
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE

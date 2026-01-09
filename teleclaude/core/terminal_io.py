@@ -28,19 +28,6 @@ def wrap_bracketed_paste(text: str) -> str:
     return text
 
 
-def _parse_terminal_size(value: str | None) -> tuple[int, int]:
-    if value and "x" in value:
-        try:
-            cols_str, rows_str = value.split("x", 1)
-            cols = int(cols_str)
-            rows = int(rows_str)
-            if cols > 0 and rows > 0:
-                return cols, rows
-        except ValueError:
-            pass
-    return 80, 24
-
-
 async def _send_to_tmux(
     session: Session,
     text: str,
@@ -48,8 +35,6 @@ async def _send_to_tmux(
     send_enter: bool,
     active_agent: Optional[str] = None,
     working_dir: Optional[str] = None,
-    cols: Optional[int] = None,
-    rows: Optional[int] = None,
 ) -> bool:
     tmux_name = session.tmux_session_name
     if tmux_name and await terminal_bridge.session_exists(tmux_name):
@@ -61,16 +46,12 @@ async def _send_to_tmux(
         )
 
     working_dir = working_dir if working_dir is not None else session.working_directory
-    if cols is None or rows is None:
-        cols, rows = _parse_terminal_size(session.terminal_size)
 
     return await terminal_bridge.send_keys(
         session.tmux_session_name,
         text,
         session_id=session.session_id,
         working_dir=working_dir,
-        cols=cols,
-        rows=rows,
         send_enter=send_enter,
         active_agent=active_agent,
     )
@@ -83,8 +64,6 @@ async def send_text(
     send_enter: bool = True,
     active_agent: Optional[str] = None,
     working_dir: Optional[str] = None,
-    cols: Optional[int] = None,
-    rows: Optional[int] = None,
 ) -> bool:
     return await _send_to_tmux(
         session,
@@ -92,8 +71,6 @@ async def send_text(
         send_enter=send_enter,
         active_agent=active_agent,
         working_dir=working_dir,
-        cols=cols,
-        rows=rows,
     )
 
 
