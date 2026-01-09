@@ -1,6 +1,5 @@
 """Sessions view - shows running AI sessions."""
 
-import asyncio
 import curses
 
 from teleclaude.cli.tui.tree import TreeNode, build_tree
@@ -101,13 +100,9 @@ class SessionsView:
         )
         result = modal.run(stdscr)
         if result:
-            # Session started, refresh
-            asyncio.get_event_loop().run_until_complete(self._refresh_data())
-
-    async def _refresh_data(self) -> None:
-        """Refresh data from API."""
-        # This would be called from main app to refresh all data
-        pass
+            # Session started - user can press [r] to refresh and see it
+            # (No automatic refresh to avoid complexity of storing parent app reference)
+            pass
 
     def handle_key(self, key: int, stdscr: object) -> None:  # noqa: ARG002 - stdscr needed for future features
         """Handle view-specific keys.
