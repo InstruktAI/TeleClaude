@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -771,7 +771,7 @@ class TestTitleUpdate:
     """Test session title updates."""
 
     async def test_update_session_title_updates_new_session(self):
-        """Title should update when description is 'New session'."""
+        """Title should update when description is 'Untitled'."""
         from unittest.mock import AsyncMock, patch
 
         from teleclaude.core.models import Session
@@ -784,7 +784,7 @@ class TestTitleUpdate:
             computer_name="TestMac",
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
-            title="TeleClaude: $TestMac - New session",
+            title="TeleClaude: $TestMac - Untitled",
         )
 
         with patch("teleclaude.daemon.db") as mock_db:
@@ -796,7 +796,7 @@ class TestTitleUpdate:
             mock_db.update_session.assert_called_once_with("sess-1", title="TeleClaude: $TestMac - Fix login bug")
 
     async def test_update_session_title_updates_new_session_with_counter(self):
-        """Title should update when description is 'New session (N)'."""
+        """Title should update when title is 'Untitled (N)'."""
         from unittest.mock import AsyncMock, patch
 
         from teleclaude.core.models import Session
@@ -809,7 +809,7 @@ class TestTitleUpdate:
             computer_name="TestMac",
             tmux_session_name="tmux-1",
             origin_adapter="telegram",
-            title="TeleClaude: $TestMac - New session (2)",
+            title="TeleClaude: $TestMac - Untitled (2)",
         )
 
         with patch("teleclaude.daemon.db") as mock_db:

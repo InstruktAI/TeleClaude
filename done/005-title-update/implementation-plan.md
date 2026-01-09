@@ -13,6 +13,7 @@
 ### Group 2: Summarizer Integration
 
 - [x] **DEPENDS: Group 1** Update `summarize()` function prompt:
+
   - Call `extract_recent_exchanges()` to get recent user↔agent exchanges
   - Update prompt to generate BOTH title and summary from same context
   - Title: "What the USER is trying to accomplish" (derived from user messages)
@@ -20,12 +21,13 @@
 
 - [x] **DEPENDS: Group 1** Remove title update guard in `teleclaude/daemon.py`:
   - Delete the regex check in `_update_session_title()` that prevents updates
-  - Line ~485: `if not re.search(r"New session( \(\d+\))?$", session.title): return`
+  - Line ~485: `if not re.search(r"Untitled( \(\d+\))?$", session.title): return`
   - Title should update on EVERY `agent_stop` event
 
 ### Group 3: Testing
 
 - [x] **DEPENDS: Group 2** Add unit tests for `extract_recent_exchanges()`:
+
   - Test extraction of last 2 user messages with text responses
   - Test filtering of tool_use/tool_result blocks
   - Test edge case: no user messages
@@ -33,11 +35,13 @@
   - Test edge case: agent response is tool-only (no text)
 
 - [x] **DEPENDS: Group 2** Update existing summarizer tests:
+
   - Verify title reflects user intent (not agent action)
   - Verify summary still describes agent action
 
 - [x] **DEPENDS: Group 2** Update daemon tests for title updates:
-  - Test title updates on every stop event (no "New session" guard)
+
+  - Test title updates on every stop event (no "Untitled" guard)
   - Test title prefix preservation
 
 - [x] **SEQUENTIAL** Run full test suite: `make test`
@@ -100,9 +104,9 @@ Analyze this AI assistant session to generate a title and summary.
 
 ### Files Modified
 
-| File | Changes |
-|------|---------|
+| File                            | Changes                                         |
+| ------------------------------- | ----------------------------------------------- |
 | `teleclaude/core/summarizer.py` | Add `extract_recent_exchanges()`, update prompt |
-| `teleclaude/daemon.py` | Remove "New session" guard (~line 485) |
-| `tests/unit/test_summarizer.py` | New tests for exchange extraction |
-| `tests/unit/test_daemon.py` | Update title update tests |
+| `teleclaude/daemon.py`          | Remove "Untitled" guard (~line 485)             |
+| `tests/unit/test_summarizer.py` | New tests for exchange extraction               |
+| `tests/unit/test_daemon.py`     | Update title update tests                       |

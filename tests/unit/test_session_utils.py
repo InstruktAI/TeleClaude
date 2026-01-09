@@ -142,9 +142,9 @@ def test_build_session_title_human_session():
     result = build_session_title(
         computer_name="MozMini",
         short_project="TeleClaude",
-        description="New session",
+        description="Untitled",
     )
-    assert result == "TeleClaude: $MozMini - New session"
+    assert result == "TeleClaude: $MozMini - Untitled"
 
 
 def test_build_session_title_human_session_with_agent():
@@ -168,10 +168,10 @@ def test_build_session_title_ai_to_ai_session():
     result = build_session_title(
         computer_name="RasPi",
         short_project="TeleClaude",
-        description="New session",
+        description="Untitled",
         initiator_computer="MozBook",
     )
-    assert result == "TeleClaude: $MozBook > $RasPi - New session"
+    assert result == "TeleClaude: $MozBook > $RasPi - Untitled"
 
 
 def test_build_session_title_ai_to_ai_with_agents():
@@ -231,9 +231,9 @@ def test_parse_session_title_ai_to_ai():
     """Test parse_session_title with AI-to-AI format."""
     from teleclaude.core.session_utils import parse_session_title
 
-    prefix, description = parse_session_title("TeleClaude: $MozBook > $RasPi - New session")
+    prefix, description = parse_session_title("TeleClaude: $MozBook > $RasPi - Untitled")
     assert prefix == "TeleClaude: $MozBook > $RasPi - "
-    assert description == "New session"
+    assert description == "Untitled"
 
 
 def test_parse_session_title_with_subfolder():
@@ -259,12 +259,12 @@ def test_update_title_with_agent():
     from teleclaude.core.session_utils import update_title_with_agent
 
     result = update_title_with_agent(
-        title="TeleClaude: $MozMini - New session",
+        title="TeleClaude: $MozMini - Untitled",
         agent_name="claude",
         thinking_mode="slow",
         computer_name="MozMini",
     )
-    assert result == "TeleClaude: Claude-slow@MozMini - New session"
+    assert result == "TeleClaude: Claude-slow@MozMini - Untitled"
 
 
 def test_update_title_with_agent_ai_to_ai():
@@ -286,7 +286,7 @@ def test_update_title_with_agent_no_match():
     from teleclaude.core.session_utils import update_title_with_agent
 
     result = update_title_with_agent(
-        title="TeleClaude: $OtherComputer - New session",
+        title="TeleClaude: $OtherComputer - Untitled",
         agent_name="claude",
         thinking_mode="slow",
         computer_name="MozMini",  # Not in title
@@ -304,11 +304,11 @@ def test_update_title_with_agent_same_computer_ai_to_ai():
     from teleclaude.core.session_utils import update_title_with_agent
 
     result = update_title_with_agent(
-        title="TeleClaude: $MozMini > $MozMini - New session",
+        title="TeleClaude: $MozMini > $MozMini - Untitled",
         agent_name="gemini",
         thinking_mode="fast",
         computer_name="MozMini",
     )
     # Should only replace target ($MozMini -), not initiator ($MozMini >)
     # Target drops @Computer since initiator is same computer
-    assert result == "TeleClaude: $MozMini > Gemini-fast - New session"
+    assert result == "TeleClaude: $MozMini > Gemini-fast - Untitled"

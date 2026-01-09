@@ -97,7 +97,7 @@ def test_ensure_terminal_session_sets_title_from_args(tmp_path: Path, monkeypatc
     db_path = _init_db(tmp_path, monkeypatch)
     tty_path = "/dev/ttys052"
     cwd = config.computer.default_working_dir or "~"
-    description = "New session"
+    description = "Untitled"
 
     resolved = ensure_terminal_session(
         tty_path,

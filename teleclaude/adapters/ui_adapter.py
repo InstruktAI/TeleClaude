@@ -484,7 +484,7 @@ class UiAdapter(BaseAdapter):
         if "title" in updated_fields:
             new_title = str(updated_fields["title"])
             await self.client.update_channel_title(session, new_title)
-            logger.info("Synced title to Telegram for session %s: %s", session_id[:8], new_title)
+            logger.info("Synced title to UiAdapters for session %s: %s", session_id[:8], new_title)
             return  # Title already includes everything, skip working_directory handling
 
         # Check if working_directory changed

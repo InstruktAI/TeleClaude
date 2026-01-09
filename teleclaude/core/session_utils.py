@@ -38,12 +38,12 @@ async def ensure_unique_title(base_title: str) -> str:
         Unique title (base_title or base_title with counter appended)
 
     Examples:
-        >>> await ensure_unique_title("$MozBook[apps/TC] - New session")
-        "$MozBook[apps/TC] - New session"
+        >>> await ensure_unique_title("$MozBook[apps/TC] - Untitled")
+        "$MozBook[apps/TC] - Untitled"
 
         >>> # If above title exists:
-        >>> await ensure_unique_title("$MozBook[apps/TC] - New session")
-        "$MozBook[apps/TC] - New session (2)"
+        >>> await ensure_unique_title("$MozBook[apps/TC] - Untitled")
+        "$MozBook[apps/TC] - Untitled (2)"
     """
     # Get all active sessions
     existing_sessions = await db.list_sessions()
@@ -142,7 +142,7 @@ def build_session_title(
     Args:
         computer_name: Target computer name
         short_project: Short project name (e.g., "TeleClaude", "TeleClaude/fix-bug")
-        description: Session description (e.g., "New session", "Debug auth flow")
+        description: Session description (e.g., "Untitled", "Debug auth flow")
         initiator_computer: Initiator computer for AI-to-AI sessions (None for human sessions)
         agent_name: Target agent name if known
         thinking_mode: Target thinking mode if known

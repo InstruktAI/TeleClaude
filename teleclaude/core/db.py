@@ -179,7 +179,7 @@ class Db:
             computer_name=computer_name,
             tmux_session_name=tmux_session_name,
             origin_adapter=origin_adapter,
-            title=title or f"[{computer_name}] New session",
+            title=title or f"[{computer_name}] Untitled",
             adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
             created_at=now,
             last_activity=now,

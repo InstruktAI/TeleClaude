@@ -42,7 +42,7 @@ class TestCreateSession:
         # Test OUR business logic, not SQLite
         assert session.session_id is not None
         assert len(session.session_id) == 36  # Valid UUID format
-        assert session.title == "[TestPC] New session"  # Default title logic
+        assert session.title == "[TestPC] Untitled"  # Default title logic
         assert session.created_at is not None
         assert session.last_activity is not None
 
@@ -186,10 +186,7 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_adapter_metadata(self, test_db):
         """Test updating adapter_metadata."""
-        from teleclaude.core.models import (
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
@@ -282,10 +279,7 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata(self, test_db):
         """Test retrieving sessions by adapter metadata."""
-        from teleclaude.core.models import (
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
         s1 = await test_db.create_session(
             "PC1",
@@ -310,10 +304,7 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata_no_match(self, test_db):
         """Test retrieving sessions with no metadata match."""
-        from teleclaude.core.models import (
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
         await test_db.create_session(
             "PC1",
@@ -350,10 +341,7 @@ class TestGetSessionsByAdapterMetadata:
         This is crucial for observer adapters: when Telegram is an observer for a Redis-initiated
         session, we need to find the session by telegram.topic_id even though origin_adapter='redis'.
         """
-        from teleclaude.core.models import (
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
         # Create session with telegram as origin
         await test_db.create_session(
@@ -380,11 +368,7 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata_excludes_sessions_without_metadata(self, test_db):
         """Test that sessions without the specified adapter metadata are NOT returned."""
-        from teleclaude.core.models import (
-            RedisAdapterMetadata,
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import RedisAdapterMetadata, SessionAdapterMetadata, TelegramAdapterMetadata
 
         # Create session WITH telegram metadata
         await test_db.create_session(

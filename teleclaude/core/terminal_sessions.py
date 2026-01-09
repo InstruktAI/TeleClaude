@@ -37,7 +37,7 @@ def ensure_terminal_session(
     cwd: str,
     *,
     thinking_mode: str | None = None,
-    description: str = "New session",
+    description: str = "Untitled",
 ) -> str:
     """Create or attach a terminal-origin session based on TTY."""
     db_path = config.database.path
@@ -50,7 +50,7 @@ def ensure_terminal_session(
         existing_titles = {str(row[1]) for row in rows if row[1] and (exclude_id is None or str(row[0]) != exclude_id)}
         return unique_title(base_title, existing_titles)
 
-    normalized_description = description.strip() or "New session"
+    normalized_description = description.strip() or "Untitled"
     short_project = get_short_project_name(cwd, base_project=config.computer.default_working_dir)
     base_title = build_session_title(
         computer_name=config.computer.name,

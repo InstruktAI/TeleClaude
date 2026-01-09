@@ -156,7 +156,7 @@ In your Telegram supergroup's **General** topic, send:
 /new-session
 ```
 
-A new topic will be created with the format `[ComputerName] New session...`. All messages sent to this topic will be executed as terminal commands.
+A new topic will be created with the format `[ComputerName] Untitled...`. All messages sent to this topic will be executed as terminal commands.
 
 ### Sending Commands
 
@@ -439,6 +439,7 @@ make start
 
 1. Check bot is admin in supergroup (required for topic management)
 2. Verify your Telegram user ID is in `TELEGRAM_USER_IDS` whitelist
+
 ### Debugging
 
 1. Check status: `make status`
@@ -452,6 +453,7 @@ Log verbosity:
 - `TELECLAUDE_THIRD_PARTY_LOGGERS` selectively enables third-party logger prefixes.
 
 ## Contributing
+
 4. Verify bot token is correct in `.env`
 
 ### tmux sessions not being created
@@ -534,6 +536,7 @@ See developer documentation:
 - ✅ File upload handling via MCP (send files to Telegram from daemon)
 
 **Planned:**
+
 - 🔲 AI-generated session titles
 - 🔲 REST API endpoints for output access
 - 🔲 Session sharing for pair programming

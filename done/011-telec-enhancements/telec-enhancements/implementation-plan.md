@@ -1502,17 +1502,20 @@ async def _quick_start(api: TelecAPIClient, agent: str, mode: str, prompt: str |
 After telec TUI is stable:
 
 1. **Remove from daemon.py:**
+
    - `_terminal_outbox_worker()` method
    - Related helper methods
    - Task creation/cancellation
 
 2. **Remove from db.py:**
+
    - `fetch_terminal_outbox_batch()`
    - `claim_terminal_outbox()`
    - `mark_terminal_outbox_delivered()`
    - `mark_terminal_outbox_failed()`
 
 3. **Remove from schema.sql:**
+
    - `terminal_outbox` table
 
 4. **Remove from telec.py (old):**
@@ -1536,6 +1539,7 @@ After telec TUI is stable:
 ### Manual Testing
 
 #### Sessions View
+
 1. Start daemon, verify API socket created
 2. `curl --unix-socket /tmp/teleclaude-api.sock http://localhost/sessions`
 3. Launch telec, verify unified tree renders
@@ -1550,6 +1554,7 @@ After telec TUI is stable:
 12. Test CLI shortcuts: `telec /list`, `telec /claude slow "hello"`
 
 #### Preparation View
+
 13. Press `2` to switch to Preparation view
 14. Verify todos are parsed from todos/roadmap.md
 15. Verify status markers: `[ ]` pending, `[.]` ready, `[>]` in progress
@@ -1563,6 +1568,7 @@ After telec TUI is stable:
 23. Press `1` to switch back to Sessions view
 
 #### View Switching
+
 24. Verify tab bar shows active view in bold
 25. Verify action bar changes between views
 26. Verify navigation state is preserved per view
@@ -1570,6 +1576,7 @@ After telec TUI is stable:
 ## Checklist
 
 ### Phase 1: REST API
+
 - [x] Create `teleclaude/api/__init__.py`
 - [x] Create `teleclaude/api/routes.py`
 - [x] Create `teleclaude/api/models.py`
@@ -1578,11 +1585,13 @@ After telec TUI is stable:
 - [ ] Test API with curl
 
 ### Phase 2: API Client
+
 - [x] Create `teleclaude/cli/api_client.py`
 - [x] Add `list_todos()` method
 - [ ] Test client connectivity
 
 ### Phase 3: TUI
+
 - [x] Create `teleclaude/cli/tui/` structure
 - [x] Create `teleclaude/cli/tui/theme.py` with agent colors
 - [x] Create `teleclaude/cli/tui/tree.py` with AI-to-AI nesting
@@ -1597,9 +1606,11 @@ After telec TUI is stable:
 - [x] Implement external tool launch (glow, $EDITOR) with TUI suspend/resume
 
 ### Phase 4: Entry Point
+
 - [x] Update `telec.py` with TUI and CLI shortcuts
 
 ### Phase 5: Cleanup
+
 - [ ] Remove terminal_outbox code
 - [ ] Update tests
 - [ ] Update AGENTS.md if needed

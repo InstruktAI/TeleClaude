@@ -1239,7 +1239,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _update_session_title(self, session_id: str, title: str) -> None:
         """Update session title in DB and UI.
 
-        Only updates once - when description is still "New session".
+        Only updates once - when description is still "Untitled".
         Subsequent agent_stop events preserve the first LLM-generated title.
         """
         session = await db.get_session(session_id)
@@ -1251,8 +1251,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not prefix:
             return
 
-        # Only update if description is still "New session" (or "New session (N)")
-        if not description or not re.search(r"^New session( \(\d+\))?$", description):
+        # Only update if description is still "Untitled" (or "Untitled (N)")
+        if not description or not re.search(r"^Untitled( \(\d+\))?$", description):
             return  # Already has LLM-generated title - skip
 
         new_title = f"{prefix}{title}"

@@ -194,12 +194,7 @@ class TestChannelManagement:
     @pytest.mark.asyncio
     async def test_create_channel_deduplication_returns_existing_topic(self, telegram_adapter):
         """Test that create_channel returns existing topic_id instead of creating duplicate."""
-        from teleclaude.core.models import (
-            ChannelMetadata,
-            Session,
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import ChannelMetadata, Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
         telegram_adapter.app = MagicMock()
         telegram_adapter.app.bot = MagicMock()
@@ -241,10 +236,7 @@ class TestChannelManagement:
         telegram_adapter.app.bot = MagicMock()
         telegram_adapter.app.bot.delete_forum_topic = AsyncMock()
 
-        from teleclaude.core.models import (
-            SessionAdapterMetadata,
-            TelegramAdapterMetadata,
-        )
+        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
         # Mock db.get_session to return a session with channel metadata
         mock_session = Session(
@@ -446,7 +438,7 @@ class TestTopicOwnership:
     def test_topic_title_mentions_this_computer(self, telegram_adapter):
         telegram_adapter.computer_name = "test_computer"
         assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: Codex-slow@test_computer - resume abc")
-        assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: $test_computer - New session")
+        assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: $test_computer - Untitled")
         assert not telegram_adapter._topic_title_mentions_this_computer(
             "TeleClaude: Codex-slow@other_computer - resume abc"
         )
@@ -474,7 +466,7 @@ class TestTopicOwnership:
 
         cached_message = MagicMock()
         forum_created = MagicMock()
-        forum_created.name = "TeleClaude: $test_computer - New session"
+        forum_created.name = "TeleClaude: $test_computer - Untitled"
         cached_message.forum_topic_created = forum_created
         cached_message.reply_to_message = None
 

@@ -258,7 +258,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     # Build session title using standard format
     # Target agent info not yet known (will be updated when agent starts)
     # Initiator agent info is known if this is an AI-to-AI session
-    description = " ".join(args) if args else "New session"
+    description = " ".join(args) if args else "Untitled"
     base_title = build_session_title(
         computer_name=computer_name,
         short_project=short_project,

@@ -969,28 +969,6 @@ async def is_pane_dead(session_name: str) -> bool:
         return False
 
 
-async def rename_session(old_name: str, new_name: str) -> bool:
-    """Rename a tmux session.
-
-    Args:
-        old_name: Current session name
-        new_name: New session name
-
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        cmd = [config.computer.tmux_binary, "rename-session", "-t", old_name, new_name]
-        result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
-
-        return result.returncode == 0
-
-    except Exception as e:
-        print(f"Error renaming session: {e}")
-        return False
-
-
 async def get_session_pane_id(session_name: str) -> Optional[str]:
     """Get the pane ID for a session (for pipe-pane).
 

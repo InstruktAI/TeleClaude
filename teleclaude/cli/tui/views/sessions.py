@@ -273,7 +273,7 @@ class SessionsView:
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [k] Kill"
         if selected.type == "project":
-            return f"{back_hint}[n] New Session"
+            return f"{back_hint}[n] Untitled"
         # computer
         return f"{back_hint}[→] View Projects"
 
