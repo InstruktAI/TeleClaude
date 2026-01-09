@@ -60,7 +60,7 @@ class SessionsView:
         Returns:
             Action bar text
         """
-        return "[Enter] Attach/Start  [r] Refresh"
+        return "[Enter] Attach/Start  [k] Kill  [r] Refresh"
 
     def move_up(self) -> None:
         """Move selection up."""
@@ -104,17 +104,50 @@ class SessionsView:
             # (No automatic refresh to avoid complexity of storing parent app reference)
             pass
 
-    def handle_key(self, key: int, stdscr: object) -> None:  # noqa: ARG002 - stdscr needed for future features
+    def handle_key(self, key: int, stdscr: object) -> None:
         """Handle view-specific keys.
 
         Args:
             key: Key code
             stdscr: Curses screen object
         """
-        # No view-specific keys currently implemented
-        # - New session: handled via [Enter] on projects
-        # - Kill session: requires confirmation modal (future feature)
-        pass
+        if key == ord("k"):
+            # Kill selected session
+            if not self.flat_items or self.selected_index >= len(self.flat_items):
+                return
+
+            selected = self.flat_items[self.selected_index]
+            if selected.type != "session":
+                return  # Only kill sessions, not computers/projects
+
+            # Confirm kill
+            curses.endwin()  # type: ignore[attr-defined]
+            print(f"\nKill session: {selected.data.get('title', 'Unknown')}")
+            print(f"Computer: {selected.data.get('computer', 'unknown')}")
+            print(f"Session ID: {selected.data.get('session_id', 'unknown')}")
+            confirm = input("Are you sure? (yes/no): ").strip().lower()
+            curses.doupdate()  # type: ignore[attr-defined]
+
+            if confirm == "yes":
+                # Kill the session
+                import asyncio  # pylint: disable=import-outside-toplevel
+
+                session_id = str(selected.data.get("session_id", ""))
+                computer = str(selected.data.get("computer", ""))
+
+                try:
+                    result = asyncio.get_event_loop().run_until_complete(
+                        self.api.end_session(session_id=session_id, computer=computer)  # type: ignore[attr-defined]
+                    )
+                    if result:
+                        # Refresh to show updated list
+                        stdscr.addstr(0, 0, "Session killed. Press [r] to refresh.")  # type: ignore[attr-defined]
+                        stdscr.refresh()  # type: ignore[attr-defined]
+                        curses.napms(1500)  # type: ignore[attr-defined]
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    stdscr.addstr(0, 0, f"Error killing session: {e}")  # type: ignore[attr-defined]
+                    stdscr.refresh()  # type: ignore[attr-defined]
+                    curses.napms(2000)  # type: ignore[attr-defined]
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content.
