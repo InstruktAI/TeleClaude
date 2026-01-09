@@ -1583,21 +1583,21 @@ After telec TUI is stable:
 - [ ] Test client connectivity
 
 ### Phase 3: TUI
-- [ ] Create `teleclaude/cli/tui/` structure
-- [ ] Create `teleclaude/cli/tui/theme.py` with agent colors
-- [ ] Create `teleclaude/cli/tui/tree.py` with AI-to-AI nesting
-- [ ] Create `teleclaude/cli/tui/todos.py` with roadmap.md parsing
-- [ ] Create `teleclaude/cli/tui/views/sessions.py`
-- [ ] Create `teleclaude/cli/tui/views/preparation.py`
-- [ ] Implement `TelecApp` main loop with view switching (`1`/`2` keys)
-- [ ] Implement `TabBar` widget
-- [ ] Implement color coding (bright/muted based on last activity)
-- [ ] Implement `StartSessionModal` with unavailable agent handling
-- [ ] Implement `Footer` widget
-- [ ] Implement external tool launch (glow, $EDITOR) with TUI suspend/resume
+- [x] Create `teleclaude/cli/tui/` structure
+- [x] Create `teleclaude/cli/tui/theme.py` with agent colors
+- [x] Create `teleclaude/cli/tui/tree.py` with AI-to-AI nesting
+- [x] Create `teleclaude/cli/tui/todos.py` with roadmap.md parsing
+- [x] Create `teleclaude/cli/tui/views/sessions.py`
+- [x] Create `teleclaude/cli/tui/views/preparation.py`
+- [x] Implement `TelecApp` main loop with view switching (`1`/`2` keys)
+- [x] Implement `TabBar` widget
+- [x] Implement color coding (bright/muted based on last activity)
+- [x] Implement `StartSessionModal` with unavailable agent handling
+- [x] Implement `Footer` widget
+- [x] Implement external tool launch (glow, $EDITOR) with TUI suspend/resume
 
 ### Phase 4: Entry Point
-- [ ] Update `telec.py` with TUI and CLI shortcuts
+- [x] Update `telec.py` with TUI and CLI shortcuts
 
 ### Phase 5: Cleanup
 - [ ] Remove terminal_outbox code
