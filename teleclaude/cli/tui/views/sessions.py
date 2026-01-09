@@ -61,7 +61,7 @@ class SessionsView:
         Returns:
             Action bar text
         """
-        return "[Enter] Attach/Start  [n] New  [k] Kill  [r] Refresh"
+        return "[Enter] Attach/Start  [r] Refresh"
 
     def move_up(self) -> None:
         """Move selection up."""
@@ -116,12 +116,10 @@ class SessionsView:
             key: Key code
             stdscr: Curses screen object
         """
-        if key == ord("n"):
-            # New session modal
-            pass
-        elif key == ord("k"):
-            # Kill session
-            pass
+        # No view-specific keys currently implemented
+        # - New session: handled via [Enter] on projects
+        # - Kill session: requires confirmation modal (future feature)
+        pass
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content.
