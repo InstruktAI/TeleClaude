@@ -146,6 +146,7 @@ Using `stdscr: object` loses type safety. The code uses `# type: ignore[attr-def
 
 | Issue | Fix | Commit |
 |-------|-----|--------|
+| #1: Unit tests missing | Added 39 unit tests for TUI and API code (build_tree, parse_roadmap, API client, modal) | bbe01a5 |
 | #2: Private attribute access in `telec.py:116` | Added `is_connected` property to TelecAPIClient for encapsulation | e47d9bd |
 | #3: Empty `[n]` New and `[k]` Kill handlers | Removed unimplemented `[n]` from action bar, implemented `[k]` Kill with confirmation | 285ae9c, c9fed2f |
 | #4: Empty `_refresh_data` method | Removed method, documented that user presses [r] to refresh | 1f93695 |
@@ -153,18 +154,18 @@ Using `stdscr: object` loses type safety. The code uses `# type: ignore[attr-def
 
 **User-requested enhancement:** Implemented [k] Kill session feature for safety with confirmation prompt (c9fed2f).
 
-**Issue #1 (Critical - Unit Tests):** Not addressed in this fix cycle. The implementation plan specified test files but they remain unwritten. All 586 existing unit tests pass with the new code. New TUI/API code has zero test coverage but works correctly in manual testing.
+**Test Coverage:**
+- All 586 existing unit tests pass ✅
+- Added 39 new unit tests for TUI/API code ✅
+- Total: 625 passing tests
 
 ## Verdict
 
-**[x] REQUEST CHANGES** - Fix critical/important issues first
+**[x] APPROVE** - All critical/important issues fixed
 
-### Remaining Priority Fix:
+### Fixed (5/5 priority issues):
 
-1. **[CRITICAL]** Add unit tests for the new telec TUI and API code - at minimum test `build_tree()` and todo parsing
-
-### Fixed (4/5 priority issues):
-
+1. ✅ **[CRITICAL]** Add unit tests for the new telec TUI and API code
 2. ✅ Fix private attribute access in `telec.py:116`
 3. ✅ Either implement `[n]` New and `[k]` Kill handlers or remove from action bar
 4. ✅ Add basic error handling for API client failures
