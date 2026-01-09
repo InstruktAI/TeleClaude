@@ -15,7 +15,7 @@ import json
 import re
 import ssl
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, cast
 
 from instrukt_ai_logging import get_logger
@@ -602,7 +602,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     try:
                         last_seen_dt = datetime.fromisoformat(str(last_seen_str))
                     except (ValueError, TypeError):
-                        last_seen_dt = datetime.now()
+                        last_seen_dt = datetime.now(timezone.utc)
 
                     computer_name: str = str(info["computer_name"])
 
@@ -1022,7 +1022,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Minimal payload - just alive ping
         payload: dict[str, str] = {
             "computer_name": self.computer_name,
-            "last_seen": datetime.now().isoformat(),
+            "last_seen": datetime.now(timezone.utc).isoformat(),
         }
 
         # Set key with auto-expiry

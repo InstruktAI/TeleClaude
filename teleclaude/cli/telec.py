@@ -18,6 +18,20 @@ def main() -> None:
         _handle_cli_command(argv)
         return
 
+    # TUI mode - ensure we're in tmux for pane preview
+    if not os.environ.get("TMUX"):
+        # Check if TUI session already exists - adopt it instead of creating new
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", "tc_tui"],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            # Existing TUI found - attach to it
+            os.execlp("tmux", "tmux", "attach", "-t", "tc_tui")
+        else:
+            # No TUI running - create new named session
+            os.execlp("tmux", "tmux", "new-session", "-s", "tc_tui", "telec")
+
     try:
         asyncio.run(_run_tui())
     except KeyboardInterrupt:

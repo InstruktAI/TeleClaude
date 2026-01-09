@@ -343,7 +343,7 @@ class PreparationView:
             self.drill_down()
         elif item.type == "todo":
             if item.data.get("status") == "ready":
-                self._start_work(item.data)
+                self._start_work(item.data, stdscr)
             else:
                 self.drill_down()
         elif item.type == "file":
@@ -357,35 +357,70 @@ class PreparationView:
             return self.flat_items[self.selected_index]
         return None
 
-    def _start_work(self, item: dict[str, object]) -> None:  # guard: loose-dict
-        """Start work on a ready todo."""
-        curses.endwin()
+    def _start_work(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
+        """Start work on a ready todo - launches session in tmux split pane."""
         slug = str(item.get("slug", ""))
-        asyncio.get_event_loop().run_until_complete(
-            self.api.create_session(  # type: ignore[attr-defined]
-                computer=item.get("computer"),
-                project_dir=item.get("project_path"),
-                agent="claude",
-                thinking_mode="slow",
-                message=f"/prime-orchestrator {slug}",
-            )
+        self._launch_session_split(
+            item,
+            f"/prime-orchestrator {slug}",
+            stdscr,
         )
-        curses.doupdate()
 
-    def _prepare(self, item: dict[str, object]) -> None:  # guard: loose-dict
-        """Prepare a todo."""
-        curses.endwin()
+    def _prepare(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
+        """Prepare a todo - launches session in tmux split pane."""
         slug = str(item.get("slug", ""))
-        asyncio.get_event_loop().run_until_complete(
+        self._launch_session_split(
+            item,
+            f"/next-prepare {slug}",
+            stdscr,
+        )
+
+    def _launch_session_split(
+        self,
+        item: dict[str, object],  # guard: loose-dict
+        message: str,
+        stdscr: object,
+    ) -> None:
+        """Launch a session and open it in a tmux split pane.
+
+        Args:
+            item: Todo data dict with computer, project_path
+            message: Initial message/command for the session
+            stdscr: Curses screen object for restoration
+        """
+        # Create the session via API
+        result = asyncio.get_event_loop().run_until_complete(
             self.api.create_session(  # type: ignore[attr-defined]
                 computer=item.get("computer"),
                 project_dir=item.get("project_path"),
                 agent="claude",
                 thinking_mode="slow",
-                message=f"/next-prepare {slug}",
+                message=message,
             )
         )
-        curses.doupdate()
+
+        tmux_session_name = result.get("tmux_session_name")
+        if not tmux_session_name:
+            return
+
+        # Check if we're inside tmux
+        in_tmux = bool(os.environ.get("TMUX"))
+        if not in_tmux:
+            return
+
+        # Save curses state and exit
+        curses.def_prog_mode()
+        curses.endwin()
+
+        # Split window horizontally and attach to the new session
+        subprocess.run(
+            ["tmux", "split-window", "-h", f"tmux attach -t {tmux_session_name}"],
+            check=False,
+        )
+
+        # Restore curses state
+        curses.reset_prog_mode()
+        stdscr.refresh()  # type: ignore[attr-defined]
 
     def _view_file(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
         """View a file in glow (or less as fallback).
@@ -466,9 +501,9 @@ class PreparationView:
         # Todo-specific actions
         if item.type == "todo":
             if key == ord("s") and item.data.get("status") == "ready":
-                self._start_work(item.data)
+                self._start_work(item.data, stdscr)
             elif key == ord("p"):
-                self._prepare(item.data)
+                self._prepare(item.data, stdscr)
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content.
@@ -524,8 +559,11 @@ class PreparationView:
         if item.type == "project":
             path = str(item.data.get("path", ""))
             todo_count = len(item.children)
-            suffix = f"({todo_count} todos)" if todo_count else "(no todos)"
+            suffix = f"({todo_count})" if todo_count else ""
             line = f"{indent}[P] {path} {suffix}"
+            # Mute empty projects
+            if not todo_count and not selected:
+                attr = curses.A_DIM
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shutil
 import signal
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -97,7 +97,7 @@ async def test_cleanup_stale_session_detects_missing_tmux():
     mock_session.session_id = "stale-session-123"
     mock_session.tmux_session_name = "tc_stale"
     mock_session.origin_adapter = "telegram"
-    mock_session.created_at = datetime.now() - timedelta(minutes=5)  # Old enough to be cleaned up
+    mock_session.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)  # Old enough to be cleaned up
 
     mock_adapter_client = MagicMock()
 
@@ -153,7 +153,7 @@ async def test_cleanup_stale_session_skips_healthy_session():
     mock_session.session_id = "healthy-session-123"
     mock_session.tmux_session_name = "tc_healthy"
     mock_session.origin_adapter = "telegram"
-    mock_session.created_at = datetime.now() - timedelta(minutes=5)  # Old enough to be checked
+    mock_session.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)  # Old enough to be checked
 
     mock_adapter_client = MagicMock()
 
@@ -243,7 +243,7 @@ async def test_cleanup_all_stale_sessions_processes_all():
         s.session_id = f"session-{i}"
         s.tmux_session_name = f"tc_session_{i}"
         s.origin_adapter = "telegram"
-        s.created_at = datetime.now() - timedelta(minutes=5)  # Old enough to be checked
+        s.created_at = datetime.now(timezone.utc) - timedelta(minutes=5)  # Old enough to be checked
         mock_sessions.append(s)
 
     mock_adapter_client = MagicMock()

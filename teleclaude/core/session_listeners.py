@@ -9,7 +9,7 @@ Only one listener per caller-target pair is allowed (deduped by caller, not by t
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from instrukt_ai_logging import get_logger
 
@@ -66,7 +66,7 @@ def register_listener(
         target_session_id=target_session_id,
         caller_session_id=caller_session_id,
         caller_tmux_session=caller_tmux_session,
-        registered_at=datetime.now(),
+        registered_at=datetime.now(timezone.utc),
     )
     _listeners[target_session_id].append(listener)
     logger.info(
@@ -223,7 +223,7 @@ def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
     Returns:
         List of target session IDs that need health checks
     """
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     threshold = now - timedelta(minutes=max_age_minutes)
     stale_targets: list[str] = []
 

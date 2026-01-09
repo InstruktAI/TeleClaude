@@ -247,6 +247,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     initiator_mode = None
     subfolder = None
     working_slug = None
+    initiator_session_id = None
     if metadata.channel_metadata:
         initiator_raw = metadata.channel_metadata.get("target_computer")
         initiator = str(initiator_raw) if initiator_raw else None
@@ -258,6 +259,8 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         subfolder = str(subfolder_raw) if subfolder_raw else None
         working_slug_raw = metadata.channel_metadata.get("working_slug")
         working_slug = str(working_slug_raw) if working_slug_raw else None
+        initiator_session_id_raw = metadata.channel_metadata.get("initiator_session_id")
+        initiator_session_id = str(initiator_session_id_raw) if initiator_session_id_raw else None
 
     # Derive working_dir and short_project from raw inputs (project_dir + subfolder)
     # project_dir is the base project, subfolder is the optional worktree/branch path
@@ -311,6 +314,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         working_directory=working_dir,
         session_id=session_id,
         working_slug=working_slug,
+        initiator_session_id=initiator_session_id,
     )
 
     if adapter_type == "terminal" and (terminal_meta.tty_path or terminal_meta.parent_pid is not None):
@@ -364,7 +368,7 @@ You can now send commands to this session.
 """
         await client.send_feedback(session, welcome, MessageMetadata(), persistent=True)
         logger.info("Created session: %s", session.session_id)
-        return {"session_id": session_id}
+        return {"session_id": session_id, "tmux_session_name": tmux_name}
 
     # Tmux creation failed - clean up DB and channels
     await cleanup_session_resources(session, client)
@@ -400,6 +404,8 @@ async def handle_list_sessions() -> list[SessionListItem]:
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
                 last_input=s.last_message_sent,
                 last_output=s.last_feedback_received,
+                tmux_session_name=s.tmux_session_name,
+                initiator_session_id=s.initiator_session_id,
             )
         )
 

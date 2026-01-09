@@ -1,6 +1,6 @@
 """Unit tests for session_listeners module."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -221,7 +221,7 @@ class TestGetStaleTargets:
         from teleclaude.core import session_listeners
 
         listeners = session_listeners._listeners["target-123"]
-        listeners[0].registered_at = datetime.now() - timedelta(minutes=15)
+        listeners[0].registered_at = datetime.now(timezone.utc) - timedelta(minutes=15)
 
         stale = get_stale_targets(max_age_minutes=10)
         assert stale == ["target-123"]
@@ -234,7 +234,7 @@ class TestGetStaleTargets:
         from teleclaude.core import session_listeners
 
         listeners = session_listeners._listeners["target-123"]
-        old_time = datetime.now() - timedelta(minutes=15)
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=15)
         listeners[0].registered_at = old_time
 
         # First call finds it stale
@@ -254,7 +254,7 @@ class TestGetStaleTargets:
         # Age some listeners
         from teleclaude.core import session_listeners
 
-        old_time = datetime.now() - timedelta(minutes=15)
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=15)
         session_listeners._listeners["target-A"][0].registered_at = old_time
         session_listeners._listeners["target-C"][0].registered_at = old_time
         # target-B stays fresh
@@ -270,7 +270,7 @@ class TestGetStaleTargets:
         # Age only one listener
         from teleclaude.core import session_listeners
 
-        old_time = datetime.now() - timedelta(minutes=15)
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=15)
         session_listeners._listeners["target-123"][0].registered_at = old_time
         # Second listener stays fresh
 

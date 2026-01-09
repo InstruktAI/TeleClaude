@@ -153,6 +153,7 @@ class Db:
         description: Optional[str] = None,
         session_id: Optional[str] = None,
         working_slug: Optional[str] = None,
+        initiator_session_id: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
@@ -167,12 +168,13 @@ class Db:
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
             working_slug: Optional slug of work item this session is working on
+            initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
 
         Returns:
             Created Session object
         """
         session_id = session_id or str(uuid.uuid4())
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         session = Session(
             session_id=session_id,
@@ -187,6 +189,7 @@ class Db:
             working_directory=working_directory,
             description=description,
             working_slug=working_slug,
+            initiator_session_id=initiator_session_id,
         )
 
         data = session.to_dict()
@@ -196,8 +199,8 @@ class Db:
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, created_at,
                 last_activity, terminal_size, working_directory, description,
-                working_slug
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                working_slug, initiator_session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -212,6 +215,7 @@ class Db:
                 data["working_directory"],
                 data["description"],
                 data["working_slug"],
+                data.get("initiator_session_id"),
             ),
         )
         await self.conn.commit()
@@ -329,7 +333,7 @@ class Db:
         """
         await self.conn.execute(
             "UPDATE sessions SET last_activity = ? WHERE session_id = ?",
-            (datetime.now().isoformat(), session_id),
+            (datetime.now(timezone.utc).isoformat(), session_id),
         )
         await self.conn.commit()
 

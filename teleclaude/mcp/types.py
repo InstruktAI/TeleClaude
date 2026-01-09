@@ -63,6 +63,7 @@ class StartSessionResult(TypedDict, total=False):
 
     status: str  # Required - always present
     session_id: str
+    tmux_session_name: str | None
     message: str | None
 
 
@@ -87,6 +88,7 @@ class RunAgentCommandResult(TypedDict, total=False):
 
     status: str  # Required - always present
     session_id: str
+    tmux_session_name: str | None
     message: str | None
 
 

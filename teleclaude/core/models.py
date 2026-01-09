@@ -264,6 +264,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     working_directory: str = "~"
     description: Optional[str] = None
     initiated_by_ai: bool = False  # True if session was created via AI-to-AI
+    initiator_session_id: Optional[str] = None  # Session ID of the AI that created this session
     # UX state fields (migrated from JSON blob)
     output_message_id: Optional[str] = None
     last_input_adapter: Optional[str] = None
@@ -363,6 +364,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "working_directory",
             "description",
             "initiated_by_ai",
+            "initiator_session_id",
             # UX state fields
             "output_message_id",
             "last_input_adapter",
@@ -541,6 +543,8 @@ class SessionSummary:
     last_activity: Optional[str]
     last_input: Optional[str] = None  # Maps to last_message_sent
     last_output: Optional[str] = None  # Maps to last_feedback_received
+    tmux_session_name: Optional[str] = None
+    initiator_session_id: Optional[str] = None  # For AI-to-AI nesting
 
     def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         return {
@@ -555,6 +559,8 @@ class SessionSummary:
             "last_activity": self.last_activity,
             "last_input": self.last_input,
             "last_output": self.last_output,
+            "tmux_session_name": self.tmux_session_name,
+            "initiator_session_id": self.initiator_session_id,
         }
 
 

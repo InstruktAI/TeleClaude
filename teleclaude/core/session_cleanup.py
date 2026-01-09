@@ -15,7 +15,7 @@ import os
 import shutil
 import signal
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
@@ -150,7 +150,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
     # Don't clean up sessions that are still being created (race condition guard)
     # handle_create_session creates DB entry before tmux - give it time to finish
     if session.created_at:
-        session_age = (datetime.now() - session.created_at).total_seconds()
+        session_age = (datetime.now(timezone.utc) - session.created_at).total_seconds()
         if session_age < 10.0:
             logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
             return False

@@ -13,5 +13,5 @@
 
 ## Test Suite Quality Cleanup
 
-- [ ] test-cleanup
-      Define and enforce test quality standards (requirements-only; no implementation plan yet).
+- [.] test-cleanup
+      Refactor test suite to verify observable behavior, add docstrings, document system boundaries.

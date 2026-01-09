@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import nest_asyncio
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import init_colors
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
@@ -113,6 +114,7 @@ class TelecApp:
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
+        self.pane_manager = TmuxPaneManager()
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -121,7 +123,7 @@ class TelecApp:
 
         # Create views BEFORE refresh so they can receive data
         # Pass shared focus context to each view
-        self.views[1] = SessionsView(self.api, self.agent_availability, self.focus)
+        self.views[1] = SessionsView(self.api, self.agent_availability, self.focus, self.pane_manager)
         self.views[2] = PreparationView(self.api, self.agent_availability, self.focus)
 
         # Now refresh to populate views with data
@@ -163,6 +165,23 @@ class TelecApp:
             expires_at=time.time() + duration,
         )
 
+    def update_session_panes(self) -> None:
+        """Hide session panes when leaving Sessions view.
+
+        Called when view is switched. Pane toggling within Sessions view
+        is handled by SessionsView.handle_enter().
+        """
+        if not self.pane_manager.is_available:
+            return
+
+        # Hide panes when not in Sessions view
+        if self.current_view != 1:
+            self.pane_manager.hide_sessions()
+
+    def cleanup(self) -> None:
+        """Clean up resources before exit."""
+        self.pane_manager.cleanup()
+
     def run(self, stdscr: object) -> None:
         """Main event loop.
 
@@ -196,6 +215,7 @@ class TelecApp:
             stdscr: Curses screen object
         """
         if key == ord("q"):
+            self.cleanup()
             self.running = False
 
         # Escape - always go back in focus stack
@@ -265,6 +285,8 @@ class TelecApp:
             view = self.views.get(view_num)
             if view:
                 view.rebuild_for_focus()
+            # Update panes (shows sessions in view 1, hides in view 2)
+            self.update_session_panes()
 
     def _render(self, stdscr: object) -> None:
         """Render current view with banner, tab bar, and footer.

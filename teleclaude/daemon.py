@@ -2055,7 +2055,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def _cleanup_inactive_sessions(self) -> None:
         """Clean up sessions inactive for 72+ hours."""
         try:
-            cutoff_time = datetime.now() - timedelta(hours=72)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=72)
             sessions = await db.list_sessions()
 
             for session in sessions:
@@ -2068,7 +2068,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     logger.info(
                         "Cleaning up inactive session %s (inactive for %s)",
                         session.session_id[:8],
-                        datetime.now() - session.last_activity,
+                        datetime.now(timezone.utc) - session.last_activity,
                     )
 
                     await session_cleanup.terminate_session(

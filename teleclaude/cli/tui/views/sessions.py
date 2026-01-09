@@ -7,6 +7,7 @@ import curses
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
@@ -55,6 +56,7 @@ class SessionsView:
         api: object,
         agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
         focus: FocusContext,
+        pane_manager: TmuxPaneManager,
     ):
         """Initialize sessions view.
 
@@ -62,10 +64,12 @@ class SessionsView:
             api: API client instance
             agent_availability: Agent availability status
             focus: Shared focus context
+            pane_manager: Tmux pane manager for session preview
         """
         self.api = api
         self.agent_availability = agent_availability
         self.focus = focus
+        self.pane_manager = pane_manager
         self.tree: list[TreeNode] = []
         self.flat_items: list[TreeNode] = []
         self.selected_index = 0
@@ -74,6 +78,8 @@ class SessionsView:
         # State tracking for color coding (detect changes between refreshes)
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
         self._active_field: dict[str, str] = {}  # session_id -> "input" | "output" | "none"
+        # Store sessions for child lookup
+        self._sessions: list[dict[str, object]] = []  # guard: loose-dict
 
     async def refresh(
         self,
@@ -88,6 +94,9 @@ class SessionsView:
             projects: List of projects
             sessions: List of sessions
         """
+        # Store sessions for child lookup
+        self._sessions = sessions
+
         # Track state changes for color coding
         self._update_activity_state(sessions)
 
@@ -98,10 +107,14 @@ class SessionsView:
         """Update activity state tracking for color coding.
 
         Determines which field (input/output) is "active" (bright) based on changes.
+        Activity older than 60 seconds is considered idle regardless of changes.
 
         Args:
             sessions: List of session dicts
         """
+        now = datetime.now(timezone.utc)
+        idle_threshold_seconds = 60
+
         for session in sessions:
             session_id = str(session.get("session_id", ""))
             if not session_id:
@@ -110,11 +123,45 @@ class SessionsView:
             curr_input = str(session.get("last_input") or "")
             curr_output = str(session.get("last_output") or "")
 
-            prev = self._prev_state.get(session_id, {"input": "", "output": ""})
+            # Check if last_activity is older than threshold
+            last_activity_str = str(session.get("last_activity") or "")
+            is_idle_by_time = True  # Default to idle if we can't parse or missing
+            if last_activity_str:
+                try:
+                    last_activity_dt = datetime.fromisoformat(last_activity_str.replace("Z", "+00:00"))
+                    # Ensure timezone-aware comparison
+                    if last_activity_dt.tzinfo is None:
+                        last_activity_dt = last_activity_dt.replace(tzinfo=timezone.utc)
+                    age_seconds = (now - last_activity_dt).total_seconds()
+                    # Treat negative ages (timezone mismatch) or old activity as idle
+                    is_idle_by_time = age_seconds > idle_threshold_seconds or age_seconds < 0
+                except (ValueError, TypeError):
+                    pass  # Keep default of idle
+
+            # If activity is old or unparseable, always show as idle
+            if is_idle_by_time:
+                self._active_field[session_id] = "none"
+                self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
+                continue
+
+            # Activity is recent - check if this is a NEW session (no previous state)
+            prev = self._prev_state.get(session_id)
+            if prev is None:
+                # First time seeing this session with recent activity
+                # Show output as highlighted if present, otherwise input, otherwise idle
+                if curr_output:
+                    self._active_field[session_id] = "output"
+                elif curr_input:
+                    self._active_field[session_id] = "input"
+                else:
+                    self._active_field[session_id] = "none"
+                self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
+                continue
+
+            # Existing session - check what changed
             prev_input = prev.get("input", "")
             prev_output = prev.get("output", "")
 
-            # Determine what changed
             input_changed = curr_input != prev_input
             output_changed = curr_output != prev_output
 
@@ -124,9 +171,8 @@ class SessionsView:
             elif input_changed:
                 # New input → input is bright (processing)
                 self._active_field[session_id] = "input"
-            else:
-                # Nothing changed → both muted (idle)
-                self._active_field[session_id] = "none"
+            # Note: Don't set to "none" here - keep previous active state
+            # until it becomes idle by time threshold
 
             # Store current state for next comparison
             self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
@@ -198,7 +244,11 @@ class SessionsView:
 
         selected = self.flat_items[self.selected_index]
         if selected.type == "session":
-            return f"{back_hint}[Enter] Attach  [←/→] Collapse/Expand  [k] Kill"
+            # Show toggle state in action bar
+            tmux_session = str(selected.data.get("tmux_session_name") or "")
+            is_previewing = self.pane_manager.active_session == tmux_session
+            preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
+            return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [k] Kill"
         if selected.type == "project":
             return f"{back_hint}[n] New Session"
         # computer
@@ -298,18 +348,33 @@ class SessionsView:
             # Start new session on project
             self._start_session_for_project(stdscr, item.data)
         elif item.type == "session":
-            # Attach to session
-            self._attach_to_session(stdscr, item)
+            # Toggle session preview pane
+            self._toggle_session_pane(item)
 
-    def _attach_to_session(self, stdscr: object, item: TreeNode) -> None:  # noqa: ARG002
-        """Attach to a session (placeholder).
+    def _toggle_session_pane(self, item: TreeNode) -> None:
+        """Toggle session preview pane visibility.
 
         Args:
-            stdscr: Curses screen object
             item: Session node
         """
-        # TODO: Implement tmux attach
-        pass
+        session = item.data
+        session_id = str(session.get("session_id", ""))
+        tmux_session = str(session.get("tmux_session_name") or "")
+
+        if not tmux_session:
+            return
+
+        # Look for child sessions (sessions where initiator_session_id == this session's id)
+        child_tmux_session: str | None = None
+        for sess in self._sessions:
+            if sess.get("initiator_session_id") == session_id:
+                child_tmux = sess.get("tmux_session_name")
+                if child_tmux:
+                    child_tmux_session = str(child_tmux)
+                    break
+
+        # Toggle pane visibility
+        self.pane_manager.toggle_session(tmux_session, child_tmux_session)
 
     def _start_session_for_project(self, stdscr: object, project: dict[str, object]) -> None:  # guard: loose-dict
         """Open modal to start session on project.
@@ -431,8 +496,11 @@ class SessionsView:
         if item.type == "project":
             path = str(item.data.get("path", ""))
             session_count = len(item.children)
-            suffix = f"({session_count} sessions)" if session_count else "(no sessions)"
+            suffix = f"({session_count})" if session_count else ""
             line = f"{indent}📁 {path} {suffix}"
+            # Mute empty projects
+            if not session_count and not selected:
+                attr = curses.A_DIM
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if item.type == "session":

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     working_directory TEXT DEFAULT '~',
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
     initiated_by_ai BOOLEAN DEFAULT 0,  -- 0 = human-initiated (Opus), 1 = AI-initiated (Sonnet)
+    initiator_session_id TEXT,  -- Session ID of the AI that created this session (for AI-to-AI nesting)
     -- UX state fields (migrated from JSON blob)
     output_message_id TEXT,
     last_input_adapter TEXT,

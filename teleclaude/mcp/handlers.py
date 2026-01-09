@@ -110,7 +110,7 @@ class MCPHandlersMixin:
         local_computer: ComputerInfo = {
             "name": self.computer_name,
             "status": "local",
-            "last_seen": datetime.now(),
+            "last_seen": datetime.now(timezone.utc),
             "adapter_type": "local",
             "user": local_info.get("user"),
             "host": local_info.get("host"),
@@ -209,6 +209,8 @@ class MCPHandlersMixin:
             channel_metadata["initiator_agent"] = initiator_agent
         if initiator_mode:
             channel_metadata["initiator_mode"] = initiator_mode
+        if caller_session_id:
+            channel_metadata["initiator_session_id"] = caller_session_id
 
         result: object = await self.client.handle_event(
             TeleClaudeEvents.NEW_SESSION,
@@ -222,6 +224,7 @@ class MCPHandlersMixin:
         )
 
         session_id = self._extract_session_id(result)
+        tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
             error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
@@ -241,7 +244,7 @@ class MCPHandlersMixin:
                 logger.error("Failed to dispatch AGENT_START for session %s: %s", session_id[:8], exc)
 
         self._track_background_task(asyncio.create_task(_run_agent_start()), f"agent_start:{session_id[:8]}")
-        return {"session_id": session_id, "status": "success"}
+        return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": "success"}
 
     async def _start_remote_session(
         self,
@@ -447,6 +450,8 @@ class MCPHandlersMixin:
             channel_metadata["subfolder"] = subfolder
         if working_slug:
             channel_metadata["working_slug"] = working_slug
+        if caller_session_id:
+            channel_metadata["initiator_session_id"] = caller_session_id
 
         result: object = await self.client.handle_event(
             TeleClaudeEvents.NEW_SESSION,
@@ -461,12 +466,13 @@ class MCPHandlersMixin:
         )
 
         session_id = self._extract_session_id(result)
+        tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
             error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         await self._register_listener_if_present(session_id, caller_session_id)
-        return {"session_id": session_id, "status": "success"}
+        return {"session_id": session_id, "tmux_session_name": tmux_session_name, "status": "success"}
 
     async def _start_remote_session_with_auto_command(
         self,
@@ -493,6 +499,8 @@ class MCPHandlersMixin:
             channel_metadata["subfolder"] = subfolder
         if working_slug:
             channel_metadata["working_slug"] = working_slug
+        if caller_session_id:
+            channel_metadata["initiator_session_id"] = caller_session_id
 
         metadata = MessageMetadata(
             project_dir=project_dir,
@@ -879,6 +887,13 @@ class MCPHandlersMixin:
             return None
         data: object = result.get("data", {})
         return data.get("session_id") if isinstance(data, dict) else None
+
+    def _extract_tmux_session_name(self, result: object) -> str | None:
+        """Extract tmux_session_name from handle_event result."""
+        if not isinstance(result, dict) or result.get("status") != "success":
+            return None
+        data: object = result.get("data", {})
+        return data.get("tmux_session_name") if isinstance(data, dict) else None
 
     async def _is_computer_online(self, computer: str) -> bool:
         """Check if a remote computer is online."""
