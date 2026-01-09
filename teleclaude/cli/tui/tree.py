@@ -67,9 +67,7 @@ def build_tree(
             # Get root sessions for this project
             proj_path = project.get("path", "")
             proj_sessions = [
-                s
-                for s in root_sessions
-                if s.get("computer") == comp_name and s.get("working_directory") == proj_path
+                s for s in root_sessions if s.get("computer") == comp_name and s.get("working_directory") == proj_path
             ]
 
             for idx, session in enumerate(proj_sessions, 1):
