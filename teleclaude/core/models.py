@@ -281,6 +281,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     last_message_sent_at: Optional[datetime] = None
     last_feedback_received: Optional[str] = None
     last_feedback_received_at: Optional[datetime] = None
+    working_slug: Optional[str] = None  # Slug of work item this session is working on
 
     def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
@@ -379,6 +380,7 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             "last_message_sent_at",
             "last_feedback_received",
             "last_feedback_received_at",
+            "working_slug",
         }
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
         filtered_data["adapter_metadata"] = adapter_metadata
@@ -533,9 +535,12 @@ class SessionSummary:
     title: str
     working_directory: str
     thinking_mode: str
+    active_agent: Optional[str]
     status: str
     created_at: Optional[str]
     last_activity: Optional[str]
+    last_input: Optional[str] = None  # Maps to last_message_sent
+    last_output: Optional[str] = None  # Maps to last_feedback_received
 
     def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
         return {
@@ -544,9 +549,12 @@ class SessionSummary:
             "title": self.title,
             "working_directory": self.working_directory,
             "thinking_mode": self.thinking_mode,
+            "active_agent": self.active_agent,
             "status": self.status,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
+            "last_input": self.last_input,
+            "last_output": self.last_output,
         }
 
 

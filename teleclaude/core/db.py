@@ -152,6 +152,7 @@ class Db:
         working_directory: str = "~",
         description: Optional[str] = None,
         session_id: Optional[str] = None,
+        working_slug: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
@@ -165,6 +166,7 @@ class Db:
             working_directory: Initial working directory
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
+            working_slug: Optional slug of work item this session is working on
 
         Returns:
             Created Session object
@@ -184,6 +186,7 @@ class Db:
             terminal_size=terminal_size,
             working_directory=working_directory,
             description=description,
+            working_slug=working_slug,
         )
 
         data = session.to_dict()
@@ -192,8 +195,9 @@ class Db:
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, created_at,
-                last_activity, terminal_size, working_directory, description
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                last_activity, terminal_size, working_directory, description,
+                working_slug
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -207,6 +211,7 @@ class Db:
                 data["terminal_size"],
                 data["working_directory"],
                 data["description"],
+                data["working_slug"],
             ),
         )
         await self.conn.commit()

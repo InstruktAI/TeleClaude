@@ -47,9 +47,9 @@ def get_mcp() -> TeleClaudeMCPServer:
 
 @router.get("/sessions", response_model=list[SessionResponse])
 async def list_sessions(computer: str | None = None) -> list[SessionResponse]:
-    """List sessions from all computers or specific computer via Redis."""
+    """List sessions from all computers (None) or specific computer."""
     mcp = get_mcp()
-    sessions = await mcp.teleclaude__list_sessions(computer=computer or "local")
+    sessions = await mcp.teleclaude__list_sessions(computer=computer)
 
     # Convert to SessionResponse format
     result: list[SessionResponse] = []
@@ -76,12 +76,19 @@ async def list_sessions(computer: str | None = None) -> list[SessionResponse]:
 async def create_session(request: CreateSessionRequest) -> dict[str, object]:  # guard: loose-dict
     """Create session (local or remote via Redis)."""
     mcp = get_mcp()
+
+    # Derive title from message if not provided (e.g., "/next-prepare slug" -> "/next-prepare slug")
+    title = request.title
+    if not title and request.message and request.message.startswith("/"):
+        title = request.message
+    title = title or "Untitled"
+
     result = await mcp.teleclaude__start_session(
         computer=request.computer,
         project_dir=request.project_dir,
         agent=request.agent,
         thinking_mode=ThinkingMode(request.thinking_mode),
-        title=request.title or "Untitled",
+        title=title,
         message=request.message,
     )
     return dict(result)  # type: ignore[arg-type]  # TypedDict to dict conversion
@@ -134,18 +141,19 @@ async def get_transcript(
 
 @router.get("/computers", response_model=list[ComputerResponse])
 async def list_computers() -> list[ComputerResponse]:
-    """List online computers only."""
+    """List available computers (local + online remotes)."""
     mcp = get_mcp()
     computers = await mcp.teleclaude__list_computers()
 
-    # Filter to online only and convert to response format
+    # Include local and online computers
     result: list[ComputerResponse] = []
     for comp in computers:
-        if comp.get("status") == "online":
+        status = comp.get("status")
+        if status in ("online", "local"):
             result.append(
                 ComputerResponse(
                     name=comp["name"],
-                    status=comp["status"],
+                    status="online" if status == "local" else status,  # Normalize local to online
                     user=comp.get("user"),
                     host=comp.get("host"),
                 )
@@ -155,16 +163,20 @@ async def list_computers() -> list[ComputerResponse]:
 
 @router.get("/projects", response_model=list[ProjectResponse])
 async def list_projects(computer: str | None = None) -> list[ProjectResponse]:
-    """List projects from all or specific computer."""
+    """List projects from all computers (None) or specific computer."""
     mcp = get_mcp()
-    projects = await mcp.teleclaude__list_projects(computer=computer or "local")
+    local_computer_name = mcp.computer_name
+    projects = await mcp.teleclaude__list_projects(computer=computer)
 
     # Convert to response format
+    # When fetching all (computer=None), projects already have correct computer name
+    # When fetching local specifically, map "local" to actual computer name
     result: list[ProjectResponse] = []
     for project in projects:
+        comp = project.get("computer", "local")
         result.append(
             ProjectResponse(
-                computer=project.get("computer", "local"),
+                computer=local_computer_name if comp == "local" else comp,
                 name=project.get("name", ""),
                 path=project.get("location", ""),
                 description=project.get("desc"),

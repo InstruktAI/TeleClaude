@@ -3,6 +3,8 @@
 import asyncio
 import curses
 
+from teleclaude.cli.tui.theme import get_layer_attr, get_selection_attr
+
 
 class StartSessionModal:
     """Modal for starting a new session with agent/mode selection."""
@@ -168,36 +170,41 @@ class StartSessionModal:
         start_y = (height - modal_h) // 2
         start_x = (width - modal_w) // 2
 
-        # Draw border
-        for i in range(modal_h):
-            stdscr.addstr(start_y + i, start_x, " " * modal_w, curses.A_REVERSE)  # type: ignore[attr-defined]
+        # Modal background (z=2 layer - lightest in dark mode)
+        modal_bg = get_layer_attr(2)
+        selection_bg = get_selection_attr(2)
 
-        stdscr.addstr(start_y, start_x, "─ Start Session " + "─" * (modal_w - 16))  # type: ignore[attr-defined]
+        # Draw modal background
+        for i in range(modal_h):
+            stdscr.addstr(start_y + i, start_x, " " * modal_w, modal_bg)  # type: ignore[attr-defined]
+
+        # Title bar
+        stdscr.addstr(start_y, start_x, "─ Start Session " + "─" * (modal_w - 16), modal_bg)  # type: ignore[attr-defined]
 
         # Computer/Project (read-only)
-        stdscr.addstr(start_y + 2, start_x + 2, f"Computer: {self.computer}")  # type: ignore[attr-defined]
-        stdscr.addstr(start_y + 3, start_x + 2, f"Project:  {self.project_path[:45]}")  # type: ignore[attr-defined]
+        stdscr.addstr(start_y + 2, start_x + 2, f"Computer: {self.computer}", modal_bg)  # type: ignore[attr-defined]
+        stdscr.addstr(start_y + 3, start_x + 2, f"Project:  {self.project_path[:45]}", modal_bg)  # type: ignore[attr-defined]
 
         # Agent selection
         agent_y = start_y + 5
-        stdscr.addstr(agent_y, start_x + 2, "Agent:")  # type: ignore[attr-defined]
+        stdscr.addstr(agent_y, start_x + 2, "Agent:", modal_bg)  # type: ignore[attr-defined]
         for i, agent in enumerate(self.AGENTS):
             x = start_x + 10 + i * 15
             available = self._is_agent_available(agent)
 
             if i == self.selected_agent and available:
                 marker = "●"
-                attr = curses.A_BOLD if self.current_field == 0 else 0
+                attr = selection_bg | curses.A_BOLD if self.current_field == 0 else modal_bg
             elif available:
                 marker = "○"
-                attr = 0
+                attr = modal_bg
             else:
                 # Unavailable - show grayed with countdown
                 info = self.agent_availability.get(agent, {})
                 until = info.get("unavailable_until", "")
                 marker = "░"
                 agent_text = f"{agent} ({until})" if until else agent
-                attr = curses.A_DIM
+                attr = modal_bg | curses.A_DIM
                 stdscr.addstr(agent_y, x, f"{marker} {agent_text}", attr)  # type: ignore[attr-defined]
                 continue
 
@@ -205,22 +212,22 @@ class StartSessionModal:
 
         # Mode selection
         mode_y = start_y + 7
-        stdscr.addstr(mode_y, start_x + 2, "Mode:")  # type: ignore[attr-defined]
+        stdscr.addstr(mode_y, start_x + 2, "Mode:", modal_bg)  # type: ignore[attr-defined]
         for i, mode in enumerate(self.MODES):
             x = start_x + 10 + i * 12
             if i == self.selected_mode:
                 marker = "●"
-                attr = curses.A_BOLD if self.current_field == 1 else 0
+                attr = selection_bg | curses.A_BOLD if self.current_field == 1 else modal_bg
             else:
                 marker = "○"
-                attr = 0
+                attr = modal_bg
             stdscr.addstr(mode_y, x, f"{marker} {mode}", attr)  # type: ignore[attr-defined]
 
         # Prompt input
         prompt_y = start_y + 9
-        stdscr.addstr(prompt_y, start_x + 2, "Prompt:")  # type: ignore[attr-defined]
-        prompt_attr = curses.A_UNDERLINE if self.current_field == 2 else 0
+        stdscr.addstr(prompt_y, start_x + 2, "Prompt:", modal_bg)  # type: ignore[attr-defined]
+        prompt_attr = selection_bg | curses.A_UNDERLINE if self.current_field == 2 else modal_bg
         stdscr.addstr(prompt_y + 1, start_x + 2, self.prompt[:50] + "_", prompt_attr)  # type: ignore[attr-defined]
 
         # Actions
-        stdscr.addstr(start_y + 12, start_x + 2, "[Enter] Start    [Esc] Cancel")  # type: ignore[attr-defined]
+        stdscr.addstr(start_y + 12, start_x + 2, "[Enter] Start    [Esc] Cancel", modal_bg)  # type: ignore[attr-defined]

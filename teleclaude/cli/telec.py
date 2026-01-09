@@ -18,7 +18,10 @@ def main() -> None:
         _handle_cli_command(argv)
         return
 
-    asyncio.run(_run_tui())
+    try:
+        asyncio.run(_run_tui())
+    except KeyboardInterrupt:
+        pass  # Clean exit on Ctrl-C
 
 
 async def _run_tui() -> None:
@@ -29,9 +32,8 @@ async def _run_tui() -> None:
     try:
         await app.initialize()
         curses.wrapper(app.run)
-
-        # After TUI exits, check if we need to attach to a session
-        # (Future enhancement: implement session attachment)
+    except KeyboardInterrupt:
+        pass  # Clean exit on Ctrl-C
     finally:
         await api.close()
 

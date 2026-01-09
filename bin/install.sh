@@ -186,8 +186,49 @@ install_system_deps() {
         install_package socat
     fi
 
+    # glow (for pretty markdown rendering in TUI)
+    install_glow
+
     # Claude Code
     install_claude_code
+}
+
+# Install glow (markdown renderer)
+install_glow() {
+    if command -v glow &> /dev/null; then
+        print_success "glow already installed"
+        return 0
+    fi
+
+    print_info "Installing glow (markdown renderer)..."
+
+    case "$DISTRO" in
+        macos)
+            if command -v brew &> /dev/null; then
+                brew install glow >> "$LOG_FILE" 2>&1
+                print_success "glow installed via brew"
+            else
+                print_warning "Homebrew not found, skipping glow"
+            fi
+            ;;
+        ubuntu|debian)
+            # glow is not in default apt repos, use snap if available
+            if command -v snap &> /dev/null; then
+                sudo snap install glow >> "$LOG_FILE" 2>&1
+                print_success "glow installed via snap"
+            else
+                print_warning "snap not found, skipping glow (install manually: sudo snap install glow)"
+            fi
+            ;;
+        arch|manjaro)
+            # Available in community repo
+            sudo pacman -S --noconfirm glow >> "$LOG_FILE" 2>&1
+            print_success "glow installed via pacman"
+            ;;
+        *)
+            print_warning "Skipping glow on $DISTRO (install manually from https://github.com/charmbracelet/glow)"
+            ;;
+    esac
 }
 
 # Install Claude Code

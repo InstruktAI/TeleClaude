@@ -50,6 +50,7 @@ def test_receiver_exits_cleanly_without_session(monkeypatch):
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
     monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (None, None))
     monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMUX", raising=False)  # Prevent tmux recovery from running
 
     with pytest.raises(SystemExit) as exc:
         receiver.main()
@@ -120,6 +121,7 @@ def test_receiver_recovers_from_native_session_id(monkeypatch):
     monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (None, None))
     monkeypatch.setattr(receiver, "_find_session_by_native_id", lambda _sid: "sess-native")
     monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMUX", raising=False)  # Prevent tmux recovery from running first
 
     receiver.main()
 

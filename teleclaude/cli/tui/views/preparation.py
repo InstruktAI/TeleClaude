@@ -1,15 +1,38 @@
 """Preparation view - shows planned work from todos/roadmap.md."""
 
+from __future__ import annotations
+
 import asyncio
 import curses
 import os
 import subprocess
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from teleclaude.cli.tui.todos import parse_roadmap
 
+if TYPE_CHECKING:
+    from teleclaude.cli.tui.app import FocusContext
+
+
+@dataclass
+class PrepTreeNode:
+    """A node in the preparation tree."""
+
+    type: str  # "computer", "project", "todo", "file"
+    data: dict[str, object]  # guard: loose-dict
+    depth: int = 0
+    children: list[PrepTreeNode] = field(default_factory=list)
+
 
 class PreparationView:
-    """View 2: Preparation - todo-centric tree showing roadmap items."""
+    """View 2: Preparation - todo-centric tree showing roadmap items.
+
+    Shows tree structure: Computer -> Project -> Todos -> Files
+    Computers and projects are always expanded.
+    Todos can be expanded to show file children (requirements.md, implementation-plan.md).
+    Files can be selected for view/edit actions.
+    """
 
     STATUS_MARKERS: dict[str, str] = {
         "pending": "[ ]",
@@ -17,81 +40,218 @@ class PreparationView:
         "in_progress": "[>]",
     }
 
-    def __init__(self, api: object, agent_availability: dict[str, dict[str, object]]):  # guard: loose-dict
+    # Known files in todo folders
+    TODO_FILES = [
+        ("requirements.md", "Requirements", "has_requirements"),
+        ("implementation-plan.md", "Implementation Plan", "has_impl_plan"),
+    ]
+
+    def __init__(
+        self,
+        api: object,
+        agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
+        focus: FocusContext,
+    ):
         """Initialize preparation view.
 
         Args:
             api: API client instance
             agent_availability: Agent availability status
+            focus: Shared focus context
         """
         self.api = api
         self.agent_availability = agent_availability
-        self.flat_items: list[dict[str, object]] = []  # guard: loose-dict
+        self.focus = focus
+        # Tree structure
+        self.tree: list[PrepTreeNode] = []
+        self.flat_items: list[PrepTreeNode] = []
         self.selected_index = 0
         self.scroll_offset = 0
+        # Expanded todos (show file children)
+        self.expanded_todos: set[str] = set()
 
     async def refresh(
         self,
         computers: list[dict[str, object]],  # guard: loose-dict
         projects: list[dict[str, object]],  # guard: loose-dict
-        sessions: list[dict[str, object]],  # noqa: ARG002 - needed for API consistency  # guard: loose-dict
+        sessions: list[dict[str, object]],  # noqa: ARG002 - API consistency  # guard: loose-dict
     ) -> None:
-        """Refresh view data - parse todos for each project.
+        """Refresh view data - build tree from computers, projects, todos.
 
         Args:
             computers: List of computers
             projects: List of projects
-            sessions: List of sessions (unused but kept for consistency)
+            sessions: List of sessions (unused)
         """
-        self.flat_items = []
+        self.tree = self._build_tree(computers, projects)
+        self.rebuild_for_focus()
+
+    def _build_tree(
+        self,
+        computers: list[dict[str, object]],  # guard: loose-dict
+        projects: list[dict[str, object]],  # guard: loose-dict
+    ) -> list[PrepTreeNode]:
+        """Build tree structure: Computer -> Project -> Todos.
+
+        Args:
+            computers: List of computers
+            projects: List of projects
+
+        Returns:
+            Tree of PrepTreeNodes
+        """
+        tree: list[PrepTreeNode] = []
 
         for computer in computers:
-            self.flat_items.append(
-                {
-                    "type": "computer",
-                    "name": computer.get("name", ""),
-                    "depth": 0,
-                }
+            comp_name = str(computer.get("name", ""))
+            comp_node = PrepTreeNode(
+                type="computer",
+                data={"name": comp_name, "status": computer.get("status", "online")},
+                depth=0,
             )
 
-            comp_name = computer.get("name", "")
+            # Add projects for this computer
             comp_projects = [p for p in projects if p.get("computer") == comp_name]
-
             for project in comp_projects:
-                self.flat_items.append(
-                    {
-                        "type": "project",
-                        "path": project.get("path", ""),
-                        "computer": comp_name,
-                        "depth": 1,
-                    }
+                project_path = str(project.get("path", ""))
+                proj_node = PrepTreeNode(
+                    type="project",
+                    data={"path": project_path, "computer": comp_name},
+                    depth=1,
                 )
 
-                # Parse todos from this project's roadmap.md
-                project_path = str(project.get("path", ""))
+                # Parse todos for this project
                 todos = parse_roadmap(project_path)
                 for todo in todos:
-                    self.flat_items.append(
-                        {
-                            "type": "todo",
+                    todo_node = PrepTreeNode(
+                        type="todo",
+                        data={
                             "slug": todo.slug,
                             "status": todo.status,
-                            "description": todo.description,
                             "has_requirements": todo.has_requirements,
                             "has_impl_plan": todo.has_impl_plan,
+                            "build_status": todo.build_status,
+                            "review_status": todo.review_status,
                             "project_path": project_path,
                             "computer": comp_name,
-                            "depth": 2,
-                        }
+                        },
+                        depth=2,
                     )
+                    proj_node.children.append(todo_node)
+
+                comp_node.children.append(proj_node)
+
+            tree.append(comp_node)
+
+        return tree
+
+    def rebuild_for_focus(self) -> None:
+        """Rebuild flat_items based on current focus context."""
+        nodes = self.tree
+
+        # Filter by focused computer
+        if self.focus.computer:
+            for node in self.tree:
+                if node.type == "computer" and node.data.get("name") == self.focus.computer:
+                    nodes = [node]
+                    break
+            else:
+                nodes = []
+
+        # Flatten tree (computers and projects always expanded)
+        self.flat_items = self._flatten_tree(nodes, base_depth=0)
+
+        # Reset selection if out of bounds
+        if self.selected_index >= len(self.flat_items):
+            self.selected_index = max(0, len(self.flat_items) - 1)
+        self.scroll_offset = 0
+
+    def _flatten_tree(self, nodes: list[PrepTreeNode], base_depth: int) -> list[PrepTreeNode]:
+        """Flatten tree for display.
+
+        Args:
+            nodes: Tree nodes
+            base_depth: Base depth offset
+
+        Returns:
+            Flattened list
+        """
+        result: list[PrepTreeNode] = []
+        for node in nodes:
+            display_node = PrepTreeNode(
+                type=node.type,
+                data=node.data,
+                depth=base_depth,
+                children=node.children,
+            )
+            result.append(display_node)
+
+            # Always expand computers and projects
+            if node.type in ("computer", "project"):
+                result.extend(self._flatten_tree(node.children, base_depth + 1))
+            # Expand todos if in expanded set - add file children
+            elif node.type == "todo":
+                slug = str(node.data.get("slug", ""))
+                if slug in self.expanded_todos:
+                    result.extend(self._create_file_nodes(node, base_depth + 1))
+
+        return result
+
+    def _create_file_nodes(self, todo_node: PrepTreeNode, depth: int) -> list[PrepTreeNode]:
+        """Create file nodes for an expanded todo.
+
+        Args:
+            todo_node: Parent todo node
+            depth: Depth for file nodes
+
+        Returns:
+            List of file nodes
+        """
+        file_nodes: list[PrepTreeNode] = []
+        for idx, (filename, display_name, has_flag) in enumerate(self.TODO_FILES, start=1):
+            exists = bool(todo_node.data.get(has_flag, False))
+            file_node = PrepTreeNode(
+                type="file",
+                data={
+                    "filename": filename,
+                    "display_name": display_name,
+                    "exists": exists,
+                    "index": idx,
+                    "slug": todo_node.data.get("slug"),
+                    "project_path": todo_node.data.get("project_path"),
+                    "computer": todo_node.data.get("computer"),
+                },
+                depth=depth,
+            )
+            file_nodes.append(file_node)
+        return file_nodes
 
     def get_action_bar(self) -> str:
-        """Return action bar string for this view.
+        """Return action bar string.
 
         Returns:
             Action bar text
         """
-        return "[s] Start Work  [p] Prepare  [v/V] View  [e/E] Edit  [r] Refresh"
+        back_hint = "[<-] Back  " if self.focus.stack else ""
+
+        if not self.flat_items or self.selected_index >= len(self.flat_items):
+            return back_hint.strip() if back_hint else ""
+
+        item = self.flat_items[self.selected_index]
+
+        if item.type == "computer":
+            return f"{back_hint}[->] Focus Computer"
+        if item.type == "project":
+            return back_hint.strip() if back_hint else ""
+        if item.type == "file":
+            # File actions
+            if item.data.get("exists"):
+                return f"{back_hint}[v] View  [e] Edit"
+            return f"{back_hint}[e] Create"
+        # Todo actions
+        if item.data.get("status") == "ready":
+            return f"{back_hint}[Enter/s] Start  [p] Prepare"
+        return f"{back_hint}[p] Prepare"
 
     def move_up(self) -> None:
         """Move selection up."""
@@ -101,33 +261,104 @@ class PreparationView:
         """Move selection down."""
         self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
 
-    def handle_enter(self, stdscr: object) -> None:  # noqa: ARG002 - stdscr needed for future features
-        """Handle Enter - same as Start Work for ready items.
+    def collapse_selected(self) -> bool:
+        """Collapse selected todo or navigate to parent.
+
+        Returns:
+            True if collapsed, False otherwise
+        """
+        if not self.flat_items or self.selected_index >= len(self.flat_items):
+            return False
+
+        item = self.flat_items[self.selected_index]
+
+        # If on a file, collapse parent todo
+        if item.type == "file":
+            slug = str(item.data.get("slug", ""))
+            if slug in self.expanded_todos:
+                self.expanded_todos.discard(slug)
+                self.rebuild_for_focus()
+                return True
+            return False
+
+        if item.type == "todo":
+            slug = str(item.data.get("slug", ""))
+            if slug in self.expanded_todos:
+                self.expanded_todos.discard(slug)
+                self.rebuild_for_focus()
+                return True
+            return False  # Already collapsed
+
+        return False
+
+    def drill_down(self) -> bool:
+        """Drill down / expand selected item.
+
+        Returns:
+            True if action taken, False otherwise
+        """
+        if not self.flat_items or self.selected_index >= len(self.flat_items):
+            return False
+
+        item = self.flat_items[self.selected_index]
+
+        if item.type == "computer":
+            self.focus.push("computer", str(item.data.get("name", "")))
+            self.rebuild_for_focus()
+            self.selected_index = 0
+            return True
+        if item.type == "todo":
+            # Expand todo to show file children
+            slug = str(item.data.get("slug", ""))
+            if slug not in self.expanded_todos:
+                self.expanded_todos.add(slug)
+                self.rebuild_for_focus()
+                return True
+            return False  # Already expanded
+        return False
+
+    def expand_all(self) -> None:
+        """Expand all todos."""
+        for item in self.flat_items:
+            if item.type == "todo":
+                self.expanded_todos.add(str(item.data.get("slug", "")))
+        self.rebuild_for_focus()
+
+    def collapse_all(self) -> None:
+        """Collapse all todos."""
+        self.expanded_todos.clear()
+        self.rebuild_for_focus()
+
+    def handle_enter(self, stdscr: object) -> None:
+        """Handle Enter key.
 
         Args:
             stdscr: Curses screen object
         """
         item = self._get_selected()
-        if item and item["type"] == "todo" and item["status"] == "ready":
-            self._start_work(item)
+        if not item:
+            return
 
-    def _get_selected(self) -> dict[str, object] | None:  # guard: loose-dict
-        """Get currently selected item.
+        if item.type == "computer":
+            self.drill_down()
+        elif item.type == "todo":
+            if item.data.get("status") == "ready":
+                self._start_work(item.data)
+            else:
+                self.drill_down()
+        elif item.type == "file":
+            # Enter on file = view if exists
+            if item.data.get("exists"):
+                self._view_file(item.data, stdscr)
 
-        Returns:
-            Selected item or None
-        """
+    def _get_selected(self) -> PrepTreeNode | None:
+        """Get currently selected item."""
         if 0 <= self.selected_index < len(self.flat_items):
             return self.flat_items[self.selected_index]
         return None
 
     def _start_work(self, item: dict[str, object]) -> None:  # guard: loose-dict
-        """Start work on a ready todo via /prime-orchestrator.
-
-        Args:
-            item: Todo item
-        """
-        # Suspend TUI temporarily
+        """Start work on a ready todo."""
         curses.endwin()
         slug = str(item.get("slug", ""))
         asyncio.get_event_loop().run_until_complete(
@@ -142,11 +373,7 @@ class PreparationView:
         curses.doupdate()
 
     def _prepare(self, item: dict[str, object]) -> None:  # guard: loose-dict
-        """Prepare a todo via /next-prepare.
-
-        Args:
-            item: Todo item
-        """
+        """Prepare a todo."""
         curses.endwin()
         slug = str(item.get("slug", ""))
         asyncio.get_event_loop().run_until_complete(
@@ -160,54 +387,88 @@ class PreparationView:
         )
         curses.doupdate()
 
-    def _view_file(self, item: dict[str, object], filename: str) -> None:  # guard: loose-dict
-        """View a file in glow.
+    def _view_file(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
+        """View a file in glow (or less as fallback).
 
         Args:
-            item: Todo item
-            filename: File to view (requirements.md or implementation-plan.md)
+            item: File data dict
+            stdscr: Curses screen object for restoration
         """
+        filepath = os.path.join(
+            str(item.get("project_path", "")),
+            "todos",
+            str(item.get("slug", "")),
+            str(item.get("filename", "")),
+        )
+        # Save curses state and exit
+        curses.def_prog_mode()
         curses.endwin()
-        filepath = os.path.join(str(item.get("project_path", "")), "todos", str(item.get("slug", "")), filename)
-        subprocess.run(["glow", filepath], check=False)
-        curses.doupdate()
+        # Try glow with pager (-p), fall back to less
+        try:
+            subprocess.run(["glow", "-p", filepath], check=True)
+        except FileNotFoundError:
+            subprocess.run(["less", filepath], check=False)
+        except subprocess.CalledProcessError:
+            subprocess.run(["less", filepath], check=False)
+        # Restore curses state
+        curses.reset_prog_mode()
+        stdscr.refresh()  # type: ignore[attr-defined]
 
-    def _edit_file(self, item: dict[str, object], filename: str) -> None:  # guard: loose-dict
+    def _edit_file(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
         """Edit a file in $EDITOR.
 
         Args:
-            item: Todo item
-            filename: File to edit (requirements.md or implementation-plan.md)
+            item: File data dict
+            stdscr: Curses screen object for restoration
         """
+        filepath = os.path.join(
+            str(item.get("project_path", "")),
+            "todos",
+            str(item.get("slug", "")),
+            str(item.get("filename", "")),
+        )
+        # Save curses state and exit
+        curses.def_prog_mode()
         curses.endwin()
-        filepath = os.path.join(str(item.get("project_path", "")), "todos", str(item.get("slug", "")), filename)
         editor = os.environ.get("EDITOR", "vim")
         subprocess.run([editor, filepath], check=False)
-        curses.doupdate()
+        # Restore curses state
+        curses.reset_prog_mode()
+        stdscr.refresh()  # type: ignore[attr-defined]
 
-    def handle_key(self, key: int, stdscr: object) -> None:  # noqa: ARG002 - stdscr needed for future features
+    def handle_key(self, key: int, stdscr: object) -> None:
         """Handle view-specific keys.
 
         Args:
             key: Key code
             stdscr: Curses screen object
         """
-        item = self._get_selected()
-        if not item or item["type"] != "todo":
+        # Global expand/collapse
+        if key == ord("+") or key == ord("="):
+            self.expand_all()
+            return
+        if key == ord("-"):
+            self.collapse_all()
             return
 
-        if key == ord("s") and item["status"] == "ready":
-            self._start_work(item)
-        elif key == ord("p"):
-            self._prepare(item)
-        elif key == ord("v") and item.get("has_requirements"):
-            self._view_file(item, "requirements.md")
-        elif key == ord("V") and item.get("has_impl_plan"):
-            self._view_file(item, "implementation-plan.md")
-        elif key == ord("e"):
-            self._edit_file(item, "requirements.md")
-        elif key == ord("E"):
-            self._edit_file(item, "implementation-plan.md")
+        item = self._get_selected()
+        if not item:
+            return
+
+        # File-specific actions
+        if item.type == "file":
+            if key == ord("v") and item.data.get("exists"):
+                self._view_file(item.data, stdscr)
+            elif key == ord("e"):
+                self._edit_file(item.data, stdscr)
+            return
+
+        # Todo-specific actions
+        if item.type == "todo":
+            if key == ord("s") and item.data.get("status") == "ready":
+                self._start_work(item.data)
+            elif key == ord("p"):
+                self._prepare(item.data)
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content.
@@ -218,87 +479,156 @@ class PreparationView:
             height: Available height
             width: Screen width
         """
-        visible_start = self.scroll_offset
-        visible_end = min(len(self.flat_items), visible_start + height)
+        if not self.flat_items:
+            msg = "(no items)"
+            stdscr.addstr(start_row, 2, msg, curses.A_DIM)  # type: ignore[attr-defined]
+            return
 
         row = start_row
-        for i in range(visible_start, visible_end):
-            item = self.flat_items[i]
+        for i, item in enumerate(self.flat_items):
+            if row >= start_row + height:
+                break
             is_selected = i == self.selected_index
             lines = self._render_item(stdscr, row, item, width, is_selected)
             row += lines
 
-    # fmt: off
-    def _render_item(self, stdscr: object, row: int, item: dict[str, object], width: int, selected: bool) -> int:  # guard: loose-dict
-        # fmt: on
+    def _render_item(
+        self,
+        stdscr: object,
+        row: int,
+        item: PrepTreeNode,
+        width: int,
+        selected: bool,
+    ) -> int:
         """Render a single item.
 
         Args:
             stdscr: Curses screen object
             row: Row to render at
-            item: Item data
+            item: Tree node
             width: Screen width
-            selected: Whether this item is selected
+            selected: Whether selected
 
         Returns:
             Number of lines used
         """
-        depth = item.get("depth", 0)
-        indent = "  " * (int(depth) if isinstance(depth, (int, str)) else 0)
+        indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
 
-        if item["type"] == "computer":
-            line = f"{indent}{item.get('name', ''):<50} online"
+        if item.type == "computer":
+            name = str(item.data.get("name", ""))
+            line = f"{indent}[C] {name}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
 
-        if item["type"] == "project":
-            line = f"{indent}{item.get('path', '')}"
+        if item.type == "project":
+            path = str(item.data.get("path", ""))
+            todo_count = len(item.children)
+            suffix = f"({todo_count} todos)" if todo_count else "(no todos)"
+            line = f"{indent}[P] {path} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
 
-        if item["type"] == "todo":
+        if item.type == "todo":
             return self._render_todo(stdscr, row, item, width, selected)
+
+        if item.type == "file":
+            file_index = item.data.get("index", 1)
+            return self._render_file(stdscr, row, item, width, selected, int(str(file_index)))
 
         return 1
 
-    # fmt: off
-    def _render_todo(self, stdscr: object, row: int, item: dict[str, object], width: int, selected: bool) -> int:  # guard: loose-dict
-        # fmt: on
-        """Render a todo item (3 lines).
+    def _render_todo(
+        self,
+        stdscr: object,
+        row: int,
+        item: PrepTreeNode,
+        width: int,
+        selected: bool,
+    ) -> int:
+        """Render a todo item.
 
         Args:
             stdscr: Curses screen object
             row: Row to render at
-            item: Todo item
+            item: Todo node
             width: Screen width
-            selected: Whether this item is selected
+            selected: Whether selected
 
         Returns:
-            Number of lines used (3)
+            Number of lines used (1 or 2 depending on state.json existence)
         """
-        depth = item.get("depth", 0)
-        indent = "  " * (int(depth) if isinstance(depth, (int, str)) else 0)
+        indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
+        slug = str(item.data.get("slug", ""))
+        is_expanded = slug in self.expanded_todos
 
-        # Line 1: Status marker and slug
-        marker = self.STATUS_MARKERS.get(str(item.get("status", "pending")), "[ ]")
-        status_label = str(item.get("status", "pending"))
-        slug = str(item.get("slug", ""))
-        line1 = f"{indent}{marker} {slug:<40} {status_label}"
-        stdscr.addstr(row, 0, line1[:width], attr if selected else 0)  # type: ignore[attr-defined]
+        # Collapse indicator
+        indicator = "v" if is_expanded else ">"
 
-        # Line 2: Description
-        description = item.get("description")
-        if description:
-            desc = str(description)[:75]
-            line2 = f"{indent}     {desc}"
-            stdscr.addstr(row + 1, 0, line2[:width])  # type: ignore[attr-defined]
+        # Status marker and label
+        marker = self.STATUS_MARKERS.get(str(item.data.get("status", "pending")), "[ ]")
+        status_label = str(item.data.get("status", "pending"))
 
-        # Line 3: File status
-        req_status = "✓" if item.get("has_requirements") else "✗"
-        impl_status = "✓" if item.get("has_impl_plan") else "✗"
-        line3 = f"{indent}     requirements: {req_status}  impl-plan: {impl_status}"
-        stdscr.addstr(row + 2, 0, line3[:width])  # type: ignore[attr-defined]
+        line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
+        try:
+            stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
 
-        return 3  # Uses 3 lines
+        # Second line: build/review status (if available)
+        build_status = item.data.get("build_status")
+        review_status = item.data.get("review_status")
+        if build_status or review_status:
+            build_str = str(build_status) if build_status else "-"
+            review_str = str(review_status) if review_status else "-"
+            state_line = f"{indent}      Build: {build_str}  Review: {review_str}"
+            try:
+                stdscr.addstr(row + 1, 0, state_line[:width], curses.A_DIM)  # type: ignore[attr-defined]
+            except curses.error:
+                pass
+            return 2
+
+        return 1
+
+    def _render_file(
+        self,
+        stdscr: object,
+        row: int,
+        item: PrepTreeNode,
+        width: int,
+        selected: bool,
+        index: int,
+    ) -> int:
+        """Render a file item.
+
+        Args:
+            stdscr: Curses screen object
+            row: Row to render at
+            item: File node
+            width: Screen width
+            selected: Whether selected
+            index: File index (1-based for display)
+
+        Returns:
+            Number of lines used
+        """
+        indent = "  " * item.depth
+        display_name = str(item.data.get("display_name", ""))
+        exists = bool(item.data.get("exists", False))
+
+        # Dimmed if file doesn't exist, normal otherwise
+        if selected:
+            attr = curses.A_REVERSE
+        elif not exists:
+            attr = curses.A_DIM
+        else:
+            attr = 0
+
+        line = f"{indent}{index}. {display_name}"
+        try:
+            stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        return 1

@@ -246,6 +246,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     initiator_agent = None
     initiator_mode = None
     subfolder = None
+    working_slug = None
     if metadata.channel_metadata:
         initiator_raw = metadata.channel_metadata.get("target_computer")
         initiator = str(initiator_raw) if initiator_raw else None
@@ -255,6 +256,8 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         initiator_mode = str(initiator_mode_raw) if initiator_mode_raw else None
         subfolder_raw = metadata.channel_metadata.get("subfolder")
         subfolder = str(subfolder_raw) if subfolder_raw else None
+        working_slug_raw = metadata.channel_metadata.get("working_slug")
+        working_slug = str(working_slug_raw) if working_slug_raw else None
 
     # Derive working_dir and short_project from raw inputs (project_dir + subfolder)
     # project_dir is the base project, subfolder is the optional worktree/branch path
@@ -307,6 +310,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         terminal_size=terminal_size,
         working_directory=working_dir,
         session_id=session_id,
+        working_slug=working_slug,
     )
 
     if adapter_type == "terminal" and (terminal_meta.tty_path or terminal_meta.parent_pid is not None):
@@ -390,9 +394,12 @@ async def handle_list_sessions() -> list[SessionListItem]:
                 title=s.title,
                 working_directory=s.working_directory,
                 thinking_mode=s.thinking_mode or ThinkingMode.SLOW.value,
+                active_agent=s.active_agent,
                 status="active",
                 created_at=s.created_at.isoformat() if s.created_at else None,
                 last_activity=s.last_activity.isoformat() if s.last_activity else None,
+                last_input=s.last_message_sent,
+                last_output=s.last_feedback_received,
             )
         )
 

@@ -796,14 +796,19 @@ class AdapterClient:
         # 3. Get session for adapter operations
         session = await db.get_session(str(session_id)) if session_id else None
 
-        # 3.5 Track last input adapter for routing feedback
+        # 3.5 Track last input adapter and message for routing feedback
         if session and metadata.adapter_type and metadata.adapter_type in self.adapters:
             if event in COMMAND_EVENTS or event in (
                 TeleClaudeEvents.MESSAGE,
                 TeleClaudeEvents.VOICE,
                 TeleClaudeEvents.FILE,
             ):
+                # Track adapter for routing
                 await db.update_session(session.session_id, last_input_adapter=metadata.adapter_type)
+                # Track last user input text for TUI display
+                user_text = payload.get("text") or payload.get("command")
+                if user_text:
+                    await db.update_session(session.session_id, last_message_sent=str(user_text)[:200])
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = cast(str | None, payload.get("message_id"))

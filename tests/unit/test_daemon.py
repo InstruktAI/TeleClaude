@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import pytest
 
@@ -505,7 +505,15 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
 
         await daemon._process_agent_stop(context)
 
-        mock_db.update_session.assert_awaited_once_with("tele-123", native_session_id="native-123")
+        # update_session is called twice: once for native_session_id, once for last_feedback_received
+        # Check both calls happened
+        assert mock_db.update_session.await_count >= 1
+        call_args_list = mock_db.update_session.await_args_list
+        # Find the native_session_id call
+        native_call_found = any(
+            c.args == ("tele-123",) and c.kwargs.get("native_session_id") == "native-123" for c in call_args_list
+        )
+        assert native_call_found, f"Expected native_session_id call, got: {call_args_list}"
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
 
 

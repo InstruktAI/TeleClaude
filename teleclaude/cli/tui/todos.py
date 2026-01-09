@@ -1,5 +1,6 @@
 """Parse todos from roadmap.md."""
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,8 @@ class TodoItem:
     description: str | None
     has_requirements: bool
     has_impl_plan: bool
+    build_status: str | None = None  # From state.json: "pending", "complete"
+    review_status: str | None = None  # From state.json: "pending", "approved", "changes_requested"
 
 
 # Status marker mapping
@@ -69,6 +72,10 @@ def parse_roadmap(project_path: str) -> list[TodoItem]:
             has_requirements = (todos_dir / "requirements.md").exists()
             has_impl_plan = (todos_dir / "implementation-plan.md").exists()
 
+            # Read state.json from worktree (trees/{slug}/todos/{slug}/state.json)
+            # or main repo (todos/{slug}/state.json)
+            build_status, review_status = _read_state(project_path, slug)
+
             todos.append(
                 TodoItem(
                     slug=slug,
@@ -76,7 +83,56 @@ def parse_roadmap(project_path: str) -> list[TodoItem]:
                     description=description.strip() or None,
                     has_requirements=has_requirements,
                     has_impl_plan=has_impl_plan,
+                    build_status=build_status,
+                    review_status=review_status,
                 )
             )
 
     return todos
+
+
+def _read_state(project_path: str, slug: str) -> tuple[str | None, str | None]:
+    """Read build/review status from state.json.
+
+    Checks both worktree and main repo locations.
+
+    Args:
+        project_path: Absolute path to project directory
+        slug: Todo slug
+
+    Returns:
+        Tuple of (build_status, review_status)
+    """
+    # Try worktree first (trees/{slug}/todos/{slug}/state.json)
+    worktree_state = Path(project_path) / "trees" / slug / "todos" / slug / "state.json"
+    if worktree_state.exists():
+        return _parse_state_file(worktree_state)
+
+    # Fall back to main repo (todos/{slug}/state.json)
+    main_state = Path(project_path) / "todos" / slug / "state.json"
+    if main_state.exists():
+        return _parse_state_file(main_state)
+
+    return None, None
+
+
+def _parse_state_file(state_path: Path) -> tuple[str | None, str | None]:
+    """Parse a state.json file.
+
+    Args:
+        state_path: Path to state.json
+
+    Returns:
+        Tuple of (build_status, review_status)
+    """
+    try:
+        content = state_path.read_text()
+        state = json.loads(content)
+        build_status = state.get("build")
+        review_status = state.get("review")
+        # Convert to string or None
+        build_str = str(build_status) if build_status else None
+        review_str = str(review_status) if review_status else None
+        return build_str, review_str
+    except (json.JSONDecodeError, OSError):
+        return None, None

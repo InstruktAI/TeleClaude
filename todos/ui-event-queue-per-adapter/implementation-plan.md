@@ -20,14 +20,19 @@ the existing adapter methods asynchronously.
 2) **Create UI dispatcher**
    - New module: `teleclaude/core/ui_dispatcher.py`.
    - Maintains:
-     - `queues: dict[adapter_type, asyncio.Queue[UiAction]]`
      - `workers: dict[adapter_type, asyncio.Task]`
      - `futures: dict[delivery_id, asyncio.Future]` for await_ui.
+   - **SQLite-backed queue** (not in-memory asyncio.Queue):
+     - Table: `ui_queue` with columns: `delivery_id`, `session_id`, `adapter_type`,
+       `action`, `payload` (JSON), `status`, `created_at`, `completed_at`, `error`.
+     - Workers poll DB: `SELECT ... WHERE adapter_type=? AND status='pending' ORDER BY created_at LIMIT 1`
+     - Use `FOR UPDATE` semantics or optimistic locking to prevent duplicate pickup.
    - Public API:
      - `start(adapters: dict[str, BaseAdapter])`
      - `stop()`
      - `enqueue(action: UiAction) -> DeliveryHandle`
      - `await_delivery(delivery_id, timeout=None)` (optional)
+     - `recover_pending()` - called on startup to replay crashed actions
 
 3) **Wire AdapterClient to enqueue**
    - In `AdapterClient` methods:
@@ -41,16 +46,25 @@ the existing adapter methods asynchronously.
      - **Observers**: `await_ui=False` (always async).
 
 4) **Worker execution**
-   - Each adapter type has a worker:
-     - `while True: action = await queue.get()`
+   - Each adapter type has a worker task:
+     - Poll DB for next pending action: `SELECT ... WHERE status='pending' AND adapter_type=?`
+     - Mark as `processing` before execution (crash safety).
      - Call adapter method (same arguments as today).
-     - Set future result for `await_ui`.
+     - On success: mark `completed`, set future result for `await_ui`.
+     - On failure: mark `failed` with error, set future exception.
      - Log success/failure and queue metrics.
-   - Use adapter’s own retry/backoff (no new retry logic).
+   - Use adapter's own retry/backoff (no new retry logic).
+   - Poll interval: 50ms when idle, immediate when work is enqueued (use asyncio.Event).
 
 5) **Lifecycle management**
    - Start dispatcher in daemon startup after adapters are initialized.
-   - Stop dispatcher on daemon shutdown (cancel workers, drain queues).
+   - **Crash recovery on startup**:
+     - Query `status IN ('pending', 'processing')` - these survived a crash.
+     - Reset `processing` → `pending` (will be retried).
+     - Log count of recovered actions per adapter.
+     - Process recovered actions before accepting new work.
+   - Stop dispatcher on daemon shutdown (cancel workers, mark incomplete as pending).
+   - **Pruning**: periodically delete `completed`/`failed` rows older than retention.
 
 6) **Logging/observability**
    - Log on enqueue:
@@ -63,8 +77,15 @@ the existing adapter methods asynchronously.
    - Unit tests for:
      - enqueue + worker execution path
      - await_ui returns after completion
-     - per-adapter isolation (one slow adapter doesn’t block others)
+     - per-adapter isolation (one slow adapter doesn't block others)
+     - **crash recovery**: insert pending rows, call recover_pending(), verify delivery
+     - **idempotency**: simulate duplicate delivery, verify no corruption
+     - **pruning**: verify old completed rows are deleted
    - Update existing tests if they rely on immediate adapter calls.
+
+8) **Database migration**
+   - Add migration `NNN_ui_queue.sql` with `ui_queue` table schema.
+   - Run via existing migration system on daemon startup.
 
 ## Detailed Design Notes
 - **DeliveryHandle**: return object with `delivery_id` and `status="queued"`.

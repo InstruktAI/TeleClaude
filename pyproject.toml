@@ -34,6 +34,8 @@ dependencies = [
     "instrukt-ai-logger @ git+https://github.com/InstruktAI/python-logger.git@v0.3.5",
     "telegramify-markdown>=0.5.4",
     "GitPython>=3.1.0",
+    "nest-asyncio>=1.6.0",
+    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]

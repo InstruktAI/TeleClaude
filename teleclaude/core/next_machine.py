@@ -11,7 +11,6 @@ for the orchestrator AI to execute literally.
 import json
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Literal, Mapping, cast
 
@@ -838,18 +837,6 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
         # Create worktree with new branch
         repo.git.worktree("add", str(worktree_path), "-b", slug)
         logger.info("Created worktree at %s", worktree_path)
-
-        # Install dependencies in the new worktree (only if Python project)
-        pyproject = worktree_path / "pyproject.toml"
-        if pyproject.exists():
-            logger.info("Installing dependencies in worktree at %s", worktree_path)
-            subprocess.run(
-                ["uv", "sync", "--extra", "test"],
-                cwd=str(worktree_path),
-                check=True,
-                capture_output=True,
-            )
-            logger.info("Dependencies installed in worktree")
 
         return True
     except InvalidGitRepositoryError:

@@ -125,8 +125,10 @@ class MCPHandlersMixin:
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))
         return result
 
-    async def teleclaude__list_projects(self, computer: str) -> list[dict[str, str]]:
-        """List available projects on target computer."""
+    async def teleclaude__list_projects(self, computer: Optional[str] = None) -> list[dict[str, str]]:
+        """List available projects on target computer, or all computers if None."""
+        if computer is None:
+            return await self._list_all_projects()
         if self._is_local_computer(computer):
             return await command_handlers.handle_list_projects()
         return await self._list_remote_projects(computer)
@@ -148,6 +150,26 @@ class MCPHandlersMixin:
         except RemoteRequestError as e:
             logger.error("list_projects failed on %s: %s", computer, e.message)
             return []
+
+    async def _list_all_projects(self) -> list[dict[str, str]]:
+        """List projects from ALL computers (local + online remotes)."""
+        # Get local projects with computer name
+        local_projects = await command_handlers.handle_list_projects()
+        for project in local_projects:
+            project["computer"] = self.computer_name
+
+        # Get remote projects from all online computers
+        redis_adapter = self._get_redis_adapter()
+        if not redis_adapter:
+            return local_projects
+
+        for computer_name in await redis_adapter._get_online_computers():
+            remote_projects = await self._list_remote_projects(computer_name)
+            for project in remote_projects:
+                project["computer"] = computer_name
+            local_projects.extend(remote_projects)
+
+        return local_projects
 
     # =========================================================================
     # Session Tools
@@ -389,12 +411,19 @@ class MCPHandlersMixin:
         auto_command = f"agent_then_message {agent} {thinking_mode.value} {quoted_command}"
         normalized_subfolder = subfolder.strip().strip("/") if subfolder else ""
 
+        # Extract working_slug for state machine commands (next-build, next-review, etc.)
+        # These commands always have the slug as the first arg
+        state_machine_commands = {"next-build", "next-review", "next-fix-review", "next-finalize", "next-bugs"}
+        working_slug: str | None = None
+        if normalized_cmd in state_machine_commands and normalized_args:
+            working_slug = normalized_args.split()[0]
+
         if self._is_local_computer(computer):
             return await self._start_local_session_with_auto_command(
-                project, title, auto_command, caller_session_id, normalized_subfolder
+                project, title, auto_command, caller_session_id, normalized_subfolder, working_slug
             )
         return await self._start_remote_session_with_auto_command(
-            computer, project, title, auto_command, caller_session_id, normalized_subfolder
+            computer, project, title, auto_command, caller_session_id, normalized_subfolder, working_slug
         )
 
     async def _start_local_session_with_auto_command(
@@ -404,6 +433,7 @@ class MCPHandlersMixin:
         auto_command: str,
         caller_session_id: str | None = None,
         subfolder: str = "",
+        working_slug: str | None = None,
     ) -> RunAgentCommandResult:
         """Create local session and run auto_command via daemon."""
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
@@ -415,6 +445,8 @@ class MCPHandlersMixin:
             channel_metadata["initiator_mode"] = initiator_mode
         if subfolder:
             channel_metadata["subfolder"] = subfolder
+        if working_slug:
+            channel_metadata["working_slug"] = working_slug
 
         result: object = await self.client.handle_event(
             TeleClaudeEvents.NEW_SESSION,
@@ -444,6 +476,7 @@ class MCPHandlersMixin:
         auto_command: str,
         caller_session_id: str | None = None,
         subfolder: str = "",
+        working_slug: str | None = None,
     ) -> RunAgentCommandResult:
         """Create remote session and run auto_command via daemon."""
         if not await self._is_computer_online(computer):
@@ -458,6 +491,8 @@ class MCPHandlersMixin:
             channel_metadata["initiator_mode"] = initiator_mode
         if subfolder:
             channel_metadata["subfolder"] = subfolder
+        if working_slug:
+            channel_metadata["working_slug"] = working_slug
 
         metadata = MessageMetadata(
             project_dir=project_dir,

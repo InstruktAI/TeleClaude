@@ -938,6 +938,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 raise ValueError(f"Summary feedback requires active session: {session_id}")
             await self.client.send_feedback(session, summary, MessageMetadata(adapter_type="internal"))
 
+            # Track summary as last output (only source of truth for last_output)
+            if summary:
+                await db.update_session(session_id, last_feedback_received=summary[:200])
+
             # Dispatch to coordinator
             await self.agent_coordinator.handle_stop(context)
 

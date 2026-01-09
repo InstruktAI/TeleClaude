@@ -13,6 +13,7 @@ call window and allows per-adapter pacing.
 - Allow per-adapter throughput control (e.g., Telegram slower than terminal).
 - Provide clear delivery visibility via logs (no new user-facing messages).
 - Maintain deterministic ordering per adapter (FIFO within each adapter).
+- **Crash recovery** - pending UI actions survive daemon restart and are replayed.
 
 ## Non-Goals
 - No new fallback or "best-effort" behavior changes.
@@ -68,6 +69,21 @@ call window and allows per-adapter pacing.
    - Do not retry beyond adapter-level retry rules.
    - Do not surface to user unless existing adapter logic already does.
 
+8) **Durable queue storage (SQLite)**
+   - Queue actions are persisted to SQLite (`ui_queue` table) before returning.
+   - Schema: `delivery_id`, `session_id`, `adapter_type`, `action`, `payload` (JSON),
+     `status` (pending/processing/completed/failed), `created_at`, `completed_at`.
+   - On daemon startup: query `status IN ('pending', 'processing')` and replay.
+   - On successful delivery: update `status = 'completed'`.
+   - On permanent failure: update `status = 'failed'` with error context.
+   - Completed/failed rows can be pruned after configurable retention (default 1 hour).
+
+9) **Crash recovery semantics**
+   - Actions marked `processing` at startup are retried (daemon may have crashed mid-delivery).
+   - Idempotency: adapters must handle duplicate delivery gracefully (Telegram edit
+     of same message, terminal re-print is acceptable).
+   - Recovery happens before normal queue processing resumes.
+
 ## Observability
 - Structured logs for:
   - queue enqueue
@@ -82,7 +98,7 @@ call window and allows per-adapter pacing.
 - No global queue contention between adapters.
 
 ## Compatibility
-- No change to existing database schema required.
+- **Database migration required**: adds `ui_queue` table to `teleclaude.db`.
 - Works with existing AdapterClient and UiAdapter interfaces.
 - Compatible with current MCP wrapper and tool call pipeline.
 
@@ -91,3 +107,5 @@ call window and allows per-adapter pacing.
 - UI output remains functionally identical in Telegram and other adapters.
 - Per-adapter workers can be observed in logs.
 - No regressions in existing tests.
+- **Crash recovery**: pending actions are delivered after daemon restart.
+- **Idempotency**: duplicate delivery (from crash recovery) does not break UI state.
