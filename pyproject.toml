@@ -152,6 +152,21 @@ ignore_errors = true
 module = "teleclaude.core.summarizer"
 disable_error_code = ["misc", "explicit-any", "arg-type", "assignment", "unused-ignore"]
 
+[[tool.mypy.overrides]]
+module = "teleclaude.cli.tui.*"
+# Curses module doesn't have complete type stubs; stdscr methods return Any.
+disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.cli.api_client"
+# httpx resp.json() returns Any.
+disable_error_code = ["misc", "no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.api.*"
+# FastAPI decorators and Pydantic BaseModel have internal Any types.
+disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
+
 [tool.pylint.'MESSAGES CONTROL']
 # CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
 # ALL imports MUST be at the top of the file

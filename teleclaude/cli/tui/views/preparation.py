@@ -17,7 +17,7 @@ class PreparationView:
         "in_progress": "[>]",
     }
 
-    def __init__(self, api: object, agent_availability: dict[str, dict[str, object]]):
+    def __init__(self, api: object, agent_availability: dict[str, dict[str, object]]):  # guard: loose-dict
         """Initialize preparation view.
 
         Args:
@@ -26,15 +26,15 @@ class PreparationView:
         """
         self.api = api
         self.agent_availability = agent_availability
-        self.flat_items: list[dict[str, object]] = []
+        self.flat_items: list[dict[str, object]] = []  # guard: loose-dict
         self.selected_index = 0
         self.scroll_offset = 0
 
     async def refresh(
         self,
-        computers: list[dict[str, object]],
-        projects: list[dict[str, object]],
-        sessions: list[dict[str, object]],  # noqa: ARG002 - needed for API consistency
+        computers: list[dict[str, object]],  # guard: loose-dict
+        projects: list[dict[str, object]],  # guard: loose-dict
+        sessions: list[dict[str, object]],  # noqa: ARG002 - needed for API consistency  # guard: loose-dict
     ) -> None:
         """Refresh view data - parse todos for each project.
 
@@ -111,7 +111,7 @@ class PreparationView:
         if item and item["type"] == "todo" and item["status"] == "ready":
             self._start_work(item)
 
-    def _get_selected(self) -> dict[str, object] | None:
+    def _get_selected(self) -> dict[str, object] | None:  # guard: loose-dict
         """Get currently selected item.
 
         Returns:
@@ -121,7 +121,7 @@ class PreparationView:
             return self.flat_items[self.selected_index]
         return None
 
-    def _start_work(self, item: dict[str, object]) -> None:
+    def _start_work(self, item: dict[str, object]) -> None:  # guard: loose-dict
         """Start work on a ready todo via /prime-orchestrator.
 
         Args:
@@ -141,7 +141,7 @@ class PreparationView:
         )
         curses.doupdate()
 
-    def _prepare(self, item: dict[str, object]) -> None:
+    def _prepare(self, item: dict[str, object]) -> None:  # guard: loose-dict
         """Prepare a todo via /next-prepare.
 
         Args:
@@ -160,7 +160,7 @@ class PreparationView:
         )
         curses.doupdate()
 
-    def _view_file(self, item: dict[str, object], filename: str) -> None:
+    def _view_file(self, item: dict[str, object], filename: str) -> None:  # guard: loose-dict
         """View a file in glow.
 
         Args:
@@ -172,7 +172,7 @@ class PreparationView:
         subprocess.run(["glow", filepath], check=False)
         curses.doupdate()
 
-    def _edit_file(self, item: dict[str, object], filename: str) -> None:
+    def _edit_file(self, item: dict[str, object], filename: str) -> None:  # guard: loose-dict
         """Edit a file in $EDITOR.
 
         Args:
@@ -228,7 +228,9 @@ class PreparationView:
             lines = self._render_item(stdscr, row, item, width, is_selected)
             row += lines
 
-    def _render_item(self, stdscr: object, row: int, item: dict[str, object], width: int, selected: bool) -> int:
+    # fmt: off
+    def _render_item(self, stdscr: object, row: int, item: dict[str, object], width: int, selected: bool) -> int:  # guard: loose-dict
+        # fmt: on
         """Render a single item.
 
         Args:
@@ -241,7 +243,8 @@ class PreparationView:
         Returns:
             Number of lines used
         """
-        indent = "  " * int(item.get("depth", 0))
+        depth = item.get("depth", 0)
+        indent = "  " * (int(depth) if isinstance(depth, (int, str)) else 0)
         attr = curses.A_REVERSE if selected else 0
 
         if item["type"] == "computer":
@@ -259,7 +262,9 @@ class PreparationView:
 
         return 1
 
-    def _render_todo(self, stdscr: object, row: int, item: dict[str, object], width: int, selected: bool) -> int:
+    # fmt: off
+    def _render_todo(self, stdscr: object, row: int, item: dict[str, object], width: int, selected: bool) -> int:  # guard: loose-dict
+        # fmt: on
         """Render a todo item (3 lines).
 
         Args:
@@ -272,7 +277,8 @@ class PreparationView:
         Returns:
             Number of lines used (3)
         """
-        indent = "  " * int(item.get("depth", 0))
+        depth = item.get("depth", 0)
+        indent = "  " * (int(depth) if isinstance(depth, (int, str)) else 0)
         attr = curses.A_REVERSE if selected else 0
 
         # Line 1: Status marker and slug

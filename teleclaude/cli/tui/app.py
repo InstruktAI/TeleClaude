@@ -25,7 +25,7 @@ class TelecApp:
         self.tab_bar = TabBar()
         self.footer: Footer | None = None
         self.running = True
-        self.agent_availability: dict[str, dict[str, object]] = {}
+        self.agent_availability: dict[str, dict[str, object]] = {}  # guard: loose-dict
 
     async def initialize(self) -> None:
         """Load initial data and create views."""

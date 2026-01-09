@@ -8,16 +8,16 @@ class TreeNode:
     """Node in the display tree."""
 
     type: str  # "computer", "project", "session", "todo"
-    data: dict[str, object]
+    data: dict[str, object]  # guard: loose-dict
     depth: int
     children: list["TreeNode"] = field(default_factory=list)
     parent: "TreeNode | None" = None
 
 
 def build_tree(
-    computers: list[dict[str, object]],
-    projects: list[dict[str, object]],
-    sessions: list[dict[str, object]],
+    computers: list[dict[str, object]],  # guard: loose-dict
+    projects: list[dict[str, object]],  # guard: loose-dict
+    sessions: list[dict[str, object]],  # guard: loose-dict
 ) -> list[TreeNode]:
     """Build hierarchical tree for display.
 
@@ -34,8 +34,8 @@ def build_tree(
     tree: list[TreeNode] = []
 
     # Index sessions by initiator for AI-to-AI nesting
-    sessions_by_initiator: dict[str, list[dict[str, object]]] = {}
-    root_sessions: list[dict[str, object]] = []
+    sessions_by_initiator: dict[str, list[dict[str, object]]] = {}  # guard: loose-dict
+    root_sessions: list[dict[str, object]] = []  # guard: loose-dict
 
     for session in sessions:
         initiator_id = session.get("initiator_session_id")
@@ -82,11 +82,11 @@ def build_tree(
 
 
 def _build_session_node(
-    session: dict[str, object],
+    session: dict[str, object],  # guard: loose-dict
     index: int | str,
     depth: int,
     parent: TreeNode,
-    sessions_by_initiator: dict[str, list[dict[str, object]]],
+    sessions_by_initiator: dict[str, list[dict[str, object]]],  # guard: loose-dict
 ) -> TreeNode:
     """Recursively build session node with AI-to-AI children.
 

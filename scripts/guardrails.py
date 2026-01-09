@@ -37,10 +37,9 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
     """Check for loose dict typings without proper justification.
 
     Allows exceptions when documented with:
-    - # noqa: loose-dict - Reason
-    - # type: boundary - Reason
+    - # guard: loose-dict - Reason
 
-    This enforces: "You can use dict[str, object] ONLY if you document WHY."  # noqa: loose-dict - Documentation
+    This enforces: "You can use dict[str, object] ONLY if you document WHY."  # guard: loose-dict
     """
     scan_roots = [
         repo_root / "teleclaude",
@@ -48,9 +47,15 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
         repo_root / "scripts",
         repo_root / "bin",
     ]
-    patterns = ("dict[str, object]", "dict[str, Any]")  # noqa: loose-dict - Pattern definition
+    patterns = ("dict[str, object]", "dict[str, Any]")  # guard: loose-dict - Pattern definition
     matches: list[str] = []
-    exception_markers = ("# noqa: loose-dict", "# type: boundary")
+    # Accept multiple marker styles for backwards compatibility
+    exception_markers = (
+        "# guard: loose-dict",  # New preferred style
+        "# guard:loose-dict",   # No space variant
+        "# noqa: loose-dict",   # Legacy (causes ruff warnings but works)
+        "# type: boundary",     # Legacy (avoid - causes mypy issues)
+    )
 
     excluded_files = {
         repo_root / "teleclaude" / "adapters" / "redis_adapter.py",

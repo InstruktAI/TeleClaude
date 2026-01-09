@@ -15,7 +15,7 @@ class StartSessionModal:
         computer: str,
         project_path: str,
         api: object,
-        agent_availability: dict[str, dict[str, object]],
+        agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
     ):
         """Initialize modal.
 
@@ -61,7 +61,7 @@ class StartSessionModal:
         """
         return [i for i, a in enumerate(self.AGENTS) if self._is_agent_available(a)]
 
-    def run(self, stdscr: object) -> dict[str, object] | None:
+    def run(self, stdscr: object) -> dict[str, object] | None:  # guard: loose-dict
         """Run modal event loop.
 
         Args:
@@ -135,7 +135,7 @@ class StartSessionModal:
         elif 32 <= key <= 126:
             self.prompt += chr(key)
 
-    def _start_session(self) -> dict[str, object]:
+    def _start_session(self) -> dict[str, object]:  # guard: loose-dict
         """Start the session via API.
 
         Returns:

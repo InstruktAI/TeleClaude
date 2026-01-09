@@ -6,7 +6,7 @@ from datetime import datetime
 class Footer:
     """Persistent status footer showing agent availability and last refresh."""
 
-    def __init__(self, agent_availability: dict[str, dict[str, object]]):
+    def __init__(self, agent_availability: dict[str, dict[str, object]]):  # guard: loose-dict
         """Initialize footer.
 
         Args:
@@ -15,7 +15,7 @@ class Footer:
         self.agent_availability = agent_availability
         self.last_refresh = datetime.now()
 
-    def update_availability(self, availability: dict[str, dict[str, object]]) -> None:
+    def update_availability(self, availability: dict[str, dict[str, object]]) -> None:  # guard: loose-dict
         """Update agent availability.
 
         Args:

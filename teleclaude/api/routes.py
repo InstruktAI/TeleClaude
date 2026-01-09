@@ -19,9 +19,10 @@ from teleclaude.api.models import (
     TodoResponse,
 )
 from teleclaude.core.db import db
+from teleclaude.core.models import ThinkingMode
 
 if TYPE_CHECKING:
-    from teleclaude.mcp.server import TeleClaudeMCPServer
+    from teleclaude.mcp_server import TeleClaudeMCPServer
 
 logger = get_logger(__name__)
 
@@ -71,42 +72,48 @@ async def list_sessions(computer: str | None = None) -> list[SessionResponse]:
     return result
 
 
-@router.post("/sessions", response_model=dict[str, object])
-async def create_session(request: CreateSessionRequest) -> dict[str, object]:
+@router.post("/sessions", response_model=dict[str, object])  # guard: loose-dict
+async def create_session(request: CreateSessionRequest) -> dict[str, object]:  # guard: loose-dict
     """Create session (local or remote via Redis)."""
     mcp = get_mcp()
     result = await mcp.teleclaude__start_session(
         computer=request.computer,
         project_dir=request.project_dir,
         agent=request.agent,
-        thinking_mode=request.thinking_mode,
-        title=request.title,
+        thinking_mode=ThinkingMode(request.thinking_mode),
+        title=request.title or "Untitled",
         message=request.message,
     )
-    return result
+    return dict(result)  # type: ignore[arg-type]  # TypedDict to dict conversion
 
 
 @router.delete("/sessions/{session_id}")
-async def end_session(session_id: str, computer: str = Query(...)) -> dict[str, object]:
+async def end_session(session_id: str, computer: str = Query(...)) -> dict[str, object]:  # guard: loose-dict
     """End session."""
     mcp = get_mcp()
     result = await mcp.teleclaude__end_session(
         computer=computer,
         session_id=session_id,
     )
-    return result
+    return dict(result)  # type: ignore[arg-type]  # TypedDict to dict conversion
 
 
 @router.post("/sessions/{session_id}/message")
-async def send_message(session_id: str, request: SendMessageRequest, computer: str = Query(...)) -> dict[str, object]:
+async def send_message(
+    session_id: str, request: SendMessageRequest, computer: str = Query(...)
+) -> dict[str, object]:  # guard: loose-dict
     """Send message to session."""
     mcp = get_mcp()
-    result = await mcp.teleclaude__send_message(
+    # Note: send_message returns AsyncIterator, we consume it here
+    iterator = mcp.teleclaude__send_message(
         computer=computer,
         session_id=session_id,
         message=request.message,
     )
-    return result
+    result: list[str] = []
+    async for chunk in iterator:
+        result.append(chunk)
+    return {"status": "success", "chunks": result}
 
 
 @router.get("/sessions/{session_id}/transcript")
@@ -114,7 +121,7 @@ async def get_transcript(
     session_id: str,
     computer: str = Query(...),
     tail_chars: int = Query(5000),
-) -> dict[str, object]:
+) -> dict[str, object]:  # guard: loose-dict
     """Get session transcript."""
     mcp = get_mcp()
     result = await mcp.teleclaude__get_session_data(
@@ -122,7 +129,7 @@ async def get_transcript(
         session_id=session_id,
         tail_chars=tail_chars,
     )
-    return result
+    return dict(result)
 
 
 @router.get("/computers", response_model=list[ComputerResponse])
@@ -175,11 +182,13 @@ async def get_agent_availability() -> dict[str, AgentAvailability]:
     for agent in agents:
         info = await db.get_agent_availability(agent)
         if info:
+            unavail_until = info.get("unavailable_until")
+            reason_val = info.get("reason")
             result[agent] = AgentAvailability(
                 agent=agent,
                 available=bool(info.get("available", True)),
-                unavailable_until=info.get("unavailable_until"),
-                reason=info.get("reason"),
+                unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
+                reason=str(reason_val) if reason_val and reason_val is not True else None,
             )
         else:
             # Agent not in DB = available

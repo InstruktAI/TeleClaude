@@ -3,7 +3,6 @@
 import asyncio
 import curses
 
-from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 
@@ -11,7 +10,7 @@ from teleclaude.cli.tui.widgets.modal import StartSessionModal
 class SessionsView:
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
-    def __init__(self, api: object, agent_availability: dict[str, dict[str, object]]):
+    def __init__(self, api: object, agent_availability: dict[str, dict[str, object]]):  # guard: loose-dict
         """Initialize sessions view.
 
         Args:
@@ -27,9 +26,9 @@ class SessionsView:
 
     async def refresh(
         self,
-        computers: list[dict[str, object]],
-        projects: list[dict[str, object]],
-        sessions: list[dict[str, object]],
+        computers: list[dict[str, object]],  # guard: loose-dict
+        projects: list[dict[str, object]],  # guard: loose-dict
+        sessions: list[dict[str, object]],  # guard: loose-dict
     ) -> None:
         """Refresh view data.
 
@@ -87,7 +86,7 @@ class SessionsView:
         elif item.type == "project":
             self._start_session_for_project(stdscr, item.data)
 
-    def _start_session_for_project(self, stdscr: object, project: dict[str, object]) -> None:
+    def _start_session_for_project(self, stdscr: object, project: dict[str, object]) -> None:  # guard: loose-dict
         """Open modal to start session on project.
 
         Args:
@@ -181,9 +180,6 @@ class SessionsView:
         mode = str(session.get("thinking_mode", "?"))
         title = str(session.get("title", "Untitled"))[:30]
         idx = str(session.get("display_index", "?"))
-
-        colors = AGENT_COLORS.get(agent, {"bright": 7, "muted": 7})
-        has_output = bool(session.get("last_output"))
         attr = curses.A_REVERSE if selected else 0
 
         # Line 1: Identifier

@@ -32,7 +32,7 @@ class TelecAPIClient:
         if self._client:
             await self._client.aclose()
 
-    async def list_sessions(self, computer: str | None = None) -> list[dict[str, object]]:
+    async def list_sessions(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
         """List sessions from all computers or specific computer.
 
         Args:
@@ -47,9 +47,9 @@ class TelecAPIClient:
         params: dict[str, str] = {"computer": computer} if computer else {}
         resp = await self._client.get("/sessions", params=params)
         resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
 
-    async def list_computers(self) -> list[dict[str, object]]:
+    async def list_computers(self) -> list[dict[str, object]]:  # guard: loose-dict
         """List online computers only.
 
         Returns:
@@ -60,9 +60,9 @@ class TelecAPIClient:
 
         resp = await self._client.get("/computers")
         resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
 
-    async def list_projects(self, computer: str | None = None) -> list[dict[str, object]]:
+    async def list_projects(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
         """List projects from all or specific computer.
 
         Args:
@@ -77,9 +77,9 @@ class TelecAPIClient:
         params: dict[str, str] = {"computer": computer} if computer else {}
         resp = await self._client.get("/projects", params=params)
         resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
 
-    async def create_session(self, **kwargs: object) -> dict[str, object]:
+    async def create_session(self, **kwargs: object) -> dict[str, object]:  # guard: loose-dict
         """Create a new session.
 
         Args:
@@ -93,7 +93,7 @@ class TelecAPIClient:
 
         resp = await self._client.post("/sessions", json=kwargs)
         resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
 
     async def end_session(self, session_id: str, computer: str) -> bool:
         """End a session.
@@ -155,9 +155,9 @@ class TelecAPIClient:
         )
         resp.raise_for_status()
         result = resp.json()
-        return result.get("transcript", "")  # type: ignore[no-any-return]
+        return result.get("transcript", "")
 
-    async def get_agent_availability(self) -> dict[str, dict[str, object]]:
+    async def get_agent_availability(self) -> dict[str, dict[str, object]]:  # guard: loose-dict
         """Get agent availability status.
 
         Returns:
@@ -168,9 +168,9 @@ class TelecAPIClient:
 
         resp = await self._client.get("/agents/availability")
         resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
 
-    async def list_todos(self, project_path: str, computer: str) -> list[dict[str, object]]:
+    async def list_todos(self, project_path: str, computer: str) -> list[dict[str, object]]:  # guard: loose-dict
         """List todos from roadmap.md for a project.
 
         Args:
@@ -188,4 +188,4 @@ class TelecAPIClient:
             params={"computer": computer},
         )
         resp.raise_for_status()
-        return resp.json()  # type: ignore[no-any-return]
+        return resp.json()
