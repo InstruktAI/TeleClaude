@@ -1578,8 +1578,8 @@ After telec TUI is stable:
 - [ ] Test API with curl
 
 ### Phase 2: API Client
-- [ ] Create `teleclaude/cli/api_client.py`
-- [ ] Add `list_todos()` method
+- [x] Create `teleclaude/cli/api_client.py`
+- [x] Add `list_todos()` method
 - [ ] Test client connectivity
 
 ### Phase 3: TUI
