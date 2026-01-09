@@ -7,8 +7,8 @@ computer:
   default_working_dir: ${WORKING_DIR}
   timezone: Europe/Amsterdam # Timezone for timestamps (default: Europe/Amsterdam)
   host: null # Optional hostname/IP for SSH remote execution (null = local computer)
-  # Special build to allow full disk access on MacOS. Defaults to "tmux".
-  tmux_binary: ${WORKING_DIR}/bin/tmux-wrapper.sh # Path to tmux binary or wrapper (default: "tmux"). Use custom wrapper for macOS full disk access.
+  # Path to tmux binary or wrapper (default: "tmux"). Use custom wrapper for macOS full disk access:
+  tmux_binary: ${WORKING_DIR}/bin/TmuxLauncher.app/Contents/MacOS/tmux-launcher
   # Trusted directories with metadata for AI understanding
   # Format: { name: "identifier", desc: "purpose description", path: "/absolute/path" }
   # Note: default_working_dir is automatically included with desc "TeleClaude folder"
