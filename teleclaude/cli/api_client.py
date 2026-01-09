@@ -1,9 +1,17 @@
 """HTTP client for telec TUI."""
 
+from typing import Any
+
 import httpx
 
 API_SOCKET = "/tmp/teleclaude-api.sock"
 BASE_URL = "http://localhost"
+
+__all__ = ["TelecAPIClient", "APIError"]
+
+
+class APIError(Exception):
+    """API request failed."""
 
 
 class TelecAPIClient:
@@ -42,6 +50,44 @@ class TelecAPIClient:
             await self._client.aclose()
             self._client = None
 
+    async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:  # type: ignore[explicit-any]
+        """Make HTTP request with error handling.
+
+        Args:
+            method: HTTP method (GET, POST, DELETE)
+            url: URL path
+            **kwargs: Additional request arguments
+
+        Returns:
+            Response object
+
+        Raises:
+            APIError: If request fails
+        """
+        if not self._client:
+            raise APIError("Client not connected. Call connect() first.")
+
+        try:
+            if method == "GET":
+                resp = await self._client.get(url, **kwargs)
+            elif method == "POST":
+                resp = await self._client.post(url, **kwargs)
+            elif method == "DELETE":
+                resp = await self._client.delete(url, **kwargs)
+            else:
+                raise APIError(f"Unsupported HTTP method: {method}")
+
+            resp.raise_for_status()
+            return resp
+        except httpx.HTTPStatusError as e:
+            raise APIError(f"API request failed: {e.response.status_code} {e.response.text}") from e
+        except httpx.ConnectError as e:
+            raise APIError("Cannot connect to TeleClaude daemon. Is it running?") from e
+        except httpx.TimeoutException as e:
+            raise APIError("Request timed out. Daemon may be overloaded.") from e
+        except Exception as e:
+            raise APIError(f"Unexpected error: {e}") from e
+
     async def list_sessions(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
         """List sessions from all computers or specific computer.
 
@@ -50,13 +96,12 @@ class TelecAPIClient:
 
         Returns:
             List of session dicts
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
+        Raises:
+            APIError: If request fails
+        """
         params: dict[str, str] = {"computer": computer} if computer else {}
-        resp = await self._client.get("/sessions", params=params)
-        resp.raise_for_status()
+        resp = await self._request("GET", "/sessions", params=params)
         return resp.json()
 
     async def list_computers(self) -> list[dict[str, object]]:  # guard: loose-dict
@@ -64,12 +109,11 @@ class TelecAPIClient:
 
         Returns:
             List of computer dicts
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.get("/computers")
-        resp.raise_for_status()
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("GET", "/computers")
         return resp.json()
 
     async def list_projects(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
@@ -80,13 +124,12 @@ class TelecAPIClient:
 
         Returns:
             List of project dicts
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
+        Raises:
+            APIError: If request fails
+        """
         params: dict[str, str] = {"computer": computer} if computer else {}
-        resp = await self._client.get("/projects", params=params)
-        resp.raise_for_status()
+        resp = await self._request("GET", "/projects", params=params)
         return resp.json()
 
     async def create_session(self, **kwargs: object) -> dict[str, object]:  # guard: loose-dict
@@ -97,12 +140,11 @@ class TelecAPIClient:
 
         Returns:
             Session creation result
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.post("/sessions", json=kwargs)
-        resp.raise_for_status()
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("POST", "/sessions", json=kwargs)
         return resp.json()
 
     async def end_session(self, session_id: str, computer: str) -> bool:
@@ -114,14 +156,11 @@ class TelecAPIClient:
 
         Returns:
             True if successful
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.delete(
-            f"/sessions/{session_id}",
-            params={"computer": computer},
-        )
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("DELETE", f"/sessions/{session_id}", params={"computer": computer})
         return resp.status_code == 200
 
     async def send_message(self, session_id: str, computer: str, message: str) -> bool:
@@ -134,11 +173,12 @@ class TelecAPIClient:
 
         Returns:
             True if successful
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.post(
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request(
+            "POST",
             f"/sessions/{session_id}/message",
             params={"computer": computer},
             json={"message": message},
@@ -155,15 +195,15 @@ class TelecAPIClient:
 
         Returns:
             Transcript text
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.get(
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request(
+            "GET",
             f"/sessions/{session_id}/transcript",
             params={"computer": computer, "tail_chars": tail_chars},
         )
-        resp.raise_for_status()
         result = resp.json()
         return result.get("transcript", "")
 
@@ -172,12 +212,11 @@ class TelecAPIClient:
 
         Returns:
             Dict mapping agent name to availability info
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.get("/agents/availability")
-        resp.raise_for_status()
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("GET", "/agents/availability")
         return resp.json()
 
     async def list_todos(self, project_path: str, computer: str) -> list[dict[str, object]]:  # guard: loose-dict
@@ -189,13 +228,9 @@ class TelecAPIClient:
 
         Returns:
             List of todo dicts
-        """
-        if not self._client:
-            raise RuntimeError("Client not connected. Call connect() first.")
 
-        resp = await self._client.get(
-            f"/projects/{project_path}/todos",
-            params={"computer": computer},
-        )
-        resp.raise_for_status()
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("GET", f"/projects/{project_path}/todos", params={"computer": computer})
         return resp.json()
