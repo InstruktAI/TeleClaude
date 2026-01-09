@@ -1570,11 +1570,11 @@ After telec TUI is stable:
 ## Checklist
 
 ### Phase 1: REST API
-- [ ] Create `teleclaude/api/__init__.py`
-- [ ] Create `teleclaude/api/routes.py`
-- [ ] Create `teleclaude/api/models.py`
-- [ ] Add `/projects/{path}/todos` endpoint
-- [ ] Integrate uvicorn into daemon startup
+- [x] Create `teleclaude/api/__init__.py`
+- [x] Create `teleclaude/api/routes.py`
+- [x] Create `teleclaude/api/models.py`
+- [x] Add `/projects/{path}/todos` endpoint
+- [x] Integrate uvicorn into daemon startup
 - [ ] Test API with curl
 
 ### Phase 2: API Client

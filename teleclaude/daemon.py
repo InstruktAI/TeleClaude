@@ -249,6 +249,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
         self.mcp_task: asyncio.Task[object] | None = None
+        self.api_server_task: asyncio.Task[object] | None = None
         self._mcp_restart_lock = asyncio.Lock()
         self._mcp_restart_attempts = 0
         self._mcp_restart_window_start = 0.0
@@ -1632,7 +1633,39 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # await self.codex_watcher.start()
         # logger.info("Session watcher started")
 
+        # Start REST API server in background task
+        self.api_server_task = asyncio.create_task(self._run_api_server())
+        self.api_server_task.add_done_callback(self._log_background_task_exception("api_server"))
+        logger.info("REST API server starting in background")
+
         logger.info("TeleClaude is running. Press Ctrl+C to stop.")
+
+    async def _run_api_server(self) -> None:
+        """Run the REST API server on Unix socket."""
+        try:
+            # Import here to avoid circular imports
+            import uvicorn
+
+            from teleclaude.api import app
+            from teleclaude.api.routes import set_mcp_server
+
+            # Wire MCP server instance to routes
+            if self.mcp_server:
+                set_mcp_server(self.mcp_server)
+            else:
+                logger.warning("MCP server not available for API routes")
+
+            config_obj = uvicorn.Config(
+                app,
+                uds="/tmp/teleclaude-api.sock",
+                log_level="warning",
+            )
+            server = uvicorn.Server(config_obj)
+            logger.info("REST API server listening on /tmp/teleclaude-api.sock")
+            await server.serve()
+        except Exception as e:
+            logger.error("REST API server crashed: %s", e, exc_info=True)
+            raise
 
     async def stop(self) -> None:
         """Stop the daemon."""
@@ -1654,6 +1687,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("MCP server watch task stopped")
+
+        # Stop REST API server task
+        if self.api_server_task:
+            self.api_server_task.cancel()
+            try:
+                await self.api_server_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("REST API server stopped")
 
         # Stop periodic cleanup task
         if hasattr(self, "cleanup_task"):
