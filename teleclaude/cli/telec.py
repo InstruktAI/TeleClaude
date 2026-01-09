@@ -113,7 +113,7 @@ async def _quick_start(api: TelecAPIClient, agent: str, mode: str, prompt: str |
         else:
             print(f"Error: {result}")
     finally:
-        if api._client:  # Only close if not already closed
+        if api.is_connected:  # Only close if not already closed
             await api.close()
 
 

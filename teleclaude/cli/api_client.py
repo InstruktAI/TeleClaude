@@ -27,10 +27,20 @@ class TelecAPIClient:
             timeout=5.0,
         )
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if client is connected.
+
+        Returns:
+            True if client is connected
+        """
+        return self._client is not None
+
     async def close(self) -> None:
         """Close connection."""
         if self._client:
             await self._client.aclose()
+            self._client = None
 
     async def list_sessions(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
         """List sessions from all computers or specific computer.
