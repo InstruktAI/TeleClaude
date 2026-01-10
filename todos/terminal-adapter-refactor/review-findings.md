@@ -181,3 +181,25 @@ message: str = Field(..., min_length=1)
 - **4 REST adapter tests failing** (root cause: forward reference annotation issue)
 - **Lint: passing** (0 errors)
 - **Type check: passing** (0 errors)
+
+---
+
+## Fixes Applied
+
+All critical and important issues have been addressed:
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| #1 - Forward reference annotation breaks FastAPI body detection | Moved CreateSessionRequest/SendMessageRequest imports to module level | 4dfb2fb |
+| #2 - Silent fallback to empty list on handler errors | Replaced `return []` with HTTP 500 exceptions in list_sessions, list_computers, list_projects | 4dfb2fb |
+| #3 - HTTP 200 returned for error conditions | Use proper HTTP codes: 503 for missing MCP server, 500 for exceptions | 4dfb2fb |
+| #4 - Loose string types for enumerated values | Added Literal types for agent and thinking_mode in rest_models.py | 4dfb2fb |
+| #5 - EndSessionResult.status allows illegal states | Changed status type to Literal["success", "error"] | 4dfb2fb |
+| #6 - Synchronous file I/O in async handler | Wrapped Path.exists() and read_text() in asyncio.to_thread() | 4dfb2fb |
+
+### Test Results After Fixes
+
+- **650 unit tests passing** (all pass)
+- **21/21 REST adapter tests passing** (all fixed)
+- **Lint: passing** (0 errors)
+- **Type check: passing** (0 errors)
