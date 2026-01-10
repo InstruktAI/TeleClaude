@@ -47,7 +47,7 @@ def _insert_terminal_session(
                 "TestMachine",
                 "Terminal session",
                 terminal_tmux_name(tty_path),
-                "terminal",
+                "rest",
                 adapter_metadata,
                 "160x80",
                 "~",
@@ -82,7 +82,7 @@ def test_ensure_terminal_session_creates_new_when_missing(tmp_path: Path, monkey
             """
             SELECT session_id
             FROM sessions
-            WHERE origin_adapter = 'terminal'
+            WHERE origin_adapter = 'rest'
               AND native_tty_path = ?
             """,
             (tty_path,),
