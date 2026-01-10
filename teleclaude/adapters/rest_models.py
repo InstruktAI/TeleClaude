@@ -1,4 +1,4 @@
-"""API request/response models."""
+"""API request/response models for REST adapter."""
 
 from pydantic import BaseModel
 

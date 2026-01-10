@@ -71,7 +71,7 @@ def ensure_terminal_session(
             """
             SELECT session_id, title, tui_log_file
             FROM sessions
-            WHERE origin_adapter = 'terminal'
+            WHERE origin_adapter = 'rest'
               AND native_tty_path = ?
             """,
             (tty_path,),
@@ -118,7 +118,7 @@ def ensure_terminal_session(
                 config.computer.name,
                 title,
                 tmux_name,
-                "terminal",
+                "rest",
                 adapter_metadata,
                 now,
                 now,

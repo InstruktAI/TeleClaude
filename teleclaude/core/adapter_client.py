@@ -12,8 +12,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
+from teleclaude.adapters.rest_adapter import RESTAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
-from teleclaude.adapters.terminal_adapter import TerminalAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
@@ -161,10 +161,10 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
-        # Terminal adapter (local, no-op)
-        terminal = TerminalAdapter(self)
-        await terminal.start()
-        self.adapters["terminal"] = terminal
+        # REST adapter (local HTTP API)
+        rest = RESTAdapter(self)
+        await rest.start()
+        self.adapters["rest"] = rest
 
         # Telegram adapter
         if os.getenv("TELEGRAM_BOT_TOKEN"):
@@ -181,7 +181,7 @@ class AdapterClient:
             logger.info("Started redis adapter")
 
         # Validate at least one adapter started
-        if len(self.adapters) == 1 and "terminal" in self.adapters:
+        if len(self.adapters) == 1 and "rest" in self.adapters:
             raise ValueError("No adapters started - check config.yml and .env")
 
         logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
