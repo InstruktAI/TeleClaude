@@ -160,7 +160,7 @@ class TelecApp:
         try:
             computers, projects, sessions, availability = await asyncio.gather(
                 self.api.list_computers(),  # type: ignore[attr-defined]
-                self.api.list_projects(),  # type: ignore[attr-defined]
+                self.api.list_projects_with_todos(),  # type: ignore[attr-defined]
                 self.api.list_sessions(),  # type: ignore[attr-defined]
                 self.api.get_agent_availability(),  # type: ignore[attr-defined]
             )

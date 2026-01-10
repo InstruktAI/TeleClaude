@@ -232,28 +232,14 @@ class TelecAPIClient:
         resp = await self._request("GET", "/agents/availability")
         return resp.json()
 
-    async def list_todos(
-        self,
-        project_path: str,
-        computer: str,
-        *,
-        skip_peer_check: bool = False,
-    ) -> list[dict[str, object]]:  # guard: loose-dict
-        """List todos from roadmap.md for a project.
-
-        Args:
-            project_path: Absolute path to project directory
-            computer: Computer name where project is located
-            skip_peer_check: If True, skip peer online validation (use when caller already validated)
+    async def list_projects_with_todos(self) -> list[dict[str, object]]:  # guard: loose-dict
+        """List all projects with their todos included.
 
         Returns:
-            List of todo dicts
+            List of projects, each with a 'todos' field
 
         Raises:
             APIError: If request fails
         """
-        params: dict[str, str | bool] = {"computer": computer}
-        if skip_peer_check:
-            params["skip_peer_check"] = True
-        resp = await self._request("GET", f"/projects/{project_path}/todos", params=params)
+        resp = await self._request("GET", "/projects-with-todos")
         return resp.json()

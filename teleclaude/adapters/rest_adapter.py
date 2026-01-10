@@ -322,27 +322,48 @@ class RESTAdapter(BaseAdapter):
 
             return result
 
-        @self.app.get("/projects/{path:path}/todos")  # type: ignore[misc]
-        async def list_todos(path: str, computer: str = Query(...)) -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List todos from roadmap.md for a project.
+        @self.app.get("/projects-with-todos")  # type: ignore[misc]
+        async def list_projects_with_todos() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
+            """List all projects with their todos included.
 
-            Args:
-                path: Project directory path
-                computer: Target computer name (required)
+            Returns:
+                List of projects, each with a 'todos' field containing the project's todos
             """
             if not self.mcp_server:
                 raise HTTPException(status_code=503, detail="MCP server not available")
-            # Empty path means remote didn't provide it - can't fetch todos
-            if not path:
-                return []
+
             try:
-                # Use MCP handler which routes to local or remote computer
-                # skip_peer_check=True because TUI already validated computer is online
-                todos = await self.mcp_server.teleclaude__list_todos(computer, path, skip_peer_check=True)
-                return list(todos)
+                raw_projects = await self.mcp_server.teleclaude__list_projects(None)
             except Exception as e:
-                logger.error("list_todos failed (computer=%s, path=%s): %s", computer, path, e, exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Failed to list todos: {e}") from e
+                logger.error("list_projects_with_todos: failed to get projects: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
+
+            local_name = self.mcp_server.computer_name
+            result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
+
+            for p in raw_projects:
+                comp = p.get("computer", "local")
+                computer = local_name if comp == "local" else str(comp)
+                path = p.get("path") or p.get("location", "")
+
+                project: dict[str, object] = {  # guard: loose-dict - REST API boundary
+                    "computer": computer,
+                    "name": p.get("name", ""),
+                    "path": path,
+                    "description": p.get("desc"),
+                    "todos": [],
+                }
+
+                if path:
+                    try:
+                        todos = await self.mcp_server.teleclaude__list_todos(computer, str(path), skip_peer_check=True)
+                        project["todos"] = list(todos)
+                    except Exception as e:
+                        logger.warning("list_projects_with_todos: failed todos for %s:%s: %s", computer, path, e)
+
+                result.append(project)
+
+            return result
 
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""

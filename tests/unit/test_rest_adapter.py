@@ -321,62 +321,48 @@ def test_get_agent_availability_defaults_to_available(test_client):  # type: ign
         assert data["claude"]["unavailable_until"] is None
 
 
-def test_list_todos_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos endpoint uses MCP server."""
+def test_list_projects_with_todos_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects_with_todos endpoint returns projects with embedded todos."""
+    mock_mcp_server.teleclaude__list_projects.return_value = [
+        {"name": "Project1", "path": "/path/to/project1", "computer": "local", "desc": "Test project"},
+    ]
     mock_mcp_server.teleclaude__list_todos.return_value = [
-        {
-            "slug": "feature-1",
-            "status": "pending",
-            "description": "Implement feature 1",
-            "has_requirements": True,
-            "has_impl_plan": False,
-        },
-        {
-            "slug": "feature-2",
-            "status": "ready",
-            "description": "Implement feature 2",
-            "has_requirements": False,
-            "has_impl_plan": True,
-        },
+        {"slug": "feature-1", "status": "pending", "description": "Implement feature 1"},
     ]
 
-    response = test_client.get("/projects/some/path/todos?computer=local")
+    response = test_client.get("/projects-with-todos")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert data[0]["slug"] == "feature-1"
-    assert data[0]["status"] == "pending"
-    assert data[0]["has_requirements"] is True
-    assert data[0]["has_impl_plan"] is False
-    assert data[1]["slug"] == "feature-2"
-    assert data[1]["status"] == "ready"
-    # Verify MCP server was called with correct params
-    mock_mcp_server.teleclaude__list_todos.assert_called_once_with("local", "some/path", skip_peer_check=True)
+    assert len(data) == 1
+    assert data[0]["name"] == "Project1"
+    assert data[0]["path"] == "/path/to/project1"
+    assert len(data[0]["todos"]) == 1
+    assert data[0]["todos"][0]["slug"] == "feature-1"
 
 
-def test_list_todos_no_roadmap(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos returns [] when MCP server returns empty."""
-    mock_mcp_server.teleclaude__list_todos.return_value = []
+def test_list_projects_with_todos_empty_path(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects_with_todos skips todos fetch for empty paths."""
+    mock_mcp_server.teleclaude__list_projects.return_value = [
+        {"name": "Project1", "path": "", "computer": "remote", "desc": "No path"},
+    ]
 
-    response = test_client.get("/projects/some/path/todos?computer=local")
+    response = test_client.get("/projects-with-todos")
     assert response.status_code == 200
-    assert response.json() == []
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["todos"] == []
+    # list_todos should NOT be called for empty path
+    mock_mcp_server.teleclaude__list_todos.assert_not_called()
 
 
-def test_list_todos_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos returns 503 when MCP server not available."""
+def test_list_projects_with_todos_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects_with_todos returns 503 when MCP server not available."""
     adapter = RESTAdapter(client=mock_adapter_client)
     client = TestClient(adapter.app)
 
-    response = client.get("/projects/some/path/todos?computer=local")
+    response = client.get("/projects-with-todos")
     assert response.status_code == 503
     assert "MCP server not available" in response.json()["detail"]
-
-
-def test_list_todos_computer_required(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos requires computer parameter."""
-    response = test_client.get("/projects/some/path/todos")
-    assert response.status_code == 422  # FastAPI validation error
 
 
 @pytest.mark.asyncio
