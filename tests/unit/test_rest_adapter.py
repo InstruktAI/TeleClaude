@@ -40,7 +40,10 @@ def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-igno
 
 def test_list_sessions_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions returns sessions."""
-    mock_adapter_client.handle_event.return_value = [{"session_id": "sess-1", "title": "Test Session"}]
+    mock_adapter_client.handle_event.return_value = {
+        "status": "success",
+        "data": [{"session_id": "sess-1", "title": "Test Session"}],
+    }
 
     response = test_client.get("/sessions")
     assert response.status_code == 200
@@ -51,7 +54,7 @@ def test_list_sessions_success(test_client, mock_adapter_client):  # type: ignor
 
 def test_list_sessions_with_computer_filter(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions passes computer parameter."""
-    mock_adapter_client.handle_event.return_value = []
+    mock_adapter_client.handle_event.return_value = {"status": "success", "data": []}
 
     response = test_client.get("/sessions?computer=local")
     assert response.status_code == 200
@@ -201,10 +204,13 @@ def test_get_transcript_success(test_client, mock_adapter_client):  # type: igno
 
 def test_list_computers_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_computers endpoint."""
-    mock_adapter_client.handle_event.return_value = [
-        {"name": "local", "status": "online"},
-        {"name": "remote", "status": "online"},
-    ]
+    mock_adapter_client.handle_event.return_value = {
+        "status": "success",
+        "data": [
+            {"name": "local", "status": "online"},
+            {"name": "remote", "status": "online"},
+        ],
+    }
 
     response = test_client.get("/computers")
     assert response.status_code == 200
@@ -226,9 +232,12 @@ def test_list_computers_returns_empty_on_non_list(  # type: ignore[explicit-any,
 
 def test_list_projects_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects endpoint."""
-    mock_adapter_client.handle_event.return_value = [
-        {"computer": "local", "name": "project1", "path": "/path1"},
-    ]
+    mock_adapter_client.handle_event.return_value = {
+        "status": "success",
+        "data": [
+            {"computer": "local", "name": "project1", "path": "/path1"},
+        ],
+    }
 
     response = test_client.get("/projects?computer=local")
     assert response.status_code == 200

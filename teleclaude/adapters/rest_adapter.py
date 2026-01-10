@@ -89,10 +89,14 @@ class RESTAdapter(BaseAdapter):
                 },
                 metadata=self._metadata(),
             )
-            # Result is list[SessionListItem] from handler
-            if isinstance(result, list):
-                return result  # Dynamic from handler
-            logger.error("list_sessions returned non-list result: %s", type(result).__name__)
+            # Unwrap envelope from handle_event
+            if isinstance(result, dict):
+                status: str = str(result.get("status", ""))
+                if status == "success":
+                    data = result.get("data")
+                    if isinstance(data, list):
+                        return data  # Dynamic from handler
+            logger.error("list_sessions: Handler error or unexpected result type: %s", type(result).__name__)
             raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.post("/sessions")  # type: ignore[misc]
@@ -188,10 +192,14 @@ class RESTAdapter(BaseAdapter):
                 },
                 metadata=self._metadata(),
             )
-            # Result is computer info list
-            if isinstance(result, list):
-                return result  # Dynamic from handler
-            logger.error("list_computers returned non-list result: %s", type(result).__name__)
+            # Unwrap envelope from handle_event
+            if isinstance(result, dict):
+                status: str = str(result.get("status", ""))
+                if status == "success":
+                    data = result.get("data")
+                    if isinstance(data, list):
+                        return data  # Dynamic from handler
+            logger.error("list_computers: Handler error or unexpected result type: %s", type(result).__name__)
             raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.get("/projects")  # type: ignore[misc]
@@ -207,10 +215,14 @@ class RESTAdapter(BaseAdapter):
                 },
                 metadata=self._metadata(),
             )
-            # Result is project list
-            if isinstance(result, list):
-                return result  # Dynamic from handler
-            logger.error("list_projects returned non-list result: %s", type(result).__name__)
+            # Unwrap envelope from handle_event
+            if isinstance(result, dict):
+                status: str = str(result.get("status", ""))
+                if status == "success":
+                    data = result.get("data")
+                    if isinstance(data, list):
+                        return data  # Dynamic from handler
+            logger.error("list_projects: Handler error or unexpected result type: %s", type(result).__name__)
             raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.get("/agents/availability")  # type: ignore[misc]
