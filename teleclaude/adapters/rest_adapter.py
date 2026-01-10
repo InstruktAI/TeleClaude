@@ -125,9 +125,13 @@ class RESTAdapter(BaseAdapter):
             if not self.mcp_server:
                 return {"status": "error", "message": "MCP server not available"}
             # Call MCP method directly (end_session has no event type)
-            mcp = self.mcp_server  # Dynamic MCP server type
-            result = await mcp.teleclaude__end_session(computer=computer, session_id=session_id)  # type: ignore[misc, attr-defined]  # Dynamic
-            return dict(result)  # type: ignore[misc]  # TypedDict to dict
+            try:
+                mcp = self.mcp_server  # Dynamic MCP server type
+                result = await mcp.teleclaude__end_session(computer=computer, session_id=session_id)  # type: ignore[misc, attr-defined]  # Dynamic
+                return dict(result)  # type: ignore[misc]  # TypedDict to dict
+            except Exception as e:
+                logger.error("Failed to end session %s on %s: %s", session_id, computer, e)
+                return {"status": "error", "message": f"Failed to end session: {e}"}
 
         @self.app.post("/sessions/{session_id}/message")  # type: ignore[misc]
         async def send_message_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
