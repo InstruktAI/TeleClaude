@@ -6,7 +6,7 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional, cast
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -284,78 +284,49 @@ class AdapterClient:
 
         return result
 
-    async def send_message(self, session: "Session", text: str, *, metadata: MessageMetadata | None = None) -> str:
+    async def send_message(
+        self,
+        session: "Session",
+        text: str,
+        *,
+        metadata: MessageMetadata | None = None,
+        ephemeral: bool = True,
+        feedback: bool = False,
+    ) -> str | None:
         """Send message to ALL UiAdapters (origin + observers).
 
         Args:
             session: Session object (daemon already fetched it)
             text: Message text
             metadata: Adapter-specific metadata
+            ephemeral: If True (default), track message for deletion.
+                      Use False for persistent content (agent output, MCP results).
+            feedback: If True, delete old feedback before sending and track as feedback.
+                     Feedback is cleaned when next feedback arrives.
+                     If False (default), track for deletion on next user input.
 
         Returns:
-            message_id from origin adapter
+            message_id from origin adapter, or None if send failed
         """
+        # Feedback mode: delete old feedback before sending new
+        if feedback:
+            pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
+            for msg_id in pending:
+                try:
+                    await self.delete_message(session, msg_id)
+                except Exception:
+                    pass  # Best effort deletion
+            if pending:
+                await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
+
+        # Send message
         result = await self._route_to_ui(session, "send_message", text, metadata=metadata)
-        return str(result) if result else ""
+        message_id = str(result) if result else None
 
-    async def send_feedback(
-        self,
-        session: "Session",
-        message: str,
-        *,
-        metadata: MessageMetadata | None = None,
-        persistent: bool = False,
-    ) -> str | None:
-        """Send feedback message via most recent input adapter (ephemeral UI notification).
-
-        Routes feedback to:
-        1) Explicit adapter_type in metadata (if UI adapter)
-        2) last_input_adapter from UX state (if UI adapter)
-        3) origin adapter (if UI adapter)
-
-        Args:
-            session: Session object
-            message: Feedback message text
-            metadata: Adapter-specific metadata
-            persistent: If True, message won't be cleaned up on next feedback
-
-        Returns:
-            message_id if sent (UI adapter), None if transport adapter
-        """
-        metadata = metadata or MessageMetadata()
-        target_adapter_type: str | None = None
-
-        if metadata.adapter_type and metadata.adapter_type in self.adapters:
-            candidate = self.adapters[metadata.adapter_type]
-            if isinstance(candidate, UiAdapter):
-                target_adapter_type = metadata.adapter_type
-
-        if target_adapter_type is None:
-            last_input_adapter = session.last_input_adapter
-            if last_input_adapter and last_input_adapter in self.adapters:
-                candidate = self.adapters[last_input_adapter]
-                if isinstance(candidate, UiAdapter):
-                    target_adapter_type = last_input_adapter
-
-        if target_adapter_type is None:
-            origin_adapter_type = session.origin_adapter
-            origin_adapter = self.adapters.get(origin_adapter_type)
-            if isinstance(origin_adapter, UiAdapter):
-                target_adapter_type = origin_adapter_type
-
-        if target_adapter_type is None:
-            await self._broadcast_to_ui_adapters(
-                session,
-                "send_feedback",
-                lambda adapter: adapter.send_feedback(session, message, metadata=metadata, persistent=persistent),
-            )
-            return None
-
-        target_adapter = self.adapters[target_adapter_type]
-        message_id = await target_adapter.send_feedback(session, message, metadata=metadata, persistent=persistent)
-
-        if message_id:
-            logger.debug("Sent feedback via %s for session %s", target_adapter_type, session.session_id[:8])
+        # Track for deletion if ephemeral
+        if ephemeral and message_id:
+            deletion_type: Literal["user_input", "feedback"] = "feedback" if feedback else "user_input"
+            await db.add_pending_deletion(session.session_id, message_id, deletion_type=deletion_type)
 
         return message_id
 

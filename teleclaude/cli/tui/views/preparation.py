@@ -80,6 +80,10 @@ class PreparationView:
         self._file_pane_id: str | None = None
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
+        # Signal for app to trigger data refresh
+        self.needs_refresh: bool = False
+        # Visible height for scroll calculations (updated during render)
+        self._visible_height: int = 20  # Default, updated in render
 
     async def refresh(
         self,
@@ -279,12 +283,19 @@ class PreparationView:
         return f"{back_hint}[p] Prepare"
 
     def move_up(self) -> None:
-        """Move selection up."""
+        """Move selection up, adjusting scroll if needed."""
         self.selected_index = max(0, self.selected_index - 1)
+        # Scroll up if selection moved above visible area
+        if self.selected_index < self.scroll_offset:
+            self.scroll_offset = self.selected_index
 
     def move_down(self) -> None:
-        """Move selection down."""
+        """Move selection down, adjusting scroll if needed."""
         self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
+        # Scroll down if selection moved below visible area
+        visible_bottom = self.scroll_offset + self._visible_height - 3
+        if self.selected_index > visible_bottom:
+            self.scroll_offset = max(0, self.selected_index - self._visible_height + 4)
 
     def collapse_selected(self) -> bool:
         """Collapse selected todo or navigate to parent.
@@ -621,7 +632,7 @@ class PreparationView:
         return False
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
-        """Render view content.
+        """Render view content with scrolling support.
 
         Args:
             stdscr: Curses screen object
@@ -629,6 +640,9 @@ class PreparationView:
             height: Available height
             width: Screen width
         """
+        # Store visible height for scroll calculations
+        self._visible_height = height
+
         # Clear row-to-item mapping (rebuilt each render)
         self._row_to_item.clear()
 
@@ -637,8 +651,15 @@ class PreparationView:
             stdscr.addstr(start_row, 2, msg, curses.A_DIM)  # type: ignore[attr-defined]
             return
 
+        # Clamp scroll_offset to valid range
+        max_scroll = max(0, len(self.flat_items) - height + 3)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
         row = start_row
         for i, item in enumerate(self.flat_items):
+            # Skip items before scroll offset
+            if i < self.scroll_offset:
+                continue
             if row >= start_row + height:
                 break
             is_selected = i == self.selected_index

@@ -24,7 +24,6 @@ from teleclaude.utils.transcript import get_transcript_parser_info, parse_sessio
 if TYPE_CHECKING:
     from teleclaude.config import TrustedDir
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -42,7 +41,6 @@ class CallbackHandlersMixin:
     - _build_heartbeat_keyboard(bot_username: str) -> InlineKeyboardMarkup
     - _send_document_with_retry(...) -> Message
     - _metadata(...) -> AdapterMetadata
-    - cleanup_feedback_messages(session: Session) -> None
     """
 
     # Abstract properties/attributes (declared for type hints)
@@ -79,10 +77,6 @@ class CallbackHandlersMixin:
 
         def _metadata(self, **kwargs: object) -> MessageMetadata:
             """Create adapter metadata."""
-            ...
-
-        async def cleanup_feedback_messages(self, session: "Session") -> None:
-            """Clean up feedback messages for session."""
             ...
 
     # =========================================================================
@@ -152,9 +146,6 @@ class CallbackHandlersMixin:
                 return
             parser_info = get_transcript_parser_info(agent_name)
 
-            # Clean up previous feedback messages (notifications, etc.) before sending download
-            await self.cleanup_feedback_messages(session)
-
             # Convert transcript to markdown
             if not native_log_file:
                 await query.edit_message_text(
@@ -194,8 +185,8 @@ class CallbackHandlersMixin:
                 # Clean up temp file
                 Path(tmp_path).unlink()
 
-            # Track download message for cleanup when next feedback arrives
-            await db.add_pending_feedback_deletion(session_id, str(doc_message.message_id))
+            # Track download message for cleanup when next feedback is sent
+            await db.add_pending_deletion(session_id, str(doc_message.message_id), deletion_type="feedback")
         except Exception as e:
             logger.error("Failed to send output file: %s", e)
             await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")

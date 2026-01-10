@@ -106,7 +106,7 @@ class TestHandleFile:
         """Test rejection when session doesn't exist."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -116,7 +116,7 @@ class TestHandleFile:
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
                 context=FileEventContext(session_id="nonexistent", file_path="/tmp/file.pdf", filename="file.pdf"),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_messages) == 0
@@ -126,7 +126,7 @@ class TestHandleFile:
         """Test rejection when no process is active."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -139,7 +139,7 @@ class TestHandleFile:
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
                 context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf"),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_messages) == 1
@@ -150,7 +150,7 @@ class TestHandleFile:
         """Test rejection when output message not ready."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -176,7 +176,7 @@ class TestHandleFile:
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
                 context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf"),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_messages) == 1
@@ -191,7 +191,7 @@ class TestHandleFile:
             sent_keys.append((session.session_id, text))
             return True
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             return "msg_id"
 
         with (
@@ -208,7 +208,7 @@ class TestHandleFile:
                 context=FileEventContext(
                     session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024
                 ),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_keys) == 1
@@ -226,7 +226,7 @@ class TestHandleFile:
             sent_keys.append((session.session_id, text))
             return True
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             return "msg_id"
 
         with (
@@ -243,7 +243,7 @@ class TestHandleFile:
                 context=FileEventContext(
                     session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=1024
                 ),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_keys) == 1
@@ -260,7 +260,7 @@ class TestHandleFile:
         async def mock_send_keys(session, text: str, **kwargs: object) -> bool:  # type: ignore[no-untyped-def]
             return True
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -278,7 +278,7 @@ class TestHandleFile:
                 context=FileEventContext(
                     session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf", file_size=2097152
                 ),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_messages) == 1
@@ -293,7 +293,7 @@ class TestHandleFile:
         async def mock_send_keys(session, text: str, **kwargs: object) -> bool:  # type: ignore[no-untyped-def]
             return False
 
-        async def mock_send_feedback(sid: str, msg: str, metadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_id"
 
@@ -308,7 +308,7 @@ class TestHandleFile:
                 file_path="/tmp/file.pdf",
                 filename="file.pdf",
                 context=FileEventContext(session_id="test123", file_path="/tmp/file.pdf", filename="file.pdf"),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_messages) == 1

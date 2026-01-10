@@ -18,13 +18,13 @@ class DummyTelegramAdapter(UiAdapter):
         *,
         error: Exception | None = None,
         error_sequence: list[Exception] | None = None,
-        send_feedback_return: str | None = None,
+        send_message_return: str | None = None,
     ) -> None:
         super().__init__(adapter_client)
         self._error = error
         self._error_sequence = list(error_sequence) if error_sequence else []
-        if send_feedback_return is not None:
-            self.send_feedback = AsyncMock(return_value=send_feedback_return)  # type: ignore[assignment]
+        if send_message_return is not None:
+            self.send_message = AsyncMock(return_value=send_message_return)  # type: ignore[assignment]
 
     async def start(self) -> None:
         return None
@@ -552,8 +552,8 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
 
 
 @pytest.mark.asyncio
-async def test_send_feedback_routes_to_last_input_adapter():
-    """Test feedback routes to last_input_adapter when origin is non-UI."""
+async def test_send_message_broadcasts_to_ui_adapters():
+    """Test send_message broadcasts to all UI adapters."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -561,33 +561,34 @@ async def test_send_feedback_routes_to_last_input_adapter():
 
     client = AdapterClient()
 
-    origin_adapter = AsyncMock()
-    origin_adapter.send_feedback = AsyncMock(return_value=None)
-    telegram_adapter = DummyTelegramAdapter(client, send_feedback_return="tg-msg-1")
+    # Non-UI adapter (Redis) should not receive send_message
+    redis_adapter = AsyncMock()
+    redis_adapter.send_message = AsyncMock(return_value=None)
 
-    client.register_adapter("redis", origin_adapter)
+    # UI adapter (Telegram) should receive send_message
+    telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg-1")
+
+    client.register_adapter("redis", redis_adapter)
     client.register_adapter("telegram", telegram_adapter)
 
     session = Session(
         session_id="session-789",
         computer_name="test",
         tmux_session_name="tc_session_789",
-        origin_adapter="redis",
+        origin_adapter="telegram",
         title="Test Session",
-        last_input_adapter="telegram",
     )
 
-    with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()):
-        message_id = await client.send_feedback(session, "hello")
+    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+        message_id = await client.send_message(session, "hello")
 
     assert message_id == "tg-msg-1"
-    origin_adapter.send_feedback.assert_not_called()
-    telegram_adapter.send_feedback.assert_called_once()
+    telegram_adapter.send_message.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_send_feedback_falls_back_to_origin_ui():
-    """Test feedback falls back to origin adapter when last_input_adapter isn't UI."""
+async def test_send_message_ephemeral_tracks_for_deletion():
+    """Test ephemeral messages are auto-tracked for deletion."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -595,8 +596,8 @@ async def test_send_feedback_falls_back_to_origin_ui():
 
     client = AdapterClient()
 
-    origin_adapter = DummyTelegramAdapter(client, send_feedback_return="tg-msg-2")
-    client.register_adapter("telegram", origin_adapter)
+    telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg-2")
+    client.register_adapter("telegram", telegram_adapter)
 
     session = Session(
         session_id="session-790",
@@ -604,11 +605,40 @@ async def test_send_feedback_falls_back_to_origin_ui():
         tmux_session_name="tc_session_790",
         origin_adapter="telegram",
         title="Test Session",
-        last_input_adapter="redis",
     )
 
-    with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()):
-        message_id = await client.send_feedback(session, "hello")
+    mock_db = AsyncMock()
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        # Default ephemeral=True should track for deletion
+        await client.send_message(session, "hello")
 
-    assert message_id == "tg-msg-2"
-    origin_adapter.send_feedback.assert_called_once()
+    mock_db.add_pending_deletion.assert_called_once_with("session-790", "tg-msg-2", deletion_type="user_input")
+
+
+@pytest.mark.asyncio
+async def test_send_message_persistent_not_tracked():
+    """Test persistent messages are NOT tracked for deletion."""
+    from unittest.mock import AsyncMock, patch
+
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.models import MessageMetadata, Session
+
+    client = AdapterClient()
+
+    telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg-3")
+    client.register_adapter("telegram", telegram_adapter)
+
+    session = Session(
+        session_id="session-791",
+        computer_name="test",
+        tmux_session_name="tc_session_791",
+        origin_adapter="telegram",
+        title="Test Session",
+    )
+
+    mock_db = AsyncMock()
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        # ephemeral=False should NOT track for deletion
+        await client.send_message(session, "hello", ephemeral=False)
+
+    mock_db.add_pending_deletion.assert_not_called()

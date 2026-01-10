@@ -63,7 +63,7 @@ class TestFileUploadFlow:
             sent_keys.append((session_name, text))
             return True
 
-        async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_123"
 
@@ -83,7 +83,7 @@ class TestFileUploadFlow:
                     filename="document.pdf",
                     file_size=5242880,
                 ),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_keys) == 1
@@ -108,7 +108,7 @@ class TestFileUploadFlow:
             sent_keys.append((session_name, text))
             return True
 
-        async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             return "msg_123"
 
         with (
@@ -127,7 +127,7 @@ class TestFileUploadFlow:
                     filename="image.jpg",
                     file_size=1048576,
                 ),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_keys) == 1
@@ -140,7 +140,7 @@ class TestFileUploadFlow:
         """Test file is rejected when no process running."""
         sent_messages = []
 
-        async def mock_send_feedback(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
+        async def mock_send_message(sid: str, msg: str, metadata: MessageMetadata) -> Optional[str]:
             sent_messages.append((sid, msg))
             return "msg_123"
 
@@ -157,7 +157,7 @@ class TestFileUploadFlow:
                     file_path="/tmp/file.pdf",
                     filename="file.pdf",
                 ),
-                send_feedback=mock_send_feedback,
+                send_message=mock_send_message,
             )
 
         assert len(sent_messages) == 1

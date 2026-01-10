@@ -251,35 +251,39 @@ commands = [
 
 **CRITICAL UX PATTERN for clean Telegram interface:**
 
-The UI should never have message clutter. At any time, only ONE of each message type should be visible:
+The UI should never have message clutter. Two distinct cleanup flows exist:
 
-| Message Type                          | Tracking Mechanism                | Cleanup Trigger                |
-| ------------------------------------- | --------------------------------- | ------------------------------ |
-| User input messages                   | `pending_deletions` (db)          | Pre-handler on next user input |
-| Feedback messages (summaries, errors) | `pending_feedback_deletions` (db) | `send_feedback(...)`           |
-| Session download messages             | `pending_feedback_deletions` (db) | `send_feedback(...)`           |
-| File artifacts (from agent)           | **NOT tracked**                   | **NEVER deleted**              |
+| Message Type                     | Tracking Mechanism                         | Cleanup Trigger                    |
+| -------------------------------- | ------------------------------------------ | ---------------------------------- |
+| User input messages              | `pending_deletions` (deletion_type='user_input') | Pre-handler on next user input     |
+| Feedback messages (summaries)    | `pending_deletions` (deletion_type='feedback')   | Before sending next feedback       |
+| Persistent messages (AI results) | **NOT tracked**                            | **NEVER deleted**                  |
+| File artifacts (from agent)      | **NOT tracked**                            | **NEVER deleted**                  |
+
+**Two cleanup flows:**
+
+1. **User input cleanup** - When user sends new input, old user input messages are deleted first
+2. **Feedback cleanup** - When sending new feedback, old feedback messages are deleted first
+
+**Database API:**
+
+```python
+# User input messages (default)
+db.add_pending_deletion(session_id, message_id)  # deletion_type='user_input' is default
+db.get_pending_deletions(session_id)
+db.clear_pending_deletions(session_id)
+
+# Feedback messages
+db.add_pending_deletion(session_id, message_id, deletion_type='feedback')
+db.get_pending_deletions(session_id, deletion_type='feedback')
+db.clear_pending_deletions(session_id, deletion_type='feedback')
+```
 
 **How it works:**
 
-1. **Pre-handler** (`_pre_handle_user_input`): Runs BEFORE processing any user message - deletes old `pending_deletions` and idle notifications
-2. **Post-handler** (`_call_post_handler`): Runs AFTER processing - adds current `message_id` to `pending_deletions`
-3. **`send_feedback()`**: Deletes old feedback messages, sends new one, tracks it for future deletion
-
-**Artifact vs download messages:**
-
-- File artifact send messages must never be deleted.
-- Session download messages (links shared with the user) are treated as feedback and should be cleaned up via `pending_feedback_deletions`.
-
-**When adding new handlers:**
-
-- If handler calls `handle_event()` with `message_id` in payload → automatic pre/post handling
-- If handler bypasses `handle_event()` (e.g., shows help text directly):
-  ```python
-  await self._pre_handle_user_input(session)  # Delete old messages
-  await db.add_pending_deletion(session.session_id, str(message.message_id))  # Track this one
-  await self.send_feedback(session, "response", MessageMetadata())  # Use send_feedback, NOT reply_text
-  ```
+1. **Pre-handler** (`_pre_handle_user_input`): Deletes user_input deletions before processing
+2. **Post-handler**: Tracks user's message_id for deletion on next input
+3. **`send_feedback()`**: Deletes old feedback first, then sends and tracks new feedback
 
 **NEVER use `reply_text()` for responses** - it bypasses tracking and messages accumulate forever!
 

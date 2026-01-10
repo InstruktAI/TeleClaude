@@ -291,14 +291,13 @@ class BaseAdapter(ABC):
         _message: str,
         *,
         metadata: MessageMetadata | None = None,  # noqa: ARG002
-        persistent: bool = False,  # noqa: ARG002
     ) -> str | None:
         """Send feedback message to user (UI adapters only).
 
-        Feedback messages are temporary UI notifications that:
+        Feedback messages are ephemeral UI notifications that:
         - Appear in UI platforms (Telegram, Slack, etc.)
         - Do NOT appear in terminal/tmux output
-        - Auto-delete on next user input (UI adapters handle this)
+        - Auto-tracked for deletion on next user input
 
         Base implementation does nothing (for transport adapters like Redis).
         UI adapters (UiAdapter subclasses) override to send feedback.
@@ -307,7 +306,6 @@ class BaseAdapter(ABC):
             session: Session object
             message: Feedback message text
             metadata: Adapter-specific metadata (optional)
-            persistent: If True, message won't be cleaned up on next feedback
 
         Returns:
             message_id if sent (UI adapters), None if not a UI adapter

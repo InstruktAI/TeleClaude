@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.pane_manager import TmuxPaneManager
+from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
-from teleclaude.cli.tui.widgets.modal import StartSessionModal
+from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
@@ -84,8 +84,14 @@ class SessionsView:
         self._active_field: dict[str, str] = {}  # session_id -> "input" | "output" | "none"
         # Store sessions for child lookup
         self._sessions: list[dict[str, object]] = []  # guard: loose-dict
+        # Store computers for SSH connection lookup
+        self._computers: list[dict[str, object]] = []  # guard: loose-dict
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
+        # Signal for app to trigger data refresh
+        self.needs_refresh: bool = False
+        # Visible height for scroll calculations (updated during render)
+        self._visible_height: int = 20  # Default, updated in render
 
     async def refresh(
         self,
@@ -109,6 +115,8 @@ class SessionsView:
 
         # Store sessions for child lookup
         self._sessions = sessions
+        # Store computers for SSH connection lookup
+        self._computers = computers
 
         # Track state changes for color coding
         self._update_activity_state(sessions)
@@ -280,12 +288,20 @@ class SessionsView:
         return f"{back_hint}[→] View Projects"
 
     def move_up(self) -> None:
-        """Move selection up."""
+        """Move selection up, adjusting scroll if needed."""
         self.selected_index = max(0, self.selected_index - 1)
+        # Scroll up if selection moved above visible area
+        if self.selected_index < self.scroll_offset:
+            self.scroll_offset = self.selected_index
 
     def move_down(self) -> None:
-        """Move selection down."""
+        """Move selection down, adjusting scroll if needed."""
         self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
+        # Scroll down if selection moved below visible area
+        # Use a margin of ~3 items from bottom to start scrolling
+        visible_bottom = self.scroll_offset + self._visible_height - 3
+        if self.selected_index > visible_bottom:
+            self.scroll_offset = max(0, self.selected_index - self._visible_height + 4)
 
     def drill_down(self) -> bool:
         """Drill down into selected item (arrow right).
@@ -391,6 +407,24 @@ class SessionsView:
             # Toggle session preview pane
             self._toggle_session_pane(item)
 
+    def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
+        """Get SSH connection info for a computer.
+
+        Args:
+            computer_name: Computer name to look up
+
+        Returns:
+            ComputerInfo with user/host for SSH, or None if not found
+        """
+        for comp in self._computers:
+            if comp.get("name") == computer_name:
+                return ComputerInfo(
+                    name=computer_name,
+                    user=comp.get("user"),  # type: ignore[arg-type]
+                    host=comp.get("host"),  # type: ignore[arg-type]
+                )
+        return None
+
     def _toggle_session_pane(self, item: TreeNode) -> None:
         """Toggle session preview pane visibility.
 
@@ -400,9 +434,26 @@ class SessionsView:
         session = item.data
         session_id = str(session.get("session_id", ""))
         tmux_session = str(session.get("tmux_session_name") or "")
+        computer_name = str(session.get("computer", "local"))
+
+        logger.debug(
+            "_toggle_session_pane: session_id=%s, tmux=%s, computer=%s",
+            session_id[:8] if session_id else "?",
+            tmux_session or "MISSING",
+            computer_name,
+        )
 
         if not tmux_session:
+            logger.warning("_toggle_session_pane: tmux_session_name missing, cannot toggle")
             return
+
+        # Get computer info for SSH (if remote)
+        computer_info = self._get_computer_info(computer_name)
+        logger.debug(
+            "_toggle_session_pane: computer_info=%s (is_remote=%s)",
+            computer_info.name if computer_info else "None",
+            computer_info.is_remote if computer_info else "N/A",
+        )
 
         # Look for child sessions (sessions where initiator_session_id == this session's id)
         child_tmux_session: str | None = None
@@ -413,8 +464,8 @@ class SessionsView:
                     child_tmux_session = str(child_tmux)
                     break
 
-        # Toggle pane visibility
-        self.pane_manager.toggle_session(tmux_session, child_tmux_session)
+        # Toggle pane visibility (handles both local and remote via SSH)
+        self.pane_manager.toggle_session(tmux_session, child_tmux_session, computer_info)
 
     def _start_session_for_project(self, stdscr: object, project: dict[str, object]) -> None:  # guard: loose-dict
         """Open modal to start session on project.
@@ -423,16 +474,24 @@ class SessionsView:
             stdscr: Curses screen object
             project: Project data
         """
+        # Use project's computer field, fallback to focused computer, then "local"
+        computer_value = project.get("computer") or self.focus.computer or "local"
+        logger.info(
+            "_start_session_for_project: project_computer=%s, focus_computer=%s, resolved=%s",
+            project.get("computer"),
+            self.focus.computer,
+            computer_value,
+        )
         modal = StartSessionModal(
-            computer=str(project.get("computer", "local")),
+            computer=str(computer_value),
             project_path=str(project.get("path", "")),
             api=self.api,
             agent_availability=self.agent_availability,
         )
         result = modal.run(stdscr)
         if result:
-            # Session started - user can press [r] to refresh and see it
-            pass
+            # Session started - trigger auto-refresh
+            self.needs_refresh = True
 
     def handle_key(self, key: int, stdscr: object) -> None:
         """Handle view-specific keys.
@@ -476,30 +535,31 @@ class SessionsView:
                 logger.debug("handle_key: 'k' ignored, not on a session")
                 return  # Only kill sessions, not computers/projects
 
-            # Confirm kill
-            curses.endwin()
-            print(f"\nKill session: {selected.data.get('title', 'Unknown')}")
-            print(f"Computer: {selected.data.get('computer', 'unknown')}")
-            print(f"Session ID: {selected.data.get('session_id', 'unknown')}")
-            confirm = input("Are you sure? (yes/no): ").strip().lower()
-            curses.doupdate()
+            session_id = str(selected.data.get("session_id", ""))
+            computer = str(selected.data.get("computer", ""))
+            title = str(selected.data.get("title", "Unknown"))
 
-            if confirm == "yes":
-                session_id = str(selected.data.get("session_id", ""))
-                computer = str(selected.data.get("computer", ""))
+            # Confirm kill with modal
+            modal = ConfirmModal(
+                title="Kill Session",
+                message="Are you sure you want to kill this session?",
+                details=[
+                    f"Title: {title}",
+                    f"Computer: {computer}",
+                    f"Session ID: {session_id[:16]}...",
+                ],
+            )
+            if not modal.run(stdscr):
+                return  # Cancelled
 
-                try:
-                    result = asyncio.get_event_loop().run_until_complete(
-                        self.api.end_session(session_id=session_id, computer=computer)  # type: ignore[attr-defined]
-                    )
-                    if result:
-                        stdscr.addstr(0, 0, "Session killed. Press [r] to refresh.")  # type: ignore[attr-defined]
-                        stdscr.refresh()  # type: ignore[attr-defined]
-                        curses.napms(1500)
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    stdscr.addstr(0, 0, f"Error killing session: {e}")  # type: ignore[attr-defined]
-                    stdscr.refresh()  # type: ignore[attr-defined]
-                    curses.napms(2000)
+            try:
+                result = asyncio.get_event_loop().run_until_complete(
+                    self.api.end_session(session_id=session_id, computer=computer)  # type: ignore[attr-defined]
+                )
+                if result:
+                    self.needs_refresh = True
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                logger.error("Error killing session: %s", e)
 
     def handle_click(self, screen_row: int) -> bool:
         """Handle mouse click at screen row.
@@ -517,7 +577,7 @@ class SessionsView:
         return False
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
-        """Render view content.
+        """Render view content with scrolling support.
 
         Args:
             stdscr: Curses screen object
@@ -525,12 +585,16 @@ class SessionsView:
             height: Available height
             width: Screen width
         """
+        # Store visible height for scroll calculations
+        self._visible_height = height
+
         logger.debug(
-            "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d",
+            "SessionsView.render: start_row=%d, height=%d, width=%d, flat_items=%d, scroll=%d",
             start_row,
             height,
             width,
             len(self.flat_items),
+            self.scroll_offset,
         )
 
         # Clear row-to-item mapping (rebuilt each render)
@@ -542,9 +606,16 @@ class SessionsView:
             stdscr.addstr(start_row, 2, msg, curses.A_DIM)  # type: ignore[attr-defined]
             return
 
+        # Clamp scroll_offset to valid range
+        max_scroll = max(0, len(self.flat_items) - height + 3)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
         row = start_row
         items_rendered = 0
         for i, item in enumerate(self.flat_items):
+            # Skip items before scroll offset
+            if i < self.scroll_offset:
+                continue
             if row >= start_row + height:
                 logger.debug("render: stopped at row %d (out of space), rendered %d items", row, items_rendered)
                 break  # No more space
@@ -557,7 +628,12 @@ class SessionsView:
             row += lines_used
             items_rendered += 1
 
-        logger.debug("render: rendered %d of %d items", items_rendered, len(self.flat_items))
+        logger.debug(
+            "render: rendered %d of %d items (scroll_offset=%d)",
+            items_rendered,
+            len(self.flat_items),
+            self.scroll_offset,
+        )
 
     def _render_item(self, stdscr: object, row: int, item: TreeNode, width: int, selected: bool) -> int:
         """Render a single tree item.

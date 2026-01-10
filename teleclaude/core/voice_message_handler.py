@@ -166,7 +166,7 @@ async def handle_voice(
     session_id: str,
     audio_path: str,
     context: VoiceEventContext,
-    send_feedback: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
+    send_message: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
 ) -> Optional[str]:
     """Handle voice message (adapter-agnostic utility).
 
@@ -174,7 +174,7 @@ async def handle_voice(
         session_id: Session ID
         audio_path: Path to downloaded audio file
         context: Typed voice event context
-        send_feedback: Async function to send user feedback (session_id, message, append_to_existing)
+        send_message: Async function to send user feedback (session_id, message, append_to_existing)
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
     logger.info("Session ID: %s", session_id[:8])
@@ -193,7 +193,7 @@ async def handle_voice(
 
     # Reject voice messages if no active process to send them to
     if not is_process_running:
-        await send_feedback(
+        await send_message(
             session_id,
             "🎤 Voice input requires an active process (e.g., claude, vim)",
             MessageMetadata(),
@@ -209,7 +209,7 @@ async def handle_voice(
     # Voice message accepted - transcribe and forward through message pipeline.
 
     # Send transcribing status if feedback channel is available
-    msg_id = await send_feedback(
+    msg_id = await send_message(
         session_id,
         "🎤 Transcribing...",
         MessageMetadata(),
@@ -232,7 +232,7 @@ async def handle_voice(
 
     if not text:
         # Append error to existing message
-        await send_feedback(
+        await send_message(
             session_id,
             "❌ Transcription failed. Please try again.",
             MessageMetadata(),
@@ -242,7 +242,7 @@ async def handle_voice(
     # Send transcribed text back to UI (quoted + italics)
     escaped_text = escape_markdown_v2(text)
     transcribed_message = f'*Transcribed text:*\n\n_"{escaped_text}"_'
-    await send_feedback(
+    await send_message(
         session_id,
         transcribed_message,
         MessageMetadata(parse_mode="MarkdownV2"),

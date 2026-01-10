@@ -78,7 +78,7 @@ async def test_handle_new_session_creates_session():
     mock_metadata = MessageMetadata(adapter_type="telegram")
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     # Mock session object
     mock_session = MagicMock()
@@ -135,7 +135,7 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
     )
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -176,7 +176,7 @@ async def test_handle_new_session_validates_working_dir():
     mock_metadata = MessageMetadata(adapter_type="telegram", project_dir="/nonexistent/path")
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -217,7 +217,7 @@ async def test_handle_cd_changes_directory():
 
     mock_context = MagicMock()
     mock_client = MagicMock()
-    mock_client.send_feedback = AsyncMock(return_value="msg-123")
+    mock_client.send_message = AsyncMock(return_value="msg-123")
 
     # Mock execute_terminal_command
     mock_execute = AsyncMock(return_value=True)
@@ -365,7 +365,7 @@ async def test_handle_rename_updates_title():
     mock_client = MagicMock()
     mock_client.update_channel_title = AsyncMock()
     mock_client.send_message = AsyncMock(return_value="msg-123")
-    mock_client.send_feedback = AsyncMock(return_value="msg-123")
+    mock_client.send_message = AsyncMock(return_value="msg-123")
 
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.update_session = AsyncMock()
@@ -696,7 +696,7 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
     mock_context.message_id = "msg-deep"
     mock_execute = AsyncMock()
     mock_client = MagicMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     with (
         patch.object(command_handlers, "config") as mock_config,
@@ -710,7 +710,7 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
             mock_session, mock_context, "claude", ["deep"], mock_client, mock_execute
         )
 
-    mock_client.send_feedback.assert_awaited_once()
+    mock_client.send_message.assert_awaited_once()
     mock_execute.assert_not_called()
     mock_get_agent_command.assert_not_called()
 
@@ -834,7 +834,7 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
     mock_context = MagicMock(spec=EventContext)
     mock_execute = AsyncMock()
     mock_client = MagicMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     mock_ux_state = MagicMock()
     mock_ux_state.active_agent = None
@@ -852,7 +852,7 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
             mock_session, mock_context, "", [], mock_client, mock_execute
         )
 
-    mock_client.send_feedback.assert_awaited_once()
+    mock_client.send_message.assert_awaited_once()
     mock_execute.assert_not_called()
     mock_terminal_bridge.send_signal.assert_not_called()
 
@@ -870,7 +870,7 @@ async def test_handle_agent_restart_fails_without_native_session_id(mock_initial
     mock_context = MagicMock(spec=EventContext)
     mock_execute = AsyncMock()
     mock_client = MagicMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     mock_ux_state = MagicMock()
     mock_ux_state.active_agent = "claude"
@@ -884,7 +884,7 @@ async def test_handle_agent_restart_fails_without_native_session_id(mock_initial
             mock_session, mock_context, "", [], mock_client, mock_execute
         )
 
-    mock_client.send_feedback.assert_awaited_once()
+    mock_client.send_message.assert_awaited_once()
     mock_execute.assert_not_called()
 
 
@@ -943,7 +943,7 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
     mock_context = MagicMock(spec=EventContext)
     mock_execute = AsyncMock()
     mock_client = MagicMock()
-    mock_client.send_feedback = AsyncMock()
+    mock_client.send_message = AsyncMock()
 
     mock_ux_state = MagicMock()
     mock_ux_state.active_agent = "claude"
@@ -964,5 +964,5 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
             mock_session, mock_context, "", [], mock_client, mock_execute
         )
 
-    mock_client.send_feedback.assert_awaited_once()
+    mock_client.send_message.assert_awaited_once()
     mock_execute.assert_not_called()

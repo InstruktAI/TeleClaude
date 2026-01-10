@@ -788,7 +788,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session_id=context.session_id,
             audio_path=context.file_path,
             context=context,
-            send_feedback=self._send_feedback_callback,
+            send_message=self._send_message_callback,
         )
         if not transcribed:
             return
@@ -841,7 +841,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             file_path=context.file_path,
             filename=context.filename,
             context=context,
-            send_feedback=self._send_feedback_callback,
+            send_message=self._send_message_callback,
         )
 
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
@@ -947,7 +947,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session = await db.get_session(session_id)
             if not session:
                 raise ValueError(f"Summary feedback requires active session: {session_id}")
-            await self.client.send_feedback(session, summary, metadata=MessageMetadata(adapter_type="internal"))
+            # Use feedback=True to clean up old feedback (transcription, etc.) before sending summary
+            await self.client.send_message(
+                session, summary, metadata=MessageMetadata(adapter_type="internal"), feedback=True
+            )
 
             # Track summary as last output (only source of truth for last_output)
             if summary:
@@ -962,7 +965,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             try:
                 session = await db.get_session(session_id)
                 if session:
-                    await self.client.send_feedback(
+                    await self.client.send_message(
                         session,
                         f"Error processing session summary: {e}",
                         metadata=MessageMetadata(adapter_type="internal"),
@@ -1234,7 +1237,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         source = f" ({context.source})" if context.source else ""
         message = f"Error{source}: {context.message}"
-        await self.client.send_feedback(session, message, metadata=MessageMetadata(adapter_type="internal"))
+        await self.client.send_message(session, message, metadata=MessageMetadata(adapter_type="internal"))
 
     async def _update_session_title(self, session_id: str, title: str) -> None:
         """Update session title in DB and UI.
@@ -1384,19 +1387,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Get output file path for a session (delegates to session_utils)."""
         return get_output_file(session_id)
 
-    async def _send_feedback_callback(
+    async def _send_message_callback(
         self,
         sid: str,
         msg: str,
         metadata: MessageMetadata | None = None,
     ) -> Optional[str]:
-        """Adapter callback for handlers that need send_feedback signature.
+        """Callback for handlers that need to send feedback messages.
 
+        Uses send_feedback to delete old feedback before sending new.
         Wraps AdapterClient.send_feedback to match handler signature.
 
         Args:
             sid: Session ID
-            msg: Feedback message
+            msg: Message text
             metadata: Optional message metadata
 
         Returns:
@@ -1404,9 +1408,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """
         session = await db.get_session(sid)
         if not session:
-            logger.warning("Session %s not found for feedback", sid[:8])
+            logger.warning("Session %s not found for message", sid[:8])
             return None
-        return await self.client.send_feedback(session, msg, metadata=metadata)
+        return await self.client.send_message(session, msg, metadata=metadata, feedback=True)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
@@ -1527,11 +1531,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
 
         if not success:
-            error_msg_id = await self.client.send_message(
-                session, f"Failed to execute command: {command}", metadata=MessageMetadata()
-            )
-            if error_msg_id:
-                await db.add_pending_deletion(session_id, error_msg_id)
+            await self.client.send_message(session, f"Failed to execute command: {command}", metadata=MessageMetadata())
             logger.error("Failed to execute command in session %s: %s", session_id[:8], command)
             return False
 
@@ -1935,11 +1935,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         if not success:
             logger.error("Failed to send command to session %s", session_id[:8])
-            error_msg_id = await self.client.send_message(
-                session, "Failed to send command to terminal", metadata=MessageMetadata()
-            )
-            if error_msg_id:
-                await db.add_pending_deletion(session_id, error_msg_id)
+            await self.client.send_message(session, "Failed to send command to terminal", metadata=MessageMetadata())
             return
 
         # Update activity

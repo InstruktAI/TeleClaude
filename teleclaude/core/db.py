@@ -6,7 +6,7 @@ import uuid
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, Optional, TypedDict, cast
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
@@ -356,95 +356,55 @@ class Db:
         """
         await self.update_session(session_id, output_message_id=message_id)
 
-    async def get_pending_deletions(self, session_id: str) -> list[str]:
+    async def get_pending_deletions(
+        self, session_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
+    ) -> list[str]:
         """Get list of pending deletion message IDs for session.
 
         Args:
             session_id: Session identifier
+            deletion_type: Type of deletion - 'user_input' (cleaned on next user input)
+                          or 'feedback' (cleaned when next feedback is sent)
 
         Returns:
             List of message IDs to delete (empty list if none)
         """
         cursor = await self.conn.execute(
-            "SELECT message_id FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'user_input'",
-            (session_id,),
+            "SELECT message_id FROM pending_message_deletions WHERE session_id = ? AND deletion_type = ?",
+            (session_id, deletion_type),
         )
         rows = await cursor.fetchall()
         return [str(row[0]) for row in rows]  # type: ignore[misc]  # sqlite rows are untyped
 
-    async def add_pending_deletion(self, session_id: str, message_id: str) -> None:
+    async def add_pending_deletion(
+        self, session_id: str, message_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
+    ) -> None:
         """Add message ID to pending deletions for session.
-
-        When a process is running and messages are sent (user commands, feedback messages),
-        these message IDs are tracked for deletion when the next accepted input is sent.
 
         Args:
             session_id: Session identifier
             message_id: Message ID to delete later
+            deletion_type: Type of deletion - 'user_input' (cleaned on next user input)
+                          or 'feedback' (cleaned when next feedback is sent)
         """
         await self.conn.execute(
-            "INSERT OR IGNORE INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, 'user_input')",
-            (session_id, message_id),
+            "INSERT OR IGNORE INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, ?)",
+            (session_id, message_id, deletion_type),
         )
         await self.conn.commit()
 
-    async def clear_pending_deletions(self, session_id: str) -> None:
+    async def clear_pending_deletions(
+        self, session_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
+    ) -> None:
         """Clear all pending deletions for session.
 
-        Should be called after deleting all pending messages, or when polling stops.
-
         Args:
             session_id: Session identifier
+            deletion_type: Type of deletion to clear
         """
         await self.conn.execute(
-            "DELETE FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'user_input'",
-            (session_id,),
-        )
-        await self.conn.commit()
-
-    async def get_pending_feedback_deletions(self, session_id: str) -> list[str]:
-        """Get list of pending feedback deletion message IDs for session.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            List of feedback message IDs to delete (empty list if none)
-        """
-        cursor = await self.conn.execute(
-            "SELECT message_id FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'feedback'",
-            (session_id,),
-        )
-        rows = await cursor.fetchall()
-        return [str(row[0]) for row in rows]  # type: ignore[misc]  # sqlite rows are untyped
-
-    async def add_pending_feedback_deletion(self, session_id: str, message_id: str) -> None:
-        """Add message ID to pending feedback deletions for session.
-
-        Feedback messages are tracked separately from user input messages.
-        They are cleaned up before sending new feedback.
-
-        Args:
-            session_id: Session identifier
-            message_id: Feedback message ID to delete later
-        """
-        await self.conn.execute(
-            "INSERT OR IGNORE INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, 'feedback')",
-            (session_id, message_id),
-        )
-        await self.conn.commit()
-
-    async def clear_pending_feedback_deletions(self, session_id: str) -> None:
-        """Clear all pending feedback deletions for session.
-
-        Should be called after deleting all pending feedback messages.
-
-        Args:
-            session_id: Session identifier
-        """
-        await self.conn.execute(
-            "DELETE FROM pending_message_deletions WHERE session_id = ? AND deletion_type = 'feedback'",
-            (session_id,),
+            "DELETE FROM pending_message_deletions WHERE session_id = ? AND deletion_type = ?",
+            (session_id, deletion_type),
         )
         await self.conn.commit()
 
