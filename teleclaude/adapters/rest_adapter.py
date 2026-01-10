@@ -17,6 +17,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.rest_models import CreateSessionRequest, SendMessageRequest
+from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core.models import ChannelMetadata, MessageMetadata
 
 if TYPE_CHECKING:
@@ -151,9 +152,15 @@ class RESTAdapter(BaseAdapter):
         async def send_message_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
             session_id: str,
             request: SendMessageRequest,
-            computer: str = Query(...),  # noqa: ARG001 - computer param for API consistency
+            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
-            """Send message to session."""
+            """Send message to session.
+
+            Args:
+                session_id: Session ID (unique across computers)
+                request: Message request
+                computer: Optional computer name (for API consistency, not used)
+            """
             result = await self.client.handle_event(
                 event="message",
                 payload={
@@ -167,10 +174,16 @@ class RESTAdapter(BaseAdapter):
         @self.app.get("/sessions/{session_id}/transcript")  # type: ignore[misc]
         async def get_transcript(  # type: ignore[reportUnusedFunction, unused-ignore]
             session_id: str,
-            computer: str = Query(...),  # noqa: ARG001 - computer param for API consistency
+            computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
             tail_chars: int = Query(5000),
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
-            """Get session transcript."""
+            """Get session transcript.
+
+            Args:
+                session_id: Session ID (unique across computers)
+                computer: Optional computer name (for API consistency, not used)
+                tail_chars: Number of characters from end of transcript
+            """
             result = await self.client.handle_event(
                 event="get_session_data",
                 payload={
@@ -257,8 +270,13 @@ class RESTAdapter(BaseAdapter):
             return result
 
         @self.app.get("/projects/{path:path}/todos")  # type: ignore[misc]
-        async def list_todos(path: str, computer: str = Query(...)) -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # noqa: ARG001  # guard: loose-dict - REST API boundary
-            """List todos from roadmap.md."""
+        async def list_todos(path: str, computer: str | None = Query(None)) -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # noqa: ARG001  # guard: loose-dict - REST API boundary
+            """List todos from roadmap.md.
+
+            Args:
+                path: Project directory path
+                computer: Optional computer name (for API consistency, not used)
+            """
             import re
 
             roadmap_path = Path(path) / "todos" / "roadmap.md"
@@ -306,22 +324,20 @@ class RESTAdapter(BaseAdapter):
 
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""
-        socket_path = "/tmp/teleclaude-api.sock"
-
         # Remove old socket if exists
-        if os.path.exists(socket_path):
-            os.unlink(socket_path)
+        if os.path.exists(REST_SOCKET_PATH):
+            os.unlink(REST_SOCKET_PATH)
 
         config = uvicorn.Config(
             self.app,
-            uds=socket_path,
+            uds=REST_SOCKET_PATH,
             log_level="warning",
         )
         self.server = uvicorn.Server(config)
 
         # Run server in background task
         self.server_task = asyncio.create_task(self.server.serve())
-        logger.info("REST API server listening on %s", socket_path)
+        logger.info("REST API server listening on %s", REST_SOCKET_PATH)
 
     async def stop(self) -> None:
         """Stop the REST API server."""

@@ -4,7 +4,8 @@ from typing import Any
 
 import httpx
 
-API_SOCKET = "/tmp/teleclaude-api.sock"
+from teleclaude.constants import REST_SOCKET_PATH
+
 BASE_URL = "http://localhost"
 
 __all__ = ["TelecAPIClient", "APIError"]
@@ -17,7 +18,7 @@ class APIError(Exception):
 class TelecAPIClient:
     """Async HTTP client for telec."""
 
-    def __init__(self, socket_path: str = API_SOCKET):
+    def __init__(self, socket_path: str = REST_SOCKET_PATH):
         """Initialize client.
 
         Args:
