@@ -121,36 +121,39 @@ class PreparationView(ScrollableViewMixin):
             path = str(project.get("path", ""))
             todos_by_project[path] = parse_roadmap(path)
 
-        # Fetch remote todos via API concurrently
+        # Fetch remote todos via API with limited concurrency to avoid Redis pool exhaustion
         if remote_projects:
+            # Limit concurrent requests to avoid "Too many connections" errors
+            semaphore = asyncio.Semaphore(3)
 
             async def fetch_remote_todos(
                 project: dict[str, object],  # guard: loose-dict
             ) -> tuple[str, list[TodoItem]]:
                 path = str(project.get("path", ""))
                 computer = str(project.get("computer", ""))
-                try:
-                    # skip_peer_check=True because we already validated computer is online by fetching projects
-                    result = await self.api.list_todos(path, computer, skip_peer_check=True)  # type: ignore[attr-defined]
-                    # Convert API response to TodoItem objects
-                    return (
-                        path,
-                        [
-                            TodoItem(
-                                slug=str(t.get("slug", "")),
-                                status=str(t.get("status", "pending")),
-                                description=str(t.get("description")) if t.get("description") else None,
-                                has_requirements=bool(t.get("has_requirements", False)),
-                                has_impl_plan=bool(t.get("has_impl_plan", False)),
-                                build_status=str(t.get("build_status")) if t.get("build_status") else None,
-                                review_status=str(t.get("review_status")) if t.get("review_status") else None,
-                            )
-                            for t in result
-                        ],
-                    )
-                except Exception as e:
-                    logger.warning("Failed to fetch todos for %s on %s: %s", path, computer, e)
-                    return (path, [])
+                async with semaphore:
+                    try:
+                        # skip_peer_check=True because we already validated computer is online by fetching projects
+                        result = await self.api.list_todos(path, computer, skip_peer_check=True)  # type: ignore[attr-defined]
+                        # Convert API response to TodoItem objects
+                        return (
+                            path,
+                            [
+                                TodoItem(
+                                    slug=str(t.get("slug", "")),
+                                    status=str(t.get("status", "pending")),
+                                    description=str(t.get("description")) if t.get("description") else None,
+                                    has_requirements=bool(t.get("has_requirements", False)),
+                                    has_impl_plan=bool(t.get("has_impl_plan", False)),
+                                    build_status=str(t.get("build_status")) if t.get("build_status") else None,
+                                    review_status=str(t.get("review_status")) if t.get("review_status") else None,
+                                )
+                                for t in result
+                            ],
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to fetch todos for %s on %s: %s", path, computer, e)
+                        return (path, [])
 
             results = await asyncio.gather(*[fetch_remote_todos(p) for p in remote_projects])
             for path, todos in results:
