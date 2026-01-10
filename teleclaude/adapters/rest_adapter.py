@@ -81,6 +81,7 @@ class RESTAdapter(BaseAdapter):
             # Result is list[SessionListItem] from handler
             if isinstance(result, list):
                 return result  # Dynamic from handler
+            logger.warning("list_sessions returned non-list result: %s", type(result).__name__)
             return []
 
         @self.app.post("/sessions")  # type: ignore[misc]
@@ -176,6 +177,7 @@ class RESTAdapter(BaseAdapter):
             # Result is computer info list
             if isinstance(result, list):
                 return result  # Dynamic from handler
+            logger.warning("list_computers returned non-list result: %s", type(result).__name__)
             return []
 
         @self.app.get("/projects")  # type: ignore[misc]
@@ -194,6 +196,7 @@ class RESTAdapter(BaseAdapter):
             # Result is project list
             if isinstance(result, list):
                 return result  # Dynamic from handler
+            logger.warning("list_projects returned non-list result: %s", type(result).__name__)
             return []
 
         @self.app.get("/agents/availability")  # type: ignore[misc]
