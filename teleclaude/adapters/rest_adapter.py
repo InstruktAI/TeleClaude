@@ -4,8 +4,6 @@ This adapter provides HTTP endpoints for local clients (telec CLI, etc.)
 and routes all requests through AdapterClient like other adapters.
 """
 
-# pyright: reportUnusedFunction=false - FastAPI route handlers accessed by framework
-
 from __future__ import annotations
 
 import asyncio
@@ -61,13 +59,13 @@ class RESTAdapter(BaseAdapter):
             SendMessageRequest,
         )
 
-        @self.app.get("/health")
-        async def health() -> dict[str, str]:
+        @self.app.get("/health")  # type: ignore[misc]
+        async def health() -> dict[str, str]:  # type: ignore[reportUnusedFunction, unused-ignore]
             """Health check endpoint."""
             return {"status": "ok"}
 
-        @self.app.get("/sessions")
-        async def list_sessions(
+        @self.app.get("/sessions")  # type: ignore[misc]
+        async def list_sessions(  # type: ignore[reportUnusedFunction, unused-ignore]
             computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
             """List sessions from all computers or specific computer."""
@@ -82,11 +80,11 @@ class RESTAdapter(BaseAdapter):
             )
             # Result is list[SessionListItem] from handler
             if isinstance(result, list):
-                return result  # type: ignore[return-value]  # Dynamic from handler
+                return result  # Dynamic from handler
             return []
 
-        @self.app.post("/sessions")
-        async def create_session(
+        @self.app.post("/sessions")  # type: ignore[misc]
+        async def create_session(  # type: ignore[reportUnusedFunction, unused-ignore]
             request: CreateSessionRequest,
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
             """Create new session (local or remote)."""
@@ -118,20 +116,20 @@ class RESTAdapter(BaseAdapter):
             )
             return result  # type: ignore[return-value]  # Dynamic from handler
 
-        @self.app.delete("/sessions/{session_id}")
-        async def end_session(
+        @self.app.delete("/sessions/{session_id}")  # type: ignore[misc]
+        async def end_session(  # type: ignore[reportUnusedFunction, unused-ignore]
             session_id: str, computer: str = Query(...)
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
             """End session - uses MCP server directly (no event for this operation)."""
             if not self.mcp_server:
                 return {"status": "error", "message": "MCP server not available"}
             # Call MCP method directly (end_session has no event type)
-            mcp = self.mcp_server  # type: ignore[misc]  # Dynamic MCP server type
-            result = await mcp.teleclaude__end_session(computer=computer, session_id=session_id)  # type: ignore[misc,attr-defined]  # Dynamic
-            return dict(result)  # type: ignore[arg-type,return-value]  # TypedDict to dict
+            mcp = self.mcp_server  # Dynamic MCP server type
+            result = await mcp.teleclaude__end_session(computer=computer, session_id=session_id)  # type: ignore[misc, attr-defined]  # Dynamic
+            return dict(result)  # type: ignore[misc]  # TypedDict to dict
 
-        @self.app.post("/sessions/{session_id}/message")
-        async def send_message_endpoint(
+        @self.app.post("/sessions/{session_id}/message")  # type: ignore[misc]
+        async def send_message_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
             session_id: str,
             request: SendMessageRequest,
             computer: str = Query(...),  # noqa: ARG001 - computer param for API consistency
@@ -147,8 +145,8 @@ class RESTAdapter(BaseAdapter):
             )
             return {"status": "success", "result": result}
 
-        @self.app.get("/sessions/{session_id}/transcript")
-        async def get_transcript(
+        @self.app.get("/sessions/{session_id}/transcript")  # type: ignore[misc]
+        async def get_transcript(  # type: ignore[reportUnusedFunction, unused-ignore]
             session_id: str,
             computer: str = Query(...),  # noqa: ARG001 - computer param for API consistency
             tail_chars: int = Query(5000),
@@ -164,8 +162,8 @@ class RESTAdapter(BaseAdapter):
             )
             return result  # type: ignore[return-value]  # Dynamic from handler
 
-        @self.app.get("/computers")
-        async def list_computers() -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
+        @self.app.get("/computers")  # type: ignore[misc]
+        async def list_computers() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
             """List available computers."""
             result = await self.client.handle_event(
                 event="get_computer_info",
@@ -177,11 +175,11 @@ class RESTAdapter(BaseAdapter):
             )
             # Result is computer info list
             if isinstance(result, list):
-                return result  # type: ignore[return-value]  # Dynamic from handler
+                return result  # Dynamic from handler
             return []
 
-        @self.app.get("/projects")
-        async def list_projects(
+        @self.app.get("/projects")  # type: ignore[misc]
+        async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
             computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
             """List projects."""
@@ -195,11 +193,11 @@ class RESTAdapter(BaseAdapter):
             )
             # Result is project list
             if isinstance(result, list):
-                return result  # type: ignore[return-value]  # Dynamic from handler
+                return result  # Dynamic from handler
             return []
 
-        @self.app.get("/agents/availability")
-        async def get_agent_availability() -> dict[str, dict[str, object]]:  # guard: loose-dict - REST API boundary
+        @self.app.get("/agents/availability")  # type: ignore[misc]
+        async def get_agent_availability() -> dict[str, dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
             """Get agent availability."""
             from teleclaude.core.db import db
 
@@ -229,8 +227,8 @@ class RESTAdapter(BaseAdapter):
 
             return result
 
-        @self.app.get("/projects/{path:path}/todos")
-        async def list_todos(path: str, computer: str = Query(...)) -> list[dict[str, object]]:  # noqa: ARG001  # guard: loose-dict - REST API boundary
+        @self.app.get("/projects/{path:path}/todos")  # type: ignore[misc]
+        async def list_todos(path: str, computer: str = Query(...)) -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # noqa: ARG001  # guard: loose-dict - REST API boundary
             """List todos from roadmap.md."""
             import re
 

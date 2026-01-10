@@ -3,7 +3,7 @@
 from pydantic import BaseModel
 
 
-class CreateSessionRequest(BaseModel):
+class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to create a new session."""
 
     computer: str
@@ -14,13 +14,13 @@ class CreateSessionRequest(BaseModel):
     message: str | None = None
 
 
-class SendMessageRequest(BaseModel):
+class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]
     """Request to send a message to a session."""
 
     message: str
 
 
-class SessionResponse(BaseModel):
+class SessionResponse(BaseModel):  # type: ignore[explicit-any]
     """Session information response."""
 
     session_id: str
@@ -36,7 +36,7 @@ class SessionResponse(BaseModel):
     working_directory: str | None
 
 
-class ComputerResponse(BaseModel):
+class ComputerResponse(BaseModel):  # type: ignore[explicit-any]
     """Computer information response."""
 
     name: str
@@ -45,7 +45,7 @@ class ComputerResponse(BaseModel):
     host: str | None
 
 
-class ProjectResponse(BaseModel):
+class ProjectResponse(BaseModel):  # type: ignore[explicit-any]
     """Project information response."""
 
     computer: str
@@ -54,7 +54,7 @@ class ProjectResponse(BaseModel):
     description: str | None
 
 
-class AgentAvailability(BaseModel):
+class AgentAvailability(BaseModel):  # type: ignore[explicit-any]
     """Agent availability status."""
 
     agent: str
@@ -63,7 +63,7 @@ class AgentAvailability(BaseModel):
     reason: str | None
 
 
-class TodoResponse(BaseModel):
+class TodoResponse(BaseModel):  # type: ignore[explicit-any]
     """Todo item from roadmap.md."""
 
     slug: str
