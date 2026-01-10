@@ -172,6 +172,66 @@ class MCPHandlersMixin:
         return local_projects
 
     # =========================================================================
+    # Todo Tools
+    # =========================================================================
+
+    async def teleclaude__list_todos(
+        self,
+        computer: str,
+        project_path: str,
+        *,
+        skip_peer_check: bool = False,
+    ) -> list[dict[str, object]]:  # noqa: loose-dict - Todo structure with mixed value types
+        """List todos from roadmap.md for a project on target computer.
+
+        Args:
+            computer: Target computer name
+            project_path: Absolute path to project directory
+            skip_peer_check: If True, skip the peer online validation (use when caller
+                already validated the computer is online, e.g., TUI after fetching projects)
+        """
+        if self._is_local_computer(computer):
+            # Cast TodoInfo TypedDict to generic dict for consistent return type
+            todos = await command_handlers.handle_list_todos(project_path)
+            return [dict(t) for t in todos]
+        return await self._list_remote_todos(computer, project_path, skip_peer_check=skip_peer_check)
+
+    async def _list_remote_todos(
+        self,
+        computer: str,
+        project_path: str,
+        *,
+        skip_peer_check: bool = False,
+    ) -> list[dict[str, object]]:  # noqa: loose-dict - Todo structure with mixed value types
+        """List todos from remote computer via Redis.
+
+        Args:
+            computer: Target computer name
+            project_path: Absolute path to project directory
+            skip_peer_check: If True, skip the peer online validation. Use when caller
+                already validated (e.g., TUI fetches projects first which confirms online status).
+        """
+        # Validate peer is online unless caller explicitly skips (e.g., TUI already validated)
+        if not skip_peer_check:
+            peers = await self.client.discover_peers()
+            if not any(p["name"] == computer and p["status"] == "online" for p in peers):
+                logger.warning("Computer %s not online, skipping list_todos", computer)
+                return []
+
+        try:
+            # Pass project_path as part of the command
+            command = f"list_todos {project_path}"
+            envelope = await self._send_remote_request(computer, command, timeout=3.0)
+            data = envelope.get("data", [])
+            if not isinstance(data, list):
+                logger.warning("Unexpected data format from %s: %s", computer, type(data).__name__)
+                return []
+            return list(data)
+        except RemoteRequestError as e:
+            logger.warning("list_todos failed on %s: %s", computer, e.message)
+            return []
+
+    # =========================================================================
     # Session Tools
     # =========================================================================
 

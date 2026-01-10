@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
+from teleclaude.cli.tui.views.base import ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
 if TYPE_CHECKING:
@@ -52,7 +53,7 @@ def _relative_time(iso_timestamp: str | None) -> str:
         return ""
 
 
-class SessionsView:
+class SessionsView(ScrollableViewMixin):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
     def __init__(
@@ -92,6 +93,8 @@ class SessionsView:
         self.needs_refresh: bool = False
         # Visible height for scroll calculations (updated during render)
         self._visible_height: int = 20  # Default, updated in render
+        # Track rendered item range for scroll calculations
+        self._last_rendered_range: tuple[int, int] = (0, 0)
 
     async def refresh(
         self,
@@ -287,21 +290,7 @@ class SessionsView:
         # computer
         return f"{back_hint}[→] View Projects"
 
-    def move_up(self) -> None:
-        """Move selection up, adjusting scroll if needed."""
-        self.selected_index = max(0, self.selected_index - 1)
-        # Scroll up if selection moved above visible area
-        if self.selected_index < self.scroll_offset:
-            self.scroll_offset = self.selected_index
-
-    def move_down(self) -> None:
-        """Move selection down, adjusting scroll if needed."""
-        self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
-        # Scroll down if selection moved below visible area
-        # Use a margin of ~3 items from bottom to start scrolling
-        visible_bottom = self.scroll_offset + self._visible_height - 3
-        if self.selected_index > visible_bottom:
-            self.scroll_offset = max(0, self.selected_index - self._visible_height + 4)
+    # move_up() and move_down() inherited from ScrollableViewMixin
 
     def drill_down(self) -> bool:
         """Drill down into selected item (arrow right).
@@ -612,6 +601,8 @@ class SessionsView:
 
         row = start_row
         items_rendered = 0
+        first_rendered = self.scroll_offset
+        last_rendered = self.scroll_offset
         for i, item in enumerate(self.flat_items):
             # Skip items before scroll offset
             if i < self.scroll_offset:
@@ -620,6 +611,7 @@ class SessionsView:
                 logger.debug("render: stopped at row %d (out of space), rendered %d items", row, items_rendered)
                 break  # No more space
 
+            last_rendered = i
             is_selected = i == self.selected_index
             lines_used = self._render_item(stdscr, row, item, width, is_selected)
             # Map all lines of this item to its index (for mouse click)
@@ -627,6 +619,9 @@ class SessionsView:
                 self._row_to_item[row + offset] = i
             row += lines_used
             items_rendered += 1
+
+        # Track rendered range for scroll calculations
+        self._last_rendered_range = (first_rendered, last_rendered)
 
         logger.debug(
             "render: rendered %d of %d items (scroll_offset=%d)",

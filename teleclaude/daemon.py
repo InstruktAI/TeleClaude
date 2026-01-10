@@ -1751,6 +1751,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_list_sessions()
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects()
+        elif command == TeleClaudeEvents.LIST_TODOS:
+            # First arg is project path
+            if not args:
+                logger.warning("list_todos called without project_path")
+                return []
+            project_path = args[0]
+            return await command_handlers.handle_list_todos(project_path)
         elif command == TeleClaudeEvents.GET_SESSION_DATA:
             # Parse args: [since_timestamp] [until_timestamp] [tail_chars]
             #

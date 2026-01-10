@@ -41,6 +41,7 @@ class StartSessionModal:
         project_path: str,
         api: object,
         agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
+        default_prompt: str = "",
     ):
         """Initialize modal.
 
@@ -49,6 +50,7 @@ class StartSessionModal:
             project_path: Project directory path
             api: API client instance
             agent_availability: Agent availability status
+            default_prompt: Pre-filled prompt text
         """
         self.computer = computer
         self.project_path = project_path
@@ -63,7 +65,7 @@ class StartSessionModal:
                 break
 
         self.selected_mode = 1  # default: slow
-        self.prompt = ""
+        self.prompt = default_prompt
         self.current_field = 0  # 0=agent, 1=mode, 2=prompt, 3=actions
         self.selected_action = 0  # 0=Start, 1=Cancel
 
@@ -342,6 +344,7 @@ class ConfirmModal:
         self.title = title
         self.message = message
         self.details = details or []
+        self.selected_action = 0  # 0=Yes (default), 1=No
 
     def run(self, stdscr: object) -> bool:
         """Run modal event loop.
@@ -350,7 +353,7 @@ class ConfirmModal:
             stdscr: Curses screen object
 
         Returns:
-            True if confirmed (Y), False if cancelled (N/Esc)
+            True if confirmed (Y/Enter on Yes), False if cancelled (N/Esc/Enter on No)
         """
         while True:
             self._render(stdscr)
@@ -358,10 +361,19 @@ class ConfirmModal:
 
             if key == 27:  # Escape
                 return False
+            if key in (curses.KEY_ENTER, 10, 13):
+                # Enter confirms the selected action
+                return self.selected_action == 0  # True if Yes, False if No
             if key in (ord("y"), ord("Y")):
                 return True
             if key in (ord("n"), ord("N")):
                 return False
+            if key == curses.KEY_LEFT:
+                self.selected_action = 0  # Yes
+            elif key == curses.KEY_RIGHT:
+                self.selected_action = 1  # No
+            elif key == ord("\t"):
+                self.selected_action = (self.selected_action + 1) % 2
 
     def _render(self, stdscr: object) -> None:
         """Render the modal.
@@ -445,8 +457,32 @@ class ConfirmModal:
         except curses.error:
             pass
 
-        # Actions (at bottom inside inner border)
+        # Actions (at bottom inside inner border) - with selection highlighting
+        actions_y = start_y + modal_h - 3
+        selection_bg = get_selection_attr(2)
+
+        # Yes button (default selected)
+        yes_attr = selection_bg | curses.A_BOLD if self.selected_action == 0 else modal_bg
         try:
-            stdscr.addstr(start_y + modal_h - 3, content_x, "[Y] Yes    [N] No    [Esc] Cancel", modal_bg)  # type: ignore[attr-defined]
+            stdscr.addstr(actions_y, content_x, "[Enter] Yes", yes_attr)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # Spacing
+        try:
+            stdscr.addstr(actions_y, content_x + 12, "    ", modal_bg)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # No button
+        no_attr = selection_bg | curses.A_BOLD if self.selected_action == 1 else modal_bg
+        try:
+            stdscr.addstr(actions_y, content_x + 16, "[N] No", no_attr)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # Cancel hint (not selectable, just escape)
+        try:
+            stdscr.addstr(actions_y, content_x + 26, "[Esc] Cancel", modal_bg | curses.A_DIM)  # type: ignore[attr-defined]
         except curses.error:
             pass

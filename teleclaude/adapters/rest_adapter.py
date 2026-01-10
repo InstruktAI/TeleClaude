@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Protocol, TypedDict
 
 import uvicorn
@@ -37,6 +36,9 @@ class EndSessionResult(TypedDict):
 class MCPServerProtocol(Protocol):
     """Protocol for MCP server operations used by REST adapter."""
 
+    computer_name: str
+    """Local computer name for normalization."""
+
     async def teleclaude__end_session(self, *, computer: str, session_id: str) -> EndSessionResult:
         """End a session on a computer."""
         ...
@@ -49,6 +51,18 @@ class MCPServerProtocol(Protocol):
         self, computer: str | None = None
     ) -> list[dict[str, str]]:  # guard: loose-dict - Protocol boundary
         """List available projects (local + remote when computer=None)."""
+        ...
+
+    async def teleclaude__list_sessions(
+        self, computer: str | None = None
+    ) -> list[dict[str, object]]:  # guard: loose-dict - Protocol boundary
+        """List sessions (local + remote when computer=None)."""
+        ...
+
+    async def teleclaude__list_todos(
+        self, computer: str, project_path: str, *, skip_peer_check: bool = False
+    ) -> list[dict[str, object]]:  # guard: loose-dict - Protocol boundary
+        """List todos from roadmap.md for a project on target computer."""
         ...
 
 
@@ -90,33 +104,16 @@ class RESTAdapter(BaseAdapter):
         async def list_sessions(  # type: ignore[reportUnusedFunction, unused-ignore]
             computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List sessions from all computers or specific computer."""
-            # list_sessions is a command event that returns sessions directly
+            """List sessions from all computers (None) or specific computer."""
+            if not self.mcp_server:
+                raise HTTPException(status_code=503, detail="MCP server not available")
             try:
-                result = await self.client.handle_event(
-                    event="list_sessions",
-                    payload={
-                        "session_id": "",  # Not used for list_sessions but required by CommandEventContext
-                        "args": [computer] if computer else [],
-                    },
-                    metadata=self._metadata(),
-                )
+                # Use MCP handler which adds computer field to each session
+                result = await self.mcp_server.teleclaude__list_sessions(computer)
+                return [dict(s) for s in result]  # Convert TypedDicts to plain dicts
             except Exception as e:
                 logger.error("list_sessions failed (computer=%s): %s", computer, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
-            # Unwrap envelope from handle_event
-            if isinstance(result, dict):
-                status_val: str = str(result.get("status", ""))
-                if status_val == "success":
-                    data = result.get("data")
-                    if isinstance(data, list):
-                        return data  # Dynamic from handler
-                if status_val == "error":
-                    error_msg = result.get("error", "Unknown error")
-                    logger.error("list_sessions handler error: %s", error_msg)
-                    raise HTTPException(status_code=500, detail=str(error_msg))
-            logger.error("list_sessions: Unexpected result type: %s", type(result).__name__)
-            raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.post("/sessions")  # type: ignore[misc]
         async def create_session(  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -226,13 +223,26 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/computers")  # type: ignore[misc]
         async def list_computers() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List available computers (local + peers)."""
+            """List available computers (local + online peers only)."""
             if not self.mcp_server:
                 raise HTTPException(status_code=503, detail="MCP server not available")
             try:
                 # Use MCP handler which does full peer discovery
-                result = await self.mcp_server.teleclaude__list_computers()
-                return [dict(c) for c in result]  # Convert TypedDicts to plain dicts
+                raw_computers = await self.mcp_server.teleclaude__list_computers()
+                # Filter to online/local and normalize status
+                result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
+                for comp in raw_computers:
+                    status = comp.get("status")
+                    if status in ("online", "local"):
+                        result.append(
+                            {
+                                "name": comp.get("name"),
+                                "status": "online",  # Normalize "local" to "online"
+                                "user": comp.get("user"),
+                                "host": comp.get("host"),
+                            }
+                        )
+                return result
             except Exception as e:
                 logger.error("list_computers failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list computers: {e}") from e
@@ -246,8 +256,24 @@ class RESTAdapter(BaseAdapter):
                 raise HTTPException(status_code=503, detail="MCP server not available")
             try:
                 # Use MCP handler which aggregates local + remote projects
-                result = await self.mcp_server.teleclaude__list_projects(computer)
-                return [dict(p) for p in result]  # Convert to plain dicts
+                raw_projects = await self.mcp_server.teleclaude__list_projects(computer)
+                local_name = self.mcp_server.computer_name
+                # Transform to TUI-expected format:
+                # - "local" computer → actual computer name
+                # - desc → description (TUI field naming)
+                # - location → path fallback (for remotes not yet deployed)
+                result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
+                for p in raw_projects:
+                    comp = p.get("computer", "local")
+                    result.append(
+                        {
+                            "computer": local_name if comp == "local" else comp,
+                            "name": p.get("name", ""),
+                            "path": p.get("path") or p.get("location", ""),
+                            "description": p.get("desc"),
+                        }
+                    )
+                return result
             except Exception as e:
                 logger.error("list_projects failed (computer=%s): %s", computer, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
@@ -297,68 +323,26 @@ class RESTAdapter(BaseAdapter):
             return result
 
         @self.app.get("/projects/{path:path}/todos")  # type: ignore[misc]
-        async def list_todos(path: str, computer: str | None = Query(None)) -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # noqa: ARG001  # guard: loose-dict - REST API boundary
-            """List todos from roadmap.md.
+        async def list_todos(path: str, computer: str = Query(...)) -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
+            """List todos from roadmap.md for a project.
 
             Args:
                 path: Project directory path
-                computer: Optional computer name (for API consistency, not used)
+                computer: Target computer name (required)
             """
-            import re
-
-            roadmap_path = Path(path) / "todos" / "roadmap.md"
-            if not await asyncio.to_thread(roadmap_path.exists):
+            if not self.mcp_server:
+                raise HTTPException(status_code=503, detail="MCP server not available")
+            # Empty path means remote didn't provide it - can't fetch todos
+            if not path:
                 return []
-
             try:
-                content = await asyncio.to_thread(roadmap_path.read_text)
-            except PermissionError as e:
-                logger.error("Permission denied reading %s: %s", roadmap_path, e)
-                raise HTTPException(status_code=403, detail=f"Permission denied: {roadmap_path}") from e
-            except UnicodeDecodeError as e:
-                logger.error("Failed to decode %s: %s", roadmap_path, e)
-                raise HTTPException(status_code=500, detail=f"Failed to decode file: {roadmap_path}") from e
-            except OSError as e:
-                logger.error("Failed to read %s: %s", roadmap_path, e)
-                raise HTTPException(status_code=500, detail=f"Failed to read file: {e}") from e
-
-            todos: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
-
-            pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
-            status_map = {" ": "pending", ".": "ready", ">": "in_progress"}
-
-            lines = content.split("\n")
-            for i, line in enumerate(lines):
-                match = pattern.match(line)
-                if match:
-                    status_char = match.group(1)
-                    slug = match.group(2)
-
-                    description = ""
-                    for j in range(i + 1, len(lines)):
-                        next_line = lines[j]
-                        if next_line.startswith("      "):
-                            description += next_line.strip() + " "
-                        elif next_line.strip() == "":
-                            continue
-                        else:
-                            break
-
-                    todos_dir = Path(path) / "todos" / slug
-                    has_requirements = await asyncio.to_thread((todos_dir / "requirements.md").exists)
-                    has_impl_plan = await asyncio.to_thread((todos_dir / "implementation-plan.md").exists)
-
-                    todos.append(
-                        {
-                            "slug": slug,
-                            "status": status_map.get(status_char, "pending"),
-                            "description": description.strip() or None,
-                            "has_requirements": has_requirements,
-                            "has_impl_plan": has_impl_plan,
-                        }
-                    )
-
-            return todos
+                # Use MCP handler which routes to local or remote computer
+                # skip_peer_check=True because TUI already validated computer is online
+                todos = await self.mcp_server.teleclaude__list_todos(computer, path, skip_peer_check=True)
+                return list(todos)
+            except Exception as e:
+                logger.error("list_todos failed (computer=%s, path=%s): %s", computer, path, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list todos: {e}") from e
 
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""

@@ -7,6 +7,7 @@ All handlers are stateless functions with explicit dependencies.
 import asyncio
 import functools
 import os
+import re
 import shlex
 import uuid
 from pathlib import Path
@@ -61,7 +62,17 @@ class ProjectInfo(TypedDict):
 
     name: str
     desc: str
-    location: str
+    path: str
+
+
+class TodoInfo(TypedDict):
+    """Todo item returned by handle_list_todos."""
+
+    slug: str
+    status: str
+    description: str | None
+    has_requirements: bool
+    has_impl_plan: bool
 
 
 class ComputerInfoData(TypedDict):
@@ -179,11 +190,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     Returns:
         Minimal session payload with session_id
     """
-    logger.info(
-        "handle_create_session: adapter_type=%s, channel_metadata=%s",
-        metadata.adapter_type,
-        metadata.channel_metadata,
-    )
     # Get adapter_type from metadata
     adapter_type = metadata.adapter_type
     if not adapter_type:
@@ -389,26 +395,91 @@ async def handle_list_projects() -> list[dict[str, str]]:
     Ephemeral request/response - no DB session required.
 
     Returns:
-        List of directory dicts with name, desc, location
+        List of directory dicts with name, desc, path
     """
     # Get all trusted dirs (includes default_working_dir merged in)
     all_trusted_dirs = config.computer.get_all_trusted_dirs()
 
-    # Build structured response with name, desc, location
+    # Build structured response with name, desc, path
     # Filter to only existing directories
     dirs_data = []
     for trusted_dir in all_trusted_dirs:
-        expanded_location = os.path.expanduser(os.path.expandvars(trusted_dir.path))
-        if Path(expanded_location).exists():
+        expanded_path = os.path.expanduser(os.path.expandvars(trusted_dir.path))
+        if Path(expanded_path).exists():
             dirs_data.append(
                 {
                     "name": trusted_dir.name,
                     "desc": trusted_dir.desc,
-                    "location": expanded_location,
+                    "path": expanded_path,
                 }
             )
 
     return dirs_data
+
+
+async def handle_list_todos(project_path: str) -> list[TodoInfo]:
+    """List todos from roadmap.md for a project.
+
+    Ephemeral request/response - no DB session required.
+
+    Args:
+        project_path: Absolute path to project directory
+
+    Returns:
+        List of todo dicts with slug, status, description, has_requirements, has_impl_plan
+    """
+    roadmap_path = Path(project_path) / "todos" / "roadmap.md"
+
+    if not roadmap_path.exists():
+        return []
+
+    content = roadmap_path.read_text()
+    todos: list[TodoInfo] = []
+
+    # Pattern for todo line: - [ ] slug-name or - [.] slug-name or - [>] slug-name
+    pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
+
+    # Status marker mapping
+    status_map = {
+        " ": "pending",
+        ".": "ready",
+        ">": "in_progress",
+    }
+
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        match = pattern.match(line)
+        if match:
+            status_char = match.group(1)
+            slug = match.group(2)
+
+            # Extract description (next indented lines)
+            description = ""
+            for j in range(i + 1, len(lines)):
+                next_line = lines[j]
+                if next_line.startswith("      "):  # 6 spaces = indented
+                    description += next_line.strip() + " "
+                elif next_line.strip() == "":
+                    continue
+                else:
+                    break
+
+            # Check for requirements.md and implementation-plan.md
+            todos_dir = Path(project_path) / "todos" / slug
+            has_requirements = (todos_dir / "requirements.md").exists()
+            has_impl_plan = (todos_dir / "implementation-plan.md").exists()
+
+            todos.append(
+                TodoInfo(
+                    slug=slug,
+                    status=status_map.get(status_char, "pending"),
+                    description=description.strip() or None,
+                    has_requirements=has_requirements,
+                    has_impl_plan=has_impl_plan,
+                )
+            )
+
+    return todos
 
 
 async def handle_get_computer_info() -> ComputerInfoData:

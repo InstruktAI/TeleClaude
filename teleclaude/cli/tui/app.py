@@ -233,9 +233,12 @@ class TelecApp:
         curses.curs_set(0)
         init_colors()
 
-        # Enable mouse support for click and double-click only
+        # Enable mouse support for click, double-click, and scroll wheel
         # (don't capture drag events - allow terminal text selection)
-        curses.mousemask(curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED)
+        # BUTTON4_PRESSED = scroll up, 0x8000000 | 0x200000 = scroll down (varies by system)
+        curses.mousemask(
+            curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED | curses.BUTTON4_PRESSED | 0x8000000 | 0x200000
+        )
 
         # Block indefinitely waiting for input (no timeout = no auto-refresh)
         stdscr.timeout(-1)  # type: ignore[attr-defined]
@@ -270,12 +273,24 @@ class TelecApp:
             self.cleanup()
             self.running = False
 
-        # Mouse click - handle tab clicks and content item selection
+        # Mouse events - clicks, double-clicks, and scroll wheel
         elif key == curses.KEY_MOUSE:
             try:
                 _, mx, my, _, bstate = curses.getmouse()
+                logger.debug("Mouse event: bstate=%d (0x%x)", bstate, bstate)
+                # Scroll wheel - move selection up/down
+                # BUTTON4_PRESSED (0x80000) = scroll up on macOS
+                # 0x8000000 or 0x200000 = scroll down (varies by system)
+                if bstate & curses.BUTTON4_PRESSED:
+                    view = self.views.get(self.current_view)
+                    if view:
+                        view.move_up()
+                elif bstate & (0x8000000 | 0x200000):  # Scroll down
+                    view = self.views.get(self.current_view)
+                    if view:
+                        view.move_down()
                 # Double-click: select item and execute default action
-                if bstate & curses.BUTTON1_DOUBLE_CLICKED:
+                elif bstate & curses.BUTTON1_DOUBLE_CLICKED:
                     if self._content_start <= my < self._content_start + self._content_height:
                         view = self.views.get(self.current_view)
                         if view and hasattr(view, "handle_click"):

@@ -57,8 +57,8 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "**CRITICAL: Call this FIRST before teleclaude__start_session** "
                 "List available project directories on a target computer (from trusted_dirs config). "
-                "Returns structured data with name, desc, and location for each directory. "
-                "Use the 'location' field in teleclaude__start_session. "
+                "Returns structured data with name, desc, and path for each directory. "
+                "Use the 'path' field in teleclaude__start_session. "
                 "Always use this to discover and match the correct project before starting a session."
             ),
             inputSchema={

@@ -102,6 +102,10 @@ async def create_tmux_session(
     try:
         effective_env_vars: Dict[str, str] = dict(env_vars) if env_vars else {}
 
+        # Prevent oh-my-zsh last-working-dir plugin from overriding our -c directory.
+        # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
+        effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
+
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         if session_id:
@@ -114,6 +118,7 @@ async def create_tmux_session(
         # tmux automatically uses $SHELL for the session's shell
         # No need for explicit shell command - tmux creates proper PTY with user's default shell
 
+        logger.info("create_tmux_session: name=%s, working_dir=%s", name, working_dir)
         cmd = [
             config.computer.tmux_binary,
             "new-session",

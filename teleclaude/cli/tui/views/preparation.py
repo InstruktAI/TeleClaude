@@ -13,7 +13,9 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.cli.tui.todos import parse_roadmap
+from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
+from teleclaude.cli.tui.views.base import ScrollableViewMixin
+from teleclaude.cli.tui.widgets.modal import StartSessionModal
 from teleclaude.config import config
 
 if TYPE_CHECKING:
@@ -32,7 +34,7 @@ class PrepTreeNode:
     children: list[PrepTreeNode] = field(default_factory=list)
 
 
-class PreparationView:
+class PreparationView(ScrollableViewMixin):
     """View 2: Preparation - todo-centric tree showing roadmap items.
 
     Shows tree structure: Computer -> Project -> Todos -> Files
@@ -84,6 +86,8 @@ class PreparationView:
         self.needs_refresh: bool = False
         # Visible height for scroll calculations (updated during render)
         self._visible_height: int = 20  # Default, updated in render
+        # Track rendered item range for scroll calculations
+        self._last_rendered_range: tuple[int, int] = (0, 0)
 
     async def refresh(
         self,
@@ -103,7 +107,56 @@ class PreparationView:
             len(computers),
             len(projects),
         )
-        self.tree = self._build_tree(computers, projects)
+
+        # Fetch todos for all projects (local uses filesystem, remote uses API)
+        local_computer = config.computer.name
+        todos_by_project: dict[str, list[TodoItem]] = {}
+
+        # Separate local and remote projects
+        local_projects = [p for p in projects if p.get("computer") == local_computer]
+        remote_projects = [p for p in projects if p.get("computer") != local_computer]
+
+        # Parse local todos directly from filesystem (fast)
+        for project in local_projects:
+            path = str(project.get("path", ""))
+            todos_by_project[path] = parse_roadmap(path)
+
+        # Fetch remote todos via API concurrently
+        if remote_projects:
+
+            async def fetch_remote_todos(
+                project: dict[str, object],  # guard: loose-dict
+            ) -> tuple[str, list[TodoItem]]:
+                path = str(project.get("path", ""))
+                computer = str(project.get("computer", ""))
+                try:
+                    # skip_peer_check=True because we already validated computer is online by fetching projects
+                    result = await self.api.list_todos(path, computer, skip_peer_check=True)  # type: ignore[attr-defined]
+                    # Convert API response to TodoItem objects
+                    return (
+                        path,
+                        [
+                            TodoItem(
+                                slug=str(t.get("slug", "")),
+                                status=str(t.get("status", "pending")),
+                                description=str(t.get("description")) if t.get("description") else None,
+                                has_requirements=bool(t.get("has_requirements", False)),
+                                has_impl_plan=bool(t.get("has_impl_plan", False)),
+                                build_status=str(t.get("build_status")) if t.get("build_status") else None,
+                                review_status=str(t.get("review_status")) if t.get("review_status") else None,
+                            )
+                            for t in result
+                        ],
+                    )
+                except Exception as e:
+                    logger.warning("Failed to fetch todos for %s on %s: %s", path, computer, e)
+                    return (path, [])
+
+            results = await asyncio.gather(*[fetch_remote_todos(p) for p in remote_projects])
+            for path, todos in results:
+                todos_by_project[path] = todos
+
+        self.tree = self._build_tree(computers, projects, todos_by_project)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
@@ -111,12 +164,14 @@ class PreparationView:
         self,
         computers: list[dict[str, object]],  # guard: loose-dict
         projects: list[dict[str, object]],  # guard: loose-dict
+        todos_by_project: dict[str, list[TodoItem]],
     ) -> list[PrepTreeNode]:
         """Build tree structure: Computer -> Project -> Todos.
 
         Args:
             computers: List of computers
             projects: List of projects
+            todos_by_project: Pre-fetched todos keyed by project path
 
         Returns:
             Tree of PrepTreeNodes
@@ -141,8 +196,8 @@ class PreparationView:
                     depth=1,
                 )
 
-                # Parse todos for this project
-                todos = parse_roadmap(project_path)
+                # Use pre-fetched todos for this project
+                todos = todos_by_project.get(project_path, [])
                 for todo in todos:
                     todo_node = PrepTreeNode(
                         type="todo",
@@ -271,7 +326,7 @@ class PreparationView:
         if item.type == "computer":
             return f"{back_hint}[->] Focus Computer"
         if item.type == "project":
-            return back_hint.strip() if back_hint else ""
+            return f"{back_hint}[Enter] Prepare Project"
         if item.type == "file":
             # File actions
             if item.data.get("exists"):
@@ -282,20 +337,7 @@ class PreparationView:
             return f"{back_hint}[Enter/s] Start  [p] Prepare"
         return f"{back_hint}[p] Prepare"
 
-    def move_up(self) -> None:
-        """Move selection up, adjusting scroll if needed."""
-        self.selected_index = max(0, self.selected_index - 1)
-        # Scroll up if selection moved above visible area
-        if self.selected_index < self.scroll_offset:
-            self.scroll_offset = self.selected_index
-
-    def move_down(self) -> None:
-        """Move selection down, adjusting scroll if needed."""
-        self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
-        # Scroll down if selection moved below visible area
-        visible_bottom = self.scroll_offset + self._visible_height - 3
-        if self.selected_index > visible_bottom:
-            self.scroll_offset = max(0, self.selected_index - self._visible_height + 4)
+    # move_up() and move_down() inherited from ScrollableViewMixin
 
     def collapse_selected(self) -> bool:
         """Collapse selected todo or navigate to parent.
@@ -395,6 +437,8 @@ class PreparationView:
 
         if item.type == "computer":
             self.drill_down()
+        elif item.type == "project":
+            self._prepare_project(item.data, stdscr)
         elif item.type == "todo":
             if item.data.get("status") == "ready":
                 self._start_work(item.data, stdscr)
@@ -428,6 +472,40 @@ class PreparationView:
             f"/next-prepare {slug}",
             stdscr,
         )
+
+    def _prepare_project(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
+        """Show modal to start a preparation session for a project.
+
+        Args:
+            item: Project data dict with computer, path
+            stdscr: Curses screen object
+        """
+        computer = str(item.get("computer", ""))
+        project_path = str(item.get("path", ""))
+
+        modal = StartSessionModal(
+            computer=computer,
+            project_path=project_path,
+            api=self.api,
+            agent_availability=self.agent_availability,
+            default_prompt="/next-prepare",
+        )
+
+        result = modal.run(stdscr)
+        if result:
+            # Session was started via modal
+            tmux_session_name = result.get("tmux_session_name")
+            if tmux_session_name and os.environ.get("TMUX"):
+                # Open in split pane
+                curses.def_prog_mode()
+                curses.endwin()
+                tmux = config.computer.tmux_binary
+                subprocess.run(
+                    [tmux, "split-window", "-h", "-p", "60", f"{tmux} attach -t {tmux_session_name}"],
+                    check=False,
+                )
+                curses.reset_prog_mode()
+                stdscr.refresh()  # type: ignore[attr-defined]
 
     def _launch_session_split(
         self,
@@ -656,18 +734,23 @@ class PreparationView:
         self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
         row = start_row
+        first_rendered = self.scroll_offset
+        last_rendered = self.scroll_offset
         for i, item in enumerate(self.flat_items):
             # Skip items before scroll offset
             if i < self.scroll_offset:
                 continue
             if row >= start_row + height:
                 break
+            last_rendered = i
             is_selected = i == self.selected_index
             lines = self._render_item(stdscr, row, item, width, is_selected)
             # Map all lines of this item to its index (for mouse click)
             for offset in range(lines):
                 self._row_to_item[row + offset] = i
             row += lines
+        # Track rendered range for scroll calculations
+        self._last_rendered_range = (first_rendered, last_rendered)
 
     def _render_item(
         self,

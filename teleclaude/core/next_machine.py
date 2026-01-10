@@ -1168,5 +1168,5 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         agent=agent,
         thinking_mode=mode,
         subfolder="",  # Empty = main repo, NOT worktree
-        next_call="teleclaude__next_work",
+        next_call="teleclaude__next_work()",
     )

@@ -532,7 +532,7 @@ async def test_handle_list_projects_returns_trusted_dirs():
     assert len(result) == 1
     assert result[0]["name"] == "Project"
     assert result[0]["desc"] == "Test project"
-    assert "/tmp" in result[0]["location"]
+    assert "/tmp" in result[0]["path"]
 
 
 @pytest.mark.asyncio

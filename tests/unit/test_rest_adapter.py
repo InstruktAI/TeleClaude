@@ -22,8 +22,11 @@ def mock_adapter_client():  # type: ignore[explicit-any, unused-ignore]
 def mock_mcp_server():  # type: ignore[explicit-any, unused-ignore]
     """Create mock MCP server."""
     server = MagicMock()
+    server.computer_name = "local"
     server.teleclaude__list_computers = AsyncMock()
     server.teleclaude__list_projects = AsyncMock()
+    server.teleclaude__list_sessions = AsyncMock()
+    server.teleclaude__list_todos = AsyncMock()
     server.teleclaude__end_session = AsyncMock()
     return server
 
@@ -49,44 +52,44 @@ def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-igno
     assert response.json() == {"status": "ok"}
 
 
-def test_list_sessions_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions returns sessions."""
-    mock_adapter_client.handle_event.return_value = {
-        "status": "success",
-        "data": [{"session_id": "sess-1", "title": "Test Session"}],
-    }
+def test_list_sessions_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions returns sessions with computer field."""
+    mock_mcp_server.teleclaude__list_sessions.return_value = [
+        {"session_id": "sess-1", "title": "Test Session", "computer": "local"},
+        {"session_id": "sess-2", "title": "Remote Session", "computer": "remote"},
+    ]
 
     response = test_client.get("/sessions")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
+    assert len(data) == 2
     assert data[0]["session_id"] == "sess-1"
+    assert data[0]["computer"] == "local"
+    mock_mcp_server.teleclaude__list_sessions.assert_called_once_with(None)
 
 
-def test_list_sessions_with_computer_filter(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+def test_list_sessions_with_computer_filter(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions passes computer parameter."""
-    mock_adapter_client.handle_event.return_value = {"status": "success", "data": []}
+    mock_mcp_server.teleclaude__list_sessions.return_value = [
+        {"session_id": "sess-1", "computer": "local"},
+    ]
 
     response = test_client.get("/sessions?computer=local")
     assert response.status_code == 200
-    assert response.json() == []
-
-    # Verify handle_event was called with correct args
-    mock_adapter_client.handle_event.assert_called_once()
-    call_args = mock_adapter_client.handle_event.call_args
-    assert call_args.kwargs["event"] == "list_sessions"
-    assert call_args.kwargs["payload"]["args"] == ["local"]
+    data = response.json()
+    assert len(data) == 1
+    mock_mcp_server.teleclaude__list_sessions.assert_called_once_with("local")
 
 
-def test_list_sessions_returns_empty_on_non_list_result(  # type: ignore[explicit-any, unused-ignore]
-    test_client, mock_adapter_client
-):
-    """Test list_sessions returns 500 when handler returns non-list."""
-    mock_adapter_client.handle_event.return_value = {"error": "something"}
+def test_list_sessions_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions returns 503 when MCP server not available."""
+    # Create adapter without MCP server
+    adapter = RESTAdapter(client=mock_adapter_client)
+    client = TestClient(adapter.app)
 
-    response = test_client.get("/sessions")
-    assert response.status_code == 500
-    assert "unexpected handler result type" in response.json()["detail"]
+    response = client.get("/sessions")
+    assert response.status_code == 503
+    assert "MCP server not available" in response.json()["detail"]
 
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -218,17 +221,26 @@ def test_get_transcript_success(test_client, mock_adapter_client):  # type: igno
 
 
 def test_list_computers_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_computers endpoint."""
+    """Test list_computers filters offline and normalizes status."""
     mock_mcp_server.teleclaude__list_computers.return_value = [
-        {"name": "local", "status": "online"},
-        {"name": "remote", "status": "online"},
+        {"name": "mypc", "status": "local", "user": "me", "host": "localhost", "extra": "ignored"},
+        {"name": "remote", "status": "online", "user": "you", "host": "192.168.1.2"},
+        {"name": "offline", "status": "offline", "user": "x", "host": "x"},  # Should be filtered
     ]
 
     response = test_client.get("/computers")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 2
-    assert data[0]["name"] == "local"
+    assert len(data) == 2  # offline filtered out
+    # First computer: local status normalized to online
+    assert data[0]["name"] == "mypc"
+    assert data[0]["status"] == "online"  # "local" → "online"
+    assert data[0]["user"] == "me"
+    assert data[0]["host"] == "localhost"
+    assert "extra" not in data[0]  # Extra fields filtered
+    # Second computer: already online
+    assert data[1]["name"] == "remote"
+    assert data[1]["status"] == "online"
 
 
 def test_list_computers_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -245,8 +257,8 @@ def test_list_computers_no_mcp_server(mock_adapter_client):  # type: ignore[expl
 def test_list_projects_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects endpoint."""
     mock_mcp_server.teleclaude__list_projects.return_value = [
-        {"computer": "local", "name": "project1", "location": "/path1"},
-        {"computer": "remote", "name": "project2", "location": "/path2"},
+        {"computer": "local", "name": "project1", "path": "/path1"},
+        {"computer": "remote", "name": "project2", "path": "/path2"},
     ]
 
     response = test_client.get("/projects")
@@ -260,7 +272,7 @@ def test_list_projects_success(test_client, mock_mcp_server):  # type: ignore[ex
 def test_list_projects_with_computer_filter(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects passes computer parameter."""
     mock_mcp_server.teleclaude__list_projects.return_value = [
-        {"computer": "local", "name": "project1", "location": "/path1"},
+        {"computer": "local", "name": "project1", "path": "/path1"},
     ]
 
     response = test_client.get("/projects?computer=local")
@@ -309,29 +321,26 @@ def test_get_agent_availability_defaults_to_available(test_client):  # type: ign
         assert data["claude"]["unavailable_until"] is None
 
 
-def test_list_todos_success(test_client, tmp_path):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos endpoint."""
-    # Create temporary roadmap.md
-    todos_dir = tmp_path / "todos"
-    todos_dir.mkdir()
-    roadmap = todos_dir / "roadmap.md"
-    roadmap.write_text(
-        """# Roadmap
+def test_list_todos_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos endpoint uses MCP server."""
+    mock_mcp_server.teleclaude__list_todos.return_value = [
+        {
+            "slug": "feature-1",
+            "status": "pending",
+            "description": "Implement feature 1",
+            "has_requirements": True,
+            "has_impl_plan": False,
+        },
+        {
+            "slug": "feature-2",
+            "status": "ready",
+            "description": "Implement feature 2",
+            "has_requirements": False,
+            "has_impl_plan": True,
+        },
+    ]
 
-- [ ] feature-1
-      Implement feature 1
-- [.] feature-2
-      Implement feature 2
-"""
-    )
-
-    # Create feature dirs
-    (todos_dir / "feature-1").mkdir()
-    (todos_dir / "feature-1" / "requirements.md").touch()
-    (todos_dir / "feature-2").mkdir()
-    (todos_dir / "feature-2" / "implementation-plan.md").touch()
-
-    response = test_client.get(f"/projects/{tmp_path}/todos?computer=local")
+    response = test_client.get("/projects/some/path/todos?computer=local")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
@@ -341,13 +350,33 @@ def test_list_todos_success(test_client, tmp_path):  # type: ignore[explicit-any
     assert data[0]["has_impl_plan"] is False
     assert data[1]["slug"] == "feature-2"
     assert data[1]["status"] == "ready"
+    # Verify MCP server was called with correct params
+    mock_mcp_server.teleclaude__list_todos.assert_called_once_with("local", "some/path", skip_peer_check=True)
 
 
-def test_list_todos_no_roadmap(test_client, tmp_path):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos returns [] when roadmap.md doesn't exist."""
-    response = test_client.get(f"/projects/{tmp_path}/todos?computer=local")
+def test_list_todos_no_roadmap(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos returns [] when MCP server returns empty."""
+    mock_mcp_server.teleclaude__list_todos.return_value = []
+
+    response = test_client.get("/projects/some/path/todos?computer=local")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_list_todos_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos returns 503 when MCP server not available."""
+    adapter = RESTAdapter(client=mock_adapter_client)
+    client = TestClient(adapter.app)
+
+    response = client.get("/projects/some/path/todos?computer=local")
+    assert response.status_code == 503
+    assert "MCP server not available" in response.json()["detail"]
+
+
+def test_list_todos_computer_required(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos requires computer parameter."""
+    response = test_client.get("/projects/some/path/todos")
+    assert response.status_code == 422  # FastAPI validation error
 
 
 @pytest.mark.asyncio
@@ -373,25 +402,13 @@ def test_adapter_key():  # type: ignore[explicit-any, unused-ignore]
 # ==================== Error Path Tests ====================
 
 
-def test_list_sessions_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions returns 500 when handler raises exception."""
-    mock_adapter_client.handle_event.side_effect = Exception("Connection failed")
+def test_list_sessions_handler_exception(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions returns 500 when MCP handler raises exception."""
+    mock_mcp_server.teleclaude__list_sessions.side_effect = Exception("Connection failed")
 
     response = test_client.get("/sessions")
     assert response.status_code == 500
     assert "Failed to list sessions" in response.json()["detail"]
-
-
-def test_list_sessions_handler_error_envelope(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions extracts error message from handler error envelope."""
-    mock_adapter_client.handle_event.return_value = {
-        "status": "error",
-        "error": "No handler registered for event",
-    }
-
-    response = test_client.get("/sessions")
-    assert response.status_code == 500
-    assert "No handler registered" in response.json()["detail"]
 
 
 def test_create_session_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
