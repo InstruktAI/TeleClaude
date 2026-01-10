@@ -79,7 +79,7 @@ def ensure_terminal_session(
         row = cast(tuple[object, object, object] | None, cursor.fetchone())
         if row:
             existing_id = str(row[0])
-            existing_title = str(row[2]) if row[2] else ""
+            existing_title = str(row[1]) if row[1] else ""
             existing_tui_log = str(row[2]) if row[2] else ""
 
             # Merge: use existing tui_log_file if set, otherwise use newly computed one
