@@ -67,12 +67,12 @@ def test_list_sessions_with_computer_filter(test_client, mock_adapter_client):  
 def test_list_sessions_returns_empty_on_non_list_result(  # type: ignore[explicit-any, unused-ignore]
     test_client, mock_adapter_client
 ):
-    """Test list_sessions returns [] when handler returns non-list."""
+    """Test list_sessions returns 500 when handler returns non-list."""
     mock_adapter_client.handle_event.return_value = {"error": "something"}
 
     response = test_client.get("/sessions")
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 500
+    assert "unexpected handler result type" in response.json()["detail"]
 
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -155,12 +155,10 @@ def test_end_session_success(rest_adapter, test_client):  # type: ignore[explici
 
 
 def test_end_session_no_mcp_server(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test end_session returns error when MCP server not set."""
+    """Test end_session returns 503 when MCP server not set."""
     response = test_client.delete("/sessions/sess-123?computer=local")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "error"
-    assert "MCP server not available" in data["message"]
+    assert response.status_code == 503
+    assert "MCP server not available" in response.json()["detail"]
 
 
 def test_send_message_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -218,12 +216,12 @@ def test_list_computers_success(test_client, mock_adapter_client):  # type: igno
 def test_list_computers_returns_empty_on_non_list(  # type: ignore[explicit-any, unused-ignore]
     test_client, mock_adapter_client
 ):
-    """Test list_computers returns [] when handler returns non-list."""
+    """Test list_computers returns 500 when handler returns non-list."""
     mock_adapter_client.handle_event.return_value = {"error": "failed"}
 
     response = test_client.get("/computers")
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 500
+    assert "unexpected handler result type" in response.json()["detail"]
 
 
 def test_list_projects_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -242,12 +240,12 @@ def test_list_projects_success(test_client, mock_adapter_client):  # type: ignor
 def test_list_projects_returns_empty_on_non_list(  # type: ignore[explicit-any, unused-ignore]
     test_client, mock_adapter_client
 ):
-    """Test list_projects returns [] when handler returns non-list."""
+    """Test list_projects returns 500 when handler returns non-list."""
     mock_adapter_client.handle_event.return_value = None
 
     response = test_client.get("/projects")
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 500
+    assert "unexpected handler result type" in response.json()["detail"]
 
 
 def test_get_agent_availability_success(test_client):  # type: ignore[explicit-any, unused-ignore]

@@ -1,5 +1,7 @@
 """API request/response models for REST adapter."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -8,8 +10,8 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
 
     computer: str
     project_dir: str
-    agent: str = "claude"
-    thinking_mode: str = "slow"
+    agent: Literal["claude", "gemini", "codex"] = "claude"
+    thinking_mode: Literal["fast", "med", "slow"] = "slow"
     title: str | None = None
     message: str | None = None
 

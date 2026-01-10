@@ -9,13 +9,14 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator, Protocol, TypedDict
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Protocol, TypedDict
 
 import uvicorn
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.rest_models import CreateSessionRequest, SendMessageRequest
 from teleclaude.core.models import ChannelMetadata, MessageMetadata
 
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ logger = get_logger(__name__)
 class EndSessionResult(TypedDict):
     """Result from MCP end_session operation."""
 
-    status: str
+    status: Literal["success", "error"]
     message: str
 
 
@@ -68,11 +69,6 @@ class RESTAdapter(BaseAdapter):
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
-        # Import models here to avoid circular import issues
-        from teleclaude.adapters.rest_models import (
-            CreateSessionRequest,
-            SendMessageRequest,
-        )
 
         @self.app.get("/health")  # type: ignore[misc]
         async def health() -> dict[str, str]:  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -96,8 +92,8 @@ class RESTAdapter(BaseAdapter):
             # Result is list[SessionListItem] from handler
             if isinstance(result, list):
                 return result  # Dynamic from handler
-            logger.warning("list_sessions returned non-list result: %s", type(result).__name__)
-            return []
+            logger.error("list_sessions returned non-list result: %s", type(result).__name__)
+            raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.post("/sessions")  # type: ignore[misc]
         async def create_session(  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -138,14 +134,14 @@ class RESTAdapter(BaseAdapter):
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
             """End session - uses MCP server directly (no event for this operation)."""
             if not self.mcp_server:
-                return {"status": "error", "message": "MCP server not available"}
+                raise HTTPException(status_code=503, detail="MCP server not available")
             # Call MCP method directly (end_session has no event type)
             try:
                 result = await self.mcp_server.teleclaude__end_session(computer=computer, session_id=session_id)
                 return dict(result)
             except Exception as e:
-                logger.error("Failed to end session %s on %s: %s", session_id, computer, e)
-                return {"status": "error", "message": f"Failed to end session: {e}"}
+                logger.error("Failed to end session %s on %s: %s", session_id, computer, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
         @self.app.post("/sessions/{session_id}/message")  # type: ignore[misc]
         async def send_message_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -195,8 +191,8 @@ class RESTAdapter(BaseAdapter):
             # Result is computer info list
             if isinstance(result, list):
                 return result  # Dynamic from handler
-            logger.warning("list_computers returned non-list result: %s", type(result).__name__)
-            return []
+            logger.error("list_computers returned non-list result: %s", type(result).__name__)
+            raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.get("/projects")  # type: ignore[misc]
         async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -214,8 +210,8 @@ class RESTAdapter(BaseAdapter):
             # Result is project list
             if isinstance(result, list):
                 return result  # Dynamic from handler
-            logger.warning("list_projects returned non-list result: %s", type(result).__name__)
-            return []
+            logger.error("list_projects returned non-list result: %s", type(result).__name__)
+            raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.get("/agents/availability")  # type: ignore[misc]
         async def get_agent_availability() -> dict[str, dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
@@ -254,10 +250,10 @@ class RESTAdapter(BaseAdapter):
             import re
 
             roadmap_path = Path(path) / "todos" / "roadmap.md"
-            if not roadmap_path.exists():
+            if not await asyncio.to_thread(roadmap_path.exists):
                 return []
 
-            content = roadmap_path.read_text()
+            content = await asyncio.to_thread(roadmap_path.read_text)
             todos: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
 
             pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
@@ -281,8 +277,8 @@ class RESTAdapter(BaseAdapter):
                             break
 
                     todos_dir = Path(path) / "todos" / slug
-                    has_requirements = (todos_dir / "requirements.md").exists()
-                    has_impl_plan = (todos_dir / "implementation-plan.md").exists()
+                    has_requirements = await asyncio.to_thread((todos_dir / "requirements.md").exists)
+                    has_impl_plan = await asyncio.to_thread((todos_dir / "implementation-plan.md").exists)
 
                     todos.append(
                         {
