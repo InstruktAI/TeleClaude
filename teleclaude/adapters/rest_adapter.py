@@ -41,6 +41,16 @@ class MCPServerProtocol(Protocol):
         """End a session on a computer."""
         ...
 
+    async def teleclaude__list_computers(self) -> list[dict[str, object]]:  # guard: loose-dict - Protocol boundary
+        """List available computers (local + peers)."""
+        ...
+
+    async def teleclaude__list_projects(
+        self, computer: str | None = None
+    ) -> list[dict[str, str]]:  # guard: loose-dict - Protocol boundary
+        """List available projects (local + remote when computer=None)."""
+        ...
+
 
 class RESTAdapter(BaseAdapter):
     """REST adapter exposing HTTP API on Unix socket."""
@@ -82,22 +92,30 @@ class RESTAdapter(BaseAdapter):
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
             """List sessions from all computers or specific computer."""
             # list_sessions is a command event that returns sessions directly
-            result = await self.client.handle_event(
-                event="list_sessions",
-                payload={
-                    "session_id": "",  # Not used for list_sessions but required by CommandEventContext
-                    "args": [computer] if computer else [],
-                },
-                metadata=self._metadata(),
-            )
+            try:
+                result = await self.client.handle_event(
+                    event="list_sessions",
+                    payload={
+                        "session_id": "",  # Not used for list_sessions but required by CommandEventContext
+                        "args": [computer] if computer else [],
+                    },
+                    metadata=self._metadata(),
+                )
+            except Exception as e:
+                logger.error("list_sessions failed (computer=%s): %s", computer, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
             # Unwrap envelope from handle_event
             if isinstance(result, dict):
-                status: str = str(result.get("status", ""))
-                if status == "success":
+                status_val: str = str(result.get("status", ""))
+                if status_val == "success":
                     data = result.get("data")
                     if isinstance(data, list):
                         return data  # Dynamic from handler
-            logger.error("list_sessions: Handler error or unexpected result type: %s", type(result).__name__)
+                if status_val == "error":
+                    error_msg = result.get("error", "Unknown error")
+                    logger.error("list_sessions handler error: %s", error_msg)
+                    raise HTTPException(status_code=500, detail=str(error_msg))
+            logger.error("list_sessions: Unexpected result type: %s", type(result).__name__)
             raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
 
         @self.app.post("/sessions")  # type: ignore[misc]
@@ -120,18 +138,22 @@ class RESTAdapter(BaseAdapter):
             if request.message:
                 args.append(request.message)
 
-            result = await self.client.handle_event(
-                event="new_session",
-                payload={
-                    "session_id": "",  # Will be created
-                    "args": args,
-                },
-                metadata=self._metadata(
-                    title=title,
-                    project_dir=request.project_dir,
-                ),
-            )
-            return result  # type: ignore[return-value]  # Dynamic from handler
+            try:
+                result = await self.client.handle_event(
+                    event="new_session",
+                    payload={
+                        "session_id": "",  # Will be created
+                        "args": args,
+                    },
+                    metadata=self._metadata(
+                        title=title,
+                        project_dir=request.project_dir,
+                    ),
+                )
+                return result  # type: ignore[return-value]  # Dynamic from handler
+            except Exception as e:
+                logger.error("create_session failed (computer=%s): %s", request.computer, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to create session: {e}") from e
 
         @self.app.delete("/sessions/{session_id}")  # type: ignore[misc]
         async def end_session(  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -161,15 +183,19 @@ class RESTAdapter(BaseAdapter):
                 request: Message request
                 computer: Optional computer name (for API consistency, not used)
             """
-            result = await self.client.handle_event(
-                event="message",
-                payload={
-                    "session_id": session_id,
-                    "text": request.message,
-                },
-                metadata=self._metadata(),
-            )
-            return {"status": "success", "result": result}
+            try:
+                result = await self.client.handle_event(
+                    event="message",
+                    payload={
+                        "session_id": session_id,
+                        "text": request.message,
+                    },
+                    metadata=self._metadata(),
+                )
+                return {"status": "success", "result": result}
+            except Exception as e:
+                logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
 
         @self.app.get("/sessions/{session_id}/transcript")  # type: ignore[misc]
         async def get_transcript(  # type: ignore[reportUnusedFunction, unused-ignore]
@@ -184,59 +210,47 @@ class RESTAdapter(BaseAdapter):
                 computer: Optional computer name (for API consistency, not used)
                 tail_chars: Number of characters from end of transcript
             """
-            result = await self.client.handle_event(
-                event="get_session_data",
-                payload={
-                    "session_id": session_id,
-                    "args": [str(tail_chars)],
-                },
-                metadata=self._metadata(),
-            )
-            return result  # type: ignore[return-value]  # Dynamic from handler
+            try:
+                result = await self.client.handle_event(
+                    event="get_session_data",
+                    payload={
+                        "session_id": session_id,
+                        "args": [str(tail_chars)],
+                    },
+                    metadata=self._metadata(),
+                )
+                return result  # type: ignore[return-value]  # Dynamic from handler
+            except Exception as e:
+                logger.error("get_transcript failed (session=%s): %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to get transcript: {e}") from e
 
         @self.app.get("/computers")  # type: ignore[misc]
         async def list_computers() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List available computers."""
-            result = await self.client.handle_event(
-                event="get_computer_info",
-                payload={
-                    "session_id": "",  # Not used for get_computer_info
-                    "args": [],
-                },
-                metadata=self._metadata(),
-            )
-            # Unwrap envelope from handle_event
-            if isinstance(result, dict):
-                status: str = str(result.get("status", ""))
-                if status == "success":
-                    data = result.get("data")
-                    if isinstance(data, list):
-                        return data  # Dynamic from handler
-            logger.error("list_computers: Handler error or unexpected result type: %s", type(result).__name__)
-            raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
+            """List available computers (local + peers)."""
+            if not self.mcp_server:
+                raise HTTPException(status_code=503, detail="MCP server not available")
+            try:
+                # Use MCP handler which does full peer discovery
+                result = await self.mcp_server.teleclaude__list_computers()
+                return [dict(c) for c in result]  # Convert TypedDicts to plain dicts
+            except Exception as e:
+                logger.error("list_computers failed: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list computers: {e}") from e
 
         @self.app.get("/projects")  # type: ignore[misc]
         async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
             computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List projects."""
-            result = await self.client.handle_event(
-                event="list_projects",
-                payload={
-                    "session_id": "",  # Not used for list_projects
-                    "args": [computer] if computer else [],
-                },
-                metadata=self._metadata(),
-            )
-            # Unwrap envelope from handle_event
-            if isinstance(result, dict):
-                status: str = str(result.get("status", ""))
-                if status == "success":
-                    data = result.get("data")
-                    if isinstance(data, list):
-                        return data  # Dynamic from handler
-            logger.error("list_projects: Handler error or unexpected result type: %s", type(result).__name__)
-            raise HTTPException(status_code=500, detail="Internal error: unexpected handler result type")
+            """List projects (local + remote when computer=None)."""
+            if not self.mcp_server:
+                raise HTTPException(status_code=503, detail="MCP server not available")
+            try:
+                # Use MCP handler which aggregates local + remote projects
+                result = await self.mcp_server.teleclaude__list_projects(computer)
+                return [dict(p) for p in result]  # Convert to plain dicts
+            except Exception as e:
+                logger.error("list_projects failed (computer=%s): %s", computer, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
         @self.app.get("/agents/availability")  # type: ignore[misc]
         async def get_agent_availability() -> dict[str, dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
@@ -247,7 +261,19 @@ class RESTAdapter(BaseAdapter):
             result: dict[str, dict[str, object]] = {}  # guard: loose-dict - REST API boundary
 
             for agent in agents:
-                info = await db.get_agent_availability(agent)
+                try:
+                    info = await db.get_agent_availability(agent)
+                except Exception as e:
+                    logger.error("Failed to get availability for agent %s: %s", agent, e)
+                    result[agent] = {
+                        "agent": agent,
+                        "available": None,  # Unknown due to DB error
+                        "unavailable_until": None,
+                        "reason": None,
+                        "error": str(e),
+                    }
+                    continue
+
                 if info:
                     unavail_until = info.get("unavailable_until")
                     reason_val = info.get("reason")
@@ -260,6 +286,7 @@ class RESTAdapter(BaseAdapter):
                         "reason": str(reason_val) if reason_val and reason_val is not True else None,
                     }
                 else:
+                    # No record means agent is available (never marked unavailable)
                     result[agent] = {
                         "agent": agent,
                         "available": True,
@@ -283,7 +310,18 @@ class RESTAdapter(BaseAdapter):
             if not await asyncio.to_thread(roadmap_path.exists):
                 return []
 
-            content = await asyncio.to_thread(roadmap_path.read_text)
+            try:
+                content = await asyncio.to_thread(roadmap_path.read_text)
+            except PermissionError as e:
+                logger.error("Permission denied reading %s: %s", roadmap_path, e)
+                raise HTTPException(status_code=403, detail=f"Permission denied: {roadmap_path}") from e
+            except UnicodeDecodeError as e:
+                logger.error("Failed to decode %s: %s", roadmap_path, e)
+                raise HTTPException(status_code=500, detail=f"Failed to decode file: {roadmap_path}") from e
+            except OSError as e:
+                logger.error("Failed to read %s: %s", roadmap_path, e)
+                raise HTTPException(status_code=500, detail=f"Failed to read file: {e}") from e
+
             todos: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
 
             pattern = re.compile(r"^-\s+\[([ .>])\]\s+(\S+)", re.MULTILINE)
