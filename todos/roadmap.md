@@ -13,5 +13,5 @@
 
 ## Test Suite Quality Cleanup
 
-- [.] test-cleanup
+- [>] test-cleanup
       Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
