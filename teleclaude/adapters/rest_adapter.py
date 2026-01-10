@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator, Protocol, TypedDict
 
 import uvicorn
 from fastapi import FastAPI, Query
@@ -25,6 +25,21 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class EndSessionResult(TypedDict):
+    """Result from MCP end_session operation."""
+
+    status: str
+    message: str
+
+
+class MCPServerProtocol(Protocol):
+    """Protocol for MCP server operations used by REST adapter."""
+
+    async def teleclaude__end_session(self, *, computer: str, session_id: str) -> EndSessionResult:
+        """End a session on a computer."""
+        ...
+
+
 class RESTAdapter(BaseAdapter):
     """REST adapter exposing HTTP API on Unix socket."""
 
@@ -37,17 +52,17 @@ class RESTAdapter(BaseAdapter):
             client: AdapterClient instance for routing events
         """
         self.client = client
-        self.mcp_server: object | None = None  # Set later via set_mcp_server()
+        self.mcp_server: MCPServerProtocol | None = None  # Set later via set_mcp_server()
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
 
-    def set_mcp_server(self, mcp_server: object) -> None:
+    def set_mcp_server(self, mcp_server: MCPServerProtocol) -> None:
         """Set MCP server reference after initialization.
 
         Args:
-            mcp_server: TeleClaudeMCPServer instance (type not imported to avoid circular dep)
+            mcp_server: TeleClaudeMCPServer instance (satisfies MCPServerProtocol)
         """
         self.mcp_server = mcp_server
 
@@ -126,9 +141,8 @@ class RESTAdapter(BaseAdapter):
                 return {"status": "error", "message": "MCP server not available"}
             # Call MCP method directly (end_session has no event type)
             try:
-                mcp = self.mcp_server  # Dynamic MCP server type
-                result = await mcp.teleclaude__end_session(computer=computer, session_id=session_id)  # type: ignore[misc, attr-defined]  # Dynamic
-                return dict(result)  # type: ignore[misc]  # TypedDict to dict
+                result = await self.mcp_server.teleclaude__end_session(computer=computer, session_id=session_id)
+                return dict(result)
             except Exception as e:
                 logger.error("Failed to end session %s on %s: %s", session_id, computer, e)
                 return {"status": "error", "message": f"Failed to end session: {e}"}
