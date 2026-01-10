@@ -5,10 +5,11 @@ Color system with z-index layering:
 - z=1: Tab view layer (content areas)
 - z=2: Modal/popup layer (dialogs)
 
-Prepares for future dark/light mode with system detection.
+Detects macOS dark/light mode via system settings.
 """
 
 import curses
+import subprocess
 
 # Agent color pair IDs (initialized after curses.start_color())
 # Three colors per agent: muted (dim), normal (default), highlight (activity)
@@ -19,12 +20,11 @@ AGENT_COLORS: dict[str, dict[str, int]] = {
 }
 
 # Z-index layer color pairs (for backgrounds)
-# Dark mode: gradient from black (232) to lighter grays
-# Light mode (future): gradient from white to darker grays
+# Values set dynamically based on light/dark mode
 Z_LAYERS: dict[int, int] = {
-    0: 11,  # Base: darkest (main background)
-    1: 12,  # Tab views: slightly lighter
-    2: 13,  # Modals: lightest
+    0: 11,  # Base: darkest/lightest (main background)
+    1: 12,  # Tab views: slightly offset
+    2: 13,  # Modals: most offset from base
 }
 
 # Colors for selected items at each z-layer
@@ -33,6 +33,40 @@ Z_SELECTION: dict[int, int] = {
     1: 15,  # Tab view selection
     2: 16,  # Modal selection
 }
+
+# Track current mode for reference
+_is_dark_mode: bool = True
+
+
+def is_dark_mode() -> bool:
+    """Check if system is in dark mode via macOS settings.
+
+    Uses `defaults read -g AppleInterfaceStyle` to detect dark mode.
+    Falls back to dark mode if detection fails (non-macOS or error).
+
+    Returns:
+        True if dark mode, False if light mode
+    """
+    try:
+        result = subprocess.run(
+            ["defaults", "read", "-g", "AppleInterfaceStyle"],
+            capture_output=True,
+            text=True,
+            timeout=1,
+        )
+        return "Dark" in result.stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # Default to dark mode if detection fails (non-macOS, etc.)
+        return True
+
+
+def get_current_mode() -> bool:
+    """Get the current mode setting.
+
+    Returns:
+        True if dark mode, False if light mode
+    """
+    return _is_dark_mode
 
 
 def init_colors() -> None:
@@ -43,10 +77,15 @@ def init_colors() -> None:
     - normal: default display color (title line)
     - highlight: for active/changed content
 
-    Z-layer colors for background gradients.
+    Z-layer colors adapt to light/dark mode:
+    - Dark mode: 15% white (#262626) for inactive, terminal bg for active
+    - Light mode: 85% white (#d9d9d9) for inactive, terminal bg for active
     """
+    global _is_dark_mode  # noqa: PLW0603
     curses.start_color()
     curses.use_default_colors()
+
+    _is_dark_mode = is_dark_mode()
 
     # Claude (orange tones) - normal is the original Claude color
     curses.init_pair(1, 130, -1)  # Muted: dark orange/brown
@@ -66,16 +105,45 @@ def init_colors() -> None:
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
 
-    # Z-layer background colors (dark mode gradient: black -> lighter)
-    # Using 256-color palette: 232-255 are grayscale (232=black, 255=white)
-    curses.init_pair(11, -1, 232)  # z=0: Base (near black)
-    curses.init_pair(12, -1, 235)  # z=1: Tab views (dark gray)
-    curses.init_pair(13, -1, 238)  # z=2: Modals (medium-dark gray)
+    # Z-layer background colors
+    # Use terminal default (-1) for all layers - let terminal theme shine through
+    # Visual separation comes from borders, not background colors
+    curses.init_pair(11, -1, -1)  # z=0: Base (terminal default)
+    curses.init_pair(12, -1, -1)  # z=1: Tab views (terminal default)
+    curses.init_pair(13, -1, -1)  # z=2: Modals (terminal default)
 
-    # Selection colors at each z-layer (brighter than layer bg)
-    curses.init_pair(14, -1, 236)  # z=0 selection
-    curses.init_pair(15, -1, 239)  # z=1 selection
-    curses.init_pair(16, -1, 242)  # z=2 selection (modal selection)
+    # Selection colors - subtle highlight that works on any background
+    if _is_dark_mode:
+        curses.init_pair(14, -1, 238)  # z=0 selection
+        curses.init_pair(15, -1, 239)  # z=1 selection
+        curses.init_pair(16, -1, 240)  # z=2 selection (modal selection)
+
+        # Modal shadow gradient (outer to inner: darker to lighter)
+        # Creates depth effect around modal without changing modal bg
+        curses.init_pair(17, 236, 234)  # Shadow layer 1 (outermost)
+        curses.init_pair(18, 238, 235)  # Shadow layer 2
+        curses.init_pair(19, 240, 236)  # Shadow layer 3 (closest to modal)
+
+        # Modal border (crisp line on terminal default bg)
+        curses.init_pair(20, 250, -1)  # Light gray border on default bg
+
+        # Input field border
+        curses.init_pair(21, 245, -1)  # Medium gray for input borders
+    else:
+        curses.init_pair(14, -1, 252)  # z=0 selection
+        curses.init_pair(15, -1, 251)  # z=1 selection
+        curses.init_pair(16, -1, 250)  # z=2 selection (modal selection)
+
+        # Modal shadow gradient (outer to inner: lighter to darker)
+        curses.init_pair(17, 250, 253)  # Shadow layer 1 (outermost)
+        curses.init_pair(18, 247, 251)  # Shadow layer 2
+        curses.init_pair(19, 244, 249)  # Shadow layer 3 (closest to modal)
+
+        # Modal border (crisp line on terminal default bg)
+        curses.init_pair(20, 236, -1)  # Dark gray border on default bg
+
+        # Input field border
+        curses.init_pair(21, 240, -1)  # Medium gray for input borders
 
 
 def get_layer_attr(z_index: int) -> int:
@@ -102,3 +170,21 @@ def get_selection_attr(z_index: int) -> int:
     """
     pair_id = Z_SELECTION.get(z_index, Z_SELECTION[0])
     return curses.color_pair(pair_id)
+
+
+def get_modal_border_attr() -> int:
+    """Get curses attribute for modal border (crisp line).
+
+    Returns:
+        Curses color pair attribute for modal border
+    """
+    return curses.color_pair(20)
+
+
+def get_input_border_attr() -> int:
+    """Get curses attribute for input field border.
+
+    Returns:
+        Curses color pair attribute for input border
+    """
+    return curses.color_pair(21)

@@ -321,6 +321,19 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         async def poll_output_stream(self, session: object, timeout: float = 300.0) -> None:  # type: ignore[override]
             pass
 
+        async def _pre_handle_user_input(self, session: object) -> None:
+            """Delete pending messages on user input (like real TelegramAdapter)."""
+            from teleclaude.core.db import db as test_db
+
+            pending = await test_db.get_pending_deletions(session.session_id)  # type: ignore[union-attr]
+            if pending:
+                for msg_id in pending:
+                    try:
+                        await self.delete_message(session, msg_id)
+                    except Exception:
+                        pass  # Resilient to already-deleted messages
+                await test_db.clear_pending_deletions(session.session_id)  # type: ignore[union-attr]
+
     with (
         patch("redis.asyncio.Redis.from_url", return_value=mock_redis_client),
         patch("teleclaude.core.adapter_client.TelegramAdapter", MockTelegramAdapter),

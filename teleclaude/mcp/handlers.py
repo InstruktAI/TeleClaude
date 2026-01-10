@@ -186,6 +186,11 @@ class MCPHandlersMixin:
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> StartSessionResult:
         """Create session on local or remote computer."""
+        logger.debug(
+            "teleclaude__start_session: computer=%s, is_local=%s",
+            computer,
+            self._is_local_computer(computer),
+        )
         if self._is_local_computer(computer):
             return await self._start_local_session(project_dir, title, message, caller_session_id, agent, thinking_mode)
         return await self._start_remote_session(
@@ -336,19 +341,18 @@ class MCPHandlersMixin:
 
     async def _list_remote_sessions(self, computer: str) -> list[SessionInfo]:
         """List sessions from a specific remote computer via Redis."""
-        redis_adapter = self._get_redis_adapter()
-        if not redis_adapter:
-            return []
-
         try:
-            message_id = await redis_adapter.send_request(computer, "list_sessions", MessageMetadata())
-            response_data = await self.client.read_response(message_id, timeout=3.0)
-            sessions: list[SessionInfo] = json.loads(response_data.strip())
+            envelope = await self._send_remote_request(computer, "list_sessions", timeout=3.0)
+            data = envelope.get("data", [])
+            if not isinstance(data, list):
+                logger.warning("Unexpected sessions data format from %s: %s", computer, type(data).__name__)
+                return []
+            sessions: list[SessionInfo] = cast(list[SessionInfo], data)
             for session in sessions:
                 session["computer"] = computer
             return sessions
-        except (TimeoutError, Exception) as e:
-            logger.warning("Failed to get sessions from %s: %s", computer, e)
+        except RemoteRequestError as e:
+            logger.warning("Failed to get sessions from %s: %s", computer, e.message)
             return []
 
     async def _list_all_sessions(self) -> list[SessionInfo]:
@@ -769,13 +773,16 @@ class MCPHandlersMixin:
         metadata = MessageMetadata(parse_mode=parse_mode)
 
         try:
-            message_id = await self.client.send_message(session=session, text=formatted_content, metadata=metadata)
+            # MCP send_result creates persistent messages (AI responses to user)
+            message_id = await self.client.send_message(
+                session=session, text=formatted_content, metadata=metadata, ephemeral=False
+            )
             return {"status": "success", "message_id": message_id}
         except Exception as e:
             logger.warning("MarkdownV2 send failed, falling back to plain text: %s", e)
             try:
                 message_id = await self.client.send_message(
-                    session=session, text=content[:4096], metadata=MessageMetadata(parse_mode="")
+                    session=session, text=content[:4096], metadata=MessageMetadata(parse_mode=""), ephemeral=False
                 )
                 return {
                     "status": "success",

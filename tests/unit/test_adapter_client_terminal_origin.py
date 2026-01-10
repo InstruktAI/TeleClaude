@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
@@ -18,7 +20,6 @@ class DummyUiAdapter(UiAdapter):
         # Skip UiAdapter.__init__ event wiring for unit tests
         self.client = client
         self.sent_messages: list[tuple[str, str]] = []
-        self.sent_feedback: list[str] = []
 
     async def start(self) -> None:
         return None
@@ -66,18 +67,6 @@ class DummyUiAdapter(UiAdapter):
             yield ""
         return
 
-    async def send_feedback(
-        self,
-        session: Session,
-        message: str,
-        *,
-        metadata: MessageMetadata | None = None,
-        persistent: bool = False,
-    ) -> str:
-        _ = (session, metadata, persistent)
-        self.sent_feedback.append(message)
-        return "fb-1"
-
 
 def _make_terminal_session() -> Session:
     return Session(
@@ -102,19 +91,26 @@ async def test_terminal_origin_send_message_broadcasts_to_ui():
     client.register_adapter("telegram", adapter)
 
     session = _make_terminal_session()
-    message_id = await client.send_message(session, "hello")
+
+    # Mock db.add_pending_deletion since send_message auto-tracks ephemeral messages
+    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+        message_id = await client.send_message(session, "hello")
 
     assert message_id == "msg-1"
     assert adapter.sent_messages == [(session.session_id, "hello")]
 
 
 @pytest.mark.asyncio
-async def test_terminal_origin_send_feedback_broadcasts_without_target():
+async def test_terminal_origin_send_message_ephemeral_tracks_deletion():
+    """Test that ephemeral messages are auto-tracked for deletion."""
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)
     session = _make_terminal_session()
 
-    await client.send_feedback(session, "summary")
+    mock_db = AsyncMock()
+    with patch("teleclaude.core.adapter_client.db", mock_db):
+        await client.send_message(session, "ephemeral message")
 
-    assert adapter.sent_feedback == ["summary"]
+    # Verify auto-tracking was called with user_input deletion type
+    mock_db.add_pending_deletion.assert_called_once_with("sess-1", "msg-1", deletion_type="user_input")

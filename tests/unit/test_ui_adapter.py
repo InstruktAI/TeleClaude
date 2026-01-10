@@ -21,9 +21,10 @@ class MockUiAdapter(UiAdapter):
     ADAPTER_KEY = "telegram"  # Use telegram key for testing (reuses existing metadata structure)
 
     def __init__(self):
-        # Create mock client
+        # Create mock client with async send_message for send_feedback delegation
         mock_client = MagicMock()
         mock_client.on = MagicMock()  # Mock event registration
+        mock_client.send_message = AsyncMock(return_value="msg-123")
         super().__init__(mock_client)
         self._send_message_mock = AsyncMock(return_value="msg-123")
         self._edit_message_mock = AsyncMock(return_value=True)
@@ -315,44 +316,34 @@ class TestSendExitMessage:
 
 
 @pytest.mark.asyncio
-class TestCleanupFeedbackMessages:
-    """Test cleanup_feedback_messages method."""
+class TestSendFeedback:
+    """Test send_feedback method (ephemeral message tracking)."""
 
-    async def test_deletes_pending_messages(self, test_db):
-        """Test deleting pending feedback messages."""
+    async def test_tracks_feedback_for_deletion(self, test_db):
+        """Test that send_feedback tracks message for deletion via AdapterClient."""
+        from teleclaude.core.adapter_client import AdapterClient
+
+        # Create real AdapterClient and adapter
+        client = AdapterClient()
         adapter = MockUiAdapter()
+        # Re-wire adapter to use real client instead of mock
+        adapter.client = client
+        client.register_adapter("telegram", adapter)
+
         session = await test_db.create_session(
             computer_name="TestPC",
             tmux_session_name="test",
             origin_adapter="telegram",
             title="Test Session",
         )
-        for msg_id in ["msg-1", "msg-2", "msg-3"]:
-            await test_db.add_pending_feedback_deletion(session.session_id, msg_id)
 
-        await adapter.cleanup_feedback_messages(session)
+        # Patch adapter_client's db reference to use test_db
+        with patch("teleclaude.core.adapter_client.db", test_db):
+            msg_id = await adapter.send_feedback(session, "Ephemeral feedback")
 
-        assert adapter._delete_message_mock.call_count == 3
-        pending = await test_db.get_pending_feedback_deletions(session.session_id)
-        assert pending == []
-
-    async def test_handles_delete_failures_gracefully(self, test_db):
-        """Test handling delete failures without raising."""
-        adapter = MockUiAdapter()
-        adapter._delete_message_mock = AsyncMock(side_effect=Exception("Delete failed"))
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test",
-            origin_adapter="telegram",
-            title="Test Session",
-        )
-        await test_db.add_pending_feedback_deletion(session.session_id, "msg-1")
-
-        # Should not raise
-        await adapter.cleanup_feedback_messages(session)
-
-        pending = await test_db.get_pending_feedback_deletions(session.session_id)
-        assert pending == []
+        # Feedback uses deletion_type="feedback", not "user_input"
+        pending = await test_db.get_pending_deletions(session.session_id, deletion_type="feedback")
+        assert msg_id in pending, "Feedback message should be tracked for deletion"
 
 
 class TestFormatMessage:

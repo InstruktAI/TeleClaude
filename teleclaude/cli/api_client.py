@@ -50,12 +50,20 @@ class TelecAPIClient:
             await self._client.aclose()
             self._client = None
 
-    async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:  # type: ignore[explicit-any]
+    async def _request(  # type: ignore[explicit-any]
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
         """Make HTTP request with error handling.
 
         Args:
             method: HTTP method (GET, POST, DELETE)
             url: URL path
+            timeout: Optional request timeout override
             **kwargs: Additional request arguments
 
         Returns:
@@ -66,6 +74,9 @@ class TelecAPIClient:
         """
         if not self._client:
             raise APIError("Client not connected. Call connect() first.")
+
+        if timeout is not None:
+            kwargs["timeout"] = timeout
 
         try:
             if method == "GET":
@@ -144,7 +155,8 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        resp = await self._request("POST", "/sessions", json=kwargs)
+        # Session creation spawns tmux + agent, needs longer timeout
+        resp = await self._request("POST", "/sessions", timeout=30.0, json=kwargs)
         return resp.json()
 
     async def end_session(self, session_id: str, computer: str) -> bool:

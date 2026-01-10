@@ -233,8 +233,9 @@ class TelecApp:
         curses.curs_set(0)
         init_colors()
 
-        # Enable mouse support for click-to-select
-        curses.mousemask(curses.ALL_MOUSE_EVENTS)
+        # Enable mouse support for click and double-click only
+        # (don't capture drag events - allow terminal text selection)
+        curses.mousemask(curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED)
 
         # Block indefinitely waiting for input (no timeout = no auto-refresh)
         stdscr.timeout(-1)  # type: ignore[attr-defined]
@@ -247,6 +248,11 @@ class TelecApp:
 
             if key != -1:
                 self._handle_key(key, stdscr)
+                # Check if view needs data refresh
+                view = self.views.get(self.current_view)
+                if view and getattr(view, "needs_refresh", False):
+                    asyncio.get_event_loop().run_until_complete(self.refresh_data())
+                    view.needs_refresh = False
                 self._render(stdscr)
 
     def _handle_key(self, key: int, stdscr: object) -> None:
@@ -268,7 +274,16 @@ class TelecApp:
         elif key == curses.KEY_MOUSE:
             try:
                 _, mx, my, _, bstate = curses.getmouse()
-                if bstate & curses.BUTTON1_CLICKED:
+                # Double-click: select item and execute default action
+                if bstate & curses.BUTTON1_DOUBLE_CLICKED:
+                    if self._content_start <= my < self._content_start + self._content_height:
+                        view = self.views.get(self.current_view)
+                        if view and hasattr(view, "handle_click"):
+                            if view.handle_click(my):
+                                # Item selected, now execute default action
+                                view.handle_enter(stdscr)
+                # Single click: select item or switch tab
+                elif bstate & curses.BUTTON1_CLICKED:
                     # First check if a tab was clicked
                     clicked_tab = self.tab_bar.handle_click(my, mx)
                     if clicked_tab is not None:

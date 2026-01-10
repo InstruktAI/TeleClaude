@@ -328,62 +328,29 @@ class UiAdapter(BaseAdapter):
         message: str,
         *,
         metadata: MessageMetadata | None = None,
-        persistent: bool = False,
     ) -> str | None:
-        """Send feedback message, optionally cleaning up previous feedback first.
+        """Send feedback message - deletes old feedback first.
 
-        UI adapters override BaseAdapter's no-op to send temporary feedback messages.
+        Delegates to client.send_message(feedback=True) for unified cleanup behavior.
 
         Args:
             session: Session object
             message: Feedback message text
             metadata: Adapter-specific metadata (optional)
-            persistent: If True, skip cleanup (don't delete previous feedback).
-                       Message is STILL added to pending_feedback_deletions for future cleanup.
 
         Returns:
             message_id of sent feedback message
         """
-        await self.cleanup_feedback_messages(session)
-
-        # Send feedback message (plain text by default)
-        message_id = await self.send_message(session, message, metadata=metadata or MessageMetadata(parse_mode=""))
-
-        if message_id:
-            if not persistent:
-                await db.add_pending_feedback_deletion(session.session_id, message_id)
-            logger.debug(
-                "Sent feedback message %s for session %s (marked for feedback deletion)",
-                message_id,
-                session.session_id[:8],
-            )
-
-        return message_id
+        return await self.client.send_message(
+            session, message, metadata=metadata or MessageMetadata(parse_mode=""), feedback=True
+        )
 
     async def _pre_handle_user_input(self, _session: "Session") -> None:
-        """Called before handling user input - cleanup user input messages only.
+        """Called before handling user input - cleanup ephemeral messages.
 
-        Note: Feedback messages (pending_feedback_deletions) are cleaned up in send_feedback,
-        not here. This ensures download messages stay until the next feedback (like summary).
+        All tracked messages (feedback, user input) cleaned here.
         """
         # User input messages (pending_deletions) cleaned via event handler, not here
-
-    async def cleanup_feedback_messages(self, session: "Session") -> None:
-        """Delete temporary feedback messages - default implementation."""
-        pending_feedback = await db.get_pending_feedback_deletions(session.session_id)
-
-        if not pending_feedback:
-            return
-
-        for message_id in pending_feedback:
-            try:
-                await self.delete_message(session, message_id)
-                logger.debug("Deleted feedback message %s for session %s", message_id, session.session_id[:8])
-            except Exception as e:
-                logger.warning("Failed to delete message %s: %s", message_id, e)
-
-        # Clear pending feedback deletions
-        await db.clear_pending_feedback_deletions(session.session_id)
 
     # ==================== Voice Support ====================
 
@@ -415,7 +382,7 @@ class UiAdapter(BaseAdapter):
             session_id=session_id,
             audio_path=audio_file_path,
             context=context,  # type: ignore[arg-type]
-            send_feedback=self.send_feedback,  # type: ignore[arg-type]
+            send_message=self.send_feedback,  # type: ignore[arg-type]
         )
 
     # ==================== File Handling ====================

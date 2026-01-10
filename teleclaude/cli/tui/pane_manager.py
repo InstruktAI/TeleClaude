@@ -6,7 +6,32 @@ import os
 import subprocess
 from dataclasses import dataclass
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.config import config
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class ComputerInfo:
+    """SSH connection info for a computer."""
+
+    name: str
+    user: str | None = None
+    host: str | None = None
+
+    @property
+    def is_remote(self) -> bool:
+        """Check if this is a remote computer requiring SSH."""
+        return bool(self.host and self.user)
+
+    @property
+    def ssh_target(self) -> str | None:
+        """Get user@host for SSH, or None if local."""
+        if self.is_remote:
+            return f"{self.user}@{self.host}"
+        return None
 
 
 @dataclass
@@ -77,34 +102,75 @@ class TmuxPaneManager:
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         return pane_id in output.split("\n")
 
+    def _build_attach_cmd(
+        self,
+        tmux_session_name: str,
+        computer_info: ComputerInfo | None = None,
+    ) -> str:
+        """Build the command to attach to a tmux session.
+
+        For local sessions: direct tmux attach
+        For remote sessions: SSH with tmux attach
+
+        Args:
+            tmux_session_name: The tmux session name to attach to
+            computer_info: Computer info for SSH (None = local)
+
+        Returns:
+            Command string to execute
+        """
+        if computer_info and computer_info.is_remote:
+            # Remote: SSH to the computer and attach there
+            # Use plain 'tmux' - remote machine has its own tmux binary
+            # Use -t for pseudo-terminal allocation (required for tmux)
+            # Use -A for SSH agent forwarding
+            ssh_target = computer_info.ssh_target
+            cmd = f"ssh -t -A {ssh_target} 'TERM=tmux-256color tmux -u attach-session -t {tmux_session_name}'"
+            logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
+            return cmd
+
+        # Local: use configured tmux binary
+        tmux = config.computer.tmux_binary
+        cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {tmux_session_name}"
+        logger.debug("Local attach cmd for %s: %s", tmux_session_name, cmd)
+        return cmd
+
     def show_session(
         self,
         tmux_session_name: str,
         child_tmux_session_name: str | None = None,
+        computer_info: ComputerInfo | None = None,
     ) -> None:
         """Show a session (and optionally its child) in the right panes.
 
         Args:
             tmux_session_name: The parent session's tmux session name
             child_tmux_session_name: Optional child/worker session name
+            computer_info: Computer info for SSH (None = local)
         """
         if not self._in_tmux:
+            logger.debug("show_session: not in tmux, skipping")
             return
 
         # Check if we're already showing this exact configuration
         if self.state.parent_session == tmux_session_name and self.state.child_session == child_tmux_session_name:
+            logger.debug("show_session: already showing %s, skipping", tmux_session_name)
             return
+
+        logger.debug(
+            "show_session: %s (child=%s, remote=%s)",
+            tmux_session_name,
+            child_tmux_session_name,
+            computer_info.is_remote if computer_info else False,
+        )
 
         # Clean up existing panes if showing different sessions
         self._cleanup_panes()
 
         # Create parent pane on the right (60% width, TUI keeps 40%)
-        # Use TERM=tmux-256color for proper rendering, -u for UTF-8
-        # Hide nested status bar with "set status off"
-        tmux = config.computer.tmux_binary
-        attach_cmd = (
-            f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {tmux_session_name} \\; set status off"
-        )
+        attach_cmd = self._build_attach_cmd(tmux_session_name, computer_info)
+        logger.debug("show_session: attach_cmd=%s", attach_cmd)
+
         parent_pane_id = self._run_tmux(
             "split-window",
             "-h",  # Horizontal split (creates pane to the right)
@@ -115,13 +181,16 @@ class TmuxPaneManager:
             "#{pane_id}",
             attach_cmd,
         )
+        logger.debug("show_session: parent_pane_id=%s", parent_pane_id or "EMPTY")
+
         if parent_pane_id:
             self.state.parent_pane_id = parent_pane_id
             self.state.parent_session = tmux_session_name
 
         # If there's a child session, split the right pane vertically
+        # Note: child sessions are assumed to be on the same computer as parent
         if child_tmux_session_name and parent_pane_id:
-            child_attach_cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {child_tmux_session_name} \\; set status off"
+            child_attach_cmd = self._build_attach_cmd(child_tmux_session_name, computer_info)
             child_pane_id = self._run_tmux(
                 "split-window",
                 "-t",
@@ -146,6 +215,7 @@ class TmuxPaneManager:
         self,
         tmux_session_name: str,
         child_tmux_session_name: str | None = None,
+        computer_info: ComputerInfo | None = None,
     ) -> bool:
         """Toggle session pane visibility.
 
@@ -155,20 +225,31 @@ class TmuxPaneManager:
         Args:
             tmux_session_name: The session's tmux session name
             child_tmux_session_name: Optional child/worker session name
+            computer_info: Computer info for SSH (None = local)
 
         Returns:
             True if now showing, False if now hidden
         """
         if not self._in_tmux:
+            logger.debug("toggle_session: not in tmux, returning False")
             return False
+
+        logger.debug(
+            "toggle_session: %s (child=%s, computer=%s)",
+            tmux_session_name,
+            child_tmux_session_name,
+            computer_info.name if computer_info else "local",
+        )
 
         # If already showing this session, hide it
         if self.state.parent_session == tmux_session_name:
+            logger.debug("toggle_session: hiding (already showing)")
             self.hide_sessions()
             return False
 
         # Otherwise show it
-        self.show_session(tmux_session_name, child_tmux_session_name)
+        logger.debug("toggle_session: showing session")
+        self.show_session(tmux_session_name, child_tmux_session_name, computer_info)
         return True
 
     @property
@@ -189,11 +270,16 @@ class TmuxPaneManager:
         # Reset state
         self.state = PaneState()
 
-    def update_child_session(self, child_tmux_session_name: str | None) -> None:
+    def update_child_session(
+        self,
+        child_tmux_session_name: str | None,
+        computer_info: ComputerInfo | None = None,
+    ) -> None:
         """Update just the child session pane.
 
         Args:
             child_tmux_session_name: New child session name, or None to remove
+            computer_info: Computer info for SSH (None = local)
         """
         if not self._in_tmux or not self.state.parent_pane_id:
             return
@@ -210,8 +296,7 @@ class TmuxPaneManager:
 
         # Create new child pane if requested
         if child_tmux_session_name and self.state.parent_pane_id:
-            tmux = config.computer.tmux_binary
-            child_attach_cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {child_tmux_session_name} \\; set status off"
+            child_attach_cmd = self._build_attach_cmd(child_tmux_session_name, computer_info)
             child_pane_id = self._run_tmux(
                 "split-window",
                 "-t",

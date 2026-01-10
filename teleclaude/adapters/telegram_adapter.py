@@ -487,20 +487,19 @@ class TelegramAdapter(
             await self.app.shutdown()
 
     async def _pre_handle_user_input(self, session: "Session") -> None:
-        """UI adapter pre-handler: Delete messages from previous interaction.
+        """UI adapter pre-handler: Delete ephemeral messages from previous interaction.
 
         Called by AdapterClient BEFORE processing new user input.
-        Cleans up UI state from previous interaction (pending messages, idle notifications).
+        Cleans up UI state from previous interaction (all ephemeral messages).
 
-        Note: Feedback messages (pending_feedback_deletions) are NOT cleaned here.
-        They get cleaned up when new feedback arrives via send_feedback(persistent=False).
-        This allows download messages to persist until summary arrives.
+        Unified design: All messages tracked via pending_deletions are cleaned here,
+        including user input messages, feedback, errors, etc.
 
         Args:
             session: Session object
         """
         logger.info("PRE-HANDLER CALLED for session %s", session.session_id[:8])
-        # Delete pending user input messages from previous interaction
+        # Delete pending ephemeral messages from previous interaction
         pending = await db.get_pending_deletions(session.session_id)
         if pending:
             for msg_id in pending:

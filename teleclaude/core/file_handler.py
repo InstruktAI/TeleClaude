@@ -65,7 +65,7 @@ async def handle_file(
     file_path: str,
     filename: str,
     context: FileEventContext,
-    send_feedback: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
+    send_message: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
 ) -> None:
     """Handle file upload (adapter-agnostic utility).
 
@@ -74,7 +74,7 @@ async def handle_file(
         file_path: Path to downloaded file
         filename: Original filename
         context: Typed file event context
-        send_feedback: Async function to send user feedback (session_id, message, metadata)
+        send_message: Async function to send user feedback (session_id, message, metadata)
     """
     logger.info("=== FILE HANDLER CALLED ===")
     logger.info("Session ID: %s", session_id[:8])
@@ -89,7 +89,7 @@ async def handle_file(
     is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
 
     if not is_process_running:
-        await send_feedback(
+        await send_message(
             session_id,
             f"📎 File upload requires an active process. File saved: {filename}",
             MessageMetadata(),
@@ -101,7 +101,7 @@ async def handle_file(
     current_message_id = telegram_metadata.output_message_id if telegram_metadata else None
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id[:8])
-        await send_feedback(
+        await send_message(
             session_id,
             f"⚠️ File upload unavailable - output message not ready yet. File saved: {filename}",
             MessageMetadata(),
@@ -137,7 +137,7 @@ async def handle_file(
 
     if not success:
         logger.error("Failed to send file path to session %s", session_id[:8])
-        await send_feedback(
+        await send_message(
             session_id,
             "❌ Failed to send file to terminal",
             MessageMetadata(),
@@ -149,13 +149,13 @@ async def handle_file(
     # Send feedback with plain text (no Markdown parsing)
     if context.file_size > 0:
         file_size_mb = context.file_size / 1_048_576
-        await send_feedback(
+        await send_message(
             session_id,
             f"📎 File uploaded: {filename} ({file_size_mb:.2f} MB)",
             MessageMetadata(),
         )
     else:
-        await send_feedback(
+        await send_message(
             session_id,
             f"📎 File uploaded: {filename}",
             MessageMetadata(),

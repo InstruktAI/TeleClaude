@@ -3,7 +3,30 @@
 import asyncio
 import curses
 
-from teleclaude.cli.tui.theme import get_layer_attr, get_selection_attr
+from teleclaude.cli.tui.theme import (
+    get_input_border_attr,
+    get_layer_attr,
+    get_modal_border_attr,
+    get_selection_attr,
+)
+
+
+def _apply_dim_overlay(stdscr: object) -> None:
+    """Apply dim attribute to entire screen without changing content.
+
+    Uses chgat() to modify attributes of existing characters,
+    creating a true overlay effect like tmux inactive panes.
+
+    Args:
+        stdscr: Curses screen object
+    """
+    height, width = stdscr.getmaxyx()  # type: ignore[attr-defined]
+
+    for y in range(height):
+        try:
+            stdscr.chgat(y, 0, width, curses.A_DIM)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
 
 
 class StartSessionModal:
@@ -41,7 +64,8 @@ class StartSessionModal:
 
         self.selected_mode = 1  # default: slow
         self.prompt = ""
-        self.current_field = 0  # 0=agent, 1=mode, 2=prompt
+        self.current_field = 0  # 0=agent, 1=mode, 2=prompt, 3=actions
+        self.selected_action = 0  # 0=Start, 1=Cancel
 
     def _is_agent_available(self, agent: str) -> bool:
         """Check if agent is available.
@@ -79,16 +103,19 @@ class StartSessionModal:
             if key == 27:  # Escape
                 return None
             if key in (curses.KEY_ENTER, 10, 13):
-                if self.current_field == 2 and self.prompt.strip():
-                    return self._start_session()
-                if self.current_field < 2:
-                    self.current_field += 1
+                if self.current_field == 3:
+                    # Action buttons: Start or Cancel
+                    if self.selected_action == 0:
+                        return self._start_session()
+                    return None  # Cancel
+                # Move to next field
+                self.current_field += 1
             elif key == ord("\t"):
-                self.current_field = (self.current_field + 1) % 3
+                self.current_field = (self.current_field + 1) % 4
             elif key == curses.KEY_UP:
                 self.current_field = max(0, self.current_field - 1)
             elif key == curses.KEY_DOWN:
-                self.current_field = min(2, self.current_field + 1)
+                self.current_field = min(3, self.current_field + 1)
             elif key == curses.KEY_LEFT:
                 self._select_prev()
             elif key == curses.KEY_RIGHT:
@@ -110,6 +137,8 @@ class StartSessionModal:
                 self.selected_agent = available[0]
         elif self.current_field == 1:
             self.selected_mode = (self.selected_mode - 1) % len(self.MODES)
+        elif self.current_field == 3:
+            self.selected_action = (self.selected_action - 1) % 2
 
     def _select_next(self) -> None:
         """Select next option, skipping unavailable agents."""
@@ -125,6 +154,8 @@ class StartSessionModal:
                 self.selected_agent = available[0]
         elif self.current_field == 1:
             self.selected_mode = (self.selected_mode + 1) % len(self.MODES)
+        elif self.current_field == 3:
+            self.selected_action = (self.selected_action + 1) % 2
 
     def _handle_prompt_key(self, key: int) -> None:
         """Handle key input in prompt field.
@@ -165,31 +196,69 @@ class StartSessionModal:
         """
         height, width = stdscr.getmaxyx()  # type: ignore[attr-defined]
 
-        # Modal dimensions
-        modal_h, modal_w = 15, 60
+        # Modal dimensions (including borders and input field boxes)
+        modal_h, modal_w = 21, 60
         start_y = (height - modal_h) // 2
         start_x = (width - modal_w) // 2
 
-        # Modal background (z=2 layer - lightest in dark mode)
+        # Modal background (z=2 layer - terminal default)
         modal_bg = get_layer_attr(2)
         selection_bg = get_selection_attr(2)
+        border_attr = get_modal_border_attr()
 
-        # Draw modal background
+        # Apply dim to existing screen content (true overlay, no redraw)
+        _apply_dim_overlay(stdscr)
+
+        # Draw modal background (terminal default - clears shadow underneath)
         for i in range(modal_h):
             stdscr.addstr(start_y + i, start_x, " " * modal_w, modal_bg)  # type: ignore[attr-defined]
 
-        # Title bar
-        stdscr.addstr(start_y, start_x, "─ Start Session " + "─" * (modal_w - 16), modal_bg)  # type: ignore[attr-defined]
+        # Draw outer border
+        # Top border
+        stdscr.addstr(start_y, start_x, "┏" + "━" * (modal_w - 2) + "┓", border_attr)  # type: ignore[attr-defined]
+        # Bottom border
+        stdscr.addstr(start_y + modal_h - 1, start_x, "┗" + "━" * (modal_w - 2) + "┛", border_attr)  # type: ignore[attr-defined]
+        # Side borders
+        for i in range(1, modal_h - 1):
+            stdscr.addstr(start_y + i, start_x, "┃", border_attr)  # type: ignore[attr-defined]
+            stdscr.addstr(start_y + i, start_x + modal_w - 1, "┃", border_attr)  # type: ignore[attr-defined]
+
+        # Inner inset line (thin border inside)
+        inner_y = start_y + 1
+        inner_x = start_x + 1
+        inner_w = modal_w - 2
+        inner_h = modal_h - 2
+        stdscr.addstr(inner_y, inner_x, "┌" + "─" * (inner_w - 2) + "┐", modal_bg)  # type: ignore[attr-defined]
+        stdscr.addstr(inner_y + inner_h - 1, inner_x, "└" + "─" * (inner_w - 2) + "┘", modal_bg)  # type: ignore[attr-defined]
+        for i in range(1, inner_h - 1):
+            stdscr.addstr(inner_y + i, inner_x, "│", modal_bg)  # type: ignore[attr-defined]
+            stdscr.addstr(inner_y + i, inner_x + inner_w - 1, "│", modal_bg)  # type: ignore[attr-defined]
+
+        # Title (centered in top inset line)
+        title = " Start Session "
+        title_x = start_x + (modal_w - len(title)) // 2
+        stdscr.addstr(inner_y, title_x, title, modal_bg | curses.A_BOLD)  # type: ignore[attr-defined]
+
+        # Content area starts inside both borders (outer + inner)
+        content_x = start_x + 3
+        content_y = start_y + 3
+        input_border = get_input_border_attr()
 
         # Computer/Project (read-only)
-        stdscr.addstr(start_y + 2, start_x + 2, f"Computer: {self.computer}", modal_bg)  # type: ignore[attr-defined]
-        stdscr.addstr(start_y + 3, start_x + 2, f"Project:  {self.project_path[:45]}", modal_bg)  # type: ignore[attr-defined]
+        stdscr.addstr(content_y, content_x, f"Computer: {self.computer}", modal_bg)  # type: ignore[attr-defined]
+        stdscr.addstr(content_y + 1, content_x, f"Project:  {self.project_path[:45]}", modal_bg)  # type: ignore[attr-defined]
 
-        # Agent selection
-        agent_y = start_y + 5
-        stdscr.addstr(agent_y, start_x + 2, "Agent:", modal_bg)  # type: ignore[attr-defined]
+        # Agent selection (with border box)
+        agent_y = content_y + 4  # Extra line after Project
+        agent_box_w = 50
+        stdscr.addstr(agent_y - 1, content_x, "┌" + "─" * (agent_box_w - 2) + "┐", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(agent_y, content_x, "│", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(agent_y, content_x + agent_box_w - 1, "│", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(agent_y + 1, content_x, "└" + "─" * (agent_box_w - 2) + "┘", input_border)  # type: ignore[attr-defined]
+        # Agent label
+        stdscr.addstr(agent_y - 1, content_x + 2, " Agent ", modal_bg | curses.A_BOLD)  # type: ignore[attr-defined]
         for i, agent in enumerate(self.AGENTS):
-            x = start_x + 10 + i * 15
+            x = content_x + 2 + i * 15
             available = self._is_agent_available(agent)
 
             if i == self.selected_agent and available:
@@ -210,11 +279,17 @@ class StartSessionModal:
 
             stdscr.addstr(agent_y, x, f"{marker} {agent}", attr)  # type: ignore[attr-defined]
 
-        # Mode selection
-        mode_y = start_y + 7
-        stdscr.addstr(mode_y, start_x + 2, "Mode:", modal_bg)  # type: ignore[attr-defined]
+        # Mode selection (with border box)
+        mode_y = agent_y + 3
+        mode_box_w = 42
+        stdscr.addstr(mode_y - 1, content_x, "┌" + "─" * (mode_box_w - 2) + "┐", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(mode_y, content_x, "│", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(mode_y, content_x + mode_box_w - 1, "│", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(mode_y + 1, content_x, "└" + "─" * (mode_box_w - 2) + "┘", input_border)  # type: ignore[attr-defined]
+        # Mode label
+        stdscr.addstr(mode_y - 1, content_x + 2, " Mode ", modal_bg | curses.A_BOLD)  # type: ignore[attr-defined]
         for i, mode in enumerate(self.MODES):
-            x = start_x + 10 + i * 12
+            x = content_x + 2 + i * 12
             if i == self.selected_mode:
                 marker = "●"
                 attr = selection_bg | curses.A_BOLD if self.current_field == 1 else modal_bg
@@ -223,11 +298,155 @@ class StartSessionModal:
                 attr = modal_bg
             stdscr.addstr(mode_y, x, f"{marker} {mode}", attr)  # type: ignore[attr-defined]
 
-        # Prompt input
-        prompt_y = start_y + 9
-        stdscr.addstr(prompt_y, start_x + 2, "Prompt:", modal_bg)  # type: ignore[attr-defined]
-        prompt_attr = selection_bg | curses.A_UNDERLINE if self.current_field == 2 else modal_bg
-        stdscr.addstr(prompt_y + 1, start_x + 2, self.prompt[:50] + "_", prompt_attr)  # type: ignore[attr-defined]
+        # Prompt input (with border box)
+        prompt_y = mode_y + 3
+        prompt_box_w = 52
+        stdscr.addstr(prompt_y - 1, content_x, "┌" + "─" * (prompt_box_w - 2) + "┐", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(prompt_y, content_x, "│", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(prompt_y, content_x + prompt_box_w - 1, "│", input_border)  # type: ignore[attr-defined]
+        stdscr.addstr(prompt_y + 1, content_x, "└" + "─" * (prompt_box_w - 2) + "┘", input_border)  # type: ignore[attr-defined]
+        # Prompt label
+        stdscr.addstr(prompt_y - 1, content_x + 2, " Prompt ", modal_bg | curses.A_BOLD)  # type: ignore[attr-defined]
+        prompt_attr = selection_bg if self.current_field == 2 else modal_bg
+        prompt_text = self.prompt[:48] if self.prompt else ""
+        cursor = "_" if self.current_field == 2 else ""
+        stdscr.addstr(prompt_y, content_x + 2, prompt_text + cursor + " " * (48 - len(prompt_text)), prompt_attr)  # type: ignore[attr-defined]
 
-        # Actions
-        stdscr.addstr(start_y + 12, start_x + 2, "[Enter] Start    [Esc] Cancel", modal_bg)  # type: ignore[attr-defined]
+        # Actions (at bottom inside inner border)
+        actions_y = start_y + modal_h - 3
+        is_actions_focused = self.current_field == 3
+
+        # Start button
+        start_attr = selection_bg | curses.A_BOLD if is_actions_focused and self.selected_action == 0 else modal_bg
+        stdscr.addstr(actions_y, content_x, "[Enter] Start", start_attr)  # type: ignore[attr-defined]
+
+        # Spacing
+        stdscr.addstr(actions_y, content_x + 14, "    ", modal_bg)  # type: ignore[attr-defined]
+
+        # Cancel button
+        cancel_attr = selection_bg | curses.A_BOLD if is_actions_focused and self.selected_action == 1 else modal_bg
+        stdscr.addstr(actions_y, content_x + 18, "[Esc] Cancel", cancel_attr)  # type: ignore[attr-defined]
+
+
+class ConfirmModal:
+    """Simple confirmation modal dialog."""
+
+    def __init__(self, title: str, message: str, details: list[str] | None = None):
+        """Initialize confirmation modal.
+
+        Args:
+            title: Modal title
+            message: Confirmation question
+            details: Optional list of detail lines to show
+        """
+        self.title = title
+        self.message = message
+        self.details = details or []
+
+    def run(self, stdscr: object) -> bool:
+        """Run modal event loop.
+
+        Args:
+            stdscr: Curses screen object
+
+        Returns:
+            True if confirmed (Y), False if cancelled (N/Esc)
+        """
+        while True:
+            self._render(stdscr)
+            key = stdscr.getch()  # type: ignore[attr-defined]
+
+            if key == 27:  # Escape
+                return False
+            if key in (ord("y"), ord("Y")):
+                return True
+            if key in (ord("n"), ord("N")):
+                return False
+
+    def _render(self, stdscr: object) -> None:
+        """Render the modal.
+
+        Args:
+            stdscr: Curses screen object
+        """
+        height, width = stdscr.getmaxyx()  # type: ignore[attr-defined]
+
+        # Modal dimensions (adjust based on content)
+        detail_lines = len(self.details)
+        modal_h = 9 + detail_lines  # borders + title + spacing + details + message + spacing + actions
+        modal_w = max(50, len(self.message) + 8, max((len(d) for d in self.details), default=0) + 8)
+        modal_w = min(modal_w, width - 4)  # Don't exceed screen
+
+        start_y = (height - modal_h) // 2
+        start_x = (width - modal_w) // 2
+
+        # Modal background (z=2 layer - terminal default)
+        modal_bg = get_layer_attr(2)
+        border_attr = get_modal_border_attr()
+
+        # Apply dim to existing screen content (true overlay, no redraw)
+        _apply_dim_overlay(stdscr)
+
+        # Draw modal background (terminal default - clears shadow underneath)
+        for i in range(modal_h):
+            try:
+                stdscr.addstr(start_y + i, start_x, " " * modal_w, modal_bg)  # type: ignore[attr-defined]
+            except curses.error:
+                pass
+
+        # Draw outer border
+        try:
+            stdscr.addstr(start_y, start_x, "┏" + "━" * (modal_w - 2) + "┓", border_attr)  # type: ignore[attr-defined]
+            stdscr.addstr(start_y + modal_h - 1, start_x, "┗" + "━" * (modal_w - 2) + "┛", border_attr)  # type: ignore[attr-defined]
+            for i in range(1, modal_h - 1):
+                stdscr.addstr(start_y + i, start_x, "┃", border_attr)  # type: ignore[attr-defined]
+                stdscr.addstr(start_y + i, start_x + modal_w - 1, "┃", border_attr)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # Inner inset line
+        inner_y = start_y + 1
+        inner_x = start_x + 1
+        inner_w = modal_w - 2
+        inner_h = modal_h - 2
+        try:
+            stdscr.addstr(inner_y, inner_x, "┌" + "─" * (inner_w - 2) + "┐", modal_bg)  # type: ignore[attr-defined]
+            stdscr.addstr(inner_y + inner_h - 1, inner_x, "└" + "─" * (inner_w - 2) + "┘", modal_bg)  # type: ignore[attr-defined]
+            for i in range(1, inner_h - 1):
+                stdscr.addstr(inner_y + i, inner_x, "│", modal_bg)  # type: ignore[attr-defined]
+                stdscr.addstr(inner_y + i, inner_x + inner_w - 1, "│", modal_bg)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # Title (centered in top inset line)
+        title = f" {self.title} "
+        title_x = start_x + (modal_w - len(title)) // 2
+        try:
+            stdscr.addstr(inner_y, title_x, title, modal_bg | curses.A_BOLD)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # Content area
+        content_x = start_x + 3
+        content_y = start_y + 3
+
+        # Details
+        row = content_y
+        for detail in self.details:
+            try:
+                stdscr.addstr(row, content_x, detail[: modal_w - 6], modal_bg)  # type: ignore[attr-defined]
+            except curses.error:
+                pass
+            row += 1
+
+        # Message (question)
+        try:
+            stdscr.addstr(row + 1, content_x, self.message[: modal_w - 6], modal_bg | curses.A_BOLD)  # type: ignore[attr-defined]
+        except curses.error:
+            pass
+
+        # Actions (at bottom inside inner border)
+        try:
+            stdscr.addstr(start_y + modal_h - 3, content_x, "[Y] Yes    [N] No    [Esc] Cancel", modal_bg)  # type: ignore[attr-defined]
+        except curses.error:
+            pass

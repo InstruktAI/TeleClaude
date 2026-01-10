@@ -113,7 +113,9 @@ async def test_create_session_success():
         result = await client.create_session(computer="local", project_dir="/home/user/project")
 
         assert result["session_id"] == "new-sess"
-        mock_post.assert_called_once_with("/sessions", json={"computer": "local", "project_dir": "/home/user/project"})
+        mock_post.assert_called_once_with(
+            "/sessions", json={"computer": "local", "project_dir": "/home/user/project"}, timeout=30.0
+        )
 
     await client.close()
 

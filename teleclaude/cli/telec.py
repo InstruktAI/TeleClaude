@@ -7,7 +7,6 @@ import subprocess
 import sys
 
 from teleclaude.cli.api_client import TelecAPIClient
-from teleclaude.cli.tui.app import TelecApp
 from teleclaude.config import config
 
 
@@ -42,6 +41,9 @@ def main() -> None:
 
 async def _run_tui() -> None:
     """Run TUI application."""
+    # Lazy import: TelecApp applies nest_asyncio which breaks httpx for CLI commands
+    from teleclaude.cli.tui.app import TelecApp
+
     api = TelecAPIClient()
     app = TelecApp(api)
 
@@ -63,14 +65,13 @@ def _handle_cli_command(argv: list[str]) -> None:
     cmd = argv[0].lstrip("/")
     args = argv[1:]
 
-    api = TelecAPIClient()
-
     if cmd == "list":
+        api = TelecAPIClient()
         asyncio.run(_list_sessions(api))
     elif cmd in ("claude", "gemini", "codex"):
         mode = args[0] if args else "slow"
         prompt = " ".join(args[1:]) if len(args) > 1 else None
-        asyncio.run(_quick_start(api, cmd, mode, prompt))
+        _quick_start(cmd, mode, prompt)  # Sync - spawns tmux directly
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
@@ -95,39 +96,50 @@ async def _list_sessions(api: TelecAPIClient) -> None:
         await api.close()
 
 
-async def _quick_start(api: TelecAPIClient, agent: str, mode: str, prompt: str | None) -> None:
-    """Quick start a session and attach.
+def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
+    """Quick start a session by spawning tmux directly.
 
     Args:
-        api: API client
         agent: Agent name (claude, gemini, codex)
         mode: Thinking mode (fast, med, slow)
         prompt: Initial prompt (optional - if None, starts interactive session)
     """
-    await api.connect()
+    import shlex
+    import uuid
+
+    from teleclaude.core.agents import get_agent_command
+
+    # Generate session name
+    session_id = str(uuid.uuid4())[:8]
+    tmux_name = f"tc_{session_id}"
+    working_dir = os.getcwd()
+    tmux = config.computer.tmux_binary
+
+    # Create tmux session
+    result = subprocess.run(
+        [tmux, "new-session", "-d", "-s", tmux_name, "-c", working_dir],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        print(f"Failed to create tmux session: {result.stderr.decode()}")
+        return
+
+    # Build agent command using existing infrastructure
     try:
-        # Use current directory as project
-        project_dir = os.getcwd()
-        computer = "local"
+        agent_cmd = get_agent_command(agent, thinking_mode=mode, interactive=bool(prompt))
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
 
-        result = await api.create_session(
-            computer=computer,
-            project_dir=project_dir,
-            agent=agent,
-            thinking_mode=mode,
-            message=prompt or "",  # Empty string starts agent in interactive mode
-        )
+    # Add prompt if provided
+    if prompt:
+        agent_cmd += f" {shlex.quote(prompt)}"
 
-        tmux_session = result.get("tmux_session_name")
-        if tmux_session:
-            await api.close()
-            # Attach to the tmux session
-            subprocess.run([config.computer.tmux_binary, "attach", "-t", str(tmux_session)], check=False)
-        else:
-            print(f"Error: {result}")
-    finally:
-        if api.is_connected:  # Only close if not already closed
-            await api.close()
+    # Send agent command to tmux
+    subprocess.run([tmux, "send-keys", "-t", tmux_name, agent_cmd, "Enter"], check=False)
+
+    # Attach to session
+    os.execlp(tmux, tmux, "attach", "-t", tmux_name)
 
 
 def _usage() -> str:
