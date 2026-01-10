@@ -314,8 +314,8 @@ class AdapterClient:
             for msg_id in pending:
                 try:
                     await self.delete_message(session, msg_id)
-                except Exception:
-                    pass  # Best effort deletion
+                except Exception as e:
+                    logger.debug("Best-effort feedback deletion failed: %s", e)
             if pending:
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
