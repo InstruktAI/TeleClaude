@@ -180,6 +180,12 @@ All issues from previous reviews have been addressed:
 
 ---
 
-## New Critical Issue Discovered This Review
+## Fixes Applied
 
-The envelope unwrapping bug (Issue #1) was introduced during the refactor and was masked by tests that don't reflect actual `handle_event` behavior. This needs to be fixed before the branch can be merged.
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Critical: REST adapter envelope unwrapping bug | Fixed list_sessions, list_computers, list_projects to unwrap envelope properly | fa198c8 |
+| Critical: Tests mock incorrect envelope format | Updated all tests to return correct envelope: `{"status": "success", "data": [...]}` | fa198c8 |
+| Important: Hardcoded socket path | Added REST_SOCKET_PATH constant to constants.py | a79832d |
+| Important: Unused computer parameter | Made computer parameter optional with documentation | a79832d |
+| Suggestion: EndSessionResult type duplication | Verified - REST adapter version has stricter Literal type, keeping as-is | - |
