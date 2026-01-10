@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import curses
 import os
+import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -74,6 +76,10 @@ class PreparationView:
         self.scroll_offset = 0
         # Expanded todos (show file children)
         self.expanded_todos: set[str] = set()
+        # Track file viewer/editor pane (only one at a time)
+        self._file_pane_id: str | None = None
+        # Row-to-item mapping for mouse click handling (built during render)
+        self._row_to_item: dict[int, int] = {}
 
     async def refresh(
         self,
@@ -452,7 +458,7 @@ class PreparationView:
         # Split window horizontally and attach to the new session
         tmux = config.computer.tmux_binary
         subprocess.run(
-            [tmux, "split-window", "-h", f"{tmux} attach -t {tmux_session_name}"],
+            [tmux, "split-window", "-h", "-p", "60", f"{tmux} attach -t {tmux_session_name}"],
             check=False,
         )
 
@@ -460,12 +466,47 @@ class PreparationView:
         curses.reset_prog_mode()
         stdscr.refresh()  # type: ignore[attr-defined]
 
+    def _close_file_pane(self) -> None:
+        """Close existing file viewer/editor pane if one exists."""
+        if not self._file_pane_id:
+            return
+        tmux = config.computer.tmux_binary
+        # Check if pane still exists before trying to kill it
+        result = subprocess.run(
+            [tmux, "list-panes", "-F", "#{pane_id}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if self._file_pane_id in result.stdout.split("\n"):
+            subprocess.run([tmux, "kill-pane", "-t", self._file_pane_id], check=False)
+        self._file_pane_id = None
+
+    def _open_file_pane(self, cmd: str) -> None:
+        """Open a file in a tmux split pane, closing any existing file pane first.
+
+        Args:
+            cmd: Shell command to run (e.g., "glow -p /path/to/file")
+        """
+        tmux = config.computer.tmux_binary
+        # Close existing file pane first
+        self._close_file_pane()
+        # Open new pane and capture its ID
+        result = subprocess.run(
+            [tmux, "split-window", "-h", "-p", "60", "-P", "-F", "#{pane_id}", cmd],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip():
+            self._file_pane_id = result.stdout.strip()
+
     def _view_file(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
-        """View a file in glow (or less as fallback).
+        """View a file in glow (or less as fallback) in a tmux split pane.
 
         Args:
             item: File data dict
-            stdscr: Curses screen object for restoration
+            stdscr: Curses screen object for restoration (used when not in tmux)
         """
         filepath = os.path.join(
             str(item.get("project_path", "")),
@@ -473,26 +514,30 @@ class PreparationView:
             str(item.get("slug", "")),
             str(item.get("filename", "")),
         )
-        # Save curses state and exit
+
+        # If in tmux, open in split pane (closes existing file pane first)
+        if os.environ.get("TMUX"):
+            viewer = "glow -p" if shutil.which("glow") else "less"
+            cmd = f"{viewer} {shlex.quote(filepath)}"
+            self._open_file_pane(cmd)
+            return
+
+        # Fallback: take over terminal if not in tmux
         curses.def_prog_mode()
         curses.endwin()
-        # Try glow with pager (-p), fall back to less
         try:
             subprocess.run(["glow", "-p", filepath], check=True)
-        except FileNotFoundError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             subprocess.run(["less", filepath], check=False)
-        except subprocess.CalledProcessError:
-            subprocess.run(["less", filepath], check=False)
-        # Restore curses state
         curses.reset_prog_mode()
         stdscr.refresh()  # type: ignore[attr-defined]
 
     def _edit_file(self, item: dict[str, object], stdscr: object) -> None:  # guard: loose-dict
-        """Edit a file in $EDITOR.
+        """Edit a file in $EDITOR in a tmux split pane.
 
         Args:
             item: File data dict
-            stdscr: Curses screen object for restoration
+            stdscr: Curses screen object for restoration (used when not in tmux)
         """
         filepath = os.path.join(
             str(item.get("project_path", "")),
@@ -500,10 +545,17 @@ class PreparationView:
             str(item.get("slug", "")),
             str(item.get("filename", "")),
         )
-        # Save curses state and exit
+        editor = os.environ.get("EDITOR", "vim")
+
+        # If in tmux, open in split pane (closes existing file pane first)
+        if os.environ.get("TMUX"):
+            cmd = f"{editor} {shlex.quote(filepath)}"
+            self._open_file_pane(cmd)
+            return
+
+        # Fallback: take over terminal if not in tmux
         curses.def_prog_mode()
         curses.endwin()
-        editor = os.environ.get("EDITOR", "vim")
         subprocess.run([editor, filepath], check=False)
         # Restore curses state
         curses.reset_prog_mode()
@@ -553,6 +605,21 @@ class PreparationView:
             elif key == ord("p"):
                 self._prepare(item.data, stdscr)
 
+    def handle_click(self, screen_row: int) -> bool:
+        """Handle mouse click at screen row.
+
+        Args:
+            screen_row: The screen row that was clicked
+
+        Returns:
+            True if an item was selected, False otherwise
+        """
+        item_idx = self._row_to_item.get(screen_row)
+        if item_idx is not None:
+            self.selected_index = item_idx
+            return True
+        return False
+
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content.
 
@@ -562,6 +629,9 @@ class PreparationView:
             height: Available height
             width: Screen width
         """
+        # Clear row-to-item mapping (rebuilt each render)
+        self._row_to_item.clear()
+
         if not self.flat_items:
             msg = "(no items)"
             stdscr.addstr(start_row, 2, msg, curses.A_DIM)  # type: ignore[attr-defined]
@@ -573,6 +643,9 @@ class PreparationView:
                 break
             is_selected = i == self.selected_index
             lines = self._render_item(stdscr, row, item, width, is_selected)
+            # Map all lines of this item to its index (for mouse click)
+            for offset in range(lines):
+                self._row_to_item[row + offset] = i
             row += lines
 
     def _render_item(

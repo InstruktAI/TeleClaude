@@ -28,6 +28,7 @@ KEY_NAMES = {
     curses.KEY_LEFT: "KEY_LEFT",
     curses.KEY_RIGHT: "KEY_RIGHT",
     curses.KEY_ENTER: "KEY_ENTER",
+    curses.KEY_MOUSE: "KEY_MOUSE",
     10: "ENTER(10)",
     13: "ENTER(13)",
     27: "ESCAPE",
@@ -136,6 +137,9 @@ class TelecApp:
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
         self.pane_manager = TmuxPaneManager()
+        # Content area bounds for mouse click handling
+        self._content_start: int = 0
+        self._content_height: int = 0
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -229,6 +233,9 @@ class TelecApp:
         curses.curs_set(0)
         init_colors()
 
+        # Enable mouse support for click-to-select
+        curses.mousemask(curses.ALL_MOUSE_EVENTS)
+
         # Block indefinitely waiting for input (no timeout = no auto-refresh)
         stdscr.timeout(-1)  # type: ignore[attr-defined]
 
@@ -256,6 +263,23 @@ class TelecApp:
             logger.debug("Quit requested")
             self.cleanup()
             self.running = False
+
+        # Mouse click - handle tab clicks and content item selection
+        elif key == curses.KEY_MOUSE:
+            try:
+                _, mx, my, _, bstate = curses.getmouse()
+                if bstate & curses.BUTTON1_CLICKED:
+                    # First check if a tab was clicked
+                    clicked_tab = self.tab_bar.handle_click(my, mx)
+                    if clicked_tab is not None:
+                        self._switch_view(clicked_tab)
+                    # Otherwise check if click is in content area
+                    elif self._content_start <= my < self._content_start + self._content_height:
+                        view = self.views.get(self.current_view)
+                        if view and hasattr(view, "handle_click"):
+                            view.handle_click(my)
+            except curses.error:
+                pass  # Mouse event couldn't be retrieved
 
         # Escape - always go back in focus stack
         elif key == 27:  # Escape
@@ -372,18 +396,23 @@ class TelecApp:
         # Rows 0-5: ASCII banner (6 lines)
         render_banner(stdscr, 0, width)
 
-        # Row after banner: Tab bar
+        # Row after banner: Tab bar (3 rows for browser-style tabs)
         tab_row = BANNER_HEIGHT
         self.tab_bar.render(stdscr, tab_row, width)
 
-        # Row after tab bar: Breadcrumb (if focused)
-        content_start = tab_row + 1
+        # Row after tab bar: empty row for spacing, then breadcrumb (if focused)
+        content_start = tab_row + TabBar.HEIGHT + 1  # +HEIGHT for tab bar + 1 for spacing
         if self.focus.stack:
             self._render_breadcrumb(stdscr, content_start, width)
             content_start += 1
 
         # Content area: after breadcrumb to before footer section
         content_height = height - content_start - 4  # Reserve 4 rows for separator + action bar + global bar + footer
+
+        # Store bounds for mouse click handling
+        self._content_start = content_start
+        self._content_height = content_height
+
         current = self.views.get(self.current_view)
         if current and content_height > 0:
             current.render(stdscr, content_start, content_height, width)

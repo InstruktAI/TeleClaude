@@ -83,9 +83,10 @@ class MessageOperationsMixin:
     # Message Operations Implementation
     # =========================================================================
 
-    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: "Session", text: str, *, metadata: MessageMetadata | None = None) -> str:
         """Send message to session's topic with automatic retry on rate limits and network errors."""
         self._ensure_started()
+        metadata = metadata or MessageMetadata()
 
         # Get Telegram's topic_id from namespaced metadata (trust contract)
         if not session.adapter_metadata or not session.adapter_metadata.telegram:
@@ -167,7 +168,9 @@ class MessageOperationsMixin:
                     raise TimeoutError("message thread not found") from exc
                 raise
 
-    async def edit_message(self, session: "Session", message_id: str, text: str, metadata: MessageMetadata) -> bool:
+    async def edit_message(
+        self, session: "Session", message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
         """Edit an existing message with automatic retry on rate limits and network errors.
 
         Uses mutable EditContext to prevent stale data during retries:
@@ -178,6 +181,7 @@ class MessageOperationsMixin:
         - Rate limits (RetryAfter): Uses Telegram's suggested delay, keeps retrying until 60s timeout
         """
         self._ensure_started()
+        metadata = metadata or MessageMetadata()
 
         # CRITICAL: Handle None message_id (happens during daemon restart)
         if not message_id:
@@ -288,8 +292,9 @@ class MessageOperationsMixin:
         self,
         session: "Session",
         file_path: str,
-        metadata: MessageMetadata,  # noqa: ARG002 - Required by interface
-        caption: Optional[str] = None,
+        *,
+        caption: str | None = None,
+        metadata: MessageMetadata | None = None,  # noqa: ARG002 - Required by interface
     ) -> str:
         """Send file to session's topic."""
         self._ensure_started()
@@ -310,9 +315,10 @@ class MessageOperationsMixin:
 
         return str(message.message_id)
 
-    async def send_general_message(self, text: str, metadata: MessageMetadata) -> str:
+    async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str:
         """Send message to Telegram supergroup general topic."""
         self._ensure_started()
+        metadata = metadata or MessageMetadata()
 
         message_thread_id = metadata.message_thread_id
         parse_mode = metadata.parse_mode

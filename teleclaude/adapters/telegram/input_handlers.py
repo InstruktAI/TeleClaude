@@ -10,7 +10,7 @@ import asyncio
 import tempfile
 import traceback
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from telegram import Document, Message, PhotoSize, Update
@@ -49,7 +49,7 @@ class InputHandlersMixin:
     # Abstract properties/attributes (declared for type hints)
     client: "AdapterClient"
     user_whitelist: set[int]
-    _topic_message_cache: dict[Optional[int], list[Message]]
+    _topic_message_cache: dict[int | None, list[Message]]
     _mcp_message_queues: dict[int, "asyncio.Queue[object]"]
     _processed_voice_messages: set[str]
     _topic_ready_events: dict[int, asyncio.Event]
@@ -77,9 +77,10 @@ class InputHandlersMixin:
             self,
             session: "Session",
             message: str,
-            metadata: MessageMetadata,
+            *,
+            metadata: MessageMetadata | None = None,
             persistent: bool = False,
-        ) -> Optional[str]:
+        ) -> str | None:
             """Send feedback message to session."""
             ...
 
@@ -305,7 +306,6 @@ Usage:
             await self.send_feedback(
                 session,
                 f"❌ Failed to download voice message: {error_msg}",
-                MessageMetadata(),
             )
 
     async def _handle_file_attachment(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:

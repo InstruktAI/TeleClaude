@@ -285,7 +285,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         except Exception as e:
             logger.error("Failed to persist last processed message ID: %s", e)
 
-    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
         """Send message chunk to Redis output stream.
 
         Args:
@@ -318,7 +318,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         logger.debug("Sent to Redis stream %s: %s", output_stream, message_id_bytes)
         return message_id_bytes.decode("utf-8")
 
-    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+    async def edit_message(
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
         """Redis streams don't support editing - send new message instead.
 
         Args:
@@ -330,7 +332,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         Returns:
             True (always succeeds by sending new message)
         """
-        await self.send_message(session, text, metadata)
+        await self.send_message(session, text, metadata=metadata)
         return True
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
@@ -387,8 +389,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self,
         session: Session,
         file_path: str,
-        metadata: MessageMetadata,
-        caption: Optional[str] = None,
+        *,
+        caption: str | None = None,
+        metadata: MessageMetadata | None = None,
     ) -> str:
         """Send file - not supported by Redis adapter.
 
@@ -404,7 +407,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         logger.warning("send_file not supported by RedisAdapter")
         return ""
 
-    async def send_general_message(self, text: str, metadata: MessageMetadata) -> str:
+    async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str:
         """Send general message (not implemented for Redis).
 
         Redis adapter is session-specific, no general channel.

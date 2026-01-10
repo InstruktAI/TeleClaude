@@ -5,7 +5,7 @@ Handles slash commands like /new_session, /claude, /rename, /cd.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from telegram import InlineKeyboardMarkup, Update
@@ -76,9 +76,10 @@ class CommandHandlersMixin:
             self,
             session: "Session",
             message: str,
-            metadata: MessageMetadata,
+            *,
+            metadata: MessageMetadata | None = None,
             persistent: bool = False,
-        ) -> Optional[str]:
+        ) -> str | None:
             """Send feedback message to session."""
             ...
 
@@ -144,7 +145,7 @@ class CommandHandlersMixin:
             # Track command message for deletion
             await self._pre_handle_user_input(session)
             await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-            await self.send_feedback(session, "Usage: /rename <new name>", MessageMetadata())
+            await self.send_feedback(session, "Usage: /rename <new name>")
             return
 
         await self.client.handle_event(
@@ -190,7 +191,7 @@ class CommandHandlersMixin:
         await self.send_feedback(
             session,
             "**Select a directory:**",
-            MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown"),
+            metadata=MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown"),
         )
 
     async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:

@@ -7,7 +7,7 @@ adapters handle user-visible output.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, AsyncIterator
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.core.models import ChannelMetadata, MessageMetadata
@@ -51,7 +51,7 @@ class TerminalAdapter(BaseAdapter):
         _ = session
         return True
 
-    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: "Session", text: str, *, metadata: MessageMetadata | None = None) -> str:
         _ = (session, text, metadata)
         return ""
 
@@ -60,7 +60,8 @@ class TerminalAdapter(BaseAdapter):
         session: "Session",
         message_id: str,
         text: str,
-        metadata: MessageMetadata,
+        *,
+        metadata: MessageMetadata | None = None,
     ) -> bool:
         _ = (session, message_id, text, metadata)
         return True
@@ -73,10 +74,11 @@ class TerminalAdapter(BaseAdapter):
         self,
         session: "Session",
         file_path: str,
-        metadata: MessageMetadata,
-        caption: Optional[str] = None,
+        *,
+        caption: str | None = None,
+        metadata: MessageMetadata | None = None,
     ) -> str:
-        _ = (session, file_path, metadata, caption)
+        _ = (session, file_path, caption, metadata)
         return ""
 
     async def discover_peers(self) -> list["PeerInfo"]:

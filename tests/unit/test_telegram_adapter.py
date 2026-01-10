@@ -106,7 +106,7 @@ class TestMessaging:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
             metadata = MessageMetadata(parse_mode="MarkdownV2")
-            result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata)
+            result = await telegram_adapter.edit_message(mock_session, "456", "new text", metadata=metadata)
 
             assert result is True
             telegram_adapter.app.bot.edit_message_text.assert_called_once()
@@ -279,8 +279,7 @@ class TestRateLimitHandling:
         # First call raises rate limit, second succeeds
         mock_bot.edit_message_text = AsyncMock(side_effect=[RetryAfter(retry_after=0.01), None])
 
-        metadata = MessageMetadata()
-        result = await telegram_adapter.edit_message(mock_session, "789", "updated text", metadata)
+        result = await telegram_adapter.edit_message(mock_session, "789", "updated text")
 
         assert result is True
         assert mock_bot.edit_message_text.call_count == 2
@@ -307,8 +306,7 @@ class TestRateLimitHandling:
         # Always raises rate limit
         mock_bot.edit_message_text = AsyncMock(side_effect=RetryAfter(retry_after=0.01))
 
-        metadata = MessageMetadata()
-        result = await telegram_adapter.edit_message(mock_session, "789", "updated text", metadata)
+        result = await telegram_adapter.edit_message(mock_session, "789", "updated text")
 
         assert result is False
         # Should attempt 3 times (initial + 2 retries)
@@ -356,7 +354,7 @@ class TestReplyMarkup:
             mock_sm.get_session = AsyncMock(return_value=mock_session)
 
             metadata = MessageMetadata(reply_markup=markup)  # type: ignore[arg-type]  # reply_markup is InlineKeyboardMarkup, testing with dict
-            result = await telegram_adapter.edit_message(mock_session, "456", "text", metadata)
+            result = await telegram_adapter.edit_message(mock_session, "456", "text", metadata=metadata)
 
             assert result is True
             telegram_adapter.app.bot.edit_message_text.assert_called_once()
@@ -392,8 +390,7 @@ class TestMessageNotModified:
             side_effect=BadRequest("Message is not modified: specified new message content is equal to current")
         )
 
-        metadata = MessageMetadata()
-        result = await telegram_adapter.edit_message(mock_session, "789", "same text", metadata)
+        result = await telegram_adapter.edit_message(mock_session, "789", "same text")
 
         # Should return True (message exists, just unchanged)
         assert result is True
@@ -424,8 +421,7 @@ class TestMessageNotModified:
         # Raise "Message to edit not found" error
         mock_bot.edit_message_text = AsyncMock(side_effect=BadRequest("Message to edit not found"))
 
-        metadata = MessageMetadata()
-        result = await telegram_adapter.edit_message(mock_session, "789", "new text", metadata)
+        result = await telegram_adapter.edit_message(mock_session, "789", "new text")
 
         # Should return False (message was deleted)
         assert result is False

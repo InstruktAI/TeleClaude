@@ -26,11 +26,13 @@ class MockTelegramAdapter(UiAdapter):
         self.edit_message_calls = []
         self.delete_message_calls = []
 
-    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
         self.send_message_calls.append((session, text, metadata))
         return "msg-123"
 
-    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+    async def edit_message(
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
         self.edit_message_calls.append((session, message_id, text, metadata))
         return True
 
@@ -54,7 +56,7 @@ class MockTelegramAdapter(UiAdapter):
         return True
 
     async def send_file(
-        self, session: Session, file_path: str, metadata: MessageMetadata, caption: str | None = None
+        self, session: Session, file_path: str, *, caption: str | None = None, metadata: MessageMetadata | None = None
     ) -> str:
         return "file-msg-123"
 
@@ -84,14 +86,16 @@ class MockRedisAdapter(BaseAdapter):
         super().__init__()
         self.send_message_calls = []
 
-    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
         self.send_message_calls.append((session, text, metadata))
         return "redis-msg-123"
 
-    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+    async def edit_message(
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
         return True
 
-    async def delete_message(self, session_id: str, message_id: str) -> bool:
+    async def delete_message(self, session: Session, message_id: str) -> bool:
         return True
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
@@ -109,7 +113,9 @@ class MockRedisAdapter(BaseAdapter):
     async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+    async def send_file(
+        self, session: Session, file_path: str, *, caption: str | None = None, metadata: MessageMetadata | None = None
+    ) -> str:
         return "redis-file-msg-123"
 
     async def is_session_observed(self, session_id: str) -> bool:
@@ -124,10 +130,11 @@ class MockRedisAdapter(BaseAdapter):
     async def discover_peers(self):
         return []
 
-    async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+    async def poll_output_stream(self, session: Session, timeout: float = 300.0):
         """Not used in these tests."""
+        _ = (session, timeout)
         if False:
-            yield
+            yield ""
         return
 
 
@@ -167,8 +174,7 @@ async def test_origin_adapter_receives_output():
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Send message (should route to origin)
-                metadata = MessageMetadata()
-                result = await adapter_client.send_message(session, "Test output", metadata)
+                result = await adapter_client.send_message(session, "Test output")
 
                 # Verify send_message called on TelegramAdapter
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -224,8 +230,7 @@ async def test_redis_observer_skipped_no_ui():
                 }
 
                 # Send message (origin: telegram, observer: redis)
-                metadata = MessageMetadata()
-                await adapter_client.send_message(session, "Test output", metadata)
+                await adapter_client.send_message(session, "Test output")
 
                 # Verify telegram (origin) received message
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -263,14 +268,16 @@ async def test_ui_observer_receives_broadcasts():
             super().__init__(mock_client)
             self.send_message_calls = []
 
-        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
             self.send_message_calls.append((session, text, metadata))
             return "slack-msg-123"
 
-        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+        async def edit_message(
+            self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        ) -> bool:
             return True
 
-        async def delete_message(self, session_id: str, message_id: str) -> bool:
+        async def delete_message(self, session: Session, message_id: str) -> bool:
             return True
 
         async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
@@ -288,7 +295,14 @@ async def test_ui_observer_receives_broadcasts():
         async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+        async def send_file(
+            self,
+            session: Session,
+            file_path: str,
+            *,
+            caption: str | None = None,
+            metadata: MessageMetadata | None = None,
+        ) -> str:
             return "slack-file-msg-123"
 
         async def start(self):
@@ -300,10 +314,11 @@ async def test_ui_observer_receives_broadcasts():
         async def discover_peers(self):
             return []
 
-        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        async def poll_output_stream(self, session: Session, timeout: float = 300.0):
             """Not used in these tests."""
+            _ = (session, timeout)
             if False:
-                yield
+                yield ""
             return
 
     # Setup test database
@@ -334,8 +349,7 @@ async def test_ui_observer_receives_broadcasts():
                 }
 
                 # Send message
-                metadata = MessageMetadata()
-                await adapter_client.send_message(session, "Test output", metadata)
+                await adapter_client.send_message(session, "Test output")
 
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -376,14 +390,16 @@ async def test_observer_failure_does_not_affect_origin():
             super().__init__(mock_client)
             self.send_message_calls = []
 
-        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
             self.send_message_calls.append((session, text, metadata))
             raise Exception("Slack API error")
 
-        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+        async def edit_message(
+            self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        ) -> bool:
             return True
 
-        async def delete_message(self, session_id: str, message_id: str) -> bool:
+        async def delete_message(self, session: Session, message_id: str) -> bool:
             return True
 
         async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
@@ -401,7 +417,14 @@ async def test_observer_failure_does_not_affect_origin():
         async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+        async def send_file(
+            self,
+            session: Session,
+            file_path: str,
+            *,
+            caption: str | None = None,
+            metadata: MessageMetadata | None = None,
+        ) -> str:
             return "slack-file-msg-123"
 
         async def start(self):
@@ -413,10 +436,11 @@ async def test_observer_failure_does_not_affect_origin():
         async def discover_peers(self):
             return []
 
-        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        async def poll_output_stream(self, session: Session, timeout: float = 300.0):
             """Not used in these tests."""
+            _ = (session, timeout)
             if False:
-                yield
+                yield ""
             return
 
     # Setup test database
@@ -447,8 +471,7 @@ async def test_observer_failure_does_not_affect_origin():
                 }
 
                 # Send message (should succeed despite slack failure)
-                metadata = MessageMetadata()
-                result = await adapter_client.send_message(session, "Test output", metadata)
+                result = await adapter_client.send_message(session, "Test output")
 
                 # Verify telegram (origin) succeeded
                 assert len(telegram_adapter.send_message_calls) == 1
@@ -482,10 +505,12 @@ async def test_origin_failure_raises_exception():
         def __init__(self, client: AdapterClient):
             self.client = client
 
-        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
             raise Exception("Telegram API error")
 
-        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+        async def edit_message(
+            self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        ) -> bool:
             return True
 
         async def delete_message(self, session: Session, message_id: str) -> bool:
@@ -507,7 +532,12 @@ async def test_origin_failure_raises_exception():
             return True
 
         async def send_file(
-            self, session: Session, file_path: str, metadata: MessageMetadata, caption: str | None = None
+            self,
+            session: Session,
+            file_path: str,
+            *,
+            caption: str | None = None,
+            metadata: MessageMetadata | None = None,
         ) -> str:
             return "file-msg-123"
 
@@ -552,9 +582,8 @@ async def test_origin_failure_raises_exception():
                 adapter_client.adapters = {"telegram": telegram_adapter}
 
                 # Attempt to send message (should raise)
-                metadata = MessageMetadata()
                 with pytest.raises(Exception, match="Telegram API error"):
-                    await adapter_client.send_message(session, "Test output", metadata)
+                    await adapter_client.send_message(session, "Test output")
 
     finally:
         await test_db.close()
@@ -587,13 +616,15 @@ async def test_discover_peers_respects_redis_enabled_flag():
             super().__init__()
             self.discover_peers_called = False
 
-        async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+        async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
             return "redis-msg-123"
 
-        async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+        async def edit_message(
+            self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+        ) -> bool:
             return True
 
-        async def delete_message(self, session_id: str, message_id: str) -> bool:
+        async def delete_message(self, session: Session, message_id: str) -> bool:
             return True
 
         async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
@@ -611,7 +642,14 @@ async def test_discover_peers_respects_redis_enabled_flag():
         async def delete_channel(self, session: Session) -> bool:
             return True
 
-        async def send_file(self, session: Session, file_path: str, caption: str = "") -> str:
+        async def send_file(
+            self,
+            session: Session,
+            file_path: str,
+            *,
+            caption: str | None = None,
+            metadata: MessageMetadata | None = None,
+        ) -> str:
             return "redis-file-msg-123"
 
         async def start(self):
@@ -634,9 +672,10 @@ async def test_discover_peers_respects_redis_enabled_flag():
                 )
             ]
 
-        async def poll_output_stream(self, session_id: str, timeout: float = 300.0):
+        async def poll_output_stream(self, session: Session, timeout: float = 300.0):
+            _ = (session, timeout)
             if False:
-                yield
+                yield ""
             return
 
     # Setup test database

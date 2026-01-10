@@ -41,18 +41,20 @@ class DummyUiAdapter(UiAdapter):
     async def delete_channel(self, session: Session) -> bool:
         return True
 
-    async def send_message(self, session: Session, text: str, metadata: MessageMetadata) -> str:
+    async def send_message(self, session: Session, text: str, *, metadata: MessageMetadata | None = None) -> str:
         self.sent_messages.append((session.session_id, text))
         return "msg-1"
 
-    async def edit_message(self, session: Session, message_id: str, text: str, metadata: MessageMetadata) -> bool:
+    async def edit_message(
+        self, session: Session, message_id: str, text: str, *, metadata: MessageMetadata | None = None
+    ) -> bool:
         return True
 
     async def delete_message(self, session: Session, message_id: str) -> bool:
         return True
 
     async def send_file(
-        self, session: Session, file_path: str, metadata: MessageMetadata, caption: str | None = None
+        self, session: Session, file_path: str, *, caption: str | None = None, metadata: MessageMetadata | None = None
     ) -> str:
         return "file-1"
 
@@ -66,11 +68,13 @@ class DummyUiAdapter(UiAdapter):
 
     async def send_feedback(
         self,
-        _session: Session,
+        session: Session,
         message: str,
-        _metadata: MessageMetadata,
-        _persistent: bool = False,
+        *,
+        metadata: MessageMetadata | None = None,
+        persistent: bool = False,
     ) -> str:
+        _ = (session, metadata, persistent)
         self.sent_feedback.append(message)
         return "fb-1"
 
@@ -98,7 +102,7 @@ async def test_terminal_origin_send_message_broadcasts_to_ui():
     client.register_adapter("telegram", adapter)
 
     session = _make_terminal_session()
-    message_id = await client.send_message(session, "hello", MessageMetadata())
+    message_id = await client.send_message(session, "hello")
 
     assert message_id == "msg-1"
     assert adapter.sent_messages == [(session.session_id, "hello")]
@@ -111,6 +115,6 @@ async def test_terminal_origin_send_feedback_broadcasts_without_target():
     client.register_adapter("telegram", adapter)
     session = _make_terminal_session()
 
-    await client.send_feedback(session, "summary", MessageMetadata())
+    await client.send_feedback(session, "summary")
 
     assert adapter.sent_feedback == ["summary"]

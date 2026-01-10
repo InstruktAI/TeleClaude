@@ -84,6 +84,8 @@ class SessionsView:
         self._active_field: dict[str, str] = {}  # session_id -> "input" | "output" | "none"
         # Store sessions for child lookup
         self._sessions: list[dict[str, object]] = []  # guard: loose-dict
+        # Row-to-item mapping for mouse click handling (built during render)
+        self._row_to_item: dict[int, int] = {}
 
     async def refresh(
         self,
@@ -499,6 +501,21 @@ class SessionsView:
                     stdscr.refresh()  # type: ignore[attr-defined]
                     curses.napms(2000)
 
+    def handle_click(self, screen_row: int) -> bool:
+        """Handle mouse click at screen row.
+
+        Args:
+            screen_row: The screen row that was clicked
+
+        Returns:
+            True if an item was selected, False otherwise
+        """
+        item_idx = self._row_to_item.get(screen_row)
+        if item_idx is not None:
+            self.selected_index = item_idx
+            return True
+        return False
+
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content.
 
@@ -516,6 +533,9 @@ class SessionsView:
             len(self.flat_items),
         )
 
+        # Clear row-to-item mapping (rebuilt each render)
+        self._row_to_item.clear()
+
         if not self.flat_items:
             msg = "(no items)"
             logger.debug("render: no items to display")
@@ -531,6 +551,9 @@ class SessionsView:
 
             is_selected = i == self.selected_index
             lines_used = self._render_item(stdscr, row, item, width, is_selected)
+            # Map all lines of this item to its index (for mouse click)
+            for offset in range(lines_used):
+                self._row_to_item[row + offset] = i
             row += lines_used
             items_rendered += 1
 

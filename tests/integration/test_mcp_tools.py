@@ -208,12 +208,13 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
         telegram_adapter = daemon.client.adapters.get("telegram")
         telegram_adapter.send_file.assert_called_once()
 
-        # Verify call arguments (positional args: session object, file_path, metadata, caption)
+        # Verify call arguments (positional args: session object, file_path; keyword args: caption, metadata)
         call_args = telegram_adapter.send_file.call_args.args
+        call_kwargs = telegram_adapter.send_file.call_args.kwargs
         assert call_args[0].session_id == session.session_id  # Session object
         assert call_args[1] == test_file_path
-        # call_args[2] is MessageMetadata
-        assert call_args[3] == "Test upload from Claude"  # caption
+        # caption is now a keyword argument
+        assert call_kwargs.get("caption") == "Test upload from Claude"
 
     finally:
         # Cleanup test file

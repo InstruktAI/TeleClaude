@@ -48,16 +48,19 @@ class DummyTelegramAdapter(UiAdapter):
     async def delete_channel(self, _session) -> bool:
         return True
 
-    async def send_message(self, _session, _text, _metadata) -> str:
+    async def send_message(self, _session, _text, *, metadata=None) -> str:
+        _ = metadata
         return "msg"
 
-    async def edit_message(self, _session, _message_id, _text, _metadata) -> bool:
+    async def edit_message(self, _session, _message_id, _text, *, metadata=None) -> bool:
+        _ = metadata
         return True
 
     async def delete_message(self, _session, _message_id) -> bool:
         return True
 
-    async def send_file(self, _session, _file_path, _metadata, _caption=None) -> str:
+    async def send_file(self, _session, _file_path, *, caption=None, metadata=None) -> str:
+        _ = (caption, metadata)
         return "file"
 
     async def discover_peers(self):
@@ -575,7 +578,7 @@ async def test_send_feedback_routes_to_last_input_adapter():
     )
 
     with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()):
-        message_id = await client.send_feedback(session, "hello", MessageMetadata())
+        message_id = await client.send_feedback(session, "hello")
 
     assert message_id == "tg-msg-1"
     origin_adapter.send_feedback.assert_not_called()
@@ -605,7 +608,7 @@ async def test_send_feedback_falls_back_to_origin_ui():
     )
 
     with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()):
-        message_id = await client.send_feedback(session, "hello", MessageMetadata())
+        message_id = await client.send_feedback(session, "hello")
 
     assert message_id == "tg-msg-2"
     origin_adapter.send_feedback.assert_called_once()

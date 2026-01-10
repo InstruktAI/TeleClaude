@@ -243,7 +243,48 @@ class AdapterClient:
                         "Observer %s completed %s for session %s", adapter_type, operation, session.session_id[:8]
                     )
 
-    async def send_message(self, session: "Session", text: str, metadata: MessageMetadata) -> str:
+    async def _route_to_ui(
+        self,
+        session: "Session",
+        method: str,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        """Route operation to origin UI adapter + broadcast to observers.
+
+        If no origin adapter, broadcasts to all UI adapters and returns first truthy result.
+        If origin exists, calls origin and broadcasts to observers (best-effort).
+
+        Args:
+            session: Session object
+            method: Method name to call on adapters
+            *args: Positional args to pass to method (after session)
+            **kwargs: Keyword args to pass to method
+
+        Returns:
+            First truthy result, or None if no truthy results
+        """
+        origin_ui = self._origin_ui_adapter(session)
+
+        def make_task(adapter: UiAdapter) -> Awaitable[object]:
+            return cast(Awaitable[object], getattr(adapter, method)(session, *args, **kwargs))
+
+        if not origin_ui:
+            results = await self._broadcast_to_ui_adapters(session, method, make_task)
+            for _, result in results:
+                if result:  # first truthy wins
+                    return result
+            return None
+
+        # Call origin (let exceptions propagate)
+        result = await cast(Awaitable[object], getattr(origin_ui, method)(session, *args, **kwargs))
+
+        # Broadcast to observers (best-effort)
+        await self._broadcast_to_observers(session, method, make_task)
+
+        return result
+
+    async def send_message(self, session: "Session", text: str, *, metadata: MessageMetadata | None = None) -> str:
         """Send message to ALL UiAdapters (origin + observers).
 
         Args:
@@ -254,36 +295,17 @@ class AdapterClient:
         Returns:
             message_id from origin adapter
         """
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            results = await self._broadcast_to_ui_adapters(
-                session,
-                "send_message",
-                lambda adapter: adapter.send_message(session, text, metadata),
-            )
-            for _, ui_result in results:
-                if isinstance(ui_result, str) and ui_result:
-                    return str(ui_result)
-            return ""
-
-        # Send to origin UI adapter (CRITICAL - let exceptions propagate)
-        origin_message_id: str = await origin_ui.send_message(session, text, metadata)
-        logger.debug("Sent message to origin adapter %s for session %s", session.origin_adapter, session.session_id[:8])
-
-        # Broadcast to UI observers (best-effort)
-        await self._broadcast_to_observers(
-            session, "send_message", lambda adapter: adapter.send_message(session, text, metadata)
-        )
-
-        return origin_message_id
+        result = await self._route_to_ui(session, "send_message", text, metadata=metadata)
+        return str(result) if result else ""
 
     async def send_feedback(
         self,
         session: "Session",
         message: str,
-        metadata: MessageMetadata,
+        *,
+        metadata: MessageMetadata | None = None,
         persistent: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send feedback message via most recent input adapter (ephemeral UI notification).
 
         Routes feedback to:
@@ -300,7 +322,8 @@ class AdapterClient:
         Returns:
             message_id if sent (UI adapter), None if transport adapter
         """
-        target_adapter_type: Optional[str] = None
+        metadata = metadata or MessageMetadata()
+        target_adapter_type: str | None = None
 
         if metadata.adapter_type and metadata.adapter_type in self.adapters:
             candidate = self.adapters[metadata.adapter_type]
@@ -324,12 +347,12 @@ class AdapterClient:
             await self._broadcast_to_ui_adapters(
                 session,
                 "send_feedback",
-                lambda adapter: adapter.send_feedback(session, message, metadata, persistent),
+                lambda adapter: adapter.send_feedback(session, message, metadata=metadata, persistent=persistent),
             )
             return None
 
         target_adapter = self.adapters[target_adapter_type]
-        message_id = await target_adapter.send_feedback(session, message, metadata, persistent)
+        message_id = await target_adapter.send_feedback(session, message, metadata=metadata, persistent=persistent)
 
         if message_id:
             logger.debug("Sent feedback via %s for session %s", target_adapter_type, session.session_id[:8])
@@ -347,24 +370,8 @@ class AdapterClient:
         Returns:
             True if origin edit succeeded
         """
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            results = await self._broadcast_to_ui_adapters(
-                session,
-                "edit_message",
-                lambda adapter: adapter.edit_message(session, message_id, text, MessageMetadata()),
-            )
-            return any(isinstance(result, bool) and result for _, result in results)
-
-        # Edit in origin adapter (CRITICAL)
-        result: bool = await origin_ui.edit_message(session, message_id, text, MessageMetadata())
-
-        # Broadcast edit to UI observers (best-effort)
-        await self._broadcast_to_observers(
-            session, "edit_message", lambda adapter: adapter.edit_message(session, message_id, text, MessageMetadata())
-        )
-
-        return result
+        result = await self._route_to_ui(session, "edit_message", message_id, text)
+        return bool(result)
 
     async def delete_message(self, session: "Session", message_id: str) -> bool:
         """Delete message in ALL UiAdapters (origin + observers).
@@ -376,32 +383,17 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            results = await self._broadcast_to_ui_adapters(
-                session,
-                "delete_message",
-                lambda adapter: adapter.delete_message(session, message_id),
-            )
-            return any(isinstance(result, bool) and result for _, result in results)
-
-        # Delete in origin adapter (CRITICAL)
-        result = await origin_ui.delete_message(session, message_id)
-
-        # Broadcast delete to UI observers (best-effort)
-        await self._broadcast_to_observers(
-            session, "delete_message", lambda adapter: adapter.delete_message(session, message_id)
-        )
-
+        result = await self._route_to_ui(session, "delete_message", message_id)
         return bool(result)
 
     async def send_file(
         self,
         session: "Session",
         file_path: str,
-        caption: Optional[str] = None,
+        *,
+        caption: str | None = None,
     ) -> str:
-        """Send file to origin adapter ONLY (not broadcast).
+        """Send file to ALL UiAdapters (origin + observers).
 
         Args:
             session: Session object
@@ -411,26 +403,8 @@ class AdapterClient:
         Returns:
             message_id from origin adapter
         """
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            results = await self._broadcast_to_ui_adapters(
-                session,
-                "send_file",
-                lambda adapter: adapter.send_file(session, file_path, MessageMetadata(), caption),
-            )
-            for _, ui_result in results:
-                if isinstance(ui_result, str) and ui_result:
-                    return str(ui_result)
-            return ""
-
-        result: str = await origin_ui.send_file(session, file_path, MessageMetadata(), caption)
-        logger.debug(
-            "Sent file %s to origin adapter %s for session %s",
-            file_path,
-            session.origin_adapter,
-            session.session_id[:8],
-        )
-        return result
+        result = await self._route_to_ui(session, "send_file", file_path, caption=caption)
+        return str(result) if result else ""
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -595,34 +569,14 @@ class AdapterClient:
         output: str,
         exit_text: str,
     ) -> None:
-        """Send exit message in origin adapter (UI-specific).
-
-        Routes to origin adapter's send_exit_message() method.
-        Only available for UI adapters (UiAdapter subclasses).
+        """Send exit message to ALL UiAdapters (origin + observers).
 
         Args:
             session: Session object
             output: Terminal output
             exit_text: Exit message text
-
-        Raises:
-            ValueError: If origin adapter not found
-            AttributeError: If origin adapter doesn't have send_exit_message (not a UiAdapter)
         """
-
-        if not session.origin_adapter:
-            raise ValueError(f"Session {session.session_id} has no origin adapter configured")
-
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            await self._broadcast_to_ui_adapters(
-                session,
-                "send_exit_message",
-                lambda adapter: adapter.send_exit_message(session, output, exit_text),
-            )
-            return
-
-        await origin_ui.send_exit_message(session, output, exit_text)
+        await self._route_to_ui(session, "send_exit_message", output, exit_text)
 
     async def update_channel_title(self, session: "Session", title: str) -> bool:
         """Broadcast channel title update to ALL adapters.
@@ -634,24 +588,8 @@ class AdapterClient:
         Returns:
             True if origin update succeeded
         """
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            results = await self._broadcast_to_ui_adapters(
-                session,
-                "update_channel_title",
-                lambda adapter: adapter.update_channel_title(session, title),
-            )
-            return any(isinstance(result, bool) and result for _, result in results)
-
-        # Update origin adapter (CRITICAL - let exceptions propagate)
-        result = await origin_ui.update_channel_title(session, title)
-
-        # Broadcast to observer adapters (best-effort)
-        await self._broadcast_to_observers(
-            session, "update_channel_title", lambda adapter: adapter.update_channel_title(session, title)
-        )
-
-        return result
+        result = await self._route_to_ui(session, "update_channel_title", title)
+        return bool(result)
 
     async def delete_channel(self, session: "Session") -> bool:
         """Broadcast channel deletion to ALL adapters.
@@ -662,21 +600,7 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        origin_ui = self._origin_ui_adapter(session)
-        if not origin_ui:
-            results = await self._broadcast_to_ui_adapters(
-                session,
-                "delete_channel",
-                lambda adapter: adapter.delete_channel(session),
-            )
-            return any(isinstance(result, bool) and result for _, result in results)
-
-        # Delete in origin adapter (CRITICAL)
-        result = await origin_ui.delete_channel(session)
-
-        # Broadcast to observer adapters (best-effort)
-        await self._broadcast_to_observers(session, "delete_channel", lambda adapter: adapter.delete_channel(session))
-
+        result = await self._route_to_ui(session, "delete_channel")
         return bool(result)
 
     async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # noqa: loose-dict - Adapter peer data
@@ -1286,7 +1210,7 @@ class AdapterClient:
         if not adapter:
             raise ValueError(f"Adapter {adapter_type} not found")
 
-        result: str = await adapter.send_general_message(text, metadata)
+        result: str = await adapter.send_general_message(text, metadata=metadata)
         return result
 
     # === Request/Response pattern for AI-to-AI communication ===

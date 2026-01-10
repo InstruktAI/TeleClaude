@@ -49,15 +49,15 @@ async def test_feedback_messages_cleaned_on_new_feedback(daemon_with_mocked_tele
 
     original_send_feedback = UiAdapter.send_feedback
 
-    async def real_send_feedback(self, sess, msg, meta, persistent=False):
-        return await original_send_feedback(self, sess, msg, meta, persistent)
+    async def real_send_feedback(self, sess, msg, *, metadata=None, persistent=False):
+        return await original_send_feedback(self, sess, msg, metadata=metadata, persistent=persistent)
 
-    telegram_adapter.send_feedback = lambda s, m, meta, persistent=False: real_send_feedback(
-        telegram_adapter, s, m, meta, persistent
+    telegram_adapter.send_feedback = lambda s, m, *, metadata=None, persistent=False: real_send_feedback(
+        telegram_adapter, s, m, metadata=metadata, persistent=persistent
     )
 
     # Send new feedback (like summary) - this should cleanup old feedback
-    await daemon.client.send_feedback(session, "New summary message", MessageMetadata())
+    await daemon.client.send_feedback(session, "New summary message")
 
     # Verify delete_message was called for old feedback
     assert telegram_adapter.delete_message.call_count > initial_delete_calls, (

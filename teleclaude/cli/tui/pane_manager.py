@@ -98,7 +98,7 @@ class TmuxPaneManager:
         # Clean up existing panes if showing different sessions
         self._cleanup_panes()
 
-        # Create parent pane on the right (50% width)
+        # Create parent pane on the right (60% width, TUI keeps 40%)
         # Use TERM=tmux-256color for proper rendering, -u for UTF-8
         # Hide nested status bar with "set status off"
         tmux = config.computer.tmux_binary
@@ -108,6 +108,8 @@ class TmuxPaneManager:
         parent_pane_id = self._run_tmux(
             "split-window",
             "-h",  # Horizontal split (creates pane to the right)
+            "-p",
+            "60",  # 60% for session pane, 40% for TUI
             "-P",  # Print pane info
             "-F",
             "#{pane_id}",

@@ -214,8 +214,7 @@ async def test_send_message_adds_to_stream():
     )
 
     # Send message
-    metadata = MessageMetadata()
-    await adapter.send_message(session, "Hello world", metadata)
+    await adapter.send_message(session, "Hello world")
 
     # Verify xadd was called with correct stream
     assert len(captured_calls) == 1

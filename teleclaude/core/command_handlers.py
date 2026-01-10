@@ -337,7 +337,7 @@ Working directory: {working_dir}
 
 You can now send commands to this session.
 """
-        await client.send_feedback(session, welcome, MessageMetadata(), persistent=True)
+        await client.send_feedback(session, welcome, persistent=True)
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id, "tmux_session_name": tmux_name}
 
@@ -1067,7 +1067,7 @@ async def handle_cd_session(
             lines.append(f"{idx}. {display_text}")
 
         response = "\n".join(lines)
-        help_msg_id = await client.send_message(session, response, MessageMetadata())
+        help_msg_id = await client.send_message(session, response)
         if help_msg_id:
             await db.add_pending_deletion(session.session_id, help_msg_id)
         return
@@ -1185,7 +1185,7 @@ async def handle_agent_start(
             session.session_id[:8],
             list(config.agents.keys()),
         )
-        await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
+        await client.send_feedback(session, f"Unknown agent: {agent_name}")
         return
 
     # Prefer per-session stored thinking_mode if user didn't specify one.
@@ -1201,7 +1201,6 @@ async def handle_agent_start(
         await client.send_feedback(
             session,
             "deep is only supported for codex. Use fast/med/slow for other agents.",
-            MessageMetadata(),
         )
         return
 
@@ -1286,13 +1285,13 @@ async def handle_agent_resume(
     if not agent_name:
         active = session.active_agent
         if not active:
-            await client.send_feedback(session, "No active agent to resume", MessageMetadata())
+            await client.send_feedback(session, "No active agent to resume")
             return
         agent_name = active
 
     agent_config = config.agents.get(agent_name)
     if not agent_config:
-        await client.send_feedback(session, f"Unknown agent: {agent_name}", MessageMetadata())
+        await client.send_feedback(session, f"Unknown agent: {agent_name}")
         return
 
     thinking_raw = session.thinking_mode if isinstance(session.thinking_mode, str) else None
@@ -1345,7 +1344,6 @@ async def handle_agent_restart(
         await client.send_feedback(
             session,
             "❌ Cannot restart agent: no active agent for this session.",
-            MessageMetadata(),
         )
         return
 
@@ -1353,12 +1351,11 @@ async def handle_agent_restart(
         await client.send_feedback(
             session,
             "❌ Cannot restart agent: no native session ID stored. Start the agent first.",
-            MessageMetadata(),
         )
         return
 
     if not config.agents.get(target_agent):
-        await client.send_feedback(session, f"❌ Unknown agent: {target_agent}", MessageMetadata())
+        await client.send_feedback(session, f"❌ Unknown agent: {target_agent}")
         return
 
     logger.info(
@@ -1380,7 +1377,6 @@ async def handle_agent_restart(
         await client.send_feedback(
             session,
             "❌ Agent did not exit after SIGINT. Restart aborted.",
-            MessageMetadata(),
         )
         return
 

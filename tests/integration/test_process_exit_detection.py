@@ -19,7 +19,6 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
         tmux_session_name="test-exit-detection",
         origin_adapter="telegram",
         title="Test Exit Detection",
-        terminal_size="80x24",
         working_directory="/tmp",
     )
 
@@ -75,7 +74,6 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
         tmux_session_name="test-restart-detection",
         origin_adapter="telegram",
         title="Test Restart",
-        terminal_size="80x24",
         working_directory="/tmp",
     )
 

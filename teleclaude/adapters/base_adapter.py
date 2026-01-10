@@ -10,7 +10,6 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
-    Optional,
     Protocol,
     runtime_checkable,
 )
@@ -198,14 +197,15 @@ class BaseAdapter(ABC):
         self,
         session: "Session",
         text: str,
-        metadata: MessageMetadata,
+        *,
+        metadata: MessageMetadata | None = None,
     ) -> str:
         """Send message to channel.
 
         Args:
             session: Session object
             text: Message text
-            metadata: Adapter-specific metadata
+            metadata: Adapter-specific metadata (optional)
 
         Returns:
             message_id
@@ -217,7 +217,8 @@ class BaseAdapter(ABC):
         session: "Session",
         message_id: str,
         text: str,
-        metadata: MessageMetadata,
+        *,
+        metadata: MessageMetadata | None = None,
     ) -> bool:
         """Edit existing message (if platform supports).
 
@@ -225,7 +226,7 @@ class BaseAdapter(ABC):
             session: Session object
             message_id: Message ID from send_message()
             text: New message text
-            metadata: Platform-specific metadata
+            metadata: Platform-specific metadata (optional)
 
         Returns:
             True if successful, False otherwise
@@ -252,29 +253,30 @@ class BaseAdapter(ABC):
         self,
         session: "Session",
         file_path: str,
-        metadata: MessageMetadata,
-        caption: Optional[str] = None,
+        *,
+        caption: str | None = None,
+        metadata: MessageMetadata | None = None,
     ) -> str:
         """Send file to channel (if platform supports).
 
         Args:
             session: Session object
             file_path: Absolute path to file
-            metadata: Platform-specific metadata
             caption: Optional file caption/description
+            metadata: Platform-specific metadata (optional)
 
         Returns:
             message_id of sent file
         """
 
-    async def send_general_message(self, text: str, metadata: MessageMetadata) -> str:
+    async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str:
         """Send message to general/default channel.
 
         Used for commands issued in general context (not tied to specific session).
 
         Args:
             text: Message text
-            metadata: Platform-specific routing info (thread_id, channel_id, etc.)
+            metadata: Platform-specific routing info (optional)
 
         Returns:
             message_id: Platform-specific message ID
@@ -287,9 +289,10 @@ class BaseAdapter(ABC):
         self,
         _session: "Session",
         _message: str,
-        _metadata: MessageMetadata,
-        _persistent: bool = False,
-    ) -> Optional[str]:
+        *,
+        metadata: MessageMetadata | None = None,  # noqa: ARG002
+        persistent: bool = False,  # noqa: ARG002
+    ) -> str | None:
         """Send feedback message to user (UI adapters only).
 
         Feedback messages are temporary UI notifications that:
@@ -303,7 +306,7 @@ class BaseAdapter(ABC):
         Args:
             session: Session object
             message: Feedback message text
-            metadata: Adapter-specific metadata
+            metadata: Adapter-specific metadata (optional)
             persistent: If True, message won't be cleaned up on next feedback
 
         Returns:

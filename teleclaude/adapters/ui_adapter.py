@@ -119,7 +119,7 @@ class UiAdapter(BaseAdapter):
         if not message_id:
             return False
 
-        success = await self.edit_message(session, message_id, text, metadata)
+        success = await self.edit_message(session, message_id, text, metadata=metadata)
 
         if not success:
             # Edit failed - clear stale message_id
@@ -138,7 +138,7 @@ class UiAdapter(BaseAdapter):
         try:
             session = await db.get_session(session_id)
             if session:
-                await self.send_feedback(session, f"❌ {error_message}", self._metadata())
+                await self.send_feedback(session, f"❌ {error_message}", metadata=self._metadata())
         except Exception as e:
             logger.error("Failed to send error feedback for session %s: %s", session_id, e)
 
@@ -245,7 +245,7 @@ class UiAdapter(BaseAdapter):
             return await self._get_output_message_id(session)
 
         # Edit failed or no existing message - send new
-        new_id = await self.send_message(session, display_output, metadata)
+        new_id = await self.send_message(session, display_output, metadata=metadata)
         if new_id:
             await self._store_output_message_id(session, new_id)
         return new_id
@@ -318,7 +318,7 @@ class UiAdapter(BaseAdapter):
         # Try to edit existing message, fallback to send new
         if not await self._try_edit_output_message(session, final_output, metadata):
             # send new
-            new_id = await self.send_message(session, final_output, metadata)
+            new_id = await self.send_message(session, final_output, metadata=metadata)
             if new_id:
                 await self._store_output_message_id(session, new_id)
 
@@ -326,9 +326,10 @@ class UiAdapter(BaseAdapter):
         self,
         session: "Session",
         message: str,
-        metadata: MessageMetadata,
+        *,
+        metadata: MessageMetadata | None = None,
         persistent: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Send feedback message, optionally cleaning up previous feedback first.
 
         UI adapters override BaseAdapter's no-op to send temporary feedback messages.
@@ -336,7 +337,7 @@ class UiAdapter(BaseAdapter):
         Args:
             session: Session object
             message: Feedback message text
-            metadata: Adapter-specific metadata
+            metadata: Adapter-specific metadata (optional)
             persistent: If True, skip cleanup (don't delete previous feedback).
                        Message is STILL added to pending_feedback_deletions for future cleanup.
 
