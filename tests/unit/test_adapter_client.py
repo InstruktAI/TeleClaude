@@ -483,7 +483,7 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
         session_id="session-789",
         computer_name="test",
         tmux_session_name="tc_session_789",
-        origin_adapter="terminal",
+        origin_adapter="rest",
         title="Test Terminal Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
@@ -523,7 +523,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        origin_adapter="terminal",
+        origin_adapter="rest",
         title="Test Terminal Session",
         adapter_metadata=SessionAdapterMetadata(),
     )
@@ -531,7 +531,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        origin_adapter="terminal",
+        origin_adapter="rest",
         title="Test Terminal Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=999, output_message_id="msg-1")

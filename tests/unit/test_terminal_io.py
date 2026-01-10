@@ -14,7 +14,7 @@ async def test_send_text_prefers_existing_tmux():
         session_id="sid-123",
         computer_name="test",
         tmux_session_name="telec_123",
-        origin_adapter="terminal",
+        origin_adapter="rest",
         title="Test Terminal",
     )
 
@@ -40,7 +40,7 @@ async def test_send_text_creates_tmux_when_missing():
         session_id="sid-456",
         computer_name="test",
         tmux_session_name="telec_456",
-        origin_adapter="terminal",
+        origin_adapter="rest",
         title="Test Terminal",
     )
 

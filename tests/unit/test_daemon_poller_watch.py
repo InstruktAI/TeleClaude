@@ -22,7 +22,7 @@ async def test_poller_watch_creates_ui_channel_when_missing_topic():
         session_id="sess-123",
         computer_name="test",
         tmux_session_name="tc_sess",
-        origin_adapter="terminal",
+        origin_adapter="rest",
         title="Test Session",
         adapter_metadata=SessionAdapterMetadata(),
     )
