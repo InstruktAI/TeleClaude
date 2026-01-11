@@ -30,19 +30,34 @@ Four-phase infrastructure hardening addressing async safety, data efficiency, I/
 
 ### 1.3 Task Lifecycle Management
 
-- [ ] Create `teleclaude/core/task_registry.py` with `TaskRegistry` class
-- [ ] Implement `spawn(coro, name)` method that tracks tasks
-- [ ] Implement `shutdown(timeout)` method that cancels all tasks
-- [ ] Integrate registry into `Daemon.__init__()`
-- [ ] Replace fire-and-forget in `rest_adapter.py:_on_cache_change()` with registry
-- [ ] Replace fire-and-forget in `redis_adapter.py` (event dispatch) with registry
-- [ ] Call `registry.shutdown()` in daemon shutdown path
-- [ ] Add unit test: spawn tasks, call shutdown, verify all cancelled
-- [ ] Verify: `grep "create_task" teleclaude/` - all should use registry or be justified
+- [x] Create `teleclaude/core/task_registry.py` with `TaskRegistry` class
+- [x] Implement `spawn(coro, name)` method that tracks tasks
+- [x] Implement `shutdown(timeout)` method that cancels all tasks
+- [x] Integrate registry into `Daemon.__init__()`
+- [x] Replace fire-and-forget in `rest_adapter.py:_on_cache_change()` with registry
+- [x] Replace fire-and-forget in `redis_adapter.py` (event dispatch) with registry
+- [x] Call `registry.shutdown()` in daemon shutdown path
+- [x] Add unit test: spawn tasks, call shutdown, verify all cancelled
+- [x] Verify: `grep "create_task" teleclaude/` - all should use registry or be justified
+
+### Phase 1 Status: COMPLETE ✅
+
+All critical safety items implemented and tested. Commits:
+- `b65f304` - Phase 1.1 & 1.2 (Redis SCAN, subprocess timeouts)
+- `fabf742` - Test fix for SCAN mock
+- `dda4833` - Phase 1.3 (Task Registry)
 
 ---
 
-## Phase 2: Data Layer Efficiency
+---
+
+## Phases 2-4: DEFERRED
+
+Phases 2-4 (Data Layer Efficiency, I/O Resilience, Memory Management) are optimizations that can be addressed incrementally after Phase 1 is validated in production. They are lower priority than the critical safety fixes in Phase 1.
+
+---
+
+## Phase 2: Data Layer Efficiency (DEFERRED)
 
 ### 2.1 Cache Index Structures
 
