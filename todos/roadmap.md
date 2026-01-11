@@ -6,10 +6,11 @@
 
 ---
 
-## UI Event Queue
+## Performance Hardening
 
-- [>] ui-event-queue-per-adapter
-  Create per-adapter UI event queues to avoid cross-adapter bleed.
+- [.] performance-hardening
+  Async resilience & data efficiency: eliminate blocking calls, fix memory leaks, optimize cache access patterns.
+  **Priority**: Critical - addresses production risks discovered in architectural review.
 
 ## Test Suite Quality Cleanup
 
