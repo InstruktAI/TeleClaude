@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Coroutine
+from typing import Coroutine, TypeVar
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 
 class TaskRegistry:
@@ -51,7 +53,7 @@ class TaskRegistry:
         if exc:
             logger.error("Background task %s failed: %s", task.get_name(), exc, exc_info=exc)
 
-    def spawn(self, coro: Coroutine[object, object, object], name: str | None = None) -> asyncio.Task[object]:
+    def spawn(self, coro: Coroutine[object, object, T], name: str | None = None) -> asyncio.Task[T]:
         """
         Spawn a tracked background task.
 
