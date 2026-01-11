@@ -1,6 +1,6 @@
 # Code Review: tui-snapshot-tests
 
-**Reviewed**: 2026-01-11
+**Reviewed**: 2026-01-11 (Re-review)
 **Reviewer**: Claude Opus 4.5 (Review Agent)
 
 ## Requirements Coverage
@@ -9,33 +9,23 @@
 |-------------|--------|-------|
 | Phase 1: View Architecture Refactor | ✅ | BaseView + get_render_lines() implemented correctly |
 | Task 1.1: Audit existing view classes | ✅ | View structure documented in plan |
-| Task 1.2: Add get_render_lines() to BaseView | ✅ | Clean implementation in base.py:8-24 |
+| Task 1.2: Add get_render_lines() to BaseView | ✅ | Clean implementation in base.py:14-24 |
 | Task 1.3: Refactor SessionsView | ✅ | _format_item() and _format_session() extracted properly |
 | Task 1.4: Refactor PreparationView | ✅ | _format_item(), _format_todo(), _format_file() extracted |
-| Phase 2: Test Infrastructure | ⚠️ | Partially complete - factories done, harness missing |
+| Phase 2: Test Infrastructure | ⚠️ | Scope reduced - factories done, TUIAppTestHarness deferred |
 | Task 2.1: Mock data factories | ✅ | create_mock_session/computer/project in conftest.py |
 | Task 2.2: MockAPIClient | ✅ | Event simulation working |
-| Task 2.3: TUIAppTestHarness | ❌ | Not implemented |
+| Task 2.3: TUIAppTestHarness | ❌ | Deferred to follow-up work (documented in plan) |
 | Phase 3: View Logic Tests | ✅ | 23 tests covering SessionsView and PreparationView |
-| Phase 4: Data Flow Tests | ❌ | Not implemented - unchecked in plan |
-| Phase 5: Reconnection & Edge Cases | ❌ | Not implemented - unchecked in plan |
-| Phase 6: CI Integration | ❌ | Not implemented - unchecked in plan |
+| Phase 4-6 | N/A | Explicitly deferred in implementation plan |
 
 ## Critical Issues (must fix)
 
-1. **[lint]** `tests/conftest.py` - Missing `# guard: loose-dict` comments on dict typings
-   - Lines 44, 83, 104, 125-128, 130, 138, 148, 163: `dict[str, object]` typings missing guard comments
-   - Pre-commit hook fails: `guardrails: loose dict typings detected (11 > 0)`
-   - **Suggested fix**: Add `# guard: loose-dict` comment to each line with `dict[str, object]` OR convert to TypedDict
+None.
 
 ## Important Issues (should fix)
 
-1. **[incomplete]** `todos/tui-snapshot-tests/implementation-plan.md` - Phases 4-6 remain uncompleted
-   - Task 2.3: TUIAppTestHarness not implemented
-   - Phase 4: Data Flow Integration Tests not implemented
-   - Phase 5: Reconnection & Edge Cases not implemented
-   - Phase 6: CI Integration (Makefile targets, docs) not implemented
-   - **Suggested fix**: Either implement remaining phases or update implementation plan to reflect actual scope delivered (Phase 1-3 only) and create follow-up work items for deferred phases
+None.
 
 ## Suggestions (nice to have)
 
@@ -46,46 +36,48 @@
 2. **[types]** `tests/conftest.py:44` - Return type uses `dict[str, object]`
    - Consider using TypedDict for more precise typing of session/computer/project data
    - Would improve IDE autocomplete and type checking
+   - Guard comments applied correctly with `# guard: loose-dict`
 
-3. **[docs]** No documentation for TUI testing added as specified in Phase 6 Task 6.3
-   - Would help future contributors understand the test harness
+## Verification Results
+
+| Check | Result |
+|-------|--------|
+| Unit tests | ✅ 715 passed (including 23 TUI view tests) |
+| Lint | ✅ All checks passed (guardrails, ruff, pyright, mypy) |
+| Type checking | ✅ 0 errors, 0 warnings |
+| Pre-commit hooks | ✅ Passing |
+| Test speed | ✅ TUI tests complete in <1s |
 
 ## Strengths
 
 - **Clean separation of concerns**: `get_render_lines()` completely decouples render logic from curses
 - **Comprehensive view testing**: 23 tests cover empty states, data rendering, scrolling, truncation, indentation
-- **Fast tests**: All 23 tests run in <1s with parallel execution
+- **Fast tests**: All 23 TUI tests run in <1s with parallel execution
 - **Follows project patterns**: Proper use of TreeNode/PrepTreeNode, consistent formatting
-- **Well-structured factories**: Mock data factories are reusable and well-typed
+- **Well-structured factories**: Mock data factories are reusable and properly typed with guard comments
 - **No curses dependency in tests**: Tests can run in CI without display
+- **Clear scope documentation**: Implementation plan clearly documents what was delivered (Phases 1-3) vs. deferred (Phases 4-6)
+- **Previous issues resolved**: All critical/important issues from prior review have been addressed
+
+## Previous Review Issues - Resolution Status
+
+| Issue | Status | Resolution |
+|-------|--------|------------|
+| Missing `# guard: loose-dict` comments (11 violations) | ✅ Fixed | Added guard comments to all `dict[str, object]` types |
+| Implementation plan shows uncompleted Phases 4-6 | ✅ Fixed | Plan updated to clarify delivered vs. deferred scope |
 
 ## Verdict
 
-**[ ] APPROVE** - Ready to merge
-**[x] REQUEST CHANGES** - Fix critical/important issues first
+**[x] APPROVE** - Ready to merge
+**[ ] REQUEST CHANGES** - Fix critical/important issues first
 
-### If REQUEST CHANGES:
+### Rationale
 
-Priority fixes:
-1. **BLOCKING**: Fix lint errors in `tests/conftest.py` - add `# guard: loose-dict` comments or convert to TypedDict
-2. Decide on scope: Either complete Phases 4-6 OR update implementation plan to reflect that only Phase 1-3 were delivered, then create follow-up work items for the remaining phases
+All previous blocking issues have been resolved:
 
-**Rationale**:
-- The pre-commit hook fails due to missing guard comments on loose dict typings - this blocks merging
-- The implementation plan shows Phases 4-6 as uncompleted (`[ ]` checkboxes). Either the plan needs updating to reflect the actual scope, or the remaining work needs to be completed. The work that WAS done (Phases 1-3) is high quality and the tests pass.
+1. **Lint passes**: Guard comments added to all loose dict typings, pre-commit hooks pass
+2. **Scope clarified**: Implementation plan clearly documents Phases 1-3 as delivered, Phases 4-6 as deferred to follow-up work
+3. **Tests pass**: All 715 unit tests pass (including 23 new TUI view tests)
+4. **Code quality**: Clean separation between render logic and curses, comprehensive test coverage for view rendering
 
----
-
-## Fixes Applied
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| Missing `# guard: loose-dict` comments in tests/conftest.py (11 violations) | Added `# guard: loose-dict` comments to all `dict[str, object]` type annotations | 349f3fa |
-| Implementation plan shows uncompleted Phases 4-6 | Updated plan to clarify delivered scope (Phases 1-3) and document deferred scope (Phases 4-6) with rationale | ca465ba |
-
-### Verification
-
-- ✅ All tests passing (715 unit + 48 integration)
-- ✅ Pre-commit hooks passing (format + lint)
-- ✅ No lint violations detected
-- ✅ Implementation plan accurately reflects delivered work
+The implementation delivers on its refined scope: testable view architecture and comprehensive view logic tests. The remaining work (data flow tests, edge cases, CI docs) is properly documented as follow-up items.
