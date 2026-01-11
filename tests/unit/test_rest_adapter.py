@@ -19,23 +19,20 @@ def mock_adapter_client():  # type: ignore[explicit-any, unused-ignore]
 
 
 @pytest.fixture
-def mock_mcp_server():  # type: ignore[explicit-any, unused-ignore]
-    """Create mock MCP server."""
-    server = MagicMock()
-    server.computer_name = "local"
-    server.teleclaude__list_computers = AsyncMock()
-    server.teleclaude__list_projects = AsyncMock()
-    server.teleclaude__list_sessions = AsyncMock()
-    server.teleclaude__list_todos = AsyncMock()
-    server.teleclaude__end_session = AsyncMock()
-    return server
+def mock_cache():  # type: ignore[explicit-any, unused-ignore]
+    """Create mock DaemonCache."""
+    cache = MagicMock()
+    cache.get_sessions = MagicMock(return_value=[])
+    cache.get_computers = MagicMock(return_value=[])
+    cache.get_projects = MagicMock(return_value=[])
+    cache.get_todos = MagicMock(return_value=[])
+    return cache
 
 
 @pytest.fixture
-def rest_adapter(mock_adapter_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Create RESTAdapter instance with mocked client and MCP server."""
-    adapter = RESTAdapter(client=mock_adapter_client)
-    adapter.set_mcp_server(mock_mcp_server)
+def rest_adapter(mock_adapter_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Create RESTAdapter instance with mocked client and cache."""
+    adapter = RESTAdapter(client=mock_adapter_client, cache=mock_cache)
     return adapter
 
 
@@ -52,44 +49,61 @@ def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-igno
     assert response.json() == {"status": "ok"}
 
 
-def test_list_sessions_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions returns sessions with computer field."""
-    mock_mcp_server.teleclaude__list_sessions.return_value = [
-        {"session_id": "sess-1", "title": "Test Session", "computer": "local"},
-        {"session_id": "sess-2", "title": "Remote Session", "computer": "remote"},
-    ]
+def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions returns local sessions with computer field."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = [
+            {"session_id": "sess-1", "title": "Test Session"},
+        ]
+        # Mock cache to return one remote session
+        mock_cache.get_sessions.return_value = [
+            {"session_id": "sess-2", "title": "Remote Session", "computer": "remote"},
+        ]
 
-    response = test_client.get("/sessions")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2
-    assert data[0]["session_id"] == "sess-1"
-    assert data[0]["computer"] == "local"
-    mock_mcp_server.teleclaude__list_sessions.assert_called_once_with(None)
-
-
-def test_list_sessions_with_computer_filter(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions passes computer parameter."""
-    mock_mcp_server.teleclaude__list_sessions.return_value = [
-        {"session_id": "sess-1", "computer": "local"},
-    ]
-
-    response = test_client.get("/sessions?computer=local")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    mock_mcp_server.teleclaude__list_sessions.assert_called_once_with("local")
+        response = test_client.get("/sessions")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        # First session is local
+        assert data[0]["session_id"] == "sess-1"
+        assert "computer" in data[0]
+        # Second session is from cache
+        assert data[1]["session_id"] == "sess-2"
+        assert data[1]["computer"] == "remote"
+        mock_handler.assert_called_once()
 
 
-def test_list_sessions_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions returns 503 when MCP server not available."""
-    # Create adapter without MCP server
-    adapter = RESTAdapter(client=mock_adapter_client)
+def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions passes computer parameter to cache."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = [{"session_id": "sess-1"}]
+        mock_cache.get_sessions.return_value = []
+
+        response = test_client.get("/sessions?computer=local")
+        assert response.status_code == 200
+        # Verify cache was queried with computer filter
+        mock_cache.get_sessions.assert_called_once_with("local")
+
+
+def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions works without cache (local-only mode)."""
+    adapter = RESTAdapter(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
 
-    response = client.get("/sessions")
-    assert response.status_code == 503
-    assert "MCP server not available" in response.json()["detail"]
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = [{"session_id": "sess-1", "title": "Local"}]
+
+        response = client.get("/sessions")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["session_id"] == "sess-1"
 
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -157,29 +171,23 @@ def test_create_session_defaults_title_to_untitled(  # type: ignore[explicit-any
     assert call_args.kwargs["metadata"].title == "Untitled"
 
 
-def test_end_session_success(rest_adapter, test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test end_session endpoint with MCP server."""
-    mock_mcp = MagicMock()
-    mock_mcp.teleclaude__end_session = AsyncMock(return_value={"status": "success", "message": "Session ended"})
-    rest_adapter.set_mcp_server(mock_mcp)
+def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test end_session endpoint calls command handler."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_end_session", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = {"status": "success", "message": "Session ended"}
 
-    response = test_client.delete("/sessions/sess-123?computer=local")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "success"
+        response = test_client.delete("/sessions/sess-123?computer=local")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
 
-    mock_mcp.teleclaude__end_session.assert_called_once_with(computer="local", session_id="sess-123")
-
-
-def test_end_session_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test end_session returns 503 when MCP server not set."""
-    # Create adapter without MCP server
-    adapter = RESTAdapter(client=mock_adapter_client)
-    client = TestClient(adapter.app)
-
-    response = client.delete("/sessions/sess-123?computer=local")
-    assert response.status_code == 503
-    assert "MCP server not available" in response.json()["detail"]
+        # Verify handler was called with session_id and client
+        mock_handler.assert_called_once()
+        call_args = mock_handler.call_args
+        assert call_args.args[0] == "sess-123"
+        assert call_args.args[1] == mock_adapter_client
 
 
 def test_send_message_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -220,75 +228,99 @@ def test_get_transcript_success(test_client, mock_adapter_client):  # type: igno
     assert call_args.kwargs["payload"]["args"] == ["1000"]
 
 
-def test_list_computers_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_computers filters offline and normalizes status."""
-    mock_mcp_server.teleclaude__list_computers.return_value = [
-        {"name": "mypc", "status": "local", "user": "me", "host": "localhost", "extra": "ignored"},
-        {"name": "remote", "status": "online", "user": "you", "host": "192.168.1.2"},
-        {"name": "offline", "status": "offline", "user": "x", "host": "x"},  # Should be filtered
-    ]
+def test_list_computers_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_computers returns local + cached computers."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = {"user": "me", "host": "localhost"}
+        # Mock cache to return one remote computer
+        mock_cache.get_computers.return_value = [
+            {"name": "remote", "user": "you", "host": "192.168.1.2"},
+        ]
 
-    response = test_client.get("/computers")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2  # offline filtered out
-    # First computer: local status normalized to online
-    assert data[0]["name"] == "mypc"
-    assert data[0]["status"] == "online"  # "local" → "online"
-    assert data[0]["user"] == "me"
-    assert data[0]["host"] == "localhost"
-    assert "extra" not in data[0]  # Extra fields filtered
-    # Second computer: already online
-    assert data[1]["name"] == "remote"
-    assert data[1]["status"] == "online"
+        response = test_client.get("/computers")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        # First computer: local (from config)
+        assert data[0]["status"] == "online"
+        assert data[0]["user"] == "me"
+        assert data[0]["host"] == "localhost"
+        # Second computer: from cache
+        assert data[1]["name"] == "remote"
+        assert data[1]["status"] == "online"
+        assert data[1]["user"] == "you"
 
 
-def test_list_computers_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_computers returns 503 when MCP server not available."""
-    # Create adapter without MCP server
-    adapter = RESTAdapter(client=mock_adapter_client)
+def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_computers works without cache (local-only mode)."""
+    adapter = RESTAdapter(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
 
-    response = client.get("/computers")
-    assert response.status_code == 503
-    assert "MCP server not available" in response.json()["detail"]
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = {"user": "me", "host": "localhost"}
+
+        response = client.get("/computers")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1  # Only local computer
+        assert data[0]["status"] == "online"
 
 
-def test_list_projects_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects endpoint."""
-    mock_mcp_server.teleclaude__list_projects.return_value = [
-        {"computer": "local", "name": "project1", "path": "/path1"},
-        {"computer": "remote", "name": "project2", "path": "/path2"},
-    ]
+def test_list_projects_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects returns local + cached projects."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = [
+            {"name": "project1", "path": "/path1", "desc": "Local project"},
+        ]
+        # Mock cache to return one remote project (cache uses "desc", not "description")
+        mock_cache.get_projects.return_value = [
+            {"name": "project2", "path": "/path2", "desc": "Remote project"},
+        ]
 
-    response = test_client.get("/projects")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 2
-    assert data[0]["name"] == "project1"
-    mock_mcp_server.teleclaude__list_projects.assert_called_once_with(None)
-
-
-def test_list_projects_with_computer_filter(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects passes computer parameter."""
-    mock_mcp_server.teleclaude__list_projects.return_value = [
-        {"computer": "local", "name": "project1", "path": "/path1"},
-    ]
-
-    response = test_client.get("/projects?computer=local")
-    assert response.status_code == 200
-    mock_mcp_server.teleclaude__list_projects.assert_called_once_with("local")
+        response = test_client.get("/projects")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert data[0]["name"] == "project1"
+        assert data[0]["description"] == "Local project"
+        mock_handler.assert_called_once()
 
 
-def test_list_projects_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects returns 503 when MCP server not available."""
-    # Create adapter without MCP server
-    adapter = RESTAdapter(client=mock_adapter_client)
+def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects passes computer parameter to cache."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = [{"name": "project1", "path": "/path1"}]
+        mock_cache.get_projects.return_value = []
+
+        response = test_client.get("/projects?computer=local")
+        assert response.status_code == 200
+        # Verify cache was queried with computer filter
+        mock_cache.get_projects.assert_called_once_with("local")
+
+
+def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects works without cache (local-only mode)."""
+    adapter = RESTAdapter(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
 
-    response = client.get("/projects")
-    assert response.status_code == 503
-    assert "MCP server not available" in response.json()["detail"]
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.return_value = [{"name": "project1", "path": "/path1", "desc": "Local"}]
+
+        response = client.get("/projects")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "project1"
 
 
 def test_get_agent_availability_success(test_client):  # type: ignore[explicit-any, unused-ignore]
@@ -321,48 +353,50 @@ def test_get_agent_availability_defaults_to_available(test_client):  # type: ign
         assert data["claude"]["unavailable_until"] is None
 
 
-def test_list_projects_with_todos_success(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+def test_list_projects_with_todos_success(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects_with_todos endpoint returns projects with embedded todos."""
-    mock_mcp_server.teleclaude__list_projects.return_value = [
-        {"name": "Project1", "path": "/path/to/project1", "computer": "local", "desc": "Test project"},
-    ]
-    mock_mcp_server.teleclaude__list_todos.return_value = [
-        {"slug": "feature-1", "status": "pending", "description": "Implement feature 1"},
-    ]
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+    ) as mock_projects:
+        with patch(
+            "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
+        ) as mock_todos:
+            mock_projects.return_value = [
+                {"name": "Project1", "path": "/path/to/project1", "desc": "Test project"},
+            ]
+            mock_todos.return_value = [
+                {"slug": "feature-1", "status": "pending", "description": "Implement feature 1"},
+            ]
 
-    response = test_client.get("/projects-with-todos")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["name"] == "Project1"
-    assert data[0]["path"] == "/path/to/project1"
-    assert len(data[0]["todos"]) == 1
-    assert data[0]["todos"][0]["slug"] == "feature-1"
+            response = test_client.get("/projects-with-todos")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["name"] == "Project1"
+            assert data[0]["path"] == "/path/to/project1"
+            assert len(data[0]["todos"]) == 1
+            assert data[0]["todos"][0]["slug"] == "feature-1"
 
 
-def test_list_projects_with_todos_empty_path(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
+def test_list_projects_with_todos_empty_path(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects_with_todos skips todos fetch for empty paths."""
-    mock_mcp_server.teleclaude__list_projects.return_value = [
-        {"name": "Project1", "path": "", "computer": "remote", "desc": "No path"},
-    ]
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+    ) as mock_projects:
+        with patch(
+            "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
+        ) as mock_todos:
+            mock_projects.return_value = [
+                {"name": "Project1", "path": "", "desc": "No path"},
+            ]
 
-    response = test_client.get("/projects-with-todos")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) == 1
-    assert data[0]["todos"] == []
-    # list_todos should NOT be called for empty path
-    mock_mcp_server.teleclaude__list_todos.assert_not_called()
-
-
-def test_list_projects_with_todos_no_mcp_server(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects_with_todos returns 503 when MCP server not available."""
-    adapter = RESTAdapter(client=mock_adapter_client)
-    client = TestClient(adapter.app)
-
-    response = client.get("/projects-with-todos")
-    assert response.status_code == 503
-    assert "MCP server not available" in response.json()["detail"]
+            response = test_client.get("/projects-with-todos")
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["todos"] == []
+            # list_todos should NOT be called for empty path
+            mock_todos.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -388,13 +422,16 @@ def test_adapter_key():  # type: ignore[explicit-any, unused-ignore]
 # ==================== Error Path Tests ====================
 
 
-def test_list_sessions_handler_exception(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_sessions returns 500 when MCP handler raises exception."""
-    mock_mcp_server.teleclaude__list_sessions.side_effect = Exception("Connection failed")
+def test_list_sessions_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_sessions returns 500 when command handler raises exception."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.side_effect = Exception("Connection failed")
 
-    response = test_client.get("/sessions")
-    assert response.status_code == 500
-    assert "Failed to list sessions" in response.json()["detail"]
+        response = test_client.get("/sessions")
+        assert response.status_code == 500
+        assert "Failed to list sessions" in response.json()["detail"]
 
 
 def test_create_session_handler_exception(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -430,33 +467,40 @@ def test_get_transcript_handler_exception(test_client, mock_adapter_client):  # 
     assert "Failed to get transcript" in response.json()["detail"]
 
 
-def test_list_computers_handler_exception(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_computers returns 500 when MCP handler raises exception."""
-    mock_mcp_server.teleclaude__list_computers.side_effect = Exception("Computer info failed")
+def test_list_computers_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_computers returns 500 when command handler raises exception."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.side_effect = Exception("Computer info failed")
 
-    response = test_client.get("/computers")
-    assert response.status_code == 500
-    assert "Failed to list computers" in response.json()["detail"]
-
-
-def test_list_projects_handler_exception(test_client, mock_mcp_server):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects returns 500 when MCP handler raises exception."""
-    mock_mcp_server.teleclaude__list_projects.side_effect = Exception("Project list failed")
-
-    response = test_client.get("/projects")
-    assert response.status_code == 500
-    assert "Failed to list projects" in response.json()["detail"]
+        response = test_client.get("/computers")
+        assert response.status_code == 500
+        assert "Failed to list computers" in response.json()["detail"]
 
 
-def test_end_session_mcp_exception(rest_adapter, test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test end_session returns 500 when MCP server raises exception."""
-    mock_mcp = MagicMock()
-    mock_mcp.teleclaude__end_session = AsyncMock(side_effect=Exception("Session not found"))
-    rest_adapter.set_mcp_server(mock_mcp)
+def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_projects returns 500 when command handler raises exception."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.side_effect = Exception("Project list failed")
 
-    response = test_client.delete("/sessions/sess-123?computer=local")
-    assert response.status_code == 500
-    assert "Failed to end session" in response.json()["detail"]
+        response = test_client.get("/projects")
+        assert response.status_code == 500
+        assert "Failed to list projects" in response.json()["detail"]
+
+
+def test_end_session_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test end_session returns 500 when command handler raises exception."""
+    with patch(
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_end_session", new_callable=AsyncMock
+    ) as mock_handler:
+        mock_handler.side_effect = Exception("Session not found")
+
+        response = test_client.delete("/sessions/sess-123?computer=local")
+        assert response.status_code == 500
+        assert "Failed to end session" in response.json()["detail"]
 
 
 def test_get_agent_availability_db_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
