@@ -23,7 +23,10 @@
 
 ## Critical Issues (must fix)
 
-None found.
+1. **[lint]** `tests/conftest.py` - Missing `# guard: loose-dict` comments on dict typings
+   - Lines 44, 83, 104, 125-128, 130, 138, 148, 163: `dict[str, object]` typings missing guard comments
+   - Pre-commit hook fails: `guardrails: loose dict typings detected (11 > 0)`
+   - **Suggested fix**: Add `# guard: loose-dict` comment to each line with `dict[str, object]` OR convert to TypedDict
 
 ## Important Issues (should fix)
 
@@ -64,6 +67,9 @@ None found.
 ### If REQUEST CHANGES:
 
 Priority fixes:
-1. Decide on scope: Either complete Phases 4-6 OR update implementation plan to reflect that only Phase 1-3 were delivered, then create follow-up work items for the remaining phases
+1. **BLOCKING**: Fix lint errors in `tests/conftest.py` - add `# guard: loose-dict` comments or convert to TypedDict
+2. Decide on scope: Either complete Phases 4-6 OR update implementation plan to reflect that only Phase 1-3 were delivered, then create follow-up work items for the remaining phases
 
-**Rationale**: The implementation plan shows Phases 4-6 as uncompleted (`[ ]` checkboxes). Either the plan needs updating to reflect the actual scope, or the remaining work needs to be completed. The work that WAS done (Phases 1-3) is high quality and the tests pass.
+**Rationale**:
+- The pre-commit hook fails due to missing guard comments on loose dict typings - this blocks merging
+- The implementation plan shows Phases 4-6 as uncompleted (`[ ]` checkboxes). Either the plan needs updating to reflect the actual scope, or the remaining work needs to be completed. The work that WAS done (Phases 1-3) is high quality and the tests pass.
