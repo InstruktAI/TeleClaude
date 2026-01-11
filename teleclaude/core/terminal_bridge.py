@@ -63,7 +63,9 @@ async def wait_with_timeout(
         )
         try:
             process.kill()
-            await wait_with_timeout(process, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")  # Clean up zombie
+            await asyncio.wait_for(process.wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
         raise SubprocessTimeoutError(f"{operation} timed out after {timeout}s")
@@ -104,7 +106,9 @@ async def communicate_with_timeout(
         )
         try:
             process.kill()
-            await wait_with_timeout(process, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")  # Clean up zombie
+            await asyncio.wait_for(process.wait(), timeout=2.0)
+        except asyncio.TimeoutError:
+            logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
         raise SubprocessTimeoutError(f"{operation} timed out after {timeout}s")
