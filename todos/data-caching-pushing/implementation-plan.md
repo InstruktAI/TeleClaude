@@ -133,46 +133,39 @@ class DaemonCache:
 
 ---
 
-## Phase 3: WebSocket Server (DEFERRED)
+## Phase 3: WebSocket Server
 
 **Goal:** Push updates from daemon to TUI via WebSocket.
 
-**Status:** Deferred to future work - foundation complete in Phases 0-2
+**Status:** ✅ Complete
 
-### Task 3.1: Add WebSocket endpoint to REST adapter
+- [x] **Task 3.1:** Add WebSocket endpoint to REST adapter
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. ✅ Added `/ws` endpoint accepting WebSocket connections
+    2. ✅ Track connected clients in `_ws_clients` set
+    3. ✅ Handle subscription messages: `{"subscribe": "sessions"}`, `{"subscribe": "preparation"}`
+    4. ✅ Handle refresh messages: `{"refresh": true}`
 
-**Files:** `teleclaude/adapters/rest_adapter.py`
+- [x] **Task 3.2:** Push cache changes to WebSocket clients
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. ✅ Subscribe to `cache.subscribe()` in `__init__()`
+    2. ✅ `_on_cache_change()` pushes to all connected WebSocket clients
+    3. ✅ Message format: `{"event": "session_updated", "data": {...}}`
 
-**Dependencies:** `websockets` or FastAPI's WebSocket support
-
-**Changes:**
-1. Add `/ws` endpoint accepting WebSocket connections
-2. Track connected clients
-3. Handle subscription messages: `{"subscribe": "sessions"}`, `{"subscribe": "preparation"}`
-4. Handle refresh messages: `{"refresh": true}`
-
-### Task 3.2: Push cache changes to WebSocket clients
-
-**Files:** `teleclaude/adapters/rest_adapter.py`
-
-**Changes:**
-1. Subscribe to `cache.subscribe()` for change notifications
-2. When cache changes, push to all connected WebSocket clients
-3. Message format: `{"event": "session_updated", "data": {...}}`
-
-### Task 3.3: Update TUI to use WebSocket
-
-**Files:** `teleclaude/cli/tui/app.py`, `teleclaude/cli/api_client.py`
-
-**Changes:**
-1. Add WebSocket client to `TelecAPIClient`
-2. Connect on startup, subscribe to relevant view
-3. Render from pushed data instead of polling REST
+- [ ] **Task 3.3:** Update TUI to use WebSocket
+  - Files: `teleclaude/cli/tui/app.py`, `teleclaude/cli/api_client.py`
+  - Status: Deferred (TUI client-side implementation)
+  - Changes:
+    1. Add WebSocket client to `TelecAPIClient`
+    2. Connect on startup, subscribe to relevant view
+    3. Render from pushed data instead of polling REST
 
 ### Verification:
-- TUI connects via WebSocket
-- Session changes appear in TUI without refresh
-- Disconnection handled gracefully
+- ✅ WebSocket endpoint available at `/ws`
+- ✅ Cache changes trigger notifications to WebSocket clients
+- ⏸️ TUI WebSocket client deferred to future work
 
 ---
 
@@ -180,25 +173,25 @@ class DaemonCache:
 
 **Goal:** Advertise interest in heartbeat so remotes know who wants events.
 
-### Task 4.1: Track TUI interest in cache
+**Status:** ✅ Complete
 
-**Files:** `teleclaude/core/cache.py`
+- [x] **Task 4.1:** Track TUI interest in cache
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. ✅ When WebSocket client subscribes, call `cache.set_interest()` via `_update_cache_interest()`
+    2. ✅ When WebSocket client disconnects, update interest to remove it
 
-**Changes:**
-1. When WebSocket client subscribes, call `cache.set_interest()`
-2. When WebSocket client disconnects, remove interest
-
-### Task 4.2: Include interest in heartbeat
-
-**Files:** `teleclaude/adapters/redis_adapter.py`
-
-**Changes:**
-1. Heartbeat payload includes `interested_in: ["sessions"]` when cache has interest
-2. Parse `interested_in` from received heartbeats
+- [x] **Task 4.2:** Include interest in heartbeat
+  - Files: `teleclaude/adapters/redis_adapter.py`, `teleclaude/daemon.py`
+  - Changes:
+    1. ✅ Redis adapter receives cache reference from daemon
+    2. ✅ Heartbeat payload includes `interested_in: ["sessions"]` when cache has interest
+    3. ⏸️ Parse `interested_in` from received heartbeats (deferred to Phase 5+)
 
 ### Verification:
-- Heartbeat includes interest flags when TUI connected
-- Interest flags removed when TUI disconnects
+- ✅ Cache interest tracked when WebSocket clients subscribe
+- ✅ Heartbeat includes interest flags when cache has interest
+- ✅ Interest flags removed when all WebSocket clients disconnect
 
 ---
 

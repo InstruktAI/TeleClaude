@@ -40,6 +40,7 @@ from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.cache import DaemonCache
 
 logger = get_logger(__name__)
 
@@ -71,6 +72,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         # Store adapter client reference (ONLY interface to daemon)
         self.client = adapter_client
+
+        # Cache reference (wired by daemon after start)
+        self.cache: "DaemonCache | None" = None
 
         # Adapter state
         self._message_poll_task: Optional[asyncio.Task[None]] = None
@@ -1018,15 +1022,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 await self._reconnect_with_backoff()
 
     async def _send_heartbeat(self) -> None:
-        """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
+        """Send minimal Redis key with TTL as heartbeat (presence ping + interest advertising)."""
         logger.trace("Sent heartbeat for %s", self.computer_name)
         key = f"computer:{self.computer_name}:heartbeat"
 
-        # Minimal payload - just alive ping
-        payload: dict[str, str] = {
+        # Payload with interest advertising
+        payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
             "computer_name": self.computer_name,
             "last_seen": datetime.now(timezone.utc).isoformat(),
         }
+
+        # Include interest if cache available
+        if self.cache:
+            interest = list(self.cache.get_interest())
+            if interest:
+                payload["interested_in"] = interest
+                logger.trace("Heartbeat includes interest: %s", interest)
 
         # Set key with auto-expiry
         redis_client = self._require_redis()
