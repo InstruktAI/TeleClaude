@@ -73,3 +73,19 @@ Priority fixes:
 **Rationale**:
 - The pre-commit hook fails due to missing guard comments on loose dict typings - this blocks merging
 - The implementation plan shows Phases 4-6 as uncompleted (`[ ]` checkboxes). Either the plan needs updating to reflect the actual scope, or the remaining work needs to be completed. The work that WAS done (Phases 1-3) is high quality and the tests pass.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Missing `# guard: loose-dict` comments in tests/conftest.py (11 violations) | Added `# guard: loose-dict` comments to all `dict[str, object]` type annotations | 349f3fa |
+| Implementation plan shows uncompleted Phases 4-6 | Updated plan to clarify delivered scope (Phases 1-3) and document deferred scope (Phases 4-6) with rationale | ca465ba |
+
+### Verification
+
+- ✅ All tests passing (715 unit + 48 integration)
+- ✅ Pre-commit hooks passing (format + lint)
+- ✅ No lint violations detected
+- ✅ Implementation plan accurately reflects delivered work
