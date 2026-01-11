@@ -166,6 +166,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self._idle_poll_last_log_at = now
         self._idle_poll_suppressed = 0
 
+    def _log_task_exception(self, task: asyncio.Task[object]) -> None:
+        """
+        Log exceptions from untracked background tasks.
+
+        Used as done callback for tasks spawned without TaskRegistry to prevent
+        silent failures.
+
+        Args:
+            task: The completed task
+        """
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("Untracked task %s failed: %s", task.get_name(), exc, exc_info=exc)
+
     async def start(self) -> None:
         """Initialize Redis connection and start background tasks."""
         if self._running:
@@ -180,7 +196,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 self._ensure_connection_and_start_tasks(), name="redis-connection"
             )
         else:
-            self._connection_task = asyncio.create_task(self._ensure_connection_and_start_tasks())
+            # Fallback: untracked task with explicit exception logging
+            self._connection_task = asyncio.create_task(
+                self._ensure_connection_and_start_tasks(), name="redis-connection"
+            )
+            self._connection_task.add_done_callback(self._log_task_exception)
         logger.info("RedisAdapter start triggered (connection handled asynchronously)")
 
     async def _ensure_connection_and_start_tasks(self) -> None:
