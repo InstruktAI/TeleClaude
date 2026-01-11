@@ -17,3 +17,4 @@
 | 2026-01-11 | data-caching-pushing | Data Caching & Push Architecture (Phases 0-7) | DELIVERED | f12331d | done/data-caching-pushing |
 | 2026-01-11 | e2e-smoke-tests | End-to-End Smoke Tests | DELIVERED | 3966dc5 | done/013-e2e-smoke-tests |
 | 2026-01-11 | tui-snapshot-tests | TUI View Architecture Refactor & Tests | DELIVERED | 9210bbe | done/014-tui-snapshot-tests |
+| 2026-01-12 | performance-hardening | Performance Hardening: Async Resilience & Data Efficiency (Phase 1) | DELIVERED | 2a1cbcf | done/015-performance-hardening |
