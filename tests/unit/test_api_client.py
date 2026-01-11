@@ -2,7 +2,7 @@
 
 # type: ignore - test uses mocked httpx
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -90,7 +90,7 @@ async def test_list_computers_success():
     mock_response.status_code = 200
     mock_response.json.return_value = [{"name": "local", "host": "localhost"}]
 
-    with patch.object(client._client, "get", return_value=mock_response) as mock_get:
+    with patch.object(client._client, "get", return_value=mock_response):
         result = await client.list_computers()
 
         assert len(result) == 1
@@ -198,7 +198,7 @@ async def test_get_agent_availability():
     mock_response.status_code = 200
     mock_response.json.return_value = {"claude": {"available": True}}
 
-    with patch.object(client._client, "get", return_value=mock_response) as mock_get:
+    with patch.object(client._client, "get", return_value=mock_response):
         result = await client.get_agent_availability()
 
         assert "claude" in result

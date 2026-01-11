@@ -123,7 +123,6 @@ def test_configure_codex_is_idempotent(tmp_path, monkeypatch):
     # First run
     install_hooks.configure_codex(repo_root)
     content_after_first = codex_config.read_text()
-    data_after_first = tomllib.loads(content_after_first)
 
     # Second run
     install_hooks.configure_codex(repo_root)

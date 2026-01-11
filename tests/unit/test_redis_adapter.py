@@ -179,7 +179,6 @@ async def test_send_message_adds_to_stream():
     """Test that send_message adds message to Redis stream."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.models import (
-        MessageMetadata,
         RedisAdapterMetadata,
         Session,
         SessionAdapterMetadata,

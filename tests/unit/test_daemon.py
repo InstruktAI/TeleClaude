@@ -324,9 +324,6 @@ async def test_restart_mcp_server_replaces_task():
     with pytest.raises(asyncio.CancelledError):
         await daemon.mcp_task
 
-        assert result["status"] == "error"
-        assert "Timeout waiting for command acceptance" in result["message"]
-
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_uses_snapshot():

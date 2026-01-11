@@ -1,6 +1,5 @@
 """Integration tests for MCP tools."""
 
-import asyncio
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch

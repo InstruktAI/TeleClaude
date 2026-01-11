@@ -1,7 +1,6 @@
 """Test summarizer helper functions."""
 
 import json
-from pathlib import Path
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.summarizer import extract_recent_exchanges
