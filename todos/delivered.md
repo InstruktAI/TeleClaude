@@ -15,3 +15,4 @@
 | 2026-01-09 | telec-enhancements | telec: TUI Client for TeleClaude | DELIVERED | ceb9e4f | done/011-telec-enhancements |
 | 2026-01-10 | terminal-adapter-refactor | Rename TerminalAdapter to RESTAdapter | DELIVERED | 5a1991d | done/012-terminal-adapter-refactor |
 | 2026-01-11 | data-caching-pushing | Data Caching & Push Architecture (Phases 0-7) | DELIVERED | f12331d | done/data-caching-pushing |
+| 2026-01-11 | e2e-smoke-tests | End-to-End Smoke Tests | DELIVERED | 3966dc5 | done/013-e2e-smoke-tests |

@@ -6,13 +6,6 @@
 
 ---
 
-## End-to-End Smoke Tests
-
-- [>] e2e-smoke-tests
-      Comprehensive smoke test suite for WebSocket/Cache/Redis event flow. Nightly CI validation.
-
----
-
 ## UI Event Queue
 
 - [>] ui-event-queue-per-adapter
