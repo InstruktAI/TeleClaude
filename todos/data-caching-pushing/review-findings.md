@@ -1,129 +1,155 @@
 # Code Review: data-caching-pushing
 
 **Reviewed**: 2026-01-11
-**Reviewer**: Claude Opus 4.5 (Reviewer Role)
-**Review Type**: Re-review after fixes applied
+**Reviewer**: Claude Opus 4.5 (TeleClaude)
+**Review Type**: Full review of Phases 0-6 implementation
 
 ## Requirements Coverage
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
+| Instant reads (TUI reads from local cache) | ✅ | DaemonCache provides instant reads for REST endpoints |
+| Event-driven updates (push to interested daemons) | ✅ | Redis adapter pushes session events to peers via streams |
+| Interest-based activation (cache activates when TUI connected) | ✅ | WebSocket subscriptions track interest, advertised in heartbeat |
+| Minimal traffic (only push to interested daemons) | ✅ | `_get_interested_computers()` filters to only interested peers |
 | Phase 0: Fix REST/MCP Separation | ✅ | MCPServerProtocol removed, command_handlers used directly |
 | Phase 1: DaemonCache Foundation | ✅ | Cache class created with TTL, interest, notifications |
 | Phase 2: REST Reads from Cache | ✅ | Endpoints merge local + cached remote data |
-| Instant reads for TUI | ⚠️ | Local data instant, cache population not yet wired (Phase 4+) |
-| Linting passes | ✅ | `make lint` shows 0 errors |
-| Tests pass | ✅ | 63 tests passing (24 cache + 39 REST adapter) |
-| Unit tests for cache | ✅ | Comprehensive test coverage added |
+| Phase 3: WebSocket Server | ✅ | `/ws` endpoint with subscription handling |
+| Phase 4: Interest Management | ✅ | Interest tracked in cache, included in heartbeat |
+| Phase 5: Event Push | ✅ | Redis adapter pushes to `session_events:{computer}` streams |
+| Phase 6: Event Receive | ✅ | Redis adapter polls stream and updates cache |
+| Phase 7: TUI Refactor | ⏸️ | Deferred (server infrastructure complete, client pending) |
+| Linting passes | ✅ | pyright/mypy: 0 errors |
+| Tests pass | ✅ | 692 unit tests pass in 3.72s |
 
 ## Critical Issues (must fix)
 
-None. All previously identified critical issues have been fixed.
+**1. [Fire-and-forget task] `redis_adapter.py:1086` - Unmonitored asyncio task swallows exceptions**
+
+```python
+asyncio.create_task(self._push_session_event_to_peers(event, data))
+```
+
+If `_push_session_event_to_peers` raises an exception, it will be silently lost. Users will see stale data without any indication of why events stopped pushing.
+
+- Suggested fix: Add exception callback to log failures:
+  ```python
+  task = asyncio.create_task(self._push_session_event_to_peers(event, data))
+  task.add_done_callback(lambda t: logger.error("Push task failed: %s", t.exception()) if t.done() and not t.cancelled() and t.exception() else None)
+  ```
+
+**2. [Fire-and-forget task] `rest_adapter.py:476` - Unmonitored WebSocket send swallows exceptions**
+
+```python
+asyncio.create_task(ws.send_json({"event": event, "data": data}))
+```
+
+The except block on lines 477-478 will NEVER catch exceptions from this task because `asyncio.create_task()` returns immediately. WebSocket clients silently miss updates.
+
+- Suggested fix: Add done callback that removes dead clients:
+  ```python
+  task = asyncio.create_task(ws.send_json({"event": event, "data": data}))
+  def on_done(t: asyncio.Task, client: WebSocket = ws) -> None:
+      if t.done() and t.exception():
+          logger.warning("WebSocket send failed, removing client: %s", t.exception())
+          self._ws_clients.discard(client)
+          self._client_subscriptions.pop(client, None)
+  task.add_done_callback(on_done)
+  ```
 
 ## Important Issues (should fix)
 
-### 1. [errors] Silent stale data return in get_todos()
-- **Location**: `teleclaude/core/cache.py:198-199`
-- **Description**: When todos are stale or missing, `get_todos()` returns empty list with no logging. Caller cannot distinguish between "no todos exist" and "data is stale/missing".
-- **Suggested fix**: Add debug logging: `logger.debug("Returning empty: todos stale/missing for %s:%s", computer, project_path)`
+**1. [Resource leak] `redis_adapter.py:122-128` - Cache subscription not cleaned up on replacement**
 
-### 2. [errors] Todo fetch failures silently return empty list
-- **Location**: `teleclaude/adapters/rest_adapter.py:341-342`
-- **Description**: When `handle_list_todos()` fails, error is logged as WARNING but project returns with empty `todos` list. Users cannot distinguish between "no todos" and "failed to load todos".
-- **Suggested fix**: Add `todos_error` field to project dict when fetch fails, or log at ERROR level with `exc_info=True`.
+When cache is replaced via the property setter, the old cache subscription is not cleaned up. If cache is replaced, the old cache will still call `_on_cache_change`.
 
-### 3. [tests] Missing test for remove_session on non-existent session
-- **Location**: `teleclaude/core/cache.py:227-236`
-- **Description**: `remove_session()` silently succeeds for non-existent sessions. No test verifies this idempotent behavior or that no notification is sent.
-- **Suggested fix**: Add test `test_remove_session_non_existent_does_not_notify()`
+- Suggested fix: Unsubscribe from old cache before setting new one:
+  ```python
+  @cache.setter
+  def cache(self, value: "DaemonCache | None") -> None:
+      if self._cache:
+          self._cache.unsubscribe(self._on_cache_change)
+      self._cache = value
+      if value:
+          value.subscribe(self._on_cache_change)
+  ```
 
-### 4. [tests] Missing test for todos fetch exception handling
-- **Location**: `teleclaude/adapters/rest_adapter.py:341-342`
-- **Description**: The exception handling path when `handle_list_todos()` fails is not tested.
-- **Suggested fix**: Add test `test_list_projects_with_todos_handles_todo_fetch_exception()`
+**2. [Resource leak] `rest_adapter.py:57-58` - Same issue in REST adapter**
 
-### 5. [tests] Missing test for set_interest() input aliasing prevention
-- **Location**: `teleclaude/core/cache.py:275`
-- **Description**: The `set_interest()` method copies input to prevent aliasing (fixed in commit 8940a6a), but there's no test verifying this behavior.
-- **Suggested fix**: Add test `test_set_interest_copies_input_to_prevent_aliasing()`
+Cache subscription added in `__init__` but never cleaned up on stop or cache replacement.
+
+- Suggested fix: Add cleanup in `stop()` method
+
+**3. [Missing cleanup] `rest_adapter.py:497-507` - WebSocket state not cleared on stop**
+
+When RESTAdapter stops, WebSocket connections and cache interest are not cleaned up. Stale interest remains in cache.
+
+- Suggested fix: Clear interest and close WebSocket clients on stop
+
+**4. [Silent fallback] `redis_adapter.py:843-846` - Base64 decode failure has no logging**
+
+```python
+try:
+    title = base64.b64decode(args[2]).decode()
+except Exception:
+    title = None
+```
+
+No logging when decode fails. Session titles mysteriously missing with no trace.
+
+- Suggested fix: Add `logger.warning("Failed to decode title from base64: %s", e)`
+
+**5. [Silent fallback] `redis_adapter.py:1015-1016` - JSON decode failure uses empty dict**
+
+Invalid JSON in system command args silently becomes empty dict. Commands fail mysteriously.
+
+- Suggested fix: Add `logger.warning("Invalid JSON in system command args: %s", args_json[:100])`
+
+**6. [Silent fallback] `redis_adapter.py:631-634` - Invalid timestamp silently uses "now"**
+
+Stale peers appear as recently active due to silent fallback.
+
+- Suggested fix: Add warning log when fallback is used
 
 ## Suggestions (nice to have)
 
-### 6. [types] Callback type is too loose
-- **Location**: `teleclaude/core/cache.py:75`
-- **Description**: `Callable[[str, object], None]` loses type safety. Event names are stringly-typed, data is untyped.
-- **Suggested fix**: Define discriminated union event types for type-safe notifications.
+1. **[Complexity]** `redis_adapter.py:802-963` - `_handle_incoming_message()` is 160+ lines. Consider dict-based dispatch per coding directives.
 
-### 7. [code] TTL values are magic numbers
-- **Location**: `teleclaude/core/cache.py` (60, 300 scattered throughout)
-- **Description**: TTL values are inline magic numbers in method bodies.
-- **Suggested fix**: Extract to class constants: `COMPUTER_TTL = 60`, `PROJECT_TTL = 300`.
+2. **[Duplication]** `redis_adapter.py:204-238` - Connect/reconnect have nearly identical backoff loops. Extract common helper.
 
-### 8. [code] Inconsistent stale entry handling
-- **Location**: `teleclaude/core/cache.py:136-143` vs `:154-164`
-- **Description**: `get_computers()` auto-expires stale entries and removes them. `get_projects()` filters but does not remove stale entries.
-- **Suggested fix**: Apply uniform approach (auto-expire everywhere or filter everywhere).
+3. **[Duplication]** `redis_adapter.py:248-281` - Repetitive task cancellation pattern. Extract `_cancel_task()` helper.
 
-### 9. [errors] Missing context in cache notification error
-- **Location**: `teleclaude/core/cache.py:328-329`
-- **Description**: Error log doesn't include callback name or event type. Debugging subscriber failures is harder than necessary.
-- **Suggested fix**: `logger.error("Cache subscriber %s failed on event=%s: %s", callback.__name__, event, e, exc_info=True)`
+4. **[Duplication]** `redis_adapter.py:1131-1182` - Heartbeat parsing duplicated from `discover_peers()`. Extract `_iter_heartbeat_data()` generator.
 
-### 10. [code] list_computers could return duplicates
-- **Location**: `teleclaude/adapters/rest_adapter.py:206-216`
-- **Description**: If cached computer has same name as local computer (misconfiguration), duplicates appear in response.
-- **Suggested fix**: Filter out local computer name when iterating cached computers.
+5. **[Logging]** Several `continue` statements skip entries without logging (lines 1152, 1158, 1216, 1221). Add DEBUG/TRACE level logs.
 
-### 11. [types] Mutable data returned by reference
-- **Location**: `teleclaude/core/cache.py:142,164,182,201`
-- **Description**: `get_*()` methods return actual cached data, not copies. Callers can mutate returned dicts and corrupt the cache.
-- **Suggested fix**: Return defensive copies or document that returned data must not be mutated.
+6. **[Types]** Callback type `Callable[[str, object], None]` is loose. Consider discriminated union event types.
 
-### 12. [types] Status fields are stringly-typed
-- **Location**: `teleclaude/mcp/types.py:21,37`, `teleclaude/core/command_handlers.py:72`
-- **Description**: Status fields like `status: str` should use `Literal` types for type safety.
-- **Suggested fix**: `status: Literal["online", "offline"]` etc.
+7. **[Code]** TTL values (60, 300) are magic numbers. Extract to class constants.
 
 ## Strengths
 
-1. **Clean architectural separation** - REST adapter no longer depends on MCP server; uses command_handlers directly
-2. **Well-designed cache** - DaemonCache has appropriate data categories with distinct TTL behaviors
-3. **Generic CachedItem[T]** - Provides type-safe caching with proper generics
-4. **Proper error handling** - REST endpoints use HTTPException consistently with informative messages
-5. **Good logging** - Key execution points have appropriate logging at correct levels
-6. **Comprehensive test coverage** - 63 tests covering happy paths, error paths, edge cases
-7. **Immutability fixes applied** - `set_interest()` and `get_interest()` both copy to prevent external mutation
-8. **Import at top level** - DaemonCache import moved to module top level per coding directives
-9. **Type annotations** - Uses modern Python typing consistently
+1. **Comprehensive test coverage** - `tests/unit/test_cache.py` has 27 tests covering TTL, notifications, filtering, edge cases
+2. **Defensive coding** - `set_interest()` and `get_interest()` correctly use `.copy()` to prevent external mutation
+3. **Exception handling in callbacks** - `_notify()` properly catches callback errors without crashing (tested)
+4. **Clean architecture** - DaemonCache separates concerns cleanly from adapters
+5. **All tests pass** - 692 unit tests pass in 3.72s
+6. **Linting clean** - pyright and mypy show 0 errors, ruff passes
+7. **Good logging** - Key execution points logged at appropriate levels
 
 ## Verdict
 
-**[x] APPROVE** - Ready to merge
+**[x] REQUEST CHANGES** - Fix critical issues first
 
-All critical and high-priority important issues from the previous review have been fixed:
-- Tests pass (63 tests)
-- Linting passes (0 errors)
-- Import moved to top level
-- set_interest() aliasing fixed
+### Priority fixes:
 
-Remaining issues are suggestions and lower-priority improvements that can be addressed in follow-up work. The implementation is solid and meets the requirements for Phases 0-2.
+1. **Critical**: Add exception callbacks to fire-and-forget asyncio tasks (prevents silent failures in production)
+2. **Important**: Clean up cache subscriptions on adapter stop/replacement (prevents resource leaks)
+3. **Important**: Add warning logs for silent fallbacks (enables debugging)
 
 ---
 
-## Previous Review Fixes Applied
+## Previous Reviews
 
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| [Critical] All REST adapter tests broken | Removed mock_mcp_server, replaced with command_handlers patches, added cache integration tests | a07f6da |
-| [Critical] No tests for DaemonCache class | Created tests/unit/test_cache.py with 24 comprehensive test cases | a636e02 |
-| [Important] import-outside-toplevel in daemon.py | Moved DaemonCache import to module top level | 86958b5 |
-| [Important] set_interest() aliasing bug | Changed to use interests.copy() to prevent external mutation | 8940a6a |
-
-## Summary
-
-The data-caching-pushing branch implements Phases 0-2 of the caching architecture correctly:
-- **Phase 0**: MCP server dependency removed from REST adapter
-- **Phase 1**: DaemonCache class created with TTL support, interest management, and change notifications
-- **Phase 2**: REST endpoints merge local data with cached remote data
-
-The foundation is ready for future phases (WebSocket push, event-driven updates, interest-based activation).
+This review supersedes the earlier Phase 0-2 review. Phases 3-6 have been added since then, introducing new critical issues around async task exception handling that must be addressed.
