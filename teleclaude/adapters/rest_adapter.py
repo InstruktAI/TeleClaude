@@ -23,6 +23,7 @@ from teleclaude.core.models import ChannelMetadata, MessageMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import PeerInfo, Session
 
 logger = get_logger(__name__)
@@ -33,13 +34,15 @@ class RESTAdapter(BaseAdapter):
 
     ADAPTER_KEY = "rest"
 
-    def __init__(self, client: AdapterClient) -> None:
+    def __init__(self, client: AdapterClient, cache: "DaemonCache | None" = None) -> None:
         """Initialize REST adapter.
 
         Args:
             client: AdapterClient instance for routing events
+            cache: Optional DaemonCache for remote data (None = local-only mode)
         """
         self.client = client
+        self.cache = cache
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
         self.server: uvicorn.Server | None = None
@@ -55,19 +58,25 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/sessions")  # type: ignore[misc]
         async def list_sessions(  # type: ignore[reportUnusedFunction, unused-ignore]
-            computer: str | None = None,  # noqa: ARG001 - Reserved for future cache integration
+            computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List sessions from local computer only (remote sessions via cache in Phase 2+)."""
+            """List sessions from local computer + cached remote sessions."""
             try:
-                # Use command handler directly - returns LOCAL sessions only
+                # Get LOCAL sessions from command handler
                 local_sessions = await command_handlers.handle_list_sessions()
-                # Add computer field for consistency with MCP format
+                # Add computer field for consistency
                 computer_name = config.computer.name
                 result = []
                 for session in local_sessions:
                     session_dict = dict(session)
                     session_dict["computer"] = computer_name
                     result.append(session_dict)
+
+                # Add REMOTE sessions from cache (if available)
+                if self.cache:
+                    cached_sessions = self.cache.get_sessions(computer)
+                    result.extend([dict(s) for s in cached_sessions])
+
                 return result
             except Exception as e:
                 logger.error("list_sessions failed: %s", e, exc_info=True)
@@ -180,9 +189,9 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/computers")  # type: ignore[misc]
         async def list_computers() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List available computers (local only, remote computers via cache in Phase 2+)."""
+            """List available computers (local + cached remote computers)."""
             try:
-                # Return local computer only (remote computers from cache in Phase 2+)
+                # Local computer
                 computer_info = await command_handlers.handle_get_computer_info()
                 result: list[dict[str, object]] = [  # guard: loose-dict - REST API boundary
                     {
@@ -192,6 +201,20 @@ class RESTAdapter(BaseAdapter):
                         "host": computer_info["host"],
                     }
                 ]
+
+                # Add cached remote computers (if available)
+                if self.cache:
+                    cached_computers = self.cache.get_computers()
+                    for comp in cached_computers:
+                        result.append(
+                            {
+                                "name": comp["name"],
+                                "status": "online",  # Cached computers are online (auto-expired if stale)
+                                "user": comp.get("user"),
+                                "host": comp.get("host"),
+                            }
+                        )
+
                 return result
             except Exception as e:
                 logger.error("list_computers failed: %s", e, exc_info=True)
@@ -199,16 +222,16 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/projects")  # type: ignore[misc]
         async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
-            computer: str | None = None,  # noqa: ARG001 - Reserved for future cache integration
+            computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List projects (local only, remote projects via cache in Phase 2+)."""
+            """List projects (local + cached remote projects)."""
             try:
-                # Use command handler directly - returns LOCAL projects only
+                # Get LOCAL projects from command handler
                 raw_projects = await command_handlers.handle_list_projects()
                 computer_name = config.computer.name
-                # Transform to TUI-expected format:
-                # - desc → description (TUI field naming)
                 result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
+
+                # Add local projects
                 for p in raw_projects:
                     result.append(
                         {
@@ -218,6 +241,22 @@ class RESTAdapter(BaseAdapter):
                             "description": p.get("desc"),
                         }
                     )
+
+                # Add cached REMOTE projects (if available)
+                # Note: Cached projects don't have computer field yet (Phase 1 limitation)
+                # They will be added via heartbeat integration in later phases
+                if self.cache:
+                    cached_projects = self.cache.get_projects(computer)
+                    for proj in cached_projects:
+                        result.append(
+                            {
+                                "computer": "",  # TODO: Add computer field to ProjectInfo in cache
+                                "name": proj["name"],
+                                "path": proj["path"],
+                                "description": proj["desc"],
+                            }
+                        )
+
                 return result
             except Exception as e:
                 logger.error("list_projects failed: %s", e, exc_info=True)

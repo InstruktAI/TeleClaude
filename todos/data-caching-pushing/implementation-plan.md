@@ -114,14 +114,13 @@ class DaemonCache:
 
 **Goal:** REST endpoints read remote data from cache instead of querying remotes.
 
-### Task 2.1: Update REST endpoints to merge local + cached data
-
-**Files:** `teleclaude/adapters/rest_adapter.py`
-
-**Changes:**
-1. `GET /sessions`: Return local sessions (from command handler) + remote sessions (from cache)
-2. `GET /projects-with-todos`: Return local projects + cached remote projects
-3. `GET /projects-with-sessions`: Return local projects + cached remote projects, with sessions attached
+- [x] **Task 2.1:** Update REST endpoints to merge local + cached data
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. `GET /sessions`: Return local sessions + remote sessions from cache
+    2. `GET /computers`: Return local computer + remote computers from cache
+    3. `GET /projects`: Return local projects + remote projects from cache
+  - Note: `/projects-with-todos` deferred (requires complex todo fetching logic)
 
 ### Task 2.2: Add cache population on first access
 

@@ -1569,6 +1569,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Start all adapters via AdapterClient (network operation - can fail)
         await self.client.start()
 
+        # Wire cache to REST adapter
+        rest_adapter = self.client.adapters.get("rest")
+        if rest_adapter and hasattr(rest_adapter, "cache"):
+            rest_adapter.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
+            logger.info("Wired cache to REST adapter")
+
         # Initialize voice handler (side effect - only after network succeeds)
         init_voice_handler()
         logger.info("Voice handler initialized")
