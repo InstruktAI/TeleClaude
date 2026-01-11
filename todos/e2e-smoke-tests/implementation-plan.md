@@ -10,12 +10,12 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
 
 **Goal:** Create test file with fixtures and helpers.
 
-- [ ] **Task 1.1:** Create test file skeleton
+- [x] **Task 1.1:** Create test file skeleton
   - File: `tests/integration/test_e2e_smoke.py`
   - Add module docstring explaining purpose
   - Import required modules
 
-- [ ] **Task 1.2:** Create shared fixtures
+- [x] **Task 1.2:** Create shared fixtures
   ```python
   @pytest.fixture
   def cache() -> DaemonCache:
@@ -39,7 +39,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
       return adapter
   ```
 
-- [ ] **Task 1.3:** Create WebSocket mock helper
+- [x] **Task 1.3:** Create WebSocket mock helper
   ```python
   def create_mock_websocket() -> AsyncMock:
       """Create mock WebSocket with proper spec."""
@@ -59,7 +59,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
 
 **Goal:** Implement the critical path tests.
 
-- [ ] **Task 2.1:** Scenario - WebSocket subscription registers interest
+- [x] **Task 2.1:** Scenario - WebSocket subscription registers interest
   ```python
   async def test_websocket_subscription_registers_interest(rest_adapter, cache):
       """
@@ -67,7 +67,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
       """
   ```
 
-- [ ] **Task 2.2:** Scenario - Cache update reaches WebSocket
+- [x] **Task 2.2:** Scenario - Cache update reaches WebSocket
   ```python
   async def test_cache_update_notifies_websocket_clients(rest_adapter, cache):
       """
@@ -75,7 +75,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
       """
   ```
 
-- [ ] **Task 2.3:** Scenario - Session removal notification
+- [x] **Task 2.3:** Scenario - Session removal notification
   ```python
   async def test_session_removal_notifies_websocket(rest_adapter, cache):
       """
@@ -83,7 +83,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
       """
   ```
 
-- [ ] **Task 2.4:** Scenario - Stale data filtered by TTL
+- [x] **Task 2.4:** Scenario - Stale data filtered by TTL
   ```python
   async def test_stale_cache_data_filtered(cache):
       """
@@ -101,7 +101,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
 
 **Goal:** Test the Redis stream event flow with mocks.
 
-- [ ] **Task 3.1:** Scenario - Heartbeat includes interest
+- [x] **Task 3.1:** Scenario - Heartbeat includes interest
   ```python
   async def test_heartbeat_includes_interest_when_subscribed(cache):
       """
@@ -109,7 +109,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
       """
   ```
 
-- [ ] **Task 3.2:** Scenario - Redis stream event updates cache
+- [x] **Task 3.2:** Scenario - Redis stream event updates cache
   ```python
   async def test_redis_event_updates_local_cache():
       """
@@ -120,7 +120,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
   - Simulate event payload from remote computer
   - Verify cache updated correctly
 
-- [ ] **Task 3.3:** Scenario - Full round-trip simulation
+- [x] **Task 3.3:** Scenario - Full round-trip simulation
   ```python
   async def test_full_event_round_trip():
       """
@@ -139,7 +139,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
 
 **Goal:** Test error handling and edge cases.
 
-- [ ] **Task 4.1:** Scenario - Multiple clients receive broadcasts
+- [x] **Task 4.1:** Scenario - Multiple clients receive broadcasts
   ```python
   async def test_multiple_websocket_clients_receive_updates(rest_adapter, cache):
       """
@@ -147,7 +147,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
       """
   ```
 
-- [ ] **Task 4.2:** Scenario - Subscription filtering
+- [x] **Task 4.2:** Scenario - Subscription filtering
   ```python
   async def test_unsubscribed_client_filtered(rest_adapter, cache):
       """
@@ -156,7 +156,7 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
   ```
   - Note: Document actual behavior (may broadcast all events to all clients)
 
-- [ ] **Task 4.3:** Scenario - Dead client cleanup
+- [x] **Task 4.3:** Scenario - Dead client cleanup
   ```python
   async def test_dead_websocket_client_removed_on_error(rest_adapter, cache):
       """
@@ -174,17 +174,17 @@ Single test file with 8-10 scenarios covering the complete event-driven architec
 
 **Goal:** Ensure tests run in CI and document usage.
 
-- [ ] **Task 5.1:** Add to Makefile
+- [x] **Task 5.1:** Add to Makefile
   ```makefile
   test-smoke:
       uv run pytest tests/integration/test_e2e_smoke.py -v --tb=short
   ```
 
-- [ ] **Task 5.2:** Verify tests work with `make test-e2e`
+- [x] **Task 5.2:** Verify tests work with `make test-e2e`
   - Ensure new tests included in integration suite
   - No conflicts with existing tests
 
-- [ ] **Task 5.3:** Add test docstrings
+- [x] **Task 5.3:** Add test docstrings
   - Each test has docstring explaining the flow
   - Module docstring explains purpose and usage
 
