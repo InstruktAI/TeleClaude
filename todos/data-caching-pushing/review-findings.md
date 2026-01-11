@@ -150,6 +150,27 @@ Stale peers appear as recently active due to silent fallback.
 
 ---
 
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Critical #1: Fire-and-forget task in redis_adapter.py:1086 | Added exception callback to log failures in `_push_session_event_to_peers` | 4aed5aa |
+| Critical #2: Fire-and-forget task in rest_adapter.py:476 | Added done callback to remove dead WebSocket clients on send failure | 0ba3448 |
+| Important #1: Cache subscription leak in redis_adapter.py:122-128 | Unsubscribe from old cache before setting new one | 4aed5aa |
+| Important #2: Cache subscription leak in rest_adapter.py | Added cache unsubscribe in stop() method | 0ba3448 |
+| Important #3: WebSocket state not cleared on stop | Close all WebSocket clients and clear interest in stop() method | 0ba3448 |
+| Important #4: Base64 decode failure silent (redis_adapter.py:843-846) | Added warning log when decode fails | 4aed5aa |
+| Important #5: JSON decode failure silent (redis_adapter.py:1015-1016) | Added warning log when invalid JSON in system command args | 4aed5aa |
+| Important #6: Invalid timestamp fallback silent (redis_adapter.py:631-634) | Added warning log when timestamp parsing fails | 4aed5aa |
+
+**Tests:** All 731 tests pass (unit + integration)
+
+**Commits:**
+- `4aed5aa` - fix(data-caching-pushing): add exception callbacks to fire-and-forget tasks
+- `0ba3448` - fix(data-caching-pushing): add exception callback for WebSocket send tasks
+
+---
+
 ## Previous Reviews
 
 This review supersedes the earlier Phase 0-2 review. Phases 3-6 have been added since then, introducing new critical issues around async task exception handling that must be addressed.
