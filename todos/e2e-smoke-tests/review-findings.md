@@ -177,3 +177,22 @@ assert mock_ws.send_json.called, "send_json should have been called to trigger t
 2. **Critical:** Replace `asyncio.sleep()` timing with explicit synchronization to ensure deterministic tests
 3. **Important:** Verify `test_stale_cache_data_filtered` actually tests filtering behavior or rename it
 4. **Important:** Add assertion in dead client test to verify exception was triggered
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Critical #1: Socket conflict in parallel execution | Replaced `daemon_with_mocked_telegram` dependency with lightweight `patched_config` fixture that only patches config loading without starting daemon infrastructure | ed55cd3 |
+| Critical #2: Non-deterministic timing assertions | Added `wait_for_call()` helper with explicit synchronization. Replaced all `asyncio.sleep(0.1)` calls with explicit waits except dead client test | 65d9a93 |
+| Important #3: test_stale_cache_data_filtered doesn't test filtering | Changed test to use `get_computers()` which performs actual TTL filtering. Now verifies stale entries are filtered and removed | 3e430d8 |
+| Important #6: Dead client test missing exception verification | Added assertion to verify `send_json` was called before checking cleanup behavior | 422d3f6 |
+
+### Test Results
+
+All 10 e2e smoke tests pass in both sequential and parallel execution:
+- Sequential: 692 unit tests + 10 e2e tests passed in 0.61s
+- Parallel (`-n auto`): All 10 tests passed in 1.65s with no socket conflicts
+
+Ready for re-review.
