@@ -231,7 +231,7 @@ async def test_connection_error_handling():
 
     # Mock Redis to raise connection error
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(side_effect=ConnectionError("Connection refused"))
+    mock_redis.scan = AsyncMock(side_effect=ConnectionError("Connection refused"))
     adapter.redis = mock_redis
 
     # Should handle error gracefully and return empty list
