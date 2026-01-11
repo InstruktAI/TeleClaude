@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
-from teleclaude.cli.tui.views.base import ScrollableViewMixin
+from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ def _relative_time(iso_timestamp: str | None) -> str:
         return ""
 
 
-class SessionsView(ScrollableViewMixin):
+class SessionsView(ScrollableViewMixin, BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
     def __init__(
@@ -564,6 +564,129 @@ class SessionsView(ScrollableViewMixin):
             self.selected_index = item_idx
             return True
         return False
+
+    def get_render_lines(self, width: int, height: int) -> list[str]:
+        """Return lines this view would render (testable without curses).
+
+        Args:
+            width: Terminal width
+            height: Terminal height
+
+        Returns:
+            List of strings representing what would be rendered
+        """
+        lines: list[str] = []
+
+        if not self.flat_items:
+            lines.append("(no items)")
+            return lines
+
+        # Calculate scroll range
+        max_scroll = max(0, len(self.flat_items) - height + 3)
+        scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+        for i, item in enumerate(self.flat_items):
+            # Skip items before scroll offset
+            if i < scroll_offset:
+                continue
+            if len(lines) >= height:
+                break  # No more space
+
+            is_selected = i == self.selected_index
+            item_lines = self._format_item(item, width, is_selected)
+            lines.extend(item_lines)
+
+        return lines
+
+    def _format_item(self, item: TreeNode, width: int, selected: bool) -> list[str]:
+        """Format a single tree item for display.
+
+        Args:
+            item: Tree node
+            width: Screen width
+            selected: Whether this item is selected
+
+        Returns:
+            List of formatted lines for this item
+        """
+        indent = "  " * item.depth
+
+        if item.type == "computer":
+            line = f"{indent}🖥  {item.data.get('name', '')}"
+            return [line[:width]]
+
+        if item.type == "project":
+            path = str(item.data.get("path", ""))
+            session_count = len(item.children)
+            suffix = f"({session_count})" if session_count else ""
+            line = f"{indent}📁 {path} {suffix}"
+            return [line[:width]]
+
+        if item.type == "session":
+            return self._format_session(item, width, selected)
+
+        return [""]
+
+    def _format_session(self, item: TreeNode, width: int, selected: bool) -> list[str]:  # noqa: ARG002
+        """Format session for display (1-3 lines).
+
+        Args:
+            item: Session node
+            width: Screen width
+            selected: Whether selected (currently unused but kept for consistency)
+
+        Returns:
+            List of formatted lines (1-3 depending on content and collapsed state)
+        """
+        session = item.data
+        session_id = str(session.get("session_id", ""))
+        is_collapsed = session_id in self.collapsed_sessions
+
+        indent = "  " * item.depth
+        agent = str(session.get("active_agent") or "?")
+        mode = str(session.get("thinking_mode", "?"))
+        title = str(session.get("title", "Untitled"))
+        idx = str(session.get("display_index", "?"))
+
+        # Collapse indicator
+        collapse_indicator = "▶" if is_collapsed else "▼"
+
+        # Relative time
+        last_activity = str(session.get("last_activity") or "")
+        rel_time = _relative_time(last_activity)
+        time_suffix = f"  {rel_time}" if rel_time else ""
+
+        # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
+        lines: list[str] = []
+        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
+        lines.append(line1[:width])
+
+        # If collapsed, only show title line
+        if is_collapsed:
+            return lines
+
+        # Calculate content indent (align with agent name)
+        content_indent = indent + "      "  # 6 chars for "[X] ▶ "
+
+        # Line 2 (expanded only): ID: <full_session_id>
+        line2 = f"{content_indent}ID: {session_id}"
+        lines.append(line2[:width])
+
+        # Line 3: Last input (only if content exists)
+        last_input = str(session.get("last_input") or "").strip()
+        if last_input:
+            input_text = last_input.replace("\n", " ")[:60]
+            line3 = f"{content_indent}last input: {input_text}"
+            lines.append(line3[:width])
+
+        # Line 4: Last output (only if content exists)
+        last_output = str(session.get("last_output") or "").strip()
+        if last_output:
+            output_text = last_output.replace("\n", " ")[:60]
+            line4 = f"{content_indent}last output: {output_text}"
+            lines.append(line4[:width])
+
+        return lines
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content with scrolling support.

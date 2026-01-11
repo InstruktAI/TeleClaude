@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
-from teleclaude.cli.tui.views.base import ScrollableViewMixin
+from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 from teleclaude.config import config
 
@@ -34,7 +34,7 @@ class PrepTreeNode:
     children: list[PrepTreeNode] = field(default_factory=list)
 
 
-class PreparationView(ScrollableViewMixin):
+class PreparationView(ScrollableViewMixin, BaseView):
     """View 2: Preparation - todo-centric tree showing roadmap items.
 
     Shows tree structure: Computer -> Project -> Todos -> Files
@@ -690,6 +690,124 @@ class PreparationView(ScrollableViewMixin):
             self.selected_index = item_idx
             return True
         return False
+
+    def get_render_lines(self, width: int, height: int) -> list[str]:
+        """Return lines this view would render (testable without curses).
+
+        Args:
+            width: Terminal width
+            height: Terminal height
+
+        Returns:
+            List of strings representing what would be rendered
+        """
+        lines: list[str] = []
+
+        if not self.flat_items:
+            lines.append("(no items)")
+            return lines
+
+        # Calculate scroll range
+        max_scroll = max(0, len(self.flat_items) - height + 3)
+        scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+        for i, item in enumerate(self.flat_items):
+            # Skip items before scroll offset
+            if i < scroll_offset:
+                continue
+            if len(lines) >= height:
+                break
+
+            is_selected = i == self.selected_index
+            item_lines = self._format_item(item, width, is_selected)
+            lines.extend(item_lines)
+
+        return lines
+
+    def _format_item(self, item: PrepTreeNode, width: int, selected: bool) -> list[str]:  # noqa: ARG002
+        """Format a single item for display.
+
+        Args:
+            item: Tree node
+            width: Screen width
+            selected: Whether selected (currently unused but kept for consistency)
+
+        Returns:
+            List of formatted lines
+        """
+        indent = "  " * item.depth
+
+        if item.type == "computer":
+            name = str(item.data.get("name", ""))
+            line = f"{indent}[C] {name}"
+            return [line[:width]]
+
+        if item.type == "project":
+            path = str(item.data.get("path", ""))
+            todo_count = len(item.children)
+            suffix = f"({todo_count})" if todo_count else ""
+            line = f"{indent}[P] {path} {suffix}"
+            return [line[:width]]
+
+        if item.type == "todo":
+            return self._format_todo(item, width)
+
+        if item.type == "file":
+            file_index = item.data.get("index", 1)
+            return self._format_file(item, width, int(str(file_index)))
+
+        return [""]
+
+    def _format_todo(self, item: PrepTreeNode, width: int) -> list[str]:
+        """Format a todo item.
+
+        Args:
+            item: Todo node
+            width: Screen width
+
+        Returns:
+            List of formatted lines (1 or 2 depending on state.json)
+        """
+        indent = "  " * item.depth
+        slug = str(item.data.get("slug", ""))
+        is_expanded = slug in self.expanded_todos
+
+        # Collapse indicator
+        indicator = "v" if is_expanded else ">"
+
+        # Status marker and label
+        marker = self.STATUS_MARKERS.get(str(item.data.get("status", "pending")), "[ ]")
+        status_label = str(item.data.get("status", "pending"))
+
+        line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
+        lines = [line[:width]]
+
+        # Second line: build/review status (if available)
+        build_status = item.data.get("build_status")
+        review_status = item.data.get("review_status")
+        if build_status or review_status:
+            build_str = str(build_status) if build_status else "-"
+            review_str = str(review_status) if review_status else "-"
+            state_line = f"{indent}      Build: {build_str}  Review: {review_str}"
+            lines.append(state_line[:width])
+
+        return lines
+
+    def _format_file(self, item: PrepTreeNode, width: int, index: int) -> list[str]:
+        """Format a file item.
+
+        Args:
+            item: File node
+            width: Screen width
+            index: File index (1-based for display)
+
+        Returns:
+            List of formatted lines
+        """
+        indent = "  " * item.depth
+        display_name = str(item.data.get("display_name", ""))
+        line = f"{indent}{index}. {display_name}"
+        return [line[:width]]
 
     def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
         """Render view content with scrolling support.

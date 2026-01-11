@@ -5,6 +5,25 @@ from __future__ import annotations
 from typing import Any
 
 
+class BaseView:
+    """Base class for all TUI views.
+
+    Provides testable interface for view rendering without curses dependency.
+    """
+
+    def get_render_lines(self, width: int, height: int) -> list[str]:
+        """Return lines this view would render (testable without curses).
+
+        Args:
+            width: Terminal width
+            height: Terminal height
+
+        Returns:
+            List of strings representing rendered output
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} must implement get_render_lines()")
+
+
 class ScrollableViewMixin:
     """Mixin providing scroll behavior for views with flat_items list.
 
