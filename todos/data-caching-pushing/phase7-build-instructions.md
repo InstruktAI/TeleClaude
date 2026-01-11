@@ -1,4 +1,74 @@
-# Phase 7 Build Instructions: TUI WebSocket Client
+# Build Instructions: Review Fixes + Phase 7
+
+## PRIORITY 1: Fix Critical Review Issues
+
+**These must be fixed FIRST before Phase 7 implementation.**
+
+### Critical Issue 1: Fire-and-forget asyncio task in redis_adapter.py
+
+**File:** `teleclaude/adapters/redis_adapter.py:1086`
+
+Current code:
+```python
+asyncio.create_task(self._push_session_event_to_peers(event, data))
+```
+
+Fix by adding exception callback:
+```python
+task = asyncio.create_task(self._push_session_event_to_peers(event, data))
+task.add_done_callback(
+    lambda t: logger.error("Event push task failed: %s", t.exception())
+    if t.done() and not t.cancelled() and t.exception() else None
+)
+```
+
+### Critical Issue 2: Fire-and-forget WebSocket send in rest_adapter.py
+
+**File:** `teleclaude/adapters/rest_adapter.py:476`
+
+Current code:
+```python
+asyncio.create_task(ws.send_json({"event": event, "data": data}))
+```
+
+Fix by adding done callback that removes dead clients:
+```python
+task = asyncio.create_task(ws.send_json({"event": event, "data": data}))
+
+def on_send_done(t: asyncio.Task[None], client: WebSocket = ws) -> None:
+    if t.done() and t.exception():
+        logger.warning("WebSocket send failed, removing client: %s", t.exception())
+        self._ws_clients.discard(client)
+        self._client_subscriptions.pop(client, None)
+
+task.add_done_callback(on_send_done)
+```
+
+### Important Issue: Cache subscription cleanup
+
+**File:** `teleclaude/adapters/redis_adapter.py:122-128`
+
+Update the cache property setter to unsubscribe from old cache:
+```python
+@cache.setter
+def cache(self, value: "DaemonCache | None") -> None:
+    if self._cache:
+        self._cache.unsubscribe(self._on_cache_change)
+    self._cache = value
+    if value:
+        value.subscribe(self._on_cache_change)
+        logger.info("Redis adapter subscribed to cache notifications")
+```
+
+### After fixing review issues
+
+Run tests: `make test-unit`
+Run lint: `make lint`
+Commit with message: `fix(async): add exception handling to fire-and-forget tasks`
+
+---
+
+## PRIORITY 2: Phase 7 - TUI WebSocket Client
 
 ## Context
 
