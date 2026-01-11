@@ -272,7 +272,7 @@ class DaemonCache:
         Args:
             interests: Set of interest strings (e.g., {"sessions", "preparation"})
         """
-        self._interest = interests
+        self._interest = interests.copy()  # Copy to prevent external mutation
         logger.debug("Updated cache interest: %s", interests)
 
     def get_interest(self) -> set[str]:
