@@ -220,8 +220,11 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             )
         else:
             self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
+            self._message_poll_task.add_done_callback(self._log_task_exception)
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._heartbeat_task.add_done_callback(self._log_task_exception)
             self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
+            self._session_events_poll_task.add_done_callback(self._log_task_exception)
 
         logger.info("RedisAdapter connected and background tasks started")
 
@@ -1336,6 +1339,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             )
         else:
             task = asyncio.create_task(self._poll_output_stream_for_messages(session_id))
+            task.add_done_callback(self._log_task_exception)
         self._output_stream_listeners[session_id] = task
         logger.info("Started output stream listener for AI-to-AI session %s", session_id[:8])
 
