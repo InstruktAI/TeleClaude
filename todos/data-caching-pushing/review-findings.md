@@ -105,3 +105,20 @@
 2. **Add tests for DaemonCache** - Core feature requires test coverage
 3. **Move import to top level in daemon.py** - Coding directive violation
 4. **Fix set_interest() aliasing** - Potential for external mutation of internal state
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| [Critical] All REST adapter tests broken | Removed mock_mcp_server, replaced with command_handlers patches, added cache integration tests | a07f6da |
+| [Critical] No tests for DaemonCache class | Created tests/unit/test_cache.py with 24 comprehensive test cases | a636e02 |
+| [Important] import-outside-toplevel in daemon.py | Moved DaemonCache import to module top level | 86958b5 |
+| [Important] set_interest() aliasing bug | Changed to use interests.copy() to prevent external mutation | 8940a6a |
+
+**Status:** Ready for re-review
+- All 2 critical issues fixed
+- All 2 high-priority important issues fixed
+- Tests passing (39 REST adapter tests + 24 cache tests = 63 tests)
+- Remaining important issues are lower priority and can be addressed in follow-up PRs
