@@ -16,7 +16,3 @@
 - [>] test-cleanup
       Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
 
-## TUI Testing
-
-- [>] tui-snapshot-tests
-      Two-layer TUI testing: view logic tests (get_render_lines) + data flow integration tests (push event → view update pipeline). ~27 tests covering common use cases.
