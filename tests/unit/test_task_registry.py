@@ -1,6 +1,7 @@
 """Unit tests for TaskRegistry."""
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -162,3 +163,31 @@ async def test_spawn_without_name():
 
     result = await task
     assert result == "unnamed"
+
+
+@pytest.mark.asyncio
+async def test_exception_logging_with_full_traceback():
+    """Test that task exceptions are logged with full traceback (exc_info)."""
+    registry = TaskRegistry()
+
+    async def failing_coro():
+        raise ValueError("Test exception")
+
+    with patch("teleclaude.core.task_registry.logger") as mock_logger:
+        task = registry.spawn(failing_coro(), name="failing-task")
+
+        # Wait for task to complete
+        with pytest.raises(ValueError):
+            await task
+
+        # Give done callback time to execute
+        await asyncio.sleep(0.01)
+
+        # Verify logger.error was called with exc_info
+        mock_logger.error.assert_called_once()
+        call_args = mock_logger.error.call_args
+
+        # Check that exc_info keyword argument was passed
+        assert "exc_info" in call_args.kwargs
+        assert isinstance(call_args.kwargs["exc_info"], ValueError)
+        assert str(call_args.kwargs["exc_info"]) == "Test exception"

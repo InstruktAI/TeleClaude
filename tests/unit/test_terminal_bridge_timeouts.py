@@ -58,6 +58,12 @@ async def test_wait_with_timeout_kills_on_timeout():
     with pytest.raises(SubprocessTimeoutError) as exc_info:
         await wait_with_timeout(mock_process, 0.1, "test operation")
 
+    # Verify structured attributes
+    assert exc_info.value.operation == "test operation"
+    assert exc_info.value.timeout == 0.1
+    assert exc_info.value.pid == 12345
+
+    # Verify error message
     assert "test operation timed out after 0.1s" in str(exc_info.value)
     mock_process.kill.assert_called_once()
     assert wait_calls == 2  # Once for timeout, once for cleanup
@@ -143,6 +149,12 @@ async def test_communicate_with_timeout_kills_on_timeout():
     with pytest.raises(SubprocessTimeoutError) as exc_info:
         await communicate_with_timeout(mock_process, None, 0.1, "test operation")
 
+    # Verify structured attributes
+    assert exc_info.value.operation == "test operation"
+    assert exc_info.value.timeout == 0.1
+    assert exc_info.value.pid == 12345
+
+    # Verify error message
     assert "test operation timed out after 0.1s" in str(exc_info.value)
     mock_process.kill.assert_called_once()
     assert wait_called  # Cleanup wait was called
