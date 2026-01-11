@@ -231,33 +231,57 @@ async def test_session_removal_notifies_websocket(
 @pytest.mark.asyncio
 async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
     """
-    Flow: Add stale data → get_sessions() → stale data not returned.
+    Flow: Add stale computer → get_computers() → stale data filtered out.
 
     Validates:
-    - TTL staleness filtering works
+    - TTL staleness filtering works in get_computers()
+    - Stale entries are auto-expired on access
     - Fresh data returned correctly
     """
-    # Create test session
-    test_session = create_test_session()
+    from teleclaude.core.cache import CachedItem
+    from teleclaude.mcp.types import ComputerInfo
+
+    # Create test computer (TypedDict requires dict syntax)
+    stale_computer: ComputerInfo = {
+        "name": "stale-computer",
+        "role": "worker",
+        "status": "online",
+        "user": "test",
+        "host": "stale.local",
+        "last_seen": datetime(2020, 1, 1, tzinfo=timezone.utc),
+        "adapter_type": "test",
+        "system_stats": None,
+    }
 
     # Manually add with old timestamp (simulate stale data)
-    from teleclaude.core.cache import CachedItem
-
     old_timestamp = datetime(2020, 1, 1, tzinfo=timezone.utc)
-    stale_item = CachedItem(test_session, cached_at=old_timestamp)
-    cache._sessions["test-session-123"] = stale_item
+    stale_item = CachedItem(stale_computer, cached_at=old_timestamp)
+    cache._computers["stale-computer"] = stale_item
 
-    # get_sessions() doesn't auto-expire sessions (TTL=-1, infinite)
-    # But we can verify the is_stale check works
+    # Verify stale check works
     assert stale_item.is_stale(60)  # Stale after 60 seconds
 
-    # Add fresh session
-    fresh_session = create_test_session(session_id="fresh-123")
-    cache.update_session(fresh_session)
+    # Add fresh computer
+    fresh_computer: ComputerInfo = {
+        "name": "fresh-computer",
+        "role": "worker",
+        "status": "online",
+        "user": "test",
+        "host": "fresh.local",
+        "last_seen": datetime.now(timezone.utc),
+        "adapter_type": "test",
+        "system_stats": None,
+    }
+    cache.update_computer(fresh_computer)
 
-    # Verify fresh item is not stale
-    fresh_item = cache._sessions["fresh-123"]
-    assert not fresh_item.is_stale(60)
+    # get_computers() should filter out stale entry and return only fresh
+    computers = cache.get_computers()
+    assert len(computers) == 1
+    assert computers[0]["name"] == "fresh-computer"
+
+    # Verify stale entry was removed from cache
+    assert "stale-computer" not in cache._computers
+    assert "fresh-computer" in cache._computers
 
 
 # ==================== Phase 3: Cross-Computer Simulation ====================
