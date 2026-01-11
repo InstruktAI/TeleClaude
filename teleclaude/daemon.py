@@ -1563,12 +1563,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Start all adapters via AdapterClient (network operation - can fail)
         await self.client.start()
 
-        # Wire MCP server to REST adapter (for operations without event types)
-        rest_adapter = self.client.adapters.get("rest")
-        if rest_adapter and hasattr(rest_adapter, "set_mcp_server") and self.mcp_server:
-            rest_adapter.set_mcp_server(self.mcp_server)  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
-            logger.info("Wired MCP server to REST adapter")
-
         # Initialize voice handler (side effect - only after network succeeds)
         init_voice_handler()
         logger.info("Voice handler initialized")

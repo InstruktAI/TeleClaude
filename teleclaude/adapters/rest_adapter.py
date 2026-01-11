@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncIterator, Literal, Protocol, TypedDict
+from typing import TYPE_CHECKING, AsyncIterator
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
@@ -16,7 +16,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.rest_models import CreateSessionRequest, SendMessageRequest
+from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
+from teleclaude.core import command_handlers
 from teleclaude.core.models import ChannelMetadata, MessageMetadata
 
 if TYPE_CHECKING:
@@ -24,46 +26,6 @@ if TYPE_CHECKING:
     from teleclaude.core.models import PeerInfo, Session
 
 logger = get_logger(__name__)
-
-
-class EndSessionResult(TypedDict):
-    """Result from MCP end_session operation."""
-
-    status: Literal["success", "error"]
-    message: str
-
-
-class MCPServerProtocol(Protocol):
-    """Protocol for MCP server operations used by REST adapter."""
-
-    computer_name: str
-    """Local computer name for normalization."""
-
-    async def teleclaude__end_session(self, *, computer: str, session_id: str) -> EndSessionResult:
-        """End a session on a computer."""
-        ...
-
-    async def teleclaude__list_computers(self) -> list[dict[str, object]]:  # guard: loose-dict - Protocol boundary
-        """List available computers (local + peers)."""
-        ...
-
-    async def teleclaude__list_projects(
-        self, computer: str | None = None
-    ) -> list[dict[str, str]]:  # guard: loose-dict - Protocol boundary
-        """List available projects (local + remote when computer=None)."""
-        ...
-
-    async def teleclaude__list_sessions(
-        self, computer: str | None = None
-    ) -> list[dict[str, object]]:  # guard: loose-dict - Protocol boundary
-        """List sessions (local + remote when computer=None)."""
-        ...
-
-    async def teleclaude__list_todos(
-        self, computer: str, project_path: str, *, skip_peer_check: bool = False
-    ) -> list[dict[str, object]]:  # guard: loose-dict - Protocol boundary
-        """List todos from roadmap.md for a project on target computer."""
-        ...
 
 
 class RESTAdapter(BaseAdapter):
@@ -78,19 +40,10 @@ class RESTAdapter(BaseAdapter):
             client: AdapterClient instance for routing events
         """
         self.client = client
-        self.mcp_server: MCPServerProtocol | None = None  # Set later via set_mcp_server()
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
-
-    def set_mcp_server(self, mcp_server: MCPServerProtocol) -> None:
-        """Set MCP server reference after initialization.
-
-        Args:
-            mcp_server: TeleClaudeMCPServer instance (satisfies MCPServerProtocol)
-        """
-        self.mcp_server = mcp_server
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
@@ -102,17 +55,22 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/sessions")  # type: ignore[misc]
         async def list_sessions(  # type: ignore[reportUnusedFunction, unused-ignore]
-            computer: str | None = None,
+            computer: str | None = None,  # noqa: ARG001 - Reserved for future cache integration
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List sessions from all computers (None) or specific computer."""
-            if not self.mcp_server:
-                raise HTTPException(status_code=503, detail="MCP server not available")
+            """List sessions from local computer only (remote sessions via cache in Phase 2+)."""
             try:
-                # Use MCP handler which adds computer field to each session
-                result = await self.mcp_server.teleclaude__list_sessions(computer)
-                return [dict(s) for s in result]  # Convert TypedDicts to plain dicts
+                # Use command handler directly - returns LOCAL sessions only
+                local_sessions = await command_handlers.handle_list_sessions()
+                # Add computer field for consistency with MCP format
+                computer_name = config.computer.name
+                result = []
+                for session in local_sessions:
+                    session_dict = dict(session)
+                    session_dict["computer"] = computer_name
+                    result.append(session_dict)
+                return result
             except Exception as e:
-                logger.error("list_sessions failed (computer=%s): %s", computer, e, exc_info=True)
+                logger.error("list_sessions failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
 
         @self.app.post("/sessions")  # type: ignore[misc]
@@ -154,17 +112,16 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.delete("/sessions/{session_id}")  # type: ignore[misc]
         async def end_session(  # type: ignore[reportUnusedFunction, unused-ignore]
-            session_id: str, computer: str = Query(...)
+            session_id: str,
+            computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
-            """End session - uses MCP server directly (no event for this operation)."""
-            if not self.mcp_server:
-                raise HTTPException(status_code=503, detail="MCP server not available")
-            # Call MCP method directly (end_session has no event type)
+            """End session - local sessions only (remote session management via MCP tools)."""
             try:
-                result = await self.mcp_server.teleclaude__end_session(computer=computer, session_id=session_id)
+                # Use command handler directly - only supports LOCAL sessions
+                result = await command_handlers.handle_end_session(session_id, self.client)
                 return dict(result)
             except Exception as e:
-                logger.error("Failed to end session %s on %s: %s", session_id, computer, e, exc_info=True)
+                logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
         @self.app.post("/sessions/{session_id}/message")  # type: ignore[misc]
@@ -223,25 +180,18 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/computers")  # type: ignore[misc]
         async def list_computers() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List available computers (local + online peers only)."""
-            if not self.mcp_server:
-                raise HTTPException(status_code=503, detail="MCP server not available")
+            """List available computers (local only, remote computers via cache in Phase 2+)."""
             try:
-                # Use MCP handler which does full peer discovery
-                raw_computers = await self.mcp_server.teleclaude__list_computers()
-                # Filter to online/local and normalize status
-                result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
-                for comp in raw_computers:
-                    status = comp.get("status")
-                    if status in ("online", "local"):
-                        result.append(
-                            {
-                                "name": comp.get("name"),
-                                "status": "online",  # Normalize "local" to "online"
-                                "user": comp.get("user"),
-                                "host": comp.get("host"),
-                            }
-                        )
+                # Return local computer only (remote computers from cache in Phase 2+)
+                computer_info = await command_handlers.handle_get_computer_info()
+                result: list[dict[str, object]] = [  # guard: loose-dict - REST API boundary
+                    {
+                        "name": config.computer.name,
+                        "status": "online",  # Local computer is always online
+                        "user": computer_info["user"],
+                        "host": computer_info["host"],
+                    }
+                ]
                 return result
             except Exception as e:
                 logger.error("list_computers failed: %s", e, exc_info=True)
@@ -249,33 +199,28 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/projects")  # type: ignore[misc]
         async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
-            computer: str | None = None,
+            computer: str | None = None,  # noqa: ARG001 - Reserved for future cache integration
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List projects (local + remote when computer=None)."""
-            if not self.mcp_server:
-                raise HTTPException(status_code=503, detail="MCP server not available")
+            """List projects (local only, remote projects via cache in Phase 2+)."""
             try:
-                # Use MCP handler which aggregates local + remote projects
-                raw_projects = await self.mcp_server.teleclaude__list_projects(computer)
-                local_name = self.mcp_server.computer_name
+                # Use command handler directly - returns LOCAL projects only
+                raw_projects = await command_handlers.handle_list_projects()
+                computer_name = config.computer.name
                 # Transform to TUI-expected format:
-                # - "local" computer → actual computer name
                 # - desc → description (TUI field naming)
-                # - location → path fallback (for remotes not yet deployed)
                 result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
                 for p in raw_projects:
-                    comp = p.get("computer", "local")
                     result.append(
                         {
-                            "computer": local_name if comp == "local" else comp,
+                            "computer": computer_name,
                             "name": p.get("name", ""),
-                            "path": p.get("path") or p.get("location", ""),
+                            "path": p.get("path", ""),
                             "description": p.get("desc"),
                         }
                     )
                 return result
             except Exception as e:
-                logger.error("list_projects failed (computer=%s): %s", computer, e, exc_info=True)
+                logger.error("list_projects failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
         @self.app.get("/agents/availability")  # type: ignore[misc]
@@ -324,30 +269,26 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/projects-with-todos")  # type: ignore[misc]
         async def list_projects_with_todos() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List all projects with their todos included.
+            """List all projects with their todos included (local only, remote via cache in Phase 2+).
 
             Returns:
                 List of projects, each with a 'todos' field containing the project's todos
             """
-            if not self.mcp_server:
-                raise HTTPException(status_code=503, detail="MCP server not available")
-
             try:
-                raw_projects = await self.mcp_server.teleclaude__list_projects(None)
+                # Get LOCAL projects only
+                raw_projects = await command_handlers.handle_list_projects()
             except Exception as e:
                 logger.error("list_projects_with_todos: failed to get projects: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
-            local_name = self.mcp_server.computer_name
+            computer_name = config.computer.name
             result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
 
             for p in raw_projects:
-                comp = p.get("computer", "local")
-                computer = local_name if comp == "local" else str(comp)
-                path = p.get("path") or p.get("location", "")
+                path = p.get("path", "")
 
                 project: dict[str, object] = {  # guard: loose-dict - REST API boundary
-                    "computer": computer,
+                    "computer": computer_name,
                     "name": p.get("name", ""),
                     "path": path,
                     "description": p.get("desc"),
@@ -356,10 +297,10 @@ class RESTAdapter(BaseAdapter):
 
                 if path:
                     try:
-                        todos = await self.mcp_server.teleclaude__list_todos(computer, str(path), skip_peer_check=True)
+                        todos = await command_handlers.handle_list_todos(str(path))
                         project["todos"] = list(todos)
                     except Exception as e:
-                        logger.warning("list_projects_with_todos: failed todos for %s:%s: %s", computer, path, e)
+                        logger.warning("list_projects_with_todos: failed todos for %s: %s", path, e)
 
                 result.append(project)
 

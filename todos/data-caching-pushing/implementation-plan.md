@@ -10,34 +10,22 @@ This plan implements the caching and push architecture defined in `requirements.
 
 **Goal:** Fix the architectural violation where REST adapter calls MCP server methods.
 
-### Task 0.1: Refactor REST adapter to use command handlers directly
+- [x] **Task 0.1:** Refactor REST adapter to use command handlers directly
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. Remove `MCPServerProtocol` class and `set_mcp_server()` method
+    2. Remove `self.mcp_server` attribute
+    3. Import `command_handlers` from `teleclaude.core`
+    4. Replace MCP calls with command handler calls
+    5. REST endpoints now return LOCAL data only
 
-**Files:** `teleclaude/adapters/rest_adapter.py`
+- [x] **Task 0.2:** Update daemon to not wire MCP server to REST adapter
+  - Files: `teleclaude/daemon.py`
+  - Changes: Remove call to `rest_adapter.set_mcp_server(mcp_server)`
 
-**Changes:**
-1. Remove `MCPServerProtocol` class and `set_mcp_server()` method
-2. Remove `self.mcp_server` attribute
-3. Import `command_handlers` from `teleclaude.core`
-4. Replace MCP calls with command handler calls:
-   - `self.mcp_server.teleclaude__list_sessions(computer)` → `command_handlers.handle_list_sessions()`
-   - `self.mcp_server.teleclaude__list_projects(None)` → `command_handlers.handle_list_projects()`
-   - `self.mcp_server.teleclaude__list_todos(...)` → `command_handlers.handle_list_todos(path)`
-5. REST endpoints now return LOCAL data only (remote data comes via cache in Phase 2+)
-
-### Task 0.2: Update daemon to not wire MCP server to REST adapter
-
-**Files:** `teleclaude/daemon.py`
-
-**Changes:**
-1. Remove call to `rest_adapter.set_mcp_server(mcp_server)`
-
-### Task 0.3: Update endpoint for ending sessions
-
-**Files:** `teleclaude/adapters/rest_adapter.py`
-
-**Changes:**
-1. `DELETE /sessions/{session_id}` should call `command_handlers.handle_end_session()` directly
-2. Only supports ending LOCAL sessions (remote session management is via MCP tools)
+- [x] **Task 0.3:** Update endpoint for ending sessions
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes: `DELETE /sessions/{session_id}` calls `command_handlers.handle_end_session()` directly
 
 ### Verification:
 - `make lint` passes
