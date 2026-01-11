@@ -579,7 +579,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         with computer_info. Used by discover_peers() and session aggregation.
 
         Returns:
-            List of computer names (excluding self)
+            List of computer names (excluding self). Returns empty list on error
+            to allow graceful degradation when Redis is unavailable.
+
+        Note:
+            Errors are logged but do not propagate. This enables the system to
+            continue operating in single-computer mode when Redis is down.
         """
 
         redis_client = self._require_redis()
@@ -619,7 +624,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         """Discover peers via Redis heartbeat keys.
 
         Returns:
-            List of PeerInfo instances with peer computer information
+            List of PeerInfo instances with peer computer information. Returns
+            empty list on error to allow graceful degradation when Redis is
+            unavailable.
+
+        Note:
+            Errors are logged but do not propagate. This enables the system to
+            continue operating in single-computer mode when Redis is down.
         """
         logger.trace(">>> discover_peers() called, self.redis=%s", "present" if self.redis else "None")
 
@@ -1165,7 +1176,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             interest_type: Interest type to filter by (e.g., "sessions", "preparation")
 
         Returns:
-            List of computer names that advertised interest in this type
+            List of computer names that advertised interest in this type. Returns
+            empty list on error to allow graceful degradation when Redis is
+            unavailable.
+
+        Note:
+            Errors are logged but do not propagate. This enables the system to
+            continue operating in single-computer mode when Redis is down.
         """
         try:
             redis_client = self._require_redis()
