@@ -6,6 +6,11 @@
 
 ---
 
+## Data Caching & Push Architecture
+
+- [>] data-caching-pushing
+      Phases 3-7: WebSocket server, interest management, event push/receive, TUI refactor
+
 ## UI Event Queue
 
 - [>] ui-event-queue-per-adapter
