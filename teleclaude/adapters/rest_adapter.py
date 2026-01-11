@@ -471,11 +471,16 @@ class RESTAdapter(BaseAdapter):
         """
         # Push to all connected WebSocket clients
         for ws in list(self._ws_clients):
-            try:
-                # Create async task to send message (don't block)
-                asyncio.create_task(ws.send_json({"event": event, "data": data}))  # type: ignore[misc]
-            except Exception as e:
-                logger.error("Failed to push update to WebSocket client: %s", e, exc_info=True)
+            # Create async task to send message (don't block)
+            task = asyncio.create_task(ws.send_json({"event": event, "data": data}))  # type: ignore[misc]
+
+            def on_done(t: asyncio.Task[object], client: WebSocket = ws) -> None:
+                if t.done() and t.exception():
+                    logger.warning("WebSocket send failed, removing client: %s", t.exception())
+                    self._ws_clients.discard(client)
+                    self._client_subscriptions.pop(client, None)
+
+            task.add_done_callback(on_done)
 
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""
@@ -496,6 +501,24 @@ class RESTAdapter(BaseAdapter):
 
     async def stop(self) -> None:
         """Stop the REST API server."""
+        # Unsubscribe from cache changes
+        if self.cache:
+            self.cache.unsubscribe(self._on_cache_change)
+
+        # Close all WebSocket connections
+        for ws in list(self._ws_clients):
+            try:
+                await ws.close()
+            except Exception as e:
+                logger.warning("Error closing WebSocket: %s", e)
+        self._ws_clients.clear()
+        self._client_subscriptions.clear()
+
+        # Clear interest from cache
+        if self.cache:
+            self.cache.set_interest(set())
+
+        # Stop server
         if self.server:
             self.server.should_exit = True
         if self.server_task:
