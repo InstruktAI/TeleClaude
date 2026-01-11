@@ -1,10 +1,15 @@
 # Roadmap
 
-> **Last Updated**: 2026-01-10
+> **Last Updated**: 2026-01-11
 > **Status Legend**: `[ ]` = Pending | `[.]` = Ready | `[>]` = In Progress
 > (DONE work is tracked in [delivered.md](./delivered.md))
 
 ---
+
+## Data Caching & Push Architecture
+
+- [>] data-caching-pushing
+      TUI reads from local cache, remotes push session events. Instant loads, event-driven updates.
 
 ## UI Event Queue
 
