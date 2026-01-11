@@ -32,6 +32,7 @@ from teleclaude.core import (
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName
+from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -198,8 +199,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.client = AdapterClient()
 
         # Initialize cache for remote data
-        from teleclaude.core.cache import DaemonCache  # pylint: disable=import-outside-toplevel
-
         self.cache = DaemonCache()
         logger.info("DaemonCache initialized")
 
