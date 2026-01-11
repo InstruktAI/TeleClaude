@@ -39,9 +39,12 @@ This plan implements the caching and push architecture defined in `requirements.
 
 **Goal:** Create central cache with TTL support.
 
-### Task 1.1: Create DaemonCache class
-
-**File:** `teleclaude/core/cache.py` (new)
+- [x] **Task 1.1:** Create DaemonCache class
+  - File: `teleclaude/core/cache.py` (new)
+- [ ] **Task 1.2:** Wire heartbeat data into cache (deferred to Phase 2+)
+  - Files: `teleclaude/adapters/redis_adapter.py`
+- [x] **Task 1.3:** Instantiate cache in daemon
+  - Files: `teleclaude/daemon.py`
 
 ```python
 class DaemonCache:

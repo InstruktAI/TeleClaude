@@ -197,6 +197,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient()
 
+        # Initialize cache for remote data
+        from teleclaude.core.cache import DaemonCache  # pylint: disable=import-outside-toplevel
+
+        self.cache = DaemonCache()
+        logger.info("DaemonCache initialized")
+
         # Initialize Codex watcher for file-based hooks
         self.codex_watcher = CodexWatcher(self.client, db_handle=db)
 
