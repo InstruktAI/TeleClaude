@@ -502,6 +502,9 @@ async def test_dead_websocket_client_removed_on_error(
     # Need to give time for the exception to be raised and cleanup callback to run
     await asyncio.sleep(0.1)
 
+    # Verify send_json was called (to trigger the exception)
+    assert mock_ws.send_json.called, "send_json should have been called to trigger the exception"
+
     # Verify dead client removed from tracking
     # The _on_cache_change callback creates task with done_callback that removes failed clients
     assert mock_ws not in rest_adapter._ws_clients
