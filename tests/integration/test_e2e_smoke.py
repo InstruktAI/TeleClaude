@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
@@ -102,6 +103,25 @@ def create_test_session(
     )
 
 
+async def wait_for_call(mock_fn: AsyncMock, timeout: float = 1.0, interval: float = 0.01) -> None:
+    """Wait for mock function to be called with explicit synchronization.
+
+    Args:
+        mock_fn: Mock function to check
+        timeout: Maximum time to wait in seconds
+        interval: Poll interval in seconds
+
+    Raises:
+        AssertionError: If mock is not called within timeout
+    """
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
+        if mock_fn.called:
+            return
+        await asyncio.sleep(interval)
+    pytest.fail(f"Timeout waiting for {mock_fn} to be called")
+
+
 # ==================== Phase 2: Core Flow Scenarios ====================
 
 
@@ -164,7 +184,7 @@ async def test_cache_update_notifies_websocket_clients(
     cache.update_session(test_session)
 
     # Wait for async send to complete
-    await asyncio.sleep(0.1)
+    await wait_for_call(mock_ws.send_json)
 
     # Verify WebSocket received notification
     mock_ws.send_json.assert_called_once()
@@ -199,7 +219,7 @@ async def test_session_removal_notifies_websocket(
     cache.remove_session("test-session-123")
 
     # Wait for async send to complete
-    await asyncio.sleep(0.1)
+    await wait_for_call(mock_ws.send_json)
 
     # Verify WebSocket received removal notification
     mock_ws.send_json.assert_called_once()
@@ -339,7 +359,7 @@ async def test_full_event_round_trip(
 
     # Step 3: Cache notifies subscribers (REST adapter)
     # Step 4: REST adapter pushes to WebSocket clients
-    await asyncio.sleep(0.1)
+    await wait_for_call(mock_ws.send_json)
 
     # Verify end-to-end: WebSocket received the event
     mock_ws.send_json.assert_called()
@@ -378,7 +398,8 @@ async def test_multiple_websocket_clients_receive_updates(
     cache.update_session(test_session)
 
     # Wait for async sends
-    await asyncio.sleep(0.1)
+    await wait_for_call(mock_ws1.send_json)
+    await wait_for_call(mock_ws2.send_json)
 
     # Verify both clients received notification
     assert mock_ws1.send_json.called
@@ -418,7 +439,7 @@ async def test_unsubscribed_client_receives_all_events(
     cache.update_session(test_session)
 
     # Wait for async send
-    await asyncio.sleep(0.1)
+    await wait_for_call(mock_ws.send_json)
 
     # Verify client received notification (broadcast to all clients)
     # NOTE: Current implementation does NOT filter by subscription
@@ -454,6 +475,7 @@ async def test_dead_websocket_client_removed_on_error(
     cache.update_session(test_session)
 
     # Wait for async send and cleanup callback
+    # Need to give time for the exception to be raised and cleanup callback to run
     await asyncio.sleep(0.1)
 
     # Verify dead client removed from tracking
