@@ -35,6 +35,22 @@ class TaskRegistry:
         self._tasks: set[asyncio.Task[object]] = set()
         logger.debug("TaskRegistry initialized")
 
+    def _on_task_done(self, task: asyncio.Task[object]) -> None:
+        """
+        Handle task completion.
+
+        Removes the task from the registry and logs any exceptions that occurred.
+
+        Args:
+            task: The completed task
+        """
+        self._tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error("Background task %s failed: %s", task.get_name(), exc, exc_info=exc)
+
     def spawn(self, coro: Coroutine[object, object, object], name: str | None = None) -> asyncio.Task[object]:
         """
         Spawn a tracked background task.
@@ -55,7 +71,7 @@ class TaskRegistry:
         """
         task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._on_task_done)
 
         logger.debug(
             "Spawned tracked task: %s (total: %d)",
