@@ -20,6 +20,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 if TYPE_CHECKING:
+    from _pytest.monkeypatch import MonkeyPatch
+
     from teleclaude.adapters.rest_adapter import RESTAdapter
     from teleclaude.core.cache import DaemonCache
 
@@ -28,20 +30,31 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def cache(daemon_with_mocked_telegram):
+def patched_config(monkeypatch: MonkeyPatch) -> MagicMock:
+    """Patch config loading without starting daemon infrastructure."""
+    from teleclaude import config as config_module
+
+    mock_config = MagicMock()
+    mock_config.computer.name = "test-computer"
+    monkeypatch.setattr(config_module, "config", mock_config)
+    return mock_config
+
+
+@pytest.fixture
+def cache(patched_config: MagicMock):
     """Fresh cache instance for each test."""
-    # Import inside fixture to delay config loading
     from teleclaude.core.cache import DaemonCache
 
+    _ = patched_config  # Fixture dependency for config patching
     return DaemonCache()
 
 
 @pytest.fixture
-def mock_adapter_client(daemon_with_mocked_telegram) -> MagicMock:
+def mock_adapter_client(patched_config: MagicMock) -> MagicMock:
     """Mock AdapterClient with local data."""
-    # Import inside fixture to delay config loading
     from teleclaude.core.adapter_client import AdapterClient
 
+    _ = patched_config  # Fixture dependency for config patching
     client = MagicMock(spec=AdapterClient)
     client.get_local_sessions = AsyncMock(return_value=[])
     client.get_local_projects = AsyncMock(return_value=[])
@@ -50,11 +63,11 @@ def mock_adapter_client(daemon_with_mocked_telegram) -> MagicMock:
 
 
 @pytest.fixture
-def rest_adapter(daemon_with_mocked_telegram, mock_adapter_client: MagicMock, cache):
+def rest_adapter(patched_config: MagicMock, mock_adapter_client: MagicMock, cache: DaemonCache):
     """REST adapter with cache wired."""
-    # Import inside fixture to delay config loading
     from teleclaude.adapters.rest_adapter import RESTAdapter
 
+    _ = patched_config  # Fixture dependency for config patching
     adapter = RESTAdapter(mock_adapter_client, cache=cache)
     return adapter
 
