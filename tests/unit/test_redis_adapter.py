@@ -69,7 +69,7 @@ async def test_discover_peers_handles_invalid_json():
 
     # Mock Redis to return invalid JSON
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(return_value=[b"computer:RemotePC:heartbeat"])
+    mock_redis.scan = AsyncMock(return_value=(0, [b"computer:RemotePC:heartbeat"]))
     mock_redis.get = AsyncMock(return_value=b"not valid json {{{")
     adapter.redis = mock_redis
 
@@ -121,7 +121,7 @@ async def test_discover_peers_skips_self():
 
     # Mock Redis to return heartbeat for self
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(return_value=[b"computer:LocalPC:heartbeat"])
+    mock_redis.scan = AsyncMock(return_value=(0, [b"computer:LocalPC:heartbeat"]))
     mock_redis.get = AsyncMock(
         return_value=json.dumps(
             {
