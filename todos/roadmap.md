@@ -6,11 +6,6 @@
 
 ---
 
-## Data Caching & Push Architecture
-
-- [>] data-caching-pushing
-      TUI reads from local cache, remotes push session events. Instant loads, event-driven updates.
-
 ## UI Event Queue
 
 - [>] ui-event-queue-per-adapter
