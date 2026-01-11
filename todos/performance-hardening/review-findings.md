@@ -1,7 +1,7 @@
 # Code Review: performance-hardening
 
-**Reviewed**: 2026-01-11
-**Reviewer**: Claude Opus 4.5 (prime-reviewer)
+**Reviewed**: 2026-01-12
+**Reviewer**: Claude Opus 4.5 (prime-reviewer) - Re-review after fixes
 
 ## Requirements Coverage
 
@@ -12,93 +12,90 @@
 | 1.3 Task Lifecycle Management | ✅ | `TaskRegistry` implemented; integrated into daemon, redis_adapter, rest_adapter; shutdown calls `registry.shutdown()` |
 | Phase 1 Acceptance Criteria | ✅ | Zero `redis.keys()` calls; all subprocess ops have timeouts; background tasks use registry |
 
+## Previous Issues Resolution
+
+| Issue | Status | Verification |
+|-------|--------|--------------|
+| #1, #2: Infinite recursion in timeout handlers | ✅ FIXED | `terminal_bridge.py:84-91,127-134` now uses direct `asyncio.wait_for()` |
+| #3: Task exceptions never surfaced | ✅ FIXED | `task_registry.py:38-52` logs exceptions with `exc_info=exc` |
+| #4: scan_keys errors return empty list | ✅ DOCUMENTED | Docstrings explain graceful degradation behavior |
+| #5: Untracked task fallback | ✅ FIXED | `redis_adapter.py:198-203` adds `_log_task_exception` callback |
+| #6: SubprocessTimeoutError lacks structured data | ✅ FIXED | `terminal_bridge.py:32-53` has operation, timeout, pid attributes |
+| #7: Tests mock keys but code uses scan | ⚠️ PARTIAL | 2 tests fixed, but 1 test remains (`test_connection_error_handling`) |
+
 ## Critical Issues (must fix)
 
-### 1. [error-handling] `terminal_bridge.py:64-68` - Infinite recursion risk in timeout handlers
+### 1. [tests] `tests/unit/test_redis_adapter.py:234` - Test still mocks wrong method
 
-**Description:** When a subprocess times out, `wait_with_timeout()` calls itself recursively to clean up the zombie. If the process is truly stuck and doesn't die within the nested timeout, this creates infinite recursion.
+**Description:** The `test_connection_error_handling` test mocks `mock_redis.keys` but the production code uses `scan_keys()` which calls `mock_redis.scan`. The test passes but doesn't actually test error handling for the SCAN-based implementation.
 
 ```python
-process.kill()
-await wait_with_timeout(process, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")  # RECURSIVE!
+mock_redis.keys = AsyncMock(side_effect=ConnectionError("Connection refused"))  # WRONG
 ```
 
-**Suggested fix:** Replace recursion with direct `asyncio.wait_for()`:
+**Suggested fix:** Change to mock `scan` instead:
 ```python
-process.kill()
-try:
-    await asyncio.wait_for(process.wait(), timeout=2.0)
-except asyncio.TimeoutError:
-    logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
-```
-
-### 2. [error-handling] `terminal_bridge.py:105-109` - Same recursion in `communicate_with_timeout()`
-
-**Description:** Same infinite recursion risk as above.
-
-**Suggested fix:** Same as issue #1.
-
-### 3. [error-handling] `task_registry.py:56-58` - Task exceptions never surfaced
-
-**Description:** The `spawn()` method creates tasks but never logs exceptions. If a spawned task raises an exception, it's silently lost.
-
-```python
-task.add_done_callback(self._tasks.discard)  # Only removes, never checks for exception!
-```
-
-**Suggested fix:** Add exception logging to the done callback:
-```python
-def _on_task_done(self, task: asyncio.Task[object]) -> None:
-    self._tasks.discard(task)
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc:
-        logger.error("Background task %s failed: %s", task.get_name(), exc, exc_info=exc)
-
-# In spawn():
-task.add_done_callback(self._on_task_done)
+mock_redis.scan = AsyncMock(side_effect=ConnectionError("Connection refused"))
 ```
 
 ## Important Issues (should fix)
 
-### 4. [error-handling] `redis_adapter.py:612-616, 724-726, 1210-1212` - scan_keys errors return empty list
+### 2. [error-handling] `redis_adapter.py:221-224` - Fallback tasks without exception callbacks
 
-**Description:** When `scan_keys()` or Redis operations fail, errors are logged but empty lists are returned. Callers cannot distinguish "no peers online" from "Redis is down."
-
-**Suggested fix:** Consider raising exceptions (fail-fast) or documenting this degradation mode clearly.
-
-### 5. [error-handling] `redis_adapter.py:178-183` - Untracked task fallback when task_registry is None
-
-**Description:** When `task_registry` is `None`, the code falls back to `asyncio.create_task()` without exception handling. These untracked tasks can fail silently.
-
-**Suggested fix:** Either make `task_registry` required, or add done callbacks to untracked tasks.
-
-### 6. [types] `terminal_bridge.py:27-29` - SubprocessTimeoutError lacks structured data
-
-**Description:** The exception carries no structured data (pid, timeout value, operation). Callers must parse the message to understand what happened.
-
-**Suggested fix:** Add attributes:
+**Description:** When `task_registry` is None, three critical tasks are spawned without exception callbacks:
 ```python
-class SubprocessTimeoutError(TimeoutError):
-    def __init__(self, operation: str, timeout: float, pid: int | None = None) -> None:
-        self.operation = operation
-        self.timeout = timeout
-        self.pid = pid
-        super().__init__(f"{operation} timed out after {timeout}s")
+self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
+self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
+```
+Unlike the connection task (line 203) which has `add_done_callback(self._log_task_exception)`, these tasks would silently swallow exceptions.
+
+**Suggested fix:** Add `self._log_task_exception` callback to all three tasks.
+
+### 3. [error-handling] `redis_adapter.py:1337-1339` - Output stream listener without callback
+
+**Description:** When `task_registry` is None, output stream listener tasks have no exception callback:
+```python
+task = asyncio.create_task(self._poll_output_stream_for_messages(session_id))
 ```
 
-### 7. [tests] `test_redis_adapter.py:72-73, 113-137` - Tests mock `keys` but code uses `scan`
+**Suggested fix:** Add `self._log_task_exception` callback when task_registry is None.
 
-**Description:** Two tests (`test_discover_peers_handles_invalid_json`, `test_discover_peers_skips_self`) mock `mock_redis.keys` but the actual code calls `scan_keys()`. Tests pass but are fragile.
+### 4. [tests] TaskRegistry exception logging not tested
 
-**Suggested fix:** Update tests to use `mock_redis.scan` like `test_discover_peers_parses_heartbeat_data` does.
+**Description:** The `_on_task_done` callback in `task_registry.py:38-52` logs exceptions with full tracebacks, but no test verifies this behavior.
+
+**Suggested fix:** Add test that spawns a failing task and verifies `logger.error` is called with `exc_info`.
+
+### 5. [tests] SubprocessTimeoutError structured data not tested
+
+**Description:** Tests only verify the exception message string, not the structured attributes:
+```python
+assert "test operation timed out after 0.1s" in str(exc_info.value)  # Only tests message
+```
+
+**Suggested fix:** Add assertions for structured data:
+```python
+assert exc_info.value.operation == "test operation"
+assert exc_info.value.timeout == 0.1
+assert exc_info.value.pid == 12345
+```
+
+### 6. [types] `task_registry.py:38` - spawn() loses return type
+
+**Description:** The `spawn()` signature uses `Coroutine[object, object, object]` which loses the task's return type. Callers get `Task[object]` instead of `Task[T]`.
+
+**Suggested fix:** Use TypeVar for better type inference:
+```python
+T = TypeVar("T")
+def spawn(self, coro: Coroutine[object, object, T], name: str | None = None) -> asyncio.Task[T]:
+```
 
 ## Suggestions (nice to have)
 
-### 8. [error-handling] `terminal_bridge.py:67-68` - ProcessLookupError silently passed
+### 7. [error-handling] `terminal_bridge.py:89-90, 132-133` - ProcessLookupError silent pass
 
-**Description:** `ProcessLookupError` is caught with `pass`, which is correct but reduces debugging visibility.
+**Description:** `ProcessLookupError` is caught with `pass`, reducing debugging visibility.
 
 **Suggested fix:** Add debug-level logging:
 ```python
@@ -106,58 +103,51 @@ except ProcessLookupError:
     logger.debug("Process %d already terminated before kill", process.pid or -1)
 ```
 
-### 9. [types] `task_registry.py:38` - spawn() could preserve return type
+### 8. [error-handling] `redis_adapter.py:1143-1146` - Lambda callback missing exc_info
 
-**Description:** The `spawn()` signature uses `Coroutine[object, object, object]` which loses the task's return type.
-
-**Suggested fix:** Consider using `TypeVar` for better type inference:
+**Description:** The lambda done callback logs exceptions without full tracebacks:
 ```python
-T = TypeVar("T")
-def spawn(self, coro: Coroutine[object, object, T], name: str | None = None) -> asyncio.Task[T]:
+lambda t: logger.error("Push task failed: %s", t.exception()) if ... else None
 ```
 
-### 10. [error-handling] `redis_adapter.py:1112-1116` - Complex lambda in done callback
+**Suggested fix:** Replace with proper callback that includes `exc_info=exc`.
 
-**Description:** The done callback lambda is complex and could be clearer.
+### 9. [tests] Redis SCAN - empty intermediate batch not tested
 
-**Suggested fix:** Extract to a named function for clarity.
+**Description:** Redis SCAN can return empty batches mid-iteration (documented Redis behavior). `test_scan_keys_multiple_batches` tests clean 3-batch iteration but not this edge case.
+
+## Out of Scope Findings
+
+The silent-failure-hunter identified additional untracked tasks in files NOT part of this PR:
+- `telegram_adapter.py:480` - heartbeat task
+- `computer_registry.py:92-93` - registry tasks
+- `codex_watcher.py:44` - poll task
+- `polling_coordinator.py:71` - poll task
+- `rest_adapter.py:511` - server task
+
+These pre-date this work item and should be addressed in a separate PR.
 
 ## Strengths
 
 1. **Clean architecture**: New modules (`redis_utils.py`, `task_registry.py`) have single responsibilities
 2. **Proper cursor iteration**: `scan_keys()` correctly iterates until cursor == 0
-3. **Comprehensive timeout coverage**: All subprocess operations in `terminal_bridge.py` use timeout wrappers
+3. **Comprehensive timeout coverage**: All subprocess operations use timeout wrappers
 4. **TaskRegistry design**: Done callback pattern elegantly handles auto-cleanup
 5. **Graceful shutdown**: `registry.shutdown()` cancels all tasks with timeout
-6. **Excellent test coverage**: All new components have comprehensive unit tests
-7. **Follows project patterns**: Uses functions over classes where appropriate, explicit typing, proper logging
+6. **Good test coverage**: All new components have comprehensive unit tests
+7. **Follows project patterns**: Functions over classes, explicit typing, proper logging
+8. **Excellent type annotations**: Modern Python syntax (`int | None`, explicit return types)
+9. **Good documentation**: Docstrings explain graceful degradation behavior
 
 ## Verdict
 
+**[ ] APPROVE** - Ready to merge
 **[x] REQUEST CHANGES** - Fix critical/important issues first
 
-The Phase 1 implementation meets all functional requirements. However, the critical issues around infinite recursion and silent task failures should be addressed before merging to prevent production incidents.
+The Phase 1 implementation meets all functional requirements and previous critical issues (#1-#6) have been properly addressed. However, one critical test bug remains, and there are test coverage gaps for the new error handling behavior.
 
 ### Priority fixes:
-1. Fix infinite recursion in `wait_with_timeout()` and `communicate_with_timeout()`
-2. Add exception logging to `TaskRegistry` done callback
-3. Update fragile test mocks in `test_redis_adapter.py`
-
----
-
-## Fixes Applied
-
-All critical and important issues have been addressed:
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| #1, #2: Infinite recursion in timeout handlers | Replaced recursive `wait_with_timeout()` calls with direct `asyncio.wait_for()` to prevent infinite recursion | 74f1f53 |
-| #3: Task exceptions never surfaced | Added `_on_task_done()` callback that checks for exceptions and logs them with `exc_info` | 3034a03 |
-| #4: scan_keys errors return empty list | Added clear documentation explaining graceful degradation behavior when Redis is unavailable | fe2bfa7 |
-| #5: Untracked task fallback | Added `_log_task_exception()` callback for untracked tasks when `task_registry` is None | ee15c95 |
-| #6: SubprocessTimeoutError lacks structured data | Added `operation`, `timeout`, and `pid` attributes to exception for programmatic access | bd5ab20 |
-| #7: Tests mock keys but code uses scan | Updated `test_discover_peers_handles_invalid_json` and `test_discover_peers_skips_self` to use `mock_redis.scan` | 3951120 |
-
-**Test results**: All 735 unit tests pass ✅
-
-Ready for re-review.
+1. **CRITICAL**: Fix `test_connection_error_handling` to mock `scan` instead of `keys` (test_redis_adapter.py:234)
+2. **IMPORTANT**: Add exception callbacks to fallback tasks in redis_adapter.py:221-224
+3. **IMPORTANT**: Add test for TaskRegistry exception logging
+4. **IMPORTANT**: Add test for SubprocessTimeoutError structured attributes
