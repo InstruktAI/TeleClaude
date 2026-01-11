@@ -36,6 +36,7 @@ from teleclaude.core.models import (
     Session,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -567,8 +568,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         redis_client = self._require_redis()
 
         try:
-            # Find all heartbeat keys
-            keys: object = await redis_client.keys(b"computer:*:heartbeat")
+            # Find all heartbeat keys using non-blocking SCAN
+            keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
             logger.debug("Found %d heartbeat keys", len(keys))  # pyright: ignore[reportArgumentType]
 
             computers = []
@@ -608,13 +609,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         redis_client = self._require_redis()
 
         try:
-            # Find all heartbeat keys
-            keys: object = await redis_client.keys(b"computer:*:heartbeat")
-            keys_list = cast(list[bytes], keys)
+            # Find all heartbeat keys using non-blocking SCAN
+            keys: list[bytes] = await scan_keys(redis_client, b"computer:*:heartbeat")
             logger.trace(
                 "Redis heartbeat keys discovered",
-                count=len(keys_list),
-                keys=keys_list,
+                count=len(keys),
+                keys=keys,
             )
 
             peers = []
@@ -1150,8 +1150,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         try:
             redis_client = self._require_redis()
 
-            # Scan all heartbeat keys
-            keys: object = await redis_client.keys(b"computer:*:heartbeat")
+            # Scan all heartbeat keys using non-blocking SCAN
+            keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
             if not keys:
                 return []
 

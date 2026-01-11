@@ -23,6 +23,93 @@ from teleclaude.config import config
 
 logger = get_logger(__name__)
 
+# Subprocess timeout constants
+SUBPROCESS_TIMEOUT_DEFAULT = 30.0  # Default timeout for subprocess operations
+SUBPROCESS_TIMEOUT_QUICK = 5.0  # Timeout for quick operations (list, status checks)
+SUBPROCESS_TIMEOUT_LONG = 60.0  # Timeout for long operations (complex commands)
+
+
+class SubprocessTimeoutError(Exception):
+    """Raised when a subprocess operation exceeds its timeout."""
+
+
+async def wait_with_timeout(
+    process: asyncio.subprocess.Process,
+    timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,
+    operation: str = "subprocess",
+) -> None:
+    """
+    Wait for a subprocess to complete with a timeout.
+
+    If the timeout is exceeded, the process is killed and a SubprocessTimeoutError
+    is raised. This prevents indefinite blocking if a subprocess hangs.
+
+    Args:
+        process: The subprocess to wait for
+        timeout: Maximum time to wait in seconds
+        operation: Description of the operation for error messages
+
+    Raises:
+        SubprocessTimeoutError: If the process doesn't complete within timeout
+    """
+    try:
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "%s timeout after %.1fs, killing process %d",
+            operation,
+            timeout,
+            process.pid if process.pid else -1,
+        )
+        try:
+            process.kill()
+            await wait_with_timeout(process, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")  # Clean up zombie
+        except ProcessLookupError:
+            pass  # Process already terminated
+        raise SubprocessTimeoutError(f"{operation} timed out after {timeout}s")
+
+
+async def communicate_with_timeout(
+    process: asyncio.subprocess.Process,
+    input_data: bytes | None = None,
+    timeout: float = SUBPROCESS_TIMEOUT_DEFAULT,
+    operation: str = "subprocess",
+) -> tuple[bytes, bytes]:
+    """
+    Communicate with a subprocess with a timeout.
+
+    If the timeout is exceeded, the process is killed and a SubprocessTimeoutError
+    is raised. This prevents indefinite blocking if a subprocess hangs.
+
+    Args:
+        process: The subprocess to communicate with
+        input_data: Optional input to send to the process
+        timeout: Maximum time to wait in seconds
+        operation: Description of the operation for error messages
+
+    Returns:
+        Tuple of (stdout, stderr) as bytes
+
+    Raises:
+        SubprocessTimeoutError: If communication doesn't complete within timeout
+    """
+    try:
+        return await asyncio.wait_for(process.communicate(input_data), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "%s timeout after %.1fs, killing process %d",
+            operation,
+            timeout,
+            process.pid if process.pid else -1,
+        )
+        try:
+            process.kill()
+            await wait_with_timeout(process, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")  # Clean up zombie
+        except ProcessLookupError:
+            pass  # Process already terminated
+        raise SubprocessTimeoutError(f"{operation} timed out after {timeout}s")
+
+
 # User's shell basename, computed once at import
 # Used for shell readiness detection in is_process_running()/wait_for_shell_ready()
 _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell).name.lower()
@@ -141,7 +228,7 @@ async def create_tmux_session(
         # Don't capture stdout/stderr - let tmux create its own PTY
         # Using PIPE can leak file descriptors to child processes in tmux
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode != 0:
             return False
@@ -152,7 +239,7 @@ async def create_tmux_session(
             opt_result = await asyncio.create_subprocess_exec(
                 *option_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            _, opt_err = await opt_result.communicate()
+            _, opt_err = await communicate_with_timeout(opt_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
             if opt_result.returncode != 0:
                 logger.warning(
                     "Failed to set destroy-unattached off for %s: %s",
@@ -163,7 +250,7 @@ async def create_tmux_session(
             hook_result = await asyncio.create_subprocess_exec(
                 *hook_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            _, hook_err = await hook_result.communicate()
+            _, hook_err = await communicate_with_timeout(hook_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
             if hook_result.returncode != 0:
                 logger.warning(
                     "Failed to set client-detached hook for %s: %s",
@@ -200,7 +287,7 @@ async def update_tmux_session(session_name: str, env_vars: Dict[str, str]) -> bo
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            _, stderr = await result.communicate()
+            _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
             if result.returncode != 0:
                 logger.error(
@@ -361,7 +448,7 @@ async def get_pane_tty(session_name: str) -> Optional[str]:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
         if result.returncode != 0:
             logger.error(
                 "Failed to get pane tty for session %s: %s",
@@ -386,7 +473,7 @@ async def get_pane_pid(session_name: str) -> Optional[int]:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
         if result.returncode != 0:
             logger.error(
                 "Failed to get pane PID for session %s: %s",
@@ -424,7 +511,7 @@ async def _send_keys_tmux(
     result = await asyncio.create_subprocess_exec(
         *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    _, stderr = await result.communicate()
+    _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
     if result.returncode != 0:
         logger.error(
@@ -444,7 +531,7 @@ async def _send_keys_tmux(
         result = await asyncio.create_subprocess_exec(
             *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await result.communicate()
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode != 0:
             logger.error(
@@ -476,7 +563,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await result.communicate()
+            stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
             if result.returncode != 0:
                 logger.error(
@@ -497,7 +584,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await result.communicate()
+            stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
             if result.returncode != 0 or not stdout:
                 logger.warning(
@@ -520,7 +607,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await result.communicate()
+            stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
             if result.returncode != 0:
                 logger.error(
@@ -546,7 +633,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode != 0:
             logger.error(
@@ -577,7 +664,7 @@ async def send_escape(session_name: str) -> bool:
     try:
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "Escape"]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -601,7 +688,7 @@ async def send_ctrl_key(session_name: str, key: str) -> bool:
         ctrl_key = f"C-{key.lower()}"
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, ctrl_key]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -622,7 +709,7 @@ async def send_tab(session_name: str) -> bool:
     try:
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "Tab"]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -650,7 +737,7 @@ async def send_shift_tab(session_name: str, count: int = 1) -> bool:
         # tmux send-keys with -N flag for repeat count
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-N", str(count), "BTab"]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -678,7 +765,7 @@ async def send_backspace(session_name: str, count: int = 1) -> bool:
         # tmux send-keys with -N flag for repeat count
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-N", str(count), "BSpace"]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -699,7 +786,7 @@ async def send_enter(session_name: str) -> bool:
     try:
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -735,7 +822,7 @@ async def send_arrow_key(session_name: str, direction: str, count: int = 1) -> b
         key_name = valid_directions[direction]
         cmd = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-N", str(count), key_name]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -762,7 +849,7 @@ async def capture_pane(session_name: str) -> str:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode == 0:
             return stdout.decode("utf-8", errors="replace")
@@ -792,7 +879,7 @@ async def kill_session(session_name: str) -> bool:
     try:
         cmd = [config.computer.tmux_binary, "kill-session", "-t", session_name]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -813,7 +900,7 @@ async def list_tmux_sessions() -> List[str]:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await result.communicate()
+        stdout, _ = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode == 0:
             sessions: list[str] = stdout.decode("utf-8").strip().split("\n")
@@ -842,7 +929,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await result.communicate()
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode != 0:
             if log_missing:
@@ -855,7 +942,9 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    tmux_list_stdout, _ = await tmux_list_result.communicate()
+                    tmux_list_stdout, _ = await communicate_with_timeout(
+                        tmux_list_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation"
+                    )
                     tmux_sessions = tmux_list_stdout.decode().strip().split("\n") if tmux_list_stdout else []
 
                     # Get tmux processes
@@ -909,7 +998,7 @@ async def get_current_command(session_name: str) -> Optional[str]:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode != 0:
             logger.warning(
@@ -962,7 +1051,7 @@ async def is_pane_dead(session_name: str) -> bool:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await result.communicate()
+        stdout, _ = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
         if result.returncode != 0:
             return False
         lines = stdout.decode("utf-8").strip().split("\n") if stdout else []
@@ -989,7 +1078,7 @@ async def get_session_pane_id(session_name: str) -> Optional[str]:
         result = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await result.communicate()
+        stdout, _ = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode == 0:
             pane_id: str = stdout.decode("utf-8").strip()
@@ -1014,7 +1103,7 @@ async def start_pipe_pane(session_name: str, command: str) -> bool:
     try:
         cmd = [config.computer.tmux_binary, "pipe-pane", "-t", session_name, "-o", command]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -1035,7 +1124,7 @@ async def stop_pipe_pane(session_name: str) -> bool:
     try:
         cmd = [config.computer.tmux_binary, "pipe-pane", "-t", session_name]
         result = await asyncio.create_subprocess_exec(*cmd)
-        await result.wait()
+        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         return result.returncode == 0
 
@@ -1060,7 +1149,7 @@ async def get_pane_title(session_name: str) -> Optional[str]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await result.communicate()
+        stdout, _ = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode == 0:
             pane_title: str = stdout.decode().strip()
@@ -1089,7 +1178,7 @@ async def get_current_directory(session_name: str) -> Optional[str]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await result.communicate()
+        stdout, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode == 0:
             current_dir: str = stdout.decode().strip()

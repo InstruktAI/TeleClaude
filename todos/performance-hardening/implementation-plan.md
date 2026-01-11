@@ -10,23 +10,23 @@ Four-phase infrastructure hardening addressing async safety, data efficiency, I/
 
 ### 1.1 Redis KEYS → SCAN Migration
 
-- [ ] Create `teleclaude/core/redis_utils.py` with `async def scan_keys(redis, pattern)` helper
-- [ ] Replace `redis.keys()` call #1 in `redis_adapter.py` with `scan_keys()`
-- [ ] Replace `redis.keys()` call #2 in `redis_adapter.py` with `scan_keys()`
-- [ ] Replace `redis.keys()` call #3 in `redis_adapter.py` with `scan_keys()`
-- [ ] Add unit test for `scan_keys()` cursor iteration
-- [ ] Verify: `grep -r "\.keys(" teleclaude/` returns zero Redis key calls
+- [x] Create `teleclaude/core/redis_utils.py` with `async def scan_keys(redis, pattern)` helper
+- [x] Replace `redis.keys()` call #1 in `redis_adapter.py` with `scan_keys()`
+- [x] Replace `redis.keys()` call #2 in `redis_adapter.py` with `scan_keys()`
+- [x] Replace `redis.keys()` call #3 in `redis_adapter.py` with `scan_keys()`
+- [x] Add unit test for `scan_keys()` cursor iteration
+- [x] Verify: `grep -r "\.keys(" teleclaude/` returns zero Redis key calls
 
 ### 1.2 Subprocess Timeout Enforcement
 
-- [ ] Define timeout constants at top of `terminal_bridge.py`: `SUBPROCESS_TIMEOUT_DEFAULT = 30.0`
-- [ ] Create helper `async def wait_with_timeout(process, timeout)` that kills on timeout
-- [ ] Audit and fix `wait()` call in `_run_tmux_command()`
-- [ ] Audit and fix `wait()` call in `send_keys()`
-- [ ] Audit and fix `wait()` call in `capture_pane()`
-- [ ] Audit and fix remaining `wait()`/`communicate()` calls (expect 5+ more)
-- [ ] Add unit test: mock hanging process, verify timeout triggers kill
-- [ ] Verify: grep for `\.wait\(\)` without timeout wrapper returns zero
+- [x] Define timeout constants at top of `terminal_bridge.py`: `SUBPROCESS_TIMEOUT_DEFAULT = 30.0`
+- [x] Create helper `async def wait_with_timeout(process, timeout)` that kills on timeout
+- [x] Audit and fix `wait()` call in `_run_tmux_command()`
+- [x] Audit and fix `wait()` call in `send_keys()`
+- [x] Audit and fix `wait()` call in `capture_pane()`
+- [x] Audit and fix remaining `wait()`/`communicate()` calls (expect 5+ more)
+- [x] Add unit test: mock hanging process, verify timeout triggers kill
+- [x] Verify: grep for `\.wait\(\)` without timeout wrapper returns zero
 
 ### 1.3 Task Lifecycle Management
 
