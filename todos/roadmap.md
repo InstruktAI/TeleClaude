@@ -8,7 +8,7 @@
 
 ## Performance Hardening
 
-- [.] performance-hardening
+- [>] performance-hardening
   Async resilience & data efficiency: eliminate blocking calls, fix memory leaks, optimize cache access patterns.
   **Priority**: Critical - addresses production risks discovered in architectural review.
 
