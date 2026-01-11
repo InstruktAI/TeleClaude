@@ -497,6 +497,14 @@ class RESTAdapter(BaseAdapter):
 
         # Run server in background task
         self.server_task = asyncio.create_task(self.server.serve())
+
+        # Wait for server to be ready (socket file created and bound)
+        max_retries = 50  # 5 seconds total
+        for _ in range(max_retries):
+            if self.server.started:
+                break
+            await asyncio.sleep(0.1)
+
         logger.info("REST API server listening on %s", REST_SOCKET_PATH)
 
     async def stop(self) -> None:
@@ -518,15 +526,25 @@ class RESTAdapter(BaseAdapter):
         if self.cache:
             self.cache.set_interest(set())
 
-        # Stop server
+        # Stop server gracefully if started, cancel if still starting
         if self.server:
-            self.server.should_exit = True
+            if self.server.started:
+                # Server is running, do graceful shutdown
+                self.server.should_exit = True
+            else:
+                # Server still starting, force cancel
+                if self.server_task:
+                    self.server_task.cancel()
+
         if self.server_task:
-            self.server_task.cancel()
             try:
                 await self.server_task
             except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                # Suppress errors during teardown (socket already gone, etc.)
+                logger.debug("Error during server shutdown: %s", e)
+
         logger.info("REST API server stopped")
 
     # ==================== BaseAdapter abstract methods (mostly no-ops) ====================

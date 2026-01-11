@@ -6,10 +6,12 @@
 
 ---
 
-## Data Caching & Push Architecture
+## End-to-End Smoke Tests
 
-- [>] data-caching-pushing
-      Phases 3-7: WebSocket server, interest management, event push/receive, TUI refactor
+- [.] e2e-smoke-tests
+      Comprehensive smoke test suite for WebSocket/Cache/Redis event flow. Nightly CI validation.
+
+---
 
 ## UI Event Queue
 
