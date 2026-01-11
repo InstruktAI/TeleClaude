@@ -122,6 +122,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     @cache.setter
     def cache(self, value: "DaemonCache | None") -> None:
         """Set cache reference and subscribe to changes."""
+        if self._cache:
+            self._cache.unsubscribe(self._on_cache_change)
         self._cache = value
         if value:
             value.subscribe(self._on_cache_change)
@@ -630,7 +632,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     last_seen_str: object = info.get("last_seen", "")
                     try:
                         last_seen_dt = datetime.fromisoformat(str(last_seen_str))
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as e:
+                        logger.warning("Invalid timestamp for %s, using now: %s", info.get("computer_name"), e)
                         last_seen_dt = datetime.now(timezone.utc)
 
                     computer_name: str = str(info["computer_name"])
@@ -842,7 +845,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 if len(args) > 2:
                     try:
                         title = base64.b64decode(args[2]).decode()
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("Failed to decode title from base64: %s", e)
                         title = None
 
                 event_type = TeleClaudeEvents.AGENT_EVENT
@@ -1013,6 +1017,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         try:
             args_obj = json.loads(args_json)
         except json.JSONDecodeError:
+            logger.warning("Invalid JSON in system command args: %s", args_json[:100])
             args_obj = {}
 
         logger.info("Received system command '%s' from %s", command, from_computer)
@@ -1083,7 +1088,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return
 
         # Push events asynchronously without blocking cache notification
-        asyncio.create_task(self._push_session_event_to_peers(event, data))
+        task = asyncio.create_task(self._push_session_event_to_peers(event, data))
+        task.add_done_callback(
+            lambda t: logger.error("Push task failed: %s", t.exception())
+            if t.done() and not t.cancelled() and t.exception()
+            else None
+        )
 
     async def _push_session_event_to_peers(self, event: str, data: object) -> None:
         """Push session event to interested remote peers.
