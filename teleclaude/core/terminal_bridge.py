@@ -30,7 +30,27 @@ SUBPROCESS_TIMEOUT_LONG = 60.0  # Timeout for long operations (complex commands)
 
 
 class SubprocessTimeoutError(Exception):
-    """Raised when a subprocess operation exceeds its timeout."""
+    """Raised when a subprocess operation exceeds its timeout.
+
+    Attributes:
+        operation: Description of the operation that timed out
+        timeout: Timeout value in seconds
+        pid: Process ID (None if process was not started)
+    """
+
+    def __init__(self, operation: str, timeout: float, pid: int | None = None) -> None:
+        """
+        Initialize subprocess timeout error with structured data.
+
+        Args:
+            operation: Description of the operation that timed out
+            timeout: Timeout value in seconds
+            pid: Process ID (None if process was not started)
+        """
+        self.operation = operation
+        self.timeout = timeout
+        self.pid = pid
+        super().__init__(f"{operation} timed out after {timeout}s")
 
 
 async def wait_with_timeout(
@@ -68,7 +88,7 @@ async def wait_with_timeout(
             logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
-        raise SubprocessTimeoutError(f"{operation} timed out after {timeout}s")
+        raise SubprocessTimeoutError(operation, timeout, process.pid)
 
 
 async def communicate_with_timeout(
@@ -111,7 +131,7 @@ async def communicate_with_timeout(
             logger.error("Process %d failed to terminate after SIGKILL", process.pid or -1)
         except ProcessLookupError:
             pass  # Process already terminated
-        raise SubprocessTimeoutError(f"{operation} timed out after {timeout}s")
+        raise SubprocessTimeoutError(operation, timeout, process.pid)
 
 
 # User's shell basename, computed once at import
