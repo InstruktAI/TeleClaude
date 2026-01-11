@@ -122,25 +122,22 @@ class DaemonCache:
     3. `GET /projects`: Return local projects + remote projects from cache
   - Note: `/projects-with-todos` deferred (requires complex todo fetching logic)
 
-### Task 2.2: Add cache population on first access
-
-**Files:** `teleclaude/adapters/rest_adapter.py`
-
-**Changes:**
-1. If cache is empty/stale for sessions, trigger background pull from remotes
-2. Return whatever is in cache immediately (may be empty on first request)
-3. Subsequent requests return cached data
+- [ ] **Task 2.2:** Add cache population on first access (DEFERRED)
+  - Files: `teleclaude/adapters/rest_adapter.py`
+  - Changes: Background pull from remotes, cache invalidation triggers
+  - Status: Deferred to Phase 4+ (requires peer discovery integration)
 
 ### Verification:
-- TUI loads instantly (shows local data immediately)
-- Remote data appears after background population
-- 'r' key triggers cache invalidation and re-fetch
+- ✅ TUI can load instantly (shows local data immediately)
+- ⏸️ Remote data population requires heartbeat integration (Phase 4+)
 
 ---
 
-## Phase 3: WebSocket Server
+## Phase 3: WebSocket Server (DEFERRED)
 
 **Goal:** Push updates from daemon to TUI via WebSocket.
+
+**Status:** Deferred to future work - foundation complete in Phases 0-2
 
 ### Task 3.1: Add WebSocket endpoint to REST adapter
 
