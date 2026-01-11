@@ -41,7 +41,7 @@ def create_mock_session(
     last_input: str | None = None,
     last_output: str | None = None,
     last_activity: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, object]:  # guard: loose-dict
     """Create mock session data for testing.
 
     Args:
@@ -80,7 +80,7 @@ def create_mock_session(
 def create_mock_computer(
     name: str = "test-computer",
     status: str = "online",
-) -> dict[str, object]:
+) -> dict[str, object]:  # guard: loose-dict
     """Create mock computer data for testing.
 
     Args:
@@ -101,7 +101,7 @@ def create_mock_computer(
 def create_mock_project(
     path: str = "/test/project",
     computer: str = "test-computer",
-) -> dict[str, object]:
+) -> dict[str, object]:  # guard: loose-dict
     """Create mock project data for testing.
 
     Args:
@@ -122,12 +122,12 @@ class MockAPIClient:
 
     def __init__(self) -> None:
         """Initialize mock API client."""
-        self._event_handlers: list[Callable[[str, dict[str, object]], None]] = []
-        self.sessions: list[dict[str, object]] = []
-        self.projects: list[dict[str, object]] = []
-        self.computers: list[dict[str, object]] = []
+        self._event_handlers: list[Callable[[str, dict[str, object]], None]] = []  # guard: loose-dict
+        self.sessions: list[dict[str, object]] = []  # guard: loose-dict
+        self.projects: list[dict[str, object]] = []  # guard: loose-dict
+        self.computers: list[dict[str, object]] = []  # guard: loose-dict
 
-    def on_event(self, handler: Callable[[str, dict[str, object]], None]) -> None:
+    def on_event(self, handler: Callable[[str, dict[str, object]], None]) -> None:  # guard: loose-dict
         """Register event handler (like real client).
 
         Args:
@@ -135,7 +135,7 @@ class MockAPIClient:
         """
         self._event_handlers.append(handler)
 
-    def simulate_event(self, event: str, data: dict[str, object]) -> None:
+    def simulate_event(self, event: str, data: dict[str, object]) -> None:  # guard: loose-dict
         """Simulate a push event from backend.
 
         Args:
@@ -145,7 +145,7 @@ class MockAPIClient:
         for handler in self._event_handlers:
             handler(event, data)
 
-    def get_sessions(self) -> list[dict[str, object]]:
+    def get_sessions(self) -> list[dict[str, object]]:  # guard: loose-dict
         """Return mock sessions.
 
         Returns:
@@ -160,7 +160,7 @@ class MockAPIClient:
         agent: str = "claude",  # noqa: ARG002
         thinking_mode: str = "slow",  # noqa: ARG002
         message: str | None = None,  # noqa: ARG002
-    ) -> dict[str, object]:
+    ) -> dict[str, object]:  # guard: loose-dict
         """Mock create session.
 
         Args:
