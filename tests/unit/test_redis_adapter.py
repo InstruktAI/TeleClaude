@@ -33,7 +33,7 @@ async def test_discover_peers_parses_heartbeat_data():
 
     # Mock Redis client
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(return_value=[b"computer:RemotePC:heartbeat"])
+    mock_redis.scan = AsyncMock(return_value=(0, [b"computer:RemotePC:heartbeat"]))
     mock_redis.get = AsyncMock(
         return_value=json.dumps(
             {
