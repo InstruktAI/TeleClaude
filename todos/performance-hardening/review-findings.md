@@ -151,3 +151,18 @@ The Phase 1 implementation meets all functional requirements and previous critic
 2. **IMPORTANT**: Add exception callbacks to fallback tasks in redis_adapter.py:221-224
 3. **IMPORTANT**: Add test for TaskRegistry exception logging
 4. **IMPORTANT**: Add test for SubprocessTimeoutError structured attributes
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| #1 (critical): Test mocks keys instead of scan | Changed mock from redis.keys to redis.scan | 25d87fe |
+| #2 (important): Fallback tasks without callbacks | Added _log_task_exception callbacks to message_poll, heartbeat, session_events tasks | aac60dc |
+| #3 (important): Output stream listener without callback | Added _log_task_exception callback to output stream listener | aac60dc |
+| #4 (important): TaskRegistry exception logging not tested | Added test_exception_logging_with_full_traceback | 27bde1f |
+| #5 (important): SubprocessTimeoutError structured data not tested | Added structured attribute assertions (operation, timeout, pid) | 27bde1f |
+| #6 (important): spawn() loses return type | Added TypeVar T for better type inference | 54a9650 |
+
+All critical and important issues have been addressed. Tests: PASSING
