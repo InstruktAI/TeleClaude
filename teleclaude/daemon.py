@@ -58,6 +58,7 @@ from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
+from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload, TerminalOutboxResponse
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
@@ -195,8 +196,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
         self.output_poller = OutputPoller()
 
+        # Initialize task registry for tracking background tasks
+        self.task_registry = TaskRegistry()
+
         # Initialize unified adapter client (observer pattern - NO daemon reference)
-        self.client = AdapterClient()
+        self.client = AdapterClient(task_registry=self.task_registry)
 
         # Initialize cache for remote data
         self.cache = DaemonCache()
@@ -881,7 +885,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Handle STOP event in background to prevent hook timeout during summarization
         if agent_event_type == AgentHookEvents.AGENT_STOP:
-            task = asyncio.create_task(self._process_agent_stop(context))
+            task = self.task_registry.spawn(self._process_agent_stop(context), name="agent-stop")
             task.add_done_callback(self._log_background_task_exception("process_agent_stop"))
             return
 
@@ -1704,6 +1708,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if hasattr(self, "codex_watcher"):
             await self.codex_watcher.stop()
             logger.info("Session watcher stopped")
+
+        # Shutdown task registry (cancel all tracked background tasks)
+        if hasattr(self, "task_registry"):
+            await self.task_registry.shutdown(timeout=5.0)
+            logger.info("Task registry shutdown complete")
 
         # Stop all adapters
         for adapter_name, adapter in self.client.adapters.items():

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import PeerInfo, Session
+    from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -35,15 +36,22 @@ class RESTAdapter(BaseAdapter):
 
     ADAPTER_KEY = "rest"
 
-    def __init__(self, client: AdapterClient, cache: "DaemonCache | None" = None) -> None:
+    def __init__(
+        self,
+        client: AdapterClient,
+        cache: "DaemonCache | None" = None,
+        task_registry: "TaskRegistry | None" = None,
+    ) -> None:
         """Initialize REST adapter.
 
         Args:
             client: AdapterClient instance for routing events
             cache: Optional DaemonCache for remote data (None = local-only mode)
+            task_registry: Optional TaskRegistry for tracking background tasks
         """
         self.client = client
         self.cache = cache
+        self.task_registry = task_registry
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
         self.server: uvicorn.Server | None = None
@@ -471,8 +479,12 @@ class RESTAdapter(BaseAdapter):
         """
         # Push to all connected WebSocket clients
         for ws in list(self._ws_clients):
-            # Create async task to send message (don't block)
-            task = asyncio.create_task(ws.send_json({"event": event, "data": data}))  # type: ignore[misc]
+            # Create tracked async task to send message (don't block)
+            coro = ws.send_json({"event": event, "data": data})  # type: ignore[misc]
+            if self.task_registry:
+                task = self.task_registry.spawn(coro, name=f"ws-broadcast-{event}")
+            else:
+                task = asyncio.create_task(coro)
 
             def on_done(t: asyncio.Task[object], client: WebSocket = ws) -> None:
                 if t.done() and t.exception():

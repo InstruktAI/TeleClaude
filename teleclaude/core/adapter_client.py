@@ -43,6 +43,7 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
+    from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -61,12 +62,16 @@ class AdapterClient:
     - (Future) Parallel broadcasting to multiple adapters
     """
 
-    def __init__(self) -> None:
+    def __init__(self, task_registry: "TaskRegistry | None" = None) -> None:
         """Initialize AdapterClient with observer pattern.
+
+        Args:
+            task_registry: Optional TaskRegistry for tracking background tasks
 
         No daemon reference - uses observer pattern instead.
         Daemon subscribes to events via client.on(event, handler).
         """
+        self.task_registry = task_registry
         self._handlers: dict[EventType, Callable[[EventType, EventContext], Awaitable[object]]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
 
@@ -162,7 +167,7 @@ class AdapterClient:
             ValueError: If no adapters started
         """
         # REST adapter (local HTTP API)
-        rest = RESTAdapter(self)
+        rest = RESTAdapter(self, task_registry=self.task_registry)
         await rest.start()
         self.adapters["rest"] = rest
 
@@ -175,7 +180,7 @@ class AdapterClient:
 
         # Redis adapter
         if config.redis.enabled:
-            redis = RedisAdapter(self)
+            redis = RedisAdapter(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
             self.adapters["redis"] = redis  # Register ONLY after success
             logger.info("Started redis adapter")

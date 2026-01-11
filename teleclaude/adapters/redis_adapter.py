@@ -42,6 +42,7 @@ from teleclaude.types import SystemStats
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache, SessionInfo
+    from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -63,26 +64,30 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     - Comp2 → XADD output:session_id → Comp1 polls → streams to MCP
     """
 
-    def __init__(self, adapter_client: "AdapterClient"):
+    def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
         """Initialize Redis adapter.
 
         Args:
             adapter_client: AdapterClient instance for event emission
+            task_registry: Optional TaskRegistry for tracking background tasks
         """
         super().__init__()
 
         # Store adapter client reference (ONLY interface to daemon)
         self.client = adapter_client
 
+        # Task registry for tracked background tasks
+        self.task_registry = task_registry
+
         # Cache reference (wired by daemon after start via property setter)
         self._cache: "DaemonCache | None" = None
 
         # Adapter state
-        self._message_poll_task: Optional[asyncio.Task[None]] = None
-        self._heartbeat_task: Optional[asyncio.Task[None]] = None
-        self._session_events_poll_task: Optional[asyncio.Task[None]] = None
-        self._connection_task: Optional[asyncio.Task[None]] = None
-        self._output_stream_listeners: dict[str, asyncio.Task[None]] = {}  # session_id -> listener task
+        self._message_poll_task: Optional[asyncio.Task[object]] = None
+        self._heartbeat_task: Optional[asyncio.Task[object]] = None
+        self._session_events_poll_task: Optional[asyncio.Task[object]] = None
+        self._connection_task: Optional[asyncio.Task[object]] = None
+        self._output_stream_listeners: dict[str, asyncio.Task[object]] = {}  # session_id -> listener task
         self._running = False
 
         # Extract Redis configuration from global config
@@ -170,7 +175,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self._running = True
 
         # Start connection orchestration without blocking daemon boot
-        self._connection_task = asyncio.create_task(self._ensure_connection_and_start_tasks())
+        if self.task_registry:
+            self._connection_task = self.task_registry.spawn(
+                self._ensure_connection_and_start_tasks(), name="redis-connection"
+            )
+        else:
+            self._connection_task = asyncio.create_task(self._ensure_connection_and_start_tasks())
         logger.info("RedisAdapter start triggered (connection handled asynchronously)")
 
     async def _ensure_connection_and_start_tasks(self) -> None:
@@ -182,9 +192,16 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return
 
         # Start background tasks once connected
-        self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
+        if self.task_registry:
+            self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")
+            self._heartbeat_task = self.task_registry.spawn(self._heartbeat_loop(), name="redis-heartbeat")
+            self._session_events_poll_task = self.task_registry.spawn(
+                self._poll_session_events(), name="redis-session-events"
+            )
+        else:
+            self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
 
         logger.info("RedisAdapter connected and background tasks started")
 
@@ -1088,7 +1105,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return
 
         # Push events asynchronously without blocking cache notification
-        task = asyncio.create_task(self._push_session_event_to_peers(event, data))
+        if self.task_registry:
+            task = self.task_registry.spawn(self._push_session_event_to_peers(event, data), name="redis-push-event")
+        else:
+            task = asyncio.create_task(self._push_session_event_to_peers(event, data))
         task.add_done_callback(
             lambda t: logger.error("Push task failed: %s", t.exception())
             if t.done() and not t.cancelled() and t.exception()
@@ -1273,7 +1293,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             logger.warning("Output stream listener already running for session %s", session_id[:8])
             return
 
-        task = asyncio.create_task(self._poll_output_stream_for_messages(session_id))
+        if self.task_registry:
+            task = self.task_registry.spawn(
+                self._poll_output_stream_for_messages(session_id), name=f"redis-output-{session_id[:8]}"
+            )
+        else:
+            task = asyncio.create_task(self._poll_output_stream_for_messages(session_id))
         self._output_stream_listeners[session_id] = task
         logger.info("Started output stream listener for AI-to-AI session %s", session_id[:8])
 
