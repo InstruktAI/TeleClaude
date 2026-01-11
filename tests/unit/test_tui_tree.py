@@ -2,9 +2,7 @@
 
 # type: ignore - test fixtures use concrete types that are compatible
 
-import pytest
-
-from teleclaude.cli.tui.tree import TreeNode, build_tree
+from teleclaude.cli.tui.tree import build_tree
 
 
 def test_build_tree_empty_inputs():

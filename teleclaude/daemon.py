@@ -1574,6 +1574,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             rest_adapter.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
             logger.info("Wired cache to REST adapter")
 
+        # Wire cache to Redis adapter
+        redis_adapter_cache = self.client.adapters.get("redis")
+        if redis_adapter_cache and hasattr(redis_adapter_cache, "cache"):
+            redis_adapter_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
+            logger.info("Wired cache to Redis adapter")
+
         # Initialize voice handler (side effect - only after network succeeds)
         init_voice_handler()
         logger.info("Voice handler initialized")

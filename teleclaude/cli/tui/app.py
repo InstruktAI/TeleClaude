@@ -2,6 +2,7 @@
 
 import asyncio
 import curses
+import queue
 import time
 from dataclasses import dataclass, field
 
@@ -20,6 +21,9 @@ from teleclaude.cli.tui.widgets.tab_bar import TabBar
 nest_asyncio.apply()
 
 logger = get_logger(__name__)
+
+# WebSocket update polling interval in milliseconds
+WS_POLL_INTERVAL_MS = 100
 
 # Key name mapping for debug logging
 KEY_NAMES = {
@@ -140,6 +144,8 @@ class TelecApp:
         # Content area bounds for mouse click handling
         self._content_start: int = 0
         self._content_height: int = 0
+        # WebSocket event queue (thread-safe)
+        self._ws_queue: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue()  # guard: loose-dict
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -153,6 +159,12 @@ class TelecApp:
 
         # Now refresh to populate views with data
         await self.refresh_data()
+
+        # Start WebSocket connection for push updates
+        self.api.start_websocket(  # type: ignore[attr-defined]
+            callback=self._on_ws_event,
+            subscriptions=["sessions", "preparation"],
+        )
 
     async def refresh_data(self) -> None:
         """Refresh all data from API."""
@@ -220,12 +232,139 @@ class TelecApp:
     def cleanup(self) -> None:
         """Clean up resources before exit."""
         self.pane_manager.cleanup()
+        # Stop WebSocket connection
+        self.api.stop_websocket()  # type: ignore[attr-defined]
+
+    def _on_ws_event(self, event: str, data: dict[str, object]) -> None:  # guard: loose-dict
+        """Handle WebSocket event from background thread.
+
+        Queues the event for processing in the main loop (thread-safe).
+
+        Args:
+            event: Event type (e.g., "session_updated", "sessions_initial")
+            data: Event data
+        """
+        self._ws_queue.put((event, data))
+
+    def _process_ws_events(self) -> bool:
+        """Process pending WebSocket events from the queue.
+
+        Returns:
+            True if any events were processed (view may need re-render)
+        """
+        updated = False
+
+        while True:
+            try:
+                event, data = self._ws_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            logger.debug("Processing WebSocket event: %s", event)
+            updated = True
+
+            # Handle initial state events (sent after subscription)
+            if event == "sessions_initial":
+                sessions = data.get("sessions")
+                if isinstance(sessions, list):
+                    self._update_sessions_view(sessions)
+
+            elif event == "preparation_initial":
+                projects = data.get("projects")
+                if isinstance(projects, list):
+                    self._update_preparation_view(projects)
+
+            # Handle incremental update events
+            elif event in ("session_updated", "session_created"):
+                self._apply_session_update(data)
+
+            elif event == "session_removed":
+                session_id = data.get("session_id")
+                if isinstance(session_id, str):
+                    self._apply_session_removal(session_id)
+
+            elif event in ("computer_updated", "project_updated"):
+                # For now, trigger a full refresh for computer/project updates
+                # In the future, could apply incremental updates
+                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
+        return updated
+
+    def _update_sessions_view(self, sessions: list[object]) -> None:  # guard: loose-list
+        """Update sessions view with fresh session data.
+
+        Args:
+            sessions: List of session dicts
+        """
+        sessions_view = self.views.get(1)
+        if not isinstance(sessions_view, SessionsView):
+            return
+
+        typed_sessions: list[dict[str, object]] = []  # guard: loose-dict
+        for s in sessions:
+            if isinstance(s, dict):
+                typed_sessions.append(s)
+        sessions_view._sessions = typed_sessions
+        sessions_view._update_activity_state(typed_sessions)
+        logger.debug("Sessions view updated with %d sessions", len(typed_sessions))
+
+    def _update_preparation_view(self, projects: list[object]) -> None:  # noqa: ARG002  # guard: loose-list
+        """Update preparation view with fresh project data.
+
+        Args:
+            projects: List of project dicts with todos (unused - triggers full refresh)
+        """
+        # For now, trigger a full async refresh since preparation view
+        # needs to rebuild its tree with todos
+        asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
+    def _apply_session_update(self, session: dict[str, object]) -> None:  # guard: loose-dict
+        """Apply incremental session update.
+
+        Args:
+            session: Session data dict
+        """
+        sessions_view = self.views.get(1)
+        if not isinstance(sessions_view, SessionsView):
+            return
+
+        session_id = session.get("session_id")
+        if not session_id:
+            return
+
+        # Find and update/add the session
+        found = False
+        for i, s in enumerate(sessions_view._sessions):
+            if s.get("session_id") == session_id:
+                sessions_view._sessions[i] = session
+                found = True
+                break
+
+        if not found:
+            sessions_view._sessions.append(session)
+
+        # Update activity state for the changed session
+        sessions_view._update_activity_state([session])
+        logger.debug("Session %s updated", str(session_id)[:8])
+
+    def _apply_session_removal(self, session_id: str) -> None:
+        """Apply session removal.
+
+        Args:
+            session_id: ID of removed session
+        """
+        sessions_view = self.views.get(1)
+        if not isinstance(sessions_view, SessionsView):
+            return
+
+        sessions_view._sessions = [s for s in sessions_view._sessions if s.get("session_id") != session_id]
+        logger.debug("Session %s removed", session_id[:8])
 
     def run(self, stdscr: object) -> None:
         """Main event loop.
 
-        No auto-refresh to allow text selection. User presses 'r' to refresh.
-        Screen updates only on user input.
+        Uses short timeout to poll for WebSocket updates while still responsive
+        to user input. Screen updates on user input or WebSocket events.
 
         Args:
             stdscr: Curses screen object
@@ -240,13 +379,16 @@ class TelecApp:
             curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED | curses.BUTTON4_PRESSED | 0x8000000 | 0x200000
         )
 
-        # Block indefinitely waiting for input (no timeout = no auto-refresh)
-        stdscr.timeout(-1)  # type: ignore[attr-defined]
+        # Use short timeout to poll for WebSocket events
+        stdscr.timeout(WS_POLL_INTERVAL_MS)  # type: ignore[attr-defined]
 
         # Initial render
         self._render(stdscr)
 
         while self.running:
+            # Process any pending WebSocket events
+            ws_updated = self._process_ws_events()
+
             key = stdscr.getch()  # type: ignore[attr-defined]
 
             if key != -1:
@@ -256,6 +398,9 @@ class TelecApp:
                 if view and getattr(view, "needs_refresh", False):
                     asyncio.get_event_loop().run_until_complete(self.refresh_data())
                     view.needs_refresh = False
+                self._render(stdscr)
+            elif ws_updated:
+                # Re-render if WebSocket events were processed (no key press)
                 self._render(stdscr)
 
     def _handle_key(self, key: int, stdscr: object) -> None:

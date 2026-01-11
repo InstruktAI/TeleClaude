@@ -7,11 +7,12 @@ and routes all requests through AdapterClient like other adapters.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from typing import TYPE_CHECKING, AsyncIterator
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
@@ -47,6 +48,14 @@ class RESTAdapter(BaseAdapter):
         self._setup_routes()
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
+
+        # WebSocket state
+        self._ws_clients: set[WebSocket] = set()
+        self._client_subscriptions: dict[WebSocket, set[str]] = {}
+
+        # Subscribe to cache changes
+        if self.cache:
+            self.cache.subscribe(self._on_cache_change)
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
@@ -345,6 +354,134 @@ class RESTAdapter(BaseAdapter):
 
             return result
 
+        @self.app.websocket("/ws")  # type: ignore[misc]
+        async def websocket_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
+            websocket: WebSocket,
+        ) -> None:
+            """WebSocket endpoint for push updates."""
+            await self._handle_websocket(websocket)
+
+    async def _handle_websocket(self, websocket: WebSocket) -> None:
+        """Handle WebSocket connection for push updates.
+
+        Args:
+            websocket: WebSocket connection
+        """
+        await websocket.accept()
+        self._ws_clients.add(websocket)
+        self._client_subscriptions[websocket] = set()
+        logger.info("WebSocket client connected")
+
+        # Update interest in cache when first client connects
+        if self.cache and len(self._ws_clients) == 1:
+            self._update_cache_interest()
+
+        try:
+            while True:
+                # Receive messages from client
+                message = await websocket.receive_text()
+                data_raw: object = json.loads(message)
+
+                # Type guard: ensure data is a dict
+                if not isinstance(data_raw, dict):
+                    logger.warning("WebSocket received non-dict message: %s", type(data_raw))
+                    continue
+
+                data: dict[str, object] = data_raw  # guard: loose-dict - WebSocket message
+
+                # Handle subscription messages
+                if "subscribe" in data:
+                    topic_raw = data["subscribe"]
+                    if not isinstance(topic_raw, str):
+                        logger.warning("WebSocket subscribe topic is not a string: %s", type(topic_raw))
+                        continue
+                    topic: str = topic_raw
+                    self._client_subscriptions[websocket].add(topic)
+                    logger.info("WebSocket client subscribed to: %s", topic)
+
+                    # Update cache interest
+                    if self.cache:
+                        self._update_cache_interest()
+
+                    # Send initial state for this subscription
+                    await self._send_initial_state(websocket, topic)
+
+                # Handle refresh messages
+                elif data.get("refresh"):
+                    logger.info("WebSocket client requested refresh")
+                    if self.cache:
+                        self.cache.invalidate_all()
+                        # Re-send initial state for all subscriptions
+                        for topic in self._client_subscriptions[websocket]:
+                            await self._send_initial_state(websocket, topic)
+
+        except WebSocketDisconnect:
+            logger.info("WebSocket client disconnected")
+        except Exception as e:
+            logger.error("WebSocket error: %s", e, exc_info=True)
+        finally:
+            # Clean up
+            self._ws_clients.discard(websocket)
+            self._client_subscriptions.pop(websocket, None)
+
+            # Update interest in cache when last client disconnects
+            if self.cache and len(self._ws_clients) == 0:
+                self._update_cache_interest()
+
+    def _update_cache_interest(self) -> None:
+        """Update cache interest based on active WebSocket subscriptions."""
+        if not self.cache:
+            return
+
+        # Collect all subscriptions from all connected clients
+        all_interests: set[str] = set()
+        for subscriptions in self._client_subscriptions.values():
+            all_interests.update(subscriptions)
+
+        self.cache.set_interest(all_interests)
+        logger.debug("Updated cache interest: %s", all_interests)
+
+    async def _send_initial_state(self, websocket: WebSocket, topic: str) -> None:
+        """Send initial state for a subscription topic.
+
+        Args:
+            websocket: WebSocket connection
+            topic: Subscription topic (e.g., "sessions", "preparation")
+        """
+        try:
+            if topic == "sessions":
+                # Send current sessions from cache
+                if self.cache:
+                    sessions = self.cache.get_sessions()
+                    await websocket.send_json({"event": "sessions_initial", "data": {"sessions": sessions}})  # type: ignore[misc]
+            elif topic == "preparation":
+                # Send current projects/todos from cache
+                if self.cache:
+                    projects = self.cache.get_projects()
+                    await websocket.send_json({"event": "preparation_initial", "data": {"projects": projects}})  # type: ignore[misc]
+        except Exception as e:
+            logger.error("Failed to send initial state for %s: %s", topic, e, exc_info=True)
+
+    def _on_cache_change(self, event: str, data: object) -> None:
+        """Handle cache change notifications and push to WebSocket clients.
+
+        Args:
+            event: Event type (e.g., "session_updated", "computer_updated")
+            data: Event data
+        """
+        # Push to all connected WebSocket clients
+        for ws in list(self._ws_clients):
+            # Create async task to send message (don't block)
+            task = asyncio.create_task(ws.send_json({"event": event, "data": data}))  # type: ignore[misc]
+
+            def on_done(t: asyncio.Task[object], client: WebSocket = ws) -> None:
+                if t.done() and t.exception():
+                    logger.warning("WebSocket send failed, removing client: %s", t.exception())
+                    self._ws_clients.discard(client)
+                    self._client_subscriptions.pop(client, None)
+
+            task.add_done_callback(on_done)
+
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""
         # Remove old socket if exists
@@ -364,6 +501,24 @@ class RESTAdapter(BaseAdapter):
 
     async def stop(self) -> None:
         """Stop the REST API server."""
+        # Unsubscribe from cache changes
+        if self.cache:
+            self.cache.unsubscribe(self._on_cache_change)
+
+        # Close all WebSocket connections
+        for ws in list(self._ws_clients):
+            try:
+                await ws.close()
+            except Exception as e:
+                logger.warning("Error closing WebSocket: %s", e)
+        self._ws_clients.clear()
+        self._client_subscriptions.clear()
+
+        # Clear interest from cache
+        if self.cache:
+            self.cache.set_interest(set())
+
+        # Stop server
         if self.server:
             self.server.should_exit = True
         if self.server_task:

@@ -40,6 +40,7 @@ from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.cache import DaemonCache, SessionInfo
 
 logger = get_logger(__name__)
 
@@ -72,9 +73,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Store adapter client reference (ONLY interface to daemon)
         self.client = adapter_client
 
+        # Cache reference (wired by daemon after start via property setter)
+        self._cache: "DaemonCache | None" = None
+
         # Adapter state
         self._message_poll_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
+        self._session_events_poll_task: Optional[asyncio.Task[None]] = None
         self._connection_task: Optional[asyncio.Task[None]] = None
         self._output_stream_listeners: dict[str, asyncio.Task[None]] = {}  # session_id -> listener task
         self._running = False
@@ -108,6 +113,21 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self._idle_poll_suppressed: int = 0
 
         logger.info("RedisAdapter initialized for computer: %s", self.computer_name)
+
+    @property
+    def cache(self) -> "DaemonCache | None":
+        """Get cache reference."""
+        return self._cache
+
+    @cache.setter
+    def cache(self, value: "DaemonCache | None") -> None:
+        """Set cache reference and subscribe to changes."""
+        if self._cache:
+            self._cache.unsubscribe(self._on_cache_change)
+        self._cache = value
+        if value:
+            value.subscribe(self._on_cache_change)
+            logger.info("Redis adapter subscribed to cache notifications")
 
     def _reset_idle_poll_log_throttle(self) -> None:
         self._idle_poll_last_log_at = None
@@ -163,6 +183,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Start background tasks once connected
         self._message_poll_task = asyncio.create_task(self._poll_redis_messages())
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
 
         logger.info("RedisAdapter connected and background tasks started")
 
@@ -242,6 +263,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._session_events_poll_task:
+            self._session_events_poll_task.cancel()
+            try:
+                await self._session_events_poll_task
             except asyncio.CancelledError:
                 pass
 
@@ -604,7 +632,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     last_seen_str: object = info.get("last_seen", "")
                     try:
                         last_seen_dt = datetime.fromisoformat(str(last_seen_str))
-                    except (ValueError, TypeError):
+                    except (ValueError, TypeError) as e:
+                        logger.warning("Invalid timestamp for %s, using now: %s", info.get("computer_name"), e)
                         last_seen_dt = datetime.now(timezone.utc)
 
                     computer_name: str = str(info["computer_name"])
@@ -816,7 +845,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 if len(args) > 2:
                     try:
                         title = base64.b64decode(args[2]).decode()
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("Failed to decode title from base64: %s", e)
                         title = None
 
                 event_type = TeleClaudeEvents.AGENT_EVENT
@@ -987,6 +1017,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         try:
             args_obj = json.loads(args_json)
         except json.JSONDecodeError:
+            logger.warning("Invalid JSON in system command args: %s", args_json[:100])
             args_obj = {}
 
         logger.info("Received system command '%s' from %s", command, from_computer)
@@ -1018,15 +1049,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 await self._reconnect_with_backoff()
 
     async def _send_heartbeat(self) -> None:
-        """Send minimal Redis key with TTL as heartbeat (presence ping only)."""
+        """Send minimal Redis key with TTL as heartbeat (presence ping + interest advertising)."""
         logger.trace("Sent heartbeat for %s", self.computer_name)
         key = f"computer:{self.computer_name}:heartbeat"
 
-        # Minimal payload - just alive ping
-        payload: dict[str, str] = {
+        # Payload with interest advertising
+        payload: dict[str, object] = {  # guard: loose-dict - heartbeat payload
             "computer_name": self.computer_name,
             "last_seen": datetime.now(timezone.utc).isoformat(),
         }
+
+        # Include interest if cache available
+        if self.cache:
+            interest = list(self.cache.get_interest())
+            if interest:
+                payload["interested_in"] = interest
+                logger.trace("Heartbeat includes interest: %s", interest)
 
         # Set key with auto-expiry
         redis_client = self._require_redis()
@@ -1035,6 +1073,193 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self.heartbeat_ttl,
             json.dumps(payload),
         )
+
+    # === Event Push (Phase 5) ===
+
+    def _on_cache_change(self, event: str, data: object) -> None:
+        """Handle cache change notifications and push to interested peers.
+
+        Args:
+            event: Event type from cache (e.g., "session_updated", "session_removed")
+            data: Event data (session info dict, etc.)
+        """
+        # Only push session-related events
+        if event not in ("session_updated", "session_removed"):
+            return
+
+        # Push events asynchronously without blocking cache notification
+        task = asyncio.create_task(self._push_session_event_to_peers(event, data))
+        task.add_done_callback(
+            lambda t: logger.error("Push task failed: %s", t.exception())
+            if t.done() and not t.cancelled() and t.exception()
+            else None
+        )
+
+    async def _push_session_event_to_peers(self, event: str, data: object) -> None:
+        """Push session event to interested remote peers.
+
+        Args:
+            event: Event type ("session_updated" or "session_removed")
+            data: Session data dict
+        """
+        try:
+            # Get interested computers
+            interested = await self._get_interested_computers("sessions")
+            if not interested:
+                logger.trace("No peers interested in sessions, skipping event push")
+                return
+
+            # Prepare event payload
+            if not isinstance(data, dict):
+                logger.warning("Event data is not a dict, cannot push: %s", type(data))
+                return
+
+            payload: dict[str, object] = {  # guard: loose-dict - event payload
+                "event": event,
+                "data": data,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source_computer": self.computer_name,
+            }
+
+            # Push to each interested peer
+            redis_client = self._require_redis()
+            for computer in interested:
+                stream_key = f"session_events:{computer}"
+                try:
+                    await redis_client.xadd(
+                        stream_key.encode("utf-8"),
+                        {b"payload": json.dumps(payload).encode("utf-8")},
+                        maxlen=100,  # Keep last 100 events
+                    )
+                    logger.debug("Pushed %s event to %s", event, computer)
+                except Exception as e:
+                    logger.error("Failed to push event to %s: %s", computer, e)
+
+        except Exception as e:
+            logger.error("Failed to push session event: %s", e, exc_info=True)
+
+    async def _get_interested_computers(self, interest_type: str) -> list[str]:
+        """Get list of computers interested in a specific type of event.
+
+        Args:
+            interest_type: Interest type to filter by (e.g., "sessions", "preparation")
+
+        Returns:
+            List of computer names that advertised interest in this type
+        """
+        try:
+            redis_client = self._require_redis()
+
+            # Scan all heartbeat keys
+            keys: object = await redis_client.keys(b"computer:*:heartbeat")
+            if not keys:
+                return []
+
+            interested_computers = []
+            for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
+                # Get heartbeat data
+                data_bytes: object = await redis_client.get(key)
+                if not data_bytes:
+                    continue
+
+                # Parse heartbeat payload
+                data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+                info_obj: object = json.loads(data_str)
+                if not isinstance(info_obj, dict):
+                    continue
+                info: dict[str, object] = info_obj
+
+                computer_name: str = str(info["computer_name"])
+
+                # Skip self
+                if computer_name == self.computer_name:
+                    continue
+
+                # Check if computer is interested in this type
+                interested_in_obj: object = info.get("interested_in", [])
+                if not isinstance(interested_in_obj, list):
+                    continue
+                interested_in: list[object] = interested_in_obj
+
+                if interest_type in interested_in:
+                    interested_computers.append(computer_name)
+                    logger.trace("Computer %s is interested in %s", computer_name, interest_type)
+
+            return interested_computers
+
+        except Exception as e:
+            logger.error("Failed to get interested computers: %s", e)
+            return []
+
+    async def _poll_session_events(self) -> None:
+        """Poll session events stream for incoming events from remote peers (Phase 6)."""
+        stream_key = f"session_events:{self.computer_name}"
+        last_id = b"$"  # Start from current position
+
+        logger.info("Starting session events polling for stream: %s", stream_key)
+
+        while self._running:
+            try:
+                # Only poll if cache has interest in sessions
+                if not self.cache or not self.cache.has_interest("sessions"):
+                    await asyncio.sleep(5)  # Check again in 5s
+                    continue
+
+                # Read from session events stream
+                redis_client = self._require_redis()
+                messages = await redis_client.xread(
+                    {stream_key.encode("utf-8"): last_id},
+                    block=1000,
+                    count=10,
+                )
+
+                if not messages:
+                    continue
+
+                # Process incoming events
+                for _stream_name, stream_messages in messages:
+                    for message_id, data in stream_messages:
+                        last_id = message_id
+
+                        # Parse event payload
+                        payload_bytes: bytes = data.get(b"payload", b"")
+                        if not payload_bytes:
+                            continue
+
+                        payload_str = payload_bytes.decode("utf-8")
+                        payload_obj: object = json.loads(payload_str)
+                        if not isinstance(payload_obj, dict):
+                            continue
+                        payload: dict[str, object] = payload_obj
+
+                        # Extract event details
+                        event: str = str(payload.get("event", ""))
+                        event_data: object = payload.get("data")
+                        source_computer: str = str(payload.get("source_computer", "unknown"))
+
+                        if not isinstance(event_data, dict):
+                            logger.warning("Event data is not a dict: %s", type(event_data))
+                            continue
+
+                        # Update cache based on event type
+                        if event == "session_updated":
+                            # Event data is a SessionInfo dict from remote
+                            session_info: object = event_data
+                            self.cache.update_session(cast("SessionInfo", session_info))
+                            logger.debug("Updated cache with session from %s", source_computer)
+                        elif event == "session_removed":
+                            session_id: str = str(event_data.get("session_id", ""))
+                            if session_id:
+                                self.cache.remove_session(session_id)
+                                logger.debug(
+                                    "Removed session %s from cache (source: %s)", session_id[:8], source_computer
+                                )
+
+            except Exception as e:
+                logger.error("Session events polling error: %s", e, exc_info=True)
+                await asyncio.sleep(5)  # Back off on error
+
+        logger.info("Stopped session events polling")
 
     # === AI-to-AI Session Output Stream Listeners ===
 

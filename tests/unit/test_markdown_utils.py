@@ -1,7 +1,5 @@
 """Unit tests for markdown utilities."""
 
-import pytest
-
 from teleclaude.utils.markdown import escape_markdown_v2, strip_outer_codeblock
 
 

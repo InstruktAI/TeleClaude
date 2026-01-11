@@ -25,8 +25,6 @@ from teleclaude.core.next_machine import (
 @pytest.mark.asyncio
 async def test_workflow_pending_to_archived_with_dependencies():
     """Integration test: [ ] → [.] → [>] → archived with dependency gating"""
-    db = MagicMock(spec=Db)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create roadmap with dependency chain
         roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"

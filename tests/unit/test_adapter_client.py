@@ -557,7 +557,7 @@ async def test_send_message_broadcasts_to_ui_adapters():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import MessageMetadata, Session
+    from teleclaude.core.models import Session
 
     client = AdapterClient()
 
@@ -592,7 +592,7 @@ async def test_send_message_ephemeral_tracks_for_deletion():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import MessageMetadata, Session
+    from teleclaude.core.models import Session
 
     client = AdapterClient()
 
@@ -621,7 +621,7 @@ async def test_send_message_persistent_not_tracked():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import MessageMetadata, Session
+    from teleclaude.core.models import Session
 
     client = AdapterClient()
 

@@ -2,11 +2,7 @@
 
 # type: ignore - test uses temp directories
 
-from pathlib import Path
-
-import pytest
-
-from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
+from teleclaude.cli.tui.todos import parse_roadmap
 
 
 def test_parse_roadmap_no_file(tmp_path):
