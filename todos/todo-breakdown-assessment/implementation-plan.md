@@ -22,9 +22,9 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
 
 Update `DEFAULT_STATE` to include breakdown key structure.
 
-- [ ] Add `read_breakdown_state()` function
-- [ ] Add `write_breakdown_state()` function
-- [ ] Update state reading to handle breakdown property
+- [x] Add `read_breakdown_state()` function
+- [x] Add `write_breakdown_state()` function
+- [x] Update state reading to handle breakdown property
 
 ---
 
@@ -56,11 +56,11 @@ if breakdown_state and breakdown_state.get("todos"):
     return f"CONTAINER: {slug} was split into: {breakdown_state['todos']}. Work on those first."
 ```
 
-- [ ] Add input.md detection
-- [ ] Add breakdown state check
-- [ ] Add HITL guidance for breakdown assessment
-- [ ] Add container detection (todo with dependent todos listed)
-- [ ] Ensure flow proceeds to requirements.md only if breakdown.todos is empty
+- [x] Add input.md detection
+- [x] Add breakdown state check
+- [x] Add HITL guidance for breakdown assessment
+- [x] Add container detection (todo with dependent todos listed)
+- [x] Ensure flow proceeds to requirements.md only if breakdown.todos is empty
 
 ---
 
@@ -101,9 +101,9 @@ Assess whether this todo fits a single AI session.
 3. Continue to requirements.md
 ```
 
-- [ ] Add breakdown assessment section
-- [ ] Apply prompt engineering principles: objective-focused, minimal, clear
-- [ ] Final wording uses positive, action-oriented language throughout
+- [x] Add breakdown assessment section
+- [x] Apply prompt engineering principles: objective-focused, minimal, clear
+- [x] Final wording uses positive, action-oriented language throughout
 
 ---
 
@@ -123,8 +123,8 @@ Discussion results go in `todos/{slug}/input.md`. Call `teleclaude__next_prepare
 
 That's it. The orchestrator knows about preparation; breakdown mechanics live in next-prepare.
 
-- [ ] Add preparation flow note (one sentence)
-- [ ] Keep breakdown logic in next-prepare only (single responsibility)
+- [x] Add preparation flow note (one sentence)
+- [x] Keep breakdown logic in next-prepare only (single responsibility)
 
 ---
 
