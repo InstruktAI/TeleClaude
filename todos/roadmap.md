@@ -6,12 +6,12 @@
 
 ---
 
-## Cache Population - Critical Deferred Work
+## Worktree Workflow - Blocking Bug
 
-- [>] cache-deferreds
-      Complete deferred cache population from data-caching-pushing feature.
-      Phases 1-4: Infrastructure for remote data (computers, sessions, projects, todos).
-      Phase 7: Fix architectural flaw - per-computer interest tracking (merged from cache-per-computer-interest).
+- [ ] worktree-preparation
+      Worktree preparation missing. Workers get vague "ensure dependencies" instructions,
+      run `make install` from worktree, hijack main daemon. Need project-owned preparation
+      hook and guards on install/init scripts.
 
 ---
 
