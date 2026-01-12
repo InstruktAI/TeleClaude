@@ -1,6 +1,7 @@
 """Integration tests for worktree preparation."""
 
 import json
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -39,6 +40,8 @@ class TestWorktreePreparationIntegration:
 
     def test_package_json_worktree_prepare_integration(self) -> None:
         """Test that actual package.json worktree:prepare execution works."""
+        if shutil.which("npm") is None:
+            pytest.skip("npm not available in this environment")
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
 

@@ -3,7 +3,7 @@
 # Worktree Preparation Script
 # Prepares a git worktree for TeleClaude work by:
 #   1. Installing Python dependencies (isolated .venv)
-#   2. Generating config.yml (shares main repo database)
+#   2. Generating config.yml (isolated worktree database)
 #   3. Symlinking .env from main repo
 #
 # Usage: bin/worktree-prepare.sh <slug>
@@ -121,5 +121,5 @@ print_success ".env symlink created"
 print_success "Worktree preparation complete: $SLUG"
 print_info "Ready for work with:"
 print_info "  - Isolated .venv/"
-print_info "  - Shared database (main repo teleclaude.db)"
+print_info "  - Isolated database (worktree teleclaude.db)"
 print_info "  - Shared secrets (.env symlink)"
