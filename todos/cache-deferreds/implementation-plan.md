@@ -58,7 +58,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
 
 **Goal:** Remote projects appear when Sessions or Preparation view opens.
 
-- [ ] **Task 3.1:** Add pull trigger on view access
+- [x] **Task 3.1:** Add pull trigger on view access
   - File: `teleclaude/adapters/rest_adapter.py`
   - Location: `GET /projects` or `GET /projects-with-todos`
   - Changes:
@@ -66,7 +66,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
     2. If stale, trigger background pull from remotes
     3. Return cached data immediately (don't wait)
 
-- [ ] **Task 3.2:** Implement remote project pull
+- [x] **Task 3.2:** Implement remote project pull
   - File: `teleclaude/adapters/redis_adapter.py`
   - Changes:
     1. Add `pull_remote_projects(computer: str)` method
@@ -83,7 +83,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
 
 **Goal:** Remote todos appear in Preparation view.
 
-- [ ] **Task 4.1:** Add pull trigger for todos
+- [x] **Task 4.1:** Add pull trigger for todos
   - File: `teleclaude/adapters/rest_adapter.py`
   - Location: `GET /projects-with-todos`
   - Changes:
@@ -91,7 +91,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
     2. If stale, trigger background pull
     3. Merge local + cached remote data
 
-- [ ] **Task 4.2:** Implement remote todos pull
+- [x] **Task 4.2:** Implement remote todos pull
   - File: `teleclaude/adapters/redis_adapter.py`
   - Changes:
     1. Add `pull_remote_todos(computer: str, project_path: str)` method

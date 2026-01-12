@@ -1329,6 +1329,115 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.warning("Failed to pull sessions from %s: %s", computer_name, e)
                 continue
 
+    async def pull_remote_projects(self, computer: str) -> None:
+        """Pull projects from a remote computer via Redis.
+
+        Args:
+            computer: Name of the remote computer to pull projects from
+        """
+        if not self.cache:
+            return
+
+        logger.debug("Pulling projects from remote computer: %s", computer)
+
+        try:
+            # Request projects via Redis (calls list_projects handler on remote)
+            message_id = await self.send_request(computer, "list_projects", MessageMetadata())
+
+            # Wait for response with short timeout
+            response_data = await self.client.read_response(message_id, timeout=3.0)
+            envelope_obj: object = json.loads(response_data.strip())
+
+            if not isinstance(envelope_obj, dict):
+                logger.warning("Invalid response from %s: not a dict", computer)
+                return
+
+            envelope: dict[str, object] = envelope_obj
+
+            # Check response status
+            status = envelope.get("status")
+            if status == "error":
+                error_msg = envelope.get("error", "unknown error")
+                logger.warning("Error from %s: %s", computer, error_msg)
+                return
+
+            # Extract projects data
+            data = envelope.get("data")
+            if not isinstance(data, list):
+                logger.warning("Invalid projects data from %s: %s", computer, type(data))
+                return
+
+            # Convert to ProjectInfo list
+            from teleclaude.core.command_handlers import ProjectInfo
+
+            projects: list[ProjectInfo] = []
+            for project_obj in data:
+                if isinstance(project_obj, dict):
+                    project: ProjectInfo = cast("ProjectInfo", project_obj)
+                    projects.append(project)
+
+            # Store in cache
+            self.cache.set_projects(computer, projects)
+            logger.info("Pulled %d projects from %s", len(projects), computer)
+
+        except (TimeoutError, Exception) as e:
+            logger.warning("Failed to pull projects from %s: %s", computer, e)
+
+    async def pull_remote_todos(self, computer: str, project_path: str) -> None:
+        """Pull todos for a specific project from a remote computer via Redis.
+
+        Args:
+            computer: Name of the remote computer
+            project_path: Path to the project on the remote computer
+        """
+        if not self.cache:
+            return
+
+        logger.debug("Pulling todos from %s:%s", computer, project_path)
+
+        try:
+            # Request todos via Redis (calls list_todos handler on remote)
+            message_id = await self.send_request(computer, "list_todos", MessageMetadata(), args=[project_path])
+
+            # Wait for response with short timeout
+            response_data = await self.client.read_response(message_id, timeout=3.0)
+            envelope_obj: object = json.loads(response_data.strip())
+
+            if not isinstance(envelope_obj, dict):
+                logger.warning("Invalid response from %s: not a dict", computer)
+                return
+
+            envelope: dict[str, object] = envelope_obj
+
+            # Check response status
+            status = envelope.get("status")
+            if status == "error":
+                error_msg = envelope.get("error", "unknown error")
+                logger.warning("Error from %s: %s", computer, error_msg)
+                return
+
+            # Extract todos data
+            data = envelope.get("data")
+            if not isinstance(data, list):
+                logger.warning("Invalid todos data from %s: %s", computer, type(data))
+                return
+
+            # Convert to TodoInfo list
+            from teleclaude.core.command_handlers import TodoInfo
+
+            todos: list[TodoInfo] = []
+            for todo_obj in data:
+                if isinstance(todo_obj, dict):
+                    todo: TodoInfo = cast("TodoInfo", todo_obj)
+                    todos.append(todo)
+
+            # Store in cache
+            self.cache.set_todos(computer, project_path, todos)
+            logger.info("Pulled %d todos from %s:%s", len(todos), computer, project_path)
+
+        except (TimeoutError, Exception) as e:
+            logger.warning("Failed to pull todos from %s:%s: %s", computer, project_path, e)
+
     async def _poll_session_events(self) -> None:
         """Poll session events stream for incoming events from remote peers (Phase 6)."""
         stream_key = f"session_events:{self.computer_name}"
@@ -1548,7 +1657,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     # === Request/Response pattern for ephemeral queries (list_projects, etc.) ===
 
     async def send_request(
-        self, computer_name: str, command: str, metadata: MessageMetadata, session_id: Optional[str] = None
+        self,
+        computer_name: str,
+        command: str,
+        metadata: MessageMetadata,
+        session_id: Optional[str] = None,
+        args: Optional[list[str]] = None,
     ) -> str:
         """Send request to remote computer's message stream.
 
@@ -1559,6 +1673,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             command: Command to send
             session_id: Optional TeleClaude session ID (for session commands)
             metadata: Optional metadata (title, project_dir for session creation)
+            args: Optional command arguments (e.g., project_path for list_todos)
 
         Returns:
             Redis stream entry ID (used for response correlation)
@@ -1576,6 +1691,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Add session_id if provided (for session commands)
         if session_id:
             data[b"session_id"] = session_id.encode("utf-8")
+
+        # Add command arguments if provided
+        if args:
+            data[b"args"] = json.dumps(args).encode("utf-8")
 
         # Add optional session creation metadata
         if metadata.title:

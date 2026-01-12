@@ -259,6 +259,32 @@ class RESTAdapter(BaseAdapter):
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
             """List projects (local + cached remote projects)."""
             try:
+                # Trigger background pull for stale remote projects
+                if self.cache:
+                    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+                    redis_adapter_base = self.client.adapters.get("redis")
+                    if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
+                        redis_adapter: RedisAdapter = redis_adapter_base
+
+                        # Get all remote computers and check staleness
+                        computers = self.cache.get_computers()
+                        for comp in computers:
+                            comp_name = comp["name"]
+                            cache_key = f"{comp_name}:*"  # Check any project from this computer
+
+                            # Check if projects from this computer are stale (TTL=5 min)
+                            if self.cache.is_stale(cache_key, 300):
+                                # Trigger background pull (don't wait)
+                                if self.task_registry:
+                                    self.task_registry.spawn(
+                                        redis_adapter.pull_remote_projects(comp_name),
+                                        name=f"pull-projects-{comp_name}",
+                                    )
+                                else:
+                                    # Fallback: create untracked task
+                                    asyncio.create_task(redis_adapter.pull_remote_projects(comp_name))
+
                 # Get LOCAL projects from command handler
                 raw_projects = await command_handlers.handle_list_projects()
                 computer_name = config.computer.name
@@ -341,13 +367,41 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/projects-with-todos")  # type: ignore[misc]
         async def list_projects_with_todos() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
-            """List all projects with their todos included (local only, remote via cache in Phase 2+).
+            """List all projects with their todos included (local + cached remote).
 
             Returns:
                 List of projects, each with a 'todos' field containing the project's todos
             """
+            # Trigger background pull for stale remote todos
+            if self.cache:
+                from teleclaude.adapters.redis_adapter import RedisAdapter
+
+                redis_adapter_base = self.client.adapters.get("redis")
+                if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
+                    redis_adapter: RedisAdapter = redis_adapter_base
+
+                    # Get all remote projects and check todos staleness
+                    cached_projects = self.cache.get_projects()
+                    for proj in cached_projects:
+                        comp_name = str(proj.get("computer", ""))
+                        proj_path = str(proj.get("path", ""))
+                        if comp_name and proj_path:
+                            cache_key = f"{comp_name}:{proj_path}"
+
+                            # Check if todos for this project are stale (TTL=5 min)
+                            if self.cache.is_stale(cache_key, 300):
+                                # Trigger background pull (don't wait)
+                                if self.task_registry:
+                                    self.task_registry.spawn(
+                                        redis_adapter.pull_remote_todos(comp_name, proj_path),
+                                        name=f"pull-todos-{comp_name}-{proj_path[:20]}",
+                                    )
+                                else:
+                                    # Fallback: create untracked task
+                                    asyncio.create_task(redis_adapter.pull_remote_todos(comp_name, proj_path))
+
             try:
-                # Get LOCAL projects only
+                # Get LOCAL projects
                 raw_projects = await command_handlers.handle_list_projects()
             except Exception as e:
                 logger.error("list_projects_with_todos: failed to get projects: %s", e, exc_info=True)
@@ -356,6 +410,7 @@ class RESTAdapter(BaseAdapter):
             computer_name = config.computer.name
             result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
 
+            # Add LOCAL projects with todos
             for p in raw_projects:
                 path = p.get("path", "")
 
@@ -375,6 +430,27 @@ class RESTAdapter(BaseAdapter):
                         logger.warning("list_projects_with_todos: failed todos for %s: %s", path, e)
 
                 result.append(project)
+
+            # Add REMOTE projects with cached todos
+            if self.cache:
+                cached_projects = self.cache.get_projects()
+                for proj in cached_projects:
+                    comp_name = str(proj.get("computer", ""))
+                    proj_path = str(proj.get("path", ""))
+                    if not comp_name or not proj_path:
+                        continue
+
+                    # Get cached todos for this project
+                    cached_todos = self.cache.get_todos(comp_name, proj_path)
+
+                    remote_project: dict[str, object] = {  # guard: loose-dict - REST API boundary
+                        "computer": comp_name,
+                        "name": proj.get("name", ""),
+                        "path": proj_path,
+                        "description": proj.get("desc"),
+                        "todos": list(cached_todos),
+                    }
+                    result.append(remote_project)
 
             return result
 
