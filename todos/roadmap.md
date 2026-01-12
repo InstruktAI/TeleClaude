@@ -13,22 +13,26 @@
       run `make install` from worktree, hijack main daemon. Need project-owned preparation
       hook and guards on install/init scripts.
 
----
-
-## Test Suite Quality Cleanup
-
-- [>] test-cleanup
-      Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
+- [.] startup-cache-hook-fixes
+      Two bugs: (1) Hook receiver doesn't pass agent_name, causing "missing active_agent"
+      errors on manual agent starts. (2) Redis adapter doesn't populate cache on startup,
+      breaking remote computer/project discovery.
 
 ---
 
 ## Work Preparation Pipeline
 
 - [>] todo-breakdown-assessment
-      Add Definition of Ready check to next-prepare. Detects complex todos from input.md
-      and breaks them into smaller child todos before requirements/plan creation.
+  Add Definition of Ready check to next-prepare. Detects complex todos from input.md
+  and breaks them into smaller child todos before requirements/plan creation.
 
 - [ ] delivery-verification-gates
       Prevent incomplete work from being marked delivered. Workers create deferrals.md,
       reviewers verify success criteria with evidence, orchestrators resolve deferrals.
 
+---
+
+## Test Suite Quality Cleanup
+
+- [>] test-cleanup
+  Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
