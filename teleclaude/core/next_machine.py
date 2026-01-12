@@ -222,9 +222,10 @@ def format_hitl_guidance(context: str) -> str:
 Phase = Literal["build", "review"]
 PhaseStatus = Literal["pending", "complete", "approved", "changes_requested"]
 
-DEFAULT_STATE: dict[str, str] = {
+DEFAULT_STATE: dict[str, str | dict[str, bool | list[str]]] = {
     "build": "pending",
     "review": "pending",
+    "breakdown": {"assessed": False, "todos": []},
 }
 
 
@@ -233,7 +234,7 @@ def get_state_path(cwd: str, slug: str) -> Path:
     return Path(cwd) / "todos" / slug / "state.json"
 
 
-def read_phase_state(cwd: str, slug: str) -> dict[str, str]:
+def read_phase_state(cwd: str, slug: str) -> dict[str, str | dict[str, bool | list[str]]]:
     """Read state.json from worktree.
 
     Returns default state if file doesn't exist.
@@ -243,12 +244,12 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, str]:
         return DEFAULT_STATE.copy()
 
     content = state_path.read_text(encoding="utf-8")
-    state: dict[str, str] = json.loads(content)
+    state: dict[str, str | dict[str, bool | list[str]]] = json.loads(content)
     # Merge with defaults for any missing keys
     return {**DEFAULT_STATE, **state}
 
 
-def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
+def write_phase_state(cwd: str, slug: str, state: dict[str, str | dict[str, bool | list[str]]]) -> None:
     """Write state.json and commit to git."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -261,7 +262,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
         relative_path = state_path.relative_to(cwd)
         repo.index.add([str(relative_path)])
         # Create descriptive commit message
-        phases_done = [p for p, s in state.items() if s in ("complete", "approved")]
+        phases_done = [p for p, s in state.items() if isinstance(s, str) and s in ("complete", "approved")]
         msg = f"state({slug}): {', '.join(phases_done) if phases_done else 'init'}"
         repo.index.commit(msg)
         logger.info("Committed state update for %s", slug)
@@ -269,7 +270,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
         logger.warning("Cannot commit state: %s is not a git repository", cwd)
 
 
-def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str]:
+def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | dict[str, bool | list[str]]]:
     """Mark a phase with a status and commit.
 
     Args:
@@ -287,22 +288,53 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str]:
     return state
 
 
+def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
+    """Read breakdown state from todos/{slug}/state.json.
+
+    Returns:
+        Breakdown state dict with 'assessed' and 'todos' keys, or None if not present.
+    """
+    state = read_phase_state(cwd, slug)
+    breakdown = state.get("breakdown")
+    if breakdown is None or not isinstance(breakdown, dict):
+        return None
+    # At this point breakdown is dict with bool/list values from json
+    return dict(breakdown)
+
+
+def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
+    """Write breakdown state and commit.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug
+        assessed: Whether breakdown assessment has been performed
+        todos: List of todo slugs created from split (empty if no breakdown)
+    """
+    state = read_phase_state(cwd, slug)
+    state["breakdown"] = {"assessed": assessed, "todos": todos}
+    write_phase_state(cwd, slug, state)
+
+
 def is_build_complete(cwd: str, slug: str) -> bool:
     """Check if build phase is complete."""
     state = read_phase_state(cwd, slug)
-    return state.get("build") == "complete"
+    build = state.get("build")
+    return isinstance(build, str) and build == "complete"
 
 
 def is_review_approved(cwd: str, slug: str) -> bool:
     """Check if review phase is approved."""
     state = read_phase_state(cwd, slug)
-    return state.get("review") == "approved"
+    review = state.get("review")
+    return isinstance(review, str) and review == "approved"
 
 
 def is_review_changes_requested(cwd: str, slug: str) -> bool:
     """Check if review requested changes."""
     state = read_phase_state(cwd, slug)
-    return state.get("review") == "changes_requested"
+    review = state.get("review")
+    return isinstance(review, str) and review == "changes_requested"
 
 
 def resolve_slug(
@@ -948,6 +980,38 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             note=note,
             next_call="teleclaude__next_prepare",
         )
+
+    # 1.6. Check for breakdown assessment
+    has_input = check_file_exists(cwd, f"todos/{resolved_slug}/input.md")
+    breakdown_state = read_breakdown_state(cwd, resolved_slug)
+
+    if has_input and (breakdown_state is None or not breakdown_state.get("assessed")):
+        # Breakdown assessment needed
+        if hitl:
+            return format_hitl_guidance(
+                f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
+                "Definition of Ready. If complex, split into smaller todos. Then update state.json "
+                "and create breakdown.md."
+            )
+        # Non-HITL: dispatch architect to assess
+        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+        return format_tool_call(
+            command="next-prepare",
+            args=resolved_slug,
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder="",
+            note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
+            next_call="teleclaude__next_prepare",
+        )
+
+    # If breakdown assessed and has dependent todos, this one is a container
+    if breakdown_state and breakdown_state.get("todos"):
+        dep_todos = breakdown_state["todos"]
+        if isinstance(dep_todos, list):
+            return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
+        return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos."
 
     # 2. Check requirements
     if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
