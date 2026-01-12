@@ -1,8 +1,4 @@
 {
   "build": "complete",
-  "review": "changes_requested",
-  "breakdown": {
-    "assessed": false,
-    "todos": []
-  }
+  "review": "approved"
 }
