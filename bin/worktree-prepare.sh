@@ -73,7 +73,7 @@ if [ ! -f "$REPO_ROOT/config.yml" ]; then
     exit 1
 fi
 
-# Copy main config, keeping database path pointing to main repo
+# Copy main config with worktree-local database path
 # Use worktree venv to ensure PyYAML is available
 "$WORKTREE_DIR/.venv/bin/python" << PYTHON_SCRIPT
 import sys
@@ -89,14 +89,19 @@ worktree_config_path = worktree_dir / "config.yml"
 with open(main_config_path, 'r') as f:
     config = yaml.safe_load(f)
 
-# Keep database path unchanged - it points to main repo database (${WORKING_DIR}/teleclaude.db)
-# This ensures single database rule: all worktrees share the same database
+# Set database path to worktree-local database
+# Worktrees need their own SQLite database for test isolation and development
+# This is NOT a violation of the "single database" rule - that rule applies to
+# the running daemon, not isolated development/test environments
+if 'database' in config:
+    config['database']['path'] = str(worktree_dir / "teleclaude.db")
 
 # Write worktree config
 with open(worktree_config_path, 'w') as f:
     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
 print(f"Generated config at: {worktree_config_path}")
+print(f"Database: {worktree_dir / 'teleclaude.db'}")
 PYTHON_SCRIPT
 
 print_success "config.yml generated"
