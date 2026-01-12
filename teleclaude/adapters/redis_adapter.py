@@ -288,40 +288,31 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return
 
         for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
-            data_bytes: object = await redis_client.get(key)
-            if not data_bytes:
-                continue
-
-            data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
-            info_obj: object = json.loads(data_str)
-            if not isinstance(info_obj, dict):
-                continue
-            info: dict[str, object] = info_obj
-
-            computer_name_raw = info.get("computer_name")
-            if not isinstance(computer_name_raw, str) or not computer_name_raw:
-                continue
-            if computer_name_raw == self.computer_name:
-                continue
-
-            last_seen_raw = info.get("last_seen")
-            if not isinstance(last_seen_raw, str) or not last_seen_raw:
-                continue
             try:
-                last_seen = datetime.fromisoformat(last_seen_raw)
-            except ValueError:
-                continue
+                data_bytes: object = await redis_client.get(key)
+                data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+                info_obj: object = json.loads(data_str)
+                info = cast(dict[str, object], info_obj)
 
-            computer_info: ComputerInfo = {
-                "name": computer_name_raw,
-                "status": "online",
-                "last_seen": last_seen,
-                "user": None,
-                "host": None,
-                "role": None,
-                "system_stats": None,
-            }
-            self.cache.update_computer(computer_info)
+                computer_name = cast(str, info["computer_name"])
+                if computer_name == self.computer_name:
+                    continue
+                last_seen_str = cast(str, info["last_seen"])
+                last_seen = datetime.fromisoformat(last_seen_str)
+
+                computer_info: ComputerInfo = {
+                    "name": computer_name,
+                    "status": "online",
+                    "last_seen": last_seen,
+                    "user": cast("str | None", info.get("user")),
+                    "host": cast("str | None", info.get("host")),
+                    "role": cast("str | None", info.get("role")),
+                    "system_stats": cast("SystemStats | None", info.get("system_stats")),
+                }
+                self.cache.update_computer(computer_info)
+            except Exception as exc:
+                logger.warning("Heartbeat peer parse failed: %s", exc)
+                continue
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""

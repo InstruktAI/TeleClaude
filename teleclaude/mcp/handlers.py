@@ -121,31 +121,21 @@ class MCPHandlersMixin:
         remote_peers_raw = await self.client.discover_peers()
         remote_peers: list[ComputerInfo] = []
         for peer in remote_peers_raw:
-            name_raw = peer.get("name")
-            status_raw = peer.get("status")
-            last_seen_raw = peer.get("last_seen")
-            if not isinstance(name_raw, str) or not name_raw:
+            try:
+                remote_peers.append(
+                    {
+                        "name": cast(str, peer["name"]),
+                        "status": cast(str, peer["status"]),
+                        "last_seen": cast(datetime, peer["last_seen"]),
+                        "user": cast("str | None", peer.get("user")),
+                        "host": cast("str | None", peer.get("host")),
+                        "role": cast("str | None", peer.get("role")),
+                        "system_stats": cast("SystemStats | None", peer.get("system_stats")),
+                    }
+                )
+            except Exception as exc:
+                logger.warning("Skipping invalid peer payload: %s", exc)
                 continue
-            if not isinstance(status_raw, str) or not status_raw:
-                continue
-            if not isinstance(last_seen_raw, datetime):
-                continue
-
-            user_raw = peer.get("user")
-            host_raw = peer.get("host")
-            role_raw = peer.get("role")
-            stats_raw = peer.get("system_stats")
-            remote_peers.append(
-                {
-                    "name": name_raw,
-                    "status": status_raw,
-                    "last_seen": last_seen_raw,
-                    "user": user_raw if isinstance(user_raw, str) else None,
-                    "host": host_raw if isinstance(host_raw, str) else None,
-                    "role": role_raw if isinstance(role_raw, str) else None,
-                    "system_stats": cast(SystemStats, stats_raw) if isinstance(stats_raw, dict) else None,
-                }
-            )
 
         result = [local_computer] + remote_peers
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))
