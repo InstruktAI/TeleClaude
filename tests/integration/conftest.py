@@ -1,6 +1,8 @@
 """Shared fixtures for integration tests."""
 
+import os
 import re
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -117,12 +119,13 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
 
     # CRITICAL: Set unique REST socket path for parallel execution
-    # This prevents "Address already in use" errors when tests run in parallel
-    temp_rest_socket = str(tmp_path / "teleclaude-api.sock")
+    # Keep path short to avoid AF_UNIX length limits on macOS
+    temp_rest_socket = f"/tmp/teleclaude-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
 
     # NOW import teleclaude modules (after env var is set)
     from teleclaude import config as config_module
     from teleclaude import constants
+    from teleclaude.adapters import rest_adapter
     from teleclaude.core import db as db_module
     from teleclaude.core import terminal_bridge
     from teleclaude.core.db import Db
@@ -130,8 +133,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     from teleclaude.daemon import TeleClaudeDaemon
 
     # CRITICAL: Patch REST_SOCKET_PATH to use unique path per test
-    # This must happen BEFORE any code tries to use the constant
+    # Also patch rest_adapter module-level constant to avoid stale import values
     monkeypatch.setattr(constants, "REST_SOCKET_PATH", temp_rest_socket)
+    monkeypatch.setattr(rest_adapter, "REST_SOCKET_PATH", temp_rest_socket)
 
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
     class MockDatabase:
