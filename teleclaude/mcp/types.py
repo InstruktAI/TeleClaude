@@ -20,7 +20,6 @@ class ComputerInfo(TypedDict):
     name: str
     status: str
     last_seen: datetime
-    adapter_type: str
     user: str | None
     host: str | None
     role: str | None

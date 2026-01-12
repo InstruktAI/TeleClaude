@@ -50,6 +50,7 @@ async def _run_tui() -> None:
     app = TelecApp(api)
 
     try:
+        _ensure_tmux_mouse_on()
         await app.initialize()
         curses.wrapper(app.run)
     except KeyboardInterrupt:
@@ -99,6 +100,21 @@ def _maybe_kill_tui_session() -> None:
             return
         subprocess.run(
             [tmux, "kill-session", "-t", "tc_tui"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return
+
+
+def _ensure_tmux_mouse_on() -> None:
+    """Ensure tmux mouse is enabled for the current window."""
+    if not os.environ.get("TMUX"):
+        return
+    tmux = config.computer.tmux_binary
+    try:
+        subprocess.run(
+            [tmux, "set-option", "-w", "mouse", "on"],
             check=False,
             capture_output=True,
         )

@@ -88,6 +88,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self._message_poll_task: Optional[asyncio.Task[object]] = None
         self._heartbeat_task: Optional[asyncio.Task[object]] = None
         self._session_events_poll_task: Optional[asyncio.Task[object]] = None
+        self._peer_refresh_task: Optional[asyncio.Task[object]] = None
         self._connection_task: Optional[asyncio.Task[object]] = None
         self._output_stream_listeners: dict[str, asyncio.Task[object]] = {}  # session_id -> listener task
         self._running = False
@@ -219,6 +220,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if self.task_registry:
             self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")
             self._heartbeat_task = self.task_registry.spawn(self._heartbeat_loop(), name="redis-heartbeat")
+            self._peer_refresh_task = self.task_registry.spawn(self._peer_refresh_loop(), name="redis-peer-refresh")
             self._session_events_poll_task = self.task_registry.spawn(
                 self._poll_session_events(), name="redis-session-events"
             )
@@ -227,6 +229,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._message_poll_task.add_done_callback(self._log_task_exception)
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             self._heartbeat_task.add_done_callback(self._log_task_exception)
+            self._peer_refresh_task = asyncio.create_task(self._peer_refresh_loop())
+            self._peer_refresh_task.add_done_callback(self._log_task_exception)
             self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
             self._session_events_poll_task.add_done_callback(self._log_task_exception)
 
@@ -247,7 +251,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 "name": peer.name,
                 "status": "online",
                 "last_seen": peer.last_seen,
-                "adapter_type": peer.adapter_type,
                 "user": peer.user,
                 "host": peer.host,
                 "role": peer.role,
@@ -262,6 +265,63 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.warning("Failed to pull projects from %s: %s", peer.name, e)
 
         logger.info("Initial cache populated: %d computers", len(peers))
+
+    async def _peer_refresh_loop(self) -> None:
+        """Background task: refresh peer cache from heartbeats."""
+        while self._running:
+            try:
+                await self.refresh_peers_from_heartbeats()
+                await asyncio.sleep(self.heartbeat_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Peer refresh failed: %s", e)
+
+    async def refresh_peers_from_heartbeats(self) -> None:
+        """Refresh peer cache from heartbeat keys."""
+        if not self.cache:
+            return
+
+        redis_client = self._require_redis()
+        keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
+        if not keys:
+            return
+
+        for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
+            data_bytes: object = await redis_client.get(key)
+            if not data_bytes:
+                continue
+
+            data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+            info_obj: object = json.loads(data_str)
+            if not isinstance(info_obj, dict):
+                continue
+            info: dict[str, object] = info_obj
+
+            computer_name_raw = info.get("computer_name")
+            if not isinstance(computer_name_raw, str) or not computer_name_raw:
+                continue
+            if computer_name_raw == self.computer_name:
+                continue
+
+            last_seen_raw = info.get("last_seen")
+            if not isinstance(last_seen_raw, str) or not last_seen_raw:
+                continue
+            try:
+                last_seen = datetime.fromisoformat(last_seen_raw)
+            except ValueError:
+                continue
+
+            computer_info: ComputerInfo = {
+                "name": computer_name_raw,
+                "status": "online",
+                "last_seen": last_seen,
+                "user": None,
+                "host": None,
+                "role": None,
+                "system_stats": None,
+            }
+            self.cache.update_computer(computer_info)
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
@@ -339,6 +399,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._peer_refresh_task:
+            self._peer_refresh_task.cancel()
+            try:
+                await self._peer_refresh_task
             except asyncio.CancelledError:
                 pass
 
@@ -1285,7 +1352,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                         "name": computer_name,
                         "status": "online",
                         "last_seen": last_seen,
-                        "adapter_type": "redis",
                         "user": None,
                         "host": None,
                         "role": None,
@@ -1336,7 +1402,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             if computer_name not in computer_map:
                 logger.debug("Interested computer %s not found in heartbeats, skipping", computer_name)
                 continue
-
             try:
                 # Request sessions via Redis (calls list_sessions handler on remote)
                 message_id = await self.send_request(computer_name, "list_sessions", MessageMetadata())
@@ -1376,6 +1441,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             except Exception as e:
                 logger.warning("Failed to pull sessions from %s: %s", computer_name, e)
                 continue
+
+    async def pull_interested_sessions(self) -> None:
+        """Pull sessions for currently interested computers."""
+        await self._pull_initial_sessions()
 
     async def pull_remote_projects(self, computer: str) -> None:
         """Pull projects from a remote computer via Redis.

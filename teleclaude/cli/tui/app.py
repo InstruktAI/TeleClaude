@@ -2,9 +2,7 @@
 
 import asyncio
 import curses
-import os
 import queue
-import subprocess
 import time
 from dataclasses import dataclass, field
 
@@ -18,7 +16,6 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
 from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
-from teleclaude.config import config
 
 # Allow nested event loops (required for async calls inside curses sync loop)
 nest_asyncio.apply()
@@ -156,10 +153,9 @@ class TelecApp:
         # Content area bounds for mouse click handling
         self._content_start: int = 0
         self._content_height: int = 0
-        # Mouse mode toggle (when off, tmux copy-mode works)
-        self._mouse_enabled: bool = True
         # WebSocket event queue (thread-safe)
         self._ws_queue: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue()  # guard: loose-dict
+        self._subscribed_computers: set[str] = set()
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -177,7 +173,7 @@ class TelecApp:
         # Start WebSocket connection for push updates
         self.api.start_websocket(  # type: ignore[attr-defined]
             callback=self._on_ws_event,
-            subscriptions=["sessions", "preparation"],
+            subscriptions=["sessions", "projects"],
         )
 
     async def refresh_data(self) -> None:
@@ -230,6 +226,21 @@ class TelecApp:
             expires_at=time.time() + duration,
         )
 
+    def _sync_focus_subscriptions(self) -> None:
+        """Subscribe/unsubscribe remote computers based on current focus."""
+        current = self.focus.computer
+        if not current or current == "local":
+            for computer in list(self._subscribed_computers):
+                if computer != "local":
+                    self.api.unsubscribe(computer)  # type: ignore[attr-defined]
+                    self._subscribed_computers.discard(computer)
+            return
+
+        if current not in self._subscribed_computers:
+            self.api.subscribe(current, ["sessions", "projects"])  # type: ignore[attr-defined]
+            self._subscribed_computers.add(current)
+            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
     def update_session_panes(self) -> None:
         """Hide session panes when leaving Sessions view.
 
@@ -248,43 +259,6 @@ class TelecApp:
         self.pane_manager.cleanup()
         # Stop WebSocket connection
         self.api.stop_websocket()  # type: ignore[attr-defined]
-
-    def _toggle_mouse(self) -> None:
-        """Toggle mouse mode on/off.
-
-        When mouse mode is off, curses doesn't capture mouse events,
-        allowing tmux copy-mode to work with proper pane boundaries.
-        """
-        self._mouse_enabled = not self._mouse_enabled
-        if self._mouse_enabled:
-            curses.mousemask(MOUSE_MASK)
-            self._set_tmux_mouse(True)
-            self.notify("Mouse mode ON - TUI mouse navigation enabled", "info")
-        else:
-            curses.mousemask(0)
-            self._set_tmux_mouse(False)
-            self.notify("Mouse mode OFF - tmux copy-mode enabled (press 'm' to restore)", "info")
-
-    def _set_tmux_mouse(self, enabled: bool) -> None:
-        """Toggle tmux mouse mode for the current window only."""
-        if not os.environ.get("TMUX"):
-            return
-
-        target = os.environ.get("TMUX_PANE")
-        if not target:
-            return
-
-        tmux = config.computer.tmux_binary
-        state = "on" if enabled else "off"
-        try:
-            subprocess.run(
-                [tmux, "set-option", "-w", "-t", target, "mouse", state],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        except OSError as exc:
-            logger.debug("Failed to toggle tmux mouse (%s): %s", state, exc)
 
     def _on_ws_event(self, event: str, data: dict[str, object]) -> None:  # guard: loose-dict
         """Handle WebSocket event from background thread.
@@ -511,6 +485,7 @@ class TelecApp:
                 if view:
                     view.rebuild_for_focus()
                     logger.debug("Focus popped, view rebuilt")
+                self._sync_focus_subscriptions()
 
         # Left Arrow - collapse session or go back in focus stack
         elif key == curses.KEY_LEFT:
@@ -526,9 +501,11 @@ class TelecApp:
                     # Go back in focus stack
                     view.rebuild_for_focus()
                     logger.debug("Focus popped after collapse_selected returned False")
+                    self._sync_focus_subscriptions()
             elif self.focus.pop():
                 if view:
                     view.rebuild_for_focus()
+                self._sync_focus_subscriptions()
 
         # Right Arrow - drill down into selected item
         elif key == curses.KEY_RIGHT:
@@ -537,6 +514,8 @@ class TelecApp:
             if view:
                 result = view.drill_down()
                 logger.debug("drill_down() returned %s", result)
+                if result:
+                    self._sync_focus_subscriptions()
 
         # View switching with number keys
         elif key == ord("1"):
@@ -585,10 +564,6 @@ class TelecApp:
                         except Exception as e:
                             logger.error("Error restarting agent: %s", e)
                             self.notify(f"Restart failed: {e}", "error")
-
-        # Toggle mouse mode (allows tmux copy-mode when disabled)
-        elif key == ord("m"):
-            self._toggle_mouse()
 
         # View-specific actions
         else:
@@ -671,9 +646,8 @@ class TelecApp:
         action_bar = current.get_action_bar() if current else ""
         stdscr.addstr(height - 3, 0, action_bar[:width])  # type: ignore[attr-defined]
 
-        # Row height-2: Global shortcuts bar (with mouse mode indicator)
-        mouse_hint = "[m] Mouse: ON" if self._mouse_enabled else "[m] Mouse: OFF (tmux copy)"
-        global_bar = f"[+/-] Expand/Collapse  [r] Refresh  {mouse_hint}  [q] Quit"
+        # Row height-2: Global shortcuts bar
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer

@@ -80,3 +80,27 @@ def test_maybe_kill_tui_session_kills_tc_tui() -> None:
         ),
         (([tmux, "kill-session", "-t", "tc_tui"],), {"check": False, "capture_output": True}),
     ]
+
+
+def test_ensure_tmux_mouse_on_skips_without_tmux() -> None:
+    """No-op when not inside tmux."""
+    with patch("teleclaude.cli.telec.os.environ", {}), patch("teleclaude.cli.telec.subprocess.run") as mock_run:
+        telec._ensure_tmux_mouse_on()
+
+    mock_run.assert_not_called()
+
+
+def test_ensure_tmux_mouse_on_sets_window_option() -> None:
+    """Enable tmux mouse for current window."""
+    tmux = config.computer.tmux_binary
+    with (
+        patch("teleclaude.cli.telec.os.environ", {"TMUX": "1"}),
+        patch("teleclaude.cli.telec.subprocess.run") as mock_run,
+    ):
+        telec._ensure_tmux_mouse_on()
+
+    mock_run.assert_called_once_with(
+        [tmux, "set-option", "-w", "mouse", "on"],
+        check=False,
+        capture_output=True,
+    )

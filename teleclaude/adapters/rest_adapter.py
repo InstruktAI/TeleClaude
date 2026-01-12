@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.rest_models import CreateSessionRequest, SendMessageRequest
 from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
@@ -510,6 +511,8 @@ class RESTAdapter(BaseAdapter):
                             self._client_subscriptions[websocket][computer].add(data_type)
                             logger.info("WebSocket client subscribed to %s on computer %s", data_type, computer)
 
+                            # Pull remote data immediately for this data type
+                            await self._pull_remote_on_interest(computer, data_type)
                             # Send initial state for this data type
                             await self._send_initial_state(websocket, data_type, computer)
                     else:
@@ -598,6 +601,28 @@ class RESTAdapter(BaseAdapter):
         # Update tracking
         self._previous_interest = current_interest
         logger.debug("Current cache interest: %s", current_interest)
+
+    async def _pull_remote_on_interest(self, computer: str, data_type: str) -> None:
+        """Pull remote data immediately after subscription."""
+        if computer == "local":
+            return
+        adapter = self.client.adapters.get("redis")
+        if not isinstance(adapter, RedisAdapter):
+            return
+
+        await adapter.refresh_peers_from_heartbeats()
+        if data_type in ("projects", "preparation"):
+            await adapter.pull_remote_projects(computer)
+            cache = adapter.cache
+            if not cache:
+                return
+            projects = cache.get_projects(computer)
+            for project in projects:
+                path = project.get("path")
+                if path:
+                    await adapter.pull_remote_todos(computer, str(path))
+        elif data_type == "sessions":
+            await adapter.pull_interested_sessions()
 
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.

@@ -48,6 +48,7 @@ from teleclaude.mcp.types import (
     StartSessionResult,
     StopNotificationsResult,
 )
+from teleclaude.types import SystemStats
 from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
@@ -111,7 +112,6 @@ class MCPHandlersMixin:
             "name": self.computer_name,
             "status": "local",
             "last_seen": datetime.now(timezone.utc),
-            "adapter_type": "local",
             "user": local_info.get("user"),
             "host": local_info.get("host"),
             "role": local_info.get("role"),
@@ -119,7 +119,33 @@ class MCPHandlersMixin:
         }
 
         remote_peers_raw = await self.client.discover_peers()
-        remote_peers: list[ComputerInfo] = cast(list[ComputerInfo], remote_peers_raw)
+        remote_peers: list[ComputerInfo] = []
+        for peer in remote_peers_raw:
+            name_raw = peer.get("name")
+            status_raw = peer.get("status")
+            last_seen_raw = peer.get("last_seen")
+            if not isinstance(name_raw, str) or not name_raw:
+                continue
+            if not isinstance(status_raw, str) or not status_raw:
+                continue
+            if not isinstance(last_seen_raw, datetime):
+                continue
+
+            user_raw = peer.get("user")
+            host_raw = peer.get("host")
+            role_raw = peer.get("role")
+            stats_raw = peer.get("system_stats")
+            remote_peers.append(
+                {
+                    "name": name_raw,
+                    "status": status_raw,
+                    "last_seen": last_seen_raw,
+                    "user": user_raw if isinstance(user_raw, str) else None,
+                    "host": host_raw if isinstance(host_raw, str) else None,
+                    "role": role_raw if isinstance(role_raw, str) else None,
+                    "system_stats": cast(SystemStats, stats_raw) if isinstance(stats_raw, dict) else None,
+                }
+            )
 
         result = [local_computer] + remote_peers
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))
