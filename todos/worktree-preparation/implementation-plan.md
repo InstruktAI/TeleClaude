@@ -10,12 +10,12 @@ When `ensure_worktree()` creates a git worktree, it must call a project-owned pr
 
 Prevent catastrophic hijacking by refusing to run install/init from worktrees.
 
-- [ ] **Add worktree detection to install.sh**
+- [x] **Add worktree detection to install.sh**
   - Compare `git rev-parse --show-toplevel` with parent of `git rev-parse --git-common-dir`
   - If in worktree: print clear error message, exit 1
   - Must happen early in script before any modifications
 
-- [ ] **Add worktree detection to init.sh**
+- [x] **Add worktree detection to init.sh**
   - Same detection logic as install.sh
   - If in worktree: print clear error message, exit 1
 
