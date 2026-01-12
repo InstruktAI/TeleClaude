@@ -6,15 +6,6 @@
 
 ---
 
-## Worktree Workflow - Blocking Bug
-
-- [>] startup-cache-hook-fixes
-      Two bugs: (1) Hook receiver doesn't pass agent_name, causing "missing active_agent"
-      errors on manual agent starts. (2) Redis adapter doesn't populate cache on startup,
-      breaking remote computer/project discovery.
-
----
-
 ## Work Preparation Pipeline
 
 - [.] delivery-verification-gates
