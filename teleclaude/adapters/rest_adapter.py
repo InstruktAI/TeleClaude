@@ -283,7 +283,12 @@ class RESTAdapter(BaseAdapter):
                                     )
                                 else:
                                     # Fallback: create untracked task
-                                    asyncio.create_task(redis_adapter.pull_remote_projects(comp_name))
+                                    task = asyncio.create_task(redis_adapter.pull_remote_projects(comp_name))
+                                    task.add_done_callback(
+                                        lambda t: logger.error("Pull projects failed: %s", t.exception())
+                                        if t.exception()
+                                        else None
+                                    )
 
                 # Get LOCAL projects from command handler
                 raw_projects = await command_handlers.handle_list_projects()
@@ -398,7 +403,12 @@ class RESTAdapter(BaseAdapter):
                                     )
                                 else:
                                     # Fallback: create untracked task
-                                    asyncio.create_task(redis_adapter.pull_remote_todos(comp_name, proj_path))
+                                    task = asyncio.create_task(redis_adapter.pull_remote_todos(comp_name, proj_path))
+                                    task.add_done_callback(
+                                        lambda t: logger.error("Pull todos failed: %s", t.exception())
+                                        if t.exception()
+                                        else None
+                                    )
 
             try:
                 # Get LOCAL projects
