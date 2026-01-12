@@ -1276,6 +1276,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         This ensures remote sessions appear in TUI on startup, not just after new events.
         """
         if not self.cache:
+            logger.warning("Cache unavailable, skipping initial session pull")
             return
 
         logger.info("Performing initial session pull from remote computers")
@@ -1336,6 +1337,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             computer: Name of the remote computer to pull projects from
         """
         if not self.cache:
+            logger.warning("Cache unavailable, skipping projects pull from %s", computer)
             return
 
         logger.debug("Pulling projects from remote computer: %s", computer)
@@ -1389,6 +1391,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             project_path: Path to the project on the remote computer
         """
         if not self.cache:
+            logger.warning("Cache unavailable, skipping todos pull from %s:%s", computer, project_path)
             return
 
         logger.debug("Pulling todos from %s:%s", computer, project_path)
