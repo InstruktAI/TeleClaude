@@ -23,6 +23,7 @@ from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
+from teleclaude.core.command_handlers import ProjectInfo, TodoInfo
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.models import (
@@ -37,6 +38,7 @@ from teleclaude.core.models import (
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
+from teleclaude.mcp.types import ComputerInfo
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -1237,8 +1239,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                 # Populate cache with computer info from heartbeat
                 if self.cache:
-                    from teleclaude.mcp.types import ComputerInfo
-
                     last_seen_str = str(info.get("last_seen", ""))
                     last_seen = datetime.fromisoformat(last_seen_str) if last_seen_str else datetime.now(timezone.utc)
 
@@ -1368,8 +1368,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 return
 
             # Convert to ProjectInfo list
-            from teleclaude.core.command_handlers import ProjectInfo
-
             projects: list[ProjectInfo] = []
             for project_obj in data:
                 if isinstance(project_obj, dict):
@@ -1423,8 +1421,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 return
 
             # Convert to TodoInfo list
-            from teleclaude.core.command_handlers import TodoInfo
-
             todos: list[TodoInfo] = []
             for todo_obj in data:
                 if isinstance(todo_obj, dict):
