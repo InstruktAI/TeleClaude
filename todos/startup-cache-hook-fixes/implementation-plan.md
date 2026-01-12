@@ -8,7 +8,7 @@ Two bug fixes with minimal code changes. No architectural changes required.
 
 ## Bug 1: Hook Agent Propagation
 
-### Task 1.1: Add agent_name to hook payload
+### Task 1.1: [x] Add agent_name to hook payload
 
 **File:** `teleclaude/hooks/receiver.py`
 
@@ -21,7 +21,7 @@ data["agent_name"] = args.agent
 _enqueue_hook_event(teleclaude_session_id, event_type, data)
 ```
 
-### Task 1.2: Handle missing active_agent in daemon
+### Task 1.2: [ ] Handle missing active_agent in daemon
 
 **File:** `teleclaude/daemon.py`
 
@@ -49,7 +49,7 @@ if not session.active_agent:
 
 ## Bug 2: Initial Cache Population
 
-### Task 2.1: Add cache population method
+### Task 2.1: [ ] Add cache population method
 
 **File:** `teleclaude/adapters/redis_adapter.py`
 
@@ -95,7 +95,7 @@ async def _populate_initial_cache(self) -> None:
     logger.info("Initial cache populated: %d computers", len(peers))
 ```
 
-### Task 2.2: Call cache population on startup
+### Task 2.2: [ ] Call cache population on startup
 
 **File:** `teleclaude/adapters/redis_adapter.py`
 
