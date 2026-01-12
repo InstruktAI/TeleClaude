@@ -21,6 +21,7 @@ from teleclaude.adapters.rest_models import CreateSessionRequest, SendMessageReq
 from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
+from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata
 
 if TYPE_CHECKING:
@@ -137,6 +138,15 @@ class RESTAdapter(BaseAdapter):
                         auto_command=auto_command,
                     ),
                 )
+                if isinstance(result, dict):
+                    session_id = result.get("session_id")
+                    if session_id and not result.get("tmux_session_name"):
+                        try:
+                            session = await db.get_session(str(session_id))
+                        except RuntimeError:
+                            session = None
+                        if session:
+                            result["tmux_session_name"] = session.tmux_session_name
                 return result  # type: ignore[return-value]  # Dynamic from handler
             except Exception as e:
                 logger.error("create_session failed (computer=%s): %s", request.computer, e, exc_info=True)

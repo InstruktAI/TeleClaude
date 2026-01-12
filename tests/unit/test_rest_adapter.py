@@ -201,6 +201,30 @@ def test_create_session_uses_auto_command_override(  # type: ignore[explicit-any
     assert call_args.kwargs["metadata"].auto_command == "agent gemini med"
 
 
+def test_create_session_populates_tmux_session_name(  # type: ignore[explicit-any, unused-ignore]
+    test_client, mock_adapter_client
+):
+    """Test create_session fills tmux_session_name when handler omits it."""
+    mock_adapter_client.handle_event.return_value = {"session_id": "sess-1"}
+
+    class _Session:
+        tmux_session_name = "tc_1234"
+
+    with patch("teleclaude.adapters.rest_adapter.db.get_session", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = _Session()
+
+        response = test_client.post(
+            "/sessions",
+            json={
+                "computer": "local",
+                "project_dir": "/path",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tmux_session_name"] == "tc_1234"
+
+
 def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session endpoint calls command handler."""
     with patch(
