@@ -20,3 +20,4 @@
 | 2026-01-12 | performance-hardening | Performance Hardening: Async Resilience & Data Efficiency (Phase 1) | DELIVERED | 2a1cbcf | done/015-performance-hardening |
 | 2026-01-12 | cache-deferreds | Cache Population - Deferred Work Completion | DELIVERED | fb5a79d | done/016-cache-deferreds |
 | 2026-01-12 | todo-breakdown-assessment | Todo Breakdown Assessment | DELIVERED | 04b209a | done/017-todo-breakdown-assessment |
+| 2026-01-12 | worktree-preparation | Worktree Preparation | DELIVERED | e88f795 | done/018-worktree-preparation |
