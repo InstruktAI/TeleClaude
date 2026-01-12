@@ -7,9 +7,9 @@
 
 | Requirement | Status | Notes |
 | --- | --- | --- |
-| Worktree arrives ready for workers | ✅ | Preparation hook runs after worktree creation and provisions venv, config, and .env. |
-| Project-owned preparation hook called by ensure_worktree() | ⚠️ | Hook name uses `worktree-prepare` instead of required `worktree:prepare`. Add an alias target or align docs. |
-| Remove environment instructions from worker commands | ✅ | `~/.agents/commands/next-build.md` no longer contains environment setup steps. |
+| Worktree arrives ready for workers | ✅ | Worktree creation triggers preparation hook and provisions venv, config, and .env. |
+| Project-owned preparation hook called by ensure_worktree() | ⚠️ | Hook is called, but config generation uses an absolute DB path instead of the required relative `teleclaude.db`. |
+| Remove environment instructions from worker commands | ✅ | `~/.agents/commands/next-build.md` contains no environment setup steps. |
 | Guard install/init scripts from worktree usage | ✅ | install/init scripts refuse worktree execution with clear messaging. |
 
 ## Critical Issues (must fix)
@@ -18,14 +18,11 @@
 
 ## Important Issues (should fix)
 
-- [errors] `teleclaude/core/next_machine.py:907` - `_prepare_worktree` only handles `CalledProcessError`. Missing `make` or `npm` will raise `FileNotFoundError` and bubble as an unhandled exception with unclear messaging.
-  - Suggested fix: catch `FileNotFoundError` for both make and npm invocations and raise a `RuntimeError` with a clear, user facing message.
+- [requirements] `bin/worktree-prepare.sh:92` - Worktree config sets `database.path` to an absolute path, but requirements call for a relative `teleclaude.db` path.
+  - Suggested fix: set `config['database']['path'] = "teleclaude.db"` (or equivalent relative path) when generating the worktree config.
 
-- [requirements] `Makefile:126` - Requirements specify `make worktree:prepare`, but the implementation only provides `worktree-prepare` and `_prepare_worktree` expects that name.
-  - Suggested fix: add a `worktree:prepare` alias target that forwards to `worktree-prepare`, or update requirements and detection to match the chosen name.
-
-- [tests] `tests/integration/test_worktree_preparation_integration.py:125` - `test_install_guard_can_be_tested_via_simulation` asserts `returncode in [0, 1]`, which is always true. The guard tests only check for string presence, not real behavior.
-  - Suggested fix: create a temporary git repo plus worktree and run `bin/install.sh` or `bin/init.sh` from inside the worktree to assert exit code and error message. If that is too heavy, refactor the guard into a small function and unit test it with controlled inputs.
+- [tests] `tests/integration/test_worktree_preparation_integration.py:125` - `test_install_guard_can_be_tested_via_simulation` accepts both success and failure (`returncode in [0, 1]`), so it never validates guard behavior.
+  - Suggested fix: create a temporary git repo plus worktree and run `bin/install.sh` or `bin/init.sh` from inside the worktree to assert exit code and error message, or refactor the guard into a callable function and unit test it with explicit inputs.
 
 ## Suggestions (nice to have)
 
@@ -33,9 +30,9 @@
 
 ## Strengths
 
-- Worktree preparation hook integration fails fast with clear `RuntimeError` messaging on known failures.
-- Guard rails in install/init scripts reduce risk of daemon misconfiguration.
-- Unit coverage around `_prepare_worktree` error paths is solid.
+- `_prepare_worktree` integrates cleanly into `ensure_worktree()` and fails fast on missing hooks.
+- Install/init guards prevent accidental daemon hijacking from worktrees.
+- Tests cover hook execution and error propagation for Makefile and package.json paths.
 
 ## Verdict
 
@@ -45,6 +42,5 @@
 ### If REQUEST CHANGES:
 
 Priority fixes:
-1. Handle missing make or npm with a clear, user friendly error in `_prepare_worktree`.
-2. Resolve the `worktree:prepare` vs `worktree-prepare` mismatch (alias or update requirement docs).
-3. Replace the no-op guard simulation test with a meaningful behavior check.
+1. Use a relative `teleclaude.db` path in the generated worktree config.
+2. Replace the no-op guard simulation test with a real behavior check.
