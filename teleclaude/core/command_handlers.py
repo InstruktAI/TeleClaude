@@ -82,6 +82,7 @@ class ComputerInfoData(TypedDict):
     host: str | None
     role: str | None
     system_stats: SystemStats | None
+    tmux_binary: str | None
 
 
 class SessionDataPayload(TypedDict, total=False):
@@ -534,6 +535,7 @@ async def handle_get_computer_info() -> ComputerInfoData:
         "role": config.computer.role,
         "host": config.computer.host,
         "system_stats": system_stats,
+        "tmux_binary": config.computer.tmux_binary,
     }
 
     logger.debug("handle_get_computer_info() returning info: %s", info_data)

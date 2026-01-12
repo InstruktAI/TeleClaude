@@ -413,6 +413,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
                     is_local=bool(comp.get("is_local")),
                     user=comp.get("user"),  # type: ignore[arg-type]
                     host=comp.get("host"),  # type: ignore[arg-type]
+                    tmux_binary=comp.get("tmux_binary"),  # type: ignore[arg-type]
                 )
         return None
 

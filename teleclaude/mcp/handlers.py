@@ -116,6 +116,7 @@ class MCPHandlersMixin:
             "host": local_info.get("host"),
             "role": local_info.get("role"),
             "system_stats": local_info.get("system_stats"),
+            "tmux_binary": local_info.get("tmux_binary"),
         }
 
         remote_peers_raw = await self.client.discover_peers()
@@ -131,6 +132,7 @@ class MCPHandlersMixin:
                         "host": cast("str | None", peer.get("host")),
                         "role": cast("str | None", peer.get("role")),
                         "system_stats": cast("SystemStats | None", peer.get("system_stats")),
+                        "tmux_binary": cast("str | None", peer.get("tmux_binary")),
                     }
                 )
             except Exception as exc:

@@ -1,7 +1,7 @@
 """TypedDict definitions and exceptions for MCP tools."""
 
 from datetime import datetime
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from teleclaude.types import SystemStats
 
@@ -24,6 +24,7 @@ class ComputerInfo(TypedDict):
     host: str | None
     role: str | None
     system_stats: SystemStats | None
+    tmux_binary: NotRequired[str | None]
 
 
 class SessionInfo(TypedDict):

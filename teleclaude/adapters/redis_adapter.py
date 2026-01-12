@@ -826,6 +826,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     ip_val: object = computer_info.get("ip")
                     role_val: object = computer_info.get("role")
                     system_stats_val: object = computer_info.get("system_stats")
+                    tmux_binary_val: object = computer_info.get("tmux_binary")
 
                     # Ensure system_stats is a dict or None, then cast to SystemStats
                     system_stats: SystemStats | None = None
@@ -843,6 +844,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                             ip=str(ip_val) if ip_val else None,
                             role=str(role_val) if role_val else None,
                             system_stats=system_stats,
+                            tmux_binary=str(tmux_binary_val) if tmux_binary_val else None,
                         )
                     )
 

@@ -250,6 +250,7 @@ class RESTAdapter(BaseAdapter):
                         "user": computer_info["user"],
                         "host": computer_info["host"],
                         "is_local": True,
+                        "tmux_binary": computer_info.get("tmux_binary"),
                     }
                 ]
 

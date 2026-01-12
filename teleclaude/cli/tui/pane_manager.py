@@ -21,6 +21,7 @@ class ComputerInfo:
     is_local: bool
     user: str | None = None
     host: str | None = None
+    tmux_binary: str | None = None
 
     @property
     def is_remote(self) -> bool:
@@ -165,10 +166,10 @@ class TmuxPaneManager:
         """
         if computer_info and computer_info.is_remote:
             # Remote: SSH to the computer and attach there
-            # Use plain 'tmux' - remote machine has its own tmux binary
             # Use -t for pseudo-terminal allocation (required for tmux)
             # Use -A for SSH agent forwarding
             ssh_target = computer_info.ssh_target
+            tmux_binary = computer_info.tmux_binary or "tmux"
 
             # Get appearance settings from host to pass to remote
             appearance_env = self._get_appearance_env()
@@ -176,7 +177,10 @@ class TmuxPaneManager:
             if env_str:
                 env_str += " "
 
-            cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color tmux -u attach-session -t {tmux_session_name}'"
+            cmd = (
+                "ssh -t -A "
+                f"{ssh_target} '{env_str}TERM=tmux-256color {tmux_binary} -u attach-session -t {tmux_session_name}'"
+            )
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
 

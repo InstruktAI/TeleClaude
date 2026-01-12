@@ -634,6 +634,8 @@ class AdapterClient:
                         peer_dict["role"] = peer_info.role
                     if peer_info.system_stats:
                         peer_dict["system_stats"] = peer_info.system_stats
+                    if peer_info.tmux_binary:
+                        peer_dict["tmux_binary"] = peer_info.tmux_binary
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
             except Exception as e:
