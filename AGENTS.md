@@ -26,15 +26,17 @@ This file provides guidance to agents when working with code in this repository.
 - If unsure about stability, test in a separate environment first
 - The daemon provides critical infrastructure - treat restarts as production deployments
 
-### Rule #1: SINGLE DATABASE ONLY
+### Rule #1: SINGLE DATABASE ONLY (Daemon Context)
 
-**THERE IS ONLY ONE DATABASE FILE: `teleclaude.db` IN PROJECT ROOT.**
+**THE RUNNING DAEMON USES ONE DATABASE FILE: `teleclaude.db` IN PROJECT ROOT.**
 
-- NEVER create additional database files
-- NEVER copy or duplicate the database
+- The daemon NEVER creates additional database files
+- NEVER copy or duplicate the production database
 - Database path is configured in `config.yml`: `${WORKING_DIR}/teleclaude.db`
-- If you find multiple `.db` files, DELETE the extras immediately
-- Any code that creates a new database file is a CRITICAL BUG
+- If you find multiple `.db` files in the main repo, DELETE the extras immediately
+- Any daemon code that creates a new database file is a CRITICAL BUG
+
+**Exception: Git worktrees** have their own isolated `teleclaude.db` for test isolation and development. This is intentional - worktrees are sandboxed environments that must not touch the production database.
 
 ### Rule #2: MCP CONNECTION RESILIENCE
 

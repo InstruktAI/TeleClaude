@@ -231,7 +231,7 @@ async def test_next_work_no_bug_check():
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Mock git operations
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
         # Should NOT dispatch to next-bugs
@@ -267,7 +267,7 @@ async def test_next_work_respects_dependencies():
         (item_dir / "implementation-plan.md").write_text("# Plan\n")
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
         # Should select ready-item (no dependencies)

@@ -10,12 +10,12 @@ When `ensure_worktree()` creates a git worktree, it must call a project-owned pr
 
 Prevent catastrophic hijacking by refusing to run install/init from worktrees.
 
-- [ ] **Add worktree detection to install.sh**
+- [x] **Add worktree detection to install.sh**
   - Compare `git rev-parse --show-toplevel` with parent of `git rev-parse --git-common-dir`
   - If in worktree: print clear error message, exit 1
   - Must happen early in script before any modifications
 
-- [ ] **Add worktree detection to init.sh**
+- [x] **Add worktree detection to init.sh**
   - Same detection logic as install.sh
   - If in worktree: print clear error message, exit 1
 
@@ -23,9 +23,9 @@ Prevent catastrophic hijacking by refusing to run install/init from worktrees.
 
 ## Group 2: TeleClaude Preparation Hook
 
-What `make worktree:prepare SLUG=xxx` does for this project specifically.
+What `make worktree-prepare SLUG=xxx` does for this project specifically.
 
-- [ ] **Create worktree preparation logic**
+- [x] **Create worktree preparation logic**
   - Receives SLUG as argument
   - Operates on `trees/{slug}/` from main repo context
   - Steps:
@@ -33,8 +33,8 @@ What `make worktree:prepare SLUG=xxx` does for this project specifically.
     2. Generate `trees/{slug}/config.yml` based on main config but with relative database path (`teleclaude.db`)
     3. Create symlink `trees/{slug}/.env` → `../../.env`
 
-- [ ] **Add Makefile target**
-  - `worktree:prepare` target that calls the preparation logic
+- [x] **Add Makefile target**
+  - `worktree-prepare` target that calls the preparation logic
   - Accepts SLUG parameter
 
 ---
@@ -43,19 +43,19 @@ What `make worktree:prepare SLUG=xxx` does for this project specifically.
 
 Modify `teleclaude/core/next_machine.py` to call preparation hook after git worktree creation.
 
-- [ ] **Add project type detection**
+- [x] **Add project type detection**
   - Check if `{cwd}/Makefile` exists
-  - If yes: verify `worktree:prepare` target exists via `make -n worktree:prepare` (dry run)
+  - If yes: verify `worktree-prepare` target exists via `make -n worktree-prepare` (dry run)
   - If no Makefile: check `{cwd}/package.json`
   - If yes: parse JSON, verify `scripts["worktree:prepare"]` exists
   - If file exists but target missing: raise error
 
-- [ ] **Add hook execution**
+- [x] **Add hook execution**
   - After successful git worktree creation (when `ensure_worktree()` returns True)
-  - Call `make worktree:prepare SLUG={slug}` or `npm run worktree:prepare -- {slug}`
+  - Call `make worktree-prepare SLUG={slug}` or `npm run worktree:prepare -- {slug}`
   - Run from `cwd` (main repo), hook knows to operate on `trees/{slug}/`
 
-- [ ] **Add error handling**
+- [x] **Add error handling**
   - If hook not found: fatal error with clear message
   - If hook execution fails: fatal error, don't dispatch worker into broken worktree
   - Propagate error up to `next_work()` which returns error message to orchestrator
@@ -66,7 +66,7 @@ Modify `teleclaude/core/next_machine.py` to call preparation hook after git work
 
 Remove confusing environment instructions from worker commands.
 
-- [ ] **Remove Step 1.b from next-build.md**
+- [x] **Remove Step 1.b from next-build.md**
   - Delete "Prepare Environment" section (lines 28-32) from `~/.agents/commands/next-build.md`
   - Worker commands must not contain environment setup instructions
 
@@ -79,7 +79,7 @@ Remove confusing environment instructions from worker commands.
   - Verify `make init` from worktree fails with clear error
 
 - [ ] **Test preparation hook**
-  - Verify `make worktree:prepare SLUG=test-slug` creates functional worktree
+  - Verify `make worktree-prepare SLUG=test-slug` creates functional worktree
   - Verify worktree has `.venv/`, `config.yml`, `.env` symlink
   - Verify `make test` runs successfully from prepared worktree
 
