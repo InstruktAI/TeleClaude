@@ -74,7 +74,8 @@ if [ ! -f "$REPO_ROOT/config.yml" ]; then
 fi
 
 # Copy main config, keeping database path pointing to main repo
-python3 << PYTHON_SCRIPT
+# Use worktree venv to ensure PyYAML is available
+"$WORKTREE_DIR/.venv/bin/python" << PYTHON_SCRIPT
 import sys
 import yaml
 from pathlib import Path
