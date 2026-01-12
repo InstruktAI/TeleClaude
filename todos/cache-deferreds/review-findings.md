@@ -194,3 +194,35 @@ The `is_stale()` check uses wildcard key pattern. Verify this matches how cache 
 - Implementation plan shows Phase 5 (Manual Refresh) and Phase 6 (TTL Auto-Refresh) are NOT IMPLEMENTED
 - These were marked as unchecked in the plan, so this is expected incomplete work
 - Core Phases 1-4 are implemented as designed
+
+---
+
+## Fixes Applied
+
+All critical and important issues have been addressed:
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Import statements inside function bodies | Moved ComputerInfo, ProjectInfo, TodoInfo to module top level | 581232c |
+| Redundant exception catching pattern | Removed redundant `(TimeoutError, Exception)` - simplified to `Exception` | 61619e1 |
+| Cache None early returns without logging | Added warning logs for all cache None early returns | 6ec89fd |
+| Untracked background tasks with silent failures | Added exception callbacks to untracked asyncio tasks in rest_adapter | 50d5786 |
+| Missing test coverage for new methods | Added 12 comprehensive unit tests covering all new cache pull methods | b1bbbd4 |
+
+### Test Coverage Added:
+
+**tests/unit/test_redis_adapter_cache_pull.py** (12 tests, all passing):
+- `test_pull_initial_sessions_happy_path` - Verifies successful session pull
+- `test_pull_initial_sessions_no_cache` - Verifies skip when cache unavailable
+- `test_pull_initial_sessions_timeout_continues_to_next` - Verifies resilience to timeouts
+- `test_pull_initial_sessions_malformed_response_skips` - Verifies handling of bad data
+- `test_pull_initial_sessions_error_status_skips` - Verifies error response handling
+- `test_pull_initial_sessions_empty_computers` - Verifies empty list handling
+- `test_pull_remote_projects_happy_path` - Verifies successful projects pull
+- `test_pull_remote_projects_no_cache` - Verifies skip when cache unavailable
+- `test_pull_remote_projects_timeout` - Verifies timeout handling
+- `test_pull_remote_todos_happy_path` - Verifies successful todos pull
+- `test_pull_remote_todos_no_cache` - Verifies skip when cache unavailable
+- `test_heartbeat_populates_cache` - Verifies heartbeat → cache.update_computer() flow
+
+All tests pass. Lint checks pass (pylint 10/10, mypy 0 errors, pyright 0 errors).
