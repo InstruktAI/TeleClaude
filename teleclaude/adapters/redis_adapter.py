@@ -1325,7 +1325,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                 logger.info("Pulled %d sessions from %s", len(data), computer_name)
 
-            except (TimeoutError, Exception) as e:
+            except Exception as e:
                 logger.warning("Failed to pull sessions from %s: %s", computer_name, e)
                 continue
 
@@ -1378,7 +1378,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self.cache.set_projects(computer, projects)
             logger.info("Pulled %d projects from %s", len(projects), computer)
 
-        except (TimeoutError, Exception) as e:
+        except Exception as e:
             logger.warning("Failed to pull projects from %s: %s", computer, e)
 
     async def pull_remote_todos(self, computer: str, project_path: str) -> None:
@@ -1431,7 +1431,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self.cache.set_todos(computer, project_path, todos)
             logger.info("Pulled %d todos from %s:%s", len(todos), computer, project_path)
 
-        except (TimeoutError, Exception) as e:
+        except Exception as e:
             logger.warning("Failed to pull todos from %s:%s: %s", computer, project_path, e)
 
     async def _poll_session_events(self) -> None:
