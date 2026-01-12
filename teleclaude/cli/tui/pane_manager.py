@@ -102,6 +102,49 @@ class TmuxPaneManager:
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         return pane_id in output.split("\n")
 
+    def _get_appearance_env(self) -> dict[str, str]:
+        """Get current appearance settings from the host.
+
+        Captures APPEARANCE_MODE and TERMINAL_BG from the local machine
+        to pass to remote sessions via SSH.
+
+        Returns:
+            Dict with appearance env vars, empty if detection fails.
+        """
+        env_vars: dict[str, str] = {}
+        appearance_bin = os.path.expanduser("~/.local/bin/appearance")
+
+        if not os.path.exists(appearance_bin):
+            return env_vars
+
+        # Get mode
+        try:
+            result = subprocess.run(
+                [appearance_bin, "get-mode"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                env_vars["APPEARANCE_MODE"] = result.stdout.strip()
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+        # Get terminal background
+        try:
+            result = subprocess.run(
+                [appearance_bin, "get-terminal-bg"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                env_vars["TERMINAL_BG"] = result.stdout.strip()
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+        return env_vars
+
     def _build_attach_cmd(
         self,
         tmux_session_name: str,
@@ -110,7 +153,7 @@ class TmuxPaneManager:
         """Build the command to attach to a tmux session.
 
         For local sessions: direct tmux attach
-        For remote sessions: SSH with tmux attach
+        For remote sessions: SSH with tmux attach (includes appearance env vars)
 
         Args:
             tmux_session_name: The tmux session name to attach to
@@ -125,7 +168,14 @@ class TmuxPaneManager:
             # Use -t for pseudo-terminal allocation (required for tmux)
             # Use -A for SSH agent forwarding
             ssh_target = computer_info.ssh_target
-            cmd = f"ssh -t -A {ssh_target} 'TERM=tmux-256color tmux -u attach-session -t {tmux_session_name}'"
+
+            # Get appearance settings from host to pass to remote
+            appearance_env = self._get_appearance_env()
+            env_str = " ".join(f"{k}={v}" for k, v in appearance_env.items())
+            if env_str:
+                env_str += " "
+
+            cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color tmux -u attach-session -t {tmux_session_name}'"
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
 
