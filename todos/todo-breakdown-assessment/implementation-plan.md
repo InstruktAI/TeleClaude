@@ -87,9 +87,12 @@ Assess whether this todo fits a single AI session.
 
 **If too large:** Split into child todos.
 1. Create `todos/{slug}-1/`, `todos/{slug}-2/` with input.md each
+   - Each input.md states the intended outcome for that child
+   - Include only information relevant for building
+   - Write as a clean briefing package for the executing AI
 2. Add children to roadmap before parent
 3. Set parent to depend on children in dependencies.json
-4. Write breakdown.md with reasoning
+4. Write breakdown.md with reasoning (this stays in parent, children start fresh)
 5. Update state.json: `{ "breakdown": { "assessed": true, "todos": [...] } }`
 
 **If appropriately scoped:** Proceed.
