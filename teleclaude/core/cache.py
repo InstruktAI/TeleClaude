@@ -74,9 +74,10 @@ class DaemonCache:
         # Change subscribers: callbacks notified when cache updates
         self._subscribers: set[Callable[[str, object], None]] = set()
 
-        # Interest tracking: which views TUI has subscribed to
-        # Examples: "sessions", "preparation"
-        self._interest: set[str] = set()
+        # Interest tracking: per-computer interest in data types
+        # Structure: {data_type: {computer1, computer2, ...}}
+        # Examples: {"sessions": {"raspi", "macbook"}, "projects": {"raspi"}}
+        self._interest: dict[str, set[str]] = {}
 
     # ==================== TTL Management ====================
 
@@ -266,33 +267,54 @@ class DaemonCache:
 
     # ==================== Interest Management ====================
 
-    def set_interest(self, interests: set[str]) -> None:
-        """Set client interest (replaces existing interest).
+    def set_interest(self, data_type: str, computer: str) -> None:
+        """Register interest in a data type for a specific computer.
 
         Args:
-            interests: Set of interest strings (e.g., {"sessions", "preparation"})
+            data_type: Type of data (e.g., "sessions", "projects", "todos")
+            computer: Computer name to track interest for
         """
-        self._interest = interests.copy()  # Copy to prevent external mutation
-        logger.debug("Updated cache interest: %s", interests)
+        if data_type not in self._interest:
+            self._interest[data_type] = set()
+        self._interest[data_type].add(computer)
+        logger.debug("Registered interest: %s for computer %s", data_type, computer)
 
-    def get_interest(self) -> set[str]:
-        """Get current client interest.
-
-        Returns:
-            Set of interest strings
-        """
-        return self._interest.copy()
-
-    def has_interest(self, interest: str) -> bool:
-        """Check if cache has specific interest.
+    def has_interest(self, data_type: str, computer: str) -> bool:
+        """Check if cache has interest in data type for specific computer.
 
         Args:
-            interest: Interest string to check
+            data_type: Type of data to check
+            computer: Computer name to check
 
         Returns:
-            True if interest is active, False otherwise
+            True if interest is active for this computer, False otherwise
         """
-        return interest in self._interest
+        return computer in self._interest.get(data_type, set())
+
+    def remove_interest(self, data_type: str, computer: str) -> None:
+        """Remove interest in a data type for a specific computer.
+
+        Args:
+            data_type: Type of data (e.g., "sessions", "projects", "todos")
+            computer: Computer name to remove interest for
+        """
+        if data_type in self._interest:
+            self._interest[data_type].discard(computer)
+            # Clean up empty sets
+            if not self._interest[data_type]:
+                del self._interest[data_type]
+            logger.debug("Removed interest: %s for computer %s", data_type, computer)
+
+    def get_interested_computers(self, data_type: str) -> list[str]:
+        """Get all computers with interest in a data type.
+
+        Args:
+            data_type: Type of data to check
+
+        Returns:
+            List of computer names with interest in this data type
+        """
+        return list(self._interest.get(data_type, set()))
 
     # ==================== Change Notifications ====================
 

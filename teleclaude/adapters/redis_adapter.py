@@ -1113,11 +1113,17 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         }
 
         # Include interest if cache available
+        # Collect all data types we have interest in (across all computers)
         if self.cache:
-            interest = list(self.cache.get_interest())
-            if interest:
-                payload["interested_in"] = interest
-                logger.trace("Heartbeat includes interest: %s", interest)
+            all_data_types: set[str] = set()
+            # Check for common data types
+            for data_type in ["sessions", "projects", "todos"]:
+                if self.cache.get_interested_computers(data_type):
+                    all_data_types.add(data_type)
+
+            if all_data_types:
+                payload["interested_in"] = list(all_data_types)
+                logger.trace("Heartbeat includes interest: %s", all_data_types)
 
         # Set key with auto-expiry
         redis_client = self._require_redis()
@@ -1271,25 +1277,33 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return []
 
     async def _pull_initial_sessions(self) -> None:
-        """Pull existing sessions from all remote computers when interest is first registered.
+        """Pull existing sessions from remote computers that have registered interest.
 
         This ensures remote sessions appear in TUI on startup, not just after new events.
+        Only pulls from computers that the local client has explicitly subscribed to.
         """
         if not self.cache:
             logger.warning("Cache unavailable, skipping initial session pull")
             return
 
-        logger.info("Performing initial session pull from remote computers")
+        logger.info("Performing initial session pull from interested computers")
 
-        # Get all known remote computers from cache
-        computers = self.cache.get_computers()
-        if not computers:
-            logger.debug("No remote computers found for initial session pull")
+        # Get computers that we have interest in for sessions
+        interested_computers = self.cache.get_interested_computers("sessions")
+        if not interested_computers:
+            logger.debug("No interested computers for session pull")
             return
 
-        # Pull sessions from each remote computer
-        for computer in computers:
-            computer_name = computer["name"]
+        # Get all known remote computers from cache
+        all_computers = self.cache.get_computers()
+        computer_map = {c["name"]: c for c in all_computers}
+
+        # Pull sessions only from computers we're interested in
+        for computer_name in interested_computers:
+            if computer_name not in computer_map:
+                logger.debug("Interested computer %s not found in heartbeats, skipping", computer_name)
+                continue
+
             try:
                 # Request sessions via Redis (calls list_sessions handler on remote)
                 message_id = await self.send_request(computer_name, "list_sessions", MessageMetadata())
@@ -1447,8 +1461,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         while self._running:
             try:
-                # Only poll if cache has interest in sessions
-                if not self.cache or not self.cache.has_interest("sessions"):
+                # Only poll if cache has interest in sessions (from any computer)
+                if not self.cache or not self.cache.get_interested_computers("sessions"):
                     await asyncio.sleep(5)  # Check again in 5s
                     initial_pull_done = False  # Reset flag when interest is lost
                     continue

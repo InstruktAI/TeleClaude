@@ -138,19 +138,19 @@ async def test_websocket_subscription_registers_interest(
     - Disconnect clears interest
     """
     # Verify no interest initially
-    assert cache.get_interest() == set()
+    assert cache.get_interested_computers("sessions") == []
 
-    # Simulate WebSocket connection and subscription
+    # Simulate WebSocket connection and subscription (new per-computer format)
     mock_ws = create_mock_websocket()
     rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"sessions"}
+    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Update cache interest
     rest_adapter._update_cache_interest()
 
-    # Verify interest registered
-    assert cache.has_interest("sessions")
-    assert cache.get_interest() == {"sessions"}
+    # Verify interest registered for local computer
+    assert cache.has_interest("sessions", "local")
+    assert cache.get_interested_computers("sessions") == ["local"]
 
     # Simulate disconnect
     rest_adapter._ws_clients.discard(mock_ws)
@@ -158,7 +158,7 @@ async def test_websocket_subscription_registers_interest(
     rest_adapter._update_cache_interest()
 
     # Verify interest cleared
-    assert cache.get_interest() == set()
+    assert cache.get_interested_computers("sessions") == []
 
 
 @pytest.mark.asyncio
@@ -177,7 +177,7 @@ async def test_cache_update_notifies_websocket_clients(
     # Set up WebSocket client
     mock_ws = create_mock_websocket()
     rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"sessions"}
+    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Update session in cache (triggers notification)
     test_session = create_test_session()
@@ -208,7 +208,7 @@ async def test_session_removal_notifies_websocket(
     # Set up WebSocket client
     mock_ws = create_mock_websocket()
     rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"sessions"}
+    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Add session first
     test_session = create_test_session()
@@ -290,27 +290,30 @@ async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
 @pytest.mark.asyncio
 async def test_heartbeat_includes_interest_when_subscribed(cache: DaemonCache) -> None:
     """
-    Flow: set_interest({"sessions"}) → heartbeat payload contains interested_in.
+    Flow: Per-computer interest → heartbeat payload contains interested_in.
 
     Validates:
-    - Cache tracks interest correctly
-    - Interest available for heartbeat payloads
+    - Cache tracks per-computer interest correctly
+    - Interest available for heartbeat payloads (aggregated across computers)
     """
     # Initially no interest
-    assert cache.get_interest() == set()
+    assert cache.get_interested_computers("sessions") == []
 
-    # Set interest
-    cache.set_interest({"sessions", "preparation"})
+    # Set interest for multiple computers
+    cache.set_interest("sessions", "raspi")
+    cache.set_interest("sessions", "macbook")
+    cache.set_interest("projects", "raspi")
 
-    # Verify interest tracked
-    assert cache.has_interest("sessions")
-    assert cache.has_interest("preparation")
-    assert not cache.has_interest("unknown")
+    # Verify interest tracked per computer
+    assert cache.has_interest("sessions", "raspi")
+    assert cache.has_interest("sessions", "macbook")
+    assert cache.has_interest("projects", "raspi")
+    assert not cache.has_interest("projects", "macbook")
 
-    # Verify get_interest returns copy (mutation safe)
-    interest = cache.get_interest()
-    interest.add("tampered")
-    assert "tampered" not in cache.get_interest()
+    # Verify get_interested_computers returns list (mutation safe)
+    computers = cache.get_interested_computers("sessions")
+    computers.append("tampered")
+    assert "tampered" not in cache.get_interested_computers("sessions")
 
 
 @pytest.mark.asyncio
@@ -361,14 +364,14 @@ async def test_full_event_round_trip(
     - Complete event propagation from source to WebSocket client
     - All components work together correctly
     """
-    # Set up WebSocket client
+    # Set up WebSocket client with per-computer subscription
     mock_ws = create_mock_websocket()
     rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"sessions"}
+    rest_adapter._client_subscriptions[mock_ws] = {"remote-computer": {"sessions"}}
 
     # Update cache interest
     rest_adapter._update_cache_interest()
-    assert cache.has_interest("sessions")
+    assert cache.has_interest("sessions", "remote-computer")
 
     # Simulate remote session change (from Redis)
     remote_session = create_test_session(
@@ -456,7 +459,7 @@ async def test_unsubscribed_client_receives_all_events(
     # Set up client subscribed to preparation only
     mock_ws = create_mock_websocket()
     rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"preparation"}
+    rest_adapter._client_subscriptions[mock_ws] = {"local": {"preparation"}}
 
     # Update session (not in preparation topic)
     test_session = create_test_session(session_id="unfiltered-test")
@@ -489,7 +492,7 @@ async def test_dead_websocket_client_removed_on_error(
     mock_ws.send_json.side_effect = Exception("Connection closed")
 
     rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"sessions"}
+    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Verify client registered
     assert mock_ws in rest_adapter._ws_clients

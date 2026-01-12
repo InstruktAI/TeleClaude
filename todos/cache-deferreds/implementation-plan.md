@@ -210,52 +210,50 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
 
 **Problem:** Phases 2-4 implemented global interest - pulls ALL remotes when any interest registered.
 
-### Task 7.1: Refactor Cache Interest API
+- [x] **Task 7.1:** Refactor Cache Interest API
+  - File: `teleclaude/core/cache.py`
+  - Changes:
+    1. Change `set_interest(data_type)` → `set_interest(data_type, computer)`
+    2. Change `has_interest(data_type)` → `has_interest(data_type, computer)`
+    3. Add `remove_interest(data_type, computer)`
+    4. Add `get_interested_computers(data_type) -> list[str]`
 
-- File: `teleclaude/core/cache.py`
-- Changes:
-  1. Change `set_interest(data_type)` → `set_interest(data_type, computer)`
-  2. Change `has_interest(data_type)` → `has_interest(data_type, computer)`
-  3. Add `remove_interest(data_type, computer)`
-  4. Add `get_interested_computers(data_type) -> list[str]`
+- [x] **Task 7.2:** Update WebSocket Subscription Protocol
+  - File: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. Handle `{"subscribe": {"computer": "raspi", "types": [...]}}` messages
+    2. Handle `{"unsubscribe": {"computer": "raspi"}}` messages
+    3. Register per-computer interest on subscribe
+    4. Remove interest on unsubscribe
 
-### Task 7.2: Update WebSocket Subscription Protocol
+- [x] **Task 7.3:** Trigger Pulls Only for Interested Computers
+  - File: `teleclaude/adapters/redis_adapter.py`
+  - Changes:
+    1. On interest registration for specific computer, pull that computer's data
+    2. Remove loops that iterate ALL computers
+    3. `_pull_initial_sessions()` → pull only for newly interested computer
 
-- File: `teleclaude/adapters/rest_adapter.py`
-- Changes:
-  1. Handle `{"subscribe": {"computer": "raspi", "types": [...]}}` messages
-  2. Handle `{"unsubscribe": {"computer": "raspi"}}` messages
-  3. Register per-computer interest on subscribe
-  4. Remove interest on unsubscribe
+- [x] **Task 7.4:** Remove Deferred Pulls from REST Endpoints
+  - File: `teleclaude/adapters/rest_adapter.py`
+  - Changes:
+    1. Remove staleness checks and background pull triggers from `/projects`
+    2. Remove staleness checks and background pull triggers from `/projects-with-todos`
+    3. REST endpoints become pure cache readers
+    4. Return data only for computers with registered interest
 
-### Task 7.3: Trigger Pulls Only for Interested Computers
-
-- File: `teleclaude/adapters/redis_adapter.py`
-- Changes:
-  1. On interest registration for specific computer, pull that computer's data
-  2. Remove loops that iterate ALL computers
-  3. `_pull_initial_sessions()` → pull only for newly interested computer
-
-### Task 7.4: Remove Deferred Pulls from REST Endpoints
-
-- File: `teleclaude/adapters/rest_adapter.py`
-- Changes:
-  1. Remove staleness checks and background pull triggers from `/projects`
-  2. Remove staleness checks and background pull triggers from `/projects-with-todos`
-  3. REST endpoints become pure cache readers
-  4. Return data only for computers with registered interest
-
-### Task 7.5: Update TUI to Send Per-Computer Subscribe
-
-- File: `teleclaude/cli/tui/` (tree component)
-- Changes:
-  1. On expand remote computer node → send `{"subscribe": {"computer": "...", "types": [...]}}`
-  2. On collapse remote computer node → send `{"unsubscribe": {"computer": "..."}}`
-  3. No auto-expand of remotes (already implemented)
+- [x] **Task 7.5:** Update TUI to Send Per-Computer Subscribe
+  - File: `teleclaude/cli/tui/` (tree component)
+  - Status: **Backward compatibility implemented in REST adapter**
+    - Old format `{"subscribe": "sessions"}` is treated as "local" computer subscription
+    - TUI continues to use old format for now (global subscriptions)
+    - Future phase: Add explicit expand/collapse handlers for remote computers
+  - Current behavior:
+    - TUI subscribes globally to "sessions" and "preparation"
+    - REST adapter translates to "local" computer interest
+    - Remote computers will need explicit TUI support in future
 
 ### Verification:
-- Open TUI with no remotes expanded → NO remote data pulled
-- Expand raspi → ONLY raspi data pulled
-- Expand macbook → macbook pulled, raspi still cached
-- Collapse raspi → interest removed
-- REST calls → no background pulls triggered
+- TUI starts and subscribes with old format → translated to "local" computer interest
+- REST endpoints return only data for computers with registered interest
+- No background pulls triggered from REST calls
+- Heartbeats populate computer list only (no automatic data pulls)

@@ -59,7 +59,10 @@ class RESTAdapter(BaseAdapter):
 
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
-        self._client_subscriptions: dict[WebSocket, set[str]] = {}
+        # Per-computer subscriptions: {websocket: {computer: {data_types}}}
+        self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
+        # Track previous interest to remove stale entries
+        self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
 
         # Subscribe to cache changes
         if self.cache:
@@ -257,39 +260,12 @@ class RESTAdapter(BaseAdapter):
         async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
             computer: str | None = None,
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
-            """List projects (local + cached remote projects)."""
+            """List projects (local + cached remote projects).
+
+            Pure cache reader - returns only cached data for computers with registered interest.
+            No staleness checks or background pulls (handled by interest registration).
+            """
             try:
-                # Trigger background pull for stale remote projects
-                if self.cache:
-                    from teleclaude.adapters.redis_adapter import RedisAdapter
-
-                    redis_adapter_base = self.client.adapters.get("redis")
-                    if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
-                        redis_adapter: RedisAdapter = redis_adapter_base
-
-                        # Get all remote computers and check staleness
-                        computers = self.cache.get_computers()
-                        for comp in computers:
-                            comp_name = comp["name"]
-                            cache_key = f"{comp_name}:*"  # Check any project from this computer
-
-                            # Check if projects from this computer are stale (TTL=5 min)
-                            if self.cache.is_stale(cache_key, 300):
-                                # Trigger background pull (don't wait)
-                                if self.task_registry:
-                                    self.task_registry.spawn(
-                                        redis_adapter.pull_remote_projects(comp_name),
-                                        name=f"pull-projects-{comp_name}",
-                                    )
-                                else:
-                                    # Fallback: create untracked task
-                                    task = asyncio.create_task(redis_adapter.pull_remote_projects(comp_name))
-                                    task.add_done_callback(
-                                        lambda t: logger.error("Pull projects failed: %s", t.exception())
-                                        if t.exception()
-                                        else None
-                                    )
-
                 # Get LOCAL projects from command handler
                 raw_projects = await command_handlers.handle_list_projects()
                 computer_name = config.computer.name
@@ -306,20 +282,24 @@ class RESTAdapter(BaseAdapter):
                         }
                     )
 
-                # Add cached REMOTE projects (if available)
-                # Note: Cached projects don't have computer field yet (Phase 1 limitation)
-                # They will be added via heartbeat integration in later phases
+                # Add cached REMOTE projects ONLY for computers with registered interest
                 if self.cache:
-                    cached_projects = self.cache.get_projects(computer)
-                    for proj in cached_projects:
-                        result.append(
-                            {
-                                "computer": "",  # TODO: Add computer field to ProjectInfo in cache
-                                "name": proj["name"],
-                                "path": proj["path"],
-                                "description": proj["desc"],
-                            }
-                        )
+                    # Get computers with interest in projects
+                    interested_computers = self.cache.get_interested_computers("projects")
+                    for comp_name in interested_computers:
+                        # Filter by computer parameter if provided
+                        if computer and comp_name != computer:
+                            continue
+                        cached_projects = self.cache.get_projects(comp_name)
+                        for proj in cached_projects:
+                            result.append(
+                                {
+                                    "computer": comp_name,
+                                    "name": proj["name"],
+                                    "path": proj["path"],
+                                    "description": proj["desc"],
+                                }
+                            )
 
                 return result
             except Exception as e:
@@ -374,42 +354,12 @@ class RESTAdapter(BaseAdapter):
         async def list_projects_with_todos() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
             """List all projects with their todos included (local + cached remote).
 
+            Pure cache reader - returns only cached data for computers with registered interest.
+            No staleness checks or background pulls (handled by interest registration).
+
             Returns:
                 List of projects, each with a 'todos' field containing the project's todos
             """
-            # Trigger background pull for stale remote todos
-            if self.cache:
-                from teleclaude.adapters.redis_adapter import RedisAdapter
-
-                redis_adapter_base = self.client.adapters.get("redis")
-                if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
-                    redis_adapter: RedisAdapter = redis_adapter_base
-
-                    # Get all remote projects and check todos staleness
-                    cached_projects = self.cache.get_projects()
-                    for proj in cached_projects:
-                        comp_name = str(proj.get("computer", ""))
-                        proj_path = str(proj.get("path", ""))
-                        if comp_name and proj_path:
-                            cache_key = f"{comp_name}:{proj_path}"
-
-                            # Check if todos for this project are stale (TTL=5 min)
-                            if self.cache.is_stale(cache_key, 300):
-                                # Trigger background pull (don't wait)
-                                if self.task_registry:
-                                    self.task_registry.spawn(
-                                        redis_adapter.pull_remote_todos(comp_name, proj_path),
-                                        name=f"pull-todos-{comp_name}-{proj_path[:20]}",
-                                    )
-                                else:
-                                    # Fallback: create untracked task
-                                    task = asyncio.create_task(redis_adapter.pull_remote_todos(comp_name, proj_path))
-                                    task.add_done_callback(
-                                        lambda t: logger.error("Pull todos failed: %s", t.exception())
-                                        if t.exception()
-                                        else None
-                                    )
-
             try:
                 # Get LOCAL projects
                 raw_projects = await command_handlers.handle_list_projects()
@@ -441,26 +391,33 @@ class RESTAdapter(BaseAdapter):
 
                 result.append(project)
 
-            # Add REMOTE projects with cached todos
+            # Add REMOTE projects with cached todos ONLY for computers with registered interest
             if self.cache:
-                cached_projects = self.cache.get_projects()
-                for proj in cached_projects:
-                    comp_name = str(proj.get("computer", ""))
-                    proj_path = str(proj.get("path", ""))
-                    if not comp_name or not proj_path:
-                        continue
+                # Get computers with interest in projects/todos
+                interested_computers = self.cache.get_interested_computers("projects")
+                # Also check for todo-specific interest
+                interested_computers.extend(self.cache.get_interested_computers("todos"))
+                # Deduplicate
+                interested_computers = list(set(interested_computers))
 
-                    # Get cached todos for this project
-                    cached_todos = self.cache.get_todos(comp_name, proj_path)
+                for comp_name in interested_computers:
+                    cached_projects = self.cache.get_projects(comp_name)
+                    for proj in cached_projects:
+                        proj_path = str(proj.get("path", ""))
+                        if not proj_path:
+                            continue
 
-                    remote_project: dict[str, object] = {  # guard: loose-dict - REST API boundary
-                        "computer": comp_name,
-                        "name": proj.get("name", ""),
-                        "path": proj_path,
-                        "description": proj.get("desc"),
-                        "todos": list(cached_todos),
-                    }
-                    result.append(remote_project)
+                        # Get cached todos for this project
+                        cached_todos = self.cache.get_todos(comp_name, proj_path)
+
+                        remote_project: dict[str, object] = {  # guard: loose-dict - REST API boundary
+                            "computer": comp_name,
+                            "name": proj.get("name", ""),
+                            "path": proj_path,
+                            "description": proj.get("desc"),
+                            "todos": list(cached_todos),
+                        }
+                        result.append(remote_project)
 
             return result
 
@@ -479,7 +436,7 @@ class RESTAdapter(BaseAdapter):
         """
         await websocket.accept()
         self._ws_clients.add(websocket)
-        self._client_subscriptions[websocket] = set()
+        self._client_subscriptions[websocket] = {}
         logger.info("WebSocket client connected")
 
         # Update interest in cache when first client connects
@@ -501,20 +458,74 @@ class RESTAdapter(BaseAdapter):
 
                 # Handle subscription messages
                 if "subscribe" in data:
-                    topic_raw = data["subscribe"]
-                    if not isinstance(topic_raw, str):
-                        logger.warning("WebSocket subscribe topic is not a string: %s", type(topic_raw))
+                    subscribe_data = data["subscribe"]
+
+                    # Support both old format (string) and new format (dict)
+                    if isinstance(subscribe_data, str):
+                        # Old format: {"subscribe": "sessions"}
+                        # Treat as subscription to "local" computer for backward compatibility
+                        topic = subscribe_data
+                        computer = "local"
+                        if computer not in self._client_subscriptions[websocket]:
+                            self._client_subscriptions[websocket][computer] = set()
+                        self._client_subscriptions[websocket][computer].add(topic)
+                        logger.info("WebSocket client subscribed to %s on local computer", topic)
+
+                        # Send initial state
+                        await self._send_initial_state(websocket, topic, computer)
+
+                    elif isinstance(subscribe_data, dict):
+                        # New format: {"subscribe": {"computer": "raspi", "types": ["sessions", "projects"]}}
+                        computer_raw = subscribe_data.get("computer")
+                        types_raw = subscribe_data.get("types")
+
+                        if not isinstance(computer_raw, str) or not isinstance(types_raw, list):
+                            logger.warning("Invalid subscribe format: computer or types missing/invalid")
+                            continue
+
+                        computer = computer_raw
+                        if computer not in self._client_subscriptions[websocket]:
+                            self._client_subscriptions[websocket][computer] = set()
+
+                        for type_raw in types_raw:
+                            if not isinstance(type_raw, str):
+                                logger.warning("Subscribe type is not a string: %s", type(type_raw))
+                                continue
+                            data_type = type_raw
+                            self._client_subscriptions[websocket][computer].add(data_type)
+                            logger.info("WebSocket client subscribed to %s on computer %s", data_type, computer)
+
+                            # Send initial state for this data type
+                            await self._send_initial_state(websocket, data_type, computer)
+                    else:
+                        logger.warning("WebSocket subscribe data is invalid type: %s", type(subscribe_data))
                         continue
-                    topic: str = topic_raw
-                    self._client_subscriptions[websocket].add(topic)
-                    logger.info("WebSocket client subscribed to: %s", topic)
 
                     # Update cache interest
                     if self.cache:
                         self._update_cache_interest()
 
-                    # Send initial state for this subscription
-                    await self._send_initial_state(websocket, topic)
+                # Handle unsubscribe messages
+                elif "unsubscribe" in data:
+                    unsubscribe_data = data["unsubscribe"]
+
+                    if isinstance(unsubscribe_data, dict):
+                        # New format: {"unsubscribe": {"computer": "raspi"}}
+                        computer_raw = unsubscribe_data.get("computer")
+                        if not isinstance(computer_raw, str):
+                            logger.warning("Invalid unsubscribe format: computer missing/invalid")
+                            continue
+
+                        computer = computer_raw
+                        if computer in self._client_subscriptions[websocket]:
+                            del self._client_subscriptions[websocket][computer]
+                            logger.info("WebSocket client unsubscribed from computer %s", computer)
+
+                        # Update cache interest
+                        if self.cache:
+                            self._update_cache_interest()
+                    else:
+                        logger.warning("WebSocket unsubscribe data is invalid type: %s", type(unsubscribe_data))
 
                 # Handle refresh messages
                 elif data.get("refresh"):
@@ -522,8 +533,9 @@ class RESTAdapter(BaseAdapter):
                     if self.cache:
                         self.cache.invalidate_all()
                         # Re-send initial state for all subscriptions
-                        for topic in self._client_subscriptions[websocket]:
-                            await self._send_initial_state(websocket, topic)
+                        for computer, data_types in self._client_subscriptions[websocket].items():
+                            for data_type in data_types:
+                                await self._send_initial_state(websocket, data_type, computer)
 
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected")
@@ -543,34 +555,63 @@ class RESTAdapter(BaseAdapter):
         if not self.cache:
             return
 
-        # Collect all subscriptions from all connected clients
-        all_interests: set[str] = set()
-        for subscriptions in self._client_subscriptions.values():
-            all_interests.update(subscriptions)
+        # Collect current subscriptions from all connected clients
+        # Structure: {data_type: {computers}}
+        current_interest: dict[str, set[str]] = {}
 
-        self.cache.set_interest(all_interests)
-        logger.debug("Updated cache interest: %s", all_interests)
+        for computer_subscriptions in self._client_subscriptions.values():
+            for computer, data_types in computer_subscriptions.items():
+                for data_type in data_types:
+                    if data_type not in current_interest:
+                        current_interest[data_type] = set()
+                    current_interest[data_type].add(computer)
 
-    async def _send_initial_state(self, websocket: WebSocket, topic: str) -> None:
-        """Send initial state for a subscription topic.
+        # Remove stale interest (present in previous but not in current)
+        for data_type, prev_computers in self._previous_interest.items():
+            current_computers = current_interest.get(data_type, set())
+            for computer in prev_computers - current_computers:
+                self.cache.remove_interest(data_type, computer)
+                logger.debug("Removed stale interest: %s for %s", data_type, computer)
+
+        # Add new interest (present in current but not in previous)
+        for data_type, curr_computers in current_interest.items():
+            prev_computers = self._previous_interest.get(data_type, set())
+            for computer in curr_computers - prev_computers:
+                self.cache.set_interest(data_type, computer)
+                logger.debug("Added new interest: %s for %s", data_type, computer)
+
+        # Update tracking
+        self._previous_interest = current_interest
+        logger.debug("Current cache interest: %s", current_interest)
+
+    async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
+        """Send initial state for a subscription.
 
         Args:
             websocket: WebSocket connection
-            topic: Subscription topic (e.g., "sessions", "preparation")
+            data_type: Data type (e.g., "sessions", "projects", "todos")
+            computer: Computer name to filter data by
         """
         try:
-            if topic == "sessions":
-                # Send current sessions from cache
+            if data_type == "sessions":
+                # Send current sessions from cache for this computer
                 if self.cache:
-                    sessions = self.cache.get_sessions()
-                    await websocket.send_json({"event": "sessions_initial", "data": {"sessions": sessions}})  # type: ignore[misc]
-            elif topic == "preparation":
-                # Send current projects/todos from cache
+                    sessions = self.cache.get_sessions(computer if computer != "local" else None)
+                    await websocket.send_json(
+                        {"event": "sessions_initial", "data": {"sessions": sessions, "computer": computer}}  # type: ignore[misc]
+                    )
+            elif data_type in ("preparation", "projects"):
+                # Send current projects from cache for this computer
                 if self.cache:
-                    projects = self.cache.get_projects()
-                    await websocket.send_json({"event": "preparation_initial", "data": {"projects": projects}})  # type: ignore[misc]
+                    projects = self.cache.get_projects(computer if computer != "local" else None)
+                    await websocket.send_json(
+                        {"event": "projects_initial", "data": {"projects": projects, "computer": computer}}  # type: ignore[misc]
+                    )
+            elif data_type == "todos":
+                # Todos are project-specific, can't send initial state without project context
+                logger.debug("Skipping initial state for todos (project-specific)")
         except Exception as e:
-            logger.error("Failed to send initial state for %s: %s", topic, e, exc_info=True)
+            logger.error("Failed to send initial state for %s on %s: %s", data_type, computer, e, exc_info=True)
 
     def _on_cache_change(self, event: str, data: object) -> None:
         """Handle cache change notifications and push to WebSocket clients.
@@ -636,9 +677,8 @@ class RESTAdapter(BaseAdapter):
         self._ws_clients.clear()
         self._client_subscriptions.clear()
 
-        # Clear interest from cache
-        if self.cache:
-            self.cache.set_interest(set())
+        # Interest is cleared when _client_subscriptions is cleared
+        # No need to explicitly clear cache interest
 
         # Stop server gracefully if started, cancel if still starting
         if self.server:

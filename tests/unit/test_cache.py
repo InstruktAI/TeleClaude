@@ -158,15 +158,23 @@ def test_set_todos_notifies_subscribers():
     )
 
 
-def test_set_interest_replaces_existing():
-    """Test set_interest() replaces entire interest set."""
+def test_set_interest_per_computer():
+    """Test set_interest() registers interest per computer."""
     cache = DaemonCache()
 
-    cache.set_interest({"sessions", "preparation"})
-    assert cache.get_interest() == {"sessions", "preparation"}
+    cache.set_interest("sessions", "raspi")
+    cache.set_interest("sessions", "macbook")
+    cache.set_interest("projects", "raspi")
 
-    cache.set_interest({"work"})  # Replace, not merge
-    assert cache.get_interest() == {"work"}
+    # Check interest for specific computers
+    assert cache.has_interest("sessions", "raspi")
+    assert cache.has_interest("sessions", "macbook")
+    assert cache.has_interest("projects", "raspi")
+    assert not cache.has_interest("projects", "macbook")
+
+    # Get interested computers
+    assert set(cache.get_interested_computers("sessions")) == {"raspi", "macbook"}
+    assert cache.get_interested_computers("projects") == ["raspi"]
 
 
 def test_notify_handles_callback_exception():
@@ -274,13 +282,25 @@ def test_subscribe_and_unsubscribe():
     assert callback not in cache._subscribers
 
 
-def test_has_interest():
-    """Test has_interest() checks for specific interest."""
+def test_remove_interest():
+    """Test remove_interest() removes per-computer interest."""
     cache = DaemonCache()
 
-    cache.set_interest({"sessions", "preparation"})
-    assert cache.has_interest("sessions") is True
-    assert cache.has_interest("work") is False
+    cache.set_interest("sessions", "raspi")
+    cache.set_interest("sessions", "macbook")
+
+    assert cache.has_interest("sessions", "raspi")
+    assert cache.has_interest("sessions", "macbook")
+
+    # Remove interest for one computer
+    cache.remove_interest("sessions", "raspi")
+
+    assert not cache.has_interest("sessions", "raspi")
+    assert cache.has_interest("sessions", "macbook")
+
+    # Remove last computer should clean up the data type
+    cache.remove_interest("sessions", "macbook")
+    assert cache.get_interested_computers("sessions") == []
 
 
 def test_is_stale_returns_true_for_missing_key():
@@ -313,14 +333,15 @@ def test_cached_item_uses_current_time_by_default():
     assert age < 1  # Should be less than 1 second old
 
 
-def test_get_interest_returns_copy():
-    """Test get_interest() returns a copy to prevent external mutation."""
+def test_get_interested_computers_returns_list():
+    """Test get_interested_computers() returns a list that can be safely modified."""
     cache = DaemonCache()
-    cache.set_interest({"sessions"})
+    cache.set_interest("sessions", "raspi")
+    cache.set_interest("sessions", "macbook")
 
-    # Get interest and modify it
-    interest = cache.get_interest()
-    interest.add("work")
+    # Get computers and modify the list
+    computers = cache.get_interested_computers("sessions")
+    computers.append("tampered")
 
-    # Original should not be modified
-    assert cache.get_interest() == {"sessions"}
+    # Original cache should be unchanged
+    assert set(cache.get_interested_computers("sessions")) == {"raspi", "macbook"}

@@ -271,14 +271,16 @@ def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[expl
 
 
 def test_list_projects_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects returns local + cached projects."""
+    """Test list_projects returns local + cached projects (only for computers with interest)."""
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = [
             {"name": "project1", "path": "/path1", "desc": "Local project"},
         ]
-        # Mock cache to return one remote project (cache uses "desc", not "description")
+        # Register interest for a remote computer
+        mock_cache.get_interested_computers.return_value = ["RemoteComputer"]
+        # Mock cache to return one remote project for the interested computer
         mock_cache.get_projects.return_value = [
             {"name": "project2", "path": "/path2", "desc": "Remote project"},
         ]
@@ -293,11 +295,13 @@ def test_list_projects_success(test_client, mock_cache):  # type: ignore[explici
 
 
 def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects passes computer parameter to cache."""
+    """Test list_projects filters by computer and only returns projects for computers with interest."""
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = [{"name": "project1", "path": "/path1"}]
+        # Register interest for "local" computer
+        mock_cache.get_interested_computers.return_value = ["local"]
         mock_cache.get_projects.return_value = []
 
         response = test_client.get("/projects?computer=local")

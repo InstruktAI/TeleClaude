@@ -43,6 +43,8 @@ async def test_pull_initial_sessions_happy_path():
         {"name": "RemotePC1", "status": "online"},
         {"name": "RemotePC2", "status": "online"},
     ]
+    # Register interest in sessions for both computers (required for per-computer pulls)
+    mock_cache.get_interested_computers.return_value = ["RemotePC1", "RemotePC2"]
     adapter.cache = mock_cache
 
     # Mock send_request
@@ -110,6 +112,8 @@ async def test_pull_initial_sessions_timeout_continues_to_next():
         {"name": "RemotePC1", "status": "online"},
         {"name": "RemotePC2", "status": "online"},
     ]
+    # Register interest for both computers
+    mock_cache.get_interested_computers.return_value = ["RemotePC1", "RemotePC2"]
     adapter.cache = mock_cache
 
     adapter.send_request = AsyncMock(return_value="msg-123")
