@@ -48,3 +48,15 @@
 Priority fixes:
 1. Stop creating per worktree databases in `bin/worktree-prepare.sh` and align with the single database rule.
 2. Ensure worktree prep uses the worktree venv for config generation, and add tests for the new worktree prep and guard behavior.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Critical: Per-worktree databases created | Removed database path modification; config now preserves `${WORKING_DIR}/teleclaude.db` | 60c21fd |
+| Important: System Python used for config generation | Changed to use `$WORKTREE_DIR/.venv/bin/python` after uv sync | 2134989 |
+| Important: Missing tests for worktree prep and guards | Added unit tests for `_prepare_worktree` (7 tests), integration tests for full flow (7 tests) | 1f9dc57 |
+| Suggestion: Incorrect make target in install.sh | Fixed `make worktree:prepare` → `make worktree-prepare` | 1f9dc57 |
+| Suggestion: Incorrect make target in init.sh | Fixed `make worktree:prepare` → `make worktree-prepare` | 1f9dc57 |
