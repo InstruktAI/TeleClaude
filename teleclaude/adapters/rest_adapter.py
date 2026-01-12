@@ -177,6 +177,22 @@ class RESTAdapter(BaseAdapter):
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
 
+        @self.app.post("/sessions/{session_id}/agent-restart")  # type: ignore[misc]
+        async def agent_restart(  # type: ignore[reportUnusedFunction, unused-ignore]
+            session_id: str,
+        ) -> dict[str, str]:
+            """Restart agent in session (preserves conversation via --resume)."""
+            try:
+                await self.client.handle_event(
+                    event="agent_restart",
+                    payload={"args": [], "session_id": session_id},
+                    metadata=self._metadata(),
+                )
+                return {"status": "ok"}
+            except Exception as e:
+                logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to restart agent: {e}") from e
+
         @self.app.get("/sessions/{session_id}/transcript")  # type: ignore[misc]
         async def get_transcript(  # type: ignore[reportUnusedFunction, unused-ignore]
             session_id: str,

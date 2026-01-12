@@ -386,3 +386,18 @@ class TelecAPIClient:
         """
         resp = await self._request("GET", "/projects-with-todos")
         return resp.json()
+
+    async def agent_restart(self, session_id: str) -> bool:
+        """Restart agent in a session (preserves conversation via --resume).
+
+        Args:
+            session_id: Session ID to restart agent in
+
+        Returns:
+            True if successful
+
+        Raises:
+            APIError: If request fails
+        """
+        resp = await self._request("POST", f"/sessions/{session_id}/agent-restart")
+        return resp.status_code == 200

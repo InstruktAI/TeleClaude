@@ -284,7 +284,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
             tmux_session = str(selected.data.get("tmux_session_name") or "")
             is_previewing = self.pane_manager.active_session == tmux_session
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
-            return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [k] Kill"
+            return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
         if selected.type == "project":
             return f"{back_hint}[n] Untitled"
         # computer

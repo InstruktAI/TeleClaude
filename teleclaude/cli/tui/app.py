@@ -25,6 +25,15 @@ logger = get_logger(__name__)
 # WebSocket update polling interval in milliseconds
 WS_POLL_INTERVAL_MS = 100
 
+# Mouse mask for curses - clicks, double-clicks, scroll wheel (NOT drag to allow text selection)
+MOUSE_MASK = (
+    curses.BUTTON1_CLICKED
+    | curses.BUTTON1_DOUBLE_CLICKED
+    | curses.BUTTON4_PRESSED
+    | 0x8000000
+    | 0x200000  # Scroll down (varies by system)
+)
+
 # Key name mapping for debug logging
 KEY_NAMES = {
     curses.KEY_UP: "KEY_UP",
@@ -144,6 +153,8 @@ class TelecApp:
         # Content area bounds for mouse click handling
         self._content_start: int = 0
         self._content_height: int = 0
+        # Mouse mode toggle (when off, tmux copy-mode works)
+        self._mouse_enabled: bool = True
         # WebSocket event queue (thread-safe)
         self._ws_queue: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue()  # guard: loose-dict
 
@@ -234,6 +245,20 @@ class TelecApp:
         self.pane_manager.cleanup()
         # Stop WebSocket connection
         self.api.stop_websocket()  # type: ignore[attr-defined]
+
+    def _toggle_mouse(self) -> None:
+        """Toggle mouse mode on/off.
+
+        When mouse mode is off, curses doesn't capture mouse events,
+        allowing tmux copy-mode to work with proper pane boundaries.
+        """
+        self._mouse_enabled = not self._mouse_enabled
+        if self._mouse_enabled:
+            curses.mousemask(MOUSE_MASK)
+            self.notify("Mouse mode ON - TUI mouse navigation enabled", "info")
+        else:
+            curses.mousemask(0)
+            self.notify("Mouse mode OFF - tmux copy-mode enabled (press 'm' to restore)", "info")
 
     def _on_ws_event(self, event: str, data: dict[str, object]) -> None:  # guard: loose-dict
         """Handle WebSocket event from background thread.
@@ -372,12 +397,8 @@ class TelecApp:
         curses.curs_set(0)
         init_colors()
 
-        # Enable mouse support for click, double-click, and scroll wheel
-        # (don't capture drag events - allow terminal text selection)
-        # BUTTON4_PRESSED = scroll up, 0x8000000 | 0x200000 = scroll down (varies by system)
-        curses.mousemask(
-            curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED | curses.BUTTON4_PRESSED | 0x8000000 | 0x200000
-        )
+        # Enable mouse support (can be toggled with 'm' key to allow tmux copy-mode)
+        curses.mousemask(MOUSE_MASK)
 
         # Use short timeout to poll for WebSocket events
         stdscr.timeout(WS_POLL_INTERVAL_MS)  # type: ignore[attr-defined]
@@ -521,6 +542,28 @@ class TelecApp:
             logger.debug("Refresh requested")
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
+        # Agent restart (Sessions view only)
+        elif key == ord("R"):
+            view = self.views.get(self.current_view)
+            if isinstance(view, SessionsView) and view.flat_items:
+                selected = view.flat_items[view.selected_index]
+                if selected.type == "session":
+                    session_id = str(selected.data.get("session_id", ""))
+                    if session_id:
+                        logger.debug("Agent restart requested for session %s", session_id[:8])
+                        try:
+                            asyncio.get_event_loop().run_until_complete(
+                                self.api.agent_restart(session_id)  # type: ignore[attr-defined]
+                            )
+                            self.notify("Agent restart triggered", "info")
+                        except Exception as e:
+                            logger.error("Error restarting agent: %s", e)
+                            self.notify(f"Restart failed: {e}", "error")
+
+        # Toggle mouse mode (allows tmux copy-mode when disabled)
+        elif key == ord("m"):
+            self._toggle_mouse()
+
         # View-specific actions
         else:
             view = self.views.get(self.current_view)
@@ -602,8 +645,9 @@ class TelecApp:
         action_bar = current.get_action_bar() if current else ""
         stdscr.addstr(height - 3, 0, action_bar[:width])  # type: ignore[attr-defined]
 
-        # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse All  [r] Refresh  [q] Quit"
+        # Row height-2: Global shortcuts bar (with mouse mode indicator)
+        mouse_hint = "[m] Mouse: ON" if self._mouse_enabled else "[m] Mouse: OFF (tmux copy)"
+        global_bar = f"[+/-] Expand/Collapse  [r] Refresh  {mouse_hint}  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer
