@@ -13,9 +13,9 @@ Large todos result in complex requirements.md and implementation-plan.md files t
    - Can it be delivered atomically?
    - Is there too much uncertainty?
 3. If breakdown needed:
-   - Create child todo folders (e.g., `{slug}-1`, `{slug}-2`) each with their own input.md
-   - Set dependencies so children execute before parent
-   - Update roadmap.md with children in correct order
+   - Create new todo folders (e.g., `{slug}-1`, `{slug}-2`) each with their own input.md
+   - Set dependencies so the new todos execute first
+   - Update roadmap.md with new todos in correct order
    - Create breakdown.md as reasoning artifact
    - Update state.json with breakdown status
 4. If no breakdown needed:
@@ -25,11 +25,11 @@ Large todos result in complex requirements.md and implementation-plan.md files t
 ## Key Design Decisions
 
 - Breakdown happens FIRST, before requirements.md or implementation-plan.md
-- Child todos start fresh with just input.md, go through same flow
-- Parent todo with input.md becomes container (no requirements.md/implementation-plan.md if split)
+- New todos start fresh with just input.md, go through same flow
+- Original todo becomes container if split (no requirements.md/implementation-plan.md)
 - Dependencies stored in todos/dependencies.json (existing mechanism)
 - state.json gets new `breakdown` property: `{ "assessed": true, "todos": ["slug-1", "slug-2"] }`
-- breakdown.md is OUTPUT (reasoning artifact), not INPUT
+- breakdown.md is OUTPUT (reasoning artifact)
 
 ## Files to Change
 
@@ -43,12 +43,12 @@ Large todos result in complex requirements.md and implementation-plan.md files t
 input.md exists, no breakdown in state.json
 → AI assesses Definition of Ready
 → IF needs breakdown:
-   - Creates child todos with input.md each
-   - Sets dependencies
+   - Creates new todos with input.md each
+   - Sets dependencies (original depends on new todos)
    - Updates roadmap
    - Creates breakdown.md
    - Updates state.json: { breakdown: { assessed: true, todos: [...] } }
-   - Parent is done (container)
+   - Original becomes container
 → IF no breakdown:
    - Updates state.json: { breakdown: { assessed: true, todos: [] } }
    - Creates breakdown.md (reasoning)
@@ -57,6 +57,6 @@ input.md exists, no breakdown in state.json
 
 ## What This Does NOT Do
 
-- No changes to next-work state machine
-- No subtask concept within a single todo
-- No tracking beyond the existing dependency mechanism
+- Changes to next-work state machine
+- Subtask concept within a single todo
+- Tracking beyond the existing dependency mechanism

@@ -6,7 +6,7 @@ Large todos with complex input result in requirements.md and implementation-plan
 
 ## Core Objective
 
-Add a "Definition of Ready" assessment step to next-prepare that evaluates todos from input.md and breaks complex ones into smaller, independently deliverable child todos.
+Add a "Definition of Ready" assessment step to next-prepare that evaluates todos from input.md and splits complex ones into smaller, independently deliverable todos.
 
 ---
 
@@ -18,13 +18,13 @@ The assessment evaluates whether a todo can succeed given AI constraints:
 Can one AI session complete this before context exhaustion? If the scope requires reading too many files or making too many changes, it won't fit.
 
 ### 2. Verifiability
-Are success criteria concrete and checkable by AI? Can tests prove completion? No ambiguous "it should feel right" criteria.
+Are success criteria concrete and checkable by AI? Can tests prove completion?
 
 ### 3. Atomicity
 Can the work be committed without breaking the system? Are there clean boundaries?
 
 ### 4. Scope Clarity
-Are requirements unambiguous? Does the AI have enough context to make pragmatic decisions without escalating?
+Are requirements unambiguous? Does the AI have enough context to make pragmatic decisions?
 
 ### 5. Uncertainty Level
 Is the technical approach known, or does this need exploration first?
@@ -40,13 +40,13 @@ input.md exists in todo folder AND state.json has no `breakdown.assessed` proper
 AI reads input.md and evaluates against Definition of Ready criteria.
 
 ### If Breakdown Needed
-1. Create child todo folders: `todos/{slug}-1/`, `todos/{slug}-2/`, etc.
-2. Each child gets input.md with scoped content from parent
-3. Update `todos/dependencies.json`: children have no deps, parent depends on all children
-4. Update `todos/roadmap.md`: add children before parent in correct order
+1. Create new todo folders: `todos/{slug}-1/`, `todos/{slug}-2/`, etc.
+2. Each gets input.md with scoped content
+3. Update `todos/dependencies.json`: `{slug}` depends on `[{slug}-1, {slug}-2]`
+4. Update `todos/roadmap.md`: add new todos before `{slug}` in execution order
 5. Create `todos/{slug}/breakdown.md`: reasoning artifact documenting the split
-6. Update `todos/{slug}/state.json`: `{ "breakdown": { "assessed": true, "todos": ["slug-1", "slug-2"] } }`
-7. Parent todo stops here (no requirements.md or implementation-plan.md)
+6. Update `todos/{slug}/state.json`: `{ "breakdown": { "assessed": true, "todos": ["{slug}-1", "{slug}-2"] } }`
+7. `{slug}` becomes a container (no requirements.md or implementation-plan.md)
 
 ### If No Breakdown Needed
 1. Create `todos/{slug}/breakdown.md`: reasoning why no split needed
@@ -61,13 +61,13 @@ AI reads input.md and evaluates against Definition of Ready criteria.
 {
   "breakdown": {
     "assessed": true,
-    "todos": ["child-slug-1", "child-slug-2"]
+    "todos": ["{slug}-1", "{slug}-2"]
   }
 }
 ```
 
 - `assessed`: boolean - whether assessment has been performed
-- `todos`: string[] - child todo slugs (empty if no breakdown needed)
+- `todos`: string[] - slugs of todos created from split (empty if no breakdown)
 
 ---
 
@@ -86,10 +86,10 @@ AI reads input.md and evaluates against Definition of Ready criteria.
 ## Success Criteria
 
 - [ ] next_prepare() detects input.md and checks for breakdown.assessed in state.json
-- [ ] AI assessment uses Definition of Ready criteria (not arbitrary numbers)
-- [ ] Complex todos result in child folders with input.md each
-- [ ] Dependencies correctly set: parent depends on children
-- [ ] Roadmap updated with children in execution order
+- [ ] AI assessment uses Definition of Ready criteria
+- [ ] Complex todos result in new todo folders with input.md each
+- [ ] Dependencies correctly set: original depends on split todos
+- [ ] Roadmap updated with split todos in execution order
 - [ ] breakdown.md created as reasoning artifact
 - [ ] state.json updated with breakdown status
 - [ ] Simple todos proceed to requirements.md creation normally
@@ -103,7 +103,7 @@ AI reads input.md and evaluates against Definition of Ready criteria.
 
 ### Objective-Focused
 - State the action to take
-- Positive framing: "Create child todos" tells AI exactly what to do
+- Positive framing: "Create todos" tells AI exactly what to do
 - Each instruction leads to a concrete action
 
 ### Minimal
@@ -128,7 +128,7 @@ AI reads input.md and evaluates against Definition of Ready criteria.
 
 ## Non-Goals
 
-- No changes to next-work state machine
-- No subtask concept within a single todo
-- No new dependency mechanism (use existing dependencies.json)
-- No time estimates or sprint concepts
+- Changes to next-work state machine
+- Subtask concept within a single todo
+- New dependency mechanism (use existing dependencies.json)
+- Time estimates or sprint concepts

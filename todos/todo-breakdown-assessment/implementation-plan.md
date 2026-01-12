@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add breakdown assessment step to next-prepare state machine. When input.md exists, AI evaluates complexity before creating requirements.md. Complex todos get split into children.
+Add breakdown assessment step to next-prepare state machine. When input.md exists, AI evaluates complexity before creating requirements.md. Complex todos get split into smaller todos.
 
 ---
 
@@ -46,20 +46,20 @@ if has_input and (breakdown_state is None or not breakdown_state.get("assessed")
     if hitl:
         return format_hitl_guidance(
             f"Preparing: {slug}. Read todos/{slug}/input.md and assess Definition of Ready. "
-            "If complex, create child todos. Then update state.json and create breakdown.md."
+            "If complex, split into smaller todos. Then update state.json and create breakdown.md."
         )
     # Non-HITL: dispatch architect to assess
     return format_tool_call(...)
 
-# If breakdown assessed and has children, parent is done
+# If breakdown assessed and has dependent todos, this one is a container
 if breakdown_state and breakdown_state.get("todos"):
-    return f"CONTAINER: {slug} was split into child todos: {breakdown_state['todos']}. Work on children first."
+    return f"CONTAINER: {slug} was split into: {breakdown_state['todos']}. Work on those first."
 ```
 
 - [ ] Add input.md detection
 - [ ] Add breakdown state check
 - [ ] Add HITL guidance for breakdown assessment
-- [ ] Add container detection (parent with children)
+- [ ] Add container detection (todo with dependent todos listed)
 - [ ] Ensure flow proceeds to requirements.md only if breakdown.todos is empty
 
 ---
@@ -71,7 +71,7 @@ if breakdown_state and breakdown_state.get("todos"):
 **CRITICAL: Apply Prompt Engineering Principles from requirements.md**
 
 The prompt must be:
-- Objective-focused (what to do, never what not to do)
+- Objective-focused (what to do)
 - Minimal (only content needed for execution)
 - Clear decision points (if X, do A; otherwise, do B)
 - Trust the AI (state goal, let it figure out mechanics)
@@ -85,14 +85,14 @@ Assess whether this todo fits a single AI session.
 
 **Criteria:** Can one session complete this with verifiable results and atomic commits?
 
-**If too large:** Split into child todos.
+**If too large:** Split into smaller todos.
 1. Create `todos/{slug}-1/`, `todos/{slug}-2/` with input.md each
-   - Each input.md states the intended outcome for that child
+   - Each input.md states the intended outcome
    - Include only information relevant for building
    - Write as a clean briefing package for the executing AI
-2. Add children to roadmap before parent
-3. Set parent to depend on children in dependencies.json
-4. Write breakdown.md with reasoning (this stays in parent, children start fresh)
+2. Add new todos to roadmap before `{slug}`
+3. Set `{slug}` to depend on the new todos in dependencies.json
+4. Write breakdown.md with reasoning (stays in `{slug}`, new todos start fresh)
 5. Update state.json: `{ "breakdown": { "assessed": true, "todos": [...] } }`
 
 **If appropriately scoped:** Proceed.
@@ -121,27 +121,27 @@ Minimal addition - only what orchestrator needs to know:
 Discussion results go in `todos/{slug}/input.md`. Call `teleclaude__next_prepare(slug)` to assess and structure.
 ```
 
-That's it. The orchestrator doesn't need to know breakdown mechanics - that's next-prepare's job.
+That's it. The orchestrator knows about preparation; breakdown mechanics live in next-prepare.
 
 - [ ] Add preparation flow note (one sentence)
 - [ ] Keep breakdown logic in next-prepare only (single responsibility)
 
 ---
 
-## Task 5: Add helper for child todo creation
+## Task 5: Add helper for todo creation (optional)
 
 **File:** `teleclaude/core/next_machine.py`
 
-Add function to create child todos (used by AI via direct file operations, but helper validates):
+Add function to create todos from breakdown (AI can also create folders directly via Write tool):
 
 ```python
-def create_child_todo(cwd: str, parent_slug: str, child_suffix: str, input_content: str) -> str:
-    """Create child todo folder with input.md. Returns child slug."""
+def create_todo_from_breakdown(cwd: str, slug: str, input_content: str) -> str:
+    """Create todo folder with input.md. Returns slug."""
 ```
 
-This is optional - AI can create folders directly. But having a helper ensures consistency.
+This is optional - AI can create folders directly. Helper ensures consistency.
 
-- [ ] Add `create_child_todo()` helper (optional)
+- [ ] Add `create_todo_from_breakdown()` helper (optional)
 - [ ] Or document that AI creates folders directly via Write tool
 
 ---
@@ -151,8 +151,8 @@ This is optional - AI can create folders directly. But having a helper ensures c
 ### Manual Test 1: Complex Todo Breakdown
 1. Create `todos/test-complex/input.md` with multi-domain scope
 2. Run `teleclaude__next_prepare(slug="test-complex")`
-3. Verify: AI creates child todos, breakdown.md, updates state.json
-4. Verify: Children appear in roadmap, dependencies set correctly
+3. Verify: AI creates new todos, breakdown.md, updates state.json
+4. Verify: New todos appear in roadmap, dependencies set correctly
 
 ### Manual Test 2: Simple Todo No-Breakdown
 1. Create `todos/test-simple/input.md` with focused scope
@@ -162,18 +162,18 @@ This is optional - AI can create folders directly. But having a helper ensures c
 5. Verify: Proceeds to requirements.md creation
 
 ### Manual Test 3: Container Detection
-1. After test-complex splits, call next_prepare on parent again
-2. Verify: Returns "CONTAINER" message, doesn't re-assess
+1. After test-complex splits, call next_prepare on `test-complex` again
+2. Verify: Returns "CONTAINER" message, indicates dependent todos
 
 ---
 
 ## Success Criteria Checklist
 
 - [ ] next_prepare() detects input.md and checks for breakdown.assessed in state.json
-- [ ] AI assessment uses Definition of Ready criteria (not arbitrary numbers)
-- [ ] Complex todos result in child folders with input.md each
-- [ ] Dependencies correctly set: parent depends on children
-- [ ] Roadmap updated with children in execution order
+- [ ] AI assessment uses Definition of Ready criteria
+- [ ] Complex todos result in new todo folders with input.md each
+- [ ] Dependencies correctly set: original depends on split todos
+- [ ] Roadmap updated with split todos in execution order
 - [ ] breakdown.md created as reasoning artifact
 - [ ] state.json updated with breakdown status
 - [ ] Simple todos proceed to requirements.md creation normally
