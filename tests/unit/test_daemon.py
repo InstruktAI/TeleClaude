@@ -509,6 +509,93 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
 
 
 @pytest.mark.asyncio
+async def test_process_agent_stop_sets_active_agent_from_payload():
+    """Agent STOP should set active_agent from hook payload when missing."""
+    from teleclaude.core.agents import AgentName
+    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.send_message = AsyncMock()
+    daemon.agent_coordinator = MagicMock()
+    daemon.agent_coordinator.handle_stop = AsyncMock()
+    daemon._update_session_title = AsyncMock()
+    daemon._last_stop_time = {}
+    daemon._stop_debounce_seconds = 0.0
+
+    payload = AgentStopPayload(
+        session_id="native-123",
+        transcript_path="/tmp/native.json",
+        raw={"agent_name": "claude"},
+    )
+    context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
+
+    session_missing_agent = MagicMock()
+    session_missing_agent.active_agent = None
+    session_missing_agent.native_log_file = "/tmp/native.json"
+
+    session_with_agent = MagicMock()
+    session_with_agent.active_agent = "claude"
+    session_with_agent.native_log_file = "/tmp/native.json"
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+    ):
+        mock_db.update_session = AsyncMock()
+        mock_db.get_session = AsyncMock(side_effect=[session_missing_agent, session_with_agent, session_with_agent])
+        mock_summarize.return_value = ("title", "summary")
+
+        await daemon._process_agent_stop(context)
+
+        call_args_list = mock_db.update_session.await_args_list
+        active_call_found = any(
+            c.args == ("tele-123",) and c.kwargs.get("active_agent") == "claude" for c in call_args_list
+        )
+        assert active_call_found, f"Expected active_agent call, got: {call_args_list}"
+        mock_summarize.assert_awaited_once_with(AgentName.CLAUDE, "/tmp/native.json")
+
+
+@pytest.mark.asyncio
+async def test_process_agent_stop_skips_without_agent_metadata():
+    """Agent STOP should skip gracefully when active_agent and payload agent are missing."""
+    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
+
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.send_message = AsyncMock()
+    daemon.agent_coordinator = MagicMock()
+    daemon.agent_coordinator.handle_stop = AsyncMock()
+    daemon._update_session_title = AsyncMock()
+    daemon._last_stop_time = {}
+    daemon._stop_debounce_seconds = 0.0
+
+    payload = AgentStopPayload(
+        session_id="native-123",
+        transcript_path="/tmp/native.json",
+        raw={},
+    )
+    context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
+
+    session_missing_agent = MagicMock()
+    session_missing_agent.active_agent = None
+    session_missing_agent.native_log_file = "/tmp/native.json"
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+    ):
+        mock_db.update_session = AsyncMock()
+        mock_db.get_session = AsyncMock(return_value=session_missing_agent)
+
+        await daemon._process_agent_stop(context)
+
+        mock_db.update_session.assert_not_awaited()
+        mock_summarize.assert_not_awaited()
+        daemon.agent_coordinator.handle_stop.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_process_agent_stop_does_not_seed_transcript_output():
     """Agent STOP should not seed transcript output in tmux-only mode."""
     from teleclaude.core.agents import AgentName

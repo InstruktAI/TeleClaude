@@ -21,7 +21,7 @@ data["agent_name"] = args.agent
 _enqueue_hook_event(teleclaude_session_id, event_type, data)
 ```
 
-### Task 1.2: [ ] Handle missing active_agent in daemon
+### Task 1.2: [x] Handle missing active_agent in daemon
 
 **File:** `teleclaude/daemon.py`
 
