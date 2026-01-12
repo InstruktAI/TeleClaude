@@ -14,6 +14,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     thinking_mode: Literal["fast", "med", "slow"] = "slow"
     title: str | None = None
     message: str | None = None
+    auto_command: str | None = None
 
 
 class SendMessageRequest(BaseModel):  # type: ignore[explicit-any]

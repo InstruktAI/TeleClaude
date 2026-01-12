@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 from typing import TYPE_CHECKING, AsyncIterator
 
 import uvicorn
@@ -113,14 +114,15 @@ class RESTAdapter(BaseAdapter):
                 title = request.message
             title = title or "Untitled"
 
-            # Build args list: [computer, agent, thinking_mode, message]
-            args = [
-                request.computer,
-                request.agent,
-                request.thinking_mode,
-            ]
-            if request.message:
-                args.append(request.message)
+            args = [title] if title else []
+
+            auto_command = request.auto_command
+            if not auto_command:
+                if request.message:
+                    quoted_message = shlex.quote(request.message)
+                    auto_command = f"agent_then_message {request.agent} {request.thinking_mode} {quoted_message}"
+                else:
+                    auto_command = f"agent {request.agent} {request.thinking_mode}"
 
             try:
                 result = await self.client.handle_event(
@@ -132,6 +134,7 @@ class RESTAdapter(BaseAdapter):
                     metadata=self._metadata(
                         title=title,
                         project_dir=request.project_dir,
+                        auto_command=auto_command,
                     ),
                 )
                 return result  # type: ignore[return-value]  # Dynamic from handler

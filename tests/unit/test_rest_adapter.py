@@ -2,6 +2,7 @@
 
 # type: ignore[explicit-any, unused-ignore] - test uses mocked adapters and dynamic types
 
+import shlex
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -130,6 +131,10 @@ def test_create_session_success(test_client, mock_adapter_client):  # type: igno
     data = response.json()
     assert data["session_id"] == "new-sess"
 
+    call_args = mock_adapter_client.handle_event.call_args
+    assert call_args.kwargs["payload"]["args"] == ["Test Session"]
+    assert call_args.kwargs["metadata"].auto_command == "agent_then_message claude slow Hello"
+
 
 def test_create_session_derives_title_from_message(  # type: ignore[explicit-any, unused-ignore]
     test_client, mock_adapter_client
@@ -150,6 +155,8 @@ def test_create_session_derives_title_from_message(  # type: ignore[explicit-any
     # Verify handle_event was called with title from message
     call_args = mock_adapter_client.handle_event.call_args
     assert call_args.kwargs["metadata"].title == "/next-work feature-123"
+    expected_message = shlex.quote("/next-work feature-123")
+    assert call_args.kwargs["metadata"].auto_command == f"agent_then_message claude slow {expected_message}"
 
 
 def test_create_session_defaults_title_to_untitled(  # type: ignore[explicit-any, unused-ignore]
@@ -169,6 +176,29 @@ def test_create_session_defaults_title_to_untitled(  # type: ignore[explicit-any
 
     call_args = mock_adapter_client.handle_event.call_args
     assert call_args.kwargs["metadata"].title == "Untitled"
+    assert call_args.kwargs["payload"]["args"] == ["Untitled"]
+    assert call_args.kwargs["metadata"].auto_command == "agent claude slow"
+
+
+def test_create_session_uses_auto_command_override(  # type: ignore[explicit-any, unused-ignore]
+    test_client, mock_adapter_client
+):
+    """Test create_session uses explicit auto_command when provided."""
+    mock_adapter_client.handle_event.return_value = {"session_id": "sess"}
+
+    response = test_client.post(
+        "/sessions",
+        json={
+            "computer": "local",
+            "project_dir": "/path",
+            "auto_command": "agent gemini med",
+            "message": "ignored",
+        },
+    )
+    assert response.status_code == 200
+
+    call_args = mock_adapter_client.handle_event.call_args
+    assert call_args.kwargs["metadata"].auto_command == "agent gemini med"
 
 
 def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
