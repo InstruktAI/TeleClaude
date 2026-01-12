@@ -912,6 +912,10 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
                 capture_output=True,
                 text=True,
             )
+        except FileNotFoundError:
+            msg = "make command not found. Install make to use Makefile-based worktree preparation."
+            logger.error(msg)
+            raise RuntimeError(msg) from None
         except subprocess.CalledProcessError:
             msg = f"Makefile exists but 'worktree-prepare' target not found in {cwd}"
             logger.error(msg)
@@ -969,6 +973,10 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
                 text=True,
             )
             logger.info("Worktree preparation output:\n%s", result.stdout)
+        except FileNotFoundError:
+            msg = "npm command not found. Install Node.js/npm to use package.json-based worktree preparation."
+            logger.error(msg)
+            raise RuntimeError(msg) from None
         except subprocess.CalledProcessError as e:
             stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
             stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]

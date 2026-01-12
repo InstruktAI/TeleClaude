@@ -29,7 +29,7 @@ When worker AI lands in a worktree, the environment must already be prepared. No
 ### 2. Project-owned preparation hook
 
 `ensure_worktree()` calls a project-specific preparation hook after git worktree creation:
-- Python projects (Makefile): `make worktree:prepare SLUG={slug}`
+- Python projects (Makefile): `make worktree-prepare SLUG={slug}`
 - TypeScript projects (package.json): `npm run worktree:prepare -- {slug}`
 
 Each project owns what "preparation" means for itself.
@@ -48,7 +48,7 @@ Delete Step 1.b "Prepare Environment" from `~/.agents/commands/next-build.md`. W
 - `~/.agents/commands/next-build.md` - Step 1.b to remove
 - `bin/install.sh` - needs worktree guard
 - `bin/init.sh` - needs worktree guard
-- `Makefile` - needs `worktree:prepare` target
+- `Makefile` - needs `worktree-prepare` target
 - New preparation logic (location TBD by implementer)
 
 ## Acceptance Criteria
