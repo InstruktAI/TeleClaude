@@ -20,3 +20,15 @@
 - [>] test-cleanup
       Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
 
+---
+
+## Work Preparation Pipeline
+
+- [ ] todo-breakdown-assessment
+      Add Definition of Ready check to next-prepare. Detects complex todos from input.md
+      and breaks them into smaller child todos before requirements/plan creation.
+
+- [ ] delivery-verification-gates
+      Prevent incomplete work from being marked delivered. Workers create deferrals.md,
+      reviewers verify success criteria with evidence, orchestrators resolve deferrals.
+
