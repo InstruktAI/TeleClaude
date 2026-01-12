@@ -10,7 +10,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
 
 **Goal:** Remote computers appear in TUI via heartbeat-driven cache population.
 
-- [ ] **Task 1.1:** Parse heartbeat and populate cache
+- [x] **Task 1.1:** Parse heartbeat and populate cache
   - File: `teleclaude/adapters/redis_adapter.py`
   - Location: Add to `_poll_session_events()` or create new `_poll_heartbeats()` task
   - Changes:
@@ -18,7 +18,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
     2. Call `cache.update_computer()` with computer info
     3. Cache auto-expires via existing TTL mechanism
 
-- [ ] **Task 1.2:** Verify REST endpoint returns cached computers
+- [x] **Task 1.2:** Verify REST endpoint returns cached computers
   - File: `teleclaude/adapters/rest_adapter.py`
   - Verify: `GET /computers` already calls `cache.get_computers()`
   - Test: Remote computers should now appear
