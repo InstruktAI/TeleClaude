@@ -66,7 +66,7 @@ Modify `teleclaude/core/next_machine.py` to call preparation hook after git work
 
 Remove confusing environment instructions from worker commands.
 
-- [ ] **Remove Step 1.b from next-build.md**
+- [x] **Remove Step 1.b from next-build.md**
   - Delete "Prepare Environment" section (lines 28-32) from `~/.agents/commands/next-build.md`
   - Worker commands must not contain environment setup instructions
 
