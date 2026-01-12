@@ -52,3 +52,16 @@ Priority fixes:
 1. Resolve the role conflict in `next-prepare.md` so breakdown steps can be executed.
 2. Include full Definition of Ready criteria in the assessment prompt.
 3. Add unit tests for breakdown-specific paths in `next_prepare`.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Role conflict in next-prepare.md | Clarified that file modifications are authorized DURING breakdown assessment, with explicit list of files that can be modified | N/A (file in global config) |
+| Incomplete Definition of Ready criteria | Expanded criteria to include all 5: Single-Session Completability, Verifiability, Atomicity, Scope Clarity, and Uncertainty Level | N/A (file in global config) |
+| Missing unit tests for breakdown paths | Added 9 comprehensive tests covering: input.md unassessed, container detection, empty todos proceeding, autonomous dispatch, and helper functions | ffd5e07 |
+| Spelling error: wether → whether | Fixed during criteria expansion | N/A (file in global config) |
+
+**Note:** The first two issues involve `~/.agents/commands/next-prepare.md` which is outside this repository (global user config). These changes have been applied to that file but cannot be committed in this worktree.
