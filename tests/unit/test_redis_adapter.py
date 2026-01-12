@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -56,6 +56,50 @@ async def test_discover_peers_parses_heartbeat_data():
     assert peers[0].status == "online"
     assert peers[0].user == "testuser"
     assert peers[0].host == "remote.local"
+
+
+@pytest.mark.asyncio
+async def test_populate_initial_cache_updates_computers_and_projects():
+    """Initial cache population should update computers and pull projects."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.core.models import PeerInfo
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+
+    mock_cache = MagicMock()
+    adapter.cache = mock_cache
+
+    peers = [
+        PeerInfo(
+            name="RemoteOne",
+            status="online",
+            last_seen=datetime.now(),
+            adapter_type="redis",
+            user="morriz",
+            host="remote-one.local",
+            role="dev",
+            system_stats=None,
+        ),
+        PeerInfo(
+            name="RemoteTwo",
+            status="online",
+            last_seen=datetime.now(),
+            adapter_type="redis",
+            user="morriz",
+            host="remote-two.local",
+            role="dev",
+            system_stats=None,
+        ),
+    ]
+
+    adapter.discover_peers = AsyncMock(return_value=peers)
+    adapter.pull_remote_projects = AsyncMock()
+
+    await adapter._populate_initial_cache()
+
+    assert mock_cache.update_computer.call_count == 2
+    adapter.pull_remote_projects.assert_has_awaits([call("RemoteOne"), call("RemoteTwo")])
 
 
 @pytest.mark.asyncio
