@@ -3,7 +3,7 @@
 # Worktree Preparation Script
 # Prepares a git worktree for TeleClaude work by:
 #   1. Installing Python dependencies (isolated .venv)
-#   2. Generating config.yml with relative database path
+#   2. Generating config.yml (shares main repo database)
 #   3. Symlinking .env from main repo
 #
 # Usage: bin/worktree-prepare.sh <slug>
@@ -73,7 +73,7 @@ if [ ! -f "$REPO_ROOT/config.yml" ]; then
     exit 1
 fi
 
-# Read main config and modify database path
+# Copy main config, keeping database path pointing to main repo
 python3 << PYTHON_SCRIPT
 import sys
 import yaml
@@ -88,9 +88,8 @@ worktree_config_path = worktree_dir / "config.yml"
 with open(main_config_path, 'r') as f:
     config = yaml.safe_load(f)
 
-# Update database path to be relative
-if 'database' in config:
-    config['database']['path'] = 'teleclaude.db'
+# Keep database path unchanged - it points to main repo database (${WORKING_DIR}/teleclaude.db)
+# This ensures single database rule: all worktrees share the same database
 
 # Write worktree config
 with open(worktree_config_path, 'w') as f:
@@ -116,5 +115,5 @@ print_success ".env symlink created"
 print_success "Worktree preparation complete: $SLUG"
 print_info "Ready for work with:"
 print_info "  - Isolated .venv/"
-print_info "  - Relative database path (teleclaude.db)"
+print_info "  - Shared database (main repo teleclaude.db)"
 print_info "  - Shared secrets (.env symlink)"
