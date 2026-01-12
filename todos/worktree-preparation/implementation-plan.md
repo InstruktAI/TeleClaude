@@ -23,9 +23,9 @@ Prevent catastrophic hijacking by refusing to run install/init from worktrees.
 
 ## Group 2: TeleClaude Preparation Hook
 
-What `make worktree:prepare SLUG=xxx` does for this project specifically.
+What `make worktree-prepare SLUG=xxx` does for this project specifically.
 
-- [ ] **Create worktree preparation logic**
+- [x] **Create worktree preparation logic**
   - Receives SLUG as argument
   - Operates on `trees/{slug}/` from main repo context
   - Steps:
@@ -33,8 +33,8 @@ What `make worktree:prepare SLUG=xxx` does for this project specifically.
     2. Generate `trees/{slug}/config.yml` based on main config but with relative database path (`teleclaude.db`)
     3. Create symlink `trees/{slug}/.env` → `../../.env`
 
-- [ ] **Add Makefile target**
-  - `worktree:prepare` target that calls the preparation logic
+- [x] **Add Makefile target**
+  - `worktree-prepare` target that calls the preparation logic
   - Accepts SLUG parameter
 
 ---
@@ -45,14 +45,14 @@ Modify `teleclaude/core/next_machine.py` to call preparation hook after git work
 
 - [ ] **Add project type detection**
   - Check if `{cwd}/Makefile` exists
-  - If yes: verify `worktree:prepare` target exists via `make -n worktree:prepare` (dry run)
+  - If yes: verify `worktree-prepare` target exists via `make -n worktree-prepare` (dry run)
   - If no Makefile: check `{cwd}/package.json`
   - If yes: parse JSON, verify `scripts["worktree:prepare"]` exists
   - If file exists but target missing: raise error
 
 - [ ] **Add hook execution**
   - After successful git worktree creation (when `ensure_worktree()` returns True)
-  - Call `make worktree:prepare SLUG={slug}` or `npm run worktree:prepare -- {slug}`
+  - Call `make worktree-prepare SLUG={slug}` or `npm run worktree:prepare -- {slug}`
   - Run from `cwd` (main repo), hook knows to operate on `trees/{slug}/`
 
 - [ ] **Add error handling**
@@ -79,7 +79,7 @@ Remove confusing environment instructions from worker commands.
   - Verify `make init` from worktree fails with clear error
 
 - [ ] **Test preparation hook**
-  - Verify `make worktree:prepare SLUG=test-slug` creates functional worktree
+  - Verify `make worktree-prepare SLUG=test-slug` creates functional worktree
   - Verify worktree has `.venv/`, `config.yml`, `.env` symlink
   - Verify `make test` runs successfully from prepared worktree
 
