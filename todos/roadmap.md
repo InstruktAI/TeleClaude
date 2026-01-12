@@ -24,7 +24,7 @@
 
 ## Work Preparation Pipeline
 
-- [ ] todo-breakdown-assessment
+- [.] todo-breakdown-assessment
       Add Definition of Ready check to next-prepare. Detects complex todos from input.md
       and breaks them into smaller child todos before requirements/plan creation.
 
