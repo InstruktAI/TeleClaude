@@ -8,7 +8,7 @@
 
 ## Work Preparation Pipeline
 
-- [.] delivery-verification-gates
+- [>] delivery-verification-gates
       Prevent incomplete work from being marked delivered. Workers create deferrals.md,
       reviewers verify success criteria with evidence, orchestrators resolve deferrals.
 
