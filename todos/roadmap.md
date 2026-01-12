@@ -8,7 +8,7 @@
 
 ## Worktree Workflow - Blocking Bug
 
-- [ ] worktree-preparation
+- [>] worktree-preparation
       Worktree preparation missing. Workers get vague "ensure dependencies" instructions,
       run `make install` from worktree, hijack main daemon. Need project-owned preparation
       hook and guards on install/init scripts.
