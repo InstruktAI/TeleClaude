@@ -33,7 +33,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
 
 **Goal:** Remote sessions appear on TUI startup, not just after events.
 
-- [ ] **Task 2.1:** Pull sessions when interest registered
+- [x] **Task 2.1:** Pull sessions when interest registered
   - File: `teleclaude/adapters/redis_adapter.py`
   - Location: When `cache.has_interest("sessions")` first becomes true
   - Changes:
@@ -41,7 +41,7 @@ This plan completes the deferred work from data-caching-pushing. The cache infra
     2. Call `list_sessions` MCP handler via Redis request
     3. Store results in cache via `cache.update_session()`
 
-- [ ] **Task 2.2:** Trigger pull from REST adapter on WebSocket subscribe
+- [x] **Task 2.2:** Trigger pull from REST adapter on WebSocket subscribe
   - File: `teleclaude/adapters/rest_adapter.py`
   - Location: `_handle_websocket()` when receiving subscription
   - Changes:

@@ -1270,10 +1270,70 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             logger.error("Failed to get interested computers: %s", e)
             return []
 
+    async def _pull_initial_sessions(self) -> None:
+        """Pull existing sessions from all remote computers when interest is first registered.
+
+        This ensures remote sessions appear in TUI on startup, not just after new events.
+        """
+        if not self.cache:
+            return
+
+        logger.info("Performing initial session pull from remote computers")
+
+        # Get all known remote computers from cache
+        computers = self.cache.get_computers()
+        if not computers:
+            logger.debug("No remote computers found for initial session pull")
+            return
+
+        # Pull sessions from each remote computer
+        for computer in computers:
+            computer_name = computer["name"]
+            try:
+                # Request sessions via Redis (calls list_sessions handler on remote)
+                message_id = await self.send_request(computer_name, "list_sessions", MessageMetadata())
+
+                # Wait for response with short timeout
+                response_data = await self.client.read_response(message_id, timeout=3.0)
+                envelope_obj: object = json.loads(response_data.strip())
+
+                if not isinstance(envelope_obj, dict):
+                    logger.warning("Invalid response from %s: not a dict", computer_name)
+                    continue
+
+                envelope: dict[str, object] = envelope_obj
+
+                # Check response status
+                status = envelope.get("status")
+                if status == "error":
+                    error_msg = envelope.get("error", "unknown error")
+                    logger.warning("Error from %s: %s", computer_name, error_msg)
+                    continue
+
+                # Extract sessions data
+                data = envelope.get("data")
+                if not isinstance(data, list):
+                    logger.warning("Invalid sessions data from %s: %s", computer_name, type(data))
+                    continue
+
+                # Populate cache with sessions
+                for session_obj in data:
+                    if isinstance(session_obj, dict):
+                        # Cast dict to SessionInfo for type safety
+                        session: "SessionInfo" = cast("SessionInfo", session_obj)
+                        self.cache.update_session(session)
+
+                logger.info("Pulled %d sessions from %s", len(data), computer_name)
+
+            except (TimeoutError, Exception) as e:
+                logger.warning("Failed to pull sessions from %s: %s", computer_name, e)
+                continue
+
     async def _poll_session_events(self) -> None:
         """Poll session events stream for incoming events from remote peers (Phase 6)."""
         stream_key = f"session_events:{self.computer_name}"
         last_id = b"$"  # Start from current position
+        initial_pull_done = False
 
         logger.info("Starting session events polling for stream: %s", stream_key)
 
@@ -1282,7 +1342,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 # Only poll if cache has interest in sessions
                 if not self.cache or not self.cache.has_interest("sessions"):
                     await asyncio.sleep(5)  # Check again in 5s
+                    initial_pull_done = False  # Reset flag when interest is lost
                     continue
+
+                # Perform initial pull when interest is first detected
+                if not initial_pull_done:
+                    await self._pull_initial_sessions()
+                    initial_pull_done = True
 
                 # Read from session events stream
                 redis_client = self._require_redis()
