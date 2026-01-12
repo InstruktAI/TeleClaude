@@ -1,4 +1,8 @@
 {
   "build": "complete",
-  "review": "approved"
+  "review": "approved",
+  "breakdown": {
+    "assessed": false,
+    "todos": []
+  }
 }
