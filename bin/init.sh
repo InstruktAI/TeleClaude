@@ -7,6 +7,24 @@
 
 set -e
 
+# CRITICAL: Refuse to run from a git worktree
+if command -v git &> /dev/null && git rev-parse --git-dir &> /dev/null; then
+    GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+    COMMON_DIR=$(git rev-parse --git-common-dir 2>/dev/null)
+
+    if [ "$GIT_DIR" != "$COMMON_DIR" ]; then
+        echo "ERROR: Cannot run 'make init' from a git worktree!"
+        echo ""
+        echo "Running init from a worktree would:"
+        echo "  - Reconfigure the system service to use worktree paths"
+        echo "  - Break the main TeleClaude daemon"
+        echo ""
+        echo "Init must only run from the main repository."
+        echo "Worktrees are automatically prepared by 'make worktree-prepare'."
+        exit 1
+    fi
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
