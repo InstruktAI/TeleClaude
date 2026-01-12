@@ -213,6 +213,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if not self._running:
             return
 
+        await self._populate_initial_cache()
+
         # Start background tasks once connected
         if self.task_registry:
             self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")

@@ -95,7 +95,7 @@ async def _populate_initial_cache(self) -> None:
     logger.info("Initial cache populated: %d computers", len(peers))
 ```
 
-### Task 2.2: [ ] Call cache population on startup
+### Task 2.2: [x] Call cache population on startup
 
 **File:** `teleclaude/adapters/redis_adapter.py`
 

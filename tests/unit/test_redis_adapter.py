@@ -103,6 +103,30 @@ async def test_populate_initial_cache_updates_computers_and_projects():
 
 
 @pytest.mark.asyncio
+async def test_startup_populates_initial_cache():
+    """Ensure startup flow populates initial cache after connecting."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+    adapter._running = True
+
+    adapter._connect_with_backoff = AsyncMock()
+    adapter._populate_initial_cache = AsyncMock()
+
+    def spawn(coro, name=None):  # noqa: ARG001
+        coro.close()
+        return MagicMock()
+
+    adapter.task_registry = MagicMock()
+    adapter.task_registry.spawn = spawn
+
+    await adapter._ensure_connection_and_start_tasks()
+
+    adapter._populate_initial_cache.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_discover_peers_handles_invalid_json():
     """Test that discover_peers handles corrupted heartbeat data gracefully."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
