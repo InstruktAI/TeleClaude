@@ -409,6 +409,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
             if comp.get("name") == computer_name:
                 return ComputerInfo(
                     name=computer_name,
+                    is_local=bool(comp.get("is_local")),
                     user=comp.get("user"),  # type: ignore[arg-type]
                     host=comp.get("host"),  # type: ignore[arg-type]
                 )

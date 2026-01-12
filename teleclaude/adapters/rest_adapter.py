@@ -235,6 +235,7 @@ class RESTAdapter(BaseAdapter):
                         "status": "online",  # Local computer is always online
                         "user": computer_info["user"],
                         "host": computer_info["host"],
+                        "is_local": True,
                     }
                 ]
 
@@ -248,6 +249,7 @@ class RESTAdapter(BaseAdapter):
                                 "status": "online",  # Cached computers are online (auto-expired if stale)
                                 "user": comp.get("user"),
                                 "host": comp.get("host"),
+                                "is_local": False,
                             }
                         )
 

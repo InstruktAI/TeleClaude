@@ -18,13 +18,14 @@ class ComputerInfo:
     """SSH connection info for a computer."""
 
     name: str
+    is_local: bool
     user: str | None = None
     host: str | None = None
 
     @property
     def is_remote(self) -> bool:
         """Check if this is a remote computer requiring SSH."""
-        return bool(self.host and self.user)
+        return not self.is_local
 
     @property
     def ssh_target(self) -> str | None:
