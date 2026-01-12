@@ -13,6 +13,12 @@
       Cache infrastructure exists but is never populated with remote data.
       Remote computers, projects, sessions, todos all missing from TUI.
 
+- [.] cache-per-computer-interest
+      Fix architectural flaw: interest tracking must be per-computer, not global.
+      Current impl pulls ALL remotes when any interest is registered.
+      Expected: only pull data for computers user explicitly expands in TUI tree.
+      Depends: cache-deferreds (builds on that infrastructure)
+
 ---
 
 ## Test Suite Quality Cleanup
