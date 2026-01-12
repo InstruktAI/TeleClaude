@@ -101,31 +101,28 @@ AI reads input.md and evaluates against Definition of Ready criteria.
 
 **The holy grail: a perfect work package that an AI can complete without confusion or overload.**
 
-### Focus on Objectives, Not Prohibitions
-- State what TO DO, never what NOT to do
-- Positive framing: "Create child todos" not "Don't create requirements.md if splitting"
-- The AI should read the prompt and know exactly what action to take
+### Objective-Focused
+- State the action to take
+- Positive framing: "Create child todos" tells AI exactly what to do
+- Each instruction leads to a concrete action
 
-### Minimal Relevant Content
-- Every sentence must serve the execution
-- Remove anything the AI doesn't need to act on
-- No background explanations, no justifications, no "why we do this"
-- If it doesn't change behavior, delete it
+### Minimal
+- Every sentence serves execution
+- Only include what changes AI behavior
+- Concise beats comprehensive
 
 ### Clear Decision Points
-- When AI must decide, give clear criteria
 - Binary outcomes: "If X, do A. Otherwise, do B."
-- No ambiguous guidance like "consider" or "you might want to"
+- Explicit criteria for each branch
+- AI reads once, knows what to do
 
 ### Single Responsibility
-- Each prompt section handles one concern
-- Don't mix assessment with execution
-- Don't mix breakdown logic with requirements creation
+- Each section handles one concern
+- Separation: assessment logic lives in next-prepare, orchestration in prime-orchestrator
 
 ### Trust the AI
-- Don't over-explain or hand-hold
-- State the objective, let AI figure out mechanics
-- AI is capable - treat it as a skilled executor
+- State the objective, AI figures out mechanics
+- AI is a skilled executor
 
 ---
 

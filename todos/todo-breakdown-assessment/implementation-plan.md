@@ -100,7 +100,7 @@ Assess whether this todo fits a single AI session.
 
 - [ ] Add breakdown assessment section
 - [ ] Apply prompt engineering principles: objective-focused, minimal, clear
-- [ ] Review final wording for any prohibitions or fluff - remove them
+- [ ] Final wording uses positive, action-oriented language throughout
 
 ---
 
@@ -120,9 +120,8 @@ Discussion results go in `todos/{slug}/input.md`. Call `teleclaude__next_prepare
 
 That's it. The orchestrator doesn't need to know breakdown mechanics - that's next-prepare's job.
 
-- [ ] Add minimal preparation flow note
-- [ ] Avoid duplicating breakdown logic (single responsibility)
-- [ ] Review for any unnecessary content - remove it
+- [ ] Add preparation flow note (one sentence)
+- [ ] Keep breakdown logic in next-prepare only (single responsibility)
 
 ---
 
@@ -175,6 +174,6 @@ This is optional - AI can create folders directly. But having a helper ensures c
 - [ ] breakdown.md created as reasoning artifact
 - [ ] state.json updated with breakdown status
 - [ ] Simple todos proceed to requirements.md creation normally
-- [ ] next-prepare.md prompt is objective-focused, minimal, clear (no prohibitions, no fluff)
-- [ ] prime-orchestrator.md addition is minimal (one line if possible)
-- [ ] All prompt updates reviewed: remove any "don't", "never", "avoid" language
+- [ ] next-prepare.md prompt states actions to take, uses minimal words
+- [ ] prime-orchestrator.md addition fits in one sentence
+- [ ] All prompts use positive, action-oriented language
