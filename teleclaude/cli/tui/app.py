@@ -2,7 +2,9 @@
 
 import asyncio
 import curses
+import os
 import queue
+import subprocess
 import time
 from dataclasses import dataclass, field
 
@@ -16,6 +18,7 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
 from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
+from teleclaude.config import config
 
 # Allow nested event loops (required for async calls inside curses sync loop)
 nest_asyncio.apply()
@@ -255,10 +258,33 @@ class TelecApp:
         self._mouse_enabled = not self._mouse_enabled
         if self._mouse_enabled:
             curses.mousemask(MOUSE_MASK)
+            self._set_tmux_mouse(True)
             self.notify("Mouse mode ON - TUI mouse navigation enabled", "info")
         else:
             curses.mousemask(0)
+            self._set_tmux_mouse(False)
             self.notify("Mouse mode OFF - tmux copy-mode enabled (press 'm' to restore)", "info")
+
+    def _set_tmux_mouse(self, enabled: bool) -> None:
+        """Toggle tmux mouse mode for the current window only."""
+        if not os.environ.get("TMUX"):
+            return
+
+        target = os.environ.get("TMUX_PANE")
+        if not target:
+            return
+
+        tmux = config.computer.tmux_binary
+        state = "on" if enabled else "off"
+        try:
+            subprocess.run(
+                [tmux, "set-option", "-w", "-t", target, "mouse", state],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError as exc:
+            logger.debug("Failed to toggle tmux mouse (%s): %s", state, exc)
 
     def _on_ws_event(self, event: str, data: dict[str, object]) -> None:  # guard: loose-dict
         """Handle WebSocket event from background thread.

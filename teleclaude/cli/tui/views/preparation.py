@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
@@ -475,19 +476,8 @@ class PreparationView(ScrollableViewMixin, BaseView):
 
         result = modal.run(stdscr)
         if result:
-            # Session was started via modal
-            tmux_session_name = result.get("tmux_session_name")
-            if tmux_session_name and os.environ.get("TMUX"):
-                # Open in split pane
-                curses.def_prog_mode()
-                curses.endwin()
-                tmux = config.computer.tmux_binary
-                subprocess.run(
-                    [tmux, "split-window", "-h", "-p", "60", f"{tmux} attach -t {tmux_session_name}"],
-                    check=False,
-                )
-                curses.reset_prog_mode()
-                stdscr.refresh()  # type: ignore[attr-defined]
+            attach_tmux_from_result(result, stdscr)
+            self.needs_refresh = True
 
     def _launch_session_split(
         self,
@@ -513,29 +503,8 @@ class PreparationView(ScrollableViewMixin, BaseView):
             )
         )
 
-        tmux_session_name = result.get("tmux_session_name")
-        if not tmux_session_name:
-            return
-
-        # Check if we're inside tmux
-        in_tmux = bool(os.environ.get("TMUX"))
-        if not in_tmux:
-            return
-
-        # Save curses state and exit
-        curses.def_prog_mode()
-        curses.endwin()
-
-        # Split window horizontally and attach to the new session
-        tmux = config.computer.tmux_binary
-        subprocess.run(
-            [tmux, "split-window", "-h", "-p", "60", f"{tmux} attach -t {tmux_session_name}"],
-            check=False,
-        )
-
-        # Restore curses state
-        curses.reset_prog_mode()
-        stdscr.refresh()  # type: ignore[attr-defined]
+        attach_tmux_from_result(result, stdscr)
+        self.needs_refresh = True
 
     def _close_file_pane(self) -> None:
         """Close existing file viewer/editor pane if one exists."""

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
+from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.theme import AGENT_COLORS
 from teleclaude.cli.tui.tree import TreeNode, build_tree
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
@@ -480,7 +481,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         )
         result = modal.run(stdscr)
         if result:
-            # Session started - trigger auto-refresh
+            attach_tmux_from_result(result, stdscr)
             self.needs_refresh = True
 
     def handle_key(self, key: int, stdscr: object) -> None:

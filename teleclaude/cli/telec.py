@@ -20,18 +20,20 @@ def main() -> None:
 
     # TUI mode - ensure we're in tmux for pane preview
     if not os.environ.get("TMUX"):
-        # Check if TUI session already exists - adopt it instead of creating new
+        # Always restart the TUI session to avoid adopting stale panes
         tmux = config.computer.tmux_binary
         result = subprocess.run(
             [tmux, "has-session", "-t", "tc_tui"],
             capture_output=True,
         )
         if result.returncode == 0:
-            # Existing TUI found - attach to it
-            os.execlp(tmux, tmux, "attach", "-t", "tc_tui")
-        else:
-            # No TUI running - create new named session
-            os.execlp(tmux, tmux, "new-session", "-s", "tc_tui", "telec")
+            subprocess.run(
+                [tmux, "kill-session", "-t", "tc_tui"],
+                check=False,
+                capture_output=True,
+            )
+        # Create new named session and mark it as telec-managed
+        os.execlp(tmux, tmux, "new-session", "-s", "tc_tui", "-e", "TELEC_TUI_SESSION=1", "telec")
 
     try:
         asyncio.run(_run_tui())
@@ -54,6 +56,7 @@ async def _run_tui() -> None:
         pass  # Clean exit on Ctrl-C
     finally:
         await api.close()
+        _maybe_kill_tui_session()
 
 
 def _handle_cli_command(argv: list[str]) -> None:
@@ -75,6 +78,32 @@ def _handle_cli_command(argv: list[str]) -> None:
     else:
         print(f"Unknown command: /{cmd}")
         print(_usage())
+
+
+def _maybe_kill_tui_session() -> None:
+    """Kill the tc_tui tmux session if telec created it."""
+    if os.environ.get("TELEC_TUI_SESSION") != "1":
+        return
+    if not os.environ.get("TMUX"):
+        return
+
+    tmux = config.computer.tmux_binary
+    try:
+        result = subprocess.run(
+            [tmux, "display-message", "-p", "#S"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.stdout.strip() != "tc_tui":
+            return
+        subprocess.run(
+            [tmux, "kill-session", "-t", "tc_tui"],
+            check=False,
+            capture_output=True,
+        )
+    except OSError:
+        return
 
 
 async def _list_sessions(api: TelecAPIClient) -> None:
