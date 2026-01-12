@@ -1235,6 +1235,25 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 if computer_name == self.computer_name:
                     continue
 
+                # Populate cache with computer info from heartbeat
+                if self.cache:
+                    from teleclaude.mcp.types import ComputerInfo
+
+                    last_seen_str = str(info.get("last_seen", ""))
+                    last_seen = datetime.fromisoformat(last_seen_str) if last_seen_str else datetime.now(timezone.utc)
+
+                    computer_info: ComputerInfo = {
+                        "name": computer_name,
+                        "status": "online",
+                        "last_seen": last_seen,
+                        "adapter_type": "redis",
+                        "user": None,
+                        "host": None,
+                        "role": None,
+                        "system_stats": None,
+                    }
+                    self.cache.update_computer(computer_info)
+
                 # Check if computer is interested in this type
                 interested_in_obj: object = info.get("interested_in", [])
                 if not isinstance(interested_in_obj, list):
