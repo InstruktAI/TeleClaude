@@ -11,6 +11,7 @@ for the orchestrator AI to execute literally.
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Literal, Mapping, cast
 
@@ -848,6 +849,7 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
     """Ensure worktree exists, creating it if needed.
 
     Creates: git worktree add trees/{slug} -b {slug}
+    Then calls project-owned preparation hook to make worktree ready for work.
 
     Args:
         cwd: Project root directory
@@ -855,6 +857,9 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
 
     Returns:
         True if a new worktree was created, False if it already existed
+
+    Raises:
+        RuntimeError: If preparation hook not found or fails
     """
     worktree_path = Path(cwd) / "trees" / slug
     if worktree_path.exists():
@@ -870,10 +875,123 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
         repo.git.worktree("add", str(worktree_path), "-b", slug)
         logger.info("Created worktree at %s", worktree_path)
 
+        # Call preparation hook to make worktree ready for work
+        _prepare_worktree(cwd, slug)
+
         return True
     except InvalidGitRepositoryError:
         logger.error("Cannot create worktree: %s is not a git repository", cwd)
         raise
+
+
+def _prepare_worktree(cwd: str, slug: str) -> None:
+    """Call project-owned preparation hook to prepare worktree.
+
+    Detects project type (Makefile or package.json) and calls appropriate hook:
+    - Python/Makefile: make worktree-prepare SLUG={slug}
+    - Node/package.json: npm run worktree:prepare -- {slug}
+
+    Args:
+        cwd: Project root directory (main repo)
+        slug: Work item slug
+
+    Raises:
+        RuntimeError: If hook not found or execution fails
+    """
+    cwd_path = Path(cwd)
+
+    # Check for Makefile
+    makefile = cwd_path / "Makefile"
+    if makefile.exists():
+        # Verify worktree-prepare target exists
+        try:
+            subprocess.run(
+                ["make", "-n", "worktree-prepare"],
+                cwd=cwd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError:
+            msg = f"Makefile exists but 'worktree-prepare' target not found in {cwd}"
+            logger.error(msg)
+            raise RuntimeError(msg) from None
+
+        # Call preparation hook
+        logger.info("Preparing worktree with: make worktree-prepare SLUG=%s", slug)
+        try:
+            result = subprocess.run(
+                ["make", "worktree-prepare", f"SLUG={slug}"],
+                cwd=cwd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.info("Worktree preparation output:\n%s", result.stdout)
+        except subprocess.CalledProcessError as e:
+            stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
+            stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: make worktree-prepare SLUG={slug}\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {stdout_str}\n"
+                f"stderr: {stderr_str}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+        return
+
+    # Check for package.json
+    package_json = cwd_path / "package.json"
+    if package_json.exists():
+        # Parse JSON and verify worktree:prepare script exists
+        try:
+            with open(package_json, "r", encoding="utf-8") as f:
+                data: dict[str, dict[str, str]] = json.load(f)
+            if "scripts" not in data or "worktree:prepare" not in data["scripts"]:
+                msg = f"package.json exists but 'worktree:prepare' script not found in {cwd}"
+                logger.error(msg)
+                raise RuntimeError(msg)
+        except (json.JSONDecodeError, KeyError) as e:
+            msg = f"Failed to parse package.json in {cwd}"
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+
+        # Call preparation hook
+        logger.info("Preparing worktree with: npm run worktree:prepare -- %s", slug)
+        try:
+            result = subprocess.run(
+                ["npm", "run", "worktree:prepare", "--", slug],
+                cwd=cwd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.info("Worktree preparation output:\n%s", result.stdout)
+        except subprocess.CalledProcessError as e:
+            stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
+            stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: npm run worktree:prepare -- {slug}\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {stdout_str}\n"
+                f"stderr: {stderr_str}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+        return
+
+    # No preparation hook found
+    msg = (
+        f"No worktree preparation hook found in {cwd}. "
+        f"Expected either:\n"
+        f"  - Makefile with 'worktree-prepare' target\n"
+        f"  - package.json with 'worktree:prepare' script"
+    )
+    logger.error(msg)
+    raise RuntimeError(msg)
 
 
 def is_main_ahead(cwd: str, slug: str) -> bool:

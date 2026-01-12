@@ -43,19 +43,19 @@ What `make worktree-prepare SLUG=xxx` does for this project specifically.
 
 Modify `teleclaude/core/next_machine.py` to call preparation hook after git worktree creation.
 
-- [ ] **Add project type detection**
+- [x] **Add project type detection**
   - Check if `{cwd}/Makefile` exists
   - If yes: verify `worktree-prepare` target exists via `make -n worktree-prepare` (dry run)
   - If no Makefile: check `{cwd}/package.json`
   - If yes: parse JSON, verify `scripts["worktree:prepare"]` exists
   - If file exists but target missing: raise error
 
-- [ ] **Add hook execution**
+- [x] **Add hook execution**
   - After successful git worktree creation (when `ensure_worktree()` returns True)
   - Call `make worktree-prepare SLUG={slug}` or `npm run worktree:prepare -- {slug}`
   - Run from `cwd` (main repo), hook knows to operate on `trees/{slug}/`
 
-- [ ] **Add error handling**
+- [x] **Add error handling**
   - If hook not found: fatal error with clear message
   - If hook execution fails: fatal error, don't dispatch worker into broken worktree
   - Propagate error up to `next_work()` which returns error message to orchestrator
