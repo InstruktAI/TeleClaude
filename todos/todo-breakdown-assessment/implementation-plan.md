@@ -68,43 +68,39 @@ if breakdown_state and breakdown_state.get("todos"):
 
 **File:** `~/.agents/commands/next-prepare.md`
 
-Add new section for breakdown assessment:
+**CRITICAL: Apply Prompt Engineering Principles from requirements.md**
+
+The prompt must be:
+- Objective-focused (what to do, never what not to do)
+- Minimal (only content needed for execution)
+- Clear decision points (if X, do A; otherwise, do B)
+- Trust the AI (state goal, let it figure out mechanics)
+
+Add new section for breakdown assessment. Example structure (refine wording):
 
 ```markdown
-## If input.md Exists (Breakdown Assessment)
+## If input.md Exists
 
-Before creating requirements.md, assess if this todo needs breakdown.
+Assess whether this todo fits a single AI session.
 
-### Definition of Ready Criteria
+**Criteria:** Can one session complete this with verifiable results and atomic commits?
 
-Evaluate:
-1. **Single-session scope** - Can one AI complete this?
-2. **Verifiability** - Are success criteria concrete?
-3. **Atomicity** - Can it be committed cleanly?
-4. **Clarity** - Is the scope unambiguous?
+**If too large:** Split into child todos.
+1. Create `todos/{slug}-1/`, `todos/{slug}-2/` with input.md each
+2. Add children to roadmap before parent
+3. Set parent to depend on children in dependencies.json
+4. Write breakdown.md with reasoning
+5. Update state.json: `{ "breakdown": { "assessed": true, "todos": [...] } }`
 
-### If Breakdown Needed
-
-1. Identify natural vertical slices (each independently deliverable)
-2. Create child todo folders: `todos/{slug}-1/`, `todos/{slug}-2/`
-3. Write input.md in each child with scoped content
-4. Update dependencies.json: parent depends on children
-5. Update roadmap.md: add children before parent
-6. Write breakdown.md explaining the split
-7. Update state.json: `{ "breakdown": { "assessed": true, "todos": [...] } }`
-8. Report: "BREAKDOWN: {slug} split into N child todos"
-
-### If No Breakdown Needed
-
-1. Write breakdown.md explaining why no split
+**If appropriately scoped:** Proceed.
+1. Write breakdown.md with reasoning
 2. Update state.json: `{ "breakdown": { "assessed": true, "todos": [] } }`
-3. Proceed to requirements.md creation
+3. Continue to requirements.md
 ```
 
-- [ ] Add "If input.md Exists" section
-- [ ] Document Definition of Ready criteria
-- [ ] Document breakdown procedure
-- [ ] Document no-breakdown procedure
+- [ ] Add breakdown assessment section
+- [ ] Apply prompt engineering principles: objective-focused, minimal, clear
+- [ ] Review final wording for any prohibitions or fluff - remove them
 
 ---
 
@@ -112,21 +108,21 @@ Evaluate:
 
 **File:** `~/.agents/commands/prime-orchestrator.md`
 
-Add context about the preparation flow:
+**CRITICAL: Apply Prompt Engineering Principles from requirements.md**
+
+Minimal addition - only what orchestrator needs to know:
 
 ```markdown
-## Work Item Preparation Flow
+## Preparation Flow
 
-When discussing new work with users:
-1. Capture ideas in todos/{slug}/input.md
-2. Call teleclaude__next_prepare(slug) to assess
-3. If complex, AI splits into child todos
-4. Children get prepared independently
-5. Parent waits for children to complete
+Discussion results go in `todos/{slug}/input.md`. Call `teleclaude__next_prepare(slug)` to assess and structure.
 ```
 
-- [ ] Add preparation flow documentation
-- [ ] Clarify input.md role in capturing discussion
+That's it. The orchestrator doesn't need to know breakdown mechanics - that's next-prepare's job.
+
+- [ ] Add minimal preparation flow note
+- [ ] Avoid duplicating breakdown logic (single responsibility)
+- [ ] Review for any unnecessary content - remove it
 
 ---
 
@@ -179,4 +175,6 @@ This is optional - AI can create folders directly. But having a helper ensures c
 - [ ] breakdown.md created as reasoning artifact
 - [ ] state.json updated with breakdown status
 - [ ] Simple todos proceed to requirements.md creation normally
-- [ ] next-prepare.md command has clear instructions for AI performing assessment
+- [ ] next-prepare.md prompt is objective-focused, minimal, clear (no prohibitions, no fluff)
+- [ ] prime-orchestrator.md addition is minimal (one line if possible)
+- [ ] All prompt updates reviewed: remove any "don't", "never", "avoid" language

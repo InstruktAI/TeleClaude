@@ -97,6 +97,38 @@ AI reads input.md and evaluates against Definition of Ready criteria.
 
 ---
 
+## Prompt Engineering Principles
+
+**The holy grail: a perfect work package that an AI can complete without confusion or overload.**
+
+### Focus on Objectives, Not Prohibitions
+- State what TO DO, never what NOT to do
+- Positive framing: "Create child todos" not "Don't create requirements.md if splitting"
+- The AI should read the prompt and know exactly what action to take
+
+### Minimal Relevant Content
+- Every sentence must serve the execution
+- Remove anything the AI doesn't need to act on
+- No background explanations, no justifications, no "why we do this"
+- If it doesn't change behavior, delete it
+
+### Clear Decision Points
+- When AI must decide, give clear criteria
+- Binary outcomes: "If X, do A. Otherwise, do B."
+- No ambiguous guidance like "consider" or "you might want to"
+
+### Single Responsibility
+- Each prompt section handles one concern
+- Don't mix assessment with execution
+- Don't mix breakdown logic with requirements creation
+
+### Trust the AI
+- Don't over-explain or hand-hold
+- State the objective, let AI figure out mechanics
+- AI is capable - treat it as a skilled executor
+
+---
+
 ## Non-Goals
 
 - No changes to next-work state machine
