@@ -918,8 +918,25 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         try:
             session = await db.get_session(session_id)
-            if not session or not session.active_agent:
-                raise ValueError(f"Session {session_id[:8]} missing active_agent metadata")
+            if not session:
+                raise ValueError(f"Session {session_id[:8]} not found")
+
+            if not session.active_agent:
+                agent_name_obj = payload.raw.get("agent_name")
+                agent_name = str(agent_name_obj) if agent_name_obj else ""
+                if agent_name:
+                    logger.info(
+                        "Session %s missing active_agent, setting from hook payload: %s",
+                        session_id[:8],
+                        agent_name,
+                    )
+                    await db.update_session(session_id, active_agent=agent_name)
+                    session = await db.get_session(session_id)
+                    if not session:
+                        raise ValueError(f"Session {session_id[:8]} not found after active_agent update")
+                else:
+                    logger.warning("Session %s missing active_agent, no agent in payload - skipping", session_id[:8])
+                    return
 
             native_session_id = str(payload.session_id) if payload.session_id else ""
             if native_session_id:
@@ -930,7 +947,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 raise ValueError(f"Session {session_id[:8]} missing transcript path on stop event")
             payload.transcript_path = transcript_path
 
-            agent_name = AgentName.from_str(session.active_agent)
+            active_agent = session.active_agent
+            if not active_agent:
+                raise ValueError(f"Session {session_id[:8]} missing active_agent metadata after update")
+            agent_name = AgentName.from_str(active_agent)
 
             # Try AI summarization, fall back to raw transcript on API failure
             try:

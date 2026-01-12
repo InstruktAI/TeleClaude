@@ -213,6 +213,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if not self._running:
             return
 
+        await self._populate_initial_cache()
+
         # Start background tasks once connected
         if self.task_registry:
             self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")
@@ -229,6 +231,37 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._session_events_poll_task.add_done_callback(self._log_task_exception)
 
         logger.info("RedisAdapter connected and background tasks started")
+
+    async def _populate_initial_cache(self) -> None:
+        """Populate cache with remote computers and projects on startup."""
+        if not self.cache:
+            logger.debug("Cache unavailable, skipping initial cache population")
+            return
+
+        logger.info("Populating initial cache from remote computers...")
+
+        peers = await self.discover_peers()
+
+        for peer in peers:
+            computer_info: ComputerInfo = {
+                "name": peer.name,
+                "status": "online",
+                "last_seen": peer.last_seen,
+                "adapter_type": peer.adapter_type,
+                "user": peer.user,
+                "host": peer.host,
+                "role": peer.role,
+                "system_stats": peer.system_stats,
+            }
+            self.cache.update_computer(computer_info)
+
+        for peer in peers:
+            try:
+                await self.pull_remote_projects(peer.name)
+            except Exception as e:
+                logger.warning("Failed to pull projects from %s: %s", peer.name, e)
+
+        logger.info("Initial cache populated: %d computers", len(peers))
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""

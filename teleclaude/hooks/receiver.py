@@ -430,6 +430,7 @@ def main() -> None:
     if tty_path:
         data["teleclaude_tty"] = tty_path
 
+    data["agent_name"] = args.agent
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 
