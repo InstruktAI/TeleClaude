@@ -6,6 +6,14 @@
 
 ---
 
+## Work Preparation Pipeline
+
+- [>] delivery-verification-gates
+      Prevent incomplete work from being marked delivered. Workers create deferrals.md,
+      reviewers verify success criteria with evidence, orchestrators resolve deferrals.
+
+---
+
 ## Model Boundary Consolidation
 
 - [.] model-boundary-consolidation
@@ -19,14 +27,6 @@
   Implement matrix-driven cache behavior (serve stale + refresh) across all REST reads.
 - [.] cache-read-path-normalization
   Ensure all REST endpoints read from cache only; no direct remote pulls in handlers.
-
----
-
-## Work Preparation Pipeline
-
-- [.] delivery-verification-gates
-      Prevent incomplete work from being marked delivered. Workers create deferrals.md,
-      reviewers verify success criteria with evidence, orchestrators resolve deferrals.
 
 ---
 
