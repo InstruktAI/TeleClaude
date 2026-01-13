@@ -75,6 +75,15 @@ class TodoInfo(TypedDict):
     has_impl_plan: bool
 
 
+class ProjectWithTodosInfo(TypedDict):
+    """Project info with embedded todos."""
+
+    name: str
+    desc: str | None
+    path: str
+    todos: list[TodoInfo]
+
+
 class ComputerInfoData(TypedDict):
     """Computer info returned by handle_get_computer_info."""
 
@@ -82,6 +91,7 @@ class ComputerInfoData(TypedDict):
     host: str | None
     role: str | None
     system_stats: SystemStats | None
+    tmux_binary: str | None
 
 
 class SessionDataPayload(TypedDict, total=False):
@@ -417,6 +427,29 @@ async def handle_list_projects() -> list[dict[str, str]]:
     return dirs_data
 
 
+async def handle_list_projects_with_todos() -> list[ProjectWithTodosInfo]:
+    """List projects with their todos included (local only)."""
+    raw_projects = await handle_list_projects()
+    projects_with_todos: list[ProjectWithTodosInfo] = []
+
+    for project in raw_projects:
+        path = project.get("path", "")
+        todos: list[TodoInfo] = []
+        if path:
+            todos = await handle_list_todos(str(path))
+
+        projects_with_todos.append(
+            {
+                "name": project.get("name", ""),
+                "desc": project.get("desc"),
+                "path": path,
+                "todos": todos,
+            }
+        )
+
+    return projects_with_todos
+
+
 async def handle_list_todos(project_path: str) -> list[TodoInfo]:
     """List todos from roadmap.md for a project.
 
@@ -534,6 +567,7 @@ async def handle_get_computer_info() -> ComputerInfoData:
         "role": config.computer.role,
         "host": config.computer.host,
         "system_stats": system_stats,
+        "tmux_binary": config.computer.tmux_binary,
     }
 
     logger.debug("handle_get_computer_info() returning info: %s", info_data)

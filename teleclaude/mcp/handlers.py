@@ -48,6 +48,7 @@ from teleclaude.mcp.types import (
     StartSessionResult,
     StopNotificationsResult,
 )
+from teleclaude.types import SystemStats
 from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
@@ -111,15 +112,32 @@ class MCPHandlersMixin:
             "name": self.computer_name,
             "status": "local",
             "last_seen": datetime.now(timezone.utc),
-            "adapter_type": "local",
             "user": local_info.get("user"),
             "host": local_info.get("host"),
             "role": local_info.get("role"),
             "system_stats": local_info.get("system_stats"),
+            "tmux_binary": local_info.get("tmux_binary"),
         }
 
         remote_peers_raw = await self.client.discover_peers()
-        remote_peers: list[ComputerInfo] = cast(list[ComputerInfo], remote_peers_raw)
+        remote_peers: list[ComputerInfo] = []
+        for peer in remote_peers_raw:
+            try:
+                remote_peers.append(
+                    {
+                        "name": cast(str, peer["name"]),
+                        "status": cast(str, peer["status"]),
+                        "last_seen": cast(datetime, peer["last_seen"]),
+                        "user": cast("str | None", peer.get("user")),
+                        "host": cast("str | None", peer.get("host")),
+                        "role": cast("str | None", peer.get("role")),
+                        "system_stats": cast("SystemStats | None", peer.get("system_stats")),
+                        "tmux_binary": cast("str | None", peer.get("tmux_binary")),
+                    }
+                )
+            except Exception as exc:
+                logger.warning("Skipping invalid peer payload: %s", exc)
+                continue
 
         result = [local_computer] + remote_peers
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))

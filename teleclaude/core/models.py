@@ -112,6 +112,7 @@ class PeerInfo:  # pylint: disable=too-many-instance-attributes  # Data model fo
     ip: Optional[str] = None
     role: Optional[str] = None
     system_stats: Optional[SystemStats] = None
+    tmux_binary: Optional[str] = None
 
 
 @dataclass

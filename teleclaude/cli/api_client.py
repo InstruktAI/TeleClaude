@@ -4,7 +4,7 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
@@ -116,6 +116,31 @@ class TelecAPIClient:
         self._ws_thread = None
         logger.info("WebSocket client stopped")
 
+    def subscribe(self, computer: str, types: list[str]) -> None:
+        """Subscribe to updates for a specific computer."""
+        payload = cast(
+            dict[str, object],  # guard: loose-dict - WebSocket payload boundary
+            {"subscribe": {"computer": computer, "types": types}},
+        )
+        self._send_ws(payload)
+
+    def unsubscribe(self, computer: str) -> None:
+        """Unsubscribe from updates for a specific computer."""
+        payload = cast(
+            dict[str, object],  # guard: loose-dict - WebSocket payload boundary
+            {"unsubscribe": {"computer": computer}},
+        )
+        self._send_ws(payload)
+
+    def _send_ws(self, payload: dict[str, object]) -> None:  # guard: loose-dict
+        with self._ws_lock:
+            if not self._ws:
+                return
+            try:
+                self._ws.send(json.dumps(payload))
+            except Exception:
+                pass
+
     @property
     def ws_connected(self) -> bool:
         """Check if WebSocket is connected."""
@@ -163,9 +188,7 @@ class TelecAPIClient:
 
         logger.info("WebSocket connected, subscribing to: %s", self._ws_subscriptions)
 
-        # Subscribe to topics
-        for topic in self._ws_subscriptions:
-            ws.send(json.dumps({"subscribe": topic}))
+        ws.send(json.dumps({"subscribe": {"computer": "local", "types": list(self._ws_subscriptions)}}))
 
         # Process incoming messages
         for message in ws:

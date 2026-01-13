@@ -88,6 +88,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self._message_poll_task: Optional[asyncio.Task[object]] = None
         self._heartbeat_task: Optional[asyncio.Task[object]] = None
         self._session_events_poll_task: Optional[asyncio.Task[object]] = None
+        self._peer_refresh_task: Optional[asyncio.Task[object]] = None
         self._connection_task: Optional[asyncio.Task[object]] = None
         self._output_stream_listeners: dict[str, asyncio.Task[object]] = {}  # session_id -> listener task
         self._running = False
@@ -219,6 +220,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if self.task_registry:
             self._message_poll_task = self.task_registry.spawn(self._poll_redis_messages(), name="redis-message-poll")
             self._heartbeat_task = self.task_registry.spawn(self._heartbeat_loop(), name="redis-heartbeat")
+            self._peer_refresh_task = self.task_registry.spawn(self._peer_refresh_loop(), name="redis-peer-refresh")
             self._session_events_poll_task = self.task_registry.spawn(
                 self._poll_session_events(), name="redis-session-events"
             )
@@ -227,6 +229,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._message_poll_task.add_done_callback(self._log_task_exception)
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             self._heartbeat_task.add_done_callback(self._log_task_exception)
+            self._peer_refresh_task = asyncio.create_task(self._peer_refresh_loop())
+            self._peer_refresh_task.add_done_callback(self._log_task_exception)
             self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
             self._session_events_poll_task.add_done_callback(self._log_task_exception)
 
@@ -247,7 +251,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 "name": peer.name,
                 "status": "online",
                 "last_seen": peer.last_seen,
-                "adapter_type": peer.adapter_type,
                 "user": peer.user,
                 "host": peer.host,
                 "role": peer.role,
@@ -262,6 +265,83 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.warning("Failed to pull projects from %s: %s", peer.name, e)
 
         logger.info("Initial cache populated: %d computers", len(peers))
+
+    async def refresh_remote_snapshot(self) -> None:
+        """Refresh remote computers and project/todo cache (best effort)."""
+        if not self.cache:
+            logger.debug("Cache unavailable, skipping remote snapshot refresh")
+            return
+
+        logger.info("Refreshing remote cache snapshot...")
+
+        peers = await self.discover_peers()
+        for peer in peers:
+            computer_info: ComputerInfo = {
+                "name": peer.name,
+                "status": "online",
+                "last_seen": peer.last_seen,
+                "user": peer.user,
+                "host": peer.host,
+                "role": peer.role,
+                "system_stats": peer.system_stats,
+            }
+            self.cache.update_computer(computer_info)
+
+        for peer in peers:
+            try:
+                await self.pull_remote_projects_with_todos(peer.name)
+            except Exception as e:
+                logger.warning("Failed to refresh snapshot from %s: %s", peer.name, e)
+
+        logger.info("Remote cache snapshot refresh complete: %d computers", len(peers))
+
+    async def _peer_refresh_loop(self) -> None:
+        """Background task: refresh peer cache from heartbeats."""
+        while self._running:
+            try:
+                await self.refresh_peers_from_heartbeats()
+                await asyncio.sleep(self.heartbeat_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Peer refresh failed: %s", e)
+
+    async def refresh_peers_from_heartbeats(self) -> None:
+        """Refresh peer cache from heartbeat keys."""
+        if not self.cache:
+            return
+
+        redis_client = self._require_redis()
+        keys: object = await scan_keys(redis_client, b"computer:*:heartbeat")
+        if not keys:
+            return
+
+        for key in keys:  # pyright: ignore[reportGeneralTypeIssues]
+            try:
+                data_bytes: object = await redis_client.get(key)
+                data_str: str = data_bytes.decode("utf-8")  # pyright: ignore[reportAttributeAccessIssue]
+                info_obj: object = json.loads(data_str)
+                info = cast(dict[str, object], info_obj)
+
+                computer_name = cast(str, info["computer_name"])
+                if computer_name == self.computer_name:
+                    continue
+                last_seen_str = cast(str, info["last_seen"])
+                last_seen = datetime.fromisoformat(last_seen_str)
+
+                computer_info: ComputerInfo = {
+                    "name": computer_name,
+                    "status": "online",
+                    "last_seen": last_seen,
+                    "user": cast("str | None", info.get("user")),
+                    "host": cast("str | None", info.get("host")),
+                    "role": cast("str | None", info.get("role")),
+                    "system_stats": cast("SystemStats | None", info.get("system_stats")),
+                }
+                self.cache.update_computer(computer_info)
+            except Exception as exc:
+                logger.warning("Heartbeat peer parse failed: %s", exc)
+                continue
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
@@ -339,6 +419,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
+        if self._peer_refresh_task:
+            self._peer_refresh_task.cancel()
+            try:
+                await self._peer_refresh_task
             except asyncio.CancelledError:
                 pass
 
@@ -768,6 +855,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     ip_val: object = computer_info.get("ip")
                     role_val: object = computer_info.get("role")
                     system_stats_val: object = computer_info.get("system_stats")
+                    tmux_binary_val: object = computer_info.get("tmux_binary")
 
                     # Ensure system_stats is a dict or None, then cast to SystemStats
                     system_stats: SystemStats | None = None
@@ -785,6 +873,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                             ip=str(ip_val) if ip_val else None,
                             role=str(role_val) if role_val else None,
                             system_stats=system_stats,
+                            tmux_binary=str(tmux_binary_val) if tmux_binary_val else None,
                         )
                     )
 
@@ -1285,7 +1374,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                         "name": computer_name,
                         "status": "online",
                         "last_seen": last_seen,
-                        "adapter_type": "redis",
                         "user": None,
                         "host": None,
                         "role": None,
@@ -1336,7 +1424,6 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             if computer_name not in computer_map:
                 logger.debug("Interested computer %s not found in heartbeats, skipping", computer_name)
                 continue
-
             try:
                 # Request sessions via Redis (calls list_sessions handler on remote)
                 message_id = await self.send_request(computer_name, "list_sessions", MessageMetadata())
@@ -1376,6 +1463,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             except Exception as e:
                 logger.warning("Failed to pull sessions from %s: %s", computer_name, e)
                 continue
+
+    async def pull_interested_sessions(self) -> None:
+        """Pull sessions for currently interested computers."""
+        await self._pull_initial_sessions()
 
     async def pull_remote_projects(self, computer: str) -> None:
         """Pull projects from a remote computer via Redis.
@@ -1429,6 +1520,65 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         except Exception as e:
             logger.warning("Failed to pull projects from %s: %s", computer, e)
+
+    async def pull_remote_projects_with_todos(self, computer: str) -> None:
+        """Pull projects with embedded todos from a remote computer via Redis."""
+        if not self.cache:
+            logger.warning("Cache unavailable, skipping projects-with-todos pull from %s", computer)
+            return
+
+        logger.debug("Pulling projects-with-todos from %s", computer)
+
+        try:
+            message_id = await self.send_request(computer, "list_projects_with_todos", MessageMetadata())
+
+            response_data = await self.client.read_response(message_id, timeout=5.0)
+            envelope_obj: object = json.loads(response_data.strip())
+
+            if not isinstance(envelope_obj, dict):
+                logger.warning("Invalid response from %s: not a dict", computer)
+                return
+
+            envelope: dict[str, object] = envelope_obj
+
+            status = envelope.get("status")
+            if status == "error":
+                error_msg = envelope.get("error", "unknown error")
+                logger.warning("Error from %s: %s", computer, error_msg)
+                return
+
+            data = envelope.get("data")
+            if not isinstance(data, list):
+                logger.warning("Invalid projects-with-todos data from %s: %s", computer, type(data))
+                return
+
+            projects: list[ProjectInfo] = []
+            for project_obj in data:
+                if not isinstance(project_obj, dict):
+                    continue
+                project_path = project_obj.get("path")
+                if not isinstance(project_path, str) or not project_path:
+                    continue
+                project: ProjectInfo = {
+                    "name": str(project_obj.get("name", "")),
+                    "desc": str(project_obj.get("desc", "")),
+                    "path": project_path,
+                }
+                projects.append(project)
+
+                todos_obj: object = project_obj.get("todos", [])
+                if isinstance(todos_obj, list):
+                    todos: list[TodoInfo] = []
+                    for todo_obj in todos_obj:
+                        if isinstance(todo_obj, dict):
+                            todos.append(cast("TodoInfo", todo_obj))
+                    self.cache.set_todos(computer, project_path, todos)
+
+            self.cache.set_projects(computer, projects)
+            logger.info("Pulled %d projects-with-todos from %s", len(projects), computer)
+
+        except Exception as e:
+            logger.warning("Failed to pull projects-with-todos from %s: %s", computer, e)
 
     async def pull_remote_todos(self, computer: str, project_path: str) -> None:
         """Pull todos for a specific project from a remote computer via Redis.

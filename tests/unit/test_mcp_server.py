@@ -1,5 +1,6 @@
 """Unit tests for MCP server tools."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -59,7 +60,15 @@ async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_serve
 
         # Mock discover_peers to return remote peers
         server.client.discover_peers = AsyncMock(
-            return_value=[{"name": "RemotePC", "status": "online", "user": "remoteuser", "host": "remote.local"}]
+            return_value=[
+                {
+                    "name": "RemotePC",
+                    "status": "online",
+                    "last_seen": datetime.now(timezone.utc),
+                    "user": "remoteuser",
+                    "host": "remote.local",
+                }
+            ]
         )
 
         result = await server.teleclaude__list_computers()
