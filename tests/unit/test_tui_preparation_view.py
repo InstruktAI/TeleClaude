@@ -197,7 +197,7 @@ class TestPreparationViewLogic:
         lines = prep_view.get_render_lines(80, 24)
 
         assert len(lines) == 1
-        assert "[C]" in lines[0]
+        assert "🖥" in lines[0]
         assert "test-machine" in lines[0]
         assert "(3)" in lines[0]
 
@@ -212,7 +212,7 @@ class TestPreparationViewLogic:
         lines = prep_view.get_render_lines(80, 24)
 
         assert len(lines) == 1
-        assert "[P]" in lines[0]
+        assert "📁" in lines[0]
         assert "/test/project" in lines[0]
         assert "(2)" in lines[0]  # Todo count
 

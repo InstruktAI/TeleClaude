@@ -865,14 +865,14 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             name = item.data.computer.name
             project_count = item.data.project_count
             suffix = f"({project_count})" if project_count else ""
-            line = f"{indent}[C] {name} {suffix}"
+            line = f"{indent}🖥  {name} {suffix}"
             return [line[:width]]
 
         if item.type == "project":
             path = item.data.project.path
             todo_count = len(item.children)
             suffix = f"({todo_count})" if todo_count else ""
-            line = f"{indent}[P] {path} {suffix}"
+            line = f"{indent}📁 {path} {suffix}"
             return [line[:width]]
 
         if item.type == "todo":
