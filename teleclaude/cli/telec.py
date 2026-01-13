@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
+from teleclaude.cli.models import CreateSessionResult
 from teleclaude.config import config
 
 
@@ -132,10 +133,10 @@ async def _list_sessions(api: TelecAPIClient) -> None:
     try:
         sessions = await api.list_sessions()
         for session in sessions:
-            computer = session.get("computer", "?")
-            agent = session.get("active_agent", "?")
-            mode = session.get("thinking_mode", "?")
-            title = session.get("title", "Untitled")
+            computer = session.computer or "?"
+            agent = session.active_agent or "?"
+            mode = session.thinking_mode or "?"
+            title = session.title
             print(f"{computer}: {agent}/{mode} - {title}")
     finally:
         await api.close()
@@ -155,9 +156,9 @@ def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
         print(f"Error: {e}")
         return
 
-    tmux_session_name = str(result.get("tmux_session_name") or "")
+    tmux_session_name = result.tmux_session_name or ""
     if not tmux_session_name:
-        session_id = str(result.get("session_id") or "")
+        session_id = result.session_id
         if session_id:
             print(f"Session {session_id[:8]} created, but no tmux session name returned.")
         else:
@@ -167,22 +168,18 @@ def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
     _attach_tmux_session(tmux_session_name)
 
 
-async def _quick_start_via_api(
-    agent: str, mode: str, prompt: str | None
-) -> dict[str, object]:  # guard: loose-dict - REST API response boundary
+async def _quick_start_via_api(agent: str, mode: str, prompt: str | None) -> CreateSessionResult:
     """Create a session via REST API and return the response."""
     api = TelecAPIClient()
     await api.connect()
     try:
-        payload: dict[str, object] = {  # guard: loose-dict - REST API request boundary
-            "computer": config.computer.name,
-            "project_dir": os.getcwd(),
-            "agent": agent,
-            "thinking_mode": mode,
-        }
-        if prompt:
-            payload["message"] = prompt
-        return await api.create_session(**payload)
+        return await api.create_session(
+            computer=config.computer.name,
+            project_dir=os.getcwd(),
+            agent=agent,
+            thinking_mode=mode,
+            message=prompt,
+        )
     finally:
         await api.close()
 

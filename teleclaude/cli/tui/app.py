@@ -5,12 +5,25 @@ import curses
 import queue
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import nest_asyncio
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.models import (
+    AgentAvailabilityInfo,
+    ProjectInfo,
+    ProjectsInitialEvent,
+    ProjectWithTodosInfo,
+    SessionInfo,
+    SessionRemovedEvent,
+    SessionsInitialEvent,
+    SessionUpdateEvent,
+    WsEvent,
+)
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import init_colors
+from teleclaude.cli.tui.types import CursesWindow
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
@@ -133,7 +146,7 @@ class Notification:
 class TelecApp:
     """Main TUI application with view switching (1=Sessions, 2=Preparation)."""
 
-    def __init__(self, api: object):
+    def __init__(self, api: "TelecAPIClient"):
         """Initialize TUI app.
 
         Args:
@@ -145,7 +158,7 @@ class TelecApp:
         self.tab_bar = TabBar()
         self.footer: Footer | None = None
         self.running = True
-        self.agent_availability: dict[str, dict[str, object]] = {}  # guard: loose-dict
+        self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
@@ -154,12 +167,12 @@ class TelecApp:
         self._content_start: int = 0
         self._content_height: int = 0
         # WebSocket event queue (thread-safe)
-        self._ws_queue: queue.Queue[tuple[str, dict[str, object]]] = queue.Queue()  # guard: loose-dict
+        self._ws_queue: queue.Queue[WsEvent] = queue.Queue()
         self._subscribed_computers: set[str] = set()
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
-        await self.api.connect()  # type: ignore[attr-defined]
+        await self.api.connect()
         self._loop = asyncio.get_running_loop()
 
         # Create views BEFORE refresh so they can receive data
@@ -171,7 +184,7 @@ class TelecApp:
         await self.refresh_data()
 
         # Start WebSocket connection for push updates
-        self.api.start_websocket(  # type: ignore[attr-defined]
+        self.api.start_websocket(
             callback=self._on_ws_event,
             subscriptions=["sessions", "projects"],
         )
@@ -181,10 +194,10 @@ class TelecApp:
         logger.debug("Refreshing data from API...")
         try:
             computers, projects, sessions, availability = await asyncio.gather(
-                self.api.list_computers(),  # type: ignore[attr-defined]
-                self.api.list_projects_with_todos(),  # type: ignore[attr-defined]
-                self.api.list_sessions(),  # type: ignore[attr-defined]
-                self.api.get_agent_availability(),  # type: ignore[attr-defined]
+                self.api.list_computers(),
+                self.api.list_projects_with_todos(),
+                self.api.list_sessions(),
+                self.api.get_agent_availability(),
             )
 
             logger.debug(
@@ -194,11 +207,13 @@ class TelecApp:
                 len(sessions),
             )
 
-            self.agent_availability = availability  # type: ignore[assignment]
+            # Update in-place so views keep the same shared dict reference.
+            self.agent_availability.clear()
+            self.agent_availability.update(availability)
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
-                await view.refresh(computers, projects, sessions)  # type: ignore[arg-type]
+                await view.refresh(computers, projects, sessions)
                 logger.debug(
                     "View %d refreshed: flat_items=%d",
                     view_num,
@@ -232,12 +247,12 @@ class TelecApp:
         if not current or current == "local":
             for computer in list(self._subscribed_computers):
                 if computer != "local":
-                    self.api.unsubscribe(computer)  # type: ignore[attr-defined]
+                    self.api.unsubscribe(computer)
                     self._subscribed_computers.discard(computer)
             return
 
         if current not in self._subscribed_computers:
-            self.api.subscribe(current, ["sessions", "projects"])  # type: ignore[attr-defined]
+            self.api.subscribe(current, ["sessions", "projects"])
             self._subscribed_computers.add(current)
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
@@ -258,9 +273,9 @@ class TelecApp:
         """Clean up resources before exit."""
         self.pane_manager.cleanup()
         # Stop WebSocket connection
-        self.api.stop_websocket()  # type: ignore[attr-defined]
+        self.api.stop_websocket()
 
-    def _on_ws_event(self, event: str, data: dict[str, object]) -> None:  # guard: loose-dict
+    def _on_ws_event(self, event: WsEvent) -> None:
         """Handle WebSocket event from background thread.
 
         Queues the event for processing in the main loop (thread-safe).
@@ -269,7 +284,7 @@ class TelecApp:
             event: Event type (e.g., "session_updated", "sessions_initial")
             data: Event data
         """
-        self._ws_queue.put((event, data))
+        self._ws_queue.put(event)
 
     def _process_ws_events(self) -> bool:
         """Process pending WebSocket events from the queue.
@@ -281,41 +296,35 @@ class TelecApp:
 
         while True:
             try:
-                event, data = self._ws_queue.get_nowait()
+                event = self._ws_queue.get_nowait()
             except queue.Empty:
                 break
 
-            logger.debug("Processing WebSocket event: %s", event)
+            logger.debug("Processing WebSocket event: %s", event.event)
             updated = True
 
             # Handle initial state events (sent after subscription)
-            if event == "sessions_initial":
-                sessions = data.get("sessions")
-                if isinstance(sessions, list):
-                    self._update_sessions_view(sessions)
+            if isinstance(event, SessionsInitialEvent):
+                self._update_sessions_view(event.data.sessions)
 
-            elif event in ("preparation_initial", "projects_initial"):
-                projects = data.get("projects")
-                if isinstance(projects, list):
-                    self._update_preparation_view(projects)
+            elif isinstance(event, ProjectsInitialEvent):
+                self._update_preparation_view(event.data.projects)
 
             # Handle incremental update events
-            elif event in ("session_updated", "session_created"):
-                self._apply_session_update(data)
+            elif isinstance(event, SessionUpdateEvent):
+                self._apply_session_update(event.data)
 
-            elif event == "session_removed":
-                session_id = data.get("session_id")
-                if isinstance(session_id, str):
-                    self._apply_session_removal(session_id)
+            elif isinstance(event, SessionRemovedEvent):
+                self._apply_session_removal(event.data.session_id)
 
-            elif event in ("computer_updated", "project_updated", "projects_updated"):
+            else:
                 # For now, trigger a full refresh for computer/project updates
                 # In the future, could apply incremental updates
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
         return updated
 
-    def _update_sessions_view(self, sessions: list[object]) -> None:  # guard: loose-list
+    def _update_sessions_view(self, sessions: list[SessionInfo]) -> None:
         """Update sessions view with fresh session data.
 
         Args:
@@ -325,15 +334,11 @@ class TelecApp:
         if not isinstance(sessions_view, SessionsView):
             return
 
-        typed_sessions: list[dict[str, object]] = []  # guard: loose-dict
-        for s in sessions:
-            if isinstance(s, dict):
-                typed_sessions.append(s)
-        sessions_view._sessions = typed_sessions
-        sessions_view._update_activity_state(typed_sessions)
-        logger.debug("Sessions view updated with %d sessions", len(typed_sessions))
+        sessions_view._sessions = sessions
+        sessions_view._update_activity_state(sessions)
+        logger.debug("Sessions view updated with %d sessions", len(sessions))
 
-    def _update_preparation_view(self, projects: list[object]) -> None:  # noqa: ARG002  # guard: loose-list
+    def _update_preparation_view(self, projects: list[ProjectInfo | ProjectWithTodosInfo]) -> None:  # noqa: ARG002
         """Update preparation view with fresh project data.
 
         Args:
@@ -343,7 +348,7 @@ class TelecApp:
         # needs to rebuild its tree with todos
         asyncio.get_event_loop().run_until_complete(self.refresh_data())
 
-    def _apply_session_update(self, session: dict[str, object]) -> None:  # guard: loose-dict
+    def _apply_session_update(self, session: SessionInfo) -> None:
         """Apply incremental session update.
 
         Args:
@@ -353,14 +358,12 @@ class TelecApp:
         if not isinstance(sessions_view, SessionsView):
             return
 
-        session_id = session.get("session_id")
-        if not session_id:
-            return
+        session_id = session.session_id
 
         # Find and update/add the session
         found = False
         for i, s in enumerate(sessions_view._sessions):
-            if s.get("session_id") == session_id:
+            if s.session_id == session_id:
                 sessions_view._sessions[i] = session
                 found = True
                 break
@@ -382,10 +385,10 @@ class TelecApp:
         if not isinstance(sessions_view, SessionsView):
             return
 
-        sessions_view._sessions = [s for s in sessions_view._sessions if s.get("session_id") != session_id]
+        sessions_view._sessions = [s for s in sessions_view._sessions if s.session_id != session_id]
         logger.debug("Session %s removed", session_id[:8])
 
-    def run(self, stdscr: object) -> None:
+    def run(self, stdscr: CursesWindow) -> None:
         """Main event loop.
 
         Uses short timeout to poll for WebSocket updates while still responsive
@@ -424,7 +427,7 @@ class TelecApp:
                 # Re-render if WebSocket events were processed (no key press)
                 self._render(stdscr)
 
-    def _handle_key(self, key: int, stdscr: object) -> None:
+    def _handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle key press.
 
         Args:
@@ -553,13 +556,11 @@ class TelecApp:
             if isinstance(view, SessionsView) and view.flat_items:
                 selected = view.flat_items[view.selected_index]
                 if selected.type == "session":
-                    session_id = str(selected.data.get("session_id", ""))
+                    session_id = selected.data.session.session_id
                     if session_id:
                         logger.debug("Agent restart requested for session %s", session_id[:8])
                         try:
-                            asyncio.get_event_loop().run_until_complete(
-                                self.api.agent_restart(session_id)  # type: ignore[attr-defined]
-                            )
+                            asyncio.get_event_loop().run_until_complete(self.api.agent_restart(session_id))
                             self.notify("Agent restart triggered", "info")
                         except Exception as e:
                             logger.error("Error restarting agent: %s", e)
@@ -603,7 +604,7 @@ class TelecApp:
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)
 
-    def _render(self, stdscr: object) -> None:
+    def _render(self, stdscr: CursesWindow) -> None:
         """Render current view with banner, tab bar, and footer.
 
         Args:
@@ -729,3 +730,7 @@ class TelecApp:
             stdscr.addstr(row, start_col, display_msg[: width - start_col], attr)  # type: ignore[attr-defined]
         except curses.error:
             pass  # Ignore if can't render (screen too small)
+
+
+if TYPE_CHECKING:
+    from teleclaude.cli.api_client import TelecAPIClient

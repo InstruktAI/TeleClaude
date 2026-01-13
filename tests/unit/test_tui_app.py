@@ -2,6 +2,13 @@
 
 import pytest
 
+from teleclaude.cli.models import (
+    ProjectsInitialData,
+    ProjectsInitialEvent,
+    ProjectWithTodosInfo,
+    RefreshData,
+    RefreshEvent,
+)
 from teleclaude.cli.tui.app import TelecApp
 from tests.conftest import MockAPIClient
 
@@ -22,7 +29,22 @@ class TestTelecAppWebSocketEvents:
                 self.refresh_called = True
 
         app = DummyApp(MockAPIClient())
-        app._on_ws_event("projects_initial", {"projects": []})
+        event = ProjectsInitialEvent(
+            event="projects_initial",
+            data=ProjectsInitialData(
+                projects=[
+                    ProjectWithTodosInfo(
+                        computer="local",
+                        name="TeleClaude",
+                        path="/Users/Morriz/Documents/Workspace/InstruktAI/TeleClaude",
+                        description=None,
+                        todos=[],
+                    )
+                ],
+                computer="local",
+            ),
+        )
+        app._on_ws_event(event)
         app._process_ws_events()
 
         assert app.refresh_called is True
@@ -39,7 +61,8 @@ class TestTelecAppWebSocketEvents:
                 self.refresh_called = True
 
         app = DummyApp(MockAPIClient())
-        app._on_ws_event("projects_updated", {"computer": "MozMini", "projects": []})
+        event = RefreshEvent(event="projects_updated", data=RefreshData(computer="MozMini"))
+        app._on_ws_event(event)
         app._process_ws_events()
 
         assert app.refresh_called is True

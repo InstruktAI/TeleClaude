@@ -1,1 +1,4 @@
-{}
+{
+  "smart-cache-policy-matrix": ["model-boundary-consolidation"],
+  "cache-read-path-normalization": ["smart-cache-policy-matrix"]
+}

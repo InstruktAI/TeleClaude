@@ -3,13 +3,15 @@
 import curses
 from datetime import datetime
 
+from teleclaude.cli.models import AgentAvailabilityInfo
+
 
 class Footer:
     """Persistent status footer showing agent availability."""
 
     def __init__(
         self,
-        agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
+        agent_availability: dict[str, AgentAvailabilityInfo],
     ):
         """Initialize footer.
 
@@ -29,13 +31,13 @@ class Footer:
         # Agent availability
         agent_parts: list[str] = []
         for agent in ["claude", "gemini", "codex"]:
-            info = self.agent_availability.get(agent, {"available": True})
-            available = info.get("available", True)
+            info = self.agent_availability.get(agent)
+            available = info.available if info else True
             if available:
                 agent_parts.append(f"{agent} ✓")
             else:
-                until = info.get("unavailable_until")
-                countdown = self._format_countdown(until) if until else "?"  # type: ignore[arg-type]
+                until = info.unavailable_until if info else None
+                countdown = self._format_countdown(until) if until else "?"
                 agent_parts.append(f"{agent} ✗ ({countdown})")
 
         footer = " " + "  ".join(agent_parts)

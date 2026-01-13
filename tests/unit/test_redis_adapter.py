@@ -94,12 +94,12 @@ async def test_populate_initial_cache_updates_computers_and_projects():
     ]
 
     adapter.discover_peers = AsyncMock(return_value=peers)
-    adapter.pull_remote_projects = AsyncMock()
+    adapter.pull_remote_projects_with_todos = AsyncMock()
 
     await adapter._populate_initial_cache()
 
     assert mock_cache.update_computer.call_count == 2
-    adapter.pull_remote_projects.assert_has_awaits([call("RemoteOne"), call("RemoteTwo")])
+    adapter.pull_remote_projects_with_todos.assert_has_awaits([call("RemoteOne"), call("RemoteTwo")])
 
 
 @pytest.mark.asyncio

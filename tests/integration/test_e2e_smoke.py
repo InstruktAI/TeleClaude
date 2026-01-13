@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import TypeAdapter
 
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
@@ -101,6 +102,21 @@ def create_test_session(
         last_activity=datetime.now(timezone.utc).isoformat(),
         computer=computer,
     )
+
+
+async def test_projects_initial_payload_parses(rest_adapter, cache: DaemonCache) -> None:
+    """Ensure projects_initial payloads parse with CLI WebSocket models."""
+    from teleclaude.cli.models import WsEvent
+
+    project = {"name": "teleclaude", "desc": "Demo", "path": "/tmp/teleclaude"}
+    cache.set_projects("local", [project])
+
+    mock_ws = create_mock_websocket()
+    await rest_adapter._send_initial_state(mock_ws, "projects", "local")
+
+    await wait_for_call(mock_ws.send_json)
+    payload = mock_ws.send_json.call_args[0][0]
+    TypeAdapter(WsEvent).validate_python(payload)
 
 
 async def wait_for_call(mock_fn: AsyncMock, timeout: float = 1.0, interval: float = 0.01) -> None:

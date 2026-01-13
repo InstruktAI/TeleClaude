@@ -143,11 +143,12 @@ class DaemonCache:
                 computers.append(cached.data)
         return computers
 
-    def get_projects(self, computer: str | None = None) -> list[ProjectInfo]:
+    def get_projects(self, computer: str | None = None, *, include_stale: bool = False) -> list[ProjectInfo]:
         """Get cached projects, optionally filtered by computer.
 
         Args:
             computer: Optional computer name to filter by
+            include_stale: When True, include stale entries (caller may trigger refresh)
 
         Returns:
             List of project info dicts
@@ -158,8 +159,8 @@ class DaemonCache:
             if computer and not key.startswith(f"{computer}:"):
                 continue
 
-            # Filter out stale projects (TTL=5min)
-            if cached.is_stale(300):
+            # Filter out stale projects (TTL=5min) unless explicitly included
+            if cached.is_stale(300) and not include_stale:
                 continue
 
             # Include computer name derived from key for optimistic rendering

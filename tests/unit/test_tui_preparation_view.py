@@ -2,8 +2,19 @@
 
 import pytest
 
-from teleclaude.cli.tui.views.preparation import PreparationView, PrepTreeNode
-from tests.conftest import create_mock_computer, create_mock_project
+from teleclaude.cli.models import ComputerInfo, CreateSessionResult, ProjectWithTodosInfo
+from teleclaude.cli.tui.todos import TodoItem
+from teleclaude.cli.tui.views.preparation import (
+    PreparationView,
+    PrepComputerDisplayInfo,
+    PrepComputerNode,
+    PrepFileDisplayInfo,
+    PrepFileNode,
+    PrepProjectDisplayInfo,
+    PrepProjectNode,
+    PrepTodoDisplayInfo,
+    PrepTodoNode,
+)
 
 
 @pytest.fixture
@@ -40,6 +51,98 @@ def prep_view(mock_focus):
 class TestPreparationViewLogic:
     """Layer 1: View logic tests for PreparationView."""
 
+    def _make_todo_node(
+        self,
+        *,
+        slug: str,
+        status: str,
+        has_requirements: bool = False,
+        has_impl_plan: bool = False,
+        build_status: str | None = None,
+        review_status: str | None = None,
+        depth: int = 0,
+    ) -> PrepTodoNode:
+        todo = TodoItem(
+            slug=slug,
+            status=status,
+            description=None,
+            has_requirements=has_requirements,
+            has_impl_plan=has_impl_plan,
+            build_status=build_status,
+            review_status=review_status,
+        )
+        return PrepTodoNode(
+            type="todo",
+            data=PrepTodoDisplayInfo(todo=todo, project_path="/test/project", computer="test-computer"),
+            depth=depth,
+        )
+
+    def _make_computer_node(
+        self,
+        *,
+        name: str,
+        project_count: int,
+        todo_count: int,
+        depth: int = 0,
+    ) -> PrepComputerNode:
+        computer = ComputerInfo(
+            name=name,
+            status="online",
+            user="testuser",
+            host="test.local",
+            is_local=False,
+            tmux_binary="tmux",
+        )
+        return PrepComputerNode(
+            type="computer",
+            data=PrepComputerDisplayInfo(computer=computer, project_count=project_count, todo_count=todo_count),
+            depth=depth,
+        )
+
+    def _make_project_node(
+        self,
+        *,
+        path: str,
+        children: list[PrepTodoNode] | None = None,
+        depth: int = 0,
+    ) -> PrepProjectNode:
+        project = ProjectWithTodosInfo(
+            computer="test-computer",
+            name="project",
+            path=path,
+            description=None,
+            todos=[],
+        )
+        return PrepProjectNode(
+            type="project",
+            data=PrepProjectDisplayInfo(project=project),
+            depth=depth,
+            children=children or [],
+        )
+
+    def _make_file_node(
+        self,
+        *,
+        filename: str,
+        display_name: str,
+        exists: bool,
+        index: int,
+        depth: int = 2,
+    ) -> PrepFileNode:
+        return PrepFileNode(
+            type="file",
+            data=PrepFileDisplayInfo(
+                filename=filename,
+                display_name=display_name,
+                exists=exists,
+                index=index,
+                slug="test-todo",
+                project_path="/test/project",
+                computer="test-computer",
+            ),
+            depth=depth,
+        )
+
     def test_empty_shows_message(self, prep_view):
         """Empty todos list shows appropriate message."""
         prep_view.flat_items = []
@@ -48,16 +151,7 @@ class TestPreparationViewLogic:
 
     def test_ready_status_shown(self, prep_view):
         """Ready status indicator is shown."""
-        todo = PrepTreeNode(
-            type="todo",
-            data={
-                "slug": "test-todo",
-                "status": "ready",
-                "has_requirements": True,
-                "has_impl_plan": True,
-            },
-            depth=0,
-        )
+        todo = self._make_todo_node(slug="test-todo", status="ready", has_requirements=True, has_impl_plan=True)
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
@@ -65,16 +159,7 @@ class TestPreparationViewLogic:
 
     def test_pending_status_shown(self, prep_view):
         """Pending status indicator is shown."""
-        todo = PrepTreeNode(
-            type="todo",
-            data={
-                "slug": "test-todo",
-                "status": "pending",
-                "has_requirements": False,
-                "has_impl_plan": False,
-            },
-            depth=0,
-        )
+        todo = self._make_todo_node(slug="test-todo", status="pending")
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
@@ -82,16 +167,7 @@ class TestPreparationViewLogic:
 
     def test_in_progress_status_shown(self, prep_view):
         """In-progress status indicator is shown."""
-        todo = PrepTreeNode(
-            type="todo",
-            data={
-                "slug": "test-todo",
-                "status": "in_progress",
-                "has_requirements": True,
-                "has_impl_plan": True,
-            },
-            depth=0,
-        )
+        todo = self._make_todo_node(slug="test-todo", status="in_progress", has_requirements=True, has_impl_plan=True)
         prep_view.flat_items = [todo]
         output = "\n".join(prep_view.get_render_lines(80, 24))
 
@@ -99,15 +175,11 @@ class TestPreparationViewLogic:
 
     def test_build_review_status_shown(self, prep_view):
         """Build and review status are shown if available."""
-        todo = PrepTreeNode(
-            type="todo",
-            data={
-                "slug": "test-todo",
-                "status": "in_progress",
-                "build_status": "complete",
-                "review_status": "pending",
-            },
-            depth=0,
+        todo = self._make_todo_node(
+            slug="test-todo",
+            status="in_progress",
+            build_status="complete",
+            review_status="pending",
         )
         prep_view.flat_items = [todo]
         lines = prep_view.get_render_lines(80, 24)
@@ -120,15 +192,7 @@ class TestPreparationViewLogic:
 
     def test_computer_node_renders(self, prep_view):
         """Computer nodes render correctly."""
-        computer = PrepTreeNode(
-            type="computer",
-            data={
-                **create_mock_computer(name="test-machine"),
-                "project_count": 3,
-                "todo_count": 7,
-            },
-            depth=0,
-        )
+        computer = self._make_computer_node(name="test-machine", project_count=3, todo_count=7)
         prep_view.flat_items = [computer]
         lines = prep_view.get_render_lines(80, 24)
 
@@ -140,15 +204,9 @@ class TestPreparationViewLogic:
     def test_project_node_renders(self, prep_view):
         """Project nodes render with todo count."""
         # Create project with 2 child todos
-        todo1 = PrepTreeNode(type="todo", data={"slug": "todo1", "status": "pending"}, depth=1)
-        todo2 = PrepTreeNode(type="todo", data={"slug": "todo2", "status": "ready"}, depth=1)
-
-        project = PrepTreeNode(
-            type="project",
-            data=create_mock_project(path="/test/project"),
-            depth=0,
-            children=[todo1, todo2],
-        )
+        todo1 = self._make_todo_node(slug="todo1", status="pending", depth=1)
+        todo2 = self._make_todo_node(slug="todo2", status="ready", depth=1)
+        project = self._make_project_node(path="/test/project", children=[todo1, todo2])
 
         prep_view.flat_items = [project]
         lines = prep_view.get_render_lines(80, 24)
@@ -178,9 +236,19 @@ class TestPreparationViewLogic:
             focus=mock_focus,
             pane_manager=pane_manager,
         )
-        view._computers = [create_mock_computer(name="test-machine")]
+        view._computers = [
+            ComputerInfo(
+                name="test-machine",
+                status="online",
+                user="testuser",
+                host="test.local",
+                is_local=False,
+                tmux_binary="tmux",
+            )
+        ]
 
-        view._attach_new_session({"tmux_session_name": "tc_456"}, "test-machine", object())
+        result = CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tc_456")
+        view._attach_new_session(result, "test-machine", object())
 
         assert pane_manager.called is True
         assert pane_manager.args is not None
@@ -188,15 +256,11 @@ class TestPreparationViewLogic:
 
     def test_file_node_renders(self, prep_view):
         """File nodes render with index and name."""
-        file_node = PrepTreeNode(
-            type="file",
-            data={
-                "filename": "requirements.md",
-                "display_name": "Requirements",
-                "exists": True,
-                "index": 1,
-            },
-            depth=2,
+        file_node = self._make_file_node(
+            filename="requirements.md",
+            display_name="Requirements",
+            exists=True,
+            index=1,
         )
         prep_view.flat_items = [file_node]
         lines = prep_view.get_render_lines(80, 24)
@@ -206,11 +270,7 @@ class TestPreparationViewLogic:
 
     def test_collapsed_todo_no_files(self, prep_view):
         """Collapsed todo doesn't show file children."""
-        todo = PrepTreeNode(
-            type="todo",
-            data={"slug": "test-todo", "status": "pending"},
-            depth=0,
-        )
+        todo = self._make_todo_node(slug="test-todo", status="pending")
         prep_view.flat_items = [todo]
         # Don't add to expanded_todos = collapsed by default
 
@@ -222,9 +282,9 @@ class TestPreparationViewLogic:
 
     def test_depth_indentation(self, prep_view):
         """Items are indented according to depth."""
-        computer = PrepTreeNode(type="computer", data=create_mock_computer(), depth=0)
-        project = PrepTreeNode(type="project", data=create_mock_project(), depth=1)
-        todo = PrepTreeNode(type="todo", data={"slug": "test", "status": "pending"}, depth=2)
+        computer = self._make_computer_node(name="test-computer", project_count=0, todo_count=0, depth=0)
+        project = self._make_project_node(path="/test/project", depth=1)
+        todo = self._make_todo_node(slug="test", status="pending", depth=2)
 
         prep_view.flat_items = [computer, project, todo]
         lines = prep_view.get_render_lines(80, 24)
@@ -236,11 +296,7 @@ class TestPreparationViewLogic:
 
     def test_long_content_truncated(self, prep_view):
         """Long content is truncated to fit width."""
-        todo = PrepTreeNode(
-            type="todo",
-            data={"slug": "A" * 100, "status": "pending"},
-            depth=0,
-        )
+        todo = self._make_todo_node(slug="A" * 100, status="pending")
         prep_view.flat_items = [todo]
         lines = prep_view.get_render_lines(80, 24)
 
@@ -248,9 +304,7 @@ class TestPreparationViewLogic:
 
     def test_scroll_offset_respected(self, prep_view):
         """Scroll offset skips items correctly."""
-        todos = [
-            PrepTreeNode(type="todo", data={"slug": f"todo-{i:02d}", "status": "pending"}, depth=0) for i in range(30)
-        ]
+        todos = [self._make_todo_node(slug=f"todo-{i:02d}", status="pending") for i in range(30)]
         prep_view.flat_items = todos
         prep_view.scroll_offset = 5
 
@@ -265,9 +319,7 @@ class TestPreparationViewLogic:
 
     def test_height_limit_respected(self, prep_view):
         """Output respects height limit."""
-        todos = [
-            PrepTreeNode(type="todo", data={"slug": f"todo-{i}", "status": "pending"}, depth=0) for i in range(100)
-        ]
+        todos = [self._make_todo_node(slug=f"todo-{i}", status="pending") for i in range(100)]
         prep_view.flat_items = todos
 
         lines = prep_view.get_render_lines(80, 10)

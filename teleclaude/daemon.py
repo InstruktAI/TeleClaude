@@ -20,7 +20,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -63,7 +63,6 @@ from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutb
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.utils.transcript import parse_session_transcript
 
 
 # TypedDict definitions for deployment status payloads
@@ -952,17 +951,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 raise ValueError(f"Session {session_id[:8]} missing active_agent metadata after update")
             agent_name = AgentName.from_str(active_agent)
 
-            # Try AI summarization, fall back to raw transcript on API failure
+            # Try AI summarization
             try:
                 title, summary = await summarize(agent_name, transcript_path)
             except Exception as sum_err:
-                logger.warning(
-                    "Summarization failed for %s, falling back to raw transcript: %s", session_id[:8], sum_err
-                )
+                logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
                 title = None
-                summary = parse_session_transcript(
-                    transcript_path, title="", agent_name=agent_name, tail_chars=UI_MESSAGE_MAX_CHARS
-                )
+                summary = None
 
             payload.summary = summary
             payload.title = title
@@ -977,7 +972,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 raise ValueError(f"Summary feedback requires active session: {session_id}")
             # Use feedback=True to clean up old feedback (transcription, etc.) before sending summary
             await self.client.send_message(
-                session, summary, metadata=MessageMetadata(adapter_type="internal"), feedback=True
+                session,
+                summary or "Agent turn completed.",
+                metadata=MessageMetadata(adapter_type="internal"),
+                feedback=True,
             )
 
             # Track summary as last output (only source of truth for last_output)
@@ -1005,6 +1003,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Execute a post-session auto_command and return status/message."""
         auto_context = CommandEventContext(session_id=session_id, args=[])
         cmd_name, auto_args = parse_command_string(auto_command)
+
+        if cmd_name and auto_command:
+            await db.update_session(session_id, last_message_sent=auto_command[:200])
 
         if cmd_name == "agent_then_message":
             return await self._handle_agent_then_message(session_id, auto_args)
@@ -1036,6 +1037,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         message = " ".join(args[2:]).strip()
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
+
+        await db.update_session(session_id, last_message_sent=message[:200])
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
         auto_context = CommandEventContext(session_id=session_id, args=[])

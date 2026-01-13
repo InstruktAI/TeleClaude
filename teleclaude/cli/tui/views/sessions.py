@@ -9,29 +9,36 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.models import (
+    AgentAvailabilityInfo,
+    CreateSessionResult,
+    ProjectInfo,
+    ProjectWithTodosInfo,
+    SessionInfo,
+)
+from teleclaude.cli.models import (
+    ComputerInfo as ApiComputerInfo,
+)
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.theme import AGENT_COLORS
-from teleclaude.cli.tui.tree import TreeNode, build_tree
+from teleclaude.cli.tui.tree import (
+    ComputerDisplayInfo,
+    ComputerNode,
+    ProjectNode,
+    SessionNode,
+    TreeNode,
+    build_tree,
+)
+from teleclaude.cli.tui.types import CursesWindow
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
 if TYPE_CHECKING:
+    from teleclaude.cli.api_client import TelecAPIClient
     from teleclaude.cli.tui.app import FocusContext
 
 logger = get_logger(__name__)
-
-
-def _to_int(value: object, default: int = 0) -> int:
-    """Convert value to int with safe fallback."""
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return default
-    return default
 
 
 def _relative_time(iso_timestamp: str | None) -> str:
@@ -66,13 +73,13 @@ def _relative_time(iso_timestamp: str | None) -> str:
         return ""
 
 
-class SessionsView(ScrollableViewMixin, BaseView):
+class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
     def __init__(
         self,
-        api: object,
-        agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
+        api: "TelecAPIClient",
+        agent_availability: dict[str, AgentAvailabilityInfo],
         focus: FocusContext,
         pane_manager: TmuxPaneManager,
     ):
@@ -97,9 +104,9 @@ class SessionsView(ScrollableViewMixin, BaseView):
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
         self._active_field: dict[str, str] = {}  # session_id -> "input" | "output" | "none"
         # Store sessions for child lookup
-        self._sessions: list[dict[str, object]] = []  # guard: loose-dict
+        self._sessions: list[SessionInfo] = []
         # Store computers for SSH connection lookup
-        self._computers: list[dict[str, object]] = []  # guard: loose-dict
+        self._computers: list[ApiComputerInfo] = []
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
         # Signal for app to trigger data refresh
@@ -111,9 +118,9 @@ class SessionsView(ScrollableViewMixin, BaseView):
 
     async def refresh(
         self,
-        computers: list[dict[str, object]],  # guard: loose-dict
-        projects: list[dict[str, object]],  # guard: loose-dict
-        sessions: list[dict[str, object]],  # guard: loose-dict
+        computers: list[ApiComputerInfo],
+        projects: list[ProjectWithTodosInfo],
+        sessions: list[SessionInfo],
     ) -> None:
         """Refresh view data.
 
@@ -142,13 +149,13 @@ class SessionsView(ScrollableViewMixin, BaseView):
         recent_activity: dict[str, bool] = {}
         now = datetime.now(timezone.utc)
         for session in sessions:
-            comp_name = str(session.get("computer", ""))
+            comp_name = session.computer or ""
             if not comp_name:
                 continue
             session_counts[comp_name] = session_counts.get(comp_name, 0) + 1
 
-            last_activity = session.get("last_activity")
-            if isinstance(last_activity, str) and last_activity:
+            last_activity = session.last_activity
+            if last_activity:
                 try:
                     last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
                     if last_dt.tzinfo is None:
@@ -159,19 +166,31 @@ class SessionsView(ScrollableViewMixin, BaseView):
                     continue
 
         # Enrich computer data for badges
-        enriched_computers: list[dict[str, object]] = []  # guard: loose-dict
+        enriched_computers: list[ComputerDisplayInfo] = []
         for computer in computers:
-            name = str(computer.get("name", ""))
-            enriched = dict(computer)
-            enriched["session_count"] = session_counts.get(name, 0)
-            enriched["recent_activity"] = bool(recent_activity.get(name, False))
-            enriched_computers.append(enriched)
+            name = computer.name
+            enriched_computers.append(
+                ComputerDisplayInfo(
+                    computer=computer,
+                    session_count=session_counts.get(name, 0),
+                    recent_activity=bool(recent_activity.get(name, False)),
+                )
+            )
 
-        self.tree = build_tree(enriched_computers, projects, sessions)
+        project_infos = [
+            ProjectInfo(
+                computer=p.computer,
+                name=p.name,
+                path=p.path,
+                description=p.description,
+            )
+            for p in projects
+        ]
+        self.tree = build_tree(enriched_computers, project_infos, sessions)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
-    def _update_activity_state(self, sessions: list[dict[str, object]]) -> None:  # guard: loose-dict
+    def _update_activity_state(self, sessions: list[SessionInfo]) -> None:
         """Update activity state tracking for color coding.
 
         Determines which field (input/output) is "active" (bright) based on changes.
@@ -184,15 +203,12 @@ class SessionsView(ScrollableViewMixin, BaseView):
         idle_threshold_seconds = 60
 
         for session in sessions:
-            session_id = str(session.get("session_id", ""))
-            if not session_id:
-                continue
-
-            curr_input = str(session.get("last_input") or "")
-            curr_output = str(session.get("last_output") or "")
+            session_id = session.session_id
+            curr_input = session.last_input or ""
+            curr_output = session.last_output or ""
 
             # Check if last_activity is older than threshold
-            last_activity_str = str(session.get("last_activity") or "")
+            last_activity_str = session.last_activity or ""
             is_idle_by_time = True  # Default to idle if we can't parse or missing
             if last_activity_str:
                 try:
@@ -259,7 +275,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         # If focused on a computer, filter to that computer's children
         if self.focus.computer:
             for node in self.tree:
-                if node.type == "computer" and node.data.get("name") == self.focus.computer:
+                if node.type == "computer" and node.data.computer.name == self.focus.computer:
                     nodes = node.children
                     logger.debug("Filtered to computer '%s': %d children", self.focus.computer, len(nodes))
                     break
@@ -270,7 +286,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         # If also focused on a project, filter to that project's children
         if self.focus.project and nodes:
             for node in nodes:
-                if node.type == "project" and node.data.get("path") == self.focus.project:
+                if node.type == "project" and node.data.path == self.focus.project:
                     nodes = node.children
                     logger.debug("Filtered to project '%s': %d children", self.focus.project, len(nodes))
                     break
@@ -298,14 +314,31 @@ class SessionsView(ScrollableViewMixin, BaseView):
         """
         result: list[TreeNode] = []
         for node in nodes:
-            # Create a shallow copy with adjusted depth for display
-            display_node = TreeNode(
-                type=node.type,
-                data=node.data,
-                depth=base_depth,
-                children=node.children,
-                parent=node.parent,
-            )
+            display_node: TreeNode
+            if node.type == "computer":
+                display_node = ComputerNode(
+                    type="computer",
+                    data=node.data,
+                    depth=base_depth,
+                    children=node.children,
+                    parent=node.parent,
+                )
+            elif node.type == "project":
+                display_node = ProjectNode(
+                    type="project",
+                    data=node.data,
+                    depth=base_depth,
+                    children=node.children,
+                    parent=node.parent,
+                )
+            else:
+                display_node = SessionNode(
+                    type="session",
+                    data=node.data,
+                    depth=base_depth,
+                    children=node.children,
+                    parent=node.parent,
+                )
             result.append(display_node)
             result.extend(self._flatten_tree(node.children, base_depth + 1))
         return result
@@ -324,7 +357,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         selected = self.flat_items[self.selected_index]
         if selected.type == "session":
             # Show toggle state in action bar
-            tmux_session = str(selected.data.get("tmux_session_name") or "")
+            tmux_session = selected.data.session.tmux_session_name or ""
             is_previewing = self.pane_manager.active_session == tmux_session
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
@@ -353,14 +386,14 @@ class SessionsView(ScrollableViewMixin, BaseView):
         logger.debug("drill_down: item.type=%s", item.type)
 
         if item.type == "computer":
-            self.focus.push("computer", str(item.data.get("name", "")))
+            self.focus.push("computer", item.data.computer.name)
             self.rebuild_for_focus()
             self.selected_index = 0
             logger.debug("drill_down: pushed computer focus")
             return True
         if item.type == "session":
             # Expand this session (if not already expanded)
-            session_id = str(item.data.get("session_id", ""))
+            session_id = item.data.session.session_id
             if session_id in self.collapsed_sessions:
                 self.collapsed_sessions.discard(session_id)
                 logger.debug("drill_down: expanded session %s", session_id[:8])
@@ -385,7 +418,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         logger.debug("collapse_selected: item.type=%s", item.type)
 
         if item.type == "session":
-            session_id = str(item.data.get("session_id", ""))
+            session_id = item.data.session.session_id
             if session_id not in self.collapsed_sessions:
                 self.collapsed_sessions.add(session_id)
                 logger.debug("collapse_selected: collapsed session %s", session_id[:8])
@@ -414,12 +447,11 @@ class SessionsView(ScrollableViewMixin, BaseView):
         """
         for node in nodes:
             if node.type == "session":
-                session_id = str(node.data.get("session_id", ""))
-                self.collapsed_sessions.add(session_id)
+                self.collapsed_sessions.add(node.data.session.session_id)
             if node.children:
                 self._collect_all_session_ids(node.children)
 
-    def handle_enter(self, stdscr: object) -> None:
+    def handle_enter(self, stdscr: CursesWindow) -> None:
         """Handle Enter key - perform action on selected item.
 
         Args:
@@ -449,26 +481,26 @@ class SessionsView(ScrollableViewMixin, BaseView):
             ComputerInfo with user/host for SSH, or None if not found
         """
         for comp in self._computers:
-            if comp.get("name") == computer_name:
+            if comp.name == computer_name:
                 return ComputerInfo(
                     name=computer_name,
-                    is_local=bool(comp.get("is_local")),
-                    user=comp.get("user"),  # type: ignore[arg-type]
-                    host=comp.get("host"),  # type: ignore[arg-type]
-                    tmux_binary=comp.get("tmux_binary"),  # type: ignore[arg-type]
+                    is_local=comp.is_local,
+                    user=comp.user,
+                    host=comp.host,
+                    tmux_binary=comp.tmux_binary,
                 )
         return None
 
-    def _toggle_session_pane(self, item: TreeNode) -> None:
+    def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.
 
         Args:
             item: Session node
         """
-        session = item.data
-        session_id = str(session.get("session_id", ""))
-        tmux_session = str(session.get("tmux_session_name") or "")
-        computer_name = str(session.get("computer", "local"))
+        session = item.data.session
+        session_id = session.session_id
+        tmux_session = session.tmux_session_name or ""
+        computer_name = session.computer or "local"
 
         logger.debug(
             "_toggle_session_pane: session_id=%s, tmux=%s, computer=%s",
@@ -492,16 +524,16 @@ class SessionsView(ScrollableViewMixin, BaseView):
         # Look for child sessions (sessions where initiator_session_id == this session's id)
         child_tmux_session: str | None = None
         for sess in self._sessions:
-            if sess.get("initiator_session_id") == session_id:
-                child_tmux = sess.get("tmux_session_name")
+            if sess.initiator_session_id == session_id:
+                child_tmux = sess.tmux_session_name
                 if child_tmux:
-                    child_tmux_session = str(child_tmux)
+                    child_tmux_session = child_tmux
                     break
 
         # Toggle pane visibility (handles both local and remote via SSH)
         self.pane_manager.toggle_session(tmux_session, child_tmux_session, computer_info)
 
-    def _start_session_for_project(self, stdscr: object, project: dict[str, object]) -> None:  # guard: loose-dict
+    def _start_session_for_project(self, stdscr: CursesWindow, project: ProjectInfo) -> None:
         """Open modal to start session on project.
 
         Args:
@@ -509,16 +541,16 @@ class SessionsView(ScrollableViewMixin, BaseView):
             project: Project data
         """
         # Use project's computer field, fallback to focused computer, then "local"
-        computer_value = project.get("computer") or self.focus.computer or "local"
+        computer_value = project.computer or self.focus.computer or "local"
         logger.info(
             "_start_session_for_project: project_computer=%s, focus_computer=%s, resolved=%s",
-            project.get("computer"),
+            project.computer,
             self.focus.computer,
             computer_value,
         )
         modal = StartSessionModal(
             computer=str(computer_value),
-            project_path=str(project.get("path", "")),
+            project_path=project.path,
             api=self.api,
             agent_availability=self.agent_availability,
         )
@@ -529,12 +561,12 @@ class SessionsView(ScrollableViewMixin, BaseView):
 
     def _attach_new_session(
         self,
-        result: dict[str, object],  # guard: loose-dict
+        result: CreateSessionResult,
         computer: str,
-        stdscr: object,
+        stdscr: CursesWindow,
     ) -> None:
         """Attach newly created session to the side pane immediately."""
-        tmux_session_name = str(result.get("tmux_session_name") or "")
+        tmux_session_name = result.tmux_session_name or ""
         if not tmux_session_name:
             logger.warning("New session missing tmux_session_name, cannot attach")
             return
@@ -545,7 +577,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         else:
             attach_tmux_from_result(result, stdscr)
 
-    def handle_key(self, key: int, stdscr: object) -> None:
+    def handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle view-specific keys.
 
         Args:
@@ -587,9 +619,10 @@ class SessionsView(ScrollableViewMixin, BaseView):
                 logger.debug("handle_key: 'k' ignored, not on a session")
                 return  # Only kill sessions, not computers/projects
 
-            session_id = str(selected.data.get("session_id", ""))
-            computer = str(selected.data.get("computer", ""))
-            title = str(selected.data.get("title", "Unknown"))
+            session = selected.data.session
+            session_id = session.session_id
+            computer = session.computer or ""
+            title = session.title
 
             # Confirm kill with modal
             modal = ConfirmModal(
@@ -606,7 +639,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
 
             try:
                 result = asyncio.get_event_loop().run_until_complete(
-                    self.api.end_session(session_id=session_id, computer=computer)  # type: ignore[attr-defined]
+                    self.api.end_session(session_id=session_id, computer=computer)
                 )
                 if result:
                     self.needs_refresh = True
@@ -675,14 +708,14 @@ class SessionsView(ScrollableViewMixin, BaseView):
         indent = "  " * item.depth
 
         if item.type == "computer":
-            name = str(item.data.get("name", ""))
-            session_count = _to_int(item.data.get("session_count", 0))
+            name = item.data.computer.name
+            session_count = item.data.session_count
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}🖥  {name} {suffix}"
             return [line[:width]]
 
         if item.type == "project":
-            path = str(item.data.get("path", ""))
+            path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}📁 {path} {suffix}"
@@ -693,7 +726,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
 
         return [""]
 
-    def _format_session(self, item: TreeNode, width: int, selected: bool) -> list[str]:  # noqa: ARG002
+    def _format_session(self, item: SessionNode, width: int, selected: bool) -> list[str]:  # noqa: ARG002
         """Format session for display (1-3 lines).
 
         Args:
@@ -704,21 +737,22 @@ class SessionsView(ScrollableViewMixin, BaseView):
         Returns:
             List of formatted lines (1-3 depending on content and collapsed state)
         """
-        session = item.data
-        session_id = str(session.get("session_id", ""))
+        session_display = item.data
+        session = session_display.session
+        session_id = session.session_id
         is_collapsed = session_id in self.collapsed_sessions
 
         indent = "  " * item.depth
-        agent = str(session.get("active_agent") or "?")
-        mode = str(session.get("thinking_mode", "?"))
-        title = str(session.get("title", "Untitled"))
-        idx = str(session.get("display_index", "?"))
+        agent = session.active_agent or "?"
+        mode = session.thinking_mode or "?"
+        title = session.title
+        idx = session_display.display_index
 
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Relative time
-        last_activity = str(session.get("last_activity") or "")
+        last_activity = session.last_activity or ""
         rel_time = _relative_time(last_activity)
         time_suffix = f"  {rel_time}" if rel_time else ""
 
@@ -739,14 +773,14 @@ class SessionsView(ScrollableViewMixin, BaseView):
         lines.append(line2[:width])
 
         # Line 3: Last input (only if content exists)
-        last_input = str(session.get("last_input") or "").strip()
+        last_input = (session.last_input or "").strip()
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             line3 = f"{content_indent}last input: {input_text}"
             lines.append(line3[:width])
 
         # Line 4: Last output (only if content exists)
-        last_output = str(session.get("last_output") or "").strip()
+        last_output = (session.last_output or "").strip()
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
             line4 = f"{content_indent}last output: {output_text}"
@@ -754,7 +788,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
 
         return lines
 
-    def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
+    def render(self, stdscr: CursesWindow, start_row: int, height: int, width: int) -> None:
         """Render view content with scrolling support.
 
         Args:
@@ -819,7 +853,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
             self.scroll_offset,
         )
 
-    def _render_item(self, stdscr: object, row: int, item: TreeNode, width: int, selected: bool) -> int:
+    def _render_item(self, stdscr: CursesWindow, row: int, item: TreeNode, width: int, selected: bool) -> int:
         """Render a single tree item.
 
         Args:
@@ -836,14 +870,14 @@ class SessionsView(ScrollableViewMixin, BaseView):
         attr = curses.A_REVERSE if selected else 0
 
         if item.type == "computer":
-            name = str(item.data.get("name", ""))
-            session_count = _to_int(item.data.get("session_count", 0))
+            name = item.data.computer.name
+            session_count = item.data.session_count
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}🖥  {name} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if item.type == "project":
-            path = str(item.data.get("path", ""))
+            path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}📁 {path} {suffix}"
@@ -856,7 +890,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
             return self._render_session(stdscr, row, item, width, selected)
         return 1
 
-    def _render_session(self, stdscr: object, row: int, item: TreeNode, width: int, selected: bool) -> int:
+    def _render_session(self, stdscr: CursesWindow, row: int, item: SessionNode, width: int, selected: bool) -> int:
         """Render session with agent-colored text (1-3 lines).
 
         Color coding rules:
@@ -874,15 +908,16 @@ class SessionsView(ScrollableViewMixin, BaseView):
         Returns:
             Number of lines used (1-3 depending on content and collapsed state)
         """
-        session = item.data
-        session_id = str(session.get("session_id", ""))
+        session_display = item.data
+        session = session_display.session
+        session_id = session.session_id
         is_collapsed = session_id in self.collapsed_sessions
 
         indent = "  " * item.depth
-        agent = str(session.get("active_agent") or "?")
-        mode = str(session.get("thinking_mode", "?"))
-        title = str(session.get("title", "Untitled"))
-        idx = str(session.get("display_index", "?"))
+        agent = session.active_agent or "?"
+        mode = session.thinking_mode or "?"
+        title = session.title
+        idx = session_display.display_index
 
         # Get agent color pairs (muted, normal, highlight)
         agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0, "highlight": 0})
@@ -900,7 +935,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Relative time
-        last_activity = str(session.get("last_activity") or "")
+        last_activity = session.last_activity or ""
         rel_time = _relative_time(last_activity)
         time_suffix = f"  {rel_time}" if rel_time else ""
 
@@ -935,7 +970,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
         output_attr = highlight_attr if active == "output" else muted_attr
 
         # Line 3: Last input (only if content exists)
-        last_input = str(session.get("last_input") or "").strip()
+        last_input = (session.last_input or "").strip()
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             line3 = f"{content_indent}last input: {input_text}"
@@ -946,7 +981,7 @@ class SessionsView(ScrollableViewMixin, BaseView):
             lines_used += 1
 
         # Line 4: Last output (only if content exists)
-        last_output = str(session.get("last_output") or "").strip()
+        last_output = (session.last_output or "").strip()
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
             line4 = f"{content_indent}last output: {output_text}"

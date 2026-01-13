@@ -6,7 +6,6 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast
 
 from instrukt_ai_logging import get_logger
@@ -410,14 +409,6 @@ class AdapterClient:
         Returns:
             Message ID from first successful adapter, or None if all failed
         """
-        summary = self._summarize_output(output)
-        if summary and summary != session.last_feedback_received:
-            await db.update_session(
-                session.session_id,
-                last_feedback_received=summary,
-                last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
-            )
-
         session_to_send = session
         if self._needs_ui_channel(session):
             try:

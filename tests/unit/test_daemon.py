@@ -201,6 +201,7 @@ async def test_agent_then_message_waits_for_stabilization():
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="gemini")
         )
+        mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
 
         result = await daemon._handle_agent_then_message(
@@ -211,6 +212,25 @@ async def test_agent_then_message_waits_for_stabilization():
         assert result["status"] == "success"
         # Verify order: stabilize -> inject -> confirm
         assert call_order == ["wait_for_stable", "inject_message", "confirm_acceptance"]
+        mock_db.update_session.assert_called_with("sess-123", last_message_sent="/prime-architect")
+
+
+@pytest.mark.asyncio
+async def test_execute_auto_command_updates_last_message_sent():
+    """Auto-command should update last_message_sent in session."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+
+    with (
+        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db") as mock_db,
+    ):
+        mock_db.update_session = AsyncMock()
+
+        await daemon._execute_auto_command("sess-456", "agent codex fast")
+
+        mock_db.update_session.assert_called_with("sess-456", last_message_sent="agent codex fast")
 
 
 @pytest.mark.asyncio
@@ -245,6 +265,7 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="claude")
         )
+        mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
 
         result = await daemon._handle_agent_then_message(
@@ -288,6 +309,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="claude")
         )
+        mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
 
         result = await daemon._handle_agent_then_message(

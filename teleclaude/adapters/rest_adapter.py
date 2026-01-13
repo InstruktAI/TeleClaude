@@ -351,21 +351,28 @@ class RESTAdapter(BaseAdapter):
                         }
                     )
 
+                stale_computers: set[str] = set()
                 # Add cached REMOTE projects from cache (skip local to avoid duplicates)
                 if self.cache:
-                    cached_projects = self.cache.get_projects(computer)
+                    cached_projects = self.cache.get_projects(computer, include_stale=True)
                     for proj in cached_projects:
                         comp_name = str(proj.get("computer", ""))
                         if comp_name == computer_name:
                             continue
+                        proj_path = str(proj.get("path", ""))
+                        if comp_name and proj_path:
+                            cache_key = f"{comp_name}:{proj_path}"
+                            if self.cache.is_stale(cache_key, 300):
+                                stale_computers.add(comp_name)
                         result.append(
                             {
                                 "computer": comp_name,
                                 "name": proj["name"],
-                                "path": proj["path"],
+                                "path": proj_path,
                                 "description": proj["desc"],
                             }
                         )
+                self._refresh_stale_projects(stale_computers)
 
                 return result
             except Exception as e:
@@ -456,9 +463,10 @@ class RESTAdapter(BaseAdapter):
 
                 result.append(project)
 
+            stale_computers: set[str] = set()
             # Add REMOTE projects with cached todos from cache (skip local to avoid duplicates)
             if self.cache:
-                cached_projects = self.cache.get_projects()
+                cached_projects = self.cache.get_projects(include_stale=True)
                 for proj in cached_projects:
                     comp_name = str(proj.get("computer", ""))
                     if comp_name == computer_name:
@@ -466,6 +474,9 @@ class RESTAdapter(BaseAdapter):
                     proj_path = str(proj.get("path", ""))
                     if not proj_path:
                         continue
+                    cache_key = f"{comp_name}:{proj_path}"
+                    if self.cache.is_stale(cache_key, 300):
+                        stale_computers.add(comp_name)
 
                     cached_todos = self.cache.get_todos(comp_name, proj_path) if comp_name else []
 
@@ -478,6 +489,7 @@ class RESTAdapter(BaseAdapter):
                     }
                     result.append(remote_project)
 
+            self._refresh_stale_projects(stale_computers)
             return result
 
         @self.app.websocket("/ws")  # type: ignore[misc]
@@ -651,11 +663,19 @@ class RESTAdapter(BaseAdapter):
         adapter = self.client.adapters.get("redis")
         if not isinstance(adapter, RedisAdapter):
             return
-        coro = adapter.refresh_remote_snapshot()
+        coro = self._refresh_remote_cache_and_notify()
         if self.task_registry:
             self.task_registry.spawn(coro, name="initial-refresh")
         else:
             asyncio.create_task(coro)
+
+    async def _refresh_remote_cache_and_notify(self) -> None:
+        """Refresh remote cache snapshot and notify clients to refresh projects."""
+        adapter = self.client.adapters.get("redis")
+        if not isinstance(adapter, RedisAdapter):
+            return
+        await adapter.refresh_remote_snapshot()
+        self._on_cache_change("projects_updated", {"computer": None})
 
     async def _pull_remote_on_interest(self, computer: str, data_type: str) -> None:
         """Pull remote data immediately after subscription."""
@@ -670,6 +690,23 @@ class RESTAdapter(BaseAdapter):
             await adapter.pull_remote_projects_with_todos(computer)
         elif data_type == "sessions":
             await adapter.pull_interested_sessions()
+
+    def _refresh_stale_projects(self, computers: set[str]) -> None:
+        """Trigger background refresh for stale project caches."""
+        if not computers:
+            return
+        adapter = self.client.adapters.get("redis")
+        if not isinstance(adapter, RedisAdapter):
+            return
+
+        for computer in sorted(computers):
+            if computer == "local":
+                continue
+            coro = adapter.pull_remote_projects_with_todos(computer)
+            if self.task_registry:
+                self.task_registry.spawn(coro, name=f"projects-refresh-{computer}")
+            else:
+                asyncio.create_task(coro)
 
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.
@@ -690,7 +727,20 @@ class RESTAdapter(BaseAdapter):
             elif data_type in ("preparation", "projects"):
                 # Send current projects from cache for this computer
                 if self.cache:
-                    projects = self.cache.get_projects(computer if computer != "local" else None)
+                    raw_projects = self.cache.get_projects(computer if computer != "local" else None)
+                    projects: list[dict[str, object]] = []  # guard: loose-dict - WebSocket payload assembly
+                    for proj in raw_projects:
+                        if "description" not in proj and "desc" in proj:
+                            projects.append(
+                                {
+                                    "computer": proj.get("computer"),
+                                    "name": proj.get("name", ""),
+                                    "path": proj.get("path", ""),
+                                    "description": proj.get("desc"),
+                                }
+                            )
+                        else:
+                            projects.append(dict(proj))
                     await websocket.send_json(
                         {"event": "projects_initial", "data": {"projects": projects, "computer": computer}}  # type: ignore[misc]
                     )

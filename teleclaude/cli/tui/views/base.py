@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Generic, TypeVar
 
 
 class BaseView:
@@ -24,7 +24,10 @@ class BaseView:
         raise NotImplementedError(f"{self.__class__.__name__} must implement get_render_lines()")
 
 
-class ScrollableViewMixin:
+T = TypeVar("T")
+
+
+class ScrollableViewMixin(Generic[T]):
     """Mixin providing scroll behavior for views with flat_items list.
 
     Requires these attributes on the class:
@@ -36,7 +39,7 @@ class ScrollableViewMixin:
     The render() method must set _last_rendered_range after rendering.
     """
 
-    flat_items: list[Any]
+    flat_items: list[T]
     selected_index: int
     scroll_offset: int
     _last_rendered_range: tuple[int, int]

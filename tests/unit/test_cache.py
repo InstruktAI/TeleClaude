@@ -218,6 +218,19 @@ def test_get_projects_filters_stale_entries():
     assert projects[0]["name"] == "fresh"
 
 
+def test_get_projects_includes_stale_when_requested():
+    """Test get_projects(include_stale=True) includes stale entries."""
+    cache = DaemonCache()
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    stale_project = {"name": "stale", "path": "/stale", "desc": "Stale"}
+    cache._projects["local:/stale"] = CachedItem(stale_project, cached_at=stale_timestamp)
+
+    projects = cache.get_projects(include_stale=True)
+    assert len(projects) == 1
+    assert projects[0]["name"] == "stale"
+
+
 def test_get_todos_returns_empty_for_stale_data():
     """Test get_todos() returns empty list for stale data."""
     cache = DaemonCache()

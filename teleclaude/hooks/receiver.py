@@ -44,6 +44,13 @@ _HANDLED_EVENTS: frozenset[str] = frozenset(
         "stop",
         "notification",
         "session_end",
+        "before_agent",
+        "before_model",
+        "after_model",
+        "before_tool_selection",
+        "before_tool",
+        "after_tool",
+        "pre_compress",
     }
 )
 
@@ -353,6 +360,8 @@ def main() -> None:
         logger.trace("Hook receiver skipped: unhandled event", event_type=event_type)
         sys.exit(0)
 
+    raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, data)
+
     parent_pid, tty_path = _get_parent_process_info()
 
     teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
@@ -388,16 +397,15 @@ def main() -> None:
                 )
 
         if not teleclaude_session_id:
-            native_session_id, native_log_file = _extract_native_identity(args.agent, data)
-            if native_session_id:
-                teleclaude_session_id = _find_session_by_native_id(native_session_id)
-            if not teleclaude_session_id and native_log_file:
-                teleclaude_session_id = _find_session_by_log_path(native_log_file)
+            if raw_native_session_id:
+                teleclaude_session_id = _find_session_by_native_id(raw_native_session_id)
+            if not teleclaude_session_id and raw_native_log_file:
+                teleclaude_session_id = _find_session_by_log_path(raw_native_log_file)
             if teleclaude_session_id:
                 logger.info(
                     "Hook receiver recovered session from native id",
                     session_id=teleclaude_session_id,
-                    native_session_id=native_session_id,
+                    native_session_id=raw_native_session_id,
                 )
             else:
                 # No TeleClaude session found - this is valid for standalone Claude sessions
@@ -423,6 +431,20 @@ def main() -> None:
         event_type=event_type,
         session_id=teleclaude_session_id,
         agent=args.agent,
+    )
+
+    normalized_native_session_id = data.get("session_id") if isinstance(data.get("session_id"), str) else None
+    normalized_log_file = data.get("transcript_path") if isinstance(data.get("transcript_path"), str) else None
+    logger.debug(
+        "Hook payload summary",
+        event_type=event_type,
+        agent=args.agent,
+        session_id=teleclaude_session_id,
+        raw_native_session_id=raw_native_session_id,
+        raw_transcript_path=raw_native_log_file,
+        normalized_native_session_id=normalized_native_session_id,
+        normalized_transcript_path=normalized_log_file,
+        transcript_missing=bool(event_type == "session_start" and not normalized_log_file),
     )
 
     if parent_pid:

@@ -17,7 +17,8 @@
 7. [Session Management](#session-management)
 8. [File Management](#file-management)
 9. [Configuration & Deployment](#configuration--deployment)
-10. [Key Files Reference](#key-files-reference)
+10. [Data Modeling Policy](#data-modeling-policy)
+11. [Key Files Reference](#key-files-reference)
 
 ---
 
@@ -766,6 +767,16 @@ Generated from `config/ai.instrukt.teleclaude.daemon.plist.template`:
 **CRITICAL:** Redirects stdout/stderr to `/dev/null` to prevent launchd issues. Avoid `stdout=PIPE` in subprocess calls (can leak to child processes).
 
 ---
+
+## Data Modeling Policy
+
+Modeling for resource shapes is consolidated in:
+- `docs/modeling.md`
+
+This policy defines:
+- Core dataclasses as the source of truth
+- Pydantic validation only at system boundaries
+- Session summary vs detail split for REST and WS
 
 ## Key Files Reference
 

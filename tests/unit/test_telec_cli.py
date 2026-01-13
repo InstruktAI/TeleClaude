@@ -8,15 +8,14 @@ import pytest
 
 from teleclaude.cli import telec
 from teleclaude.cli.api_client import APIError
+from teleclaude.cli.models import CreateSessionResult
 
 
 def test_quick_start_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
     called: Dict[str, str] = {}
 
-    async def fake_api(
-        _agent: str, _mode: str, _prompt: str | None
-    ) -> dict[str, object]:  # guard: loose-dict - test stub
-        return {"tmux_session_name": "tc_123", "session_id": "abc"}
+    async def fake_api(_agent: str, _mode: str, _prompt: str | None) -> CreateSessionResult:
+        return CreateSessionResult(status="created", session_id="abc", tmux_session_name="tc_123")
 
     def fake_attach(name: str) -> None:
         called["name"] = name
@@ -32,10 +31,8 @@ def test_quick_start_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_quick_start_handles_missing_tmux_name(monkeypatch: pytest.MonkeyPatch) -> None:
     called: Dict[str, str] = {}
 
-    async def fake_api(
-        _agent: str, _mode: str, _prompt: str | None
-    ) -> dict[str, object]:  # guard: loose-dict - test stub
-        return {"session_id": "abc"}
+    async def fake_api(_agent: str, _mode: str, _prompt: str | None) -> CreateSessionResult:
+        return CreateSessionResult(status="created", session_id="abc", tmux_session_name=None)
 
     def fake_attach(name: str) -> None:
         called["name"] = name
@@ -49,9 +46,7 @@ def test_quick_start_handles_missing_tmux_name(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_quick_start_reports_api_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    async def fake_api(
-        _agent: str, _mode: str, _prompt: str | None
-    ) -> dict[str, object]:  # guard: loose-dict - test stub
+    async def fake_api(_agent: str, _mode: str, _prompt: str | None) -> CreateSessionResult:
         raise APIError("boom")
 
     monkeypatch.setattr(telec, "_quick_start_via_api", fake_api)

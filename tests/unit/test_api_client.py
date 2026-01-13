@@ -2,6 +2,7 @@
 
 # type: ignore - test uses mocked httpx
 
+import json
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -50,14 +51,33 @@ async def test_list_sessions_success():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = [{"session_id": "sess-1", "title": "Test"}]
+    mock_response.text = json.dumps(
+        [
+            {
+                "session_id": "sess-1",
+                "origin_adapter": "telegram",
+                "title": "Test",
+                "working_directory": "/tmp",
+                "thinking_mode": "slow",
+                "active_agent": "claude",
+                "status": "active",
+                "created_at": None,
+                "last_activity": None,
+                "last_input": None,
+                "last_output": None,
+                "tmux_session_name": None,
+                "initiator_session_id": None,
+                "computer": "local",
+            }
+        ]
+    )
 
     with patch.object(client._client, "get", return_value=mock_response) as mock_get:
         mock_get.return_value = mock_response
         result = await client.list_sessions()
 
         assert len(result) == 1
-        assert result[0]["session_id"] == "sess-1"
+        assert result[0].session_id == "sess-1"
         mock_get.assert_called_once()
 
     await client.close()
@@ -71,11 +91,11 @@ async def test_list_sessions_with_computer_filter():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = []
+    mock_response.text = "[]"
 
     with patch.object(client._client, "get", return_value=mock_response) as mock_get:
         await client.list_sessions(computer="local")
-        mock_get.assert_called_once_with("/sessions", params={"computer": "local"})
+        mock_get.assert_called_once_with("/sessions", params={"computer": "local"}, timeout=5.0)
 
     await client.close()
 
@@ -88,13 +108,24 @@ async def test_list_computers_success():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = [{"name": "local", "host": "localhost"}]
+    mock_response.text = json.dumps(
+        [
+            {
+                "name": "local",
+                "status": "online",
+                "user": "me",
+                "host": "localhost",
+                "is_local": True,
+                "tmux_binary": "tmux",
+            }
+        ]
+    )
 
     with patch.object(client._client, "get", return_value=mock_response):
         result = await client.list_computers()
 
         assert len(result) == 1
-        assert result[0]["name"] == "local"
+        assert result[0].name == "local"
 
     await client.close()
 
@@ -107,14 +138,30 @@ async def test_create_session_success():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {"session_id": "new-sess", "tmux_session_name": "tmux-1"}
+    mock_response.text = json.dumps({"status": "success", "session_id": "new-sess", "tmux_session_name": "tmux-1"})
 
     with patch.object(client._client, "post", return_value=mock_response) as mock_post:
-        result = await client.create_session(computer="local", project_dir="/home/user/project")
+        result = await client.create_session(
+            computer="local",
+            project_dir="/home/user/project",
+            agent="claude",
+            thinking_mode="slow",
+        )
 
-        assert result["session_id"] == "new-sess"
+        assert result.session_id == "new-sess"
         mock_post.assert_called_once_with(
-            "/sessions", json={"computer": "local", "project_dir": "/home/user/project"}, timeout=30.0
+            "/sessions",
+            params=None,
+            json={
+                "computer": "local",
+                "project_dir": "/home/user/project",
+                "agent": "claude",
+                "thinking_mode": "slow",
+                "title": None,
+                "message": None,
+                "auto_command": None,
+            },
+            timeout=30.0,
         )
 
     await client.close()
@@ -133,7 +180,7 @@ async def test_end_session_success():
         result = await client.end_session(session_id="sess-1", computer="local")
 
         assert result is True
-        mock_delete.assert_called_once_with("/sessions/sess-1", params={"computer": "local"})
+        mock_delete.assert_called_once_with("/sessions/sess-1", params={"computer": "local"}, timeout=5.0)
 
     await client.close()
 
@@ -196,12 +243,22 @@ async def test_get_agent_availability():
 
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {"claude": {"available": True}}
+    mock_response.text = json.dumps(
+        {
+            "claude": {
+                "agent": "claude",
+                "available": True,
+                "unavailable_until": None,
+                "reason": None,
+                "error": None,
+            }
+        }
+    )
 
     with patch.object(client._client, "get", return_value=mock_response):
         result = await client.get_agent_availability()
 
         assert "claude" in result
-        assert result["claude"]["available"] is True
+        assert result["claude"].available is True
 
     await client.close()

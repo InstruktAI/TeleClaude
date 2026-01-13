@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -145,6 +146,33 @@ class TestListSessions:
         sessions = await test_db.list_sessions()
 
         assert len(sessions) == 0
+
+
+class TestAgentAvailability:
+    """Tests for agent availability helpers."""
+
+    @pytest.mark.asyncio
+    async def test_get_agent_availability_clears_expired(self, test_db):
+        """Expired unavailability should be cleared on read."""
+        past = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        await test_db.conn.execute(
+            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
+               VALUES (?, 0, ?, ?)""",
+            ("gemini", past, "rate_limited"),
+        )
+        await test_db.conn.commit()
+
+        info = await test_db.get_agent_availability("gemini")
+
+        assert info == {"available": True, "unavailable_until": None, "reason": None}
+        row = await test_db.conn.execute(
+            "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
+            ("gemini",),
+        )
+        persisted = await row.fetchone()
+        assert persisted["available"] == 1  # type: ignore[index]
+        assert persisted["unavailable_until"] is None  # type: ignore[index]
+        assert persisted["reason"] is None  # type: ignore[index]
 
 
 class TestUpdateSession:

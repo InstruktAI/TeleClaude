@@ -1382,9 +1382,14 @@ async def handle_agent_resume(
         return
 
     thinking_raw = session.thinking_mode if isinstance(session.thinking_mode, str) else None
+    native_session_id_override = args[0].strip() if args else ""
+    native_session_id = native_session_id_override or session.native_session_id
+    if native_session_id_override:
+        await db.update_session(session.session_id, native_session_id=native_session_id_override)
+
     resume_args = AgentResumeArgs(
         agent_name=agent_name,
-        native_session_id=session.native_session_id,
+        native_session_id=native_session_id,
         thinking_mode=ThinkingMode(thinking_raw) if thinking_raw else ThinkingMode.SLOW,
     )
 

@@ -260,9 +260,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         for peer in peers:
             try:
-                await self.pull_remote_projects(peer.name)
+                await self.pull_remote_projects_with_todos(peer.name)
             except Exception as e:
-                logger.warning("Failed to pull projects from %s: %s", peer.name, e)
+                logger.warning("Failed to pull projects-with-todos from %s: %s", peer.name, e)
 
         logger.info("Initial cache populated: %d computers", len(peers))
 
@@ -1499,6 +1499,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             if status == "error":
                 error_msg = envelope.get("error", "unknown error")
                 logger.warning("Error from %s: %s", computer, error_msg)
+                if isinstance(error_msg, str) and "list_projects_with_todos" in error_msg:
+                    await self.pull_remote_projects(computer)
                 return
 
             # Extract projects data
@@ -1545,6 +1547,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             if status == "error":
                 error_msg = envelope.get("error", "unknown error")
                 logger.warning("Error from %s: %s", computer, error_msg)
+                if isinstance(error_msg, str) and "list_projects_with_todos" in error_msg:
+                    await self.pull_remote_projects(computer)
                 return
 
             data = envelope.get("data")

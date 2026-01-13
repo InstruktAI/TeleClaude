@@ -92,15 +92,15 @@ def init_colors() -> None:
     curses.init_pair(2, 172, -1)  # Normal: orange (original Claude color)
     curses.init_pair(3, curses.COLOR_YELLOW, -1)  # Highlight: bright yellow
 
-    # Gemini (cyan tones)
-    curses.init_pair(4, 24, -1)  # Muted: dark cyan
-    curses.init_pair(5, 67, -1)  # Normal: cyan
-    curses.init_pair(6, curses.COLOR_CYAN, -1)  # Highlight: bright cyan
+    # Gemini (lilac/purple tones)
+    curses.init_pair(4, 97, -1)  # Muted: soft lilac
+    curses.init_pair(5, 141, -1)  # Normal: lilac
+    curses.init_pair(6, 183, -1)  # Highlight: light purple
 
-    # Codex (green tones)
-    curses.init_pair(7, 22, -1)  # Muted: dark green
-    curses.init_pair(8, 65, -1)  # Normal: green
-    curses.init_pair(9, curses.COLOR_GREEN, -1)  # Highlight: bright green
+    # Codex (steel blue tones)
+    curses.init_pair(7, 66, -1)  # Muted: steel blue
+    curses.init_pair(8, 109, -1)  # Normal: steel blue
+    curses.init_pair(9, 110, -1)  # Highlight: light steel blue
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)

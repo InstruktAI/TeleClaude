@@ -1,9 +1,10 @@
 """Parse todos from roadmap.md."""
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel
 
 
 @dataclass
@@ -127,12 +128,19 @@ def _parse_state_file(state_path: Path) -> tuple[str | None, str | None]:
     """
     try:
         content = state_path.read_text()
-        state = json.loads(content)
-        build_status = state.get("build")
-        review_status = state.get("review")
-        # Convert to string or None
-        build_str = str(build_status) if build_status else None
-        review_str = str(review_status) if review_status else None
-        return build_str, review_str
-    except (json.JSONDecodeError, OSError):
+    except OSError:
         return None, None
+
+    try:
+        state = _StateData.model_validate_json(content)
+    except ValueError:
+        return None, None
+
+    return state.build, state.review
+
+
+class _StateData(BaseModel):
+    """Typed state.json payload."""
+
+    build: str | None = None
+    review: str | None = None

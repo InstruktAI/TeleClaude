@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -76,6 +77,44 @@ async def test_pull_initial_sessions_happy_path():
 
     # Verify cache was populated
     assert mock_cache.update_session.call_count == 2  # Called for each computer
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_populate_initial_cache_pulls_projects_with_todos():
+    """Startup cache population should pull projects-with-todos for all peers."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+    adapter.computer_name = "LocalPC"
+
+    adapter.cache = MagicMock()
+    adapter.discover_peers = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                name="RemotePC1",
+                last_seen="now",
+                user="user1",
+                host="host1",
+                role="worker",
+                system_stats=None,
+            ),
+            SimpleNamespace(
+                name="RemotePC2",
+                last_seen="now",
+                user="user2",
+                host="host2",
+                role="worker",
+                system_stats=None,
+            ),
+        ]
+    )
+    adapter.pull_remote_projects_with_todos = AsyncMock()
+
+    await adapter._populate_initial_cache()
+
+    assert adapter.pull_remote_projects_with_todos.call_count == 2
 
 
 @pytest.mark.unit
@@ -399,6 +438,32 @@ async def test_pull_remote_projects_with_todos_no_cache():
     await adapter.pull_remote_projects_with_todos("RemotePC")
 
     adapter.send_request.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_pull_remote_projects_with_todos_fallbacks_to_projects():
+    """Fallback to list_projects when projects-with-todos is unsupported."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+    adapter.cache = MagicMock()
+
+    adapter.send_request = AsyncMock(return_value="msg-901")
+    mock_client.read_response = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "error",
+                "error": "No handler registered for event: list_projects_with_todos",
+            }
+        )
+    )
+    adapter.pull_remote_projects = AsyncMock()
+
+    await adapter.pull_remote_projects_with_todos("RemotePC")
+
+    adapter.pull_remote_projects.assert_awaited_once_with("RemotePC")
 
 
 @pytest.mark.unit

@@ -4,13 +4,27 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from typing import Any, cast
+from typing import TypeAlias
 
 import httpx
 from instrukt_ai_logging import get_logger
+from pydantic import TypeAdapter, ValidationError
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, unix_connect
 
+from teleclaude.cli.models import (
+    AgentAvailabilityInfo,
+    ComputerInfo,
+    CreateSessionResult,
+    ProjectInfo,
+    ProjectWithTodosInfo,
+    SessionInfo,
+    SubscribeData,
+    SubscribeRequest,
+    UnsubscribeData,
+    UnsubscribeRequest,
+    WsEvent,
+)
 from teleclaude.constants import REST_SOCKET_PATH
 
 logger = get_logger(__name__)
@@ -24,6 +38,8 @@ WS_MAX_BACKOFF = 30.0  # Maximum reconnect delay
 WS_BACKOFF_MULTIPLIER = 2.0  # Exponential backoff multiplier
 
 __all__ = ["TelecAPIClient", "APIError"]
+
+WsPayload: TypeAlias = dict[str, dict[str, str | list[str]]]
 
 
 class APIError(Exception):
@@ -46,7 +62,7 @@ class TelecAPIClient:
         self._ws_thread: threading.Thread | None = None
         self._ws_running = False
         self._ws_subscriptions: set[str] = set()
-        self._ws_callback: Callable[[str, dict[str, object]], None] | None = None  # guard: loose-dict
+        self._ws_callback: Callable[[WsEvent], None] | None = None
         self._ws_lock = threading.Lock()
 
     async def connect(self) -> None:
@@ -78,7 +94,7 @@ class TelecAPIClient:
 
     def start_websocket(
         self,
-        callback: Callable[[str, dict[str, object]], None],  # guard: loose-dict
+        callback: Callable[[WsEvent], None],
         subscriptions: list[str] | None = None,
     ) -> None:
         """Start WebSocket connection for push updates.
@@ -118,21 +134,15 @@ class TelecAPIClient:
 
     def subscribe(self, computer: str, types: list[str]) -> None:
         """Subscribe to updates for a specific computer."""
-        payload = cast(
-            dict[str, object],  # guard: loose-dict - WebSocket payload boundary
-            {"subscribe": {"computer": computer, "types": types}},
-        )
-        self._send_ws(payload)
+        payload = SubscribeRequest(subscribe=SubscribeData(computer=computer, types=types))
+        self._send_ws({"subscribe": {"computer": payload.subscribe.computer, "types": payload.subscribe.types}})
 
     def unsubscribe(self, computer: str) -> None:
         """Unsubscribe from updates for a specific computer."""
-        payload = cast(
-            dict[str, object],  # guard: loose-dict - WebSocket payload boundary
-            {"unsubscribe": {"computer": computer}},
-        )
-        self._send_ws(payload)
+        payload = UnsubscribeRequest(unsubscribe=UnsubscribeData(computer=computer))
+        self._send_ws({"unsubscribe": {"computer": payload.unsubscribe.computer}})
 
-    def _send_ws(self, payload: dict[str, object]) -> None:  # guard: loose-dict
+    def _send_ws(self, payload: WsPayload) -> None:
         with self._ws_lock:
             if not self._ws:
                 return
@@ -188,7 +198,14 @@ class TelecAPIClient:
 
         logger.info("WebSocket connected, subscribing to: %s", self._ws_subscriptions)
 
-        ws.send(json.dumps({"subscribe": {"computer": "local", "types": list(self._ws_subscriptions)}}))
+        initial_sub = SubscribeRequest(subscribe=SubscribeData(computer="local", types=list(self._ws_subscriptions)))
+        initial_payload: WsPayload = {
+            "subscribe": {
+                "computer": initial_sub.subscribe.computer,
+                "types": initial_sub.subscribe.types,
+            }
+        }
+        ws.send(json.dumps(initial_payload))
 
         # Process incoming messages
         for message in ws:
@@ -196,34 +213,24 @@ class TelecAPIClient:
                 break
 
             try:
-                data_raw = json.loads(message)
-                if not isinstance(data_raw, dict):
-                    continue
-
-                data: dict[str, object] = data_raw  # guard: loose-dict
-                event = str(data.get("event", ""))
-                event_data_raw = data.get("data")
-
-                if event and self._ws_callback:
-                    # Type guard: ensure event_data is a dict
-                    if isinstance(event_data_raw, dict):
-                        event_data: dict[str, object] = event_data_raw  # guard: loose-dict
-                    else:
-                        event_data = {}
-                    self._ws_callback(event, event_data)
-
+                ws_event: WsEvent = TypeAdapter(WsEvent).validate_json(message)
+                if self._ws_callback:
+                    self._ws_callback(ws_event)
             except json.JSONDecodeError:
                 logger.warning("Invalid JSON from WebSocket: %s", message[:100])
+            except ValidationError as e:
+                logger.warning("Invalid WebSocket event payload: %s", e)
 
     # --- REST API Methods ---
 
-    async def _request(  # type: ignore[explicit-any]
+    async def _request(
         self,
         method: str,
         url: str,
         *,
         timeout: float | None = None,
-        **kwargs: Any,
+        params: dict[str, str] | None = None,
+        json_body: dict[str, str | None] | None = None,
     ) -> httpx.Response:
         """Make HTTP request with error handling.
 
@@ -242,16 +249,15 @@ class TelecAPIClient:
         if not self._client:
             raise APIError("Client not connected. Call connect() first.")
 
-        if timeout is not None:
-            kwargs["timeout"] = timeout
+        request_timeout = timeout if timeout is not None else 5.0
 
         try:
             if method == "GET":
-                resp = await self._client.get(url, **kwargs)
+                resp = await self._client.get(url, params=params, timeout=request_timeout)
             elif method == "POST":
-                resp = await self._client.post(url, **kwargs)
+                resp = await self._client.post(url, params=params, json=json_body, timeout=request_timeout)
             elif method == "DELETE":
-                resp = await self._client.delete(url, **kwargs)
+                resp = await self._client.delete(url, params=params, timeout=request_timeout)
             else:
                 raise APIError(f"Unsupported HTTP method: {method}")
 
@@ -266,7 +272,7 @@ class TelecAPIClient:
         except Exception as e:
             raise APIError(f"Unexpected error: {e}") from e
 
-    async def list_sessions(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
+    async def list_sessions(self, computer: str | None = None) -> list[SessionInfo]:
         """List sessions from all computers or specific computer.
 
         Args:
@@ -280,9 +286,9 @@ class TelecAPIClient:
         """
         params: dict[str, str] = {"computer": computer} if computer else {}
         resp = await self._request("GET", "/sessions", params=params)
-        return resp.json()
+        return TypeAdapter(list[SessionInfo]).validate_json(resp.text)
 
-    async def list_computers(self) -> list[dict[str, object]]:  # guard: loose-dict
+    async def list_computers(self) -> list[ComputerInfo]:
         """List online computers only.
 
         Returns:
@@ -292,9 +298,9 @@ class TelecAPIClient:
             APIError: If request fails
         """
         resp = await self._request("GET", "/computers")
-        return resp.json()
+        return TypeAdapter(list[ComputerInfo]).validate_json(resp.text)
 
-    async def list_projects(self, computer: str | None = None) -> list[dict[str, object]]:  # guard: loose-dict
+    async def list_projects(self, computer: str | None = None) -> list[ProjectInfo]:
         """List projects from all or specific computer.
 
         Args:
@@ -308,9 +314,19 @@ class TelecAPIClient:
         """
         params: dict[str, str] = {"computer": computer} if computer else {}
         resp = await self._request("GET", "/projects", params=params)
-        return resp.json()
+        return TypeAdapter(list[ProjectInfo]).validate_json(resp.text)
 
-    async def create_session(self, **kwargs: object) -> dict[str, object]:  # guard: loose-dict
+    async def create_session(
+        self,
+        *,
+        computer: str,
+        project_dir: str,
+        agent: str,
+        thinking_mode: str,
+        title: str | None = None,
+        message: str | None = None,
+        auto_command: str | None = None,
+    ) -> CreateSessionResult:
         """Create a new session.
 
         Args:
@@ -323,8 +339,17 @@ class TelecAPIClient:
             APIError: If request fails
         """
         # Session creation spawns tmux + agent, needs longer timeout
-        resp = await self._request("POST", "/sessions", timeout=30.0, json=kwargs)
-        return resp.json()
+        payload = {
+            "computer": computer,
+            "project_dir": project_dir,
+            "agent": agent,
+            "thinking_mode": thinking_mode,
+            "title": title,
+            "message": message,
+            "auto_command": auto_command,
+        }
+        resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)
+        return TypeAdapter(CreateSessionResult).validate_json(resp.text)
 
     async def end_session(self, session_id: str, computer: str) -> bool:
         """End a session.
@@ -360,7 +385,7 @@ class TelecAPIClient:
             "POST",
             f"/sessions/{session_id}/message",
             params={"computer": computer},
-            json={"message": message},
+            json_body={"message": message},
         )
         return resp.status_code == 200
 
@@ -381,12 +406,12 @@ class TelecAPIClient:
         resp = await self._request(
             "GET",
             f"/sessions/{session_id}/transcript",
-            params={"computer": computer, "tail_chars": tail_chars},
+            params={"computer": computer, "tail_chars": str(tail_chars)},
         )
-        result = resp.json()
-        return result.get("transcript", "")
+        result = TypeAdapter(dict[str, str | None]).validate_json(resp.text)
+        return result.get("transcript") or ""
 
-    async def get_agent_availability(self) -> dict[str, dict[str, object]]:  # guard: loose-dict
+    async def get_agent_availability(self) -> dict[str, AgentAvailabilityInfo]:
         """Get agent availability status.
 
         Returns:
@@ -396,9 +421,9 @@ class TelecAPIClient:
             APIError: If request fails
         """
         resp = await self._request("GET", "/agents/availability")
-        return resp.json()
+        return TypeAdapter(dict[str, AgentAvailabilityInfo]).validate_json(resp.text)
 
-    async def list_projects_with_todos(self) -> list[dict[str, object]]:  # guard: loose-dict
+    async def list_projects_with_todos(self) -> list[ProjectWithTodosInfo]:
         """List all projects with their todos included.
 
         Returns:
@@ -408,7 +433,7 @@ class TelecAPIClient:
             APIError: If request fails
         """
         resp = await self._request("GET", "/projects-with-todos")
-        return resp.json()
+        return TypeAdapter(list[ProjectWithTodosInfo]).validate_json(resp.text)
 
     async def agent_restart(self, session_id: str) -> bool:
         """Restart agent in a session (preserves conversation via --resume).

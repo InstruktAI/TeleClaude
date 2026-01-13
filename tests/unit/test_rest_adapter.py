@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.rest_adapter import RESTAdapter
 
 
@@ -105,6 +106,20 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
         data = response.json()
         assert len(data) == 1
         assert data[0]["session_id"] == "sess-1"
+
+
+@pytest.mark.asyncio
+async def test_refresh_remote_cache_notifies_projects(rest_adapter, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+    """Initial refresh should notify clients to refresh projects."""
+    redis_adapter = MagicMock(spec=RedisAdapter)
+    redis_adapter.refresh_remote_snapshot = AsyncMock()
+    mock_adapter_client.adapters = {"redis": redis_adapter}
+    rest_adapter._on_cache_change = MagicMock()
+
+    await rest_adapter._refresh_remote_cache_and_notify()
+
+    redis_adapter.refresh_remote_snapshot.assert_awaited_once()
+    rest_adapter._on_cache_change.assert_called_once_with("projects_updated", {"computer": None})
 
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -362,7 +377,7 @@ def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: i
         response = test_client.get("/projects?computer=local")
         assert response.status_code == 200
         # Verify cache was queried with computer filter
-        mock_cache.get_projects.assert_called_once_with("local")
+        mock_cache.get_projects.assert_called_once_with("local", include_stale=True)
 
 
 def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]

@@ -51,8 +51,12 @@ Notification fields:
 
 ## TeleClaude adapter mapping (Gemini → internal hook payloads)
 
-TeleClaude only consumes a **subset** of hook events. The receiver writes them
-to the `hook_outbox` database table with the following internal shape:
+TeleClaude installs hooks for **all Gemini events** so any event can refresh
+the transcript path. Only session_start, stop, notification, and session_end
+drive agent workflow. Other events are used for transcript capture only.
+
+The receiver writes hook events to the `hook_outbox` database table with the
+following internal shape:
 
 ```
 {
