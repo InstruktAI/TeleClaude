@@ -48,7 +48,7 @@ You are expected to be resourceful and pragmatic, NOT a rigid executor.
 - Create deferrals.md and STOP (see next-build.md for format)
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -116,7 +116,7 @@ Instead:
 **CRITICAL:** Do NOT mark build as complete if deferrals.md has PENDING items.
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -160,7 +160,7 @@ Before reporting completion, verify:
 - No PENDING items in deferrals.md (or file doesn't exist)
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -190,7 +190,7 @@ Before reporting completion, verify:
 **Completeness is your PRIMARY responsibility.** Code can be beautifully written but still incomplete.
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -304,7 +304,7 @@ Look for over-mocking anti-patterns:
 - Suggest: "Add integration test that exercises real flow"
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -364,7 +364,7 @@ fi
 **Only proceed to Step 4 (skill-based review) if deferrals.md is not blocking.**
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -404,7 +404,7 @@ fi
 | {req} | ✅/⚠️/❌ | |
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -465,7 +465,7 @@ If reviewer reports "Review blocked. Deferrals pending":
 4. Send worker back to build: "Resolve deferrals first, then mark build complete"
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -484,7 +484,7 @@ If reviewer reports "Review blocked. Deferrals pending":
    - Check for unchecked tasks in implementation-plan.md
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -548,7 +548,7 @@ fi
 - Orchestrator must investigate and resolve before finalize can proceed
 ```
 
-- [ ] Complete this task
+- [x] Complete this task
 
 ---
 
@@ -627,12 +627,12 @@ fi
 
 ## Success Criteria from Requirements
 
-- [ ] prime-builder.md emphasizes autonomy and pragmatism
-- [ ] next-build.md defines deferrals.md format and pre-completion checks
-- [ ] prime-reviewer.md makes completeness PRIMARY responsibility
-- [ ] next-review.md blocks if deferrals PENDING, requires success criteria evidence
-- [ ] prime-orchestrator.md defines deferral resolution process
-- [ ] next-finalize.md has final sanity checks before archiving
+- [x] prime-builder.md emphasizes autonomy and pragmatism
+- [x] next-build.md defines deferrals.md format and pre-completion checks
+- [x] prime-reviewer.md makes completeness PRIMARY responsibility
+- [x] next-review.md blocks if deferrals PENDING, requires success criteria evidence
+- [x] prime-orchestrator.md defines deferral resolution process
+- [x] next-finalize.md has final sanity checks before archiving
 - [ ] Test run: worker creates deferrals.md, orchestrator resolves, reviewer verifies completeness
 - [ ] Test run: incomplete work is caught and blocked at review
 - [ ] Test run: finalize catches any missed issues before archiving
