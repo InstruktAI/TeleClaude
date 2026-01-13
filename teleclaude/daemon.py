@@ -1791,6 +1791,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_list_sessions()
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects()
+        elif command == TeleClaudeEvents.LIST_PROJECTS_WITH_TODOS:
+            return await command_handlers.handle_list_projects_with_todos()
         elif command == TeleClaudeEvents.LIST_TODOS:
             # First arg is project path
             if not args:

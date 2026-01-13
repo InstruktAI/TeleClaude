@@ -165,7 +165,7 @@ class TelecApp:
         # Create views BEFORE refresh so they can receive data
         # Pass shared focus context to each view
         self.views[1] = SessionsView(self.api, self.agent_availability, self.focus, self.pane_manager)
-        self.views[2] = PreparationView(self.api, self.agent_availability, self.focus)
+        self.views[2] = PreparationView(self.api, self.agent_availability, self.focus, self.pane_manager)
 
         # Now refresh to populate views with data
         await self.refresh_data()
@@ -294,7 +294,7 @@ class TelecApp:
                 if isinstance(sessions, list):
                     self._update_sessions_view(sessions)
 
-            elif event == "preparation_initial":
+            elif event in ("preparation_initial", "projects_initial"):
                 projects = data.get("projects")
                 if isinstance(projects, list):
                     self._update_preparation_view(projects)
@@ -308,7 +308,7 @@ class TelecApp:
                 if isinstance(session_id, str):
                     self._apply_session_removal(session_id)
 
-            elif event in ("computer_updated", "project_updated"):
+            elif event in ("computer_updated", "project_updated", "projects_updated"):
                 # For now, trigger a full refresh for computer/project updates
                 # In the future, could apply incremental updates
                 asyncio.get_event_loop().run_until_complete(self.refresh_data())

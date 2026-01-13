@@ -9,10 +9,11 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
@@ -23,6 +24,18 @@ if TYPE_CHECKING:
     from teleclaude.cli.tui.app import FocusContext
 
 logger = get_logger(__name__)
+
+
+def _to_int(value: object, default: int = 0) -> int:
+    """Convert value to int with safe fallback."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
 
 
 @dataclass
@@ -61,6 +74,7 @@ class PreparationView(ScrollableViewMixin, BaseView):
         api: object,
         agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
         focus: FocusContext,
+        pane_manager: TmuxPaneManager,
     ):
         """Initialize preparation view.
 
@@ -72,6 +86,7 @@ class PreparationView(ScrollableViewMixin, BaseView):
         self.api = api
         self.agent_availability = agent_availability
         self.focus = focus
+        self.pane_manager = pane_manager
         # Tree structure
         self.tree: list[PrepTreeNode] = []
         self.flat_items: list[PrepTreeNode] = []
@@ -85,6 +100,8 @@ class PreparationView(ScrollableViewMixin, BaseView):
         self._row_to_item: dict[int, int] = {}
         # Signal for app to trigger data refresh
         self.needs_refresh: bool = False
+        # Store computers for SSH connection lookup
+        self._computers: list[dict[str, object]] = []  # guard: loose-dict
         # Visible height for scroll calculations (updated during render)
         self._visible_height: int = 20  # Default, updated in render
         # Track rendered item range for scroll calculations
@@ -108,6 +125,9 @@ class PreparationView(ScrollableViewMixin, BaseView):
             len(computers),
             len(projects),
         )
+
+        # Store computers for SSH connection lookup
+        self._computers = computers
 
         # Extract todos from projects (already fetched by API in one call)
         local_computer = config.computer.name
@@ -139,7 +159,29 @@ class PreparationView(ScrollableViewMixin, BaseView):
                         if isinstance(t, dict)
                     ]
 
-        self.tree = self._build_tree(computers, projects, todos_by_project)
+        # Aggregate todo and project counts per computer for badges
+        project_by_path: dict[str, str] = {}
+        for project in projects:
+            comp_name = str(project.get("computer", ""))
+            path = str(project.get("path", ""))
+            if comp_name and path:
+                project_by_path[path] = comp_name
+
+        todo_counts: dict[str, int] = {}
+        project_counts: dict[str, int] = {}
+        for path, comp_name in project_by_path.items():
+            project_counts[comp_name] = project_counts.get(comp_name, 0) + 1
+            todo_counts[comp_name] = todo_counts.get(comp_name, 0) + len(todos_by_project.get(path, []))
+
+        enriched_computers: list[dict[str, object]] = []  # guard: loose-dict
+        for computer in computers:
+            name = str(computer.get("name", ""))
+            enriched = dict(computer)
+            enriched["project_count"] = project_counts.get(name, 0)
+            enriched["todo_count"] = todo_counts.get(name, 0)
+            enriched_computers.append(enriched)
+
+        self.tree = self._build_tree(enriched_computers, projects, todos_by_project)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
@@ -165,7 +207,12 @@ class PreparationView(ScrollableViewMixin, BaseView):
             comp_name = str(computer.get("name", ""))
             comp_node = PrepTreeNode(
                 type="computer",
-                data={"name": comp_name, "status": computer.get("status", "online")},
+                data={
+                    "name": comp_name,
+                    "status": computer.get("status", "online"),
+                    "project_count": computer.get("project_count", 0),
+                    "todo_count": computer.get("todo_count", 0),
+                },
                 depth=0,
             )
 
@@ -476,7 +523,7 @@ class PreparationView(ScrollableViewMixin, BaseView):
 
         result = modal.run(stdscr)
         if result:
-            attach_tmux_from_result(result, stdscr)
+            self._attach_new_session(result, computer, stdscr)
             self.needs_refresh = True
 
     def _launch_session_split(
@@ -503,8 +550,40 @@ class PreparationView(ScrollableViewMixin, BaseView):
             )
         )
 
-        attach_tmux_from_result(result, stdscr)
+        computer = str(item.get("computer", ""))
+        self._attach_new_session(result, computer, stdscr)
         self.needs_refresh = True
+
+    def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
+        """Get SSH connection info for a computer."""
+        for comp in self._computers:
+            if comp.get("name") == computer_name:
+                return ComputerInfo(
+                    name=computer_name,
+                    is_local=bool(comp.get("is_local", False)),
+                    user=cast("str | None", comp.get("user")),
+                    host=cast("str | None", comp.get("host")),
+                    tmux_binary=cast("str | None", comp.get("tmux_binary")),
+                )
+        return None
+
+    def _attach_new_session(
+        self,
+        result: dict[str, object],  # guard: loose-dict
+        computer: str,
+        stdscr: object,
+    ) -> None:
+        """Attach newly created session to the side pane immediately."""
+        tmux_session_name = str(result.get("tmux_session_name") or "")
+        if not tmux_session_name:
+            logger.warning("New session missing tmux_session_name, cannot attach")
+            return
+
+        if self.pane_manager.is_available:
+            computer_info = self._get_computer_info(computer)
+            self.pane_manager.show_session(tmux_session_name, None, computer_info)
+        else:
+            attach_tmux_from_result(result, stdscr)
 
     def _close_file_pane(self) -> None:
         """Close existing file viewer/editor pane if one exists."""
@@ -708,7 +787,9 @@ class PreparationView(ScrollableViewMixin, BaseView):
 
         if item.type == "computer":
             name = str(item.data.get("name", ""))
-            line = f"{indent}[C] {name}"
+            project_count = _to_int(item.data.get("project_count", 0))
+            suffix = f"({project_count})" if project_count else ""
+            line = f"{indent}[C] {name} {suffix}"
             return [line[:width]]
 
         if item.type == "project":
@@ -846,7 +927,9 @@ class PreparationView(ScrollableViewMixin, BaseView):
 
         if item.type == "computer":
             name = str(item.data.get("name", ""))
-            line = f"{indent}[C] {name}"
+            project_count = _to_int(item.data.get("project_count", 0))
+            suffix = f"({project_count})" if project_count else ""
+            line = f"{indent}[C] {name} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
 
@@ -866,7 +949,7 @@ class PreparationView(ScrollableViewMixin, BaseView):
 
         if item.type == "file":
             file_index = item.data.get("index", 1)
-            return self._render_file(stdscr, row, item, width, selected, int(str(file_index)))
+            return self._render_file(stdscr, row, item, width, selected, _to_int(file_index, 1))
 
         return 1
 

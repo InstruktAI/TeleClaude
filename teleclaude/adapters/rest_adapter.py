@@ -127,7 +127,7 @@ class RESTAdapter(BaseAdapter):
                     auto_command = f"agent {request.agent} {request.thinking_mode}"
 
             try:
-                result = await self.client.handle_event(
+                envelope = await self.client.handle_event(
                     event="new_session",
                     payload={
                         "session_id": "",  # Will be created
@@ -139,16 +139,36 @@ class RESTAdapter(BaseAdapter):
                         auto_command=auto_command,
                     ),
                 )
-                if isinstance(result, dict):
-                    session_id = result.get("session_id")
-                    if session_id and not result.get("tmux_session_name"):
-                        try:
-                            session = await db.get_session(str(session_id))
-                        except RuntimeError:
-                            session = None
-                        if session:
-                            result["tmux_session_name"] = session.tmux_session_name
-                return result  # type: ignore[return-value]  # Dynamic from handler
+                if not isinstance(envelope, dict):
+                    raise HTTPException(status_code=500, detail="Invalid session creation response")
+
+                status = str(envelope.get("status", "error"))
+                if status != "success":
+                    error_msg = str(envelope.get("error", "Session creation failed"))
+                    raise HTTPException(status_code=500, detail=error_msg)
+
+                data = envelope.get("data")
+                if not isinstance(data, dict):
+                    raise HTTPException(status_code=500, detail="Invalid session creation payload")
+
+                session_id = data.get("session_id")
+                tmux_session_name = data.get("tmux_session_name")
+
+                if session_id and not tmux_session_name:
+                    try:
+                        session = await db.get_session(str(session_id))
+                    except RuntimeError:
+                        session = None
+                    if session:
+                        tmux_session_name = session.tmux_session_name
+
+                return {
+                    "status": "success",
+                    "session_id": session_id,
+                    "tmux_session_name": tmux_session_name,
+                }
+            except HTTPException as exc:  # type: ignore[misc]
+                raise exc
             except Exception as e:
                 logger.error("create_session failed (computer=%s): %s", request.computer, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to create session: {e}") from e
@@ -279,8 +299,7 @@ class RESTAdapter(BaseAdapter):
         ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
             """List projects (local + cached remote projects).
 
-            Pure cache reader - returns only cached data for computers with registered interest.
-            No staleness checks or background pulls (handled by interest registration).
+            Pure cache reader - returns cached data without triggering pulls.
             """
             try:
                 # Get LOCAL projects from command handler
@@ -299,24 +318,21 @@ class RESTAdapter(BaseAdapter):
                         }
                     )
 
-                # Add cached REMOTE projects ONLY for computers with registered interest
+                # Add cached REMOTE projects from cache (skip local to avoid duplicates)
                 if self.cache:
-                    # Get computers with interest in projects
-                    interested_computers = self.cache.get_interested_computers("projects")
-                    for comp_name in interested_computers:
-                        # Filter by computer parameter if provided
-                        if computer and comp_name != computer:
+                    cached_projects = self.cache.get_projects(computer)
+                    for proj in cached_projects:
+                        comp_name = str(proj.get("computer", ""))
+                        if comp_name == computer_name:
                             continue
-                        cached_projects = self.cache.get_projects(comp_name)
-                        for proj in cached_projects:
-                            result.append(
-                                {
-                                    "computer": comp_name,
-                                    "name": proj["name"],
-                                    "path": proj["path"],
-                                    "description": proj["desc"],
-                                }
-                            )
+                        result.append(
+                            {
+                                "computer": comp_name,
+                                "name": proj["name"],
+                                "path": proj["path"],
+                                "description": proj["desc"],
+                            }
+                        )
 
                 return result
             except Exception as e:
@@ -371,8 +387,7 @@ class RESTAdapter(BaseAdapter):
         async def list_projects_with_todos() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
             """List all projects with their todos included (local + cached remote).
 
-            Pure cache reader - returns only cached data for computers with registered interest.
-            No staleness checks or background pulls (handled by interest registration).
+            Pure cache reader - returns cached data without triggering pulls.
 
             Returns:
                 List of projects, each with a 'todos' field containing the project's todos
@@ -408,33 +423,27 @@ class RESTAdapter(BaseAdapter):
 
                 result.append(project)
 
-            # Add REMOTE projects with cached todos ONLY for computers with registered interest
+            # Add REMOTE projects with cached todos from cache (skip local to avoid duplicates)
             if self.cache:
-                # Get computers with interest in projects/todos
-                interested_computers = self.cache.get_interested_computers("projects")
-                # Also check for todo-specific interest
-                interested_computers.extend(self.cache.get_interested_computers("todos"))
-                # Deduplicate
-                interested_computers = list(set(interested_computers))
+                cached_projects = self.cache.get_projects()
+                for proj in cached_projects:
+                    comp_name = str(proj.get("computer", ""))
+                    if comp_name == computer_name:
+                        continue
+                    proj_path = str(proj.get("path", ""))
+                    if not proj_path:
+                        continue
 
-                for comp_name in interested_computers:
-                    cached_projects = self.cache.get_projects(comp_name)
-                    for proj in cached_projects:
-                        proj_path = str(proj.get("path", ""))
-                        if not proj_path:
-                            continue
+                    cached_todos = self.cache.get_todos(comp_name, proj_path) if comp_name else []
 
-                        # Get cached todos for this project
-                        cached_todos = self.cache.get_todos(comp_name, proj_path)
-
-                        remote_project: dict[str, object] = {  # guard: loose-dict - REST API boundary
-                            "computer": comp_name,
-                            "name": proj.get("name", ""),
-                            "path": proj_path,
-                            "description": proj.get("desc"),
-                            "todos": list(cached_todos),
-                        }
-                        result.append(remote_project)
+                    remote_project: dict[str, object] = {  # guard: loose-dict - REST API boundary
+                        "computer": comp_name,
+                        "name": proj.get("name", ""),
+                        "path": proj_path,
+                        "description": proj.get("desc"),
+                        "todos": list(cached_todos),
+                    }
+                    result.append(remote_project)
 
             return result
 
@@ -459,6 +468,7 @@ class RESTAdapter(BaseAdapter):
         # Update interest in cache when first client connects
         if self.cache and len(self._ws_clients) == 1:
             self._update_cache_interest()
+            self._trigger_initial_refresh()
 
         try:
             while True:
@@ -603,6 +613,17 @@ class RESTAdapter(BaseAdapter):
         self._previous_interest = current_interest
         logger.debug("Current cache interest: %s", current_interest)
 
+    def _trigger_initial_refresh(self) -> None:
+        """Kick off background cache refresh for remote computers on first UI connect."""
+        adapter = self.client.adapters.get("redis")
+        if not isinstance(adapter, RedisAdapter):
+            return
+        coro = adapter.refresh_remote_snapshot()
+        if self.task_registry:
+            self.task_registry.spawn(coro, name="initial-refresh")
+        else:
+            asyncio.create_task(coro)
+
     async def _pull_remote_on_interest(self, computer: str, data_type: str) -> None:
         """Pull remote data immediately after subscription."""
         if computer == "local":
@@ -613,15 +634,7 @@ class RESTAdapter(BaseAdapter):
 
         await adapter.refresh_peers_from_heartbeats()
         if data_type in ("projects", "preparation"):
-            await adapter.pull_remote_projects(computer)
-            cache = adapter.cache
-            if not cache:
-                return
-            projects = cache.get_projects(computer)
-            for project in projects:
-                path = project.get("path")
-                if path:
-                    await adapter.pull_remote_todos(computer, str(path))
+            await adapter.pull_remote_projects_with_todos(computer)
         elif data_type == "sessions":
             await adapter.pull_interested_sessions()
 

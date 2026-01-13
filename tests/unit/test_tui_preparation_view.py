@@ -22,10 +22,17 @@ def mock_focus():
 @pytest.fixture
 def prep_view(mock_focus):
     """Create PreparationView instance for testing."""
+
+    class MockPaneManager:
+        @property
+        def is_available(self) -> bool:
+            return False
+
     return PreparationView(
         api=None,  # Not needed for render tests
         agent_availability={},
         focus=mock_focus,
+        pane_manager=MockPaneManager(),
     )
 
 
@@ -115,7 +122,11 @@ class TestPreparationViewLogic:
         """Computer nodes render correctly."""
         computer = PrepTreeNode(
             type="computer",
-            data=create_mock_computer(name="test-machine"),
+            data={
+                **create_mock_computer(name="test-machine"),
+                "project_count": 3,
+                "todo_count": 7,
+            },
             depth=0,
         )
         prep_view.flat_items = [computer]
@@ -124,6 +135,7 @@ class TestPreparationViewLogic:
         assert len(lines) == 1
         assert "[C]" in lines[0]
         assert "test-machine" in lines[0]
+        assert "(3)" in lines[0]
 
     def test_project_node_renders(self, prep_view):
         """Project nodes render with todo count."""
@@ -145,6 +157,34 @@ class TestPreparationViewLogic:
         assert "[P]" in lines[0]
         assert "/test/project" in lines[0]
         assert "(2)" in lines[0]  # Todo count
+
+    def test_attach_new_session_uses_pane_manager(self, mock_focus):
+        """New session attaches via pane manager when available."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.called = False
+                self.args = None
+
+            def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+                self.called = True
+                self.args = (tmux_session_name, child_tmux_session_name, computer_info)
+
+        pane_manager = MockPaneManager()
+        view = PreparationView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+        )
+        view._computers = [create_mock_computer(name="test-machine")]
+
+        view._attach_new_session({"tmux_session_name": "tc_456"}, "test-machine", object())
+
+        assert pane_manager.called is True
+        assert pane_manager.args is not None
+        assert pane_manager.args[0] == "tc_456"
 
     def test_file_node_renders(self, prep_view):
         """File nodes render with index and name."""

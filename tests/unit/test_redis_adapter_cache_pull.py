@@ -339,6 +339,70 @@ async def test_pull_remote_todos_no_cache():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_pull_remote_projects_with_todos_happy_path():
+    """Test pull_remote_projects_with_todos pulls projects and todos from remote."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+
+    mock_cache = MagicMock()
+    adapter.cache = mock_cache
+
+    adapter.send_request = AsyncMock(return_value="msg-900")
+    mock_client.read_response = AsyncMock(
+        return_value=json.dumps(
+            {
+                "status": "success",
+                "data": [
+                    {
+                        "name": "ProjectA",
+                        "path": "/home/user/projectA",
+                        "desc": "Project A",
+                        "todos": [
+                            {"slug": "todo-1", "title": "Todo 1", "status": "pending"},
+                        ],
+                    },
+                    {
+                        "name": "ProjectB",
+                        "path": "/home/user/projectB",
+                        "desc": "Project B",
+                        "todos": [],
+                    },
+                ],
+            }
+        )
+    )
+
+    await adapter.pull_remote_projects_with_todos("RemotePC")
+
+    mock_cache.set_projects.assert_called_once()
+    mock_cache.set_todos.assert_any_call(
+        "RemotePC",
+        "/home/user/projectA",
+        [{"slug": "todo-1", "title": "Todo 1", "status": "pending"}],
+    )
+    mock_cache.set_todos.assert_any_call("RemotePC", "/home/user/projectB", [])
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_pull_remote_projects_with_todos_no_cache():
+    """Test pull_remote_projects_with_todos skips when cache is unavailable."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+    adapter.cache = None
+    adapter.send_request = AsyncMock()
+
+    await adapter.pull_remote_projects_with_todos("RemotePC")
+
+    adapter.send_request.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_heartbeat_populates_cache():
     """Test that heartbeat processing populates cache with computer info."""
     from teleclaude.adapters.redis_adapter import RedisAdapter

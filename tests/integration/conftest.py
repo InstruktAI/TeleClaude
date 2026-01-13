@@ -146,6 +146,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         name = "TestComputer"
         default_working_dir = "/tmp"
         default_shell = "/bin/sh"
+        tmux_binary = "tmux"
         user = "testuser"
         role = "test"
         host = "test.local"

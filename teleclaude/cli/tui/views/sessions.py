@@ -22,6 +22,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+def _to_int(value: object, default: int = 0) -> int:
+    """Convert value to int with safe fallback."""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
 def _relative_time(iso_timestamp: str | None) -> str:
     """Convert ISO timestamp to relative time string.
 
@@ -125,7 +137,37 @@ class SessionsView(ScrollableViewMixin, BaseView):
         # Track state changes for color coding
         self._update_activity_state(sessions)
 
-        self.tree = build_tree(computers, projects, sessions)
+        # Aggregate session counts and recent activity per computer
+        session_counts: dict[str, int] = {}
+        recent_activity: dict[str, bool] = {}
+        now = datetime.now(timezone.utc)
+        for session in sessions:
+            comp_name = str(session.get("computer", ""))
+            if not comp_name:
+                continue
+            session_counts[comp_name] = session_counts.get(comp_name, 0) + 1
+
+            last_activity = session.get("last_activity")
+            if isinstance(last_activity, str) and last_activity:
+                try:
+                    last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    if (now - last_dt).total_seconds() <= 300:
+                        recent_activity[comp_name] = True
+                except ValueError:
+                    continue
+
+        # Enrich computer data for badges
+        enriched_computers: list[dict[str, object]] = []  # guard: loose-dict
+        for computer in computers:
+            name = str(computer.get("name", ""))
+            enriched = dict(computer)
+            enriched["session_count"] = session_counts.get(name, 0)
+            enriched["recent_activity"] = bool(recent_activity.get(name, False))
+            enriched_computers.append(enriched)
+
+        self.tree = build_tree(enriched_computers, projects, sessions)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
@@ -482,8 +524,26 @@ class SessionsView(ScrollableViewMixin, BaseView):
         )
         result = modal.run(stdscr)
         if result:
-            attach_tmux_from_result(result, stdscr)
+            self._attach_new_session(result, str(computer_value), stdscr)
             self.needs_refresh = True
+
+    def _attach_new_session(
+        self,
+        result: dict[str, object],  # guard: loose-dict
+        computer: str,
+        stdscr: object,
+    ) -> None:
+        """Attach newly created session to the side pane immediately."""
+        tmux_session_name = str(result.get("tmux_session_name") or "")
+        if not tmux_session_name:
+            logger.warning("New session missing tmux_session_name, cannot attach")
+            return
+
+        if self.pane_manager.is_available:
+            computer_info = self._get_computer_info(computer)
+            self.pane_manager.show_session(tmux_session_name, None, computer_info)
+        else:
+            attach_tmux_from_result(result, stdscr)
 
     def handle_key(self, key: int, stdscr: object) -> None:
         """Handle view-specific keys.
@@ -615,7 +675,10 @@ class SessionsView(ScrollableViewMixin, BaseView):
         indent = "  " * item.depth
 
         if item.type == "computer":
-            line = f"{indent}🖥  {item.data.get('name', '')}"
+            name = str(item.data.get("name", ""))
+            session_count = _to_int(item.data.get("session_count", 0))
+            suffix = f"({session_count})" if session_count else ""
+            line = f"{indent}🖥  {name} {suffix}"
             return [line[:width]]
 
         if item.type == "project":
@@ -773,7 +836,10 @@ class SessionsView(ScrollableViewMixin, BaseView):
         attr = curses.A_REVERSE if selected else 0
 
         if item.type == "computer":
-            line = f"{indent}🖥  {item.data.get('name', '')}"
+            name = str(item.data.get("name", ""))
+            session_count = _to_int(item.data.get("session_count", 0))
+            suffix = f"({session_count})" if session_count else ""
+            line = f"{indent}🖥  {name} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if item.type == "project":

@@ -110,8 +110,11 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test create_session endpoint."""
     mock_adapter_client.handle_event.return_value = {
-        "session_id": "new-sess",
-        "status": "created",
+        "status": "success",
+        "data": {
+            "session_id": "new-sess",
+            "tmux_session_name": "tc_new",
+        },
     }
 
     response = test_client.post(
@@ -130,6 +133,8 @@ def test_create_session_success(test_client, mock_adapter_client):  # type: igno
     assert response.status_code == 200
     data = response.json()
     assert data["session_id"] == "new-sess"
+    assert data["tmux_session_name"] == "tc_new"
+    assert data["status"] == "success"
 
     call_args = mock_adapter_client.handle_event.call_args
     assert call_args.kwargs["payload"]["args"] == ["Test Session"]
@@ -140,7 +145,7 @@ def test_create_session_derives_title_from_message(  # type: ignore[explicit-any
     test_client, mock_adapter_client
 ):
     """Test create_session derives title from command message."""
-    mock_adapter_client.handle_event.return_value = {"session_id": "sess"}
+    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess"}}
 
     response = test_client.post(
         "/sessions",
@@ -163,7 +168,7 @@ def test_create_session_defaults_title_to_untitled(  # type: ignore[explicit-any
     test_client, mock_adapter_client
 ):
     """Test create_session defaults to 'Untitled' when no title/message."""
-    mock_adapter_client.handle_event.return_value = {"session_id": "sess"}
+    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess"}}
 
     response = test_client.post(
         "/sessions",
@@ -184,7 +189,7 @@ def test_create_session_uses_auto_command_override(  # type: ignore[explicit-any
     test_client, mock_adapter_client
 ):
     """Test create_session uses explicit auto_command when provided."""
-    mock_adapter_client.handle_event.return_value = {"session_id": "sess"}
+    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess"}}
 
     response = test_client.post(
         "/sessions",
@@ -205,7 +210,7 @@ def test_create_session_populates_tmux_session_name(  # type: ignore[explicit-an
     test_client, mock_adapter_client
 ):
     """Test create_session fills tmux_session_name when handler omits it."""
-    mock_adapter_client.handle_event.return_value = {"session_id": "sess-1"}
+    mock_adapter_client.handle_event.return_value = {"status": "success", "data": {"session_id": "sess-1"}}
 
     class _Session:
         tmux_session_name = "tc_1234"
@@ -325,18 +330,16 @@ def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[expl
 
 
 def test_list_projects_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects returns local + cached projects (only for computers with interest)."""
+    """Test list_projects returns local + cached projects."""
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = [
             {"name": "project1", "path": "/path1", "desc": "Local project"},
         ]
-        # Register interest for a remote computer
-        mock_cache.get_interested_computers.return_value = ["RemoteComputer"]
         # Mock cache to return one remote project for the interested computer
         mock_cache.get_projects.return_value = [
-            {"name": "project2", "path": "/path2", "desc": "Remote project"},
+            {"name": "project2", "path": "/path2", "desc": "Remote project", "computer": "RemoteComputer"},
         ]
 
         response = test_client.get("/projects")
@@ -349,13 +352,11 @@ def test_list_projects_success(test_client, mock_cache):  # type: ignore[explici
 
 
 def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_projects filters by computer and only returns projects for computers with interest."""
+    """Test list_projects filters by computer."""
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = [{"name": "project1", "path": "/path1"}]
-        # Register interest for "local" computer
-        mock_cache.get_interested_computers.return_value = ["local"]
         mock_cache.get_projects.return_value = []
 
         response = test_client.get("/projects?computer=local")

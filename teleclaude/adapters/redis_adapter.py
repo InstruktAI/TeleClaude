@@ -266,6 +266,35 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         logger.info("Initial cache populated: %d computers", len(peers))
 
+    async def refresh_remote_snapshot(self) -> None:
+        """Refresh remote computers and project/todo cache (best effort)."""
+        if not self.cache:
+            logger.debug("Cache unavailable, skipping remote snapshot refresh")
+            return
+
+        logger.info("Refreshing remote cache snapshot...")
+
+        peers = await self.discover_peers()
+        for peer in peers:
+            computer_info: ComputerInfo = {
+                "name": peer.name,
+                "status": "online",
+                "last_seen": peer.last_seen,
+                "user": peer.user,
+                "host": peer.host,
+                "role": peer.role,
+                "system_stats": peer.system_stats,
+            }
+            self.cache.update_computer(computer_info)
+
+        for peer in peers:
+            try:
+                await self.pull_remote_projects_with_todos(peer.name)
+            except Exception as e:
+                logger.warning("Failed to refresh snapshot from %s: %s", peer.name, e)
+
+        logger.info("Remote cache snapshot refresh complete: %d computers", len(peers))
+
     async def _peer_refresh_loop(self) -> None:
         """Background task: refresh peer cache from heartbeats."""
         while self._running:
@@ -1491,6 +1520,65 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         except Exception as e:
             logger.warning("Failed to pull projects from %s: %s", computer, e)
+
+    async def pull_remote_projects_with_todos(self, computer: str) -> None:
+        """Pull projects with embedded todos from a remote computer via Redis."""
+        if not self.cache:
+            logger.warning("Cache unavailable, skipping projects-with-todos pull from %s", computer)
+            return
+
+        logger.debug("Pulling projects-with-todos from %s", computer)
+
+        try:
+            message_id = await self.send_request(computer, "list_projects_with_todos", MessageMetadata())
+
+            response_data = await self.client.read_response(message_id, timeout=5.0)
+            envelope_obj: object = json.loads(response_data.strip())
+
+            if not isinstance(envelope_obj, dict):
+                logger.warning("Invalid response from %s: not a dict", computer)
+                return
+
+            envelope: dict[str, object] = envelope_obj
+
+            status = envelope.get("status")
+            if status == "error":
+                error_msg = envelope.get("error", "unknown error")
+                logger.warning("Error from %s: %s", computer, error_msg)
+                return
+
+            data = envelope.get("data")
+            if not isinstance(data, list):
+                logger.warning("Invalid projects-with-todos data from %s: %s", computer, type(data))
+                return
+
+            projects: list[ProjectInfo] = []
+            for project_obj in data:
+                if not isinstance(project_obj, dict):
+                    continue
+                project_path = project_obj.get("path")
+                if not isinstance(project_path, str) or not project_path:
+                    continue
+                project: ProjectInfo = {
+                    "name": str(project_obj.get("name", "")),
+                    "desc": str(project_obj.get("desc", "")),
+                    "path": project_path,
+                }
+                projects.append(project)
+
+                todos_obj: object = project_obj.get("todos", [])
+                if isinstance(todos_obj, list):
+                    todos: list[TodoInfo] = []
+                    for todo_obj in todos_obj:
+                        if isinstance(todo_obj, dict):
+                            todos.append(cast("TodoInfo", todo_obj))
+                    self.cache.set_todos(computer, project_path, todos)
+
+            self.cache.set_projects(computer, projects)
+            logger.info("Pulled %d projects-with-todos from %s", len(projects), computer)
+
+        except Exception as e:
+            logger.warning("Failed to pull projects-with-todos from %s: %s", computer, e)
 
     async def pull_remote_todos(self, computer: str, project_path: str) -> None:
         """Pull todos for a specific project from a remote computer via Redis.

@@ -27,6 +27,10 @@ def mock_pane_manager():
     class MockPaneManager:
         def __init__(self):
             self.active_session = None
+            self.is_available = False
+
+        def show_session(self, *_args, **_kwargs):
+            return None
 
     return MockPaneManager()
 
@@ -155,7 +159,11 @@ class TestSessionsViewLogic:
         """Computer nodes render correctly."""
         computer = TreeNode(
             type="computer",
-            data=create_mock_computer(name="test-machine"),
+            data={
+                **create_mock_computer(name="test-machine"),
+                "session_count": 2,
+                "recent_activity": False,
+            },
             depth=0,
         )
         sessions_view.flat_items = [computer]
@@ -163,6 +171,7 @@ class TestSessionsViewLogic:
 
         assert len(lines) == 1
         assert "test-machine" in lines[0]
+        assert "(2)" in lines[0]
 
     def test_project_node_renders(self, sessions_view):
         """Project nodes render with session count."""
@@ -183,6 +192,34 @@ class TestSessionsViewLogic:
         assert len(lines) == 1
         assert "/test/project" in lines[0]
         assert "(2)" in lines[0]  # Session count
+
+    def test_attach_new_session_uses_pane_manager(self, mock_focus):
+        """New session attaches via pane manager when available."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.is_available = True
+                self.called = False
+                self.args = None
+
+            def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+                self.called = True
+                self.args = (tmux_session_name, child_tmux_session_name, computer_info)
+
+        pane_manager = MockPaneManager()
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+        )
+        view._computers = [create_mock_computer(name="test-machine")]
+
+        view._attach_new_session({"tmux_session_name": "tc_123"}, "test-machine", object())
+
+        assert pane_manager.called is True
+        assert pane_manager.args is not None
+        assert pane_manager.args[0] == "tc_123"
 
     def test_depth_indentation(self, sessions_view):
         """Items are indented according to depth."""

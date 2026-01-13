@@ -14,6 +14,7 @@ EventType = Literal[
     "list_sessions",
     "get_session_data",
     "list_projects",
+    "list_projects_with_todos",
     "list_todos",
     "get_computer_info",
     "cd",
@@ -160,6 +161,7 @@ class TeleClaudeEvents:
 
     # Project management
     LIST_PROJECTS: Literal["list_projects"] = "list_projects"
+    LIST_PROJECTS_WITH_TODOS: Literal["list_projects_with_todos"] = "list_projects_with_todos"
     LIST_TODOS: Literal["list_todos"] = "list_todos"
     GET_COMPUTER_INFO: Literal["get_computer_info"] = "get_computer_info"
     CD: Literal["cd"] = "cd"
@@ -373,6 +375,7 @@ COMMAND_EVENTS: set[EventType] = {
     "list_sessions",
     "get_session_data",
     "list_projects",
+    "list_projects_with_todos",
     "list_todos",
     "get_computer_info",
     "cd",

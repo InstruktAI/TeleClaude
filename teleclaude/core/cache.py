@@ -4,7 +4,7 @@ Provides instant reads for REST endpoints and emits change events when data upda
 """
 
 from datetime import datetime, timezone
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -152,7 +152,7 @@ class DaemonCache:
         Returns:
             List of project info dicts
         """
-        projects = []
+        projects: list[ProjectInfo] = []
         for key, cached in self._projects.items():
             # Filter by computer if specified
             if computer and not key.startswith(f"{computer}:"):
@@ -162,7 +162,12 @@ class DaemonCache:
             if cached.is_stale(300):
                 continue
 
-            projects.append(cached.data)
+            # Include computer name derived from key for optimistic rendering
+            comp_name = key.split(":", 1)[0] if ":" in key else ""
+            project = dict(cached.data)
+            project["computer"] = comp_name
+            projects.append(cast("ProjectInfo", project))
+
         return projects
 
     def get_sessions(self, computer: str | None = None) -> list[SessionInfo]:
