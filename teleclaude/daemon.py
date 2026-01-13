@@ -39,6 +39,7 @@ from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
     AgentHookEvents,
+    AgentPromptPayload,
     AgentStopPayload,
     CommandEventContext,
     DeployArgs,
@@ -63,6 +64,7 @@ from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutb
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.utils.transcript import extract_last_user_message
 
 
 # TypedDict definitions for deployment status payloads
@@ -891,6 +893,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Dispatch other events synchronously
         if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.agent_coordinator.handle_session_start(context)
+        elif agent_event_type == AgentHookEvents.AGENT_PROMPT:
+            await self._process_agent_prompt(context)
         elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
             await self.agent_coordinator.handle_notification(context)
         elif agent_event_type == AgentHookEvents.AGENT_SESSION_END:
@@ -900,10 +904,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Process agent stop event (summarization + coordination)."""
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
-        source_computer = payload.source_computer
 
-        # Debounce: skip if we processed a stop event for this session recently
-        # Gemini's AfterAgent fires multiple times per turn (after each agent step)
+        # 1. Debounce: skip if we processed a stop event for this session recently
         now = time.monotonic()
         last_stop = self._last_stop_time.get(session_id, 0.0)
         if now - last_stop < self._stop_debounce_seconds:
@@ -911,93 +913,131 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
         self._last_stop_time[session_id] = now
 
-        if source_computer:
+        # 2. Remote stop events skip local enrichment and just coordinate
+        if payload.source_computer:
             await self.agent_coordinator.handle_stop(context)
             return
 
         try:
-            session = await db.get_session(session_id)
+            # 3. Synchronize "Ground Truth" state (Agent ID, Agent name)
+            session = await self._sync_session_stop_state(session_id, payload)
             if not session:
-                raise ValueError(f"Session {session_id[:8]} not found")
+                return
 
-            if not session.active_agent:
-                agent_name_obj = payload.raw.get("agent_name")
-                agent_name = str(agent_name_obj) if agent_name_obj else ""
-                if agent_name:
-                    logger.info(
-                        "Session %s missing active_agent, setting from hook payload: %s",
-                        session_id[:8],
-                        agent_name,
-                    )
-                    await db.update_session(session_id, active_agent=agent_name)
-                    session = await db.get_session(session_id)
-                    if not session:
-                        raise ValueError(f"Session {session_id[:8]} not found after active_agent update")
-                else:
-                    logger.warning("Session %s missing active_agent, no agent in payload - skipping", session_id[:8])
-                    return
+            # Update last user message if present in stop payload (Codex fallback)
+            if payload.prompt:
+                await db.update_session(session_id, last_message_sent=payload.prompt)
+                logger.debug(
+                    "Captured last user input from stop hook", session_id=session_id[:8], prompt=payload.prompt[:50]
+                )
 
-            native_session_id = str(payload.session_id) if payload.session_id else ""
-            if native_session_id:
-                await db.update_session(session_id, native_session_id=native_session_id)
+            # 4. Best-effort Enrichment (Summarization + Title + UI Feedback)
+            await self._enrich_with_summary(session, payload)
 
-            transcript_path = payload.transcript_path or session.native_log_file
-            if not transcript_path:
-                raise ValueError(f"Session {session_id[:8]} missing transcript path on stop event")
-            payload.transcript_path = transcript_path
-
-            active_agent = session.active_agent
-            if not active_agent:
-                raise ValueError(f"Session {session_id[:8]} missing active_agent metadata after update")
-            agent_name = AgentName.from_str(active_agent)
-
-            # Try AI summarization
-            try:
-                title, summary = await summarize(agent_name, transcript_path)
-            except Exception as sum_err:
-                logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
-                title = None
-                summary = None
-
-            payload.summary = summary
-            payload.title = title
-            payload.raw["summary"] = payload.summary
-            payload.raw["title"] = payload.title
-
-            if payload.title:
-                await self._update_session_title(session_id, payload.title)
-
-            session = await db.get_session(session_id)
-            if not session:
-                raise ValueError(f"Summary feedback requires active session: {session_id}")
-            # Use feedback=True to clean up old feedback (transcription, etc.) before sending summary
-            await self.client.send_message(
-                session,
-                summary or "Agent turn completed.",
-                metadata=MessageMetadata(adapter_type="internal"),
-                feedback=True,
-            )
-
-            # Track summary as last output (only source of truth for last_output)
-            if summary:
-                await db.update_session(session_id, last_feedback_received=summary[:200])
-
-            # Dispatch to coordinator
+            # 5. Final Coordination
             await self.agent_coordinator.handle_stop(context)
 
         except Exception as e:
-            logger.error("Failed to process agent stop event for session %s: %s", session_id[:8], e)
-            # Try to report error to user
+            logger.error("Failed to process agent stop event for session %s: %s", session_id[:8], e, exc_info=True)
+
+    async def _process_agent_prompt(self, context: AgentEventContext) -> None:
+        """Process agent prompt event (immediate input capture)."""
+        session_id = context.session_id
+        payload = cast(AgentPromptPayload, context.data)
+
+        # 1. Surgical update: overwrite last_message_sent with prompt from contract
+        # (Only for local sessions; remote sessions handled via coordination if needed)
+        if not payload.source_computer:
             try:
-                session = await db.get_session(session_id)
-                if session:
-                    await self.client.send_message(
-                        session,
-                        f"Error processing session summary: {e}",
-                        metadata=MessageMetadata(adapter_type="internal"),
-                    )
-            except Exception:
-                pass
+                # payload.prompt is guaranteed by contract for this event type
+                await db.update_session(session_id, last_message_sent=payload.prompt)
+                logger.debug(
+                    "Captured last user input from hook", session_id=session_id[:8], prompt=payload.prompt[:50]
+                )
+            except Exception as e:
+                logger.error("Failed to update last_message_sent from prompt hook: %s", e)
+
+        # 2. Coordinator can also listen if needed (e.g. for subagent flow)
+        await self.agent_coordinator.handle_prompt(context)
+
+    async def _sync_session_stop_state(self, session_id: str, payload: AgentStopPayload) -> Optional[Session]:
+        """Update session record with native agent identity and transcript data."""
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Stop event for unknown session %s", session_id[:8])
+            return None
+
+        updates: dict[str, object] = {}
+
+        # Capture native agent session ID
+        if payload.session_id and payload.session_id != session.native_session_id:
+            updates["native_session_id"] = payload.session_id
+
+        # Capture/recover active agent name
+        active_agent_str = session.active_agent
+        if not active_agent_str:
+            agent_name = str(payload.raw.get("agent_name", ""))
+            if agent_name:
+                logger.info("Recovered active_agent from hook for %s: %s", session_id[:8], agent_name)
+                updates["active_agent"] = agent_name
+                active_agent_str = agent_name
+            else:
+                logger.warning("Session %s missing active_agent and no agent in payload", session_id[:8])
+                return session
+
+        # Capture transcript path
+        if payload.transcript_path and payload.transcript_path != session.native_log_file:
+            updates["native_log_file"] = payload.transcript_path
+
+        if updates:
+            await db.update_session(session_id, **updates)
+            return await db.get_session(session_id)
+
+        return session
+
+    async def _enrich_with_summary(self, session: Session, payload: AgentStopPayload) -> None:
+        """Best-effort summarization, title update, and UI feedback."""
+        session_id = session.session_id
+        transcript_path = payload.transcript_path or session.native_log_file
+
+        if not transcript_path:
+            logger.debug("Skipping enrichment for session %s: no transcript path", session_id[:8])
+            return
+
+        active_agent = session.active_agent
+        if not active_agent:
+            return
+        agent_name = AgentName.from_str(active_agent)
+
+        # 1. AI Summarization
+        try:
+            title, summary = await summarize(agent_name, transcript_path)
+        except Exception as sum_err:
+            logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
+            return
+
+        if not summary:
+            return
+
+        # 2. Enrich payload for downstream coordinator
+        payload.summary = summary
+        payload.title = title
+
+        # 3. Update Title (Once only)
+        if title:
+            await self._update_session_title(session_id, title)
+
+        # 4. Save summary to DB (Last Output)
+        await db.update_session(session_id, last_feedback_received=summary[:200])
+
+        # 5. Send UI Feedback
+        # feedback=True cleans up previous temporary messages (transcriptions, etc.)
+        await self.client.send_message(
+            session,
+            summary,
+            metadata=MessageMetadata(adapter_type="internal"),
+            feedback=True,
+        )
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""

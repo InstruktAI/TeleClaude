@@ -41,6 +41,7 @@ logger = get_logger("teleclaude.hooks.receiver")
 _HANDLED_EVENTS: frozenset[str] = frozenset(
     {
         "session_start",
+        "prompt",
         "stop",
         "notification",
         "session_end",
@@ -109,6 +110,36 @@ def _send_error_event(
         "error",
         {"message": message, "source": "hook_receiver", "details": details},
     )
+
+
+def _find_gemini_transcript() -> Optional[Path]:
+    """Smarter discovery of Gemini transcript file.
+
+    Checks default chats dir and all project-specific tmp dirs.
+    Returns the most recently modified session JSON file.
+    """
+    candidates: list[Path] = []
+    gemini_dir = Path("~/.gemini").expanduser()
+
+    # 1. Check default location
+    chat_dir = gemini_dir / "chats"
+    if chat_dir.exists():
+        candidates.extend(chat_dir.glob("session-*.json"))
+
+    # 2. Check all project-specific tmp dirs
+    tmp_dir = gemini_dir / "tmp"
+    if tmp_dir.exists():
+        for project_tmp in tmp_dir.iterdir():
+            if project_tmp.is_dir():
+                project_chats = project_tmp / "chats"
+                if project_chats.exists():
+                    candidates.extend(project_chats.glob("session-*.json"))
+
+    if not candidates:
+        return None
+
+    # Return the newest one
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def _get_parent_process_info() -> tuple[int | None, str | None]:
@@ -334,11 +365,19 @@ def _get_adapter(agent: str) -> NormalizeFn:
 def _normalize_event_type(agent: str, event_type: str | None) -> str | None:
     if event_type is None:
         return None
-    if agent != "gemini":
-        return event_type
+
     normalized = event_type.strip().lower().replace("-", "_")
-    if normalized == "after_agent":
-        return "stop"
+
+    if agent == "gemini":
+        if normalized == "after_agent":
+            return "stop"
+        if normalized == "before_agent":
+            return "prompt"
+
+    if agent == "claude":
+        if normalized == "user_prompt_submit":
+            return "prompt"
+
     return event_type
 
 
@@ -369,7 +408,8 @@ def main() -> None:
         event_type = _normalize_event_type(args.agent, cast(str, args.event_type))
         raw_input, data = _read_stdin()
 
-    log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
+    # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
+    log_raw = True
     _log_raw_input(raw_input, log_raw=log_raw)
 
     # Early exit for unhandled events - don't spawn mcp-wrapper
@@ -378,6 +418,13 @@ def main() -> None:
         sys.exit(0)
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, data)
+
+    if not raw_native_log_file and args.agent == "gemini":
+        gemini_path = _find_gemini_transcript()
+        if gemini_path:
+            raw_native_log_file = str(gemini_path)
+            data["transcript_path"] = raw_native_log_file
+            logger.debug("Auto-discovered Gemini transcript", path=raw_native_log_file)
 
     parent_pid, tty_path = _get_parent_process_info()
 
@@ -465,7 +512,7 @@ def main() -> None:
         raw_transcript_path=raw_native_log_file,
         normalized_native_session_id=normalized_native_session_id,
         normalized_transcript_path=normalized_log_file,
-        transcript_missing=bool(event_type == "session_start" and not normalized_log_file),
+        transcript_missing=not normalized_log_file,
     )
 
     if parent_pid:

@@ -446,6 +446,7 @@ class TelecApp:
         elif key == curses.KEY_MOUSE:
             try:
                 _, mx, my, _, bstate = curses.getmouse()
+                mouse_start = time.perf_counter()
                 logger.debug("Mouse event: bstate=%d (0x%x)", bstate, bstate)
                 # Scroll wheel - move selection up/down
                 # BUTTON4_PRESSED (0x80000) = scroll up on macOS
@@ -454,29 +455,73 @@ class TelecApp:
                     view = self.views.get(self.current_view)
                     if view:
                         view.move_up()
+                    logger.trace(
+                        "mouse_scroll_up",
+                        view=self.current_view,
+                        x=mx,
+                        y=my,
+                        duration_ms=int((time.perf_counter() - mouse_start) * 1000),
+                    )
                 elif bstate & (0x8000000 | 0x200000):  # Scroll down
                     view = self.views.get(self.current_view)
                     if view:
                         view.move_down()
+                    logger.trace(
+                        "mouse_scroll_down",
+                        view=self.current_view,
+                        x=mx,
+                        y=my,
+                        duration_ms=int((time.perf_counter() - mouse_start) * 1000),
+                    )
                 # Double-click: select item and execute default action
                 elif bstate & curses.BUTTON1_DOUBLE_CLICKED:
                     if self._content_start <= my < self._content_start + self._content_height:
                         view = self.views.get(self.current_view)
                         if view and hasattr(view, "handle_click"):
+                            click_start = time.perf_counter()
                             if view.handle_click(my):
+                                click_ms = int((time.perf_counter() - click_start) * 1000)
                                 # Item selected, now execute default action
+                                enter_start = time.perf_counter()
                                 view.handle_enter(stdscr)
+                                enter_ms = int((time.perf_counter() - enter_start) * 1000)
+                                logger.trace(
+                                    "mouse_double_click_action",
+                                    view=self.current_view,
+                                    x=mx,
+                                    y=my,
+                                    click_ms=click_ms,
+                                    enter_ms=enter_ms,
+                                    total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                                )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
                     # First check if a tab was clicked
                     clicked_tab = self.tab_bar.handle_click(my, mx)
                     if clicked_tab is not None:
                         self._switch_view(clicked_tab)
+                        logger.trace(
+                            "mouse_single_click_tab",
+                            view=self.current_view,
+                            x=mx,
+                            y=my,
+                            duration_ms=int((time.perf_counter() - mouse_start) * 1000),
+                            tab=clicked_tab,
+                        )
                     # Otherwise check if click is in content area
                     elif self._content_start <= my < self._content_start + self._content_height:
                         view = self.views.get(self.current_view)
                         if view and hasattr(view, "handle_click"):
+                            click_start = time.perf_counter()
                             view.handle_click(my)
+                            logger.trace(
+                                "mouse_single_click_content",
+                                view=self.current_view,
+                                x=mx,
+                                y=my,
+                                click_ms=int((time.perf_counter() - click_start) * 1000),
+                                total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                            )
             except curses.error:
                 pass  # Mouse event couldn't be retrieved
 

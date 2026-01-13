@@ -27,13 +27,24 @@ Sources:
 
 ## Gemini hook input contract (selected fields we use)
 
-Base fields (all events):
+### Base Fields (All Events)
 
-- `session_id` (string)
-- `transcript_path` (string, if available)
-- `cwd` (string)
-- `hook_event_name` (string)
-- `timestamp` (string, ISO 8601)
+| Field             | Type     | Description                                           |
+| :---------------- | :------- | :---------------------------------------------------- |
+| `session_id`      | `string` | Unique identifier for the current CLI session.        |
+| `transcript_path` | `string` | Path to the session's JSON transcript (if available). |
+| `cwd`             | `string` | The current working directory.                        |
+| `hook_event_name` | `string` | The name of the firing event (e.g., `BeforeTool`).    |
+| `timestamp`       | `string` | ISO 8601 timestamp of the event.                      |
+
+### Event-Specific Fields
+
+#### Agent Events (`BeforeAgent`, `AfterAgent`)
+
+- `prompt`: (`string`) The user's submitted prompt.
+- `prompt_response`: (`string`, **AfterAgent only**) The final response text from the model.
+
+#### Session & Notification Events
 
 SessionStart fields:
 
@@ -77,10 +88,35 @@ Mapping rules (Gemini):
   - **TODO(2025-01):** Using Gemini CLI nightly (0.24.0) for AfterAgent fix (fires once per turn).
     When stable release includes fix from PR #15651/#15701, switch back: `npm install -g @google/gemini-cli@latest`
     Track: https://github.com/google-gemini/gemini-cli/issues/15712
+  - **Update:** Also triggers extraction of last user input from transcript to update `last_message_sent` in the database.
+  - **Update:** Also triggers extraction of last user input from transcript to update `last_message_sent` in the database.
 - `Notification` → `event_type = "notification"`
 - `SessionEnd` → `event_type = "session_end"` (reserved; no handler logic yet)
 
 Note: `BeforeUserInput` does NOT exist in Gemini CLI. Use `AfterAgent` for turn completion.
+
+## Codex CLI hooks
+
+| Event               | When It Fires                                 | Common Use Cases                           |
+| ------------------- | --------------------------------------------- | ------------------------------------------ |
+| agent-turn-complete | When agent finishes its turn                  | Review output, update state                |
+
+Note: Codex currently only supports one hook event type via the `notify` command.
+
+## Codex hook input contract (selected fields we use)
+
+- `thread-id` (string) - native session ID
+- `cwd` (string)
+- `input-messages` (list of strings) - contains user prompts for the turn
+- `last-assistant-message` (string) - agent response
+
+## TeleClaude adapter mapping (Codex → internal hook payloads)
+
+Mapping rules (Codex):
+
+- `agent-turn-complete` → `event_type = "stop"`
+  - Requires `data.thread-id` (native session id).
+  - Extracts the last element of `data.input-messages` as `prompt` to update `last_message_sent` in the database.
 
 ## Internal typed payloads
 
@@ -128,6 +164,10 @@ SessionStart fields:
 
 - `source` (`startup`)
 
+UserPromptSubmit / Stop fields:
+
+- `user_prompt` (string)
+
 SessionEnd fields:
 
 - `reason` (`exit`)
@@ -144,6 +184,8 @@ Mapping rules (Claude):
 - `SessionStart` → `event_type = "session_start"`
   - Requires `data.session_id` (native session id).
   - Requires `data.transcript_path` (native transcript path).
+- `UserPromptSubmit` → `event_type = "prompt"`
+  - Extracts `data.user_prompt` to update `last_message_sent` in the database.
 - `Stop` → `event_type = "stop"`
 - `Notification` → `event_type = "notification"`
 - `SessionEnd` → `event_type = "session_end"` (reserved; no handler logic yet)

@@ -599,6 +599,50 @@ def get_transcript_parser_info(agent_name: AgentName) -> TranscriptParserInfo:
     return AGENT_TRANSCRIPT_PARSERS[agent_name]
 
 
+def extract_last_user_message(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> Optional[str]:
+    """Extract the last user message from the transcript.
+
+    Args:
+        transcript_path: Path to transcript file
+        agent_name: Agent type for entry iterator selection
+
+    Returns:
+        Last user message text or None if not found
+    """
+    path = Path(transcript_path).expanduser()
+    if not path.exists():
+        return None
+
+    try:
+        if agent_name == AgentName.CLAUDE:
+            entries = list(_iter_claude_entries(path))
+        elif agent_name == AgentName.GEMINI:
+            entries = list(_iter_gemini_entries(path))
+        elif agent_name == AgentName.CODEX:
+            entries = list(_iter_codex_entries(path))
+        else:
+            return None
+
+        # Work backwards from the end
+        for entry in reversed(entries):
+            message = entry.get("message")
+            if isinstance(message, dict) and message.get("role") == "user":
+                content = message.get("content")
+                if isinstance(content, list):
+                    # Find the text block
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") in ("input_text", "text"):
+                            return str(block.get("text", ""))
+                elif isinstance(content, str):
+                    return content
+        return None
+    except Exception:
+        return None
+
+
 def parse_session_transcript(
     transcript_path: str,
     title: str,

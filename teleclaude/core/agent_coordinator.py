@@ -17,6 +17,7 @@ from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentNotificationPayload,
+    AgentPromptPayload,
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
@@ -90,6 +91,20 @@ class AgentCoordinator:
         if new_title and new_title != session.title:
             await db.update_session(session_id, title=new_title)
             logger.info("Updated session title with agent info: %s", new_title)
+
+    async def handle_prompt(self, context: AgentEventContext) -> None:
+        """Handle agent prompt event - user input submitted."""
+        session_id = context.session_id
+        payload = cast(AgentPromptPayload, context.data)
+
+        logger.debug(
+            "Agent prompt event for session %s: %s",
+            session_id[:8],
+            payload.prompt[:50],
+        )
+
+        # Clear notification flag when new prompt starts
+        await db.set_notification_flag(session_id, False)
 
     async def handle_stop(self, context: AgentEventContext) -> None:
         """Handle stop event - Agent session stopped.
