@@ -23,7 +23,8 @@ from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata
+from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, SessionSummary, ThinkingMode
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -70,6 +71,38 @@ class RESTAdapter(BaseAdapter):
         # Subscribe to cache changes
         if self.cache:
             self.cache.subscribe(self._on_cache_change)
+
+        # Subscribe to local session updates for TUI
+        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)  # type: ignore[arg-type]
+        self.client.on(TeleClaudeEvents.SESSION_TERMINATED, self._handle_session_terminated)  # type: ignore[arg-type]
+
+    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
+        """Forward local session updates to WebSocket clients."""
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+
+        summary = SessionSummary(
+            session_id=session.session_id,
+            origin_adapter=session.origin_adapter,
+            title=session.title,
+            working_directory=session.working_directory,
+            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
+            active_agent=session.active_agent,
+            status="active",
+            created_at=session.created_at.isoformat() if session.created_at else None,
+            last_activity=session.last_activity.isoformat() if session.last_activity else None,
+            last_input=session.last_message_sent,
+            last_output=session.last_feedback_received,
+            tmux_session_name=session.tmux_session_name,
+            initiator_session_id=session.initiator_session_id,
+        ).to_dict()
+        summary["computer"] = config.computer.name
+        self._on_cache_change("session_updated", summary)
+
+    async def _handle_session_terminated(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Forward local session removals to WebSocket clients."""
+        self._on_cache_change("session_removed", {"session_id": context.session_id})
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
