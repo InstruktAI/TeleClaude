@@ -43,7 +43,7 @@ You are expected to be resourceful and pragmatic, NOT a rigid executor.
    - Decision requires architectural changes
    - You genuinely cannot determine the right path
 
-**DO NOT write "deferred" and continue.** Either:
+**DO NOT mark tasks as "deferred" and continue.** Either:
 - Solve it pragmatically in-line
 - Create deferrals.md and STOP (see next-build.md for format)
 ```
@@ -76,7 +76,7 @@ Ask yourself:
 
 ### If Genuinely Out-of-Scope: Create deferrals.md
 
-**DO NOT write "deferred" in implementation-plan.md and continue.**
+**DO NOT mark tasks as "deferred" in implementation-plan.md and continue.**
 
 Instead:
 
@@ -139,13 +139,13 @@ Before reporting completion, verify:
    ```
    If any found: You're not done. Complete them or remove them.
 
-2. **No silent deferrals:**
+2. **No silent deferrals (task lines only):**
    ```bash
-   # Check for "deferred" keyword in implementation-plan.md
-   grep -i "deferred" todos/{slug}/implementation-plan.md
+   # Check for "deferred" keyword in task lines only (ignore instructional text/examples)
+   grep -iE "^[[:space:]]*-[[:space:]]*\\[[ x]\\].*\\bdeferred\\b" todos/{slug}/implementation-plan.md
    ```
-   If found: You wrote "deferred" instead of creating deferrals.md. This is wrong.
-   - Remove "deferred" text
+   If found: A task was marked "deferred" instead of creating deferrals.md. This is wrong.
+   - Remove "deferred" from the task line
    - Create proper deferrals.md entry
    - STOP and report
 
@@ -156,7 +156,7 @@ Before reporting completion, verify:
 
 **Only report completion when:**
 - All tasks `[x]`
-- No "deferred" keywords anywhere
+- No "deferred" keywords in task lines
 - No PENDING items in deferrals.md (or file doesn't exist)
 ```
 
@@ -216,10 +216,11 @@ grep -E "^[[:space:]]*-[[:space:]]*\[ \]" todos/{slug}/implementation-plan.md
 - Finding: "Unchecked tasks remain in implementation-plan.md"
 - These must be completed or removed
 
-### 2. Check for Silent Deferrals
+### 2. Check for Silent Deferrals (Task Lines Only)
 
 ```bash
-grep -i "deferred" todos/{slug}/implementation-plan.md
+# Only scan task list lines; ignore instructional text and examples.
+grep -iE "^[[:space:]]*-[[:space:]]*\\[[ x]\\].*\\bdeferred\\b" todos/{slug}/implementation-plan.md
 ```
 
 **If "deferred" keyword found:** Verdict = REQUEST CHANGES
@@ -349,11 +350,11 @@ fi
 - Continue review BUT add finding about unchecked tasks
 - Verdict will be REQUEST CHANGES
 
-### Check 3: Silent Deferrals Check
+### Check 3: Silent Deferrals Check (Task Lines Only)
 
 ```bash
-if grep -qi "deferred" "todos/{slug}/implementation-plan.md"; then
-  echo "WARNING: 'deferred' keyword found in implementation-plan.md"
+if grep -qiE "^[[:space:]]*-[[:space:]]*\\[[ x]\\].*\\bdeferred\\b" "todos/{slug}/implementation-plan.md"; then
+  echo "WARNING: 'deferred' keyword found in task lines of implementation-plan.md"
 fi
 ```
 
@@ -571,10 +572,10 @@ fi
 5. Fix missing implementation → re-review → APPROVE
 
 **Test 3: Silent deferral caught**
-1. Create test todo, manually add "deferred" to implementation-plan.md
+1. Create test todo, manually add "deferred" to a task line (checkbox item) in implementation-plan.md
 2. Worker pre-completion check catches it
 3. Reviewer also catches it if worker misses
-4. Must create proper deferrals.md or remove "deferred" text
+4. Must create proper deferrals.md or remove "deferred" from the task line
 
 **Test 4: Autonomous problem-solving**
 - Give worker todo with slight ambiguity

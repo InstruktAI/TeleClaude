@@ -4,7 +4,7 @@
 
 Work items are marked "delivered" despite incomplete implementation. This happens because:
 
-1. **Silent deferrals**: Builders write "deferred" in implementation plans and continue
+1. **Silent deferrals**: Builders mark tasks as "deferred" in implementation plans and continue
 2. **Success criteria ignored**: Requirements define criteria that reviewers never verify
 3. **Tests don't prove functionality**: Unit tests mock too much, integration tests missing
 4. **Review checks quality, not completeness**: Reviewers approve well-written incomplete code
@@ -64,7 +64,7 @@ See `command-changes-analysis.md` for complete specifications. Summary:
 ### 2. next-build.md
 **Changes:**
 - Add "Handling Out-of-Scope Work" section with deferrals.md format
-- Add "Pre-Completion Checks" to verify no unchecked tasks, no "deferred" keywords, no PENDING deferrals
+- Add "Pre-Completion Checks" to verify no unchecked tasks, no "deferred" keywords in task lines, no PENDING deferrals
 
 **Why:** Workers catch incompleteness before reporting success
 
@@ -177,7 +177,7 @@ Every work item MUST have at least ONE integration test that:
 
 | Phase | Who | What Checked | Action if Incomplete |
 |-------|-----|--------------|---------------------|
-| Build completion | Builder (self-check) | All tasks `[x]`, no "deferred", no PENDING deferrals | Don't report complete, create deferrals.md or finish tasks |
+| Build completion | Builder (self-check) | All tasks `[x]`, no "deferred" in task lines, no PENDING deferrals | Don't report complete, create deferrals.md or finish tasks |
 | Review start | Reviewer | deferrals.md has no PENDING items | Block review, report to orchestrator |
 | Review evaluation | Reviewer | Success criteria traced with evidence, integration test exists | Add findings, REQUEST CHANGES |
 | Finalize | Finalize worker | Review approved, no unchecked tasks/criteria, no PENDING deferrals | Block finalize, report to orchestrator |
@@ -210,7 +210,7 @@ Workers should NOT:
 ## What This Does NOT Do
 
 1. **No tracking of deferred work** - Work is either done, explicitly deferred for decision (deferrals.md), or descoped
-2. **No escape hatch for "deferred" keyword** - It should not appear in implementation-plan.md at all
+2. **No escape hatch for "deferred" keyword** - It should not appear in implementation-plan.md task lines. Instructional text and examples are allowed.
 3. **No shell scripts** - All verification embedded in command prompts
 4. **No subprocess calls** - Commands check their own completeness
 
