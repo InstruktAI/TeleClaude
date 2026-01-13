@@ -54,12 +54,14 @@ class AgentHookEvents:
     """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
+    AGENT_PROMPT: AgentHookEventType = "prompt"
     AGENT_STOP: AgentHookEventType = "stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_NOTIFICATION: AgentHookEventType = "notification"
     AGENT_ERROR: AgentHookEventType = "error"
     ALL: set[AgentHookEventType] = {
         AGENT_SESSION_START,
+        AGENT_PROMPT,
         AGENT_STOP,
         AGENT_SESSION_END,
         AGENT_NOTIFICATION,
@@ -71,17 +73,29 @@ class AgentHookEvents:
 class AgentSessionStartPayload:
     """Internal payload for agent session_start hook."""
 
-    session_id: str
-    transcript_path: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    transcript_path: str | None = None
+    session_id: str | None = None
+
+
+@dataclass
+class AgentPromptPayload:
+    """Internal payload for agent prompt hook (turn started)."""
+
+    prompt: str
+    session_id: str | None = None
+    transcript_path: str | None = None
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    source_computer: str | None = None
 
 
 @dataclass
 class AgentStopPayload:
     """Internal payload for agent stop hook."""
 
-    session_id: str
+    session_id: str | None = None
     transcript_path: str | None = None
+    prompt: str | None = None
     raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     summary: str | None = None
     title: str | None = None
@@ -92,10 +106,10 @@ class AgentStopPayload:
 class AgentNotificationPayload:
     """Internal payload for agent notification hook."""
 
-    session_id: str
-    transcript_path: str
-    message: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    message: str = ""
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    session_id: str | None = None
+    transcript_path: str | None = None
     source_computer: str | None = None
 
 
@@ -103,12 +117,13 @@ class AgentNotificationPayload:
 class AgentSessionEndPayload:
     """Internal payload for agent session_end hook."""
 
-    session_id: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    session_id: str | None = None
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
 
 
 AgentEventPayload = Union[
     AgentSessionStartPayload,
+    AgentPromptPayload,
     AgentStopPayload,
     AgentNotificationPayload,
     AgentSessionEndPayload,

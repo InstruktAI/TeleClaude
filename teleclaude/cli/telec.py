@@ -9,10 +9,12 @@ import sys
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.models import CreateSessionResult
 from teleclaude.config import config
+from teleclaude.logging_config import setup_logging
 
 
 def main() -> None:
     """Main entry point for telec CLI."""
+    setup_logging()
     argv = sys.argv[1:]
 
     if argv and argv[0].startswith("/"):
@@ -34,7 +36,13 @@ def main() -> None:
                 capture_output=True,
             )
         # Create new named session and mark it as telec-managed
-        os.execlp(tmux, tmux, "new-session", "-s", "tc_tui", "-e", "TELEC_TUI_SESSION=1", "telec")
+        tmux_args = [tmux, "new-session", "-s", "tc_tui", "-e", "TELEC_TUI_SESSION=1"]
+        for key, value in os.environ.items():
+            if key == "TELEC_TUI_SESSION":
+                continue
+            tmux_args.extend(["-e", f"{key}={value}"])
+        tmux_args.append("telec")
+        os.execlp(tmux, *tmux_args)
 
     try:
         asyncio.run(_run_tui())

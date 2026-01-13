@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import curses
+import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -109,10 +110,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._computers: list[ApiComputerInfo] = []
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
-        # Row-to-item line mapping for click handling
-        self._row_to_item_line: dict[int, tuple[TreeNode, int]] = {}
-        # Track last clicked line index for double-click behavior
-        self._last_clicked_line_index: int | None = None
+        # Row mapping for session ID line clicks (double-click behavior)
+        self._row_to_id_item: dict[int, SessionNode] = {}
+        self._id_row_clicked: bool = False
+        self._missing_last_input_logged: set[str] = set()
         # Signal for app to trigger data refresh
         self.needs_refresh: bool = False
         # Visible height for scroll calculations (updated during render)
@@ -463,6 +464,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """
         if not self.flat_items:
             return
+        enter_start = time.perf_counter()
         item = self.flat_items[self.selected_index]
 
         if item.type == "computer":
@@ -475,12 +477,24 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Double-click on ID line shows parent only; otherwise toggle split
             session_id = item.data.session.session_id
             is_collapsed = session_id in self.collapsed_sessions
-            if not is_collapsed and self._last_clicked_line_index == 1:
+            if not is_collapsed and self._id_row_clicked:
                 self._show_single_session_pane(item)
+                logger.trace(
+                    "sessions_enter",
+                    item_type="session",
+                    action="show_single",
+                    duration_ms=int((time.perf_counter() - enter_start) * 1000),
+                )
             else:
                 # Toggle session preview pane
                 self._toggle_session_pane(item)
-            self._last_clicked_line_index = None
+                logger.trace(
+                    "sessions_enter",
+                    item_type="session",
+                    action="toggle_pane",
+                    duration_ms=int((time.perf_counter() - enter_start) * 1000),
+                )
+            self._id_row_clicked = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer.
@@ -679,19 +693,25 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             True if an item was selected, False otherwise
         """
-        item_line = self._row_to_item_line.get(screen_row)
-        if item_line is not None:
-            _item, line_index = item_line
-            item_idx = self._row_to_item.get(screen_row)
-            if item_idx is not None:
-                self.selected_index = item_idx
-            self._last_clicked_line_index = line_index
-            return True
+        click_start = time.perf_counter()
         item_idx = self._row_to_item.get(screen_row)
         if item_idx is not None:
             self.selected_index = item_idx
-            self._last_clicked_line_index = None
+            self._id_row_clicked = screen_row in self._row_to_id_item
+            logger.trace(
+                "sessions_click",
+                row=screen_row,
+                item_type=self.flat_items[item_idx].type,
+                id_row=self._id_row_clicked,
+                duration_ms=int((time.perf_counter() - click_start) * 1000),
+            )
             return True
+        self._id_row_clicked = False
+        logger.trace(
+            "sessions_click_miss",
+            row=screen_row,
+            duration_ms=int((time.perf_counter() - click_start) * 1000),
+        )
         return False
 
     def get_render_lines(self, width: int, height: int) -> list[str]:
@@ -844,7 +864,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Clear row-to-item mapping (rebuilt each render)
         self._row_to_item.clear()
-        self._row_to_item_line.clear()
+        self._row_to_id_item.clear()
 
         if not self.flat_items:
             msg = "(no items)"
@@ -875,7 +895,6 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             for offset in range(lines_used):
                 screen_row = row + offset
                 self._row_to_item[screen_row] = i
-                self._row_to_item_line[screen_row] = (item, offset)
             row += lines_used
             items_rendered += 1
 
@@ -1000,6 +1019,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Line 2 (expanded only): ID: <full_session_id>
         line2 = f"{content_indent}ID: {session_id}"
         _safe_addstr(row + lines_used, line2, normal_attr)
+        self._row_to_id_item[row + lines_used] = item
         lines_used += 1
 
         # Determine which field is "active" (highlight) based on state tracking
@@ -1017,6 +1037,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 4: Last output (only if content exists)
         last_output = (session.last_output or "").strip()
+        if last_output and not last_input and session_id not in self._missing_last_input_logged:
+            self._missing_last_input_logged.add(session_id)
+            logger.trace("missing_last_input", session=session_id[:8])
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
             line4 = f"{content_indent}last output: {output_text}"

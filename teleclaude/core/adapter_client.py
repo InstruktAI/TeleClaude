@@ -20,9 +20,11 @@ from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
+    AgentEventPayload,
     AgentHookEvents,
     AgentHookEventType,
     AgentNotificationPayload,
+    AgentPromptPayload,
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
@@ -852,38 +854,52 @@ class AdapterClient:
         self,
         event_type: AgentHookEventType,
         data: dict[str, object],  # noqa: loose-dict - Event data to adapters
-    ) -> AgentSessionStartPayload | AgentStopPayload | AgentNotificationPayload | AgentSessionEndPayload:
+    ) -> AgentEventPayload:
         """Build typed agent payload from normalized hook data."""
+        native_id = cast(str | None, data.get("session_id"))
+
         if event_type == AgentHookEvents.AGENT_SESSION_START:
             return AgentSessionStartPayload(
-                session_id=str(data["session_id"]),
-                transcript_path=str(data["transcript_path"]),
+                session_id=native_id,
+                transcript_path=cast(str | None, data.get("transcript_path")),
                 raw=data,
+            )
+
+        if event_type == AgentHookEvents.AGENT_PROMPT:
+            return AgentPromptPayload(
+                session_id=native_id,
+                transcript_path=cast(str | None, data.get("transcript_path")),
+                prompt=cast(str, data.get("prompt", "")),
+                raw=data,
+                source_computer=cast(str | None, data.get("source_computer")),
             )
 
         if event_type == AgentHookEvents.AGENT_STOP:
             return AgentStopPayload(
-                session_id=str(data["session_id"]),
+                session_id=native_id,
                 transcript_path=cast(str | None, data.get("transcript_path")),
+                prompt=cast(str | None, data.get("prompt")),
                 raw=data,
-                summary=str(data["summary"]) if "summary" in data else None,
-                title=str(data["title"]) if "title" in data else None,
-                source_computer=str(data["source_computer"]) if "source_computer" in data else None,
+                summary=cast(str | None, data.get("summary")),
+                title=cast(str | None, data.get("title")),
+                source_computer=cast(str | None, data.get("source_computer")),
             )
 
         if event_type == AgentHookEvents.AGENT_NOTIFICATION:
             return AgentNotificationPayload(
-                session_id=str(data["session_id"]),
-                transcript_path=str(data["transcript_path"]),
-                message=str(data["message"]),
+                session_id=native_id,
+                transcript_path=cast(str | None, data.get("transcript_path")),
+                message=str(data.get("message", "")),
                 raw=data,
             )
 
         if event_type == AgentHookEvents.AGENT_SESSION_END:
             return AgentSessionEndPayload(
-                session_id=str(data["session_id"]),
+                session_id=native_id,
                 raw=data,
             )
+
+        raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 
         raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 

@@ -362,7 +362,7 @@ class TestSessionsViewLogic:
         view.flat_items = [session]
 
         view._row_to_item[10] = 0
-        view._row_to_item_line[10] = (session, 1)
+        view._row_to_id_item[10] = session
 
         assert view.handle_click(10) is True
         assert view.selected_index == 0

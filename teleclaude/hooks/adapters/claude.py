@@ -8,6 +8,7 @@ _CLAUDE_TO_INTERNAL: dict[str, str] = {
     "session_id": "session_id",
     "transcript_path": "transcript_path",
     "cwd": "cwd",
+    "user_prompt": "prompt",  # UserPromptSubmit
     "source": "source",  # SessionStart: startup
     "reason": "reason",  # SessionEnd: exit
     "message": "message",  # Notification
