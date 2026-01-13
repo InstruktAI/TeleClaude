@@ -435,7 +435,7 @@ In your supergroup, you'll see:
 3. **Check logs** for heartbeat errors:
 
    ```bash
-   instrukt-ai-logs teleclaude --since 5m | grep "computer registry"
+   instrukt-ai-logs teleclaude --since 5m -g "computer registry"
    ```
 
 4. **Verify supergroup ID** is same in all `.env` files:

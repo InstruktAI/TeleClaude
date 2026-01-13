@@ -470,10 +470,10 @@ install_launchd_service() {
         print_info "  Status:  launchctl list | grep teleclaude"
         print_info "  Stop:    launchctl unload $plist_file"
         print_info "  Start:   launchctl load $plist_file"
-        print_info "  Logs:    tail -f $DAEMON_LOG_FILE"
+        print_info "  Logs:    instrukt-ai-logs teleclaude --since 5m"
     else
         print_error "Service failed to load"
-        print_info "Check logs: tail -n 50 $DAEMON_LOG_FILE"
+        print_info "Check logs: instrukt-ai-logs teleclaude --since 5m"
         exit 1
     fi
 }

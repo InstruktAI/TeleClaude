@@ -166,7 +166,7 @@ start_daemon() {
         else
             log_error "Check status: sudo systemctl status teleclaude"
         fi
-        log_error "Check logs: tail -50 $LOG_FILE"
+        log_error "Check logs: instrukt-ai-logs teleclaude --since 5m"
     else
         log_error "Failed to load service"
     fi
