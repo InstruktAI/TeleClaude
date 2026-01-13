@@ -109,6 +109,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self._computers: list[ApiComputerInfo] = []
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
+        # Row-to-item line mapping for click handling
+        self._row_to_item_line: dict[int, tuple[TreeNode, int]] = {}
+        # Track last clicked line index for double-click behavior
+        self._last_clicked_line_index: int | None = None
         # Signal for app to trigger data refresh
         self.needs_refresh: bool = False
         # Visible height for scroll calculations (updated during render)
@@ -468,8 +472,15 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             # Start new session on project
             self._start_session_for_project(stdscr, item.data)
         elif item.type == "session":
-            # Toggle session preview pane
-            self._toggle_session_pane(item)
+            # Double-click on ID line shows parent only; otherwise toggle split
+            session_id = item.data.session.session_id
+            is_collapsed = session_id in self.collapsed_sessions
+            if not is_collapsed and self._last_clicked_line_index == 1:
+                self._show_single_session_pane(item)
+            else:
+                # Toggle session preview pane
+                self._toggle_session_pane(item)
+            self._last_clicked_line_index = None
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer.
@@ -532,6 +543,19 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Toggle pane visibility (handles both local and remote via SSH)
         self.pane_manager.toggle_session(tmux_session, child_tmux_session, computer_info)
+
+    def _show_single_session_pane(self, item: SessionNode) -> None:
+        """Show only the selected session in the side pane (no child split)."""
+        session = item.data.session
+        tmux_session = session.tmux_session_name or ""
+        computer_name = session.computer or "local"
+
+        if not tmux_session:
+            logger.warning("_show_single_session_pane: tmux_session_name missing, cannot show")
+            return
+
+        computer_info = self._get_computer_info(computer_name)
+        self.pane_manager.show_session(tmux_session, None, computer_info)
 
     def _start_session_for_project(self, stdscr: CursesWindow, project: ProjectInfo) -> None:
         """Open modal to start session on project.
@@ -655,9 +679,18 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             True if an item was selected, False otherwise
         """
+        item_line = self._row_to_item_line.get(screen_row)
+        if item_line is not None:
+            _item, line_index = item_line
+            item_idx = self._row_to_item.get(screen_row)
+            if item_idx is not None:
+                self.selected_index = item_idx
+            self._last_clicked_line_index = line_index
+            return True
         item_idx = self._row_to_item.get(screen_row)
         if item_idx is not None:
             self.selected_index = item_idx
+            self._last_clicked_line_index = None
             return True
         return False
 
@@ -811,6 +844,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Clear row-to-item mapping (rebuilt each render)
         self._row_to_item.clear()
+        self._row_to_item_line.clear()
 
         if not self.flat_items:
             msg = "(no items)"
@@ -839,7 +873,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             lines_used = self._render_item(stdscr, row, item, width, is_selected)
             # Map all lines of this item to its index (for mouse click)
             for offset in range(lines_used):
-                self._row_to_item[row + offset] = i
+                screen_row = row + offset
+                self._row_to_item[screen_row] = i
+                self._row_to_item_line[screen_row] = (item, offset)
             row += lines_used
             items_rendered += 1
 
@@ -908,6 +944,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         Returns:
             Number of lines used (1-3 depending on content and collapsed state)
         """
+
+        def _safe_addstr(target_row: int, text: str, attr: int) -> None:
+            line = text[:width].ljust(width)
+            try:
+                stdscr.addstr(target_row, 0, line, attr)  # type: ignore[attr-defined]
+            except curses.error as e:
+                logger.warning("curses error rendering session line at row %d: %s", target_row, e)
+
         session_display = item.data
         session = session_display.session
         session_id = session.session_id
@@ -941,10 +985,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
         line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
-        try:
-            stdscr.addstr(row, 0, line1[:width], title_attr)  # type: ignore[attr-defined]
-        except curses.error as e:
-            logger.warning("curses error rendering session title at row %d: %s", row, e)
+        _safe_addstr(row, line1, title_attr)
 
         # If collapsed, only show title line
         if is_collapsed:
@@ -958,10 +999,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 2 (expanded only): ID: <full_session_id>
         line2 = f"{content_indent}ID: {session_id}"
-        try:
-            stdscr.addstr(row + lines_used, 0, line2[:width], normal_attr)  # type: ignore[attr-defined]
-        except curses.error as e:
-            logger.warning("curses error rendering session ID at row %d: %s", row + lines_used, e)
+        _safe_addstr(row + lines_used, line2, normal_attr)
         lines_used += 1
 
         # Determine which field is "active" (highlight) based on state tracking
@@ -974,10 +1012,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
             line3 = f"{content_indent}last input: {input_text}"
-            try:
-                stdscr.addstr(row + lines_used, 0, line3[:width], input_attr)  # type: ignore[attr-defined]
-            except curses.error as e:
-                logger.warning("curses error rendering session input at row %d: %s", row + lines_used, e)
+            _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
 
         # Line 4: Last output (only if content exists)
@@ -985,10 +1020,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
             line4 = f"{content_indent}last output: {output_text}"
-            try:
-                stdscr.addstr(row + lines_used, 0, line4[:width], output_attr)  # type: ignore[attr-defined]
-            except curses.error as e:
-                logger.warning("curses error rendering session output at row %d: %s", row + lines_used, e)
+            _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 
         return lines_used

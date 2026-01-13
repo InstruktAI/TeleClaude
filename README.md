@@ -136,7 +136,6 @@ The service automatically:
 
 - Starts on system boot
 - Restarts if it crashes
-- Logs to `/var/log/instrukt-ai/teleclaude/teleclaude.log`
 
 **Development mode** (run in foreground):
 
@@ -444,7 +443,7 @@ make start
 
 1. Check status: `make status`
 2. Restart daemon: `make restart`
-3. Check daemon logs: `tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log` (or `instrukt-ai-logs teleclaude --since 10m`)
+3. Check daemon logs: `instrukt-ai-logs teleclaude --since 10m`
 
 Log verbosity:
 

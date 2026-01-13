@@ -247,9 +247,9 @@ See global directives (automatically loaded for all projects):
 4. **Run tests**: `make test`
 5. **Restart daemon**: `make restart`
 6. **Verify**: `make status`
-7. \*\*Monitor logs`: `tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log`(or`instrukt-ai-logs teleclaude --since 10m`)
+7. **Monitor logs**: `instrukt-ai-logs teleclaude --since 10m`
 
-**Never stop the service to check logs** - use `tail -f` instead.
+**Never stop the service to check logs** - use `instrukt-ai-logs` instead.
 
 ### Service Lifecycle Commands
 

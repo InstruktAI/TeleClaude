@@ -9,6 +9,7 @@ This guide explains how to deploy TeleClaude across multiple computers, enabling
 **What is multi-computer TeleClaude?**
 
 TeleClaude can run on multiple computers, each with its own Telegram bot. Each computer:
+
 - Runs its own TeleClaude daemon
 - Has its own Telegram bot that polls independently
 - Handles only messages assigned to it (topic ownership, session assignment)
@@ -30,6 +31,7 @@ TeleClaude can run on multiple computers, each with its own Telegram bot. Each c
 **Optional Redis for AI-to-AI:**
 
 Redis is NOT required for multi-computer Telegram. It's only needed if you want AI-to-AI collaboration via MCP tools:
+
 - `teleclaude__start_session(computer="remote")` - Start session on another computer
 - `teleclaude__send_message()` - Send to remote session
 - `teleclaude__get_session_data()` - Read remote session output
@@ -234,7 +236,7 @@ make status      # Verify daemon is running
 **Verify daemon startup:**
 
 ```bash
-tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log
+instrukt-ai-logs teleclaude --since 5m | grep "computer registry"
 ```
 
 You should see:
@@ -433,7 +435,7 @@ In your supergroup, you'll see:
 3. **Check logs** for heartbeat errors:
 
    ```bash
-   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i heartbeat
+   instrukt-ai-logs teleclaude --since 5m | grep "computer registry"
    ```
 
 4. **Verify supergroup ID** is same in all `.env` files:
@@ -488,7 +490,7 @@ In your supergroup, you'll see:
 
    ```bash
    # On target computer:
-   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log
+   instrukt-ai-logs teleclaude --since 5m
    ```
 
 3. **Verify Claude Code is installed** on target computer:
@@ -515,12 +517,12 @@ In your supergroup, you'll see:
 2. **Verify polling is active** - check target computer logs:
 
    ```bash
-   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i polling
+   instrukt-ai-logs teleclaude --since 5m | grep -i polling
    ```
 
 3. **Check for errors** in output formatting:
    ```bash
-   tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i "ERROR"
+   instrukt-ai-logs teleclaude --since 5m | grep -i "ERROR"
    ```
 
 ---
@@ -622,7 +624,7 @@ This prevents cross-team command execution while sharing the same Telegram super
 
 ```bash
 # On each computer:
-tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -E "(ERROR|WARNING)"
+instrukt-ai-logs teleclaude --since 5m | grep -E "(ERROR|WARNING)"
 ```
 
 **Test MCP connectivity:**
@@ -630,30 +632,6 @@ tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -E "(ERROR|WARNI
 ```bash
 # From Claude Code on any computer:
 > List all available TeleClaude computers
-```
-
-### Log Rotation
-
-Set up log rotation to prevent disk space issues:
-
-**macOS** (`/etc/newsyslog.d/teleclaude.conf`):
-
-```
-# Rotate teleclaude logs daily, keep 7 days
-/var/log/instrukt-ai/teleclaude/teleclaude.log 644 7 * @T00 GZ
-```
-
-**Linux** (`/etc/logrotate.d/teleclaude`):
-
-```
-/var/log/instrukt-ai/teleclaude/teleclaude.log {
-    daily
-    rotate 7
-    compress
-    delaycompress
-    missingok
-    notifempty
-}
 ```
 
 ### Upgrading TeleClaude
@@ -729,7 +707,7 @@ If you encounter issues not covered in this guide:
 2. **Check logs**:
 
    ```bash
-   tail -200 /var/log/instrukt-ai/teleclaude/teleclaude.log
+   instrukt-ai-logs teleclaude --since 5m
    ```
 
 3. **Verify configuration**:

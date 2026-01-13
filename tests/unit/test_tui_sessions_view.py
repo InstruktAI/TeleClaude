@@ -67,6 +67,7 @@ class TestSessionsViewLogic:
         thinking_mode: str = "slow",
         last_input: str | None = None,
         last_output: str | None = None,
+        tmux_session_name: str | None = None,
         display_index: str = "1",
     ) -> SessionInfo:
         return SessionInfo(
@@ -81,7 +82,7 @@ class TestSessionsViewLogic:
             last_activity=None,
             last_input=last_input,
             last_output=last_output,
-            tmux_session_name=None,
+            tmux_session_name=tmux_session_name,
             initiator_session_id=None,
             computer=computer,
         )
@@ -92,10 +93,12 @@ class TestSessionsViewLogic:
         session_id: str = "s1",
         title: str = "Test Session",
         status: str = "active",
+        computer: str = "test-computer",
         active_agent: str = "claude",
         thinking_mode: str = "slow",
         last_input: str | None = None,
         last_output: str | None = None,
+        tmux_session_name: str | None = None,
         depth: int = 0,
         display_index: str = "1",
     ) -> SessionNode:
@@ -103,10 +106,12 @@ class TestSessionsViewLogic:
             session_id=session_id,
             title=title,
             status=status,
+            computer=computer,
             active_agent=active_agent,
             thinking_mode=thinking_mode,
             last_input=last_input,
             last_output=last_output,
+            tmux_session_name=tmux_session_name,
             display_index=display_index,
         )
         return SessionNode(
@@ -319,3 +324,76 @@ class TestSessionsViewLogic:
         # First few sessions should not be visible
         assert "Session 0" not in output
         assert "Session 1" not in output
+
+    def test_double_clicking_session_id_row_shows_single_session(self, mock_focus):
+        """Double-clicking the ID row shows only the parent session in the side pane."""
+
+        class MockPaneManager:
+            def __init__(self):
+                self.called = False
+                self.args = None
+
+            def show_session(self, tmux_session_name, child_tmux_session_name, computer_info):
+                self.called = True
+                self.args = (tmux_session_name, child_tmux_session_name, computer_info)
+
+        pane_manager = MockPaneManager()
+        view = SessionsView(
+            api=None,
+            agent_availability={},
+            focus=mock_focus,
+            pane_manager=pane_manager,
+        )
+        view._computers = [
+            ComputerInfo(
+                name="test-machine",
+                status="online",
+                user="testuser",
+                host="test.local",
+                is_local=False,
+                tmux_binary="tmux",
+            )
+        ]
+        session = self._make_session_node(
+            session_id="sess-1",
+            computer="test-machine",
+            tmux_session_name="tc_parent",
+        )
+        view.flat_items = [session]
+
+        view._row_to_item[10] = 0
+        view._row_to_item_line[10] = (session, 1)
+
+        assert view.handle_click(10) is True
+        assert view.selected_index == 0
+        assert pane_manager.called is False
+
+        view.handle_enter(object())
+
+        assert pane_manager.called is True
+        assert pane_manager.args[0] == "tc_parent"
+        assert pane_manager.args[1] is None
+
+    def test_render_session_clears_line_width(self, sessions_view):
+        """Session render pads lines to full width to avoid stale artifacts."""
+
+        class FakeScreen:
+            def __init__(self):
+                self.calls = []
+
+            def addstr(self, row, col, text, _attr):  # noqa: D401, ANN001
+                self.calls.append((row, col, text))
+
+        session = self._make_session_node(
+            session_id="s1",
+            title="Test Session",
+            active_agent="unknown",
+            thinking_mode="slow",
+        )
+        screen = FakeScreen()
+        width = 30
+        lines_used = sessions_view._render_session(screen, 0, session, width, False)
+
+        assert lines_used == 2
+        assert len(screen.calls) == 2
+        assert all(len(text) == width for _row, _col, text in screen.calls)
