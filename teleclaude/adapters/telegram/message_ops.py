@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
 from telegram import (
@@ -94,7 +94,7 @@ class MessageOperationsMixin:
         topic_id = session.adapter_metadata.telegram.topic_id
 
         # Extract reply_markup and parse_mode from metadata
-        reply_markup = metadata.reply_markup  # type: ignore[misc]
+        reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode
 
         # topic_id must be int (validated above)
@@ -104,7 +104,7 @@ class MessageOperationsMixin:
         await self._wait_for_topic_ready(topic_id, session.title)
 
         # Send message with retry decorator handling errors
-        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)  # type: ignore[misc]
+        message = await self._send_message_with_retry(topic_id, text, reply_markup, parse_mode)
         return str(message.message_id)
 
     @command_retry(max_retries=3, max_timeout=15.0)
@@ -192,7 +192,7 @@ class MessageOperationsMixin:
             return False
 
         # Extract reply_markup + parse_mode from metadata
-        reply_markup = cast(Optional[object], metadata.reply_markup)
+        reply_markup = metadata.reply_markup
         parse_mode = metadata.parse_mode or "Markdown"
 
         # CRITICAL FIX: Remove pending edit optimization - it causes race conditions where

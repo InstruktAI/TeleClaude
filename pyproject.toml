@@ -135,6 +135,11 @@ module = "teleclaude.adapters.redis_adapter"
 disable_error_code = ["misc", "no-any-return", "attr-defined", "explicit-any", "arg-type", "assignment", "override"]
 
 [[tool.mypy.overrides]]
+module = "teleclaude.adapters.rest_adapter"
+# FastAPI decorators and Pydantic models introduce Any-typed boundaries.
+disable_error_code = ["misc", "assignment", "arg-type"]
+
+[[tool.mypy.overrides]]
 module = "teleclaude.core.command_handlers"
 # Decorators and dynamic typing cause issues here.
 disable_error_code = ["explicit-any", "misc", "arg-type", "assignment"]
@@ -164,6 +169,11 @@ disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
 module = "teleclaude.cli.api_client"
 # httpx resp.json() returns Any.
 disable_error_code = ["misc", "no-any-return"]
+
+[[tool.mypy.overrides]]
+module = "teleclaude.utils.transcript"
+# External JSON payloads are highly dynamic; validate in code instead of types.
+disable_error_code = ["misc"]
 
 [[tool.mypy.overrides]]
 module = "teleclaude.api.*"

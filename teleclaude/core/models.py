@@ -4,40 +4,47 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
-    from telegram.types import (  # pyright: ignore[reportMissingImports]
-        InlineKeyboardMarkup,
-    )
+
+    class InlineKeyboardMarkup(Protocol):
+        """Telegram inline keyboard marker interface for type checking."""
 
 
 # JSON-serializable types for database storage
-JsonPrimitive = Union[str, int, float, bool, None]
-JsonValue = Union[JsonPrimitive, List["JsonValue"], Dict[str, "JsonValue"]]
-JsonDict = Dict[str, JsonValue]
+JsonPrimitive = str | int | float | bool | None
+JsonValue = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
+JsonDict = dict[str, JsonValue]
 
 
-def asdict_exclude_none(obj: object) -> Dict[str, object]:  # guard: loose-dict - Serialization output
+def asdict_exclude_none(
+    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | RedisAdapterMetadata | dict[str, JsonValue]",
+) -> JsonDict:
     """Convert dataclass to dict, recursively excluding None values."""
+
     # Handle already-dict objects (defensive)
-    if isinstance(obj, dict):
-        return {k: v for k, v in obj.items() if v is not None}  # type: ignore
-
-    # asdict needs a dataclass instance
-    result: Dict[str, object] = asdict(obj)  # type: ignore  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
-
-    def _exclude_none(data: Any) -> Any:
-        """Recursively exclude None values from dicts."""
+    def _exclude_none(data: object) -> JsonValue:
+        """Recursively exclude None values from dicts and lists."""
         if isinstance(data, dict):
-            return {k: _exclude_none(v) for k, v in data.items() if v is not None}  # type: ignore
+            result: dict[str, JsonValue] = {}
+            for key, value in data.items():
+                if value is None:
+                    continue
+                result[str(key)] = _exclude_none(value)
+            return result
         if isinstance(data, list):
             return [_exclude_none(item) for item in data]
-        return data
+        return cast(JsonPrimitive, data)
 
-    return cast(Dict[str, object], _exclude_none(result))  # type: ignore
+    if isinstance(obj, dict):
+        return cast(JsonDict, _exclude_none(obj))
+
+    # asdict needs a dataclass instance
+    result = cast(JsonDict, asdict(obj))
+    return cast(JsonDict, _exclude_none(result))
 
 
 @dataclass
@@ -165,11 +172,11 @@ class SessionAdapterMetadata:
                     topic_id = topic_id_val
                 elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
                     topic_id = int(topic_id_val)
-                tg_fields: Dict[str, object | None] = {
-                    "topic_id": topic_id,
-                    "output_message_id": str(output_msg_val) if output_msg_val is not None else None,
-                }
-                telegram_metadata = TelegramAdapterMetadata(**tg_fields)  # type: ignore  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]
+                output_message_id = str(output_msg_val) if output_msg_val is not None else None
+                telegram_metadata = TelegramAdapterMetadata(
+                    topic_id=topic_id,
+                    output_message_id=output_message_id,
+                )
 
             redis_raw = data_obj.get("redis")
             if isinstance(redis_raw, dict):
@@ -261,7 +268,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
-        data: Dict[str, object] = asdict(self)  # type: ignore  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]  # guard: loose-dict
+        data = cast(Dict[str, object], asdict(self))
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
@@ -310,60 +317,63 @@ class Session:  # pylint: disable=too-many-instance-attributes
             adapter_metadata = SessionAdapterMetadata()
 
         ia_val = data.get("initiated_by_ai")
-        initiated_by_ai = bool(ia_val) if isinstance(ia_val, int) else ia_val
+        initiated_by_ai = bool(ia_val) if ia_val is not None else False
 
         notification_sent_val = data.get("notification_sent")
-        notification_sent = (
-            bool(notification_sent_val) if isinstance(notification_sent_val, int) else notification_sent_val
-        )
+        notification_sent = bool(notification_sent_val) if notification_sent_val is not None else False
 
         tui_capture_started_val = data.get("tui_capture_started")
-        tui_capture_started = (
-            bool(tui_capture_started_val) if isinstance(tui_capture_started_val, int) else tui_capture_started_val
+        tui_capture_started = bool(tui_capture_started_val) if tui_capture_started_val is not None else False
+
+        def _get_required_str(key: str, *, default: str = "") -> str:
+            value = data.get(key)
+            return str(value) if value is not None else default
+
+        def _get_optional_str(key: str) -> Optional[str]:
+            value = data.get(key)
+            return str(value) if value is not None else None
+
+        native_pid_val = data.get("native_pid")
+        if isinstance(native_pid_val, int):
+            native_pid = native_pid_val
+        elif isinstance(native_pid_val, str) and native_pid_val.isdigit():
+            native_pid = int(native_pid_val)
+        else:
+            native_pid = None
+
+        return cls(
+            session_id=_get_required_str("session_id"),
+            computer_name=_get_required_str("computer_name"),
+            tmux_session_name=_get_required_str("tmux_session_name"),
+            origin_adapter=_get_required_str("origin_adapter"),
+            title=_get_required_str("title"),
+            adapter_metadata=adapter_metadata,
+            created_at=created_at if isinstance(created_at, datetime) else None,
+            last_activity=last_activity if isinstance(last_activity, datetime) else None,
+            working_directory=_get_required_str("working_directory", default="~"),
+            description=_get_optional_str("description"),
+            initiated_by_ai=initiated_by_ai,
+            initiator_session_id=_get_optional_str("initiator_session_id"),
+            output_message_id=_get_optional_str("output_message_id"),
+            last_input_adapter=_get_optional_str("last_input_adapter"),
+            notification_sent=notification_sent,
+            native_session_id=_get_optional_str("native_session_id"),
+            native_log_file=_get_optional_str("native_log_file"),
+            active_agent=_get_optional_str("active_agent"),
+            thinking_mode=_get_optional_str("thinking_mode"),
+            native_tty_path=_get_optional_str("native_tty_path"),
+            tmux_tty_path=_get_optional_str("tmux_tty_path"),
+            native_pid=native_pid,
+            tui_log_file=_get_optional_str("tui_log_file"),
+            tui_capture_started=tui_capture_started,
+            last_message_sent=_get_optional_str("last_message_sent"),
+            last_message_sent_at=last_message_sent_at if isinstance(last_message_sent_at, datetime) else None,
+            last_feedback_received=_get_optional_str("last_feedback_received"),
+            last_feedback_received_at=last_feedback_received_at
+            if isinstance(last_feedback_received_at, datetime)
+            else None,
+            working_slug=_get_optional_str("working_slug"),
         )
-
-        known_fields = {
-            "session_id",
-            "computer_name",
-            "tmux_session_name",
-            "origin_adapter",
-            "title",
-            "adapter_metadata",
-            "created_at",
-            "last_activity",
-            "working_directory",
-            "description",
-            "initiated_by_ai",
-            "initiator_session_id",
-            "output_message_id",
-            "last_input_adapter",
-            "notification_sent",
-            "native_session_id",
-            "native_log_file",
-            "active_agent",
-            "thinking_mode",
-            "native_tty_path",
-            "tmux_tty_path",
-            "native_pid",
-            "tui_log_file",
-            "tui_capture_started",
-            "last_message_sent",
-            "last_message_sent_at",
-            "last_feedback_received",
-            "last_feedback_received_at",
-            "working_slug",
-        }
-        filtered_data = {k: v for k, v in data.items() if k in known_fields}
-        filtered_data["adapter_metadata"] = adapter_metadata
-        filtered_data["created_at"] = created_at
-        filtered_data["last_activity"] = last_activity
-        filtered_data["initiated_by_ai"] = initiated_by_ai
-        filtered_data["last_message_sent_at"] = last_message_sent_at
-        filtered_data["last_feedback_received_at"] = last_feedback_received_at
-        filtered_data["notification_sent"] = notification_sent
-        filtered_data["tui_capture_started"] = tui_capture_started
-
-        return cls(**filtered_data)  # type: ignore  # pyright: ignore[reportArgumentType]
 
 
 @dataclass
@@ -378,17 +388,28 @@ class Recording:
 
     def to_dict(self) -> JsonDict:
         """Convert recording to dictionary."""
-        data: JsonDict = asdict(self)  # type: ignore  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]  # guard: loose-dict
+        data = cast(JsonDict, asdict(self))
         if self.timestamp:
-            data["timestamp"] = self.timestamp.isoformat()  # type: ignore  # pyright: ignore[reportArgumentType]
+            data["timestamp"] = self.timestamp.isoformat()
         return data
 
     @classmethod
     def from_dict(cls, data: JsonDict) -> "Recording":
         """Create recording from dictionary (from database/JSON)."""
-        if "timestamp" in data and isinstance(data["timestamp"], str):
-            data["timestamp"] = datetime.fromisoformat(data["timestamp"])  # type: ignore  # pyright: ignore[reportArgumentType]  # pyright: ignore
-        return cls(**data)  # type: ignore  # pyright: ignore[reportArgumentType]
+        timestamp_raw = data.get("timestamp")
+        if isinstance(timestamp_raw, str):
+            timestamp = datetime.fromisoformat(timestamp_raw)
+        elif isinstance(timestamp_raw, datetime):
+            timestamp = timestamp_raw
+        else:
+            timestamp = None
+        return cls(
+            recording_id=cast(Optional[int], data.get("recording_id")),
+            session_id=str(data.get("session_id", "")),
+            file_path=str(data.get("file_path", "")),
+            recording_type=str(data.get("recording_type", "")),
+            timestamp=timestamp,
+        )
 
 
 class ThinkingMode(str, Enum):
@@ -623,7 +644,7 @@ class ComputerInfo:
     tmux_binary: Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
-        return asdict(self)  # type: ignore  # pyright: ignore[reportArgumentType]
+        return cast(Dict[str, object], asdict(self))
 
 
 @dataclass
@@ -653,7 +674,7 @@ class TodoInfo:
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
         """Convert to dict."""
-        return asdict(self)  # type: ignore  # pyright: ignore[reportArgumentType]
+        return cast(Dict[str, object], asdict(self))
 
 
 @dataclass
@@ -681,8 +702,8 @@ class ProjectInfo:
 
     def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
         """Convert to dict."""
-        result: Dict[str, object] = asdict(self)  # type: ignore  # pyright: ignore[reportArgumentType]  # pyright: ignore[reportArgumentType]  # guard: loose-dict
-        result["todos"] = [t.to_dict() for t in self.todos]  # type: ignore
+        result = cast(Dict[str, object], asdict(self))
+        result["todos"] = [t.to_dict() for t in self.todos]
         return result
 
 

@@ -46,8 +46,38 @@ EventType = Literal[
     "session_updated",
 ]
 
+# Command events that use CommandEventContext (type alias for static typing).
+CommandEventType = Literal[
+    "new_session",
+    "list_sessions",
+    "get_session_data",
+    "list_projects",
+    "list_projects_with_todos",
+    "list_todos",
+    "get_computer_info",
+    "cd",
+    "kill",
+    "cancel",
+    "cancel2x",
+    "escape",
+    "escape2x",
+    "ctrl",
+    "tab",
+    "shift_tab",
+    "backspace",
+    "enter",
+    "key_up",
+    "key_down",
+    "key_left",
+    "key_right",
+    "rename",
+    "agent",
+    "agent_restart",
+    "agent_resume",
+]
+
 # Agent hook event types (payload event_type values from agents)
-AgentHookEventType = Literal["session_start", "stop", "session_end", "notification", "error"]
+AgentHookEventType = Literal["session_start", "prompt", "stop", "session_end", "notification", "error"]
 
 
 class AgentHookEvents:
