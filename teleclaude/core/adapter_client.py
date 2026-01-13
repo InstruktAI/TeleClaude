@@ -6,8 +6,6 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-import time
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast
 
 from instrukt_ai_logging import get_logger
@@ -426,25 +424,6 @@ class AdapterClient:
                     session.session_id[:8],
                     exc,
                 )
-
-        summary = self._summarize_output(output)
-        if summary:
-            now = time.time()
-            idle_for = max(0.0, now - last_output_changed_at)
-            if is_final or idle_for >= _OUTPUT_SUMMARY_IDLE_THRESHOLD_S:
-                last_summary = session_to_send.last_feedback_received or ""
-                last_summary_at = session_to_send.last_feedback_received_at
-                should_update = summary != last_summary
-                if should_update and last_summary_at:
-                    elapsed = (datetime.now(timezone.utc) - last_summary_at).total_seconds()
-                    if elapsed < _OUTPUT_SUMMARY_MIN_INTERVAL_S:
-                        should_update = False
-                if should_update:
-                    await db.update_session(
-                        session_to_send.session_id,
-                        last_feedback_received=summary,
-                        last_feedback_received_at=datetime.now(timezone.utc),
-                    )
 
         # Broadcast to ALL UI adapters
         tasks = []
