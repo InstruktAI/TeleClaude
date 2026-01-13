@@ -13,7 +13,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Optional, Protocol, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 

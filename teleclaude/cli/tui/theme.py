@@ -34,6 +34,9 @@ Z_SELECTION: dict[int, int] = {
     2: 16,  # Modal selection
 }
 
+# Banner color pair
+_BANNER_PAIR_ID = 22
+
 # Track current mode for reference
 _is_dark_mode: bool = True
 
@@ -129,6 +132,9 @@ def init_colors() -> None:
 
         # Input field border
         curses.init_pair(21, 245, -1)  # Medium gray for input borders
+
+        # Banner foreground (muted)
+        curses.init_pair(_BANNER_PAIR_ID, 244, -1)
     else:
         curses.init_pair(14, -1, 252)  # z=0 selection
         curses.init_pair(15, -1, 251)  # z=1 selection
@@ -144,6 +150,9 @@ def init_colors() -> None:
 
         # Input field border
         curses.init_pair(21, 240, -1)  # Medium gray for input borders
+
+        # Banner foreground (muted)
+        curses.init_pair(_BANNER_PAIR_ID, 240, -1)
 
 
 def get_layer_attr(z_index: int) -> int:
@@ -188,3 +197,17 @@ def get_input_border_attr() -> int:
         Curses color pair attribute for input border
     """
     return curses.color_pair(21)
+
+
+def get_banner_attr(is_dark_mode: bool) -> int:
+    """Get curses attribute for banner text.
+
+    Args:
+        is_dark_mode: True if dark mode, False if light mode
+
+    Returns:
+        Curses attribute for banner text
+    """
+    if is_dark_mode:
+        return curses.color_pair(_BANNER_PAIR_ID)
+    return curses.A_BOLD

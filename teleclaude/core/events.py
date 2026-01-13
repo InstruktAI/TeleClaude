@@ -47,7 +47,7 @@ EventType = Literal[
 ]
 
 # Agent hook event types (payload event_type values from agents)
-AgentHookEventType = Literal["session_start", "stop", "session_end", "notification", "error"]
+AgentHookEventType = Literal["session_start", "prompt", "stop", "session_end", "notification", "error"]
 
 
 class AgentHookEvents:

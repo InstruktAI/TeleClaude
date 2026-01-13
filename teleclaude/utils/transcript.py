@@ -629,15 +629,19 @@ def extract_last_user_message(
         # Work backwards from the end
         for entry in reversed(entries):
             message = entry.get("message")
-            if isinstance(message, dict) and message.get("role") == "user":
-                content = message.get("content")
-                if isinstance(content, list):
-                    # Find the text block
-                    for block in content:
-                        if isinstance(block, dict) and block.get("type") in ("input_text", "text"):
-                            return str(block.get("text", ""))
-                elif isinstance(content, str):
-                    return content
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if not isinstance(role, str) or role != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, list):
+                # Find the text block
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") in ("input_text", "text"):
+                        return str(block.get("text", ""))
+            elif isinstance(content, str):
+                return content
         return None
     except Exception:
         return None

@@ -64,7 +64,6 @@ from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutb
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.utils.transcript import extract_last_user_message
 
 
 # TypedDict definitions for deployment status payloads
@@ -967,7 +966,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Stop event for unknown session %s", session_id[:8])
             return None
 
-        updates: dict[str, object] = {}
+        updates: dict[str, object] = {}  # guard: loose-dict - Hook payload updates are dynamic
 
         # Capture native agent session ID
         if payload.session_id and payload.session_id != session.native_session_id:
@@ -983,7 +982,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 active_agent_str = agent_name
             else:
                 logger.warning("Session %s missing active_agent and no agent in payload", session_id[:8])
-                return session
+                return None
 
         # Capture transcript path
         if payload.transcript_path and payload.transcript_path != session.native_log_file:
