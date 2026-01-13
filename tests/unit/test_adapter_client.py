@@ -541,6 +541,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     with (
         patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=updated_session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
