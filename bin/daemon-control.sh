@@ -283,7 +283,7 @@ except Exception:
         log_warn "Daemon health: MCP socket missing"
     fi
 
-    log_warn "Daemon appears to be down. Check logs: tail -50 $LOG_FILE"
+    log_warn "Daemon appears to be down. Check logs: instrukt-ai-logs teleclaude --since 5m"
     return 1
 }
 

@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last Updated**: 2026-01-13
+> **Last Updated**: 2026-01-14
 > **Status Legend**: `[ ]` = Pending | `[.]` = Ready | `[>]` = In Progress
 > (DONE work is tracked in [delivered.md](./delivered.md))
 
@@ -17,12 +17,10 @@
 
 ---
 
-## Cache Architecture Alignment
+## Cache Improvements
 
-- [.] smart-cache-policy-matrix
-  Implement matrix-driven cache behavior (serve stale + refresh) across all REST reads.
-- [.] cache-read-path-normalization
-  Ensure all REST endpoints read from cache only; no direct remote pulls in handlers.
+- [.] cache-startup-warmup
+  Warmup remote projects on daemon startup and add digest-based invalidation to heartbeats.
 
 ---
 
