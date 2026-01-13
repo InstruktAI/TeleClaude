@@ -2,7 +2,7 @@
   "build": "complete",
   "review": "pending",
   "breakdown": {
-    "assessed": false,
+    "assessed": true,
     "todos": []
   }
 }
