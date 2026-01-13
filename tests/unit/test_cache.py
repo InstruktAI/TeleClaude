@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from teleclaude.core.cache import CachedItem, DaemonCache
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 
 # ==================== CachedItem Tests ====================
 
@@ -51,18 +52,18 @@ def test_get_computers_auto_expires_stale_entries():
     cache = DaemonCache()
 
     # Add fresh computer
-    fresh_computer = {"name": "fresh", "status": "online"}
+    fresh_computer = ComputerInfo(name="fresh", status="online")
     cache.update_computer(fresh_computer)
 
     # Add stale computer (cached 120 seconds ago, TTL is 60s)
     stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=120)
-    stale_computer = {"name": "stale", "status": "online"}
+    stale_computer = ComputerInfo(name="stale", status="online")
     cache._computers["stale"] = CachedItem(stale_computer, cached_at=stale_timestamp)
 
     # get_computers should auto-expire stale entry
     computers = cache.get_computers()
     assert len(computers) == 1
-    assert computers[0]["name"] == "fresh"
+    assert computers[0].name == "fresh"
 
     # Verify stale entry was removed from cache
     assert "stale" not in cache._computers
@@ -72,8 +73,30 @@ def test_get_sessions_filters_by_computer():
     """Test get_sessions() filters by computer parameter."""
     cache = DaemonCache()
 
-    cache.update_session({"session_id": "sess-1", "computer": "local", "title": "Local"})
-    cache.update_session({"session_id": "sess-2", "computer": "remote", "title": "Remote"})
+    cache.update_session(
+        SessionSummary(
+            session_id="sess-1",
+            computer="local",
+            title="Local",
+            origin_adapter="redis",
+            working_directory="~",
+            thinking_mode="slow",
+            active_agent=None,
+            status="active",
+        )
+    )
+    cache.update_session(
+        SessionSummary(
+            session_id="sess-2",
+            computer="remote",
+            title="Remote",
+            origin_adapter="redis",
+            working_directory="~",
+            thinking_mode="slow",
+            active_agent=None,
+            status="active",
+        )
+    )
 
     # Get all sessions
     all_sessions = cache.get_sessions()
@@ -82,7 +105,7 @@ def test_get_sessions_filters_by_computer():
     # Filter by computer
     local_sessions = cache.get_sessions(computer="local")
     assert len(local_sessions) == 1
-    assert local_sessions[0]["session_id"] == "sess-1"
+    assert local_sessions[0].session_id == "sess-1"
 
 
 def test_update_computer_notifies_subscribers():
@@ -92,7 +115,7 @@ def test_update_computer_notifies_subscribers():
     callback.__name__ = "test_callback"  # Add __name__ for logger
     cache.subscribe(callback)
 
-    computer = {"name": "test", "status": "online"}
+    computer = ComputerInfo(name="test", status="online")
     cache.update_computer(computer)
 
     callback.assert_called_once_with("computer_updated", computer)
@@ -105,7 +128,16 @@ def test_update_session_notifies_subscribers():
     callback.__name__ = "test_callback"
     cache.subscribe(callback)
 
-    session = {"session_id": "sess-123", "computer": "local", "title": "Test"}
+    session = SessionSummary(
+        session_id="sess-123",
+        computer="local",
+        title="Test",
+        origin_adapter="redis",
+        working_directory="~",
+        thinking_mode="slow",
+        active_agent=None,
+        status="active",
+    )
     cache.update_session(session)
 
     callback.assert_called_once_with("session_updated", session)
@@ -119,7 +151,16 @@ def test_remove_session_notifies_subscribers():
     cache.subscribe(callback)
 
     # Add then remove session
-    session = {"session_id": "sess-123", "computer": "local", "title": "Test"}
+    session = SessionSummary(
+        session_id="sess-123",
+        computer="local",
+        title="Test",
+        origin_adapter="redis",
+        working_directory="~",
+        thinking_mode="slow",
+        active_agent=None,
+        status="active",
+    )
     cache.update_session(session)
     callback.reset_mock()  # Clear the update notification
 
@@ -136,7 +177,7 @@ def test_set_projects_notifies_subscribers():
     callback.__name__ = "test_callback"
     cache.subscribe(callback)
 
-    projects = [{"name": "proj1", "path": "/path1", "desc": "Test"}]
+    projects = [ProjectInfo(name="proj1", path="/path1", description="Test")]
     cache.set_projects("local", projects)
 
     callback.assert_called_once_with("projects_updated", {"computer": "local", "projects": projects})
@@ -149,7 +190,7 @@ def test_set_todos_notifies_subscribers():
     callback.__name__ = "test_callback"
     cache.subscribe(callback)
 
-    todos = [{"slug": "todo-1", "status": "pending", "description": "Test"}]
+    todos = [TodoInfo(slug="todo-1", status="pending", description="Test")]
     cache.set_todos("local", "/path", todos)
 
     callback.assert_called_once_with(
@@ -192,7 +233,7 @@ def test_notify_handles_callback_exception():
     cache.subscribe(success_callback)
 
     # Trigger notification - should not raise exception
-    cache.update_computer({"name": "test", "status": "online"})
+    cache.update_computer(ComputerInfo(name="test", status="online"))
 
     # Both callbacks should have been called despite one failing
     assert failing_callback.call_count == 1
@@ -204,18 +245,18 @@ def test_get_projects_filters_stale_entries():
     cache = DaemonCache()
 
     # Add fresh project
-    fresh_project = {"name": "fresh", "path": "/fresh", "desc": "Fresh"}
+    fresh_project = ProjectInfo(name="fresh", path="/fresh", description="Fresh")
     cache._projects["local:/fresh"] = CachedItem(fresh_project)
 
     # Add stale project (cached 400 seconds ago, TTL is 300s)
     stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
-    stale_project = {"name": "stale", "path": "/stale", "desc": "Stale"}
+    stale_project = ProjectInfo(name="stale", path="/stale", description="Stale")
     cache._projects["local:/stale"] = CachedItem(stale_project, cached_at=stale_timestamp)
 
     # get_projects should filter out stale entry
     projects = cache.get_projects()
     assert len(projects) == 1
-    assert projects[0]["name"] == "fresh"
+    assert projects[0].name == "fresh"
 
 
 def test_get_projects_includes_stale_when_requested():
@@ -223,12 +264,12 @@ def test_get_projects_includes_stale_when_requested():
     cache = DaemonCache()
 
     stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
-    stale_project = {"name": "stale", "path": "/stale", "desc": "Stale"}
+    stale_project = ProjectInfo(name="stale", path="/stale", description="Stale")
     cache._projects["local:/stale"] = CachedItem(stale_project, cached_at=stale_timestamp)
 
     projects = cache.get_projects(include_stale=True)
     assert len(projects) == 1
-    assert projects[0]["name"] == "stale"
+    assert projects[0].name == "stale"
 
 
 def test_get_todos_returns_empty_for_stale_data():
@@ -237,7 +278,7 @@ def test_get_todos_returns_empty_for_stale_data():
 
     # Add stale todos (cached 400 seconds ago, TTL is 300s)
     stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
-    todos = [{"slug": "todo-1", "status": "pending"}]
+    todos = [TodoInfo(slug="todo-1", status="pending")]
     cache._todos["local:/path"] = CachedItem(todos, cached_at=stale_timestamp)
 
     # get_todos should return empty list for stale data
@@ -250,9 +291,20 @@ def test_invalidate_removes_from_cache():
     cache = DaemonCache()
 
     # Add data to all caches
-    cache.update_computer({"name": "test", "status": "online"})
-    cache.update_session({"session_id": "sess-123", "computer": "local"})
-    cache.set_projects("local", [{"name": "proj", "path": "/path", "desc": "Test"}])
+    cache.update_computer(ComputerInfo(name="test", status="online"))
+    cache.update_session(
+        SessionSummary(
+            session_id="sess-123",
+            computer="local",
+            title="Test",
+            origin_adapter="redis",
+            working_directory="~",
+            thinking_mode="slow",
+            active_agent=None,
+            status="active",
+        )
+    )
+    cache.set_projects("local", [ProjectInfo(name="proj", path="/path", description="Test")])
 
     # Invalidate computer
     cache.invalidate("test")
@@ -268,10 +320,21 @@ def test_invalidate_all_clears_everything():
     cache = DaemonCache()
 
     # Add data to all caches
-    cache.update_computer({"name": "test", "status": "online"})
-    cache.update_session({"session_id": "sess-123", "computer": "local"})
-    cache.set_projects("local", [{"name": "proj", "path": "/path", "desc": "Test"}])
-    cache.set_todos("local", "/path", [{"slug": "todo-1"}])
+    cache.update_computer(ComputerInfo(name="test", status="online"))
+    cache.update_session(
+        SessionSummary(
+            session_id="sess-123",
+            computer="local",
+            title="Test",
+            origin_adapter="redis",
+            working_directory="~",
+            thinking_mode="slow",
+            active_agent=None,
+            status="active",
+        )
+    )
+    cache.set_projects("local", [ProjectInfo(name="proj", path="/path", description="Test")])
+    cache.set_todos("local", "/path", [TodoInfo(slug="todo-1", status="pending")])
 
     # Clear everything
     cache.invalidate_all()
@@ -326,8 +389,8 @@ def test_get_projects_filters_by_computer():
     """Test get_projects() filters by computer prefix."""
     cache = DaemonCache()
 
-    cache.set_projects("local", [{"name": "local-proj", "path": "/local", "desc": "Local"}])
-    cache.set_projects("remote", [{"name": "remote-proj", "path": "/remote", "desc": "Remote"}])
+    cache.set_projects("local", [ProjectInfo(name="local-proj", path="/local", description="Local")])
+    cache.set_projects("remote", [ProjectInfo(name="remote-proj", path="/remote", description="Remote")])
 
     # Get all projects
     all_projects = cache.get_projects()
@@ -336,7 +399,7 @@ def test_get_projects_filters_by_computer():
     # Filter by computer
     local_projects = cache.get_projects(computer="local")
     assert len(local_projects) == 1
-    assert local_projects[0]["name"] == "local-proj"
+    assert local_projects[0].name == "local-proj"
 
 
 def test_cached_item_uses_current_time_by_default():

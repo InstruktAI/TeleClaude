@@ -23,27 +23,29 @@ from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
-from teleclaude.core.command_handlers import ProjectInfo, TodoInfo
 from teleclaude.core.db import db
 from teleclaude.core.events import AgentHookEvents, EventType, TeleClaudeEvents, parse_command_string
 from teleclaude.core.models import (
     ChannelMetadata,
     CommandPayload,
+    ComputerInfo,
     MessageMetadata,
     MessagePayload,
     PeerInfo,
+    ProjectInfo,
     RedisAdapterMetadata,
     RedisInboundMessage,
     Session,
+    SessionSummary,
+    TodoInfo,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
-from teleclaude.mcp.types import ComputerInfo
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.cache import DaemonCache, SessionInfo
+    from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
@@ -247,15 +249,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         peers = await self.discover_peers()
 
         for peer in peers:
-            computer_info: ComputerInfo = {
-                "name": peer.name,
-                "status": "online",
-                "last_seen": peer.last_seen,
-                "user": peer.user,
-                "host": peer.host,
-                "role": peer.role,
-                "system_stats": peer.system_stats,
-            }
+            computer_info = ComputerInfo(
+                name=peer.name,
+                status="online",
+                user=peer.user,
+                host=peer.host,
+                role=peer.role,
+                system_stats=peer.system_stats,
+            )
             self.cache.update_computer(computer_info)
 
         for peer in peers:
@@ -276,15 +277,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         peers = await self.discover_peers()
         for peer in peers:
-            computer_info: ComputerInfo = {
-                "name": peer.name,
-                "status": "online",
-                "last_seen": peer.last_seen,
-                "user": peer.user,
-                "host": peer.host,
-                "role": peer.role,
-                "system_stats": peer.system_stats,
-            }
+            computer_info = ComputerInfo(
+                name=peer.name,
+                status="online",
+                user=peer.user,
+                host=peer.host,
+                role=peer.role,
+                system_stats=peer.system_stats,
+            )
             self.cache.update_computer(computer_info)
 
         for peer in peers:
@@ -326,18 +326,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 computer_name = cast(str, info["computer_name"])
                 if computer_name == self.computer_name:
                     continue
-                last_seen_str = cast(str, info["last_seen"])
-                last_seen = datetime.fromisoformat(last_seen_str)
 
-                computer_info: ComputerInfo = {
-                    "name": computer_name,
-                    "status": "online",
-                    "last_seen": last_seen,
-                    "user": cast("str | None", info.get("user")),
-                    "host": cast("str | None", info.get("host")),
-                    "role": cast("str | None", info.get("role")),
-                    "system_stats": cast("SystemStats | None", info.get("system_stats")),
-                }
+                computer_info = ComputerInfo(
+                    name=computer_name,
+                    status="online",
+                    user=cast("str | None", info.get("user")),
+                    host=cast("str | None", info.get("host")),
+                    role=cast("str | None", info.get("role")),
+                    system_stats=cast("SystemStats | None", info.get("system_stats")),
+                )
                 self.cache.update_computer(computer_info)
             except Exception as exc:
                 logger.warning("Heartbeat peer parse failed: %s", exc)
@@ -1025,7 +1022,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                         title = None
 
                 event_type = TeleClaudeEvents.AGENT_EVENT
-                event_data: dict[str, object] = {  # noqa: loose-dict - Event payload assembly
+                event_data: dict[str, object] = {  # guard: loose-dict - Event payload assembly
                     "session_id": target_session_id,
                     "source_computer": source_computer,
                 }
@@ -1367,18 +1364,14 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                 # Populate cache with computer info from heartbeat
                 if self.cache:
-                    last_seen_str = str(info.get("last_seen", ""))
-                    last_seen = datetime.fromisoformat(last_seen_str) if last_seen_str else datetime.now(timezone.utc)
-
-                    computer_info: ComputerInfo = {
-                        "name": computer_name,
-                        "status": "online",
-                        "last_seen": last_seen,
-                        "user": None,
-                        "host": None,
-                        "role": None,
-                        "system_stats": None,
-                    }
+                    computer_info = ComputerInfo(
+                        name=computer_name,
+                        status="online",
+                        user=None,
+                        host=None,
+                        role=None,
+                        system_stats=None,
+                    )
                     self.cache.update_computer(computer_info)
 
                 # Check if computer is interested in this type
@@ -1417,7 +1410,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         # Get all known remote computers from cache
         all_computers = self.cache.get_computers()
-        computer_map = {c["name"]: c for c in all_computers}
+        computer_map = {c.name: c for c in all_computers}
 
         # Pull sessions only from computers we're interested in
         for computer_name in interested_computers:
@@ -1454,9 +1447,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 # Populate cache with sessions
                 for session_obj in data:
                     if isinstance(session_obj, dict):
-                        # Cast dict to SessionInfo for type safety
-                        session: "SessionInfo" = cast("SessionInfo", session_obj)
-                        self.cache.update_session(session)
+                        # Cast dict to SessionSummary for cache
+                        summary = SessionSummary.from_dict(session_obj)
+                        summary.computer = computer_name
+                        self.cache.update_session(summary)
 
                 logger.info("Pulled %d sessions from %s", len(data), computer_name)
 
@@ -1513,8 +1507,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             projects: list[ProjectInfo] = []
             for project_obj in data:
                 if isinstance(project_obj, dict):
-                    project: ProjectInfo = cast("ProjectInfo", project_obj)
-                    projects.append(project)
+                    # Ensure computer name is set from the pull source
+                    info = ProjectInfo.from_dict(project_obj)
+                    info.computer = computer
+                    projects.append(info)
 
             # Store in cache
             self.cache.set_projects(computer, projects)
@@ -1560,23 +1556,15 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             for project_obj in data:
                 if not isinstance(project_obj, dict):
                     continue
-                project_path = project_obj.get("path")
-                if not isinstance(project_path, str) or not project_path:
+                project_path = str(project_obj.get("path", ""))
+                if not project_path:
                     continue
-                project: ProjectInfo = {
-                    "name": str(project_obj.get("name", "")),
-                    "desc": str(project_obj.get("desc", "")),
-                    "path": project_path,
-                }
-                projects.append(project)
+                info = ProjectInfo.from_dict(project_obj)
+                info.computer = computer
+                projects.append(info)
 
-                todos_obj: object = project_obj.get("todos", [])
-                if isinstance(todos_obj, list):
-                    todos: list[TodoInfo] = []
-                    for todo_obj in todos_obj:
-                        if isinstance(todo_obj, dict):
-                            todos.append(cast("TodoInfo", todo_obj))
-                    self.cache.set_todos(computer, project_path, todos)
+                # Set todos separately in cache
+                self.cache.set_todos(computer, project_path, info.todos)
 
             self.cache.set_projects(computer, projects)
             logger.info("Pulled %d projects-with-todos from %s", len(projects), computer)
@@ -1624,14 +1612,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.warning("Invalid todos data from %s: %s", computer, type(data))
                 return
 
-            # Convert to TodoInfo list
+            # Populate cache with todos
             todos: list[TodoInfo] = []
             for todo_obj in data:
                 if isinstance(todo_obj, dict):
-                    todo: TodoInfo = cast("TodoInfo", todo_obj)
-                    todos.append(todo)
+                    todos.append(TodoInfo.from_dict(todo_obj))
 
-            # Store in cache
             self.cache.set_todos(computer, project_path, todos)
             logger.info("Pulled %d todos from %s:%s", len(todos), computer, project_path)
 
@@ -1697,9 +1683,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
                         # Update cache based on event type
                         if event == "session_updated":
-                            # Event data is a SessionInfo dict from remote
-                            session_info: object = event_data
-                            self.cache.update_session(cast("SessionInfo", session_info))
+                            # Event data is a SessionSummary dict from remote
+                            summary = SessionSummary.from_dict(event_data)
+                            summary.computer = source_computer
+                            self.cache.update_session(summary)
                             logger.debug("Updated cache with session from %s", source_computer)
                         elif event == "session_removed":
                             session_id: str = str(event_data.get("session_id", ""))

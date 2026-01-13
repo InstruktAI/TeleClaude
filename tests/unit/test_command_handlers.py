@@ -42,13 +42,13 @@ async def test_handle_get_computer_info_returns_system_stats():
         result = await command_handlers.handle_get_computer_info()
 
     # Verify basic fields
-    assert result["user"] == "testuser"
-    assert result["role"] == "development"
-    assert result["host"] == "test.local"
+    assert result.user == "testuser"
+    assert result.role == "development"
+    assert result.host == "test.local"
 
     # Verify system_stats structure
-    assert "system_stats" in result
-    system_stats = result["system_stats"]
+    assert result.system_stats is not None
+    system_stats = result.system_stats
 
     # Memory stats
     assert "memory" in system_stats
@@ -409,11 +409,11 @@ async def test_handle_list_sessions_formats_output():
         result = await command_handlers.handle_list_sessions()
 
     assert len(result) == 2
-    for session_data in result:
-        assert "session_id" in session_data
-        assert "origin_adapter" in session_data
-        assert "title" in session_data
-        assert session_data["status"] == "active"
+    for session_summary in result:
+        assert session_summary.session_id.startswith("session-")
+        assert session_summary.origin_adapter == "telegram"
+        assert session_summary.title.startswith("Test Session")
+        assert session_summary.status == "active"
 
 
 @pytest.mark.asyncio
@@ -530,9 +530,9 @@ async def test_handle_list_projects_returns_trusted_dirs():
         result = await command_handlers.handle_list_projects()
 
     assert len(result) == 1
-    assert result[0]["name"] == "Project"
-    assert result[0]["desc"] == "Test project"
-    assert "/tmp" in result[0]["path"]
+    assert result[0].name == "Project"
+    assert result[0].description == "Test project"
+    assert "/tmp" in result[0].path
 
 
 @pytest.mark.asyncio

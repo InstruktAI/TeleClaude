@@ -10,7 +10,7 @@ import asyncio
 import json
 import os
 import shlex
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, AsyncIterator, Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -18,7 +18,25 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_models import CreateSessionRequest, SendMessageRequest
+from teleclaude.adapters.rest_models import (
+    AgentAvailabilityDTO,
+    ComputerDTO,
+    CreateSessionRequest,
+    CreateSessionResponseDTO,
+    ProjectDTO,
+    ProjectsInitialDataDTO,
+    ProjectsInitialEventDTO,
+    ProjectWithTodosDTO,
+    SendMessageRequest,
+    SessionDataDTO,
+    SessionRemovedDataDTO,
+    SessionRemovedEventDTO,
+    SessionsInitialDataDTO,
+    SessionsInitialEventDTO,
+    SessionSummaryDTO,
+    SessionUpdateEventDTO,
+    TodoDTO,
+)
 from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
@@ -72,9 +90,15 @@ class RESTAdapter(BaseAdapter):
         if self.cache:
             self.cache.subscribe(self._on_cache_change)
 
-        # Subscribe to local session updates for TUI
-        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)  # type: ignore[arg-type]
-        self.client.on(TeleClaudeEvents.SESSION_TERMINATED, self._handle_session_terminated)  # type: ignore[arg-type]
+        # Subscribe to local session updates
+        self.client.on(
+            TeleClaudeEvents.SESSION_UPDATED,
+            self._handle_session_updated,
+        )
+        self.client.on(
+            TeleClaudeEvents.SESSION_TERMINATED,
+            self._handle_session_terminated,
+        )
 
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Forward local session updates to WebSocket clients."""
@@ -96,52 +120,55 @@ class RESTAdapter(BaseAdapter):
             last_output=session.last_feedback_received,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,
-        ).to_dict()
-        summary["computer"] = config.computer.name
-        self._on_cache_change("session_updated", summary)
+        )
+
+        dto = SessionSummaryDTO.from_core(summary, computer=config.computer.name)
+        event = SessionUpdateEventDTO(event="session_updated", data=dto)
+        self._on_cache_change(event.event, event.data.model_dump(exclude_none=True))
 
     async def _handle_session_terminated(self, _event: str, context: SessionLifecycleContext) -> None:
         """Forward local session removals to WebSocket clients."""
-        self._on_cache_change("session_removed", {"session_id": context.session_id})
+        event = SessionRemovedEventDTO(data=SessionRemovedDataDTO(session_id=context.session_id))
+        self._on_cache_change(event.event, event.data.model_dump(exclude_none=True))
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
 
-        @self.app.get("/health")  # type: ignore[misc]
-        async def health() -> dict[str, str]:  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.get("/health")
+        async def health() -> dict[str, str]:  # pyright: ignore
             """Health check endpoint."""
             return {"status": "ok"}
 
-        @self.app.get("/sessions")  # type: ignore[misc]
-        async def list_sessions(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.get("/sessions")
+        async def list_sessions(  # pyright: ignore
             computer: str | None = None,
-        ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
+        ) -> list[SessionSummaryDTO]:
             """List sessions from local computer + cached remote sessions."""
             try:
                 # Get LOCAL sessions from command handler
                 local_sessions = await command_handlers.handle_list_sessions()
                 # Add computer field for consistency
                 computer_name = config.computer.name
-                result = []
+                result: list[SessionSummaryDTO] = []
                 for session in local_sessions:
-                    session_dict = dict(session)
-                    session_dict["computer"] = computer_name
-                    result.append(session_dict)
+                    result.append(SessionSummaryDTO.from_core(session, computer=computer_name))
 
                 # Add REMOTE sessions from cache (if available)
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
-                    result.extend([dict(s) for s in cached_sessions])
+                    for s in cached_sessions:
+                        # cached_sessions returns SessionSummary dataclasses
+                        result.append(SessionSummaryDTO.from_core(s, computer=s.computer))
 
                 return result
             except Exception as e:
                 logger.error("list_sessions failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
 
-        @self.app.post("/sessions")  # type: ignore[misc]
-        async def create_session(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.post("/sessions")
+        async def create_session(  # pyright: ignore
             request: CreateSessionRequest,
-        ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
+        ) -> CreateSessionResponseDTO:
             """Create new session (local or remote)."""
             # Derive title from message if not provided
             title = request.title
@@ -178,7 +205,7 @@ class RESTAdapter(BaseAdapter):
                 status = str(envelope.get("status", "error"))
                 if status != "success":
                     error_msg = str(envelope.get("error", "Session creation failed"))
-                    raise HTTPException(status_code=500, detail=error_msg)
+                    return CreateSessionResponseDTO(status="error", error=error_msg)
 
                 data = envelope.get("data")
                 if not isinstance(data, dict):
@@ -195,19 +222,19 @@ class RESTAdapter(BaseAdapter):
                     if session:
                         tmux_session_name = session.tmux_session_name
 
-                return {
-                    "status": "success",
-                    "session_id": session_id,
-                    "tmux_session_name": tmux_session_name,
-                }
-            except HTTPException as exc:  # type: ignore[misc]
+                return CreateSessionResponseDTO(
+                    status="success",
+                    session_id=str(session_id) if session_id else None,
+                    tmux_session_name=str(tmux_session_name) if tmux_session_name else None,
+                )
+            except HTTPException as exc:
                 raise exc
             except Exception as e:
                 logger.error("create_session failed (computer=%s): %s", request.computer, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to create session: {e}") from e
 
-        @self.app.delete("/sessions/{session_id}")  # type: ignore[misc]
-        async def end_session(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.delete("/sessions/{session_id}")
+        async def end_session(  # pyright: ignore
             session_id: str,
             computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
@@ -220,8 +247,8 @@ class RESTAdapter(BaseAdapter):
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
 
-        @self.app.post("/sessions/{session_id}/message")  # type: ignore[misc]
-        async def send_message_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.post("/sessions/{session_id}/message")
+        async def send_message_endpoint(  # pyright: ignore
             session_id: str,
             request: SendMessageRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
@@ -247,8 +274,8 @@ class RESTAdapter(BaseAdapter):
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
 
-        @self.app.post("/sessions/{session_id}/agent-restart")  # type: ignore[misc]
-        async def agent_restart(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.post("/sessions/{session_id}/agent-restart")
+        async def agent_restart(  # pyright: ignore
             session_id: str,
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
@@ -263,12 +290,12 @@ class RESTAdapter(BaseAdapter):
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to restart agent: {e}") from e
 
-        @self.app.get("/sessions/{session_id}/transcript")  # type: ignore[misc]
-        async def get_transcript(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.get("/sessions/{session_id}/transcript")
+        async def get_transcript(  # pyright: ignore
             session_id: str,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
             tail_chars: int = Query(5000),
-        ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
+        ) -> SessionDataDTO:
             """Get session transcript.
 
             Args:
@@ -285,26 +312,28 @@ class RESTAdapter(BaseAdapter):
                     },
                     metadata=self._metadata(),
                 )
-                return result  # type: ignore[return-value]  # Dynamic from handler
+                if not isinstance(result, dict):
+                    raise HTTPException(status_code=500, detail="Invalid transcript response")
+                return SessionDataDTO.model_validate(result)
             except Exception as e:
                 logger.error("get_transcript failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to get transcript: {e}") from e
 
-        @self.app.get("/computers")  # type: ignore[misc]
-        async def list_computers() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
+        @self.app.get("/computers")
+        async def list_computers() -> list[ComputerDTO]:  # pyright: ignore
             """List available computers (local + cached remote computers)."""
             try:
                 # Local computer
-                computer_info = await command_handlers.handle_get_computer_info()
-                result: list[dict[str, object]] = [  # guard: loose-dict - REST API boundary
-                    {
-                        "name": config.computer.name,
-                        "status": "online",  # Local computer is always online
-                        "user": computer_info["user"],
-                        "host": computer_info["host"],
-                        "is_local": True,
-                        "tmux_binary": computer_info.get("tmux_binary"),
-                    }
+                info = await command_handlers.handle_get_computer_info()
+                result: list[ComputerDTO] = [
+                    ComputerDTO(
+                        name=config.computer.name,
+                        status="online",
+                        user=info.user,
+                        host=info.host,
+                        is_local=True,
+                        tmux_binary=info.tmux_binary,
+                    )
                 ]
 
                 # Add cached remote computers (if available)
@@ -312,13 +341,13 @@ class RESTAdapter(BaseAdapter):
                     cached_computers = self.cache.get_computers()
                     for comp in cached_computers:
                         result.append(
-                            {
-                                "name": comp["name"],
-                                "status": "online",  # Cached computers are online (auto-expired if stale)
-                                "user": comp.get("user"),
-                                "host": comp.get("host"),
-                                "is_local": False,
-                            }
+                            ComputerDTO(
+                                name=comp.name,
+                                status="online",
+                                user=comp.user,
+                                host=comp.host,
+                                is_local=False,
+                            )
                         )
 
                 return result
@@ -326,10 +355,10 @@ class RESTAdapter(BaseAdapter):
                 logger.error("list_computers failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list computers: {e}") from e
 
-        @self.app.get("/projects")  # type: ignore[misc]
-        async def list_projects(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.get("/projects")
+        async def list_projects(  # pyright: ignore
             computer: str | None = None,
-        ) -> list[dict[str, object]]:  # guard: loose-dict - REST API boundary
+        ) -> list[ProjectDTO]:
             """List projects (local + cached remote projects).
 
             Pure cache reader - returns cached data without triggering pulls.
@@ -338,17 +367,17 @@ class RESTAdapter(BaseAdapter):
                 # Get LOCAL projects from command handler
                 raw_projects = await command_handlers.handle_list_projects()
                 computer_name = config.computer.name
-                result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
+                result: list[ProjectDTO] = []
 
                 # Add local projects
                 for p in raw_projects:
                     result.append(
-                        {
-                            "computer": computer_name,
-                            "name": p.get("name", ""),
-                            "path": p.get("path", ""),
-                            "description": p.get("desc"),
-                        }
+                        ProjectDTO(
+                            computer=computer_name,
+                            name=p.name,
+                            path=p.path,
+                            description=p.description,
+                        )
                     )
 
                 stale_computers: set[str] = set()
@@ -356,21 +385,21 @@ class RESTAdapter(BaseAdapter):
                 if self.cache:
                     cached_projects = self.cache.get_projects(computer, include_stale=True)
                     for proj in cached_projects:
-                        comp_name = str(proj.get("computer", ""))
+                        comp_name = str(proj.computer or "")
                         if comp_name == computer_name:
                             continue
-                        proj_path = str(proj.get("path", ""))
+                        proj_path = str(proj.path or "")
                         if comp_name and proj_path:
                             cache_key = f"{comp_name}:{proj_path}"
                             if self.cache.is_stale(cache_key, 300):
                                 stale_computers.add(comp_name)
                         result.append(
-                            {
-                                "computer": comp_name,
-                                "name": proj["name"],
-                                "path": proj_path,
-                                "description": proj["desc"],
-                            }
+                            ProjectDTO(
+                                computer=comp_name,
+                                name=proj.name,
+                                path=proj_path,
+                                description=proj.description,
+                            )
                         )
                 self._refresh_stale_projects(stale_computers)
 
@@ -379,99 +408,95 @@ class RESTAdapter(BaseAdapter):
                 logger.error("list_projects failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
-        @self.app.get("/agents/availability")  # type: ignore[misc]
-        async def get_agent_availability() -> dict[str, dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
+        @self.app.get("/agents/availability")
+        async def get_agent_availability() -> dict[str, AgentAvailabilityDTO]:  # pyright: ignore
             """Get agent availability."""
             from teleclaude.core.db import db
 
-            agents = ["claude", "gemini", "codex"]
-            result: dict[str, dict[str, object]] = {}  # guard: loose-dict - REST API boundary
+            agents: list[Literal["claude", "gemini", "codex"]] = ["claude", "gemini", "codex"]
+            result: dict[str, AgentAvailabilityDTO] = {}
 
             for agent in agents:
                 try:
                     info = await db.get_agent_availability(agent)
                 except Exception as e:
                     logger.error("Failed to get availability for agent %s: %s", agent, e)
-                    result[agent] = {
-                        "agent": agent,
-                        "available": None,  # Unknown due to DB error
-                        "unavailable_until": None,
-                        "reason": None,
-                        "error": str(e),
-                    }
+                    result[agent] = AgentAvailabilityDTO(
+                        agent=agent,
+                        available=None,  # Unknown due to DB error
+                        error=str(e),
+                    )
                     continue
 
                 if info:
                     unavail_until = info.get("unavailable_until")
                     reason_val = info.get("reason")
-                    result[agent] = {
-                        "agent": agent,
-                        "available": bool(info.get("available", True)),
-                        "unavailable_until": str(unavail_until)
-                        if unavail_until and unavail_until is not True
-                        else None,
-                        "reason": str(reason_val) if reason_val and reason_val is not True else None,
-                    }
+                    result[agent] = AgentAvailabilityDTO(
+                        agent=agent,
+                        available=bool(info.get("available", True)),
+                        unavailable_until=str(unavail_until) if unavail_until and unavail_until is not True else None,
+                        reason=str(reason_val) if reason_val and reason_val is not True else None,
+                    )
                 else:
                     # No record means agent is available (never marked unavailable)
-                    result[agent] = {
-                        "agent": agent,
-                        "available": True,
-                        "unavailable_until": None,
-                        "reason": None,
-                    }
+                    result[agent] = AgentAvailabilityDTO(
+                        agent=agent,
+                        available=True,
+                    )
 
             return result
 
-        @self.app.get("/projects-with-todos")  # type: ignore[misc]
-        async def list_projects_with_todos() -> list[dict[str, object]]:  # type: ignore[reportUnusedFunction, unused-ignore]  # guard: loose-dict - REST API boundary
+        @self.app.get("/projects-with-todos")
+        async def list_projects_with_todos() -> list[ProjectWithTodosDTO]:  # pyright: ignore
             """List all projects with their todos included (local + cached remote).
 
             Pure cache reader - returns cached data without triggering pulls.
 
-            Returns:
+            Returns:s
                 List of projects, each with a 'todos' field containing the project's todos
             """
             try:
                 # Get LOCAL projects
-                raw_projects = await command_handlers.handle_list_projects()
+                raw_projects = await command_handlers.handle_list_projects_with_todos()
             except Exception as e:
                 logger.error("list_projects_with_todos: failed to get projects: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
 
             computer_name = config.computer.name
-            result: list[dict[str, object]] = []  # guard: loose-dict - REST API boundary
+            result: list[ProjectWithTodosDTO] = []
 
             # Add LOCAL projects with todos
             for p in raw_projects:
-                path = p.get("path", "")
-
-                project: dict[str, object] = {  # guard: loose-dict - REST API boundary
-                    "computer": computer_name,
-                    "name": p.get("name", ""),
-                    "path": path,
-                    "description": p.get("desc"),
-                    "todos": [],
-                }
-
-                if path:
-                    try:
-                        todos = await command_handlers.handle_list_todos(str(path))
-                        project["todos"] = list(todos)
-                    except Exception as e:
-                        logger.warning("list_projects_with_todos: failed todos for %s: %s", path, e)
-
-                result.append(project)
+                result.append(
+                    ProjectWithTodosDTO(
+                        computer=computer_name,
+                        name=p.name,
+                        path=p.path,
+                        description=p.description,
+                        todos=[
+                            TodoDTO(
+                                slug=t.slug,
+                                status=t.status,
+                                description=t.description,
+                                has_requirements=t.has_requirements,
+                                has_impl_plan=t.has_impl_plan,
+                                build_status=t.build_status,
+                                review_status=t.review_status,
+                            )
+                            for t in p.todos
+                        ],
+                    )
+                )
 
             stale_computers: set[str] = set()
             # Add REMOTE projects with cached todos from cache (skip local to avoid duplicates)
             if self.cache:
                 cached_projects = self.cache.get_projects(include_stale=True)
                 for proj in cached_projects:
-                    comp_name = str(proj.get("computer", ""))
+                    comp_name = str(proj.computer or "")
                     if comp_name == computer_name:
                         continue
-                    proj_path = str(proj.get("path", ""))
+                    proj_path = str(proj.path or "")
                     if not proj_path:
                         continue
                     cache_key = f"{comp_name}:{proj_path}"
@@ -480,20 +505,31 @@ class RESTAdapter(BaseAdapter):
 
                     cached_todos = self.cache.get_todos(comp_name, proj_path) if comp_name else []
 
-                    remote_project: dict[str, object] = {  # guard: loose-dict - REST API boundary
-                        "computer": comp_name,
-                        "name": proj.get("name", ""),
-                        "path": proj_path,
-                        "description": proj.get("desc"),
-                        "todos": list(cached_todos),
-                    }
+                    remote_project = ProjectWithTodosDTO(
+                        computer=comp_name,
+                        name=proj.name,
+                        path=proj_path,
+                        description=proj.description,
+                        todos=[
+                            TodoDTO(
+                                slug=t.slug,
+                                status=t.status,
+                                description=t.description,
+                                has_requirements=t.has_requirements,
+                                has_impl_plan=t.has_impl_plan,
+                                build_status=t.build_status,
+                                review_status=t.review_status,
+                            )
+                            for t in cached_todos
+                        ],
+                    )
                     result.append(remote_project)
 
             self._refresh_stale_projects(stale_computers)
             return result
 
-        @self.app.websocket("/ws")  # type: ignore[misc]
-        async def websocket_endpoint(  # type: ignore[reportUnusedFunction, unused-ignore]
+        @self.app.websocket("/ws")
+        async def websocket_endpoint(  # pyright: ignore
             websocket: WebSocket,
         ) -> None:
             """WebSocket endpoint for push updates."""
@@ -720,30 +756,53 @@ class RESTAdapter(BaseAdapter):
             if data_type == "sessions":
                 # Send current sessions from cache for this computer
                 if self.cache:
-                    sessions = self.cache.get_sessions(computer if computer != "local" else None)
-                    await websocket.send_json(
-                        {"event": "sessions_initial", "data": {"sessions": sessions, "computer": computer}}  # type: ignore[misc]
-                    )
+                    cached_sessions = self.cache.get_sessions(computer if computer != "local" else None)
+                    sessions = [SessionSummaryDTO.from_core(s, computer=s.computer) for s in cached_sessions]
+                    event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
+                    await websocket.send_json(event.model_dump(exclude_none=True))
             elif data_type in ("preparation", "projects"):
                 # Send current projects from cache for this computer
                 if self.cache:
-                    raw_projects = self.cache.get_projects(computer if computer != "local" else None)
-                    projects: list[dict[str, object]] = []  # guard: loose-dict - WebSocket payload assembly
-                    for proj in raw_projects:
-                        if "description" not in proj and "desc" in proj:
+                    cached_projects = self.cache.get_projects(computer if computer != "local" else None)
+                    projects: list[ProjectDTO | ProjectWithTodosDTO] = []
+                    for proj in cached_projects:
+                        # cached_projects returns ProjectInfo dataclasses
+                        if proj.todos:
                             projects.append(
-                                {
-                                    "computer": proj.get("computer"),
-                                    "name": proj.get("name", ""),
-                                    "path": proj.get("path", ""),
-                                    "description": proj.get("desc"),
-                                }
+                                ProjectWithTodosDTO(
+                                    computer=proj.computer or "",
+                                    name=proj.name,
+                                    path=proj.path,
+                                    description=proj.description,
+                                    todos=[
+                                        TodoDTO(
+                                            slug=t.slug,
+                                            status=t.status,
+                                            description=t.description,
+                                            has_requirements=t.has_requirements,
+                                            has_impl_plan=t.has_impl_plan,
+                                            build_status=t.build_status,
+                                            review_status=t.review_status,
+                                        )
+                                        for t in proj.todos
+                                    ],
+                                )
                             )
                         else:
-                            projects.append(dict(proj))
-                    await websocket.send_json(
-                        {"event": "projects_initial", "data": {"projects": projects, "computer": computer}}  # type: ignore[misc]
+                            projects.append(
+                                ProjectDTO(
+                                    computer=proj.computer or "",
+                                    name=proj.name,
+                                    path=proj.path,
+                                    description=proj.description,
+                                )
+                            )
+
+                    event = ProjectsInitialEventDTO(
+                        event="projects_initial" if data_type == "projects" else "preparation_initial",
+                        data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
+                    await websocket.send_json(event.model_dump(exclude_none=True))
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
@@ -757,10 +816,40 @@ class RESTAdapter(BaseAdapter):
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
+        # Convert to DTO payload if necessary
+        payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
+        if event in ("session_updated", "session_created"):
+            if isinstance(data, SessionSummary):
+                dto = SessionSummaryDTO.from_core(data, computer=data.computer)
+                # Proper cast for Mypy Literal
+                payload = SessionUpdateEventDTO(
+                    event=event,
+                    data=dto,
+                ).model_dump(exclude_none=True)
+            elif isinstance(data, dict):
+                # Already a dict (e.g. from _handle_session_updated)
+                payload = {"event": event, "data": data}
+            else:
+                payload = {"event": event, "data": data}
+        elif event == "session_removed":
+            if isinstance(data, dict):
+                payload = SessionRemovedEventDTO(
+                    data=SessionRemovedDataDTO(session_id=str(data.get("session_id", "")))
+                ).model_dump(exclude_none=True)
+            else:
+                payload = {"event": event, "data": data}
+        else:
+            # Fallback for other events
+            if hasattr(data, "to_dict"):
+                # Use type ignore since we check hasattr
+                payload = {"event": event, "data": data.to_dict()}  # pyright: ignore[reportAttributeAccessIssue]
+            else:
+                payload = {"event": event, "data": data}
+
         # Push to all connected WebSocket clients
         for ws in list(self._ws_clients):
             # Create tracked async task to send message (don't block)
-            coro = ws.send_json({"event": event, "data": data})  # type: ignore[misc]
+            coro = ws.send_json(payload)
             if self.task_registry:
                 task = self.task_registry.spawn(coro, name=f"ws-broadcast-{event}")
             else:

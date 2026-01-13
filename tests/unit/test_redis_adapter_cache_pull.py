@@ -8,6 +8,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from teleclaude.core.models import (
+    ComputerInfo,
+    TodoInfo,
+)
+
 
 @pytest.fixture(autouse=True)
 def setup_test_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -41,8 +46,8 @@ async def test_pull_initial_sessions_happy_path():
     # Mock cache
     mock_cache = MagicMock()
     mock_cache.get_computers.return_value = [
-        {"name": "RemotePC1", "status": "online"},
-        {"name": "RemotePC2", "status": "online"},
+        ComputerInfo(name="RemotePC1", status="online", is_local=False),
+        ComputerInfo(name="RemotePC2", status="online", is_local=False),
     ]
     # Register interest in sessions for both computers (required for per-computer pulls)
     mock_cache.get_interested_computers.return_value = ["RemotePC1", "RemotePC2"]
@@ -59,13 +64,15 @@ async def test_pull_initial_sessions_happy_path():
                 "data": [
                     {
                         "session_id": "sess-1",
+                        "origin_adapter": "telegram",
                         "computer": "RemotePC1",
                         "status": "active",
                         "title": "Test Session",
-                        "project_path": "/home/user/project",
-                        "working_dir": "/home/user/project",
-                        "tmux_session": "tmux-sess-1",
-                        "last_active": datetime.now(timezone.utc).isoformat(),
+                        "working_directory": "/home/user/project",
+                        "thinking_mode": "slow",
+                        "active_agent": "claude",
+                        "tmux_session_name": "tmux-sess-1",
+                        "last_activity": datetime.now(timezone.utc).isoformat(),
                     }
                 ],
             }
@@ -148,8 +155,8 @@ async def test_pull_initial_sessions_timeout_continues_to_next():
 
     mock_cache = MagicMock()
     mock_cache.get_computers.return_value = [
-        {"name": "RemotePC1", "status": "online"},
-        {"name": "RemotePC2", "status": "online"},
+        ComputerInfo(name="RemotePC1", status="online", is_local=False),
+        ComputerInfo(name="RemotePC2", status="online", is_local=False),
     ]
     # Register interest for both computers
     mock_cache.get_interested_computers.return_value = ["RemotePC1", "RemotePC2"]
@@ -184,7 +191,7 @@ async def test_pull_initial_sessions_malformed_response_skips():
 
     mock_cache = MagicMock()
     mock_cache.get_computers.return_value = [
-        {"name": "RemotePC1", "status": "online"},
+        ComputerInfo(name="RemotePC1", status="online", is_local=False),
     ]
     adapter.cache = mock_cache
 
@@ -210,7 +217,7 @@ async def test_pull_initial_sessions_error_status_skips():
 
     mock_cache = MagicMock()
     mock_cache.get_computers.return_value = [
-        {"name": "RemotePC1", "status": "online"},
+        ComputerInfo(name="RemotePC1", status="online", is_local=False),
     ]
     adapter.cache = mock_cache
 
@@ -419,7 +426,17 @@ async def test_pull_remote_projects_with_todos_happy_path():
     mock_cache.set_todos.assert_any_call(
         "RemotePC",
         "/home/user/projectA",
-        [{"slug": "todo-1", "title": "Todo 1", "status": "pending"}],
+        [
+            TodoInfo(
+                slug="todo-1",
+                status="pending",
+                description="Todo 1",
+                has_requirements=False,
+                has_impl_plan=False,
+                build_status=None,
+                review_status=None,
+            )
+        ],
     )
     mock_cache.set_todos.assert_any_call("RemotePC", "/home/user/projectB", [])
 
@@ -499,5 +516,5 @@ async def test_heartbeat_populates_cache():
     # Verify cache was updated
     mock_cache.update_computer.assert_called_once()
     call_args = mock_cache.update_computer.call_args
-    assert call_args[0][0]["name"] == "RemotePC"
-    assert call_args[0][0]["status"] == "online"
+    assert call_args[0][0].name == "RemotePC"
+    assert call_args[0][0].status == "online"

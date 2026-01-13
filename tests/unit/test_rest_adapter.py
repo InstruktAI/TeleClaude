@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.rest_adapter import RESTAdapter
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 
 
 @pytest.fixture
@@ -57,11 +58,28 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = [
-            {"session_id": "sess-1", "title": "Test Session"},
+            SessionSummary(
+                session_id="sess-1",
+                title="Test Session",
+                origin_adapter="telegram",
+                working_directory="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
         ]
         # Mock cache to return one remote session
         mock_cache.get_sessions.return_value = [
-            {"session_id": "sess-2", "title": "Remote Session", "computer": "remote"},
+            SessionSummary(
+                session_id="sess-2",
+                title="Remote Session",
+                computer="remote",
+                origin_adapter="telegram",
+                working_directory="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
         ]
 
         response = test_client.get("/sessions")
@@ -82,7 +100,17 @@ def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: i
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
     ) as mock_handler:
-        mock_handler.return_value = [{"session_id": "sess-1"}]
+        mock_handler.return_value = [
+            SessionSummary(
+                session_id="sess-1",
+                title="Local",
+                origin_adapter="telegram",
+                working_directory="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            )
+        ]
         mock_cache.get_sessions.return_value = []
 
         response = test_client.get("/sessions?computer=local")
@@ -99,7 +127,17 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
     ) as mock_handler:
-        mock_handler.return_value = [{"session_id": "sess-1", "title": "Local"}]
+        mock_handler.return_value = [
+            SessionSummary(
+                session_id="sess-1",
+                title="Local",
+                origin_adapter="telegram",
+                working_directory="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            )
+        ]
 
         response = client.get("/sessions")
         assert response.status_code == 200
@@ -307,10 +345,24 @@ def test_list_computers_success(test_client, mock_cache):  # type: ignore[explic
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
     ) as mock_handler:
-        mock_handler.return_value = {"user": "me", "host": "localhost"}
+        mock_handler.return_value = ComputerInfo(
+            name="local",
+            status="online",
+            user="me",
+            host="localhost",
+            role="worker",
+            is_local=True,
+        )
         # Mock cache to return one remote computer
         mock_cache.get_computers.return_value = [
-            {"name": "remote", "user": "you", "host": "192.168.1.2"},
+            ComputerInfo(
+                name="remote",
+                status="online",
+                user="you",
+                host="192.168.1.2",
+                role="worker",
+                is_local=False,
+            ),
         ]
 
         response = test_client.get("/computers")
@@ -335,7 +387,14 @@ def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[expl
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
     ) as mock_handler:
-        mock_handler.return_value = {"user": "me", "host": "localhost"}
+        mock_handler.return_value = ComputerInfo(
+            name="local",
+            status="online",
+            user="me",
+            host="localhost",
+            role="worker",
+            is_local=True,
+        )
 
         response = client.get("/computers")
         assert response.status_code == 200
@@ -350,11 +409,11 @@ def test_list_projects_success(test_client, mock_cache):  # type: ignore[explici
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = [
-            {"name": "project1", "path": "/path1", "desc": "Local project"},
+            ProjectInfo(name="project1", path="/path1", description="Local project", computer="local"),
         ]
         # Mock cache to return one remote project for the interested computer
         mock_cache.get_projects.return_value = [
-            {"name": "project2", "path": "/path2", "desc": "Remote project", "computer": "RemoteComputer"},
+            ProjectInfo(name="project2", path="/path2", description="Remote project", computer="RemoteComputer"),
         ]
 
         response = test_client.get("/projects")
@@ -371,7 +430,7 @@ def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: i
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
-        mock_handler.return_value = [{"name": "project1", "path": "/path1"}]
+        mock_handler.return_value = [ProjectInfo(name="project1", path="/path1", computer="local")]
         mock_cache.get_projects.return_value = []
 
         response = test_client.get("/projects?computer=local")
@@ -388,7 +447,7 @@ def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[expli
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
     ) as mock_handler:
-        mock_handler.return_value = [{"name": "project1", "path": "/path1", "desc": "Local"}]
+        mock_handler.return_value = [ProjectInfo(name="project1", path="/path1", description="Local", computer="local")]
 
         response = client.get("/projects")
         assert response.status_code == 200
@@ -430,47 +489,44 @@ def test_get_agent_availability_defaults_to_available(test_client):  # type: ign
 def test_list_projects_with_todos_success(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects_with_todos endpoint returns projects with embedded todos."""
     with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects_with_todos", new_callable=AsyncMock
     ) as mock_projects:
-        with patch(
-            "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
-        ) as mock_todos:
-            mock_projects.return_value = [
-                {"name": "Project1", "path": "/path/to/project1", "desc": "Test project"},
-            ]
-            mock_todos.return_value = [
-                {"slug": "feature-1", "status": "pending", "description": "Implement feature 1"},
-            ]
+        mock_projects.return_value = [
+            ProjectInfo(
+                name="Project1",
+                path="/path/to/project1",
+                description="Test project",
+                computer="local",
+                todos=[
+                    TodoInfo(slug="feature-1", status="pending", description="Implement feature 1"),
+                ],
+            ),
+        ]
 
-            response = test_client.get("/projects-with-todos")
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 1
-            assert data[0]["name"] == "Project1"
-            assert data[0]["path"] == "/path/to/project1"
-            assert len(data[0]["todos"]) == 1
-            assert data[0]["todos"][0]["slug"] == "feature-1"
+        response = test_client.get("/projects-with-todos")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Project1"
+        assert data[0]["path"] == "/path/to/project1"
+        assert len(data[0]["todos"]) == 1
+        assert data[0]["todos"][0]["slug"] == "feature-1"
 
 
 def test_list_projects_with_todos_empty_path(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects_with_todos skips todos fetch for empty paths."""
     with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
+        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects_with_todos", new_callable=AsyncMock
     ) as mock_projects:
-        with patch(
-            "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
-        ) as mock_todos:
-            mock_projects.return_value = [
-                {"name": "Project1", "path": "", "desc": "No path"},
-            ]
+        mock_projects.return_value = [
+            ProjectInfo(name="Project1", path="", description="No path", computer="local"),
+        ]
 
-            response = test_client.get("/projects-with-todos")
-            assert response.status_code == 200
-            data = response.json()
-            assert len(data) == 1
-            assert data[0]["todos"] == []
-            # list_todos should NOT be called for empty path
-            mock_todos.assert_not_called()
+        response = test_client.get("/projects-with-todos")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["todos"] == []
 
 
 @pytest.mark.asyncio

@@ -4,12 +4,11 @@ Provides instant reads for REST endpoints and emits change events when data upda
 """
 
 from datetime import datetime, timezone
-from typing import Callable, Generic, TypeVar, cast
+from typing import Callable, Generic, TypeVar
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.command_handlers import ProjectInfo, TodoInfo
-from teleclaude.mcp.types import ComputerInfo, SessionInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 
 logger = get_logger(__name__)
 
@@ -66,7 +65,7 @@ class DaemonCache:
         self._projects: dict[str, CachedItem[ProjectInfo]] = {}
 
         # Session cache: key = session_id
-        self._sessions: dict[str, CachedItem[SessionInfo]] = {}
+        self._sessions: dict[str, CachedItem[SessionSummary]] = {}
 
         # Todo cache: key = f"{computer}:{project_path}"
         self._todos: dict[str, CachedItem[list[TodoInfo]]] = {}
@@ -131,7 +130,7 @@ class DaemonCache:
         """Get all cached computers (auto-expires stale entries).
 
         Returns:
-            List of computer info dicts
+            List of computer info objects
         """
         # Filter to non-stale computers (TTL=60s)
         computers = []
@@ -151,7 +150,7 @@ class DaemonCache:
             include_stale: When True, include stale entries (caller may trigger refresh)
 
         Returns:
-            List of project info dicts
+            List of project info objects
         """
         projects: list[ProjectInfo] = []
         for key, cached in self._projects.items():
@@ -165,26 +164,26 @@ class DaemonCache:
 
             # Include computer name derived from key for optimistic rendering
             comp_name = key.split(":", 1)[0] if ":" in key else ""
-            project = dict(cached.data)
-            project["computer"] = comp_name
-            projects.append(cast("ProjectInfo", project))
+            project = cached.data
+            project.computer = comp_name
+            projects.append(project)
 
         return projects
 
-    def get_sessions(self, computer: str | None = None) -> list[SessionInfo]:
+    def get_sessions(self, computer: str | None = None) -> list[SessionSummary]:
         """Get cached sessions, optionally filtered by computer.
 
         Args:
             computer: Optional computer name to filter by
 
         Returns:
-            List of session info dicts
+            List of session summary objects
         """
         sessions = []
         for cached in self._sessions.values():
             session = cached.data
             # Filter by computer if specified
-            if computer and session.get("computer") != computer:
+            if computer and session.computer != computer:
                 continue
             sessions.append(session)
         return sessions
@@ -197,7 +196,7 @@ class DaemonCache:
             project_path: Project path
 
         Returns:
-            List of todo info dicts (empty if not cached or stale)
+            List of todo info objects (empty if not cached or stale)
         """
         key = f"{computer}:{project_path}"
         cached = self._todos.get(key)
@@ -213,20 +212,20 @@ class DaemonCache:
         """Update computer info in cache.
 
         Args:
-            computer: Computer info dict
+            computer: Computer info object
         """
-        name = computer["name"]
+        name = computer.name
         self._computers[name] = CachedItem(computer)
         logger.debug("Updated computer cache: %s", name)
         self._notify("computer_updated", computer)
 
-    def update_session(self, session: SessionInfo) -> None:
+    def update_session(self, session: SessionSummary) -> None:
         """Update session info in cache.
 
         Args:
-            session: Session info dict
+            session: Session summary object
         """
-        session_id = session["session_id"]
+        session_id = session.session_id
         self._sessions[session_id] = CachedItem(session)
         logger.debug("Updated session cache: %s", session_id[:8])
         self._notify("session_updated", session)
@@ -247,12 +246,13 @@ class DaemonCache:
 
         Args:
             computer: Computer name
-            projects: List of project info dicts
+            projects: List of project info objects
         """
         # Store each project with key = f"{computer}:{path}"
         for project in projects:
-            path = project["path"]
+            path = project.path
             key = f"{computer}:{path}"
+            project.computer = computer
             self._projects[key] = CachedItem(project)
 
         logger.debug("Updated projects cache for %s: %d projects", computer, len(projects))
@@ -264,7 +264,7 @@ class DaemonCache:
         Args:
             computer: Computer name
             project_path: Project path
-            todos: List of todo info dicts
+            todos: List of todo info objects
         """
         key = f"{computer}:{project_path}"
         self._todos[key] = CachedItem(todos)
