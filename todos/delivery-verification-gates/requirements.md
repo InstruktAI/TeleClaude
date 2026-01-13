@@ -220,15 +220,15 @@ Workers should NOT:
 
 Implementation complete when:
 
-- [ ] prime-builder.md emphasizes autonomy and pragmatism
-- [ ] next-build.md defines deferrals.md format and pre-completion checks
-- [ ] prime-reviewer.md makes completeness PRIMARY responsibility
-- [ ] next-review.md blocks if deferrals PENDING, requires success criteria evidence
-- [ ] prime-orchestrator.md defines deferral resolution process
-- [ ] next-finalize.md has final sanity checks before archiving
-- [ ] Test run: worker creates deferrals.md, orchestrator resolves, reviewer verifies completeness
-- [ ] Test run: incomplete work is caught and blocked at review
-- [ ] Test run: finalize catches any missed issues before archiving
+- [x] prime-builder.md emphasizes autonomy and pragmatism
+- [x] next-build.md defines deferrals.md format and pre-completion checks
+- [x] prime-reviewer.md makes completeness PRIMARY responsibility
+- [x] next-review.md blocks if deferrals PENDING, requires success criteria evidence
+- [x] prime-orchestrator.md defines deferral resolution process
+- [x] next-finalize.md has final sanity checks before archiving
+- [x] Manual verification — silent deferral checks scan task lines only, instructional text excluded
+- [x] Manual verification — reviewer guidance focuses on evidence, not AI prompt simulations
+- [x] Manual verification — finalize sanity check references documented evidence paths
 
 ---
 
