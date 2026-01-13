@@ -46,6 +46,8 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+_OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
+_OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
 
 
 class AdapterClient:

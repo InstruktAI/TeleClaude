@@ -12,7 +12,7 @@
 
 ## Model Boundary Consolidation
 
-- [x] model-boundary-consolidation
+- [>] model-boundary-consolidation
   Define one source of truth for resource models, use Pydantic at boundaries only, and remove ad-hoc payload shapes.
 
 ---

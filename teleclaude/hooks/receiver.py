@@ -283,6 +283,23 @@ def _find_session_by_tmux_name(tmux_name: str) -> str | None:
     return get_session_id_by_tmux_name_sync(config.database.path, tmux_name)
 
 
+def _update_session_log_file_sync(session_id: str, native_log_file: str) -> None:
+    """Update native_log_file for a session synchronously."""
+    db_path = config.database.path
+    conn = sqlite3.connect(db_path, timeout=1.0)
+    try:
+        conn.execute("PRAGMA busy_timeout = 1000")
+        conn.execute(
+            "UPDATE sessions SET native_log_file = ? WHERE session_id = ?",
+            (native_log_file, session_id),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error("Failed to update session log file", error=str(e), session_id=session_id)
+    finally:
+        conn.close()
+
+
 def _session_exists(session_id: str) -> bool:
     """Return True if a TeleClaude session exists in the DB."""
     db_path = config.database.path
@@ -435,6 +452,10 @@ def main() -> None:
 
     normalized_native_session_id = data.get("session_id") if isinstance(data.get("session_id"), str) else None
     normalized_log_file = data.get("transcript_path") if isinstance(data.get("transcript_path"), str) else None
+
+    if teleclaude_session_id and normalized_log_file:
+        _update_session_log_file_sync(teleclaude_session_id, str(normalized_log_file))
+
     logger.debug(
         "Hook payload summary",
         event_type=event_type,
