@@ -142,6 +142,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Convert daemon tests to capture outcome payloads in `tests/unit/test_daemon.py`
 - [x] Paranoidize output poller tests in `tests/unit/test_output_poller.py`
 - [x] Paranoidize voice handler tests in `tests/unit/test_voice_message_handler.py`
+- [x] Paranoidize UI adapter tests in `tests/unit/test_ui_adapter.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 

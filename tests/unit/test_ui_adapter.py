@@ -1,9 +1,12 @@
 """Unit tests for UiAdapter base class."""
 
+import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import Db
@@ -16,7 +19,7 @@ from teleclaude.core.models import (
 
 
 class MockUiAdapter(UiAdapter):
-    """Concrete implementation of UiAdapter for testing."""
+    """Paranoid concrete implementation of UiAdapter for testing."""
 
     ADAPTER_KEY = "telegram"  # Use telegram key for testing (reuses existing metadata structure)
 
@@ -77,7 +80,7 @@ class MockUiAdapter(UiAdapter):
 
 @pytest.fixture
 async def test_db(tmp_path):
-    """Create temporary database for testing."""
+    """Paranoid temporary database for testing."""
     db_path = str(tmp_path / "test.db")
     test_db_instance = Db(db_path)
     await test_db_instance.initialize()
@@ -91,10 +94,10 @@ async def test_db(tmp_path):
 
 @pytest.mark.asyncio
 class TestSendOutputUpdate:
-    """Test send_output_update method."""
+    """Paranoid test send_output_update method."""
 
     async def test_creates_new_message_when_no_message_id(self, test_db):
-        """Test creating new output message when no message_id exists."""
+        """Paranoid test creating new output message when no message_id exists."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -115,7 +118,7 @@ class TestSendOutputUpdate:
         adapter._edit_message_mock.assert_not_called()
 
     async def test_edits_existing_message_when_message_id_exists(self, test_db):
-        """Test editing existing message when message_id exists."""
+        """Paranoid test editing existing message when message_id exists."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -144,7 +147,7 @@ class TestSendOutputUpdate:
         adapter._edit_message_mock.assert_called_once()
 
     async def test_render_markdown_skips_code_block(self, test_db):
-        """render_markdown should send output without code block wrapper."""
+        """Paranoid test that render_markdown sends output without code block wrapper."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -169,7 +172,7 @@ class TestSendOutputUpdate:
         assert metadata.parse_mode == "MarkdownV2"
 
     async def test_render_markdown_strips_heading_icons(self, test_db):
-        """render_markdown should render headings as bold without emoji prefixes."""
+        """Paranoid test that render_markdown renders headings without emoji prefixes."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -196,7 +199,7 @@ class TestSendOutputUpdate:
         assert "*23:03:31 · 🤖 Assistant*" in sent_text
 
     async def test_creates_new_when_edit_fails(self, test_db):
-        """Test creating new message when edit fails (stale message_id)."""
+        """Paranoid test creating new message when edit fails (stale message_id)."""
         adapter = MockUiAdapter()
         adapter._edit_message_mock = AsyncMock(return_value=False)
         session = await test_db.create_session(
@@ -232,7 +235,7 @@ class TestSendOutputUpdate:
         assert session.adapter_metadata.telegram.output_message_id == "msg-123"
 
     async def test_includes_exit_code_in_final_message(self, test_db):
-        """Test final message includes exit code."""
+        """Paranoid test final message includes exit code."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -261,10 +264,10 @@ class TestSendOutputUpdate:
 
 @pytest.mark.asyncio
 class TestSendExitMessage:
-    """Test send_exit_message method."""
+    """Paranoid test send_exit_message method."""
 
     async def test_sends_exit_message(self, test_db):
-        """Test sending exit message."""
+        """Paranoid test sending exit message."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -287,7 +290,7 @@ class TestSendExitMessage:
         assert "✅ Process exited" in message_text
 
     async def test_edits_existing_message_on_exit(self, test_db):
-        """Test editing existing message on exit."""
+        """Paranoid test editing existing message on exit."""
         adapter = MockUiAdapter()
         session = await test_db.create_session(
             computer_name="TestPC",
@@ -317,10 +320,10 @@ class TestSendExitMessage:
 
 @pytest.mark.asyncio
 class TestSendFeedback:
-    """Test send_feedback method (ephemeral message tracking)."""
+    """Paranoid test send_feedback method (ephemeral message tracking)."""
 
     async def test_tracks_feedback_for_deletion(self, test_db):
-        """Test that send_feedback tracks message for deletion via AdapterClient."""
+        """Paranoid test that send_feedback tracks message for deletion via AdapterClient."""
         from teleclaude.core.adapter_client import AdapterClient
 
         # Create real AdapterClient and adapter
@@ -347,10 +350,10 @@ class TestSendFeedback:
 
 
 class TestFormatMessage:
-    """Test format_message method and markdown sanitization."""
+    """Paranoid test format_message method and markdown sanitization."""
 
     def test_sanitizes_internal_code_blocks(self):
-        """Test that internal ``` markers are escaped to prevent nested code blocks."""
+        """Paranoid test that internal ``` markers are escaped to prevent nested code blocks."""
         adapter = MockUiAdapter()
         output_with_code = "Here is code:\n```python\nprint('hello')\n```\nEnd"
 
@@ -363,7 +366,7 @@ class TestFormatMessage:
         assert "`\u200b``\n" in result  # Closing marker also escaped
 
     def test_handles_multiple_code_blocks(self):
-        """Test multiple internal code blocks are all escaped."""
+        """Paranoid test multiple internal code blocks are all escaped."""
         adapter = MockUiAdapter()
         output = "```js\ncode1\n```\ntext\n```py\ncode2\n```"
 
@@ -375,7 +378,7 @@ class TestFormatMessage:
         assert result.count("```") == 2
 
     def test_preserves_output_without_code_blocks(self):
-        """Test normal output without ``` is unchanged."""
+        """Paranoid test normal output without ``` is unchanged."""
         adapter = MockUiAdapter()
         output = "Simple terminal output\nNo code blocks here"
 
