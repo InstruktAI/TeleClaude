@@ -137,6 +137,7 @@ def test_toggle_session_hides_pane_when_same_session():
 
 **Progress**
 - [x] Refactor `tests/unit/test_command_handlers.py` to assert outcomes via DB state or returned payloads
+- [x] Document terminal bridge system-boundary assertions in `tests/unit/test_terminal_bridge.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 

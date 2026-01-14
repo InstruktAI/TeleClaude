@@ -1,11 +1,16 @@
 """Unit tests for terminal_bridge.py."""
 
 import errno
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude.core import terminal_bridge
+
+# System boundary: verify tmux subprocess commands via mock call args.
 
 
 @pytest.fixture(autouse=True)
