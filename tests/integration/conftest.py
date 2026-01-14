@@ -1,6 +1,8 @@
 """Shared fixtures for integration tests."""
 
+import os
 import re
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -118,6 +120,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # NOW import teleclaude modules (after env var is set)
     from teleclaude import config as config_module
+    from teleclaude import constants as constants_module
+    from teleclaude.adapters import rest_adapter as rest_adapter_module
     from teleclaude.core import db as db_module
     from teleclaude.core import terminal_bridge
     from teleclaude.core.db import Db
@@ -219,6 +223,10 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     monkeypatch.setattr(config_module, "config", test_config)
 
     monkeypatch.setattr(config_module.config.redis, "url", "redis://localhost:6379")
+
+    rest_socket_path = f"/tmp/teleclaude-api-{os.getpid()}-{uuid.uuid4().hex[:6]}.sock"
+    monkeypatch.setattr(constants_module, "REST_SOCKET_PATH", rest_socket_path)
+    monkeypatch.setattr(rest_adapter_module, "REST_SOCKET_PATH", rest_socket_path)
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution

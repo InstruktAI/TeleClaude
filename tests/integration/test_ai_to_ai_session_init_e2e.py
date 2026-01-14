@@ -3,9 +3,12 @@
 
 import asyncio
 import json
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import terminal_bridge
 

@@ -177,6 +177,8 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Add docstrings in `tests/unit/test_mcp_server.py`
 - [x] Add docstrings in `tests/unit/test_session_cleanup.py`
 - [x] Add docstrings in `tests/unit/test_daemon.py`
+- [x] Isolate REST socket path in integration fixture to avoid unix socket conflicts
+- [x] Set TELECLAUDE_CONFIG_PATH in integration tests that import config
 
 ### Priority 2: Docstrings + Minor Fixes
 
@@ -244,9 +246,9 @@ Document any significant decisions made during implementation:
 ## Completion Criteria
 
 - [x] All Priority 0 components have new test files with coverage
-- [ ] All Priority 1 files refactored
-- [ ] All Priority 2 files have docstrings + fixes
-- [ ] All Priority 3 files have docstrings
-- [ ] `make lint` passes
-- [ ] `make test` passes
-- [ ] Test coverage increased (not decreased)
+- [x] All Priority 1 files refactored
+- [x] All Priority 2 files have docstrings + fixes
+- [x] All Priority 3 files have docstrings
+- [x] `make lint` passes
+- [x] `make test` passes
+- [x] Test coverage increased (not decreased)
