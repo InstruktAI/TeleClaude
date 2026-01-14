@@ -3,17 +3,24 @@
 import json
 import os
 import tempfile
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
-
 import pytest
+
+from teleclaude.config import AgentConfig
+from teleclaude.core import command_handlers
+from teleclaude.core.db import Db
+from teleclaude.core.events import EventContext
+from teleclaude.core.models import MessageMetadata
+from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 
 @pytest.fixture
 async def mock_initialized_db(monkeypatch):
     """Fixture to provide a mocked, initialized database connection."""
-    from teleclaude.core.db import Db
 
     # Create a Db instance with in-memory database
     mock_db_instance = Db(":memory:")
@@ -33,8 +40,6 @@ async def mock_initialized_db(monkeypatch):
 @pytest.mark.asyncio
 async def test_handle_get_computer_info_returns_system_stats():
     """Test that handle_get_computer_info returns system stats."""
-    from teleclaude.core import command_handlers
-
     # Mock config values
     mock_config = MagicMock()
     mock_config.computer.user = "testuser"
@@ -73,10 +78,6 @@ async def test_handle_get_computer_info_returns_system_stats():
 @pytest.mark.asyncio
 async def test_handle_new_session_creates_session(mock_initialized_db):
     """Test that handle_new_session returns a session_id and persists the session."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
-    from teleclaude.core.models import MessageMetadata
-    from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 
     mock_context = MagicMock(spec=EventContext)
     mock_metadata = MessageMetadata(adapter_type="telegram")
@@ -118,9 +119,6 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
 @pytest.mark.asyncio
 async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
     """Terminal adapter should store terminal metadata on the session."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
-    from teleclaude.core.models import MessageMetadata
 
     mock_context = MagicMock(spec=EventContext)
     mock_metadata = MessageMetadata(
@@ -163,9 +161,6 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
 @pytest.mark.asyncio
 async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp_path):
     """Test that handle_new_session rejects invalid working directories."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
-    from teleclaude.core.models import MessageMetadata
 
     invalid_path = tmp_path / "not-a-dir.txt"
     invalid_path.write_text("nope", encoding="utf-8")
@@ -204,7 +199,6 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
 @pytest.mark.asyncio
 async def test_handle_cd_changes_directory(mock_initialized_db, tmp_path):
     """Test that handle_cd updates working directory on success."""
-    from teleclaude.core import command_handlers
 
     session = await mock_initialized_db.create_session(
         computer_name="TestPC",
@@ -238,7 +232,6 @@ async def test_handle_cd_changes_directory(mock_initialized_db, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_cd_executes_command_for_any_path(mock_initialized_db):
     """Test that handle_cd accepts any path and stores it when execution succeeds."""
-    from teleclaude.core import command_handlers
 
     session = await mock_initialized_db.create_session(
         computer_name="TestPC",
@@ -271,7 +264,6 @@ async def test_handle_cd_executes_command_for_any_path(mock_initialized_db):
 @pytest.mark.asyncio
 async def test_handle_kill_terminates_process():
     """Test that handle_kill sends SIGKILL to running process."""
-    from teleclaude.core import command_handlers
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -291,7 +283,6 @@ async def test_handle_kill_terminates_process():
 @pytest.mark.asyncio
 async def test_handle_cancel_sends_ctrl_c():
     """Test that handle_cancel sends Ctrl+C."""
-    from teleclaude.core import command_handlers
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -311,7 +302,6 @@ async def test_handle_cancel_sends_ctrl_c():
 @pytest.mark.asyncio
 async def test_handle_escape_sends_esc():
     """Test that handle_escape sends ESC key."""
-    from teleclaude.core import command_handlers
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -333,7 +323,6 @@ async def test_handle_escape_sends_esc():
 @pytest.mark.asyncio
 async def test_handle_ctrl_sends_ctrl_key():
     """Test that handle_ctrl sends Ctrl+<key> combinations."""
-    from teleclaude.core import command_handlers
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -355,7 +344,6 @@ async def test_handle_ctrl_sends_ctrl_key():
 @pytest.mark.asyncio
 async def test_handle_rename_updates_title(mock_initialized_db):
     """Test that handle_rename updates session title."""
-    from teleclaude.core import command_handlers
 
     session = await mock_initialized_db.create_session(
         computer_name="TestPC",
@@ -385,25 +373,28 @@ async def test_handle_rename_updates_title(mock_initialized_db):
 @pytest.mark.asyncio
 async def test_handle_list_sessions_formats_output():
     """Test that handle_list_sessions formats session list."""
-    from datetime import datetime
+    # Create mock sessions explicitly without loops
+    now = datetime.now()
 
-    from teleclaude.core import command_handlers
+    s0 = MagicMock()
+    s0.session_id = "session-0"
+    s0.origin_adapter = "telegram"
+    s0.title = "Test Session 0"
+    s0.working_directory = "/home/user"
+    s0.created_at = now
+    s0.last_activity = now
+    s0.thinking_mode = "med"
 
-    # Create mock sessions
-    mock_sessions = []
-    for i in range(2):
-        s = MagicMock()
-        s.session_id = f"session-{i}"
-        s.origin_adapter = "telegram"
-        s.title = f"Test Session {i}"
-        s.working_directory = "/home/user"
-        s.created_at = datetime.now()
-        s.last_activity = datetime.now()
-        mock_sessions.append(s)
+    s1 = MagicMock()
+    s1.session_id = "session-1"
+    s1.origin_adapter = "telegram"
+    s1.title = "Test Session 1"
+    s1.working_directory = "/home/user"
+    s1.created_at = now
+    s1.last_activity = now
+    s1.thinking_mode = "med"
 
-    # Set thinking_mode on mock sessions
-    for s in mock_sessions:
-        s.thinking_mode = "med"
+    mock_sessions = [s0, s1]
 
     with patch.object(command_handlers, "db") as mock_db:
         mock_db.list_sessions = AsyncMock(return_value=mock_sessions)
@@ -411,21 +402,21 @@ async def test_handle_list_sessions_formats_output():
         result = await command_handlers.handle_list_sessions()
 
     assert len(result) == 2
-    for session_summary in result:
-        assert session_summary.session_id.startswith("session-")
-        assert session_summary.origin_adapter == "telegram"
-        assert session_summary.title.startswith("Test Session")
-        assert session_summary.status == "active"
+
+    assert result[0].session_id == "session-0"
+    assert result[0].origin_adapter == "telegram"
+    assert result[0].title == "Test Session 0"
+    assert result[0].status == "active"
+
+    assert result[1].session_id == "session-1"
+    assert result[1].origin_adapter == "telegram"
+    assert result[1].title == "Test Session 1"
+    assert result[1].status == "active"
 
 
 @pytest.mark.asyncio
 async def test_handle_get_session_data_returns_transcript():
     """Test that handle_get_session_data returns session transcript."""
-    from datetime import datetime
-
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
-
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
     mock_session.title = "Test Session"
@@ -450,11 +441,6 @@ async def test_handle_get_session_data_returns_transcript():
 @pytest.mark.asyncio
 async def test_handle_get_session_data_returns_markdown(tmp_path):
     """Verify successful transcript parsing path for existing file."""
-    from datetime import datetime
-
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
-
     mock_session = MagicMock()
     mock_session.session_id = "test-session-456"
     mock_session.title = "Markdown Session"
@@ -501,9 +487,6 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
 @pytest.mark.asyncio
 async def test_handle_get_session_data_returns_error_for_missing_session():
     """Test that handle_get_session_data returns error for missing sessions."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
-
     mock_context = MagicMock(spec=EventContext)
     mock_context.session_id = "missing-session"
 
@@ -519,7 +502,6 @@ async def test_handle_get_session_data_returns_error_for_missing_session():
 @pytest.mark.asyncio
 async def test_handle_list_projects_returns_trusted_dirs():
     """Test that handle_list_projects returns trusted directories."""
-    from teleclaude.core import command_handlers
 
     mock_trusted_dir = MagicMock()
     mock_trusted_dir.name = "Project"
@@ -540,7 +522,6 @@ async def test_handle_list_projects_returns_trusted_dirs():
 @pytest.mark.asyncio
 async def test_handle_ctrl_requires_key_argument(mock_initialized_db):
     """Test that handle_ctrl requires a key argument."""
-    from teleclaude.core import command_handlers
 
     mock_context = MagicMock()
     messages: list[str] = []
@@ -561,15 +542,13 @@ async def test_handle_ctrl_requires_key_argument(mock_initialized_db):
 
     await command_handlers.handle_ctrl_command.__wrapped__(session, mock_context, [], FakeClient(), AsyncMock())
 
-    assert any("Usage" in message for message in messages)
+    assert len(messages) > 0
+    assert "Usage" in messages[0]
 
 
 @pytest.mark.asyncio
 async def test_handle_agent_start_executes_command_with_args(mock_initialized_db):
     """Test that handle_agent_start executes agent's command with provided arguments."""
-    from teleclaude.config import AgentConfig
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "model-session-789"
@@ -613,9 +592,6 @@ async def test_handle_agent_start_executes_command_with_args(mock_initialized_db
 @pytest.mark.asyncio
 async def test_handle_agent_start_executes_command_without_extra_args_if_none_provided(mock_initialized_db):
     """Test that handle_agent_start executes agent's command correctly when no extra args are provided."""
-    from teleclaude.config import AgentConfig
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "regular-session-123"
@@ -654,8 +630,6 @@ async def test_handle_agent_start_executes_command_without_extra_args_if_none_pr
 @pytest.mark.asyncio
 async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
     """Ensure /codex deep maps to the deep model flag."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "deep-session-123"
@@ -690,8 +664,6 @@ async def test_handle_agent_start_accepts_deep_for_codex(mock_initialized_db):
 @pytest.mark.asyncio
 async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db):
     """Ensure deep is rejected for non-codex agents."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "deep-session-456"
@@ -724,9 +696,6 @@ async def test_handle_agent_start_rejects_deep_for_non_codex(mock_initialized_db
 @pytest.mark.asyncio
 async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock_initialized_db):
     """Test that handle_agent_resume uses native_session_id from database and resume template."""
-    from teleclaude.config import AgentConfig
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
@@ -778,9 +747,6 @@ async def test_handle_agent_resume_executes_command_with_session_id_from_db(mock
 @pytest.mark.asyncio
 async def test_handle_agent_resume_uses_continue_template_when_no_native_session_id(mock_initialized_db):
     """Test that handle_agent_resume continues latest conversation when no native_session_id is stored."""
-    from teleclaude.config import AgentConfig
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-continue-123"
@@ -830,9 +796,6 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
 @pytest.mark.asyncio
 async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initialized_db):
     """Test that handle_agent_resume accepts an explicit native session ID argument."""
-    from teleclaude.config import AgentConfig
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "test-session-override-123"
@@ -885,8 +848,6 @@ async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initi
 @pytest.mark.asyncio
 async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_db):
     """Restart should fail fast when no active agent is stored."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "restart-session-123"
@@ -921,8 +882,6 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
 @pytest.mark.asyncio
 async def test_handle_agent_restart_fails_without_native_session_id(mock_initialized_db):
     """Restart should fail fast when native_session_id is missing."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "restart-session-456"
@@ -952,8 +911,6 @@ async def test_handle_agent_restart_fails_without_native_session_id(mock_initial
 @pytest.mark.asyncio
 async def test_handle_agent_restart_resumes_with_native_session_id(mock_initialized_db):
     """Restart should send SIGINTs and resume using stored native_session_id."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "restart-session-789"
@@ -994,8 +951,6 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
 @pytest.mark.asyncio
 async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized_db):
     """Restart should abort if the foreground process does not exit."""
-    from teleclaude.core import command_handlers
-    from teleclaude.core.events import EventContext
 
     mock_session = MagicMock()
     mock_session.session_id = "restart-session-999"
