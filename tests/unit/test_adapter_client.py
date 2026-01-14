@@ -251,8 +251,12 @@ async def test_adapter_client_deduplication():
     assert len(peers) == 2  # Not 3 - macbook deduplicated
 
     # First adapter (telegram) wins for "macbook"
-    macbook_peer = next(p for p in peers if p["name"] == "macbook")
-    assert macbook_peer["adapter_type"] == "telegram"
+    # Order: telegram peer was registered first, then redis peers.
+    # macbook (telegram) and workstation (redis)
+    assert peers[0]["name"] == "macbook"
+    assert peers[0]["adapter_type"] == "telegram"
+    assert peers[1]["name"] == "workstation"
+    assert peers[1]["adapter_type"] == "redis"
 
 
 @pytest.mark.asyncio
