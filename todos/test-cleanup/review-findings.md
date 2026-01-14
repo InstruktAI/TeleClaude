@@ -65,11 +65,19 @@
 
 ## Important Issues (should fix)
 
-- None.
+Resolved (kept for audit trail):
+- [tests] `tests/unit/test_mcp_server.py:171`, `tests/unit/test_mcp_server.py:281` — Import-outside-toplevel violations were present inside test bodies, which conflicted with testing directives.
+  - Resolution: moved imports to module top-level.
+- [tests] `tests/unit/test_mcp_server.py:76`, `tests/unit/test_computer_registry.py:56`, `tests/unit/test_command_handlers.py:377` — Tests relied on `datetime.now()` which violated determinism requirements.
+  - Resolution: replaced with fixed timestamps.
+- [tests] `tests/unit/test_mcp_server.py:387`, `tests/unit/test_mcp_server.py:437` — Tests asserted internal call arguments to AdapterClient instead of observable outcomes.
+  - Resolution: assertions now check returned results / observable outputs.
 
 ## Suggestions (nice to have)
 
-- None.
+Resolved (kept for audit trail):
+- [tests] `tests/integration/conftest.py:140` — REST socket path was assigned twice; consolidation recommended.
+  - Resolution: no change required for approval.
 
 ## Strengths
 
@@ -86,3 +94,13 @@
 
 Priority fixes:
 1. None.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Import-outside-toplevel in MCP server tests | Moved imports to module top-level | `338c1af` |
+| Real-time `datetime.now()` usage in tests | Replaced with fixed timestamps | `338c1af` |
+| MCP server internal call assertions | Switched to outcome-based assertions | `338c1af` |
