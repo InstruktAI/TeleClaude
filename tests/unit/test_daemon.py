@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -635,6 +636,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 5.0
 
     payload = AgentStopPayload(
@@ -651,6 +653,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -673,6 +676,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 5.0
 
     payload = AgentStopPayload(
@@ -689,6 +693,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
 
@@ -720,6 +725,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload():
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 0.0
 
     payload = AgentStopPayload(
@@ -740,6 +746,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload():
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(side_effect=[session_missing_agent, session_with_agent, session_with_agent])
@@ -766,6 +773,7 @@ async def test_process_agent_stop_skips_without_agent_metadata():
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 0.0
 
     payload = AgentStopPayload(
@@ -805,6 +813,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 0.0
 
     payload = AgentStopPayload(
@@ -831,6 +840,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=session)
@@ -841,25 +851,16 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
         assert daemon.client.send_output_update.await_count == 0
 
-
-@pytest.mark.asyncio
-class TestSessionCleanup:
-    """Test session cleanup functionality."""
-
-    async def test_cleanup_inactive_sessions_cleans_old_sessions(self):
-        """Test cleanup of sessions inactive for 72+ hours."""
-        from datetime import datetime, timedelta, timezone
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
+    @pytest.mark.asyncio
+    async def test_cleanup_terminates_sessions_inactive_72h(self):
+        """Test that sessions inactive for >72h are terminated."""
         # Create daemon instance
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
         daemon.client = MagicMock()
 
-        # Create session inactive for 73 hours
-        old_time = datetime.now(timezone.utc) - timedelta(hours=73)
+        # Create session inactive for 73 hours relative to a fixed "now"
+        fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+        old_time = fixed_now - timedelta(hours=73)
         inactive_session = Session(
             session_id="inactive-123",
             computer_name="TestMac",
@@ -870,9 +871,11 @@ class TestSessionCleanup:
         )
 
         with (
+            patch("teleclaude.daemon.datetime") as mock_datetime,
             patch("teleclaude.daemon.db") as mock_db,
             patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
         ):
+            mock_datetime.now.return_value = fixed_now
             mock_db.list_sessions = AsyncMock(return_value=[inactive_session])
 
             # Execute cleanup
@@ -885,19 +888,15 @@ class TestSessionCleanup:
                 session=inactive_session,
             )
 
+    @pytest.mark.asyncio
     async def test_cleanup_skips_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
-        from datetime import datetime, timedelta
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
         daemon.client = MagicMock()
 
-        # Session active 1 hour ago
-        recent_time = datetime.now() - timedelta(hours=1)
+        # Session active 1 hour ago relative to fixed "now"
+        fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+        recent_time = fixed_now - timedelta(hours=1)
         active_session = Session(
             session_id="active-456",
             computer_name="TestMac",
@@ -908,15 +907,15 @@ class TestSessionCleanup:
         )
 
         with (
+            patch("teleclaude.daemon.datetime") as mock_datetime,
             patch("teleclaude.daemon.db") as mock_db,
             patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
         ):
+            mock_datetime.now.return_value = fixed_now
             mock_db.list_sessions = AsyncMock(return_value=[active_session])
 
-            # Execute cleanup
             await daemon._cleanup_inactive_sessions()
 
-            # Verify NO cleanup
             terminate_session.assert_not_called()
 
 
