@@ -26,7 +26,8 @@ from teleclaude.adapters.rest_models import (
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
-    ProjectWithTodosDTO,
+    RefreshDataDTO,
+    RefreshEventDTO,
     SendMessageRequest,
     SessionDataDTO,
     SessionRemovedDataDTO,
@@ -446,87 +447,51 @@ class RESTAdapter(BaseAdapter):
 
             return result
 
-        @self.app.get("/projects-with-todos")
-        async def list_projects_with_todos() -> list[ProjectWithTodosDTO]:  # pyright: ignore
-            """List all projects with their todos included (local + cached remote).
+        @self.app.get("/todos")
+        async def list_todos(  # pyright: ignore
+            project: str = Query(..., min_length=1),
+            computer: str | None = None,
+        ) -> list[TodoDTO]:
+            """List todos for a project (local + cached remote).
 
-            Pure cache reader - returns cached data without triggering pulls.
-
-            Returns:s
-                List of projects, each with a 'todos' field containing the project's todos
+            Pure cache reader for remote computers - returns cached data without triggering pulls.
             """
             try:
-                # Get LOCAL projects
-                raw_projects = await command_handlers.handle_list_projects_with_todos()
+                computer_name = computer or "local"
+                if computer_name != "local":
+                    if not self.cache:
+                        return []
+                    cached_todos = self.cache.get_todos(computer_name, project)
+                    self._refresh_stale_todos(computer_name, project)
+                    return [
+                        TodoDTO(
+                            slug=t.slug,
+                            status=t.status,
+                            description=t.description,
+                            has_requirements=t.has_requirements,
+                            has_impl_plan=t.has_impl_plan,
+                            build_status=t.build_status,
+                            review_status=t.review_status,
+                        )
+                        for t in cached_todos
+                    ]
+
+                raw_todos = await command_handlers.handle_list_todos(project)
+                return [
+                    TodoDTO(
+                        slug=t.slug,
+                        status=t.status,
+                        description=t.description,
+                        has_requirements=t.has_requirements,
+                        has_impl_plan=t.has_impl_plan,
+                        build_status=t.build_status,
+                        review_status=t.review_status,
+                    )
+                    for t in raw_todos
+                ]
             except Exception as e:
-                logger.error("list_projects_with_todos: failed to get projects: %s", e, exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}") from e
-
-            computer_name = config.computer.name
-            result: list[ProjectWithTodosDTO] = []
-
-            # Add LOCAL projects with todos
-            for p in raw_projects:
-                result.append(
-                    ProjectWithTodosDTO(
-                        computer=computer_name,
-                        name=p.name,
-                        path=p.path,
-                        description=p.description,
-                        todos=[
-                            TodoDTO(
-                                slug=t.slug,
-                                status=t.status,
-                                description=t.description,
-                                has_requirements=t.has_requirements,
-                                has_impl_plan=t.has_impl_plan,
-                                build_status=t.build_status,
-                                review_status=t.review_status,
-                            )
-                            for t in p.todos
-                        ],
-                    )
-                )
-
-            stale_computers: set[str] = set()
-            # Add REMOTE projects with cached todos from cache (skip local to avoid duplicates)
-            if self.cache:
-                cached_projects = self.cache.get_projects(include_stale=True)
-                for proj in cached_projects:
-                    comp_name = str(proj.computer or "")
-                    if comp_name == computer_name:
-                        continue
-                    proj_path = str(proj.path or "")
-                    if not proj_path:
-                        continue
-                    cache_key = f"{comp_name}:{proj_path}"
-                    if self.cache.is_stale(cache_key, 300):
-                        stale_computers.add(comp_name)
-
-                    cached_todos = self.cache.get_todos(comp_name, proj_path) if comp_name else []
-
-                    remote_project = ProjectWithTodosDTO(
-                        computer=comp_name,
-                        name=proj.name,
-                        path=proj_path,
-                        description=proj.description,
-                        todos=[
-                            TodoDTO(
-                                slug=t.slug,
-                                status=t.status,
-                                description=t.description,
-                                has_requirements=t.has_requirements,
-                                has_impl_plan=t.has_impl_plan,
-                                build_status=t.build_status,
-                                review_status=t.review_status,
-                            )
-                            for t in cached_todos
-                        ],
-                    )
-                    result.append(remote_project)
-
-            self._refresh_stale_projects(stale_computers)
-            return result
+                logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
+                raise HTTPException(status_code=500, detail=f"Failed to list todos: {e}") from e
 
         @self.app.websocket("/ws")
         async def websocket_endpoint(  # pyright: ignore
@@ -744,6 +709,22 @@ class RESTAdapter(BaseAdapter):
             else:
                 asyncio.create_task(coro)
 
+    def _refresh_stale_todos(self, computer: str, project_path: str) -> None:
+        """Trigger background refresh for stale todo cache entries."""
+        if not self.cache or not project_path or computer == "local":
+            return
+        cache_key = f"{computer}:{project_path}"
+        if not self.cache.is_stale(cache_key, 300):
+            return
+        adapter = self.client.adapters.get("redis")
+        if not isinstance(adapter, RedisAdapter):
+            return
+        coro = adapter.pull_remote_todos(computer, project_path)
+        if self.task_registry:
+            self.task_registry.spawn(coro, name=f"todos-refresh-{computer}")
+        else:
+            asyncio.create_task(coro)
+
     async def _send_initial_state(self, websocket: WebSocket, data_type: str, computer: str) -> None:
         """Send initial state for a subscription.
 
@@ -764,39 +745,16 @@ class RESTAdapter(BaseAdapter):
                 # Send current projects from cache for this computer
                 if self.cache:
                     cached_projects = self.cache.get_projects(computer if computer != "local" else None)
-                    projects: list[ProjectDTO | ProjectWithTodosDTO] = []
+                    projects: list[ProjectDTO] = []
                     for proj in cached_projects:
-                        # cached_projects returns ProjectInfo dataclasses
-                        if proj.todos:
-                            projects.append(
-                                ProjectWithTodosDTO(
-                                    computer=proj.computer or "",
-                                    name=proj.name,
-                                    path=proj.path,
-                                    description=proj.description,
-                                    todos=[
-                                        TodoDTO(
-                                            slug=t.slug,
-                                            status=t.status,
-                                            description=t.description,
-                                            has_requirements=t.has_requirements,
-                                            has_impl_plan=t.has_impl_plan,
-                                            build_status=t.build_status,
-                                            review_status=t.review_status,
-                                        )
-                                        for t in proj.todos
-                                    ],
-                                )
+                        projects.append(
+                            ProjectDTO(
+                                computer=proj.computer or "",
+                                name=proj.name,
+                                path=proj.path,
+                                description=proj.description,
                             )
-                        else:
-                            projects.append(
-                                ProjectDTO(
-                                    computer=proj.computer or "",
-                                    name=proj.name,
-                                    path=proj.path,
-                                    description=proj.description,
-                                )
-                            )
+                        )
 
                     event = ProjectsInitialEventDTO(
                         event="projects_initial" if data_type == "projects" else "preparation_initial",
@@ -838,6 +796,34 @@ class RESTAdapter(BaseAdapter):
                 ).model_dump(exclude_none=True)
             else:
                 payload = {"event": event, "data": data}
+        elif event in ("computer_updated", "project_updated", "projects_updated", "todos_updated"):
+            computer: str | None = None
+            project_path: str | None = None
+            if isinstance(data, dict):
+                computer_val = data.get("computer")
+                if isinstance(computer_val, str):
+                    computer = computer_val
+                project_val = data.get("project_path")
+                if isinstance(project_val, str):
+                    project_path = project_val
+            else:
+                if hasattr(data, "computer"):
+                    computer_val = getattr(data, "computer")
+                    if isinstance(computer_val, str):
+                        computer = computer_val
+                if hasattr(data, "path"):
+                    path_val = getattr(data, "path")
+                    if isinstance(path_val, str):
+                        project_path = path_val
+                if event == "computer_updated" and computer is None and hasattr(data, "name"):
+                    name_val = getattr(data, "name")
+                    if isinstance(name_val, str):
+                        computer = name_val
+
+            payload = RefreshEventDTO(
+                event=event,
+                data=RefreshDataDTO(computer=computer, project_path=project_path),
+            ).model_dump(exclude_none=True)
         else:
             # Fallback for other events
             if hasattr(data, "to_dict"):

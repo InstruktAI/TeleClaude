@@ -227,6 +227,7 @@ class RefreshDataDTO(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     computer: str | None = None
+    project_path: str | None = None
 
 
 class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
@@ -234,5 +235,5 @@ class RefreshEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal["computer_updated", "project_updated", "projects_updated"]
+    event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
     data: RefreshDataDTO

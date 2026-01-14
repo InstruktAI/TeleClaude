@@ -982,7 +982,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 active_agent_str = agent_name
             else:
                 logger.warning("Session %s missing active_agent and no agent in payload", session_id[:8])
-                return session
+                return None
 
         # Capture transcript path
         if payload.transcript_path and payload.transcript_path != session.native_log_file:

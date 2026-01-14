@@ -1,5 +1,6 @@
 """HTTP client for telec TUI."""
 
+import asyncio
 import json
 import threading
 import time
@@ -21,6 +22,7 @@ from teleclaude.cli.models import (
     SessionInfo,
     SubscribeData,
     SubscribeRequest,
+    TodoInfo,
     UnsubscribeData,
     UnsubscribeRequest,
     WsEvent,
@@ -432,8 +434,43 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        resp = await self._request("GET", "/projects-with-todos")
-        return TypeAdapter(list[ProjectWithTodosInfo]).validate_json(resp.text)
+        projects = await self.list_projects()
+
+        async def _fetch_project_todos(project: ProjectInfo) -> ProjectWithTodosInfo:
+            todos: list[TodoInfo] = []
+            if project.path:
+                todos = await self.list_todos(project.path, project.computer or None)
+            return ProjectWithTodosInfo(
+                computer=project.computer,
+                name=project.name,
+                path=project.path,
+                description=project.description,
+                todos=todos,
+            )
+
+        if not projects:
+            return []
+
+        return list(await asyncio.gather(*(_fetch_project_todos(project) for project in projects)))
+
+    async def list_todos(self, project_path: str, computer: str | None = None) -> list[TodoInfo]:
+        """List todos for a project.
+
+        Args:
+            project_path: Absolute project path
+            computer: Optional computer name (None = local)
+
+        Returns:
+            List of todo objects
+
+        Raises:
+            APIError: If request fails
+        """
+        params: dict[str, str] = {"project": project_path}
+        if computer:
+            params["computer"] = computer
+        resp = await self._request("GET", "/todos", params=params)
+        return TypeAdapter(list[TodoInfo]).validate_json(resp.text)
 
     async def agent_restart(self, session_id: str) -> bool:
         """Restart agent in a session (preserves conversation via --resume).
