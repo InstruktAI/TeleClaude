@@ -150,6 +150,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Paranoidize set_dependencies tests in `tests/unit/test_mcp_set_dependencies.py`
 - [x] Add docstrings in `tests/unit/test_next_machine_hitl.py`
 - [x] Add docstrings in `tests/unit/test_agents.py`
+- [x] Add docstrings in `tests/unit/test_telegram_adapter.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
