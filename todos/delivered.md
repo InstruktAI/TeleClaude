@@ -23,3 +23,4 @@
 | 2026-01-12 | worktree-preparation | Worktree Preparation | DELIVERED | e88f795 | done/018-worktree-preparation |
 | 2026-01-12 | startup-cache-hook-fixes | Startup Cache Hook Fixes | DELIVERED | 4462b44 | done/019-startup-cache-hook-fixes |
 | 2026-01-13 | delivery-verification-gates | Delivery Verification Gates | DELIVERED | 5b5d668 | done/020-delivery-verification-gates |
+| 2026-01-14 | model-boundary-consolidation | Model Boundary Consolidation | DELIVERED | 44fbd26 | done/021-model-boundary-consolidation |

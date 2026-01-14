@@ -10,13 +10,6 @@
 
 ---
 
-## Model Boundary Consolidation
-
-- [>] model-boundary-consolidation
-  Define one source of truth for resource models, use Pydantic at boundaries only, and remove ad-hoc payload shapes.
-
----
-
 ## Cache Improvements
 
 - [.] cache-startup-warmup
