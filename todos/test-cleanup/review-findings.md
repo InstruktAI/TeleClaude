@@ -74,3 +74,15 @@ Priority fixes:
 1. Remove inline imports in changed tests (`tests/unit/test_db.py`, `tests/unit/test_daemon.py`).
 2. Remove real-time sleeps and `datetime.now` usage from tests to restore determinism.
 3. Replace internal call assertions in `tests/unit/test_adapter_client.py` with outcome-based checks.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Inline imports in tests | Moved imports to module top-level in `test_db.py` and `test_daemon.py`. | `cf4610c`, `5b56ac0` |
+| Real-time reliance in tests | Replaced `asyncio.sleep` and `datetime.now()` with patched/fixed timestamps for determinism. | `cf4610c`, `5b56ac0` |
+| Internal call assertions | Replaced `ensure_ui_channels.assert_called()` with outcome-based checks in `test_adapter_client.py`. | `6a441db` |
+| Regression: AttributeError | Initialized `_last_summary_fingerprint` in manual daemon instances in `test_daemon.py`. | `5b56ac0` |
+| Regression: Missing transcript file | Patched `Path.stat` to simulate file existence and allow summarization in `test_daemon.py`. | `5b56ac0` |
