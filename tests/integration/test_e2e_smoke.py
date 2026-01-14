@@ -21,6 +21,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import TypeAdapter
 
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary
+
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -61,6 +63,7 @@ def mock_adapter_client(patched_config: MagicMock) -> MagicMock:
     client.get_local_sessions = AsyncMock(return_value=[])
     client.get_local_projects = AsyncMock(return_value=[])
     client.computer_name = "test-computer"
+    client.on = MagicMock()
     return client
 
 
@@ -89,10 +92,8 @@ def create_test_session(
     computer: str = "test-computer",
     title: str = "Test Session",
 ):
-    """Create test session info dict."""
-    from teleclaude.mcp.types import SessionInfo
-
-    return SessionInfo(
+    """Create test session summary object."""
+    return SessionSummary(
         session_id=session_id,
         origin_adapter="telegram",
         title=title,
@@ -100,6 +101,8 @@ def create_test_session(
         status="active",
         created_at=datetime.now(timezone.utc).isoformat(),
         last_activity=datetime.now(timezone.utc).isoformat(),
+        thinking_mode="slow",
+        active_agent=None,
         computer=computer,
     )
 
@@ -108,7 +111,7 @@ async def test_projects_initial_payload_parses(rest_adapter, cache: DaemonCache)
     """Ensure projects_initial payloads parse with CLI WebSocket models."""
     from teleclaude.cli.models import WsEvent
 
-    project = {"name": "teleclaude", "desc": "Demo", "path": "/tmp/teleclaude"}
+    project = ProjectInfo(name="teleclaude", description="Demo", path="/tmp/teleclaude", computer="local")
     cache.set_projects("local", [project])
 
     mock_ws = create_mock_websocket()
@@ -255,19 +258,17 @@ async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
     - Fresh data returned correctly
     """
     from teleclaude.core.cache import CachedItem
-    from teleclaude.mcp.types import ComputerInfo
 
-    # Create test computer (TypedDict requires dict syntax)
-    stale_computer: ComputerInfo = {
-        "name": "stale-computer",
-        "role": "worker",
-        "status": "online",
-        "user": "test",
-        "host": "stale.local",
-        "last_seen": datetime(2020, 1, 1, tzinfo=timezone.utc),
-        "adapter_type": "test",
-        "system_stats": None,
-    }
+    # Create test computer
+    stale_computer = ComputerInfo(
+        name="stale-computer",
+        role="worker",
+        status="online",
+        user="test",
+        host="stale.local",
+        is_local=False,
+        system_stats=None,
+    )
 
     # Manually add with old timestamp (simulate stale data)
     old_timestamp = datetime(2020, 1, 1, tzinfo=timezone.utc)
@@ -278,22 +279,21 @@ async def test_stale_cache_data_filtered(cache: DaemonCache) -> None:
     assert stale_item.is_stale(60)  # Stale after 60 seconds
 
     # Add fresh computer
-    fresh_computer: ComputerInfo = {
-        "name": "fresh-computer",
-        "role": "worker",
-        "status": "online",
-        "user": "test",
-        "host": "fresh.local",
-        "last_seen": datetime.now(timezone.utc),
-        "adapter_type": "test",
-        "system_stats": None,
-    }
+    fresh_computer = ComputerInfo(
+        name="fresh-computer",
+        role="worker",
+        status="online",
+        user="test",
+        host="fresh.local",
+        is_local=False,
+        system_stats=None,
+    )
     cache.update_computer(fresh_computer)
 
     # get_computers() should filter out stale entry and return only fresh
     computers = cache.get_computers()
     assert len(computers) == 1
-    assert computers[0]["name"] == "fresh-computer"
+    assert computers[0].name == "fresh-computer"
 
     # Verify stale entry was removed from cache
     assert "stale-computer" not in cache._computers
@@ -355,8 +355,8 @@ async def test_redis_event_updates_local_cache(cache: DaemonCache) -> None:
     # Verify session in cache
     sessions = cache.get_sessions()
     assert len(sessions) == 1
-    assert sessions[0]["session_id"] == "redis-session-456"
-    assert sessions[0]["computer"] == "remote-computer"
+    assert sessions[0].session_id == "redis-session-456"
+    assert sessions[0].computer == "remote-computer"
 
     # Verify filtering by computer works
     remote_sessions = cache.get_sessions(computer="remote-computer")
@@ -433,8 +433,8 @@ async def test_multiple_websocket_clients_receive_updates(
 
     rest_adapter._ws_clients.add(mock_ws1)
     rest_adapter._ws_clients.add(mock_ws2)
-    rest_adapter._client_subscriptions[mock_ws1] = {"sessions"}
-    rest_adapter._client_subscriptions[mock_ws2] = {"sessions"}
+    rest_adapter._client_subscriptions[mock_ws1] = {"local": {"sessions"}}
+    rest_adapter._client_subscriptions[mock_ws2] = {"local": {"sessions"}}
 
     # Update session in cache
     test_session = create_test_session(session_id="broadcast-test")

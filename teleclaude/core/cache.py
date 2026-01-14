@@ -3,13 +3,13 @@
 Provides instant reads for REST endpoints and emits change events when data updates.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, Generic, TypeVar, cast
+from typing import Callable, Generic, TypeVar
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.command_handlers import ProjectInfo, TodoInfo
-from teleclaude.mcp.types import ComputerInfo, SessionInfo
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 
 logger = get_logger(__name__)
 
@@ -47,6 +47,16 @@ class CachedItem(Generic[T]):
         return age > ttl_seconds
 
 
+@dataclass(frozen=True)
+class TodoCacheEntry:
+    """Cached todos with context for filtering."""
+
+    computer: str
+    project_path: str
+    todos: list[TodoInfo]
+    is_stale: bool
+
+
 class DaemonCache:
     """Central cache for remote data with TTL management.
 
@@ -66,7 +76,7 @@ class DaemonCache:
         self._projects: dict[str, CachedItem[ProjectInfo]] = {}
 
         # Session cache: key = session_id
-        self._sessions: dict[str, CachedItem[SessionInfo]] = {}
+        self._sessions: dict[str, CachedItem[SessionSummary]] = {}
 
         # Todo cache: key = f"{computer}:{project_path}"
         self._todos: dict[str, CachedItem[list[TodoInfo]]] = {}
@@ -131,7 +141,7 @@ class DaemonCache:
         """Get all cached computers (auto-expires stale entries).
 
         Returns:
-            List of computer info dicts
+            List of computer info objects
         """
         # Filter to non-stale computers (TTL=60s)
         computers = []
@@ -151,7 +161,7 @@ class DaemonCache:
             include_stale: When True, include stale entries (caller may trigger refresh)
 
         Returns:
-            List of project info dicts
+            List of project info objects
         """
         projects: list[ProjectInfo] = []
         for key, cached in self._projects.items():
@@ -165,31 +175,31 @@ class DaemonCache:
 
             # Include computer name derived from key for optimistic rendering
             comp_name = key.split(":", 1)[0] if ":" in key else ""
-            project = dict(cached.data)
-            project["computer"] = comp_name
-            projects.append(cast("ProjectInfo", project))
+            project = cached.data
+            project.computer = comp_name
+            projects.append(project)
 
         return projects
 
-    def get_sessions(self, computer: str | None = None) -> list[SessionInfo]:
+    def get_sessions(self, computer: str | None = None) -> list[SessionSummary]:
         """Get cached sessions, optionally filtered by computer.
 
         Args:
             computer: Optional computer name to filter by
 
         Returns:
-            List of session info dicts
+            List of session summary objects
         """
         sessions = []
         for cached in self._sessions.values():
             session = cached.data
             # Filter by computer if specified
-            if computer and session.get("computer") != computer:
+            if computer and session.computer != computer:
                 continue
             sessions.append(session)
         return sessions
 
-    def get_todos(self, computer: str, project_path: str) -> list[TodoInfo]:
+    def get_todos(self, computer: str, project_path: str, *, include_stale: bool = False) -> list[TodoInfo]:
         """Get cached todos for a project.
 
         Args:
@@ -197,15 +207,54 @@ class DaemonCache:
             project_path: Project path
 
         Returns:
-            List of todo info dicts (empty if not cached or stale)
+            List of todo info objects (empty if not cached or stale unless include_stale)
         """
         key = f"{computer}:{project_path}"
         cached = self._todos.get(key)
 
-        if not cached or cached.is_stale(300):  # TTL=5min
+        if not cached:
+            return []
+        if cached.is_stale(300) and not include_stale:  # TTL=5min
             return []
 
         return cached.data
+
+    def get_todo_entries(
+        self,
+        *,
+        computer: str | None = None,
+        project_path: str | None = None,
+        include_stale: bool = False,
+    ) -> list[TodoCacheEntry]:
+        """Get cached todos with context, optionally filtered.
+
+        Args:
+            computer: Optional computer name to filter by
+            project_path: Optional project path to filter by
+            include_stale: When True, include stale entries
+
+        Returns:
+            List of todo cache entries with context
+        """
+        entries: list[TodoCacheEntry] = []
+        for key, cached in self._todos.items():
+            comp_name, path = key.split(":", 1) if ":" in key else ("", key)
+            if computer and comp_name != computer:
+                continue
+            if project_path and path != project_path:
+                continue
+            is_stale = cached.is_stale(300)
+            if is_stale and not include_stale:
+                continue
+            entries.append(
+                TodoCacheEntry(
+                    computer=comp_name,
+                    project_path=path,
+                    todos=cached.data,
+                    is_stale=is_stale,
+                )
+            )
+        return entries
 
     # ==================== Data Updates ====================
 
@@ -213,20 +262,20 @@ class DaemonCache:
         """Update computer info in cache.
 
         Args:
-            computer: Computer info dict
+            computer: Computer info object
         """
-        name = computer["name"]
+        name = computer.name
         self._computers[name] = CachedItem(computer)
         logger.debug("Updated computer cache: %s", name)
         self._notify("computer_updated", computer)
 
-    def update_session(self, session: SessionInfo) -> None:
+    def update_session(self, session: SessionSummary) -> None:
         """Update session info in cache.
 
         Args:
-            session: Session info dict
+            session: Session summary object
         """
-        session_id = session["session_id"]
+        session_id = session.session_id
         self._sessions[session_id] = CachedItem(session)
         logger.debug("Updated session cache: %s", session_id[:8])
         self._notify("session_updated", session)
@@ -247,12 +296,13 @@ class DaemonCache:
 
         Args:
             computer: Computer name
-            projects: List of project info dicts
+            projects: List of project info objects
         """
         # Store each project with key = f"{computer}:{path}"
         for project in projects:
-            path = project["path"]
+            path = project.path
             key = f"{computer}:{path}"
+            project.computer = computer
             self._projects[key] = CachedItem(project)
 
         logger.debug("Updated projects cache for %s: %d projects", computer, len(projects))
@@ -264,7 +314,7 @@ class DaemonCache:
         Args:
             computer: Computer name
             project_path: Project path
-            todos: List of todo info dicts
+            todos: List of todo info objects
         """
         key = f"{computer}:{project_path}"
         self._todos[key] = CachedItem(todos)

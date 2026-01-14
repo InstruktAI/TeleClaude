@@ -2,156 +2,111 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import TypeAlias, Union
+
+from teleclaude.adapters.rest_models import (
+    AgentAvailabilityDTO as AgentAvailabilityInfo,
+)
+from teleclaude.adapters.rest_models import (
+    ComputerDTO as ComputerInfo,
+)
+from teleclaude.adapters.rest_models import (
+    CreateSessionResponseDTO as CreateSessionResult,
+)
+from teleclaude.adapters.rest_models import (
+    ProjectDTO as ProjectInfo,
+)
+from teleclaude.adapters.rest_models import (
+    ProjectsInitialDataDTO as ProjectsInitialData,
+)
+from teleclaude.adapters.rest_models import (
+    ProjectsInitialEventDTO as ProjectsInitialEvent,
+)
+from teleclaude.adapters.rest_models import (
+    ProjectWithTodosDTO as ProjectWithTodosInfo,
+)
+from teleclaude.adapters.rest_models import (
+    RefreshDataDTO as RefreshData,
+)
+from teleclaude.adapters.rest_models import (
+    RefreshEventDTO as RefreshEvent,
+)
+from teleclaude.adapters.rest_models import (
+    SessionRemovedDataDTO as SessionRemovedData,
+)
+from teleclaude.adapters.rest_models import (
+    SessionRemovedEventDTO as SessionRemovedEvent,
+)
+from teleclaude.adapters.rest_models import (
+    SessionsInitialDataDTO as SessionsInitialData,
+)
+from teleclaude.adapters.rest_models import (
+    SessionsInitialEventDTO as SessionsInitialEvent,
+)
+from teleclaude.adapters.rest_models import (
+    SessionSummaryDTO as SessionInfo,
+)
+from teleclaude.adapters.rest_models import (
+    SessionUpdateEventDTO as SessionUpdateEvent,
+)
+from teleclaude.adapters.rest_models import (
+    TodoDTO as TodoInfo,
+)
+
+__all__ = [
+    "AgentAvailabilityInfo",
+    "ComputerInfo",
+    "CreateSessionResult",
+    "ProjectInfo",
+    "ProjectsInitialData",
+    "ProjectsInitialEvent",
+    "ProjectWithTodosInfo",
+    "RefreshData",
+    "RefreshEvent",
+    "SessionRemovedData",
+    "SessionRemovedEvent",
+    "SessionsInitialData",
+    "SessionsInitialEvent",
+    "SessionInfo",
+    "SessionUpdateEvent",
+    "TodoInfo",
+    "JsonValue",
+    "JsonObject",
+    "WsEvent",
+    "SubscribeData",
+    "UnsubscribeData",
+    "SubscribeRequest",
+    "UnsubscribeRequest",
+]
 
 JsonValue: TypeAlias = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 JsonObject: TypeAlias = dict[str, JsonValue]
 
 
-@dataclass(frozen=True)
-class AgentAvailabilityInfo:
-    agent: Literal["claude", "gemini", "codex"]
-    available: bool | None
-    unavailable_until: str | None
-    reason: str | None
-    error: str | None = None
+WsEvent: TypeAlias = Union[
+    SessionsInitialEvent, ProjectsInitialEvent, SessionUpdateEvent, SessionRemovedEvent, RefreshEvent
+]
 
 
-@dataclass(frozen=True)
-class ComputerInfo:
-    name: str
-    status: str
-    user: str | None
-    host: str | None
-    is_local: bool
-    tmux_binary: str | None = None
+# Subscribe/Unsubscribe requests (not DTOs, strictly for CLI -> Server)
 
 
-@dataclass(frozen=True)
-class ProjectInfo:
-    computer: str
-    name: str
-    path: str
-    description: str | None
-
-
-@dataclass(frozen=True)
-class TodoInfo:
-    slug: str
-    status: str
-    description: str | None
-    has_requirements: bool
-    has_impl_plan: bool
-    build_status: str | None = None
-    review_status: str | None = None
-
-
-@dataclass(frozen=True)
-class ProjectWithTodosInfo:
-    computer: str
-    name: str
-    path: str
-    description: str | None
-    todos: list[TodoInfo]
-
-
-@dataclass(frozen=True)
-class SessionInfo:
-    session_id: str
-    origin_adapter: str
-    title: str
-    working_directory: str
-    thinking_mode: str
-    active_agent: str | None
-    status: str
-    created_at: str | None
-    last_activity: str | None
-    last_input: str | None
-    last_output: str | None
-    tmux_session_name: str | None
-    initiator_session_id: str | None
-    computer: str | None = None
-
-
-@dataclass(frozen=True)
-class CreateSessionResult:
-    status: str
-    session_id: str | None
-    tmux_session_name: str | None
-
-
-@dataclass(frozen=True)
-class SessionsInitialData:
-    sessions: list[SessionInfo]
-    computer: str | None = None
-
-
-@dataclass(frozen=True)
-class ProjectsInitialData:
-    projects: list[ProjectInfo | ProjectWithTodosInfo]
-    computer: str | None = None
-
-
-@dataclass(frozen=True)
-class SessionRemovedData:
-    session_id: str
-
-
-@dataclass(frozen=True)
-class RefreshData:
-    computer: str | None = None
-
-
-@dataclass(frozen=True)
-class SessionsInitialEvent:
-    event: Literal["sessions_initial"]
-    data: SessionsInitialData
-
-
-@dataclass(frozen=True)
-class ProjectsInitialEvent:
-    event: Literal["projects_initial", "preparation_initial"]
-    data: ProjectsInitialData
-
-
-@dataclass(frozen=True)
-class SessionUpdateEvent:
-    event: Literal["session_updated", "session_created"]
-    data: SessionInfo
-
-
-@dataclass(frozen=True)
-class SessionRemovedEvent:
-    event: Literal["session_removed"]
-    data: SessionRemovedData
-
-
-@dataclass(frozen=True)
-class RefreshEvent:
-    event: Literal["computer_updated", "project_updated", "projects_updated"]
-    data: RefreshData
-
-
-WsEvent = SessionsInitialEvent | ProjectsInitialEvent | SessionUpdateEvent | SessionRemovedEvent | RefreshEvent
-
-
-@dataclass(frozen=True)
 class SubscribeData:
-    computer: str
-    types: list[str]
+    def __init__(self, computer: str, types: list[str]):
+        self.computer = computer
+        self.types = types
 
 
-@dataclass(frozen=True)
 class UnsubscribeData:
-    computer: str
+    def __init__(self, computer: str):
+        self.computer = computer
 
 
-@dataclass(frozen=True)
 class SubscribeRequest:
-    subscribe: SubscribeData
+    def __init__(self, subscribe: SubscribeData):
+        self.subscribe = subscribe
 
 
-@dataclass(frozen=True)
 class UnsubscribeRequest:
-    unsubscribe: UnsubscribeData
+    def __init__(self, unsubscribe: UnsubscribeData):
+        self.unsubscribe = unsubscribe

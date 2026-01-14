@@ -19,6 +19,7 @@ from teleclaude.cli.models import (
     SessionRemovedEvent,
     SessionsInitialEvent,
     SessionUpdateEvent,
+    TodoInfo,
     WsEvent,
 )
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
@@ -189,21 +190,46 @@ class TelecApp:
             subscriptions=["sessions", "projects"],
         )
 
-    async def refresh_data(self) -> None:
+    async def refresh_data(self, *, include_todos: bool | None = None) -> None:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
         try:
+            fetch_todos = include_todos if include_todos is not None else self.current_view == 2
             computers, projects, sessions, availability = await asyncio.gather(
                 self.api.list_computers(),
-                self.api.list_projects_with_todos(),
+                self.api.list_projects(),
                 self.api.list_sessions(),
                 self.api.get_agent_availability(),
             )
+            todos: list[TodoInfo] = []
+            if fetch_todos:
+                todos = await self.api.list_todos()
+
+            todos_by_project: dict[tuple[str, str], list[TodoInfo]] = {}
+            for todo in todos:
+                if not todo.computer or not todo.project_path:
+                    continue
+                key = (todo.computer, todo.project_path)
+                todos_by_project.setdefault(key, []).append(todo)
+
+            projects_with_todos: list[ProjectWithTodosInfo] = []
+            for project in projects:
+                computer = project.computer or ""
+                key = (computer, project.path)
+                projects_with_todos.append(
+                    ProjectWithTodosInfo(
+                        computer=project.computer,
+                        name=project.name,
+                        path=project.path,
+                        description=project.description,
+                        todos=todos_by_project.get(key, []),
+                    )
+                )
 
             logger.debug(
                 "API returned: %d computers, %d projects, %d sessions",
                 len(computers),
-                len(projects),
+                len(projects_with_todos),
                 len(sessions),
             )
 
@@ -213,7 +239,7 @@ class TelecApp:
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
-                await view.refresh(computers, projects, sessions)
+                await view.refresh(computers, projects_with_todos, sessions)
                 logger.debug(
                     "View %d refreshed: flat_items=%d",
                     view_num,
@@ -644,6 +670,8 @@ class TelecApp:
                     len(view.flat_items),
                     view.selected_index,
                 )
+                if view_num == 2:
+                    asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=True))
             # Update panes (shows sessions in view 1, hides in view 2)
             self.update_session_panes()
         else:

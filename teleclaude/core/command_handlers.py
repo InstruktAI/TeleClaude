@@ -25,10 +25,13 @@ from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
     CdArgs,
+    ComputerInfo,
     MessageMetadata,
+    ProjectInfo,
     Session,
     SessionSummary,
     ThinkingMode,
+    TodoInfo,
 )
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, cleanup_session_resources, terminate_session
 from teleclaude.core.session_utils import build_session_title, ensure_unique_title, update_title_with_agent
@@ -43,57 +46,15 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# TypedDict definitions for command handler return types
-class SessionListItem(TypedDict, total=False):
-    """Session list item returned by handle_list_sessions."""
+# Result from handle_end_session
+class EndSessionHandlerResult(TypedDict):
+    """Result from handle_end_session."""
 
-    session_id: str
-    origin_adapter: str
-    title: str
-    working_directory: str
     status: str
-    created_at: str
-    last_activity: str
-    computer: str  # Added by MCP server for consistency
+    message: str
 
 
-class ProjectInfo(TypedDict):
-    """Project info returned by handle_list_projects."""
-
-    name: str
-    desc: str
-    path: str
-
-
-class TodoInfo(TypedDict):
-    """Todo item returned by handle_list_todos."""
-
-    slug: str
-    status: str
-    description: str | None
-    has_requirements: bool
-    has_impl_plan: bool
-
-
-class ProjectWithTodosInfo(TypedDict):
-    """Project info with embedded todos."""
-
-    name: str
-    desc: str | None
-    path: str
-    todos: list[TodoInfo]
-
-
-class ComputerInfoData(TypedDict):
-    """Computer info returned by handle_get_computer_info."""
-
-    user: str | None
-    host: str | None
-    role: str | None
-    system_stats: SystemStats | None
-    tmux_binary: str | None
-
-
+# Session data payload returned by handle_get_session_data
 class SessionDataPayload(TypedDict, total=False):
     """Session data payload returned by handle_get_session_data."""
 
@@ -106,13 +67,6 @@ class SessionDataPayload(TypedDict, total=False):
     project_dir: str  # Sometimes present
     messages: str  # Sometimes present
     created_at: str | None  # Sometimes present
-
-
-class EndSessionHandlerResult(TypedDict):
-    """Result from handle_end_session."""
-
-    status: str
-    message: str
 
 
 # Type alias for start_polling function
@@ -364,15 +318,14 @@ You can now send commands to this session.
     raise RuntimeError("Failed to create tmux session")
 
 
-async def handle_list_sessions() -> list[SessionListItem]:
+async def handle_list_sessions() -> list[SessionSummary]:
     """List all active sessions from local database.
 
     Ephemeral request/response for MCP/Redis only - no DB session required.
     UI adapters (Telegram) should not have access to this command.
 
     Returns:
-        List of session dicts with fields: session_id, origin_adapter, title,
-        working_directory, status, created_at, last_activity
+        List of session summaries.
     """
     sessions = await db.list_sessions()
 
@@ -396,16 +349,16 @@ async def handle_list_sessions() -> list[SessionListItem]:
             )
         )
 
-    return cast(list[SessionListItem], [s.to_dict() for s in summaries])
+    return summaries
 
 
-async def handle_list_projects() -> list[dict[str, str]]:
+async def handle_list_projects() -> list[ProjectInfo]:
     """List trusted project directories.
 
     Ephemeral request/response - no DB session required.
 
     Returns:
-        List of directory dicts with name, desc, path
+        List of project info objects.
     """
     # Get all trusted dirs (includes default_working_dir merged in)
     all_trusted_dirs = config.computer.get_all_trusted_dirs()
@@ -417,35 +370,28 @@ async def handle_list_projects() -> list[dict[str, str]]:
         expanded_path = os.path.expanduser(os.path.expandvars(trusted_dir.path))
         if Path(expanded_path).exists():
             dirs_data.append(
-                {
-                    "name": trusted_dir.name,
-                    "desc": trusted_dir.desc,
-                    "path": expanded_path,
-                }
+                ProjectInfo(
+                    name=trusted_dir.name,
+                    description=trusted_dir.desc,
+                    path=expanded_path,
+                )
             )
 
     return dirs_data
 
 
-async def handle_list_projects_with_todos() -> list[ProjectWithTodosInfo]:
+async def handle_list_projects_with_todos() -> list[ProjectInfo]:
     """List projects with their todos included (local only)."""
     raw_projects = await handle_list_projects()
-    projects_with_todos: list[ProjectWithTodosInfo] = []
+    projects_with_todos: list[ProjectInfo] = []
 
     for project in raw_projects:
-        path = project.get("path", "")
         todos: list[TodoInfo] = []
-        if path:
-            todos = await handle_list_todos(str(path))
+        if project.path:
+            todos = await handle_list_todos(project.path)
 
-        projects_with_todos.append(
-            {
-                "name": project.get("name", ""),
-                "desc": project.get("desc"),
-                "path": path,
-                "todos": todos,
-            }
-        )
+        project.todos = todos
+        projects_with_todos.append(project)
 
     return projects_with_todos
 
@@ -459,7 +405,7 @@ async def handle_list_todos(project_path: str) -> list[TodoInfo]:
         project_path: Absolute path to project directory
 
     Returns:
-        List of todo dicts with slug, status, description, has_requirements, has_impl_plan
+        List of todo objects.
     """
     roadmap_path = Path(project_path) / "todos" / "roadmap.md"
 
@@ -515,13 +461,13 @@ async def handle_list_todos(project_path: str) -> list[TodoInfo]:
     return todos
 
 
-async def handle_get_computer_info() -> ComputerInfoData:
+async def handle_get_computer_info() -> ComputerInfo:
     """Return computer info including system stats.
 
     Ephemeral request/response - no DB session required.
 
     Returns:
-        Dict with user, role, host, and system_stats (memory, disk, cpu)
+        ComputerInfo object.
     """
     logger.debug("handle_get_computer_info() called")
 
@@ -535,26 +481,18 @@ async def handle_get_computer_info() -> ComputerInfoData:
     cpu_percent = psutil.cpu_percent(interval=0.1)
 
     # Build typed system stats
-    memory_total = memory.total
-    memory_available = memory.available
-    memory_percent = memory.percent
-    disk_total = disk.total
-    disk_free = disk.free
-    disk_percent = disk.percent
-    cpu_percent_value = cpu_percent
-
     memory_stats: MemoryStats = {
-        "total_gb": round(memory_total / (1024**3), 1),
-        "available_gb": round(memory_available / (1024**3), 1),
-        "percent_used": memory_percent,
+        "total_gb": round(memory.total / (1024**3), 1),
+        "available_gb": round(memory.available / (1024**3), 1),
+        "percent_used": memory.percent,
     }
     disk_stats: DiskStats = {
-        "total_gb": round(disk_total / (1024**3), 1),
-        "free_gb": round(disk_free / (1024**3), 1),
-        "percent_used": disk_percent,
+        "total_gb": round(disk.total / (1024**3), 1),
+        "free_gb": round(disk.free / (1024**3), 1),
+        "percent_used": disk.percent,
     }
     cpu_stats: CpuStats = {
-        "percent_used": cpu_percent_value,
+        "percent_used": cpu_percent,
     }
     system_stats: SystemStats = {
         "memory": memory_stats,
@@ -562,16 +500,19 @@ async def handle_get_computer_info() -> ComputerInfoData:
         "cpu": cpu_stats,
     }
 
-    info_data: ComputerInfoData = {
-        "user": config.computer.user,
-        "role": config.computer.role,
-        "host": config.computer.host,
-        "system_stats": system_stats,
-        "tmux_binary": config.computer.tmux_binary,
-    }
+    info = ComputerInfo(
+        name=config.computer.name,
+        status="online",
+        user=config.computer.user,
+        role=config.computer.role,
+        host=config.computer.host,
+        is_local=True,
+        system_stats=system_stats,
+        tmux_binary=config.computer.tmux_binary,
+    )
 
-    logger.debug("handle_get_computer_info() returning info: %s", info_data)
-    return info_data
+    logger.debug("handle_get_computer_info() returning info: %s", info)
+    return info
 
 
 async def handle_get_session_data(

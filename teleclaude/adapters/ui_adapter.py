@@ -67,7 +67,7 @@ class UiAdapter(BaseAdapter):
         self.client = client
 
         # Register event listeners
-        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)  # type: ignore[arg-type]
+        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
 
     # === Adapter Metadata Helpers ===
 

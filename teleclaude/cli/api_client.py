@@ -21,6 +21,7 @@ from teleclaude.cli.models import (
     SessionInfo,
     SubscribeData,
     SubscribeRequest,
+    TodoInfo,
     UnsubscribeData,
     UnsubscribeRequest,
     WsEvent,
@@ -432,8 +433,58 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        resp = await self._request("GET", "/projects-with-todos")
-        return TypeAdapter(list[ProjectWithTodosInfo]).validate_json(resp.text)
+        projects = await self.list_projects()
+        todos = await self.list_todos()
+        if not projects:
+            return []
+
+        todo_map: dict[tuple[str, str], list[TodoInfo]] = {}
+        for todo in todos:
+            if not todo.computer or not todo.project_path:
+                continue
+            key = (todo.computer, todo.project_path)
+            todo_map.setdefault(key, []).append(todo)
+
+        result: list[ProjectWithTodosInfo] = []
+        for project in projects:
+            computer = project.computer or ""
+            project_path = project.path
+            todos_for_project = todo_map.get((computer, project_path), [])
+            result.append(
+                ProjectWithTodosInfo(
+                    computer=project.computer,
+                    name=project.name,
+                    path=project.path,
+                    description=project.description,
+                    todos=todos_for_project,
+                )
+            )
+        return result
+
+    async def list_todos(
+        self,
+        project_path: str | None = None,
+        computer: str | None = None,
+    ) -> list[TodoInfo]:
+        """List todos.
+
+        Args:
+            project_path: Optional project path filter
+            computer: Optional computer name filter
+
+        Returns:
+            List of todo objects
+
+        Raises:
+            APIError: If request fails
+        """
+        params: dict[str, str] = {}
+        if project_path:
+            params["project"] = project_path
+        if computer:
+            params["computer"] = computer
+        resp = await self._request("GET", "/todos", params=params)
+        return TypeAdapter(list[TodoInfo]).validate_json(resp.text)
 
     async def agent_restart(self, session_id: str) -> bool:
         """Restart agent in a session (preserves conversation via --resume).

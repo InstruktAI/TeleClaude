@@ -15,7 +15,7 @@ def test_quick_start_attaches_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
     called: Dict[str, str] = {}
 
     async def fake_api(_agent: str, _mode: str, _prompt: str | None) -> CreateSessionResult:
-        return CreateSessionResult(status="created", session_id="abc", tmux_session_name="tc_123")
+        return CreateSessionResult(status="success", session_id="abc", tmux_session_name="tc_123")
 
     def fake_attach(name: str) -> None:
         called["name"] = name
@@ -32,7 +32,7 @@ def test_quick_start_handles_missing_tmux_name(monkeypatch: pytest.MonkeyPatch) 
     called: Dict[str, str] = {}
 
     async def fake_api(_agent: str, _mode: str, _prompt: str | None) -> CreateSessionResult:
-        return CreateSessionResult(status="created", session_id="abc", tmux_session_name=None)
+        return CreateSessionResult(status="success", session_id="abc", tmux_session_name=None)
 
     def fake_attach(name: str) -> None:
         called["name"] = name

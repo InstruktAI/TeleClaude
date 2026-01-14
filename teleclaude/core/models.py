@@ -4,40 +4,47 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
-    from telegram.types import InlineKeyboardMarkup  # type: ignore[import-not-found]
+
+    class InlineKeyboardMarkup(Protocol):
+        """Telegram inline keyboard marker interface for type checking."""
+
 
 # JSON-serializable types for database storage
-JsonPrimitive = Union[str, int, float, bool, None]
-JsonValue = Union[JsonPrimitive, list["JsonValue"], dict[str, "JsonValue"]]
+JsonPrimitive = str | int | float | bool | None
+JsonValue = JsonPrimitive | list["JsonValue"] | dict[str, "JsonValue"]
 JsonDict = dict[str, JsonValue]
 
 
-def asdict_exclude_none(obj: object) -> dict[str, object]:  # noqa: loose-dict - Serialization output
-    """Convert dataclass to dict, recursively excluding None values.
+def asdict_exclude_none(
+    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | RedisAdapterMetadata | dict[str, JsonValue]",
+) -> JsonDict:
+    """Convert dataclass to dict, recursively excluding None values."""
 
-    Replacement for Pydantic's model_dump(exclude_none=True).
-    Handles nested dataclasses by recursively excluding None.
-    """
     # Handle already-dict objects (defensive)
-    if isinstance(obj, dict):
-        return {k: v for k, v in obj.items() if v is not None}
-
-    result: dict[str, object] = asdict(obj)  # type: ignore[call-overload]  # asdict accepts dataclass instances  # noqa: loose-dict - Serialization
-
-    def _exclude_none(data: object) -> object:
-        """Recursively exclude None values from dicts."""
+    def _exclude_none(data: object) -> JsonValue:
+        """Recursively exclude None values from dicts and lists."""
         if isinstance(data, dict):
-            return {k: _exclude_none(v) for k, v in data.items() if v is not None}  # type: ignore[misc]
+            result: dict[str, JsonValue] = {}
+            for key, value in data.items():
+                if value is None:
+                    continue
+                result[str(key)] = _exclude_none(value)
+            return result
         if isinstance(data, list):
             return [_exclude_none(item) for item in data]
-        return data
+        return cast(JsonPrimitive, data)
 
-    return _exclude_none(result)  # type: ignore[return-value]  # _exclude_none returns dict for dict input
+    if isinstance(obj, dict):
+        return cast(JsonDict, _exclude_none(obj))
+
+    # asdict needs a dataclass instance
+    result = cast(JsonDict, asdict(obj))
+    return cast(JsonDict, _exclude_none(result))
 
 
 @dataclass
@@ -51,14 +58,14 @@ class BaseCommandContext:
 class SessionCommandContext(BaseCommandContext):
     """Context for simple session commands (list_sessions, get_session_data, etc.)."""
 
-    args: list[str] = field(default_factory=list)
+    args: List[str] = field(default_factory=list)
 
 
 @dataclass
 class NewSessionContext(BaseCommandContext):
     """Context for new_session/create_session commands."""
 
-    args: list[str] = field(default_factory=list)
+    args: List[str] = field(default_factory=list)
     title: Optional[str] = None
 
 
@@ -100,13 +107,13 @@ class AdapterType(str, Enum):
 
 
 @dataclass
-class PeerInfo:  # pylint: disable=too-many-instance-attributes  # Data model for peer discovery info
+class PeerInfo:  # pylint: disable=too-many-instance-attributes
     """Information about a discovered peer computer."""
 
     name: str
     status: str  # "online" or "offline"
     last_seen: datetime
-    adapter_type: str  # Which adapter discovered this peer
+    adapter_type: str
     user: Optional[str] = None
     host: Optional[str] = None
     ip: Optional[str] = None
@@ -124,13 +131,11 @@ class TelegramAdapterMetadata:
 
 
 @dataclass
-class RedisAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Data model for Redis adapter metadata
+class RedisAdapterMetadata:  # pylint: disable=too-many-instance-attributes
     """Redis-specific adapter metadata."""
 
-    channel_id: Optional[str] = None  # Stream key
+    channel_id: Optional[str] = None
     output_stream: Optional[str] = None
-
-    # MCP/AI-to-AI session fields
     target_computer: Optional[str] = None
     native_session_id: Optional[str] = None
     project_dir: Optional[str] = None
@@ -167,11 +172,11 @@ class SessionAdapterMetadata:
                     topic_id = topic_id_val
                 elif isinstance(topic_id_val, str) and topic_id_val.isdigit():
                     topic_id = int(topic_id_val)
-                tg_fields: dict[str, object | None] = {
-                    "topic_id": topic_id,
-                    "output_message_id": str(output_msg_val) if output_msg_val is not None else None,
-                }
-                telegram_metadata = TelegramAdapterMetadata(**tg_fields)  # type: ignore[arg-type]
+                output_message_id = str(output_msg_val) if output_msg_val is not None else None
+                telegram_metadata = TelegramAdapterMetadata(
+                    topic_id=topic_id,
+                    output_message_id=output_message_id,
+                )
 
             redis_raw = data_obj.get("redis")
             if isinstance(redis_raw, dict):
@@ -205,67 +210,44 @@ class SessionAdapterMetadata:
 
 @dataclass
 class ChannelMetadata:
-    """Per-call metadata for create_channel operations.
-
-    Contains options that affect HOW a channel is created.
-    """
+    """Per-call metadata for create_channel operations."""
 
     target_computer: Optional[str] = None
     origin: bool = False
 
 
-@dataclass  # type: ignore[misc]
-class MessageMetadata:  # type: ignore[no-any-unimported]  # pylint: disable=too-many-instance-attributes  # Metadata container for message operations
-    """Per-call metadata for send_message/edit_message operations (transient call-level data).
+@dataclass
+class MessageMetadata:
+    """Per-call metadata for message operations."""
 
-    This dataclass contains options that affect HOW a single message is sent,
-    not persistent session state. Different adapters use different fields:
-
-    - Telegram: reply_markup, parse_mode, message_thread_id
-    - All UI adapters: raw_format
-    - Redis: adapter_type
-    """
-
-    # Telegram-specific formatting
-    reply_markup: Optional["InlineKeyboardMarkup"] = None  # type: ignore[no-any-unimported]
+    reply_markup: Optional["InlineKeyboardMarkup"] = None
     parse_mode: str = ""
     message_thread_id: Optional[int] = None
-
-    # Shared formatting options
     raw_format: bool = False
-
-    # Adapter identification
     adapter_type: Optional[str] = None
-
-    # Generic pass-through (for event routing)
     channel_id: Optional[str] = None
-
-    # Session creation fields (for send_request with new_session command)
     title: Optional[str] = None
     project_dir: Optional[str] = None
-    channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
-
-    # Auto-command to run after session creation (e.g., "claude", "claude_resume")
+    channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
     auto_command: Optional[str] = None
 
 
 @dataclass
-class Session:  # pylint: disable=too-many-instance-attributes  # Data model for terminal sessions
+class Session:  # pylint: disable=too-many-instance-attributes
     """Represents a terminal session."""
 
     session_id: str
     computer_name: str
     tmux_session_name: str
-    origin_adapter: str  # Single origin adapter (e.g., "redis" or "telegram")
+    origin_adapter: str
     title: str
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     working_directory: str = "~"
     description: Optional[str] = None
-    initiated_by_ai: bool = False  # True if session was created via AI-to-AI
-    initiator_session_id: Optional[str] = None  # Session ID of the AI that created this session
-    # UX state fields (migrated from JSON blob)
+    initiated_by_ai: bool = False
+    initiator_session_id: Optional[str] = None
     output_message_id: Optional[str] = None
     last_input_adapter: Optional[str] = None
     notification_sent: bool = False
@@ -282,12 +264,11 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
     last_message_sent_at: Optional[datetime] = None
     last_feedback_received: Optional[str] = None
     last_feedback_received_at: Optional[datetime] = None
-    working_slug: Optional[str] = None  # Slug of work item this session is working on
+    working_slug: Optional[str] = None
 
-    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
+    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         """Convert session to dictionary for JSON serialization."""
-        data: dict[str, object] = asdict(self)  # asdict returns dict[str, Any]  # noqa: loose-dict - Serialization
-        # Convert datetime to ISO format
+        data = cast(Dict[str, object], asdict(self))
         if self.created_at:
             data["created_at"] = self.created_at.isoformat()
         if self.last_activity:
@@ -296,7 +277,6 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
         if self.last_feedback_received_at:
             data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
-        # Convert SessionAdapterMetadata (dataclass) to JSON string for DB storage
         adapter_meta = self.adapter_metadata
         if isinstance(adapter_meta, dict):
             data["adapter_metadata"] = json.dumps(adapter_meta)
@@ -305,8 +285,9 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "Session":  # noqa: loose-dict - Deserialization input
+    def from_dict(cls, data: Dict[str, object]) -> "Session":  # guard: loose-dict - Deserialization input
         """Create session from dictionary (from database/JSON)."""
+
         created_at_raw = data.get("created_at")
         created_at = datetime.fromisoformat(created_at_raw) if isinstance(created_at_raw, str) else created_at_raw
 
@@ -329,71 +310,70 @@ class Session:  # pylint: disable=too-many-instance-attributes  # Data model for
             else last_feedback_received_at_raw
         )
 
-        # Parse adapter_metadata JSON to SessionAdapterMetadata
         adapter_metadata: SessionAdapterMetadata
         if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
             adapter_metadata = SessionAdapterMetadata.from_json(data["adapter_metadata"])
         else:
             adapter_metadata = SessionAdapterMetadata()
 
-        # Convert initiated_by_ai and other boolean flags from SQLite integer (0/1) to Python bool
         ia_val = data.get("initiated_by_ai")
-        initiated_by_ai = bool(ia_val) if isinstance(ia_val, int) else ia_val
+        initiated_by_ai = bool(ia_val) if ia_val is not None else False
 
         notification_sent_val = data.get("notification_sent")
-        notification_sent = (
-            bool(notification_sent_val) if isinstance(notification_sent_val, int) else notification_sent_val
-        )
+        notification_sent = bool(notification_sent_val) if notification_sent_val is not None else False
 
         tui_capture_started_val = data.get("tui_capture_started")
-        tui_capture_started = (
-            bool(tui_capture_started_val) if isinstance(tui_capture_started_val, int) else tui_capture_started_val
+        tui_capture_started = bool(tui_capture_started_val) if tui_capture_started_val is not None else False
+
+        def _get_required_str(key: str, *, default: str = "") -> str:
+            value = data.get(key)
+            return str(value) if value is not None else default
+
+        def _get_optional_str(key: str) -> Optional[str]:
+            value = data.get(key)
+            return str(value) if value is not None else None
+
+        native_pid_val = data.get("native_pid")
+        if isinstance(native_pid_val, int):
+            native_pid = native_pid_val
+        elif isinstance(native_pid_val, str) and native_pid_val.isdigit():
+            native_pid = int(native_pid_val)
+        else:
+            native_pid = None
+
+        return cls(
+            session_id=_get_required_str("session_id"),
+            computer_name=_get_required_str("computer_name"),
+            tmux_session_name=_get_required_str("tmux_session_name"),
+            origin_adapter=_get_required_str("origin_adapter"),
+            title=_get_required_str("title"),
+            adapter_metadata=adapter_metadata,
+            created_at=created_at if isinstance(created_at, datetime) else None,
+            last_activity=last_activity if isinstance(last_activity, datetime) else None,
+            working_directory=_get_required_str("working_directory", default="~"),
+            description=_get_optional_str("description"),
+            initiated_by_ai=initiated_by_ai,
+            initiator_session_id=_get_optional_str("initiator_session_id"),
+            output_message_id=_get_optional_str("output_message_id"),
+            last_input_adapter=_get_optional_str("last_input_adapter"),
+            notification_sent=notification_sent,
+            native_session_id=_get_optional_str("native_session_id"),
+            native_log_file=_get_optional_str("native_log_file"),
+            active_agent=_get_optional_str("active_agent"),
+            thinking_mode=_get_optional_str("thinking_mode"),
+            native_tty_path=_get_optional_str("native_tty_path"),
+            tmux_tty_path=_get_optional_str("tmux_tty_path"),
+            native_pid=native_pid,
+            tui_log_file=_get_optional_str("tui_log_file"),
+            tui_capture_started=tui_capture_started,
+            last_message_sent=_get_optional_str("last_message_sent"),
+            last_message_sent_at=last_message_sent_at if isinstance(last_message_sent_at, datetime) else None,
+            last_feedback_received=_get_optional_str("last_feedback_received"),
+            last_feedback_received_at=last_feedback_received_at
+            if isinstance(last_feedback_received_at, datetime)
+            else None,
+            working_slug=_get_optional_str("working_slug"),
         )
-
-        # Filter to only Session's known fields (handles schema evolution/deprecated columns)
-        known_fields = {
-            "session_id",
-            "computer_name",
-            "tmux_session_name",
-            "origin_adapter",
-            "title",
-            "adapter_metadata",
-            "created_at",
-            "last_activity",
-            "working_directory",
-            "description",
-            "initiated_by_ai",
-            "initiator_session_id",
-            # UX state fields
-            "output_message_id",
-            "last_input_adapter",
-            "notification_sent",
-            "native_session_id",
-            "native_log_file",
-            "active_agent",
-            "thinking_mode",
-            "native_tty_path",
-            "tmux_tty_path",
-            "native_pid",
-            "tui_log_file",
-            "tui_capture_started",
-            "last_message_sent",
-            "last_message_sent_at",
-            "last_feedback_received",
-            "last_feedback_received_at",
-            "working_slug",
-        }
-        filtered_data = {k: v for k, v in data.items() if k in known_fields}
-        filtered_data["adapter_metadata"] = adapter_metadata
-        filtered_data["created_at"] = created_at
-        filtered_data["last_activity"] = last_activity
-        filtered_data["initiated_by_ai"] = initiated_by_ai
-        filtered_data["last_message_sent_at"] = last_message_sent_at
-        filtered_data["last_feedback_received_at"] = last_feedback_received_at
-        filtered_data["notification_sent"] = notification_sent
-        filtered_data["tui_capture_started"] = tui_capture_started
-
-        return cls(**filtered_data)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -403,12 +383,12 @@ class Recording:
     recording_id: Optional[int]
     session_id: str
     file_path: str
-    recording_type: str  # 'text' or 'video'
+    recording_type: str
     timestamp: Optional[datetime] = None
 
     def to_dict(self) -> JsonDict:
         """Convert recording to dictionary."""
-        data: JsonDict = asdict(self)  # noqa: loose-dict - asdict returns dict[str, Any]
+        data = cast(JsonDict, asdict(self))
         if self.timestamp:
             data["timestamp"] = self.timestamp.isoformat()
         return data
@@ -416,16 +396,24 @@ class Recording:
     @classmethod
     def from_dict(cls, data: JsonDict) -> "Recording":
         """Create recording from dictionary (from database/JSON)."""
-        if "timestamp" in data and isinstance(data["timestamp"], str):
-            data["timestamp"] = datetime.fromisoformat(data["timestamp"])  # type: ignore[assignment]
-        return cls(**data)  # type: ignore[arg-type]  # DB deserialization
-
-
-# ==================== Helper models / validators ====================
+        timestamp_raw = data.get("timestamp")
+        if isinstance(timestamp_raw, str):
+            timestamp = datetime.fromisoformat(timestamp_raw)
+        elif isinstance(timestamp_raw, datetime):
+            timestamp = timestamp_raw
+        else:
+            timestamp = None
+        return cls(
+            recording_id=cast(Optional[int], data.get("recording_id")),
+            session_id=str(data.get("session_id", "")),
+            file_path=str(data.get("file_path", "")),
+            recording_type=str(data.get("recording_type", "")),
+            timestamp=timestamp,
+        )
 
 
 class ThinkingMode(str, Enum):
-    """Model tier: fast/med/slow (deep is codex-only for Telegram)."""
+    """Model tier: fast/med/slow."""
 
     FAST = "fast"
     MED = "med"
@@ -446,7 +434,11 @@ class StartSessionArgs:
     caller_session_id: Optional[str] = None
 
     @classmethod
-    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "StartSessionArgs":  # noqa: loose-dict - MCP protocol boundary
+    def from_mcp(
+        cls,
+        arguments: Dict[str, object],  # guard: loose-dict - MCP protocol boundary
+        caller_session_id: Optional[str],
+    ) -> "StartSessionArgs":
         """Build args from MCP tool call."""
         required = ["computer", "project_dir", "title", "message"]
         missing = [r for r in required if r not in arguments]
@@ -486,7 +478,11 @@ class RunAgentCommandArgs:
     caller_session_id: Optional[str] = None
 
     @classmethod
-    def from_mcp(cls, arguments: dict[str, object], caller_session_id: Optional[str]) -> "RunAgentCommandArgs":  # noqa: loose-dict - MCP protocol boundary
+    def from_mcp(
+        cls,
+        arguments: Dict[str, object],  # guard: loose-dict - MCP protocol boundary
+        caller_session_id: Optional[str],
+    ) -> "RunAgentCommandArgs":
         """Build args from MCP tool call."""
         if not arguments or "computer" not in arguments or "command" not in arguments:
             raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
@@ -520,7 +516,7 @@ class RedisInboundMessage:
     msg_type: str
     session_id: Optional[str]
     command: str
-    channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
+    channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
     initiator: Optional[str] = None
     project_dir: Optional[str] = None
     title: Optional[str] = None
@@ -538,14 +534,15 @@ class SessionSummary:
     thinking_mode: str
     active_agent: Optional[str]
     status: str
-    created_at: Optional[str]
-    last_activity: Optional[str]
-    last_input: Optional[str] = None  # Maps to last_message_sent
-    last_output: Optional[str] = None  # Maps to last_feedback_received
+    created_at: Optional[str] = None
+    last_activity: Optional[str] = None
+    last_input: Optional[str] = None
+    last_output: Optional[str] = None
     tmux_session_name: Optional[str] = None
-    initiator_session_id: Optional[str] = None  # For AI-to-AI nesting
+    initiator_session_id: Optional[str] = None
+    computer: Optional[str] = None
 
-    def to_dict(self) -> dict[str, object]:  # noqa: loose-dict - Serialization output
+    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict - Serialization output
         return {
             "session_id": self.session_id,
             "origin_adapter": self.origin_adapter,
@@ -560,7 +557,28 @@ class SessionSummary:
             "last_output": self.last_output,
             "tmux_session_name": self.tmux_session_name,
             "initiator_session_id": self.initiator_session_id,
+            "computer": self.computer,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object]) -> "SessionSummary":  # guard: loose-dict
+        """Create from dict."""
+        return cls(
+            session_id=str(data["session_id"]),
+            origin_adapter=str(data["origin_adapter"]),
+            title=str(data["title"]),
+            working_directory=str(data["working_directory"]),
+            thinking_mode=str(data["thinking_mode"]),
+            active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
+            status=str(data["status"]),
+            created_at=str(data.get("created_at")) if data.get("created_at") else None,
+            last_activity=str(data.get("last_activity")) if data.get("last_activity") else None,
+            last_input=str(data.get("last_input")) if data.get("last_input") else None,
+            last_output=str(data.get("last_output")) if data.get("last_output") else None,
+            tmux_session_name=str(data.get("tmux_session_name")) if data.get("tmux_session_name") else None,
+            initiator_session_id=str(data.get("initiator_session_id")) if data.get("initiator_session_id") else None,
+            computer=str(data.get("computer")) if data.get("computer") else None,
+        )
 
 
 @dataclass
@@ -569,7 +587,7 @@ class AgentStartArgs:
 
     agent_name: str
     thinking_mode: ThinkingMode
-    user_args: list[str]
+    user_args: List[str]
 
 
 @dataclass
@@ -585,12 +603,12 @@ class AgentResumeArgs:
 class CdArgs:
     """Typed arguments for cd command."""
 
-    path: Optional[str] = None  # None means list trusted dirs
+    path: Optional[str] = None
 
 
 @dataclass
 class KillArgs:
-    """Typed arguments for kill command (no fields yet, placeholder)."""
+    """Typed arguments for kill command."""
 
     pass
 
@@ -600,9 +618,6 @@ class SystemCommandArgs:
     """Typed arguments for system commands."""
 
     command: str
-
-
-# Event payloads
 
 
 @dataclass
@@ -616,10 +631,87 @@ class MessagePayload:
 
 
 @dataclass
+class ComputerInfo:
+    """Information about a computer (local or remote)."""
+
+    name: str
+    status: str
+    user: Optional[str] = None
+    host: Optional[str] = None
+    role: Optional[str] = None
+    is_local: bool = False
+    system_stats: Optional[SystemStats] = None
+    tmux_binary: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
+        return cast(Dict[str, object], asdict(self))
+
+
+@dataclass
+class TodoInfo:
+    """Information about a work item todo."""
+
+    slug: str
+    status: str
+    description: Optional[str] = None
+    has_requirements: bool = False
+    has_impl_plan: bool = False
+    build_status: Optional[str] = None
+    review_status: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object]) -> "TodoInfo":  # guard: loose-dict
+        """Create from dict with field mapping."""
+        return cls(
+            slug=str(data.get("slug", "")),
+            status=str(data.get("status", "pending")),
+            description=str(data.get("description") or data.get("title") or ""),
+            has_requirements=bool(data.get("has_requirements", False)),
+            has_impl_plan=bool(data.get("has_impl_plan", False)),
+            build_status=cast(Optional[str], data.get("build_status")),
+            review_status=cast(Optional[str], data.get("review_status")),
+        )
+
+    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
+        """Convert to dict."""
+        return cast(Dict[str, object], asdict(self))
+
+
+@dataclass
+class ProjectInfo:
+    """Information about a project directory."""
+
+    name: str
+    path: str
+    description: Optional[str] = None
+    computer: Optional[str] = None
+    todos: List[TodoInfo] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object]) -> "ProjectInfo":  # guard: loose-dict
+        """Create from dict with field mapping."""
+        # fmt: off
+        return cls(
+            name=str(data.get("name", "")),
+            path=str(data.get("path", "")),
+            description=str(data.get("description") or data.get("desc") or ""),
+            computer=cast(Optional[str], data.get("computer")),
+            todos=[TodoInfo.from_dict(t) for t in cast(List[Dict[str, object]], data.get("todos", []))],  # guard: loose-dict
+        )
+        # fmt: on
+
+    def to_dict(self) -> Dict[str, object]:  # guard: loose-dict
+        """Convert to dict."""
+        result = cast(Dict[str, object], asdict(self))
+        result["todos"] = [t.to_dict() for t in self.todos]
+        return result
+
+
+@dataclass
 class CommandPayload:
     """Generic command payload with args."""
 
     session_id: str
-    args: list[str]
+    args: List[str]
     project_dir: Optional[str] = None
     title: Optional[str] = None

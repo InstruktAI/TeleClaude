@@ -36,8 +36,8 @@ Notes:
 - Session details and live events are delivered via WebSocket when a session node is expanded.
 - Unfiltered reads are allowed but scoped queries are preferred to reduce payload and churn.
 
-Session summary shape (target):
-- `session_id`, `project_id`, `computer`, `agent`, `state`, `last_activity_at`, `updated_at`
+Session summary shape:
+- `session_id`, `origin_adapter`, `title`, `working_directory`, `thinking_mode`, `active_agent`, `status`, `created_at`, `last_activity`, `last_input`, `last_output`, `tmux_session_name`, `initiator_session_id`, `computer`
 
 ## WebSocket
 

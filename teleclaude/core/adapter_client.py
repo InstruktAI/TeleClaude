@@ -6,7 +6,7 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast, overload
 
 from instrukt_ai_logging import get_logger
 
@@ -29,6 +29,7 @@ from teleclaude.core.events import (
     AgentSessionStartPayload,
     AgentStopPayload,
     CommandEventContext,
+    CommandEventType,
     ErrorEventContext,
     EventContext,
     EventType,
@@ -50,6 +51,30 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
 _OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
+
+CommandEventHandler = Callable[[CommandEventType, CommandEventContext], Awaitable[object]]
+MessageEventHandler = Callable[[Literal["message"], MessageEventContext], Awaitable[object]]
+VoiceEventHandler = Callable[[Literal["voice"], VoiceEventContext], Awaitable[object]]
+FileEventHandler = Callable[[Literal["file"], FileEventContext], Awaitable[object]]
+SessionLifecycleEventHandler = Callable[[Literal["session_terminated"], SessionLifecycleContext], Awaitable[object]]
+SystemCommandEventHandler = Callable[[Literal["system_command"], SystemCommandContext], Awaitable[object]]
+AgentEventHandler = Callable[[Literal["agent_event"], AgentEventContext], Awaitable[object]]
+ErrorEventHandler = Callable[[Literal["error"], ErrorEventContext], Awaitable[object]]
+SessionUpdatedEventHandler = Callable[[Literal["session_updated"], SessionUpdatedContext], Awaitable[object]]
+GenericEventHandler = Callable[[EventType, EventContext], Awaitable[object]]
+
+EventHandler = (
+    CommandEventHandler
+    | MessageEventHandler
+    | VoiceEventHandler
+    | FileEventHandler
+    | SessionLifecycleEventHandler
+    | SystemCommandEventHandler
+    | AgentEventHandler
+    | ErrorEventHandler
+    | SessionUpdatedEventHandler
+    | GenericEventHandler
+)
 
 
 class AdapterClient:
@@ -669,7 +694,37 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    def on(self, event: EventType, handler: Callable[[EventType, EventContext], Awaitable[object]]) -> None:
+    @overload
+    def on(self, event: CommandEventType, handler: CommandEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["message"], handler: MessageEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["voice"], handler: VoiceEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["file"], handler: FileEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["session_terminated"], handler: SessionLifecycleEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["system_command"], handler: SystemCommandEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["agent_event"], handler: AgentEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["error"], handler: ErrorEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["session_updated"], handler: SessionUpdatedEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: EventType, handler: GenericEventHandler) -> None: ...
+
+    def on(self, event: EventType, handler: EventHandler) -> None:
         """Subscribe to event (daemon registers handlers here).
 
         Args:
@@ -677,7 +732,7 @@ class AdapterClient:
             handler: Async handler function(event, context) -> Awaitable[object]
                     context is a typed dataclass (CommandEventContext, MessageEventContext, etc.)
         """
-        self._handlers[event] = handler
+        self._handlers[event] = cast(Callable[[EventType, EventContext], Awaitable[object]], handler)
         logger.trace("Registered handler for event: %s", event)
 
     async def handle_event(

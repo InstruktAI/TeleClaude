@@ -1,34 +1,33 @@
 # Implementation Plan - model-boundary-consolidation
 
 ## Overview
+Consolidate resource shapes into a single source of truth and use Pydantic only at system boundaries. Core models will be dataclasses in `teleclaude/core/models.py`, while REST/WS boundaries will use Pydantic DTOs in `teleclaude/adapters/rest_models.py`.
 
-Introduce a DTO layer at REST and WebSocket boundaries and remove ad-hoc payload shapes.
+## Proposed Changes
 
-## Steps
+### Group 1: Define DTOs and Mappers
+- [x] Define Pydantic DTOs for Sessions, Computers, and Projects in `teleclaude/adapters/rest_models.py`
+- [x] Add mapper methods (`from_core`) in DTOs
+- [x] Define WebSocket Event DTOs for outgoing WS messages
 
-1) **Inventory Shapes**
-   - List current resource shapes across `teleclaude/core/command_handlers.py`,
-     `teleclaude/cli/models.py`, and REST/WS handlers.
+### Group 2: Refactor REST Adapter Boundaries
+- [x] Update `RESTAdapter` list and create endpoints to use DTOs
+- [x] Update WebSocket handlers to use DTOs for all outgoing JSON payloads
 
-2) **Define DTOs**
-   - Add Pydantic DTOs for REST and WS payloads (resource lists and updates).
-   - Keep DTOs aligned with core dataclasses and identifiers.
+### Group 3: Align CLI and TUI
+- [x] Update `teleclaude/cli/models.py` to use the new DTOs (aliased for compatibility)
+- [x] Ensure `TelecAPIClient` leverages Pydantic validation
 
-3) **Add Mappers**
-   - Create mapping functions from core dataclasses to DTOs.
-   - Centralize any transport-only fields (example `computer`).
+### Group 4: Documentation and Cleanup
+- [x] Update `docs/rest-api.md` with new resource shapes
+- [x] Fix `RESTAdapter` event subscription bug (`TeleClaudeEvents.on` -> `self.client.on`)
 
-4) **Refactor Boundaries**
-   - Replace TypedDict response payloads in REST/WS handlers with DTOs.
-   - Ensure all REST read endpoints return resource-only payloads.
+## Verification Plan
 
-5) **Align CLI Models**
-   - Ensure `teleclaude/cli/models.py` matches DTOs or is replaced by them.
-   - Update client validation to use DTOs.
+### Automated Tests
+- [x] Run existing integration tests: `make test-integration` (Verified E2E boundary integrity)
+- [x] Run smoke tests for CLI/TUI: `telec list-sessions`
+- [x] Verified full test suite passes: `make test`
 
-6) **Docs Update**
-   - Update REST and TUI docs to point to core models and DTOs as the source of truth.
-
-7) **Tests**
-   - Add tests for DTO validation and mapping.
-   - Ensure REST and WS responses are validated and stable.
+### Manual Verification
+- [x] Verified TUI session and project trees render correctly with new data shapes
