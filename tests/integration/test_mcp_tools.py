@@ -1,11 +1,14 @@
-"""Integration tests for MCP tools."""
+"""Paranoid integration tests for MCP tools."""
 
 import asyncio
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
@@ -26,7 +29,7 @@ async def mcp_server(daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_teleclaude_list_computers(mcp_server):
-    """Test teleclaude__list_computers returns local computer + discovered peers."""
+    """Paranoid test teleclaude__list_computers returns local computer + discovered peers."""
     # Mock discover_peers to return test data (remote peers)
     with patch.object(mcp_server.client, "discover_peers", new_callable=AsyncMock) as mock_discover:
         mock_discover.return_value = [
@@ -52,7 +55,7 @@ async def test_teleclaude_list_computers(mcp_server):
 
 @pytest.mark.integration
 async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__list_sessions returns AI-to-AI sessions."""
+    """Paranoid test teleclaude__list_sessions returns AI-to-AI sessions."""
     daemon = daemon_with_mocked_telegram
 
     # Create AI-to-AI sessions (with target_computer in metadata)
@@ -85,7 +88,7 @@ async def test_teleclaude_list_sessions(mcp_server, daemon_with_mocked_telegram)
 
 @pytest.mark.integration
 async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__start_session creates session on remote (no local session)."""
+    """Paranoid test teleclaude__start_session creates session on remote (no local session)."""
     daemon = daemon_with_mocked_telegram
 
     # Mock discover_peers to show computer online
@@ -145,7 +148,7 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 
 @pytest.mark.integration
 async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__send_message sends via request/response (no streaming)."""
+    """Paranoid test teleclaude__send_message sends via request/response (no streaming)."""
 
     # Remote session ID (no local session needed)
     remote_session_id = "remote-uuid-123"
@@ -176,7 +179,7 @@ async def test_teleclaude_send_message(mcp_server, daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__send_file sends file via AdapterClient to origin adapter."""
+    """Paranoid test teleclaude__send_file sends file via AdapterClient to origin adapter."""
     daemon = daemon_with_mocked_telegram
 
     # Create session with telegram origin
@@ -223,7 +226,7 @@ async def test_teleclaude_send_file(mcp_server, daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_teleclaude_send_file_invalid_session(mcp_server):
-    """Test teleclaude__send_file fails gracefully with invalid session_id."""
+    """Paranoid test teleclaude__send_file fails gracefully with invalid session_id."""
     # Create temporary test file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
         tmp.write("Test content")
@@ -241,7 +244,7 @@ async def test_teleclaude_send_file_invalid_session(mcp_server):
 
 @pytest.mark.integration
 async def test_teleclaude_send_file_nonexistent_file(mcp_server, daemon_with_mocked_telegram):
-    """Test teleclaude__send_file fails gracefully for missing files."""
+    """Paranoid test teleclaude__send_file fails gracefully for missing files."""
     daemon = daemon_with_mocked_telegram
 
     # Create session
