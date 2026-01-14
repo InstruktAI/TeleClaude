@@ -305,6 +305,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
 
 @pytest.mark.asyncio
 async def test_restart_mcp_server_replaces_task():
+    """Test that restarting MCP server replaces the running task."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.start = AsyncMock()
@@ -334,6 +335,7 @@ async def test_restart_mcp_server_replaces_task():
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_uses_snapshot():
+    """Test that MCP socket health uses snapshot without probing when fresh."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.health_snapshot = AsyncMock(
@@ -357,6 +359,7 @@ async def test_check_mcp_socket_health_uses_snapshot():
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_connections():
+    """Test that MCP socket health probes when accepts are stale with connections."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.health_snapshot = AsyncMock(
@@ -390,6 +393,7 @@ async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_conn
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_returns_unhealthy_within_probe_interval_after_failure():
+    """Test that recent probe failure suppresses immediate re-probe."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.health_snapshot = AsyncMock(
