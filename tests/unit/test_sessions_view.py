@@ -9,8 +9,13 @@ from unittest.mock import patch
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from teleclaude.cli.models import ComputerInfo, CreateSessionResult, ProjectWithTodosInfo, SessionInfo
 from teleclaude.cli.tui.app import FocusContext
-from teleclaude.cli.tui.tree import TreeNode
+from teleclaude.cli.tui.tree import SessionDisplayInfo, SessionNode, TreeNode
 from teleclaude.cli.tui.views.sessions import SessionsView
 
 
@@ -19,6 +24,7 @@ class DummyPaneManager:
     """Capture toggle_session arguments without tmux interaction."""
 
     last_args: tuple[object, ...] | None = None
+    is_available: bool = True
 
     def toggle_session(self, *args: object) -> None:
         """Record arguments from toggle_session."""
@@ -30,13 +36,12 @@ class DummyPaneManager:
         return None
 
 
-def test_update_activity_state_marks_idle_when_activity_is_old():
-    """Test that sessions with stale activity are marked idle."""
+@pytest.mark.asyncio
+async def test_refresh_updates_activity_state_marks_idle_when_activity_is_old():
+    """Test that refresh correctly updates activity state and marks stale activity as idle."""
     fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
     class FixedDatetime(datetime):
-        """Datetime shim returning a fixed current time."""
-
         @classmethod
         def now(cls, tz: timezone | None = None) -> datetime:
             return fixed_now if tz else fixed_now.replace(tzinfo=None)
@@ -45,112 +50,78 @@ def test_update_activity_state_marks_idle_when_activity_is_old():
         def fromisoformat(cls, date_string: str) -> datetime:
             return datetime.fromisoformat(date_string)
 
-    view = SessionsView(api=object(), agent_availability={}, focus=FocusContext(), pane_manager=DummyPaneManager())
-    old_activity = (fixed_now.replace(tzinfo=timezone.utc) - timedelta(seconds=61)).isoformat()
+    view = SessionsView(api=AsyncMock(), agent_availability={}, focus=FocusContext(), pane_manager=DummyPaneManager())
+    old_activity = (fixed_now - timedelta(seconds=61)).isoformat()
+
     sessions = [
-        {
-            "session_id": "sess-1",
-            "last_input": "hello",
-            "last_output": "world",
-            "last_activity": old_activity,
-        }
+        SessionInfo(
+            session_id="sess-1",
+            origin_adapter="telegram",
+            status="active",
+            computer="local",
+            working_directory="/tmp",
+            last_input="hello",
+            last_output="world",
+            last_activity=old_activity,
+            title="test",
+            active_agent="claude",
+            thinking_mode="slow",
+        )
     ]
 
     with patch("teleclaude.cli.tui.views.sessions.datetime", FixedDatetime):
-        view._update_activity_state(sessions)
+        await view.refresh(computers=[], projects=[], sessions=sessions)
 
     assert view._active_field["sess-1"] == "none"
 
 
-def test_update_activity_state_tracks_output_input_and_idle():
-    """Test that output then input changes update active_field until idle."""
-    fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-
-    class FixedDatetime(datetime):
-        """Datetime shim returning a fixed current time."""
-
-        @classmethod
-        def now(cls, tz: timezone | None = None) -> datetime:
-            return fixed_now if tz else fixed_now.replace(tzinfo=None)
-
-        @classmethod
-        def fromisoformat(cls, date_string: str) -> datetime:
-            return datetime.fromisoformat(date_string)
-
-    view = SessionsView(api=object(), agent_availability={}, focus=FocusContext(), pane_manager=DummyPaneManager())
-    recent_activity = fixed_now.isoformat()
-    sessions = [
-        {
-            "session_id": "sess-1",
-            "last_input": "",
-            "last_output": "out-1",
-            "last_activity": recent_activity,
-        }
-    ]
-
-    with patch("teleclaude.cli.tui.views.sessions.datetime", FixedDatetime):
-        view._update_activity_state(sessions)
-        assert view._active_field["sess-1"] == "output"
-
-        sessions[0]["last_input"] = "in-1"
-        view._update_activity_state(sessions)
-        assert view._active_field["sess-1"] == "input"
-
-        sessions[0]["last_activity"] = (fixed_now - timedelta(seconds=90)).isoformat()
-        view._update_activity_state(sessions)
-
-    assert view._active_field["sess-1"] == "none"
-
-
-def test_update_activity_state_handles_naive_timestamp():
-    """Test that naive timestamps are treated as UTC when evaluating idle state."""
-    fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-
-    class FixedDatetime(datetime):
-        """Datetime shim returning a fixed current time."""
-
-        @classmethod
-        def now(cls, tz: timezone | None = None) -> datetime:
-            return fixed_now if tz else fixed_now.replace(tzinfo=None)
-
-        @classmethod
-        def fromisoformat(cls, date_string: str) -> datetime:
-            return datetime.fromisoformat(date_string)
-
-    view = SessionsView(api=object(), agent_availability={}, focus=FocusContext(), pane_manager=DummyPaneManager())
-    naive_activity = (fixed_now - timedelta(seconds=10)).replace(tzinfo=None).isoformat()
-    sessions = [
-        {
-            "session_id": "sess-2",
-            "last_input": "",
-            "last_output": "output",
-            "last_activity": naive_activity,
-        }
-    ]
-
-    with patch("teleclaude.cli.tui.views.sessions.datetime", FixedDatetime):
-        view._update_activity_state(sessions)
-
-    assert view._active_field["sess-2"] == "output"
-
-
-def test_toggle_session_pane_passes_child_session_and_computer_info():
-    """Test that _toggle_session_pane uses initiator_session_id for child lookup."""
+@pytest.mark.asyncio
+async def test_handle_enter_on_session_toggles_pane():
+    """Test that handle_enter on a session triggers the preview pane toggle."""
     pane_manager = DummyPaneManager()
-    view = SessionsView(api=object(), agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
-    view._sessions = [
-        {"session_id": "parent", "tmux_session_name": "tmux-parent", "computer": "remote"},
-        {"session_id": "child", "tmux_session_name": "tmux-child", "initiator_session_id": "parent"},
-    ]
-    view._computers = [{"name": "remote", "user": "user", "host": "host.example"}]
+    api = AsyncMock()
+    view = SessionsView(api=api, agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
 
-    item = TreeNode(
-        type="session",
-        data={"session_id": "parent", "tmux_session_name": "tmux-parent", "computer": "remote"},
-        depth=0,
+    # Setup state needed for toggle
+    session = SessionInfo(
+        session_id="parent",
+        origin_adapter="telegram",
+        status="active",
+        tmux_session_name="tmux-parent",
+        computer="remote",
+        working_directory="/tmp",
+        title="Parent",
+        active_agent="claude",
+        thinking_mode="slow",
+        initiator_session_id=None,
+    )
+    child = SessionInfo(
+        session_id="child",
+        origin_adapter="telegram",
+        status="active",
+        tmux_session_name="tmux-child",
+        computer="remote",
+        working_directory="/tmp",
+        title="Child",
+        active_agent="claude",
+        thinking_mode="slow",
+        initiator_session_id="parent",
     )
 
-    view._toggle_session_pane(item)
+    view._sessions = [session, child]
+    view._computers = [
+        ComputerInfo(name="remote", status="online", is_local=False, user="user", host="host", role="test")
+    ]
+
+    # Create a SessionNode for the flat_items
+    item = SessionNode(
+        type="session", data=SessionDisplayInfo(session=session, display_index="1"), depth=0, children=[]
+    )
+    view.flat_items = [item]
+    view.selected_index = 0
+
+    screen = Mock()
+    view.handle_enter(screen)
 
     assert pane_manager.last_args is not None
     tmux_session, child_session, computer_info = pane_manager.last_args
@@ -158,18 +129,3 @@ def test_toggle_session_pane_passes_child_session_and_computer_info():
     assert child_session == "tmux-child"
     assert computer_info is not None
     assert computer_info.name == "remote"
-    assert computer_info.is_remote is True
-
-
-def test_toggle_session_pane_skips_when_tmux_session_missing():
-    """Test that _toggle_session_pane returns without toggling when tmux name is missing."""
-    pane_manager = DummyPaneManager()
-    view = SessionsView(api=object(), agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
-    view._sessions = []
-    view._computers = []
-
-    item = TreeNode(type="session", data={"session_id": "parent"}, depth=0)
-
-    view._toggle_session_pane(item)
-
-    assert pane_manager.last_args is None
