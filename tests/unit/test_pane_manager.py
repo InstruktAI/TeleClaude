@@ -33,7 +33,9 @@ def test_show_session_tracks_parent_and_child_panes():
     assert manager.state.child_pane_id == "%6"
     assert manager.state.parent_session == "parent-session"
     assert manager.state.child_session == "child-session"
-    assert any(call_args.args[0] == "split-window" for call_args in mock_run.call_args_list)
+    # Verify tmux commands without using loops or conditionals
+    assert mock_run.call_args_list[0].args[0] == "split-window"
+    assert mock_run.call_args_list[1].args[0] == "split-window"
 
 
 def test_toggle_session_hides_when_already_showing():
@@ -69,5 +71,6 @@ def test_hide_sessions_kills_existing_panes_and_clears_state():
     assert manager.state.child_pane_id is None
     assert manager.state.parent_session is None
     assert manager.state.child_session is None
-    assert ("kill-pane", "-t", "%11") in [call.args for call in mock_run.call_args_list]
-    assert ("kill-pane", "-t", "%10") in [call.args for call in mock_run.call_args_list]
+    # Verify specific calls by index
+    assert mock_run.call_args_list[0].args == ("kill-pane", "-t", "%11")
+    assert mock_run.call_args_list[1].args == ("kill-pane", "-t", "%10")
