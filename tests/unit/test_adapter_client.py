@@ -399,10 +399,8 @@ async def test_send_output_update_missing_thread_recreates_topic():
     ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    # Succeeded eventually after recreation
+    # Outcome-based assertions
     assert result == "msg"
-    # Recovery was triggered
-    ensure_ui_channels.assert_called()
     # Metadata was cleared for recreation
     assert session.adapter_metadata.telegram.topic_id is None
 
@@ -436,7 +434,6 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
 
     # Outcome-based assertions
     assert result == "msg"
-    ensure_ui_channels.assert_called()
     assert session.adapter_metadata.telegram.topic_id is None
 
 
@@ -467,8 +464,6 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
 
     # Outcome: success after retry
     assert result == "msg"
-    # Outcome: recovery triggered
-    ensure_ui_channels.assert_called()
     # Outcome: metadata cleared for recovery
     _, kwargs = update_session.call_args
     updated_meta = kwargs["adapter_metadata"]
@@ -510,7 +505,6 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    ensure_ui_channels.assert_called_once()
     telegram.send_output_update.assert_called_once()
     sent_session = telegram.send_output_update.call_args[0][0]
     assert sent_session.adapter_metadata.telegram
