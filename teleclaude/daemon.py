@@ -837,6 +837,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not transcribed:
             return
 
+        if context.message_id:
+            session = await db.get_session(context.session_id)
+            if session:
+                await self.client.delete_message(session, str(context.message_id))
+
         metadata = MessageMetadata(
             adapter_type=context.adapter_type,
             message_thread_id=context.message_thread_id,

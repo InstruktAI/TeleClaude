@@ -137,6 +137,7 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon.client.handle_event = AsyncMock()
+    daemon.client.delete_message = AsyncMock()
     daemon._send_status_callback = AsyncMock()
 
     with (
@@ -144,7 +145,8 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
         patch("teleclaude.daemon.db") as mock_db,
     ):
         mock_handle.return_value = "hello world"
-        mock_db.get_session = AsyncMock(return_value=MagicMock())
+        session = MagicMock()
+        mock_db.get_session = AsyncMock(return_value=session)
 
         context = VoiceEventContext(
             session_id="sess-123",
@@ -158,6 +160,7 @@ async def test_handle_voice_forwards_message_without_message_id() -> None:
         await daemon._handle_voice("voice", context)
 
         daemon.client.handle_event.assert_called_once()
+        daemon.client.delete_message.assert_called_once_with(session, "321")
         call_kwargs = daemon.client.handle_event.call_args.kwargs
         assert call_kwargs["event"] == TeleClaudeEvents.MESSAGE
         assert call_kwargs["payload"].get("message_id") is None
