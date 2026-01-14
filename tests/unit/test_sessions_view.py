@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from teleclaude.cli.models import ComputerInfo, CreateSessionResult, ProjectWithTodosInfo, SessionInfo
+from teleclaude.cli.models import ComputerInfo, SessionInfo
 from teleclaude.cli.tui.app import FocusContext
-from teleclaude.cli.tui.tree import SessionDisplayInfo, SessionNode, TreeNode
+from teleclaude.cli.tui.tree import SessionDisplayInfo, SessionNode
 from teleclaude.cli.tui.views.sessions import SessionsView
 
 
