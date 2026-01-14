@@ -1,8 +1,11 @@
 """Unit tests for command handlers."""
 
 import json
+import os
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 import pytest
 
@@ -68,22 +71,18 @@ async def test_handle_get_computer_info_returns_system_stats():
 
 
 @pytest.mark.asyncio
-async def test_handle_new_session_creates_session():
-    """Test that handle_new_session creates a session with correct metadata."""
+async def test_handle_new_session_creates_session(mock_initialized_db):
+    """Test that handle_new_session returns a session_id and persists the session."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
     from teleclaude.core.models import MessageMetadata
+    from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 
     mock_context = MagicMock(spec=EventContext)
     mock_metadata = MessageMetadata(adapter_type="telegram")
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
-
-    # Mock session object
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-    mock_session.tmux_session_name = "tc_test-ses"
 
     with tempfile.TemporaryDirectory() as tmpdir:
         with (
@@ -94,9 +93,9 @@ async def test_handle_new_session_creates_session():
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
-            mock_db.create_session = AsyncMock(return_value=mock_session)
-            mock_db.get_session = AsyncMock(return_value=mock_session)
-            mock_db.assign_voice = AsyncMock()  # Voice assignment
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+            mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_tb.create_tmux_session = AsyncMock(return_value=True)
             mock_tb.get_pane_tty = AsyncMock(return_value=None)
             mock_tb.get_pane_pid = AsyncMock(return_value=None)
@@ -106,19 +105,19 @@ async def test_handle_new_session_creates_session():
                 mock_context, ["Test", "Title"], mock_metadata, mock_client
             )
 
-    assert "session_id" in result
-    mock_db.create_session.assert_called_once()
-    mock_tb.create_tmux_session.assert_called_once()
-    created_session_id = mock_db.create_session.call_args.kwargs.get("session_id")
-    _, call_kwargs = mock_tb.create_tmux_session.call_args
-    env_vars = call_kwargs.get("env_vars") or {}
-    assert env_vars.get("TELECLAUDE_SESSION_ID") == created_session_id
-    assert call_kwargs.get("session_id") == created_session_id
+    assert result["session_id"]
+    assert result["tmux_session_name"].startswith(TMUX_SESSION_PREFIX)
+    assert result["tmux_session_name"].endswith(result["session_id"][:8])
+
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.session_id == result["session_id"]
+    assert stored.tmux_session_name == result["tmux_session_name"]
 
 
 @pytest.mark.asyncio
-async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state():
-    """Terminal adapter should honor terminal metadata for size and UX state."""
+async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
+    """Terminal adapter should store terminal metadata on the session."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
     from teleclaude.core.models import MessageMetadata
@@ -137,10 +136,6 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
 
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-    mock_session.tmux_session_name = "tc_test-ses"
-
     with tempfile.TemporaryDirectory() as tmpdir:
         with (
             patch.object(command_handlers, "config") as mock_config,
@@ -150,36 +145,36 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
         ):
             mock_config.computer.name = "TestComputer"
             mock_config.computer.default_working_dir = tmpdir
-            mock_db.create_session = AsyncMock(return_value=mock_session)
-            mock_db.get_session = AsyncMock(return_value=mock_session)
-            mock_db.assign_voice = AsyncMock()
-            mock_db.update_session = AsyncMock()
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+            mock_db.assign_voice = mock_initialized_db.assign_voice
+            mock_db.update_session = mock_initialized_db.update_session
             mock_tb.create_tmux_session = AsyncMock(return_value=True)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            await command_handlers.handle_create_session(mock_context, ["Test"], mock_metadata, mock_client)
+            result = await command_handlers.handle_create_session(mock_context, ["Test"], mock_metadata, mock_client)
 
-            update_args, update_kwargs = mock_db.update_session.call_args
-            assert update_args[0] == mock_db.create_session.call_args[1].get("session_id")
-            assert update_kwargs.get("native_tty_path") == "/dev/pts/7"
-            assert update_kwargs.get("native_pid") == 4242
+    stored = await mock_initialized_db.get_session(result["session_id"])
+    assert stored is not None
+    assert stored.native_tty_path == "/dev/pts/7"
+    assert stored.native_pid == 4242
 
 
 @pytest.mark.asyncio
-async def test_handle_new_session_validates_working_dir():
-    """Test that handle_new_session rejects non-existent working directories."""
+async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp_path):
+    """Test that handle_new_session rejects invalid working directories."""
     from teleclaude.core import command_handlers
     from teleclaude.core.events import EventContext
     from teleclaude.core.models import MessageMetadata
 
+    invalid_path = tmp_path / "not-a-dir.txt"
+    invalid_path.write_text("nope", encoding="utf-8")
+
     mock_context = MagicMock(spec=EventContext)
-    mock_metadata = MessageMetadata(adapter_type="telegram", project_dir="/nonexistent/path")
+    mock_metadata = MessageMetadata(adapter_type="telegram", project_dir=str(invalid_path))
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
-
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
 
     with (
         patch.object(command_handlers, "config") as mock_config,
@@ -191,81 +186,86 @@ async def test_handle_new_session_validates_working_dir():
     ):
         mock_config.computer.name = "TestComputer"
         mock_config.computer.default_working_dir = "/home/user"
-        mock_db.create_session = AsyncMock(return_value=mock_session)
-        mock_db.get_session = AsyncMock(return_value=mock_session)
-        mock_db.delete_session = AsyncMock()
-        mock_db.assign_voice = AsyncMock()  # Voice assignment
+        mock_db.create_session = mock_initialized_db.create_session
+        mock_db.get_session = mock_initialized_db.get_session
+        mock_db.delete_session = mock_initialized_db.delete_session
+        mock_db.assign_voice = mock_initialized_db.assign_voice
         mock_tb.create_tmux_session = AsyncMock(return_value=True)
         mock_tb.get_pane_tty = AsyncMock(return_value=None)
         mock_tb.get_pane_pid = AsyncMock(return_value=None)
         mock_unique.return_value = "Test Title"
 
-        with pytest.raises(ValueError, match="could not be created"):
+        with pytest.raises(ValueError, match="directory"):
             await command_handlers.handle_create_session(mock_context, [], mock_metadata, mock_client)
 
-        mock_tb.create_tmux_session.assert_not_called()
+    assert await mock_initialized_db.count_sessions() == 0
 
 
 @pytest.mark.asyncio
-async def test_handle_cd_changes_directory():
-    """Test that handle_cd changes working directory."""
+async def test_handle_cd_changes_directory(mock_initialized_db, tmp_path):
+    """Test that handle_cd updates working directory on success."""
     from teleclaude.core import command_handlers
 
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-    mock_session.tmux_session_name = "tc_test"
+    session = await mock_initialized_db.create_session(
+        computer_name="TestPC",
+        tmux_session_name="tc_test",
+        origin_adapter="terminal",
+        title="Test Session",
+        working_directory=str(tmp_path),
+    )
 
     mock_context = MagicMock()
     mock_client = MagicMock()
-    mock_client.send_message = AsyncMock(return_value="msg-123")
 
     # Mock execute_terminal_command
     mock_execute = AsyncMock(return_value=True)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch.object(command_handlers, "db") as mock_db:
-            mock_db.update_session = AsyncMock()
-            mock_db.add_pending_deletion = AsyncMock()
+    new_dir = tmp_path / "next"
+    new_dir.mkdir()
 
-            # handle_cd_session signature: session, context, args, client, execute_terminal_command
-            await command_handlers.handle_cd_session.__wrapped__(
-                mock_session, mock_context, [tmpdir], mock_client, mock_execute
-            )
+    with patch.object(command_handlers, "db") as mock_db:
+        mock_db.update_session = mock_initialized_db.update_session
 
-        mock_db.update_session.assert_called_once()
+        await command_handlers.handle_cd_session.__wrapped__(
+            session, mock_context, [str(new_dir)], mock_client, mock_execute
+        )
+
+    updated = await mock_initialized_db.get_session(session.session_id)
+    assert updated is not None
+    assert updated.working_directory == str(new_dir)
 
 
 @pytest.mark.asyncio
-async def test_handle_cd_executes_command_for_any_path():
-    """Test that handle_cd executes cd command for any path (validation in terminal)."""
+async def test_handle_cd_executes_command_for_any_path(mock_initialized_db):
+    """Test that handle_cd accepts any path and stores it when execution succeeds."""
     from teleclaude.core import command_handlers
 
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-    mock_session.tmux_session_name = "tc_test"
+    session = await mock_initialized_db.create_session(
+        computer_name="TestPC",
+        tmux_session_name="tc_test",
+        origin_adapter="terminal",
+        title="Test Session",
+        working_directory="/home/user",
+    )
 
     mock_context = MagicMock()
     mock_context.message_id = "msg-123"
     mock_client = MagicMock()
-    mock_client.send_message = AsyncMock(return_value="msg-456")
 
     # Mock execute_terminal_command to simulate success
     mock_execute = AsyncMock(return_value=True)
 
     with patch.object(command_handlers, "db") as mock_db:
-        mock_db.add_pending_deletion = AsyncMock()
-        mock_db.update_session = AsyncMock()
+        mock_db.update_session = mock_initialized_db.update_session
 
         # Path validation happens in terminal, not Python
         await command_handlers.handle_cd_session.__wrapped__(
-            mock_session, mock_context, ["/some/path"], mock_client, mock_execute
+            session, mock_context, ["/some/path"], mock_client, mock_execute
         )
 
-    # Verify execute_terminal_command was called
-    mock_execute.assert_called_once()
-    call_args = mock_execute.call_args[0]
-    assert "cd" in call_args[1]
-    assert "/some/path" in call_args[1]
+    updated = await mock_initialized_db.get_session(session.session_id)
+    assert updated is not None
+    assert updated.working_directory == "/some/path"
 
 
 @pytest.mark.asyncio
@@ -353,13 +353,17 @@ async def test_handle_ctrl_sends_ctrl_key():
 
 
 @pytest.mark.asyncio
-async def test_handle_rename_updates_title():
+async def test_handle_rename_updates_title(mock_initialized_db):
     """Test that handle_rename updates session title."""
     from teleclaude.core import command_handlers
 
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-    mock_session.tmux_session_name = "tc_test"
+    session = await mock_initialized_db.create_session(
+        computer_name="TestPC",
+        tmux_session_name="tc_test",
+        origin_adapter="terminal",
+        title="Old Title",
+        working_directory="/home/user",
+    )
 
     mock_context = MagicMock()
     mock_client = MagicMock()
@@ -368,16 +372,14 @@ async def test_handle_rename_updates_title():
     mock_client.send_message = AsyncMock(return_value="msg-123")
 
     with patch.object(command_handlers, "db") as mock_db:
-        mock_db.update_session = AsyncMock()
-        mock_db.add_pending_deletion = AsyncMock()
+        mock_db.update_session = mock_initialized_db.update_session
 
         # handle_rename_session signature: session, context, args, client (no start_polling)
-        await command_handlers.handle_rename_session.__wrapped__(
-            mock_session, mock_context, ["New", "Title"], mock_client
-        )
+        await command_handlers.handle_rename_session.__wrapped__(session, mock_context, ["New", "Title"], mock_client)
 
-    mock_db.update_session.assert_called_once()
-    mock_client.update_channel_title.assert_called_once()
+    updated = await mock_initialized_db.get_session(session.session_id)
+    assert updated is not None
+    assert updated.title == "[TestComputer] New Title"
 
 
 @pytest.mark.asyncio
@@ -536,26 +538,30 @@ async def test_handle_list_projects_returns_trusted_dirs():
 
 
 @pytest.mark.asyncio
-async def test_handle_ctrl_requires_key_argument():
+async def test_handle_ctrl_requires_key_argument(mock_initialized_db):
     """Test that handle_ctrl requires a key argument."""
     from teleclaude.core import command_handlers
 
-    mock_session = MagicMock()
-    mock_session.session_id = "test-session-123"
-
     mock_context = MagicMock()
-    mock_client = MagicMock()
-    mock_client.send_message = AsyncMock(return_value="msg-123")
+    messages: list[str] = []
 
-    with patch.object(command_handlers, "db") as mock_db:
-        mock_db.add_pending_deletion = AsyncMock()
+    class FakeClient:
+        """Capture outgoing messages for assertions."""
 
-        await command_handlers.handle_ctrl_command.__wrapped__(mock_session, mock_context, [], mock_client, AsyncMock())
+        async def send_message(self, _session, message, **_kwargs):
+            messages.append(str(message))
 
-    # Verify usage message was sent
-    mock_client.send_message.assert_called_once()
-    call_args = mock_client.send_message.call_args[0]
-    assert "Usage" in call_args[1]
+    session = await mock_initialized_db.create_session(
+        computer_name="TestPC",
+        tmux_session_name="tc_test",
+        origin_adapter="terminal",
+        title="Test Session",
+        working_directory="/home/user",
+    )
+
+    await command_handlers.handle_ctrl_command.__wrapped__(session, mock_context, [], FakeClient(), AsyncMock())
+
+    assert any("Usage" in message for message in messages)
 
 
 @pytest.mark.asyncio

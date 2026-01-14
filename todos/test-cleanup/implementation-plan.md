@@ -135,6 +135,9 @@ def test_toggle_session_hides_pane_when_same_session():
 | `tests/unit/test_adapter_client.py` | 15 | Mixed - some good peer discovery tests |
 | `tests/unit/test_session_cleanup.py` | 10 | Good structure, some mock assertions to fix |
 
+**Progress**
+- [x] Refactor `tests/unit/test_command_handlers.py` to assert outcomes via DB state or returned payloads
+
 ### Priority 2: Docstrings + Minor Fixes
 
 | File | Missing Docstrings | Notes |
