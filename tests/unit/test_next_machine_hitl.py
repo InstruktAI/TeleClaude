@@ -1,9 +1,12 @@
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import (
@@ -20,6 +23,7 @@ from teleclaude.core.next_machine import (
 
 @pytest.mark.asyncio
 async def test_next_prepare_hitl_no_slug():
+    """Test that HITL next_prepare prompts roadmap guidance when no slug resolves."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
 
@@ -31,6 +35,7 @@ async def test_next_prepare_hitl_no_slug():
 
 @pytest.mark.asyncio
 async def test_next_prepare_hitl_missing_requirements():
+    """Test that HITL next_prepare requests requirements when slug exists but file missing."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -47,6 +52,7 @@ async def test_next_prepare_hitl_missing_requirements():
 
 @pytest.mark.asyncio
 async def test_next_prepare_hitl_missing_impl_plan():
+    """Test that HITL next_prepare requests implementation plan when requirements exist."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -68,6 +74,7 @@ async def test_next_prepare_hitl_missing_impl_plan():
 
 @pytest.mark.asyncio
 async def test_next_prepare_hitl_both_exist():
+    """Test that HITL next_prepare reports PREPARED when docs are present."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -82,6 +89,7 @@ async def test_next_prepare_hitl_both_exist():
 
 @pytest.mark.asyncio
 async def test_next_prepare_autonomous_dispatch():
+    """Test that autonomous next_prepare emits run-agent command when docs missing."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -102,6 +110,7 @@ async def test_next_prepare_autonomous_dispatch():
 
 @pytest.mark.asyncio
 async def test_next_prepare_hitl_slug_missing_from_roadmap():
+    """Test that HITL next_prepare explains missing roadmap entry for slug."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -118,6 +127,7 @@ async def test_next_prepare_hitl_slug_missing_from_roadmap():
 
 @pytest.mark.asyncio
 async def test_next_prepare_autonomous_slug_missing_from_roadmap():
+    """Test that autonomous next_prepare still dispatches but warns about roadmap."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"
@@ -137,6 +147,7 @@ async def test_next_prepare_autonomous_slug_missing_from_roadmap():
 
 @pytest.mark.asyncio
 async def test_next_prepare_hitl_slug_missing_from_roadmap_when_docs_exist():
+    """Test that HITL next_prepare flags roadmap omission even when docs exist."""
     db = MagicMock(spec=Db)
     cwd = "/tmp/test"
     slug = "test-slug"

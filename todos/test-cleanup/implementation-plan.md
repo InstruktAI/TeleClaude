@@ -148,6 +148,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Paranoidize adapter client tests in `tests/unit/test_adapter_client.py`
 - [x] Paranoidize MCP tool integration tests in `tests/integration/test_mcp_tools.py`
 - [x] Paranoidize set_dependencies tests in `tests/unit/test_mcp_set_dependencies.py`
+- [x] Add docstrings in `tests/unit/test_next_machine_hitl.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
