@@ -846,7 +846,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             payload={
                 "session_id": context.session_id,
                 "text": transcribed,
-                "message_id": context.message_id,
             },
             metadata=metadata,
         )
