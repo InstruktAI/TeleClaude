@@ -3,10 +3,16 @@
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 import pytest
 
 from teleclaude.core.db import Db
+from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
+
+FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -64,6 +70,22 @@ class TestCreateSession:
         assert session.title == "Custom Title"
         assert session.adapter_metadata == metadata
         assert session.working_directory == "/home/user"
+
+    @pytest.mark.asyncio
+    async def test_create_session_stores_initiator_session_id(self, test_db):
+        """Test that initiator_session_id is stored and retrieved."""
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="child-session",
+            origin_adapter="telegram",
+            title="Child",
+            initiator_session_id="parent-session",
+        )
+
+        retrieved = await test_db.get_session(session.session_id)
+
+        assert retrieved is not None
+        assert retrieved.initiator_session_id == "parent-session"
 
 
 class TestGetSession:
@@ -154,7 +176,7 @@ class TestAgentAvailability:
     @pytest.mark.asyncio
     async def test_get_agent_availability_clears_expired(self, test_db):
         """Expired unavailability should be cleared on read."""
-        past = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        past = (FIXED_NOW - timedelta(minutes=5)).isoformat()
         await test_db.conn.execute(
             """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
                VALUES (?, 0, ?, ?)""",
@@ -177,7 +199,7 @@ class TestAgentAvailability:
     @pytest.mark.asyncio
     async def test_mark_agent_available_clears_unavailability(self, test_db):
         """Marking available should clear unavailable_until and reason."""
-        future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        future = (FIXED_NOW + timedelta(minutes=10)).isoformat()
         await test_db.conn.execute(
             """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
                VALUES (?, 0, ?, ?)""",
@@ -236,8 +258,6 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_adapter_metadata(self, test_db):
         """Test updating adapter_metadata."""
-        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
-
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
         new_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456))
@@ -257,16 +277,16 @@ class TestUpdateLastActivity:
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
         original_activity = session.last_activity
 
-        # Wait a tiny bit to ensure timestamp changes
-        import asyncio
-
-        await asyncio.sleep(0.01)
-
-        await test_db.update_last_activity(session.session_id)
+        # Fixed time for update
+        fixed_now = FIXED_NOW + timedelta(seconds=1)
+        with patch("teleclaude.core.db.datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            await test_db.update_last_activity(session.session_id)
 
         updated = await test_db.get_session(session.session_id)
-        # Should have updated timestamp (comparing as strings is fine)
+        # Should have updated timestamp
         assert updated.last_activity != original_activity
+        assert updated.last_activity == fixed_now
 
 
 class TestDeleteSession:

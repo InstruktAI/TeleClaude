@@ -1,11 +1,16 @@
 """Unit tests for terminal_bridge.py."""
 
 import errno
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude.core import terminal_bridge
+
+# System boundary: verify tmux subprocess commands via mock call args.
 
 
 @pytest.fixture(autouse=True)
@@ -236,6 +241,7 @@ class TestSendKeysExistingTmux:
 
     @pytest.mark.asyncio
     async def test_returns_false_when_session_missing(self):
+        """Test that send_keys_existing_tmux returns False when session is absent."""
         with (
             patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
             patch.object(terminal_bridge, "_send_keys_tmux", new=AsyncMock()) as mock_send,

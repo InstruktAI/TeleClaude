@@ -143,8 +143,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # NOW import teleclaude modules (after env var is set)
     from teleclaude import config as config_module
-    from teleclaude import constants
-    from teleclaude.adapters import rest_adapter
+    from teleclaude import constants as constants_module
+    from teleclaude.adapters import rest_adapter as rest_adapter_module
     from teleclaude.core import db as db_module
     from teleclaude.core import terminal_bridge
     from teleclaude.core.db import Db
@@ -153,8 +153,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     # CRITICAL: Patch REST_SOCKET_PATH to use unique path per test
     # Also patch rest_adapter module-level constant to avoid stale import values
-    monkeypatch.setattr(constants, "REST_SOCKET_PATH", temp_rest_socket)
-    monkeypatch.setattr(rest_adapter, "REST_SOCKET_PATH", temp_rest_socket)
+    monkeypatch.setattr(constants_module, "REST_SOCKET_PATH", temp_rest_socket)
+    monkeypatch.setattr(rest_adapter_module, "REST_SOCKET_PATH", temp_rest_socket)
 
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
     class MockDatabase:
@@ -252,6 +252,10 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     monkeypatch.setattr(config_module, "config", test_config)
 
     monkeypatch.setattr(config_module.config.redis, "url", "redis://localhost:6379")
+
+    rest_socket_path = f"/tmp/teleclaude-api-{os.getpid()}-{uuid.uuid4().hex[:6]}.sock"
+    monkeypatch.setattr(constants_module, "REST_SOCKET_PATH", rest_socket_path)
+    monkeypatch.setattr(rest_adapter_module, "REST_SOCKET_PATH", rest_socket_path)
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution

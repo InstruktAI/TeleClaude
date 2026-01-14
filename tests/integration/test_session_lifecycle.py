@@ -1,6 +1,10 @@
 """Integration test for complete session lifecycle (hard delete on close)."""
 
+import os
+
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import session_cleanup, terminal_bridge
 from teleclaude.core.session_utils import get_session_output_dir

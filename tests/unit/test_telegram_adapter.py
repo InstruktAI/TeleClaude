@@ -1,11 +1,14 @@
 """Unit tests for telegram_adapter.py."""
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from telegram.error import BadRequest, RetryAfter
 from telegram.ext import filters
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude import config as config_module
 from teleclaude.adapters.base_adapter import AdapterError
@@ -432,6 +435,7 @@ class TestTopicOwnership:
     """Tests for topic ownership heuristics."""
 
     def test_topic_title_mentions_this_computer(self, telegram_adapter):
+        """Test that titles containing this computer name are flagged as owned."""
         telegram_adapter.computer_name = "test_computer"
         assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: Codex-slow@test_computer - resume abc")
         assert telegram_adapter._topic_title_mentions_this_computer("TeleClaude: $test_computer - Untitled")
@@ -440,6 +444,7 @@ class TestTopicOwnership:
         )
 
     def test_topic_owned_by_this_bot_from_reply_title(self, telegram_adapter):
+        """Test that reply-to message titles establish topic ownership."""
         telegram_adapter.computer_name = "test_computer"
         update = MagicMock()
         message = MagicMock()
@@ -454,6 +459,7 @@ class TestTopicOwnership:
         assert telegram_adapter._topic_owned_by_this_bot(update, topic_id=123) is True
 
     def test_topic_owned_by_this_bot_uses_cache_fallback(self, telegram_adapter):
+        """Test that cached forum-topic messages can establish ownership."""
         telegram_adapter.computer_name = "test_computer"
         update = MagicMock()
         update.effective_message = MagicMock()

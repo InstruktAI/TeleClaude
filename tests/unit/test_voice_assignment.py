@@ -17,7 +17,7 @@ class TestVoiceConfig:
     """Tests for VoiceConfig dataclass."""
 
     def test_voice_config_creation(self) -> None:
-        """Test creating a VoiceConfig instance."""
+        """Test that VoiceConfig preserves provided fields on construction."""
         voice = VoiceConfig(
             name="Test Voice",
             elevenlabs_id="abc123",
@@ -35,14 +35,14 @@ class TestLoadVoices:
     """Tests for load_voices function."""
 
     def test_load_voices_file_not_found_returns_empty_list(self) -> None:
-        """Test loading voices when config file doesn't exist."""
+        """Test that load_voices returns empty list when config path is missing."""
         with patch.object(Path, "exists", return_value=False):
             result = load_voices()
 
         assert result == []
 
     def test_load_voices_valid_config(self) -> None:
-        """Test loading voices from valid config file."""
+        """Test that load_voices parses valid JSON into VoiceConfig entries."""
         config_data = {
             "voices": [
                 {
@@ -77,7 +77,7 @@ class TestLoadVoices:
             temp_path.unlink()
 
     def test_load_voices_invalid_json_returns_empty_list(self) -> None:
-        """Test loading voices from invalid JSON file."""
+        """Test that load_voices returns empty list when JSON decoding fails."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("invalid json {{{")
             temp_path = Path(f.name)
@@ -91,7 +91,7 @@ class TestLoadVoices:
             temp_path.unlink()
 
     def test_load_voices_missing_fields_uses_defaults(self) -> None:
-        """Test loading voices with missing fields uses empty string defaults."""
+        """Test that load_voices fills missing fields with empty string defaults."""
         config_data = {"voices": [{"name": "Minimal Voice"}]}
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -115,7 +115,7 @@ class TestGetRandomVoice:
     """Tests for get_random_voice function."""
 
     def test_get_random_voice_returns_voice_from_config(self) -> None:
-        """Test that get_random_voice returns a voice from config."""
+        """Test that get_random_voice returns one of the loaded voices when available."""
         voices = [
             VoiceConfig(name="Voice 1", elevenlabs_id="id1", macos_voice="Daniel", openai_voice="nova"),
             VoiceConfig(name="Voice 2", elevenlabs_id="id2", macos_voice="Samantha", openai_voice="echo"),
@@ -127,7 +127,7 @@ class TestGetRandomVoice:
         assert result in voices
 
     def test_get_random_voice_returns_none_when_no_voices(self) -> None:
-        """Test that get_random_voice returns None when no voices configured."""
+        """Test that get_random_voice returns None when the voice list is empty."""
         with patch("teleclaude.core.voice_assignment.load_voices", return_value=[]):
             result = get_random_voice()
 
@@ -138,7 +138,7 @@ class TestGetVoiceEnvVars:
     """Tests for get_voice_env_vars function."""
 
     def test_get_voice_env_vars_all_fields(self) -> None:
-        """Test converting full voice config to env vars."""
+        """Test that get_voice_env_vars emits all env vars when fields are populated."""
         voice = VoiceConfig(
             name="Test Voice",
             elevenlabs_id="abc123",
@@ -155,7 +155,7 @@ class TestGetVoiceEnvVars:
         }
 
     def test_get_voice_env_vars_partial_fields(self) -> None:
-        """Test converting partial voice config to env vars."""
+        """Test that get_voice_env_vars omits env vars for empty fields."""
         voice = VoiceConfig(
             name="Partial Voice",
             elevenlabs_id="",
@@ -170,7 +170,7 @@ class TestGetVoiceEnvVars:
         assert "OPENAI_VOICE" not in result
 
     def test_get_voice_env_vars_no_fields(self) -> None:
-        """Test converting empty voice config returns empty dict."""
+        """Test that get_voice_env_vars returns empty dict when all fields are blank."""
         voice = VoiceConfig(
             name="Empty Voice",
             elevenlabs_id="",

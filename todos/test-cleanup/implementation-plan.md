@@ -135,6 +135,51 @@ def test_toggle_session_hides_pane_when_same_session():
 | `tests/unit/test_adapter_client.py` | 15 | Mixed - some good peer discovery tests |
 | `tests/unit/test_session_cleanup.py` | 10 | Good structure, some mock assertions to fix |
 
+**Progress**
+- [x] Refactor `tests/unit/test_command_handlers.py` to assert outcomes via DB state or returned payloads
+- [x] Document terminal bridge system-boundary assertions in `tests/unit/test_terminal_bridge.py`
+- [x] Reduce internal routing assertions in `tests/unit/test_mcp_server.py`
+- [x] Convert daemon tests to capture outcome payloads in `tests/unit/test_daemon.py`
+- [x] Paranoidize output poller tests in `tests/unit/test_output_poller.py`
+- [x] Paranoidize voice handler tests in `tests/unit/test_voice_message_handler.py`
+- [x] Paranoidize UI adapter tests in `tests/unit/test_ui_adapter.py`
+- [x] Paranoidize MCP wrapper tests in `tests/unit/test_mcp_wrapper.py`
+- [x] Paranoidize session cleanup tests in `tests/unit/test_session_cleanup.py`
+- [x] Paranoidize adapter client tests in `tests/unit/test_adapter_client.py`
+- [x] Paranoidize MCP tool integration tests in `tests/integration/test_mcp_tools.py`
+- [x] Paranoidize set_dependencies tests in `tests/unit/test_mcp_set_dependencies.py`
+- [x] Add docstrings in `tests/unit/test_next_machine_hitl.py`
+- [x] Add docstrings in `tests/unit/test_agents.py`
+- [x] Add docstrings in `tests/unit/test_telegram_adapter.py`
+- [x] Add docstrings in `tests/unit/test_hook_receiver.py`
+- [x] Add docstrings in `tests/unit/test_terminal_sessions.py`
+- [x] Review mock assertions in `tests/unit/test_computer_registry.py`
+- [x] Review mock assertions in `tests/integration/test_feedback_cleanup.py`
+- [x] Tighten docstrings in `tests/unit/test_voice_assignment.py`
+- [x] Add docstrings in `tests/unit/test_agent_parsers.py`
+- [x] Add docstrings in `tests/unit/test_terminal_io.py`
+- [x] Add docstrings in `tests/unit/test_next_machine_git_env.py`
+- [x] Add docstrings in `tests/unit/test_hook_receiver_tty.py`
+- [x] Add docstrings in `tests/unit/test_adapter_client_terminal_origin.py`
+- [x] Add docstrings in `tests/unit/test_launch_env.py`
+- [x] Add docstrings in `tests/unit/test_terminal_events.py`
+- [x] Add docstrings in `tests/unit/test_session_watcher_codex.py`
+- [x] Add docstrings in `tests/unit/test_mcp_wrapper_tool_refresh.py`
+- [x] Add docstrings in `tests/unit/test_config_working_dir.py`
+- [x] Add docstrings in `tests/unit/test_ui_adapter_command_overrides.py`
+- [x] Add docstrings in `tests/unit/test_daemon_poller_watch.py`
+- [x] Add docstrings in `tests/unit/test_terminal_delivery.py`
+- [x] Add docstrings in `tests/unit/test_terminal_io_bracketed_paste.py`
+- [x] Add docstrings in `tests/unit/test_hook_outbox.py`
+- [x] Add docstrings in `tests/unit/test_mcp_wrapper_log_throttle.py`
+- [x] Add docstrings in `tests/unit/test_redis_adapter_idle_log_throttle.py`
+- [x] Add docstrings in `tests/unit/test_terminal_bridge.py`
+- [x] Add docstrings in `tests/unit/test_mcp_server.py`
+- [x] Add docstrings in `tests/unit/test_session_cleanup.py`
+- [x] Add docstrings in `tests/unit/test_daemon.py`
+- [x] Isolate REST socket path in integration fixture to avoid unix socket conflicts
+- [x] Set TELECLAUDE_CONFIG_PATH in integration tests that import config
+
 ### Priority 2: Docstrings + Minor Fixes
 
 | File | Missing Docstrings | Notes |
@@ -200,10 +245,10 @@ Document any significant decisions made during implementation:
 
 ## Completion Criteria
 
-- [ ] All Priority 0 components have new test files with coverage
-- [ ] All Priority 1 files refactored
-- [ ] All Priority 2 files have docstrings + fixes
-- [ ] All Priority 3 files have docstrings
-- [ ] `make lint` passes
-- [ ] `make test` passes
-- [ ] Test coverage increased (not decreased)
+- [x] All Priority 0 components have new test files with coverage
+- [x] All Priority 1 files refactored
+- [x] All Priority 2 files have docstrings + fixes
+- [x] All Priority 3 files have docstrings
+- [x] `make lint` passes
+- [x] `make test` passes
+- [x] Test coverage increased (not decreased)

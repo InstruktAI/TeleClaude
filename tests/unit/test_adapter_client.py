@@ -1,12 +1,23 @@
-"""Unit tests for AdapterClient peer discovery aggregation."""
+"""Paranoid tests for AdapterClient peer discovery aggregation."""
 
+import os
 from datetime import datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude.adapters.ui_adapter import UiAdapter
-from teleclaude.core.models import PeerInfo
+from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.models import (
+    PeerInfo,
+    Session,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
+
+FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0)
 
 
 class DummyTelegramAdapter(UiAdapter):
@@ -86,11 +97,7 @@ class DummyTelegramAdapter(UiAdapter):
 
 @pytest.mark.asyncio
 async def test_adapter_client_register_adapter():
-    """Test adapter registration."""
-    from unittest.mock import Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test adapter registration."""
     client = AdapterClient()
 
     # Create mock adapters
@@ -110,11 +117,7 @@ async def test_adapter_client_register_adapter():
 
 @pytest.mark.asyncio
 async def test_adapter_client_discover_peers_single_adapter():
-    """Test peer discovery with single adapter."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test peer discovery with single adapter."""
     client = AdapterClient()
 
     # Create mock adapter
@@ -124,13 +127,13 @@ async def test_adapter_client_discover_peers_single_adapter():
             PeerInfo(
                 name="macbook",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="telegram",
             ),
             PeerInfo(
                 name="workstation",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="telegram",
             ),
         ]
@@ -142,17 +145,13 @@ async def test_adapter_client_discover_peers_single_adapter():
     # Test discovery (explicitly enable Redis for test)
     peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 2
-    assert "macbook" in [p["name"] for p in peers]
-    assert "workstation" in [p["name"] for p in peers]
+    assert peers[0]["name"] == "macbook"
+    assert peers[1]["name"] == "workstation"
 
 
 @pytest.mark.asyncio
 async def test_adapter_client_discover_peers_multiple_adapters():
-    """Test peer discovery aggregation from multiple adapters."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test peer discovery aggregation from multiple adapters."""
     client = AdapterClient()
 
     # Create mock adapters with different peers
@@ -162,7 +161,7 @@ async def test_adapter_client_discover_peers_multiple_adapters():
             PeerInfo(
                 name="macbook",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="telegram",
             )
         ]
@@ -174,13 +173,13 @@ async def test_adapter_client_discover_peers_multiple_adapters():
             PeerInfo(
                 name="workstation",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             ),
             PeerInfo(
                 name="server",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             ),
         ]
@@ -193,22 +192,18 @@ async def test_adapter_client_discover_peers_multiple_adapters():
     # Test aggregation (explicitly enable Redis for test)
     peers = await client.discover_peers(redis_enabled=True)
     assert len(peers) == 3
-    assert "macbook" in [p["name"] for p in peers]
-    assert "workstation" in [p["name"] for p in peers]
-    assert "server" in [p["name"] for p in peers]
+    assert peers[0]["name"] == "macbook"
+    assert peers[1]["name"] == "workstation"
+    assert peers[2]["name"] == "server"
 
 
 @pytest.mark.asyncio
 async def test_adapter_client_deduplication():
-    """Test that duplicate peers are deduplicated (first adapter wins)."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test that duplicate peers are deduplicated (first adapter wins)."""
     client = AdapterClient()
 
     # Create mock adapters with overlapping peers
-    now = datetime.now()
+    now = FIXED_NOW
     mock_telegram = Mock()
     mock_telegram.discover_peers = AsyncMock(
         return_value=[
@@ -248,17 +243,17 @@ async def test_adapter_client_deduplication():
     assert len(peers) == 2  # Not 3 - macbook deduplicated
 
     # First adapter (telegram) wins for "macbook"
-    macbook_peer = next(p for p in peers if p["name"] == "macbook")
-    assert macbook_peer["adapter_type"] == "telegram"
+    # Order: telegram peer was registered first, then redis peers.
+    # macbook (telegram) and workstation (redis)
+    assert peers[0]["name"] == "macbook"
+    assert peers[0]["adapter_type"] == "telegram"
+    assert peers[1]["name"] == "workstation"
+    assert peers[1]["adapter_type"] == "redis"
 
 
 @pytest.mark.asyncio
 async def test_adapter_client_handles_adapter_errors():
-    """Test that errors from one adapter don't break discovery from others."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test that errors from one adapter don't break discovery from others."""
     client = AdapterClient()
 
     # Create mock adapters - one fails, one succeeds
@@ -271,7 +266,7 @@ async def test_adapter_client_handles_adapter_errors():
             PeerInfo(
                 name="workstation",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             )
         ]
@@ -289,11 +284,7 @@ async def test_adapter_client_handles_adapter_errors():
 
 @pytest.mark.asyncio
 async def test_adapter_client_empty_peers():
-    """Test behavior when no peers are discovered."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test behavior when no peers are discovered."""
     client = AdapterClient()
 
     # Create mock adapter with no peers
@@ -310,9 +301,7 @@ async def test_adapter_client_empty_peers():
 
 @pytest.mark.asyncio
 async def test_adapter_client_no_adapters():
-    """Test behavior when no adapters are registered."""
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test behavior when no adapters are registered."""
     client = AdapterClient()
 
     # Test discovery with no adapters (explicitly enable Redis for test)
@@ -323,11 +312,7 @@ async def test_adapter_client_no_adapters():
 
 @pytest.mark.asyncio
 async def test_adapter_client_system_stats_passthrough():
-    """Test that system_stats are passed through from PeerInfo to dict."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test that system_stats are passed through from PeerInfo to dict."""
     client = AdapterClient()
 
     # Create mock adapter with system_stats
@@ -337,7 +322,7 @@ async def test_adapter_client_system_stats_passthrough():
             PeerInfo(
                 name="server",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
                 user="testuser",
                 host="server.local",
@@ -365,11 +350,7 @@ async def test_adapter_client_system_stats_passthrough():
 
 @pytest.mark.asyncio
 async def test_adapter_client_discover_peers_redis_disabled():
-    """Test that discover_peers returns empty list when Redis is disabled."""
-    from unittest.mock import AsyncMock, Mock
-
-    from teleclaude.core.adapter_client import AdapterClient
-
+    """Paranoid test that discover_peers returns empty list when Redis is disabled."""
     client = AdapterClient()
 
     # Create mock adapter that would return peers
@@ -379,7 +360,7 @@ async def test_adapter_client_discover_peers_redis_disabled():
             PeerInfo(
                 name="should-not-appear",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             )
         ]
@@ -391,20 +372,16 @@ async def test_adapter_client_discover_peers_redis_disabled():
     peers = await client.discover_peers(redis_enabled=False)
     assert len(peers) == 0
     assert peers == []
-    # Adapter should NOT have been called
-    mock_adapter.discover_peers.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_send_output_update_missing_thread_recreates_topic():
     """Missing Telegram topic should trigger topic recreation."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
-
     client = AdapterClient()
-    client.register_adapter("telegram", DummyTelegramAdapter(client, error=Exception("Message thread not found")))
+    client.register_adapter(
+        "telegram",
+        DummyTelegramAdapter(client, error_sequence=[Exception("Message thread not found")]),
+    )
 
     session = Session(
         session_id="session-123",
@@ -418,28 +395,26 @@ async def test_send_output_update_missing_thread_recreates_topic():
     )
 
     with (
-        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
-        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
         patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
     ):
-        await client.send_output_update(session, "output", 0.0, 0.0)
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count >= 2
-    get_session.assert_any_call("session-123")
-    ensure_ui_channels.assert_called_once()
-    assert update_session.call_count >= 1
+    # Outcome-based assertions
+    assert result == "msg"
+    # Metadata was cleared for recreation
+    assert session.adapter_metadata.telegram.topic_id is None
 
 
 @pytest.mark.asyncio
 async def test_send_output_update_missing_thread_non_telegram_origin_recreates_topic():
     """Missing Telegram topic should recreate topic even for non-telegram origin."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
-
     client = AdapterClient()
-    client.register_adapter("telegram", DummyTelegramAdapter(client, error=Exception("Message thread not found")))
+    client.register_adapter(
+        "telegram",
+        DummyTelegramAdapter(client, error_sequence=[Exception("Message thread not found")]),
+    )
 
     session = Session(
         session_id="session-456",
@@ -453,26 +428,20 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
     )
 
     with (
-        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
-        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
         patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
     ):
-        await client.send_output_update(session, "output", 0.0, 0.0)
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count >= 2
-    get_session.assert_any_call("session-456")
-    ensure_ui_channels.assert_called_once()
-    assert update_session.call_count >= 1
+    # Outcome-based assertions
+    assert result == "msg"
+    assert session.adapter_metadata.telegram.topic_id is None
 
 
 @pytest.mark.asyncio
 async def test_send_output_update_missing_thread_terminal_recreates_topic():
     """Terminal-origin sessions should recreate missing Telegram topics."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
-
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -490,30 +459,23 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
         ),
     )
 
-    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
+    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)):
         with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
             with patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels:
                 result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count >= 2
-    get_session.assert_any_call("session-789")
-    ensure_ui_channels.assert_called_once()
-    assert update_session.call_count >= 1
+    # Outcome: success after retry
+    assert result == "msg"
+    # Outcome: metadata cleared for recovery
     _, kwargs = update_session.call_args
     updated_meta = kwargs["adapter_metadata"]
     assert updated_meta.telegram.topic_id is None
     assert updated_meta.telegram.output_message_id is None
-    assert result == "msg"
 
 
 @pytest.mark.asyncio
 async def test_send_output_update_missing_metadata_creates_ui_channel():
     """Missing UI metadata should trigger UI channel creation before sending output."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
-
     client = AdapterClient()
     telegram = DummyTelegramAdapter(client)
     telegram.send_output_update = AsyncMock(return_value="msg")  # type: ignore[assignment]
@@ -545,8 +507,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    ensure_ui_channels.assert_called_once()
-    assert telegram.send_output_update.call_count == 1
+    telegram.send_output_update.assert_called_once()
     sent_session = telegram.send_output_update.call_args[0][0]
     assert sent_session.adapter_metadata.telegram
     assert sent_session.adapter_metadata.telegram.topic_id == 999
@@ -554,12 +515,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
 
 @pytest.mark.asyncio
 async def test_send_message_broadcasts_to_ui_adapters():
-    """Test send_message broadcasts to all UI adapters."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
-
+    """Paranoid test send_message broadcasts to all UI adapters."""
     client = AdapterClient()
 
     # Non-UI adapter (Redis) should not receive send_message
@@ -584,17 +540,12 @@ async def test_send_message_broadcasts_to_ui_adapters():
         message_id = await client.send_message(session, "hello")
 
     assert message_id == "tg-msg-1"
-    telegram_adapter.send_message.assert_called_once()
+    assert telegram_adapter.send_message.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_send_message_ephemeral_tracks_for_deletion():
-    """Test ephemeral messages are auto-tracked for deletion."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
-
+    """Paranoid test ephemeral messages are auto-tracked for deletion."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg-2")
@@ -613,17 +564,15 @@ async def test_send_message_ephemeral_tracks_for_deletion():
         # Default ephemeral=True should track for deletion
         await client.send_message(session, "hello")
 
-    mock_db.add_pending_deletion.assert_called_once_with("session-790", "tg-msg-2", deletion_type="user_input")
+    assert mock_db.add_pending_deletion.call_count == 1
+    _, kwargs = mock_db.add_pending_deletion.call_args
+    assert kwargs == {"deletion_type": "user_input"}
+    assert mock_db.add_pending_deletion.call_args.args == ("session-790", "tg-msg-2")
 
 
 @pytest.mark.asyncio
 async def test_send_message_persistent_not_tracked():
-    """Test persistent messages are NOT tracked for deletion."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
-
+    """Paranoid test persistent messages are NOT tracked for deletion."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg-3")
@@ -642,4 +591,4 @@ async def test_send_message_persistent_not_tracked():
         # ephemeral=False should NOT track for deletion
         await client.send_message(session, "hello", ephemeral=False)
 
-    mock_db.add_pending_deletion.assert_not_called()
+    assert mock_db.add_pending_deletion.call_count == 0

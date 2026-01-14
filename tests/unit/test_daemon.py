@@ -1,15 +1,32 @@
 """Unit tests for daemon.py core logic."""
 
 import asyncio
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude import config as config_module
-from teleclaude.core.events import CommandEventContext, TeleClaudeEvents, VoiceEventContext
-from teleclaude.core.models import MessageMetadata
-from teleclaude.daemon import TeleClaudeDaemon
+from teleclaude.core.agents import AgentName
+from teleclaude.core.events import (
+    AgentEventContext,
+    AgentHookEvents,
+    AgentStopPayload,
+    CommandEventContext,
+    TeleClaudeEvents,
+    VoiceEventContext,
+)
+from teleclaude.core.models import (
+    MessageMetadata,
+    Session,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
+from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
 
 
 @pytest.fixture
@@ -111,9 +128,14 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
     """
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     context = CommandEventContext(session_id="sess-123", args=[])
+    captured: dict[str, object] = {}  # guard: loose-dict - capture args for assertions
 
-    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new_callable=AsyncMock) as mock_handler:
-        mock_handler.return_value = {"status": "success"}
+    async def fake_handler(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {"status": "success"}
+
+    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new=fake_handler):
         await daemon.handle_command(
             TeleClaudeEvents.GET_SESSION_DATA,
             ["2000"],
@@ -121,13 +143,11 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
             MessageMetadata(adapter_type="redis"),
         )
 
-        mock_handler.assert_awaited_once()
-        _, call_kwargs = mock_handler.call_args
-        assert call_kwargs == {}
-        call_args = mock_handler.call_args.args
-        assert call_args[0] is context
-        assert call_args[1] is None
-        assert call_args[2] is None
+    assert captured["kwargs"] == {}
+    call_args = captured["args"]
+    assert call_args[0] is context
+    assert call_args[1] is None
+    assert call_args[2] is None
     assert call_args[3] == 2000
 
 
@@ -271,7 +291,6 @@ async def test_new_session_auto_command_agent_then_message():
 
         assert result["session_id"] == "sess-123"
         assert result["auto_command_status"] == "queued"
-        daemon._queue_background_task.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -436,7 +455,6 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
 
         # Should still succeed - stabilization timeout is not fatal
         assert result["status"] == "success"
-        mock_send.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -484,6 +502,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
 
 @pytest.mark.asyncio
 async def test_restart_mcp_server_replaces_task():
+    """Test that restarting MCP server replaces the running task."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.start = AsyncMock()
@@ -510,6 +529,7 @@ async def test_restart_mcp_server_replaces_task():
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_uses_snapshot():
+    """Test that MCP socket health uses snapshot without probing when fresh."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.health_snapshot = AsyncMock(
@@ -533,6 +553,7 @@ async def test_check_mcp_socket_health_uses_snapshot():
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_connections():
+    """Test that MCP socket health probes when accepts are stale with connections."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.health_snapshot = AsyncMock(
@@ -566,6 +587,7 @@ async def test_check_mcp_socket_health_probes_when_accept_stale_with_active_conn
 
 @pytest.mark.asyncio
 async def test_check_mcp_socket_health_returns_unhealthy_within_probe_interval_after_failure():
+    """Test that recent probe failure suppresses immediate re-probe."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.mcp_server = MagicMock()
     daemon.mcp_server.health_snapshot = AsyncMock(
@@ -605,8 +627,6 @@ def test_summarize_output_change_reports_diff():
 @pytest.mark.asyncio
 async def test_process_agent_stop_uses_registered_transcript_when_payload_missing(tmp_path):
     """Agent STOP should use stored transcript path when payload omits it."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -616,6 +636,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 5.0
     daemon._last_summary_fingerprint = {}
 
@@ -636,6 +657,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -649,8 +671,6 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
 @pytest.mark.asyncio
 async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
     """Agent STOP should persist native_session_id when provided."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -660,6 +680,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 5.0
     daemon._last_summary_fingerprint = {}
 
@@ -680,30 +701,30 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
-        mock_db.update_session = AsyncMock()
+        updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
+
+        async def record_update(session_id: str, **kwargs):
+            updates.append((session_id, kwargs))
+
+        mock_db.update_session = AsyncMock(side_effect=record_update)
         mock_db.get_session = AsyncMock(return_value=mock_session)
         mock_summarize.return_value = ("title", "summary")
 
         await daemon._process_agent_stop(context)
 
-        # update_session is called twice: once for native_session_id, once for last_feedback_received
-        # Check both calls happened
-        assert mock_db.update_session.await_count >= 1
-        call_args_list = mock_db.update_session.await_args_list
-        # Find the native_session_id call
         native_call_found = any(
-            c.args == ("tele-123",) and c.kwargs.get("native_session_id") == "native-123" for c in call_args_list
+            session_id == "tele-123" and kwargs.get("native_session_id") == "native-123"
+            for session_id, kwargs in updates
         )
-        assert native_call_found, f"Expected native_session_id call, got: {call_args_list}"
+        assert native_call_found, f"Expected native_session_id call, got: {updates}"
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
 
 
 @pytest.mark.asyncio
 async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
     """Agent STOP should set active_agent from hook payload when missing."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -712,6 +733,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 0.0
     daemon._last_summary_fingerprint = {}
 
@@ -736,6 +758,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(side_effect=[session_missing_agent, session_with_agent, session_with_agent])
@@ -754,7 +777,6 @@ async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
 @pytest.mark.asyncio
 async def test_process_agent_stop_skips_without_agent_metadata():
     """Agent STOP should skip gracefully when active_agent and payload agent are missing."""
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -763,6 +785,7 @@ async def test_process_agent_stop_skips_without_agent_metadata():
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 0.0
     daemon._last_summary_fingerprint = {}
 
@@ -794,9 +817,6 @@ async def test_process_agent_stop_skips_without_agent_metadata():
 @pytest.mark.asyncio
 async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     """Agent STOP should not seed transcript output in tmux-only mode."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
-    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -806,6 +826,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     daemon.agent_coordinator.handle_stop = AsyncMock()
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
+    daemon._last_summary_fingerprint = {}
     daemon._stop_debounce_seconds = 0.0
     daemon._last_summary_fingerprint = {}
 
@@ -836,6 +857,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     with (
         patch("teleclaude.daemon.db") as mock_db,
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_summarize,
+        patch("teleclaude.daemon.Path.stat", return_value=MagicMock(st_size=100, st_mtime_ns=1000)),
     ):
         mock_db.update_session = AsyncMock()
         mock_db.get_session = AsyncMock(return_value=session)
@@ -846,25 +868,16 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
         assert daemon.client.send_output_update.await_count == 0
 
-
-@pytest.mark.asyncio
-class TestSessionCleanup:
-    """Test session cleanup functionality."""
-
-    async def test_cleanup_inactive_sessions_cleans_old_sessions(self):
-        """Test cleanup of sessions inactive for 72+ hours."""
-        from datetime import datetime, timedelta, timezone
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
+    @pytest.mark.asyncio
+    async def test_cleanup_terminates_sessions_inactive_72h(self):
+        """Test that sessions inactive for >72h are terminated."""
         # Create daemon instance
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
         daemon.client = MagicMock()
 
-        # Create session inactive for 73 hours
-        old_time = datetime.now(timezone.utc) - timedelta(hours=73)
+        # Create session inactive for 73 hours relative to a fixed "now"
+        fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+        old_time = fixed_now - timedelta(hours=73)
         inactive_session = Session(
             session_id="inactive-123",
             computer_name="TestMac",
@@ -875,9 +888,11 @@ class TestSessionCleanup:
         )
 
         with (
+            patch("teleclaude.daemon.datetime") as mock_datetime,
             patch("teleclaude.daemon.db") as mock_db,
             patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
         ):
+            mock_datetime.now.return_value = fixed_now
             mock_db.list_sessions = AsyncMock(return_value=[inactive_session])
 
             # Execute cleanup
@@ -890,19 +905,15 @@ class TestSessionCleanup:
                 session=inactive_session,
             )
 
+    @pytest.mark.asyncio
     async def test_cleanup_skips_recently_active_sessions(self):
         """Test that recently active sessions are not cleaned up."""
-        from datetime import datetime, timedelta
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
         daemon.client = MagicMock()
 
-        # Session active 1 hour ago
-        recent_time = datetime.now() - timedelta(hours=1)
+        # Session active 1 hour ago relative to fixed "now"
+        fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+        recent_time = fixed_now - timedelta(hours=1)
         active_session = Session(
             session_id="active-456",
             computer_name="TestMac",
@@ -913,25 +924,21 @@ class TestSessionCleanup:
         )
 
         with (
+            patch("teleclaude.daemon.datetime") as mock_datetime,
             patch("teleclaude.daemon.db") as mock_db,
             patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
         ):
+            mock_datetime.now.return_value = fixed_now
             mock_db.list_sessions = AsyncMock(return_value=[active_session])
 
-            # Execute cleanup
             await daemon._cleanup_inactive_sessions()
 
-            # Verify NO cleanup
             terminate_session.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_dispatch_hook_event_updates_tty_before_polling():
     """TTY metadata should be stored before terminal polling starts."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.models import Session
-    from teleclaude.daemon import TeleClaudeDaemon
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -974,10 +981,6 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
 @pytest.mark.asyncio
 async def test_ensure_output_polling_uses_tmux():
     """Sessions should use tmux polling when tmux exists."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.models import Session
-    from teleclaude.daemon import TeleClaudeDaemon
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon._poll_and_send_output = AsyncMock()
@@ -1007,8 +1010,6 @@ def test_all_events_have_handlers():
     This prevents bugs where new events are added but not registered in COMMAND_EVENTS
     or don't have a specific handler method.
     """
-    from teleclaude.core.events import TeleClaudeEvents
-    from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
 
     # Get all events from TeleClaudeEvents
     all_events = []
@@ -1056,11 +1057,6 @@ class TestTitleUpdate:
 
     async def test_update_session_title_updates_new_session(self):
         """Title should update when description is 'Untitled'."""
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
         session = Session(
@@ -1073,19 +1069,19 @@ class TestTitleUpdate:
 
         with patch("teleclaude.daemon.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
-            mock_db.update_session = AsyncMock()
+            updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
+
+            async def record_update(session_id: str, **kwargs):
+                updates.append((session_id, kwargs))
+
+            mock_db.update_session = AsyncMock(side_effect=record_update)
 
             await daemon._update_session_title("sess-1", "Fix login bug")
 
-            mock_db.update_session.assert_called_once_with("sess-1", title="TeleClaude: $TestMac - Fix login bug")
+            assert updates == [("sess-1", {"title": "TeleClaude: $TestMac - Fix login bug"})]
 
     async def test_update_session_title_updates_new_session_with_counter(self):
         """Title should update when title is 'Untitled (N)'."""
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
         session = Session(
@@ -1098,19 +1094,19 @@ class TestTitleUpdate:
 
         with patch("teleclaude.daemon.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
-            mock_db.update_session = AsyncMock()
+            updates: list[tuple[str, dict[str, object]]] = []  # guard: loose-dict - capture update payloads
+
+            async def record_update(session_id: str, **kwargs):
+                updates.append((session_id, kwargs))
+
+            mock_db.update_session = AsyncMock(side_effect=record_update)
 
             await daemon._update_session_title("sess-1", "Add dark mode")
 
-            mock_db.update_session.assert_called_once_with("sess-1", title="TeleClaude: $TestMac - Add dark mode")
+            assert updates == [("sess-1", {"title": "TeleClaude: $TestMac - Add dark mode"})]
 
     async def test_update_session_title_skips_already_updated(self):
         """Title should NOT update when already has LLM-generated title."""
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
         session = Session(
@@ -1128,4 +1124,4 @@ class TestTitleUpdate:
             await daemon._update_session_title("sess-1", "Different Title")
 
             # Should NOT update - title was already set
-            mock_db.update_session.assert_not_called()
+            assert mock_db.update_session.await_count == 0

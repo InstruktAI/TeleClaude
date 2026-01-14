@@ -21,6 +21,7 @@ def _load_wrapper_module(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_refresh_tool_cache_if_needed_updates_on_mtime_change(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Test that tool cache refresh detects file mtime changes and reloads."""
     cache_path = tmp_path / "mcp-tools-cache.json"
     monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(cache_path))
     wrapper = _load_wrapper_module(monkeypatch)

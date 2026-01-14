@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.models import Session, SessionAdapterMetadata
 from teleclaude.daemon import TeleClaudeDaemon
@@ -12,6 +15,7 @@ from teleclaude.daemon import TeleClaudeDaemon
 
 @pytest.mark.asyncio
 async def test_poller_watch_creates_ui_channel_when_missing_topic():
+    """Test that poller watch ensures UI channels when topic metadata missing."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = Mock()
     daemon.client.ensure_ui_channels = AsyncMock()

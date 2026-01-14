@@ -1,8 +1,11 @@
 """Unit tests for terminal_io routing."""
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import terminal_io
 from teleclaude.core.models import Session
@@ -10,6 +13,7 @@ from teleclaude.core.models import Session
 
 @pytest.mark.asyncio
 async def test_send_text_prefers_existing_tmux():
+    """Test that send_text targets existing tmux sessions when present."""
     session = Session(
         session_id="sid-123",
         computer_name="test",
@@ -36,6 +40,7 @@ async def test_send_text_prefers_existing_tmux():
 
 @pytest.mark.asyncio
 async def test_send_text_creates_tmux_when_missing():
+    """Test that send_text falls back to creating tmux when session missing."""
     session = Session(
         session_id="sid-456",
         computer_name="test",

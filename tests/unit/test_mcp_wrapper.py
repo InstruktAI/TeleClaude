@@ -88,6 +88,7 @@ def _init_session_db(db_path: Path, session_id: str, tmux_name: str) -> None:
 
 @pytest.mark.asyncio
 async def test_backend_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that backend resync replays handshake still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -128,6 +129,7 @@ async def test_backend_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.asyncio
 async def test_startup_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that startup resync replays handshake still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -169,6 +171,7 @@ async def test_startup_resync_replays_handshake(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.asyncio
 async def test_socket_to_stdout_swallows_backend_initialize_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that socket to stdout swallows backend initialize response still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -204,6 +207,7 @@ async def test_socket_to_stdout_swallows_backend_initialize_response(monkeypatch
 
 @pytest.mark.asyncio
 async def test_cached_handshake_emits_single_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that cached handshake emits single response still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -241,6 +245,7 @@ async def test_cached_handshake_emits_single_response(monkeypatch: pytest.Monkey
 
 @pytest.mark.asyncio
 async def test_handle_initialize_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that handle initialize times out still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     wrapper.INIT_TIMEOUT = 0.01
     proxy = wrapper.MCPProxy()
@@ -253,6 +258,7 @@ async def test_handle_initialize_times_out(monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.mark.asyncio
 async def test_handle_initialize_schedules_reconnect(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that handle initialize schedules reconnect still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -284,6 +290,7 @@ async def test_handle_initialize_schedules_reconnect(monkeypatch: pytest.MonkeyP
 
 @pytest.mark.asyncio
 async def test_response_timeout_sends_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that response timeout sends error still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     monkeypatch.setattr(wrapper, "RESPONSE_CHECK_INTERVAL", 0.01)
     proxy = wrapper.MCPProxy()
@@ -311,6 +318,7 @@ async def test_response_timeout_sends_error(monkeypatch: pytest.MonkeyPatch) -> 
 
 @pytest.mark.asyncio
 async def test_socket_to_stdout_drops_late_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that socket to stdout drops late response still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -335,6 +343,7 @@ async def test_socket_to_stdout_drops_late_response(monkeypatch: pytest.MonkeyPa
 
 @pytest.mark.asyncio
 async def test_socket_sender_exits_on_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that socket sender exits on shutdown still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -354,6 +363,7 @@ async def test_socket_sender_exits_on_shutdown(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.asyncio
 async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that long running tool uses extended timeout still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -376,6 +386,7 @@ async def test_long_running_tool_uses_extended_timeout(monkeypatch: pytest.Monke
 
 @pytest.mark.asyncio
 async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that acquire connect lock times out still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -410,6 +421,7 @@ async def test_acquire_connect_lock_times_out(monkeypatch: pytest.MonkeyPatch) -
 
 @pytest.mark.asyncio
 async def test_connect_guard_enables_after_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that connect guard enables after failures still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -428,6 +440,7 @@ async def test_connect_guard_enables_after_failures(monkeypatch: pytest.MonkeyPa
 
 @pytest.mark.asyncio
 async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Paranoid test that tools list uses cached response still holds when everything is on fire."""
     monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(tmp_path / "missing.json"))
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
@@ -458,6 +471,7 @@ async def test_tools_list_uses_cached_response(monkeypatch: pytest.MonkeyPatch, 
 
 @pytest.mark.asyncio
 async def test_tools_list_errors_without_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Paranoid test that tools list errors without cache still holds when everything is on fire."""
     monkeypatch.setenv("MCP_WRAPPER_TOOL_CACHE_PATH", str(tmp_path / "missing.json"))
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
@@ -482,6 +496,7 @@ async def test_tools_list_errors_without_cache(monkeypatch: pytest.MonkeyPatch, 
 
 @pytest.mark.asyncio
 async def test_tools_list_forwards_when_connected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that tools list forwards when connected still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
 
@@ -513,6 +528,7 @@ async def test_tools_list_forwards_when_connected(monkeypatch: pytest.MonkeyPatc
 def test_inject_context_does_not_use_tmux_lookup_for_caller_session(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Paranoid test that inject context does not use tmux lookup for caller session."""
     wrapper = _load_wrapper_module(monkeypatch)
 
     db_path = tmp_path / "teleclaude.db"
@@ -534,6 +550,7 @@ def test_inject_context_does_not_use_tmux_lookup_for_caller_session(
 
 
 def test_inject_context_uses_tmpdir_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Paranoid test that inject context uses tmpdir marker still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
 
     session_id = "fe4aff3e-8f3b-483f-bd3d-4a09811bb3ba"
@@ -550,6 +567,7 @@ def test_inject_context_uses_tmpdir_marker(monkeypatch: pytest.MonkeyPatch, tmp_
 
 
 def test_inject_context_does_not_use_tmpdir_path_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Paranoid test that inject context does not use tmpdir path fallback still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
 
     session_id = "fe4aff3e-8f3b-483f-bd3d-4a09811bb3ba"
@@ -565,6 +583,7 @@ def test_inject_context_does_not_use_tmpdir_path_fallback(monkeypatch: pytest.Mo
 
 
 def test_inject_context_overrides_blank_caller_session_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Paranoid test that inject context overrides blank caller session id still holds when everything is on fire."""
     wrapper = _load_wrapper_module(monkeypatch)
 
     session_id = "session-123"

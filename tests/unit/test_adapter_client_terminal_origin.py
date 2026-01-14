@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client import AdapterClient
@@ -86,6 +89,7 @@ def _make_terminal_session() -> Session:
 
 @pytest.mark.asyncio
 async def test_terminal_origin_send_message_broadcasts_to_ui():
+    """Test that terminal-origin send_message routes to UI adapter."""
     client = AdapterClient()
     adapter = DummyUiAdapter(client)
     client.register_adapter("telegram", adapter)

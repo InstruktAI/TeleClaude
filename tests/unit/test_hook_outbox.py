@@ -1,15 +1,19 @@
 """Unit tests for hook outbox database helpers."""
 
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.db import Db
 
 
 @pytest.mark.asyncio
 async def test_hook_outbox_lifecycle(tmp_path: Path) -> None:
+    """Test enqueue, claim, fail, and deliver lifecycle for hook outbox rows."""
     db = Db(str(tmp_path / "teleclaude.db"))
     await db.initialize()
 
