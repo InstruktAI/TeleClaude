@@ -122,6 +122,7 @@ async def test_cleanup_stale_session_detects_missing_tmux():
 @patch("teleclaude.core.session_cleanup.subprocess.run")
 @patch("teleclaude.core.session_cleanup.os.kill")
 async def test_cleanup_orphan_mcp_wrappers_kills_ppid1(mock_kill, mock_run):
+    """Test that orphaned MCP wrappers with PPID 1 are terminated."""
     mock_run.return_value = MagicMock(
         stdout=" 111 1 /usr/bin/python /path/bin/mcp-wrapper.py\n 222 2 /usr/bin/python /path/bin/mcp-wrapper.py\n"
     )
@@ -135,6 +136,7 @@ async def test_cleanup_orphan_mcp_wrappers_kills_ppid1(mock_kill, mock_run):
 @pytest.mark.asyncio
 @patch("teleclaude.core.session_cleanup.subprocess.run")
 async def test_cleanup_orphan_mcp_wrappers_noop(mock_run):
+    """Test that cleanup_orphan_mcp_wrappers skips non-orphaned processes."""
     mock_run.return_value = MagicMock(stdout=" 111 2 /usr/bin/python /path/bin/mcp-wrapper.py\n")
 
     killed = await cleanup_orphan_mcp_wrappers()
@@ -200,6 +202,7 @@ async def test_terminate_session_deletes_db_and_resources():
 
 @pytest.mark.asyncio
 async def test_terminate_session_kills_tmux_for_terminal_origin():
+    """Test that terminal-origin sessions use tmux kill on termination."""
     mock_session = MagicMock()
     mock_session.session_id = "session-456"
     mock_session.tmux_session_name = "terminal:deadbeef"
@@ -280,6 +283,7 @@ async def test_cleanup_all_stale_sessions_handles_empty_list():
 
 @pytest.mark.asyncio
 async def test_cleanup_session_resources_uses_to_thread_for_rmtree(monkeypatch, tmp_path: Path) -> None:
+    """Test that cleanup_session_resources offloads rmtree via asyncio.to_thread."""
     called = {}
 
     async def fake_to_thread(func, *args, **kwargs):
