@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from teleclaude.core.models import ThinkingMode
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude.mcp.handlers import MCPHandlersMixin
 
 
