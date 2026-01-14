@@ -3,12 +3,14 @@
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 import pytest
 
 from teleclaude.core.db import Db
+from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
 
 @pytest.fixture
@@ -254,8 +256,6 @@ class TestUpdateSession:
     @pytest.mark.asyncio
     async def test_update_adapter_metadata(self, test_db):
         """Test updating adapter_metadata."""
-        from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
-
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
         new_metadata = SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456))
@@ -275,16 +275,16 @@ class TestUpdateLastActivity:
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
         original_activity = session.last_activity
 
-        # Wait a tiny bit to ensure timestamp changes
-        import asyncio
-
-        await asyncio.sleep(0.01)
-
-        await test_db.update_last_activity(session.session_id)
+        # Fixed time for update
+        fixed_now = datetime.now(timezone.utc) + timedelta(seconds=1)
+        with patch("teleclaude.core.db.datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            await test_db.update_last_activity(session.session_id)
 
         updated = await test_db.get_session(session.session_id)
-        # Should have updated timestamp (comparing as strings is fine)
+        # Should have updated timestamp
         assert updated.last_activity != original_activity
+        assert updated.last_activity == fixed_now
 
 
 class TestDeleteSession:
