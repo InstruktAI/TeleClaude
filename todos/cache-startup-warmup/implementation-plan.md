@@ -23,6 +23,6 @@ Add two small features: warmup on daemon startup and digest-based project invali
    - If changed, trigger `pull_remote_projects_with_todos()` for that computer.
    - Update stored digest after refresh.
 
-5. [ ] **Tests**
+5. [x] **Tests**
    - Unit test for digest generation (deterministic, stable).
    - Integration test for digest-triggered refresh.

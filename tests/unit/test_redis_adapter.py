@@ -305,3 +305,32 @@ async def test_connection_error_handling():
     # Should handle error gracefully and return empty list
     peers = await adapter.discover_peers()
     assert peers == []
+
+
+def test_compute_projects_digest_is_deterministic(tmp_path, monkeypatch):
+    """Digest should be deterministic regardless of trusted dir order."""
+    from types import SimpleNamespace
+
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.config import config
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+
+    project_one = tmp_path / "alpha"
+    project_two = tmp_path / "beta"
+    project_one.mkdir()
+    project_two.mkdir()
+
+    trusted_dirs = [
+        SimpleNamespace(path=str(project_two)),
+        SimpleNamespace(path=str(project_one)),
+    ]
+
+    monkeypatch.setattr(config.computer, "get_all_trusted_dirs", lambda: trusted_dirs)
+    digest_first = adapter._compute_projects_digest()
+
+    trusted_dirs.reverse()
+    digest_second = adapter._compute_projects_digest()
+
+    assert digest_first == digest_second
