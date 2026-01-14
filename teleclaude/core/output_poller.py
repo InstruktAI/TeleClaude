@@ -136,9 +136,7 @@ class OutputPoller:
             while True:
                 poll_iteration += 1
 
-                session_exists_now = await terminal_bridge.session_exists(
-                    tmux_session_name, log_missing=False
-                )
+                session_exists_now = await terminal_bridge.session_exists(tmux_session_name, log_missing=False)
                 if session_exists_now:
                     captured_output = await terminal_bridge.capture_pane(tmux_session_name)
                 else:
