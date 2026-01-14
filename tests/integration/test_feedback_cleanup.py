@@ -4,9 +4,12 @@ With the unified ephemeral message design, ALL tracked messages
 (user input and feedback) are cleaned on next user input.
 """
 
+import os
 from unittest.mock import patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import terminal_bridge
 from teleclaude.core.events import TeleClaudeEvents
@@ -65,9 +68,15 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
             ),
         )
 
-    # Verify delete_message was called for tracked messages
-    delete_count = telegram_adapter.delete_message.call_count - initial_delete_calls
-    assert delete_count >= 2, f"Expected at least 2 deletes, got {delete_count}"
+    # System boundary: verify the adapter attempted deletes for the tracked message ids.
+    delete_calls = telegram_adapter.delete_message.call_args_list[initial_delete_calls:]
+    deleted_ids: set[str] = set()
+    for call in delete_calls:
+        if len(call.args) >= 2:
+            deleted_ids.add(call.args[1])
+        elif "message_id" in call.kwargs:
+            deleted_ids.add(call.kwargs["message_id"])
+    assert {feedback_msg_id, error_msg_id}.issubset(deleted_ids)
 
     # Verify pending deletions were cleared
     pending_after = await daemon.db.get_pending_deletions(session.session_id)
