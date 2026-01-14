@@ -1,11 +1,15 @@
 """Unit tests for hook receiver error handling."""
 
 import argparse
+import os
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 
 def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
+    """Test that normalization exceptions emit error events and exit nonzero."""
     from teleclaude.hooks import receiver
 
     sent = []
@@ -107,6 +111,7 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
 
 
 def test_receiver_recovers_from_native_session_id(monkeypatch):
+    """Test that missing env session is recovered from native session id."""
     from teleclaude.hooks import receiver
 
     sent = []
@@ -132,6 +137,7 @@ def test_receiver_recovers_from_native_session_id(monkeypatch):
 
 
 def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
+    """Test that gemini after_agent is mapped to stop before enqueue."""
     from teleclaude.hooks import receiver
 
     sent = []
