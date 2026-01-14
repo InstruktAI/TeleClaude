@@ -3,20 +3,26 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import AsyncMock, patch
 
-os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+import pytest
 
+from teleclaude.core.models import ThinkingMode
 from teleclaude.mcp.handlers import MCPHandlersMixin
 
 
 class DummyHandlers(MCPHandlersMixin):
     """Minimal handler implementation for helper testing."""
 
-    client = object()
-    computer_name = "local"
+    def __init__(self):
+        self.client = AsyncMock()
+        self.computer_name = "local"
 
     def _is_local_computer(self, computer: str) -> bool:
         return computer == "local"
+
+    async def _get_caller_agent_info(self, caller_session_id: str | None) -> tuple[str | None, str | None]:
+        return None, None
 
     async def _send_remote_request(
         self, *args: object, **kwargs: object
@@ -24,32 +30,49 @@ class DummyHandlers(MCPHandlersMixin):
         raise NotImplementedError
 
     async def _register_listener_if_present(self, target_session_id: str, caller_session_id: str | None = None) -> None:
-        raise NotImplementedError
+        pass
 
     def _track_background_task(self, task: object, label: str) -> None:
-        raise NotImplementedError
+        pass
 
 
-def test_extract_tmux_session_name_returns_none_for_non_success():
-    """Test that _extract_tmux_session_name returns None on non-success results."""
+@pytest.mark.asyncio
+async def test_start_session_extracts_tmux_name_from_event_result():
+    """Test that teleclaude__start_session correctly extracts and returns tmux_session_name."""
     handler = DummyHandlers()
 
-    assert handler._extract_tmux_session_name({"status": "error"}) is None
-    assert handler._extract_tmux_session_name("not-a-dict") is None
+    # Mock handle_event to return a successful result with tmux name
+    handler.client.handle_event.return_value = {
+        "status": "success",
+        "data": {"session_id": "sess-123", "tmux_session_name": "tmux-123"},
+    }
+
+    result = await handler.teleclaude__start_session(
+        computer="local",
+        project_dir="/tmp",
+        title="Test Session",
+        message=None,  # skip agent start for simplicity
+    )
+
+    assert result["status"] == "success"
+    assert result["session_id"] == "sess-123"
+    assert result["tmux_session_name"] == "tmux-123"
 
 
-def test_extract_tmux_session_name_returns_value_when_present():
-    """Test that _extract_tmux_session_name returns tmux_session_name from result data."""
+@pytest.mark.asyncio
+async def test_start_session_handles_missing_tmux_name():
+    """Test that teleclaude__start_session handles results where tmux_name is missing."""
     handler = DummyHandlers()
 
-    result = {"status": "success", "data": {"tmux_session_name": "tmux-123"}}
+    # Success but missing tmux name (or malformed data)
+    handler.client.handle_event.return_value = {
+        "status": "success",
+        "data": {"session_id": "sess-123"},
+    }
 
-    assert handler._extract_tmux_session_name(result) == "tmux-123"
+    result = await handler.teleclaude__start_session(
+        computer="local", project_dir="/tmp", title="Test Session", message=None
+    )
 
-
-def test_extract_tmux_session_name_handles_missing_data():
-    """Test that _extract_tmux_session_name returns None when data is malformed."""
-    handler = DummyHandlers()
-
-    assert handler._extract_tmux_session_name({"status": "success", "data": "not-a-dict"}) is None
-    assert handler._extract_tmux_session_name({"status": "success", "data": {}}) is None
+    assert result["status"] == "success"
+    assert result.get("tmux_session_name") is None
