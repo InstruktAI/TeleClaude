@@ -157,6 +157,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Review mock assertions in `tests/integration/test_feedback_cleanup.py`
 - [x] Tighten docstrings in `tests/unit/test_voice_assignment.py`
 - [x] Add docstrings in `tests/unit/test_agent_parsers.py`
+- [x] Add docstrings in `tests/unit/test_terminal_io.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
