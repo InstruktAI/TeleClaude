@@ -11,6 +11,7 @@ import json
 import os
 import shlex
 import time
+import traceback
 from typing import TYPE_CHECKING, AsyncIterator, Literal
 
 import uvicorn
@@ -87,6 +88,7 @@ class RESTAdapter(BaseAdapter):
         self._setup_routes()
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
+        self._metrics_task: asyncio.Task[object] | None = None
         self._running = False
         self._restart_lock = asyncio.Lock()
         self._restart_attempts = 0
@@ -894,11 +896,13 @@ class RESTAdapter(BaseAdapter):
         self._running = True
         logger.info("REST API server starting")
         await self._start_server()
+        self._start_metrics_task()
 
     async def stop(self) -> None:
         """Stop the REST API server."""
         self._running = False
         logger.info("REST API server stopping")
+        await self._stop_metrics_task()
         # Unsubscribe from cache changes
         if self.cache:
             self.cache.unsubscribe(self._on_cache_change)
@@ -916,13 +920,13 @@ class RESTAdapter(BaseAdapter):
         # No need to explicitly clear cache interest
 
         await self._stop_server()
-        self._cleanup_socket()
+        self._cleanup_socket("stop")
 
         logger.info("REST API server stopped")
 
     async def _start_server(self) -> None:
         """Start uvicorn server and attach restart handler."""
-        self._cleanup_socket()
+        self._cleanup_socket("start_server")
 
         config = uvicorn.Config(
             self.app,
@@ -978,11 +982,64 @@ class RESTAdapter(BaseAdapter):
                 # Suppress errors during teardown (socket already gone, etc.)
                 logger.debug("Error during server shutdown: %s", e)
 
-    def _cleanup_socket(self) -> None:
-        """Remove stale REST socket file if present."""
+    def _start_metrics_task(self) -> None:
+        """Start periodic REST metrics logging."""
+        if self._metrics_task and not self._metrics_task.done():
+            return
+        coro = self._metrics_loop()
+        if self.task_registry:
+            self._metrics_task = self.task_registry.spawn(coro, name="rest-metrics")
+        else:
+            self._metrics_task = asyncio.create_task(coro)
+
+    async def _stop_metrics_task(self) -> None:
+        """Stop periodic REST metrics logging."""
+        if not self._metrics_task:
+            return
+        if not self._metrics_task.done():
+            self._metrics_task.cancel()
+            try:
+                await self._metrics_task
+            except asyncio.CancelledError:
+                pass
+        self._metrics_task = None
+
+    async def _metrics_loop(self) -> None:
+        """Log REST server resource metrics periodically."""
+        while self._running:
+            fd_count = _get_fd_count()
+            ws_count = len(self._ws_clients)
+            task_count = self.task_registry.task_count() if self.task_registry else 0
+            server_started = getattr(self.server, "started", None) if self.server else None
+            server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
+            server_task_done = self.server_task.done() if self.server_task else None
+            logger.info(
+                "REST metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
+                fd_count,
+                ws_count,
+                task_count,
+                server_started,
+                server_should_exit,
+                server_task_done,
+            )
+            await asyncio.sleep(60)
+
+    def _cleanup_socket(self, reason: str) -> None:
+        """Remove REST socket file if present."""
         if not os.path.exists(REST_SOCKET_PATH):
             return
         try:
+            server_started = getattr(self.server, "started", None) if self.server else None
+            server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
+            stack = "".join(traceback.format_stack(limit=6))
+            logger.warning(
+                "Removing REST socket (reason=%s started=%s should_exit=%s): %s",
+                reason,
+                server_started,
+                server_should_exit,
+                REST_SOCKET_PATH,
+            )
+            logger.debug("REST socket removal stack:\n%s", stack)
             os.unlink(REST_SOCKET_PATH)
         except OSError as e:
             logger.warning("Failed to remove REST socket %s: %s", REST_SOCKET_PATH, e)
@@ -1135,3 +1192,11 @@ class RESTAdapter(BaseAdapter):
                 yield ""
 
         return _empty()
+
+
+def _get_fd_count() -> int:
+    """Return count of open file descriptors for current process."""
+    try:
+        return len(os.listdir("/dev/fd"))
+    except OSError:
+        return -1

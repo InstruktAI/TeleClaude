@@ -6,9 +6,13 @@ import fcntl
 import hashlib
 import json
 import os
+import platform
 import re
+import resource
 import signal
+import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,6 +23,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
+from teleclaude.adapters.rest_adapter import RESTAdapter
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
@@ -111,12 +116,38 @@ MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_IN
 MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
 MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
 
+# Resource monitoring
+RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
+LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))
+LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"
+
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
 HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
 HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
+
+
+def _get_fd_count() -> int | None:
+    """Return open file descriptor count if available."""
+    try:
+        return len(os.listdir("/dev/fd"))
+    except OSError:
+        return None
+
+
+def _get_rss_kb() -> int | None:
+    """Return resident set size in KB when available."""
+    try:
+        rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except (ValueError, OSError):
+        return None
+
+    if sys.platform == "darwin":
+        return int(rss / 1024)
+    return rss
+
 
 # Terminal outbox worker (telec)
 TERMINAL_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("TERMINAL_OUTBOX_POLL_INTERVAL_S", "0.5"))
@@ -258,6 +289,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
         self.mcp_task: asyncio.Task[object] | None = None
+        self.resource_monitor_task: asyncio.Task[object] | None = None
+        self.launchd_watch_task: asyncio.Task[object] | None = None
+        self._start_time = time.time()
+        self._shutdown_reason: str | None = None
         self._mcp_restart_lock = asyncio.Lock()
         self._mcp_restart_attempts = 0
         self._mcp_restart_window_start = 0.0
@@ -1704,6 +1739,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.terminal_outbox_task.add_done_callback(self._log_background_task_exception("terminal_outbox"))
         logger.info("Terminal outbox worker started")
 
+        self.resource_monitor_task = asyncio.create_task(self._resource_monitor_loop())
+        self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
+        logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
+        self._log_resource_snapshot("startup")
+
+        if LAUNCHD_WATCH_ENABLED:
+            self.launchd_watch_task = asyncio.create_task(self._launchd_watch_loop())
+            self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
+            logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
+
         # CodexWatcher disabled - using native Codex notify hook instead (2026-01)
         # Keeping code for fallback. Remove after notify hook proven stable.
         # await self.codex_watcher.start()
@@ -1765,6 +1810,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.CancelledError:
                 pass
             logger.info("Terminal outbox worker stopped")
+
+        if self.resource_monitor_task:
+            self.resource_monitor_task.cancel()
+            try:
+                await self.resource_monitor_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Resource monitor stopped")
+
+        if self.launchd_watch_task:
+            self.launchd_watch_task.cancel()
+            try:
+                await self.launchd_watch_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Launchd watch task stopped")
 
         # Stop session watcher
         if hasattr(self, "codex_watcher"):
@@ -2043,6 +2104,88 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.error("Error in poller watch loop: %s", e)
             await asyncio.sleep(1.0)
 
+    def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
+        """Collect a lightweight resource snapshot for diagnostics."""
+        rest_adapter_base = self.client.adapters.get("rest")
+        rest_ws_clients: int | None = None
+        if rest_adapter_base and isinstance(rest_adapter_base, RESTAdapter):
+            rest_ws_clients = len(rest_adapter_base._ws_clients)
+
+        mcp_connections: int | None = None
+        if self.mcp_server:
+            mcp_connections = self.mcp_server._active_connections
+
+        uptime_s = int(time.time() - self._start_time)
+        snapshot: dict[str, int | float | str | None] = {
+            "event": "resource_snapshot",
+            "reason": reason,
+            "pid": os.getpid(),
+            "uptime_s": uptime_s,
+            "fd_count": _get_fd_count(),
+            "rss_kb": _get_rss_kb(),
+            "threads": threading.active_count(),
+            "asyncio_tasks": len(cast(set[asyncio.Task[object]], asyncio.all_tasks())),
+            "tracked_tasks": self.task_registry.task_count(),
+            "mcp_connections": mcp_connections,
+            "rest_ws_clients": rest_ws_clients,
+        }
+        return snapshot
+
+    def _log_resource_snapshot(self, reason: str) -> None:
+        """Log a resource snapshot without blocking the event loop."""
+        snapshot = self._collect_resource_snapshot(reason)
+        logger.info("Resource snapshot", **snapshot)
+
+    def request_shutdown(self, reason: str) -> None:
+        """Request graceful shutdown and capture diagnostics."""
+        self._shutdown_reason = reason
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.shutdown_event.set()
+            return
+
+        loop.call_soon_threadsafe(self.shutdown_event.set)
+        loop.call_soon_threadsafe(self._log_resource_snapshot, f"shutdown:{reason}")
+
+    async def _resource_monitor_loop(self) -> None:
+        """Periodically log resource snapshots."""
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(RESOURCE_SNAPSHOT_INTERVAL_S)
+            if self.shutdown_event.is_set():
+                break
+            self._log_resource_snapshot("periodic")
+
+    async def _launchd_watch_loop(self) -> None:
+        """Periodically log launchd state for this job on macOS."""
+        if platform.system().lower() != "darwin":
+            return
+        last_output: str | None = None
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(LAUNCHD_WATCH_INTERVAL_S)
+            if self.shutdown_event.is_set():
+                break
+            try:
+                result = subprocess.run(
+                    ["launchctl", "blame", f"gui/{os.getuid()}/ai.instrukt.teleclaude.daemon"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                output = result.stdout.strip() or result.stderr.strip()
+                if not output:
+                    output = f"launchctl exit={result.returncode}"
+                if output != last_output:
+                    logger.info(
+                        "Launchd state",
+                        event="launchd_state",
+                        reason=output,
+                        exit_code=result.returncode,
+                    )
+                    last_output = output
+            except OSError as e:
+                logger.warning("Launchd probe failed: %s", e)
+
     async def _poller_watch_iteration(self) -> None:
         """Run a single poller watch iteration (extracted for testing)."""
         sessions = await db.get_active_sessions()
@@ -2178,7 +2321,7 @@ async def main() -> None:
         """Handle termination signals."""
         sig_name = signal.Signals(signum).name
         logger.info("Received %s signal...", sig_name)
-        daemon.shutdown_event.set()
+        daemon.request_shutdown(sig_name)
 
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
