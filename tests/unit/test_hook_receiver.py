@@ -7,11 +7,11 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.hooks import receiver
+
 
 def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
     """Test that normalization exceptions emit error events and exit nonzero."""
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -42,8 +42,6 @@ def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
 
 def test_receiver_exits_cleanly_without_session(monkeypatch):
     """Standalone sessions (not started via TeleClaude) should exit cleanly."""
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -65,8 +63,6 @@ def test_receiver_exits_cleanly_without_session(monkeypatch):
 
 def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
     """When tmux recovery fails, exit cleanly (standalone session)."""
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -88,8 +84,6 @@ def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
 
 def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
     """When env session ID doesn't exist in DB and recovery fails, exit cleanly."""
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -112,8 +106,6 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
 
 def test_receiver_recovers_from_native_session_id(monkeypatch):
     """Test that missing env session is recovered from native session id."""
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -138,8 +130,6 @@ def test_receiver_recovers_from_native_session_id(monkeypatch):
 
 def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
     """Test that gemini after_agent is mapped to stop before enqueue."""
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -164,8 +154,6 @@ def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
 
 
 def test_receiver_includes_agent_name_in_payload(monkeypatch):
-    from teleclaude.hooks import receiver
-
     sent = []
 
     def fake_enqueue(session_id, event_type, data):

@@ -17,6 +17,8 @@ from teleclaude.core.models import (
     TelegramAdapterMetadata,
 )
 
+FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0)
+
 
 class DummyTelegramAdapter(UiAdapter):
     ADAPTER_KEY = "telegram"
@@ -125,13 +127,13 @@ async def test_adapter_client_discover_peers_single_adapter():
             PeerInfo(
                 name="macbook",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="telegram",
             ),
             PeerInfo(
                 name="workstation",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="telegram",
             ),
         ]
@@ -159,7 +161,7 @@ async def test_adapter_client_discover_peers_multiple_adapters():
             PeerInfo(
                 name="macbook",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="telegram",
             )
         ]
@@ -171,13 +173,13 @@ async def test_adapter_client_discover_peers_multiple_adapters():
             PeerInfo(
                 name="workstation",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             ),
             PeerInfo(
                 name="server",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             ),
         ]
@@ -201,7 +203,7 @@ async def test_adapter_client_deduplication():
     client = AdapterClient()
 
     # Create mock adapters with overlapping peers
-    now = datetime.now()
+    now = FIXED_NOW
     mock_telegram = Mock()
     mock_telegram.discover_peers = AsyncMock(
         return_value=[
@@ -264,7 +266,7 @@ async def test_adapter_client_handles_adapter_errors():
             PeerInfo(
                 name="workstation",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             )
         ]
@@ -320,7 +322,7 @@ async def test_adapter_client_system_stats_passthrough():
             PeerInfo(
                 name="server",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
                 user="testuser",
                 host="server.local",
@@ -358,7 +360,7 @@ async def test_adapter_client_discover_peers_redis_disabled():
             PeerInfo(
                 name="should-not-appear",
                 status="online",
-                last_seen=datetime.now(),
+                last_seen=FIXED_NOW,
                 adapter_type="redis",
             )
         ]

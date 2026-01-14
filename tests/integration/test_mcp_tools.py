@@ -10,16 +10,16 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.core import terminal_bridge
 from teleclaude.mcp_server import TeleClaudeMCPServer
+
+FIXED_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest.fixture
 async def mcp_server(daemon_with_mocked_telegram):
     """Create MCP server with mocked dependencies."""
     daemon = daemon_with_mocked_telegram
-
-    # Import terminal_bridge module
-    from teleclaude.core import terminal_bridge
 
     # Create MCP server using daemon's adapter_client
     server = TeleClaudeMCPServer(adapter_client=daemon.client, terminal_bridge=terminal_bridge)
@@ -36,13 +36,13 @@ async def test_teleclaude_list_computers(mcp_server):
             {
                 "name": "testcomp",
                 "status": "online",
-                "last_seen": datetime.now(timezone.utc),
+                "last_seen": FIXED_NOW,
                 "bot_username": "@teleclaude_testcomp_bot",
             },
             {
                 "name": "workstation",
                 "status": "online",
-                "last_seen": datetime.now(timezone.utc),
+                "last_seen": FIXED_NOW,
                 "bot_username": "@teleclaude_workstation_bot",
             },
         ]

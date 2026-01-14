@@ -12,6 +12,8 @@ import pytest
 from teleclaude.core.db import Db
 from teleclaude.core.models import SessionAdapterMetadata, TelegramAdapterMetadata
 
+FIXED_NOW = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
 
 @pytest.fixture
 async def test_db():
@@ -174,7 +176,7 @@ class TestAgentAvailability:
     @pytest.mark.asyncio
     async def test_get_agent_availability_clears_expired(self, test_db):
         """Expired unavailability should be cleared on read."""
-        past = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        past = (FIXED_NOW - timedelta(minutes=5)).isoformat()
         await test_db.conn.execute(
             """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
                VALUES (?, 0, ?, ?)""",
@@ -197,7 +199,7 @@ class TestAgentAvailability:
     @pytest.mark.asyncio
     async def test_mark_agent_available_clears_unavailability(self, test_db):
         """Marking available should clear unavailable_until and reason."""
-        future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        future = (FIXED_NOW + timedelta(minutes=10)).isoformat()
         await test_db.conn.execute(
             """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
                VALUES (?, 0, ?, ?)""",
@@ -276,7 +278,7 @@ class TestUpdateLastActivity:
         original_activity = session.last_activity
 
         # Fixed time for update
-        fixed_now = datetime.now(timezone.utc) + timedelta(seconds=1)
+        fixed_now = FIXED_NOW + timedelta(seconds=1)
         with patch("teleclaude.core.db.datetime") as mock_datetime:
             mock_datetime.now.return_value = fixed_now
             await test_db.update_last_activity(session.session_id)

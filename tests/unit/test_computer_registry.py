@@ -3,6 +3,7 @@
 import os
 import re
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -180,8 +181,6 @@ def test_get_computer_info():
 @pytest.mark.asyncio
 async def test_ping_pong_edit_same_messages():
     """Test that ping and pong messages EDIT the same messages, not create new ones."""
-    from unittest.mock import AsyncMock, Mock
-
     # Mock adapter with full bot structure
     mock_client = Mock()
     mock_client.send_message_to_topic = AsyncMock()

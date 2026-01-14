@@ -1040,11 +1040,6 @@ class TestTitleUpdate:
 
     async def test_update_session_title_updates_new_session(self):
         """Title should update when description is 'Untitled'."""
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
         session = Session(
@@ -1070,11 +1065,6 @@ class TestTitleUpdate:
 
     async def test_update_session_title_updates_new_session_with_counter(self):
         """Title should update when title is 'Untitled (N)'."""
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
         session = Session(
@@ -1100,11 +1090,6 @@ class TestTitleUpdate:
 
     async def test_update_session_title_skips_already_updated(self):
         """Title should NOT update when already has LLM-generated title."""
-        from unittest.mock import AsyncMock, patch
-
-        from teleclaude.core.models import Session
-        from teleclaude.daemon import TeleClaudeDaemon
-
         daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
         session = Session(

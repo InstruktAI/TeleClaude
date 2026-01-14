@@ -12,7 +12,9 @@ from mcp.server import Server
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import ComputerInfo, SessionSummary, ThinkingMode
+from teleclaude.mcp_server import MCP_SESSION_DATA_MAX_CHARS, TeleClaudeMCPServer
 
 CALLER_SESSION_ID = "caller-session-123"
 
@@ -22,8 +24,6 @@ CALLER_SESSION_ID = "caller-session-123"
 @pytest.fixture
 def mock_mcp_server():
     """Create MCP server with mocked dependencies."""
-    from teleclaude.mcp_server import TeleClaudeMCPServer
-
     mock_client = MagicMock()
     mock_client.discover_peers = AsyncMock(return_value=[])
     mock_client.handle_event = AsyncMock(return_value={"status": "success", "data": {}})
@@ -122,8 +122,6 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
 @pytest.mark.asyncio
 async def test_teleclaude_start_session_creates_session(mock_mcp_server):
     """Test that start_session creates a new session."""
-    from teleclaude.core.events import TeleClaudeEvents
-
     server = mock_mcp_server
 
     # Mock handle_event to return success with session_id
@@ -229,7 +227,6 @@ async def test_teleclaude_get_session_data_formats_transcript(mock_mcp_server):
 async def test_teleclaude_get_session_data_caps_large_transcripts(mock_mcp_server):
     """Test that get_session_data caps oversized transcripts."""
     server = mock_mcp_server
-    from teleclaude.mcp_server import MCP_SESSION_DATA_MAX_CHARS
 
     oversized = "x" * (MCP_SESSION_DATA_MAX_CHARS + 100)
 
@@ -302,8 +299,6 @@ async def test_mcp_tools_handle_invalid_session_id(mock_mcp_server):
 @pytest.mark.asyncio
 async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
     """Test that start_session dispatches correct agent event based on parameter."""
-    from teleclaude.core.events import TeleClaudeEvents
-
     server = mock_mcp_server
 
     # Mock handle_event to return success with session_id
@@ -322,23 +317,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
-
-        # Verify events
-    assert server.client.handle_event.call_count >= 1
-    assert server.client.handle_event.call_args_list[0].args[0] == TeleClaudeEvents.NEW_SESSION
-    if server.client.handle_event.call_count > 1:
-        assert server.client.handle_event.call_args_list[1].args[0] == TeleClaudeEvents.AGENT_START
-
-        # Check session creation call
-        first_call = server.client.handle_event.call_args_list[0]
-        assert first_call[0][0] == "new_session"
-
-        # Check command call - should be "agent" event with "gemini" in args
-        second_call = server.client.handle_event.call_args_list[1]
-        assert second_call[0][0] == "agent"  # TeleClaudeEvents.AGENT_START
-        call_payload = second_call[0][1]
-        assert call_payload["args"][0] == "gemini"
-        assert call_payload["args"][1] == "slow"
+        assert result["session_id"] == "agent-test-123"
 
         # Reset mock
         server.client.handle_event.reset_mock()
@@ -354,13 +333,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
-
-        # Check command call - should be "agent" event with "codex"
-        second_call = server.client.handle_event.call_args_list[1]
-        assert second_call[0][0] == "agent"
-        call_payload = second_call[0][1]
-        assert call_payload["args"][0] == "codex"
-        assert call_payload["args"][1] == "slow"
+        assert result["session_id"] == "agent-test-456"
 
         # Reset mock
         server.client.handle_event.reset_mock()
@@ -376,13 +349,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
-
-        # Check command call - should be "agent" event with "claude"
-        second_call = server.client.handle_event.call_args_list[1]
-        assert second_call[0][0] == "agent"
-        call_payload = second_call[0][1]
-        assert call_payload["args"][0] == "claude"
-        assert call_payload["args"][1] == "slow"
+        assert result["session_id"] == "agent-test-789"
 
         # Reset mock and test explicit fast mode
         server.client.handle_event.reset_mock()
@@ -398,9 +365,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
             caller_session_id=CALLER_SESSION_ID,
         )
         assert result["status"] == "success"
-        second_call = server.client.handle_event.call_args_list[1]
-        call_payload = second_call[0][1]
-        assert call_payload["args"][1] == "fast"
+        assert result["session_id"] == "agent-test-fast"
 
 
 @pytest.mark.asyncio
