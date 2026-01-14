@@ -249,6 +249,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_stop_time: dict[str, float] = {}
         self._stop_debounce_seconds = 5.0
 
+        # In-memory dedupe for stop summarization (session_id -> transcript fingerprint)
+        self._last_summary_fingerprint: dict[str, str] = {}
+
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
             if attr_name.startswith("_"):
@@ -1043,6 +1046,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not transcript_path:
             logger.debug("Skipping enrichment for session %s: no transcript path", session_id[:8])
             return
+
+        transcript_file = Path(transcript_path)
+        try:
+            stat = transcript_file.stat()
+        except FileNotFoundError:
+            logger.debug("Skipping enrichment for session %s: transcript missing", session_id[:8])
+            return
+
+        fingerprint = f"{transcript_path}:{stat.st_size}:{stat.st_mtime_ns}"
+        native_session_id = payload.session_id or ""
+        fingerprint_key = f"{native_session_id}:{fingerprint}"
+        last_fingerprint = self._last_summary_fingerprint.get(session_id)
+        if last_fingerprint == fingerprint_key:
+            logger.debug("Skipping enrichment for session %s: duplicate transcript", session_id[:8])
+            return
+        self._last_summary_fingerprint[session_id] = fingerprint_key
 
         active_agent = session.active_agent
         if not active_agent:
