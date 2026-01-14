@@ -69,14 +69,15 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
         )
 
     # System boundary: verify the adapter attempted deletes for the tracked message ids.
-    delete_calls = telegram_adapter.delete_message.call_args_list[initial_delete_calls:]
-    deleted_ids: set[str] = set()
-    for call in delete_calls:
-        if len(call.args) >= 2:
-            deleted_ids.add(call.args[1])
-        elif "message_id" in call.kwargs:
-            deleted_ids.add(call.kwargs["message_id"])
-    assert {feedback_msg_id, error_msg_id}.issubset(deleted_ids)
+    from unittest.mock import call
+
+    telegram_adapter.delete_message.assert_has_calls(
+        [
+            call(session, feedback_msg_id),
+            call(session, error_msg_id),
+        ],
+        any_order=True,
+    )
 
     # Verify pending deletions were cleared
     pending_after = await daemon.db.get_pending_deletions(session.session_id)
