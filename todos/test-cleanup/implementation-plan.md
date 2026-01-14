@@ -170,6 +170,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Add docstrings in `tests/unit/test_daemon_poller_watch.py`
 - [x] Add docstrings in `tests/unit/test_terminal_delivery.py`
 - [x] Add docstrings in `tests/unit/test_terminal_io_bracketed_paste.py`
+- [x] Add docstrings in `tests/unit/test_hook_outbox.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
