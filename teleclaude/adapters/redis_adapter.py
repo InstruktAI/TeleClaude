@@ -322,6 +322,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     system_stats=cast("SystemStats | None", info.get("system_stats")),
                 )
                 self.cache.update_computer(computer_info)
+
+                digest_obj = info.get("projects_digest")
+                if isinstance(digest_obj, str):
+                    last_digest = self._peer_digests.get(computer_name)
+                    if last_digest != digest_obj:
+                        logger.info("Project digest changed for %s, refreshing projects", computer_name)
+                        try:
+                            await self.pull_remote_projects_with_todos(computer_name)
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to refresh projects after digest change from %s: %s",
+                                computer_name,
+                                exc,
+                            )
+                        else:
+                            self._peer_digests[computer_name] = digest_obj
             except Exception as exc:
                 logger.warning("Heartbeat peer parse failed: %s", exc)
                 continue

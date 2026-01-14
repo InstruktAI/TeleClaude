@@ -18,7 +18,7 @@ Add two small features: warmup on daemon startup and digest-based project invali
 3. [x] **Track Peer Digests**
    - Add `_peer_digests: dict[str, str]` to `RedisAdapter` to track last-seen digest per computer.
 
-4. [ ] **Detect Digest Changes**
+4. [x] **Detect Digest Changes**
    - In `refresh_peers_from_heartbeats()`, compare received digest to stored digest.
    - If changed, trigger `pull_remote_projects_with_todos()` for that computer.
    - Update stored digest after refresh.
