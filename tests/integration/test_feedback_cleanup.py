@@ -5,7 +5,7 @@ With the unified ephemeral message design, ALL tracked messages
 """
 
 import os
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -68,8 +68,6 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
         )
 
     # System boundary: verify the adapter attempted deletes for the tracked message ids.
-    from unittest.mock import call
-
     telegram_adapter.delete_message.assert_has_calls(
         [
             call(session, feedback_msg_id),
