@@ -21,6 +21,7 @@ def _load_wrapper_module(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_log_throttled_suppresses_repeats(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that repeated log entries are throttled to debug level."""
     wrapper = _load_wrapper_module(monkeypatch)
     proxy = wrapper.MCPProxy()
     proxy._log_throttle_s = 10.0
