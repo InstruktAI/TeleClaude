@@ -119,6 +119,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Track pending new_session requests for response
         self._pending_new_session_request: Optional[str] = None
 
+        # Track last-seen project digests for peers
+        self._peer_digests: dict[str, str] = {}
+
         # Initialize redis client placeholder (actual connection established in start)
         self.redis: Redis = self._create_redis_client()
 

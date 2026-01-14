@@ -15,7 +15,7 @@ Add two small features: warmup on daemon startup and digest-based project invali
    - Use a simple hash (e.g., hash of sorted project paths joined).
    - Add `projects_digest` field to heartbeat payload.
 
-3. [ ] **Track Peer Digests**
+3. [x] **Track Peer Digests**
    - Add `_peer_digests: dict[str, str]` to `RedisAdapter` to track last-seen digest per computer.
 
 4. [ ] **Detect Digest Changes**
