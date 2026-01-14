@@ -1,7 +1,14 @@
+"""Unit tests for UI adapter command override mappings."""
+
 from __future__ import annotations
+
+import os
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 
 def test_ui_adapter_command_override_mapping() -> None:
+    """Test that the agent_resume command is mapped to the adapter override."""
     from teleclaude.adapters.telegram_adapter import TelegramAdapter
     from teleclaude.core.events import UiCommands
 
