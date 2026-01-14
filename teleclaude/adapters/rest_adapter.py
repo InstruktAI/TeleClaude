@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import shlex
+import time
 from typing import TYPE_CHECKING, AsyncIterator
 
 import uvicorn
@@ -33,6 +34,13 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+
+REST_RESTART_WINDOW_S = 60.0
+REST_RESTART_MAX = 5
+REST_RESTART_BACKOFF_S = 1.0
+REST_WS_PING_INTERVAL_S = 20.0
+REST_WS_PING_TIMEOUT_S = 20.0
+REST_TIMEOUT_KEEP_ALIVE_S = 5
 
 
 class RESTAdapter(BaseAdapter):
@@ -60,6 +68,10 @@ class RESTAdapter(BaseAdapter):
         self._setup_routes()
         self.server: uvicorn.Server | None = None
         self.server_task: asyncio.Task[object] | None = None
+        self._running = False
+        self._restart_lock = asyncio.Lock()
+        self._restart_attempts = 0
+        self._restart_window_start = 0.0
 
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
@@ -619,6 +631,10 @@ class RESTAdapter(BaseAdapter):
             # Clean up
             self._ws_clients.discard(websocket)
             self._client_subscriptions.pop(websocket, None)
+            try:
+                await websocket.close()
+            except Exception:
+                pass
 
             # Update interest in cache when last client disconnects
             if self.cache and len(self._ws_clients) == 0:
@@ -771,36 +787,28 @@ class RESTAdapter(BaseAdapter):
                     logger.warning("WebSocket send failed, removing client: %s", t.exception())
                     self._ws_clients.discard(client)
                     self._client_subscriptions.pop(client, None)
+                    if self.task_registry:
+                        self.task_registry.spawn(self._close_ws(client), name="ws-close")
+                    else:
+                        asyncio.create_task(self._close_ws(client))
 
             task.add_done_callback(on_done)
 
+    async def _close_ws(self, websocket: WebSocket) -> None:
+        """Close a WebSocket connection safely."""
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""
-        # Remove old socket if exists
-        if os.path.exists(REST_SOCKET_PATH):
-            os.unlink(REST_SOCKET_PATH)
-
-        config = uvicorn.Config(
-            self.app,
-            uds=REST_SOCKET_PATH,
-            log_level="warning",
-        )
-        self.server = uvicorn.Server(config)
-
-        # Run server in background task
-        self.server_task = asyncio.create_task(self.server.serve())
-
-        # Wait for server to be ready (socket file created and bound)
-        max_retries = 50  # 5 seconds total
-        for _ in range(max_retries):
-            if self.server.started:
-                break
-            await asyncio.sleep(0.1)
-
-        logger.info("REST API server listening on %s", REST_SOCKET_PATH)
+        self._running = True
+        await self._start_server()
 
     async def stop(self) -> None:
         """Stop the REST API server."""
+        self._running = False
         # Unsubscribe from cache changes
         if self.cache:
             self.cache.unsubscribe(self._on_cache_change)
@@ -817,6 +825,40 @@ class RESTAdapter(BaseAdapter):
         # Interest is cleared when _client_subscriptions is cleared
         # No need to explicitly clear cache interest
 
+        await self._stop_server()
+        self._cleanup_socket()
+
+        logger.info("REST API server stopped")
+
+    async def _start_server(self) -> None:
+        """Start uvicorn server and attach restart handler."""
+        self._cleanup_socket()
+
+        config = uvicorn.Config(
+            self.app,
+            uds=REST_SOCKET_PATH,
+            log_level="warning",
+            ws_ping_interval=REST_WS_PING_INTERVAL_S,
+            ws_ping_timeout=REST_WS_PING_TIMEOUT_S,
+            timeout_keep_alive=REST_TIMEOUT_KEEP_ALIVE_S,
+        )
+        self.server = uvicorn.Server(config)
+
+        # Run server in background task
+        self.server_task = asyncio.create_task(self.server.serve())
+        self.server_task.add_done_callback(self._on_server_task_done)
+
+        # Wait for server to be ready (socket file created and bound)
+        max_retries = 50  # 5 seconds total
+        for _ in range(max_retries):
+            if self.server.started:
+                break
+            await asyncio.sleep(0.1)
+
+        logger.info("REST API server listening on %s", REST_SOCKET_PATH)
+
+    async def _stop_server(self) -> None:
+        """Stop uvicorn server task safely."""
         # Stop server gracefully if started, cancel if still starting
         if self.server:
             if self.server.started:
@@ -836,7 +878,57 @@ class RESTAdapter(BaseAdapter):
                 # Suppress errors during teardown (socket already gone, etc.)
                 logger.debug("Error during server shutdown: %s", e)
 
-        logger.info("REST API server stopped")
+    def _cleanup_socket(self) -> None:
+        """Remove stale REST socket file if present."""
+        if not os.path.exists(REST_SOCKET_PATH):
+            return
+        try:
+            os.unlink(REST_SOCKET_PATH)
+        except OSError as e:
+            logger.warning("Failed to remove REST socket %s: %s", REST_SOCKET_PATH, e)
+
+    def _on_server_task_done(self, task: asyncio.Task[object]) -> None:
+        """Handle unexpected server exit and schedule restart."""
+        if not self._running:
+            return
+
+        exc = task.exception()
+        if exc:
+            logger.error("REST API server task crashed: %s", exc, exc_info=True)
+        else:
+            logger.error("REST API server task exited unexpectedly; restarting")
+
+        if self.task_registry:
+            self.task_registry.spawn(self._restart_server("server_task_done"), name="rest-restart")
+        else:
+            asyncio.create_task(self._restart_server("server_task_done"))
+
+    async def _restart_server(self, reason: str) -> bool:
+        """Restart REST API server with backoff and attempt limits."""
+        async with self._restart_lock:
+            now = time.monotonic()
+            if self._restart_window_start == 0.0 or (now - self._restart_window_start) > REST_RESTART_WINDOW_S:
+                self._restart_window_start = now
+                self._restart_attempts = 0
+
+            self._restart_attempts += 1
+            if self._restart_attempts > REST_RESTART_MAX:
+                logger.error(
+                    "REST restart limit exceeded; leaving server down (reason=%s attempts=%d)",
+                    reason,
+                    self._restart_attempts,
+                )
+                return False
+
+            logger.warning(
+                "Restarting REST API server (reason=%s attempt=%d)",
+                reason,
+                self._restart_attempts,
+            )
+            await asyncio.sleep(REST_RESTART_BACKOFF_S)
+            await self._stop_server()
+            await self._start_server()
+            return True
 
     # ==================== BaseAdapter abstract methods (mostly no-ops) ====================
 
