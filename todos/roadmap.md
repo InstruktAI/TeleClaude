@@ -12,9 +12,6 @@
 
 ## Cache Improvements
 
-- [>] cache-startup-warmup
-  Warmup remote projects on daemon startup and add digest-based invalidation to heartbeats.
-
 ---
 
 ## Test Suite Quality Cleanup

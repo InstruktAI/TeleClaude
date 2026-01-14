@@ -24,3 +24,4 @@
 | 2026-01-12 | startup-cache-hook-fixes | Startup Cache Hook Fixes | DELIVERED | 4462b44 | done/019-startup-cache-hook-fixes |
 | 2026-01-13 | delivery-verification-gates | Delivery Verification Gates | DELIVERED | 5b5d668 | done/020-delivery-verification-gates |
 | 2026-01-14 | model-boundary-consolidation | Model Boundary Consolidation | DELIVERED | 44fbd26 | done/021-model-boundary-consolidation |
+| 2026-01-14 | cache-startup-warmup | Warmup remote projects on daemon startup and add digest-based invalidation to heartbeats. | DELIVERED | f47779e | done/022-cache-startup-warmup |
