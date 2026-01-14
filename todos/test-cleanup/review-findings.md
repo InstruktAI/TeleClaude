@@ -75,3 +75,13 @@ Priority fixes:
 1. Remove inline imports from changed tests (start with `tests/unit/test_preparation_view.py`).
 2. Eliminate loops/conditionals in changed tests per requirements (e.g., `tests/unit/test_command_handlers.py`).
 3. Replace internal call-count assertions with outcome-based checks in `tests/unit/test_adapter_client.py`.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Inline imports | Moved imports to top-level in `test_preparation_view.py`, `test_command_handlers.py`, `test_daemon.py`, and `test_voice_message_handler.py`. | aec1462 |
+| Loops in tests | Removed loops from `test_handle_list_sessions_formats_output` and replaced generator expression in `test_handle_ctrl_requires_key_argument`. | e88a757 |
+| Call-count assertions | Replaced `call_count` checks with outcome-based assertions (metadata validation and retry success) in `test_adapter_client.py`. | dc55a87 |
