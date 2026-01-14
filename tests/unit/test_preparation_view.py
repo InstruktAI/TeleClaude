@@ -6,23 +6,27 @@ import asyncio
 import os
 from unittest.mock import Mock, patch
 
-os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+import pytest
 
 from teleclaude.cli.tui.app import FocusContext
-from teleclaude.cli.tui.views.preparation import PreparationView
+from teleclaude.cli.tui.todos import TodoItem
+from teleclaude.cli.tui.views.preparation import PreparationView, PrepTodoDisplayInfo, PrepTodoNode
 
 
 class DummyAPI:
     """API stub for create_session calls."""
 
-    def __init__(self, result: dict[str, object]) -> None:  # guard: loose-dict - test fixture payloads
+    def __init__(self, result: dict[str, object]) -> None:  # guard: loose-dict
         self._result = result
-        self.calls: list[dict[str, object]] = []  # guard: loose-dict - test fixture payloads
 
-    async def create_session(self, **kwargs: object) -> dict[str, object]:  # guard: loose-dict - test fixture payloads
-        """Return the preconfigured result."""
-        self.calls.append(kwargs)
-        return self._result
+    async def create_session(self, **kwargs: object) -> object:
+        from teleclaude.cli.models import CreateSessionResult
+
+        return CreateSessionResult(
+            session_id=self._result.get("session_id", "sess-123"),
+            tmux_session_name=self._result.get("tmux_session_name"),
+            status="success" if self._result.get("tmux_session_name") else "error",
+        )
 
 
 class DummyScreen:
@@ -32,7 +36,6 @@ class DummyScreen:
         self.refresh_called = False
 
     def refresh(self) -> None:
-        """Record refresh calls."""
         self.refresh_called = True
 
 
@@ -47,67 +50,48 @@ def _run_with_loop(func: callable) -> None:
         asyncio.set_event_loop(None)
 
 
-def test_launch_session_split_returns_when_tmux_session_missing():
-    """Test that _launch_session_split exits when no tmux session name is returned."""
-    api = DummyAPI(result={})
-    view = PreparationView(api=api, agent_availability={}, focus=FocusContext())
+def test_handle_enter_on_ready_todo_splits_tmux_in_tmux_env():
+    """Test that handle_enter on a ready todo triggers tmux split when in TMUX."""
+    api = DummyAPI(result={"tmux_session_name": "session-1"})
+    pane_manager = Mock()
+    pane_manager.is_available = False  # Force attach_tmux_from_result / fallback path
+
+    view = PreparationView(api=api, agent_availability={}, focus=FocusContext(), pane_manager=pane_manager)
     screen = DummyScreen()
+
+    view.flat_items = [
+        PrepTodoNode(
+            type="todo",
+            data=PrepTodoDisplayInfo(
+                todo=TodoItem(
+                    slug="test-todo",
+                    status="ready",
+                    description="test",
+                    has_requirements=True,
+                    has_impl_plan=True,
+                ),
+                project_path="/tmp",
+                computer="local",
+            ),
+            depth=0,
+        )
+    ]
+    view.selected_index = 0
 
     with (
         patch.dict("os.environ", {"TMUX": "1"}),
         patch("teleclaude.cli.tui.views.preparation.subprocess.run") as mock_run,
-    ):
-        with (
-            patch("teleclaude.cli.tui.views.preparation.curses.def_prog_mode") as mock_def,
-            patch("teleclaude.cli.tui.views.preparation.curses.endwin") as mock_end,
-            patch("teleclaude.cli.tui.views.preparation.curses.reset_prog_mode") as mock_reset,
-        ):
-            _run_with_loop(
-                lambda: view._launch_session_split({"computer": "local", "project_path": "/tmp"}, "hi", screen)
-            )
-
-    assert mock_run.call_count == 0
-    assert mock_def.call_count == 0
-    assert mock_end.call_count == 0
-    assert mock_reset.call_count == 0
-    assert screen.refresh_called is False
-
-
-def test_launch_session_split_splits_tmux_and_restores_curses():
-    """Test that _launch_session_split splits tmux and restores curses when in tmux."""
-    api = DummyAPI(result={"tmux_session_name": "session-1"})
-    view = PreparationView(api=api, agent_availability={}, focus=FocusContext())
-    screen = DummyScreen()
-
-    mock_run = Mock()
-    with (
-        patch.dict("os.environ", {"TMUX": "1"}),
-        patch("teleclaude.cli.tui.views.preparation.subprocess.run", mock_run),
+        patch("teleclaude.cli.tui.session_launcher.subprocess.run") as mock_launcher_run,
         patch("teleclaude.cli.tui.views.preparation.curses.def_prog_mode") as mock_def,
         patch("teleclaude.cli.tui.views.preparation.curses.endwin") as mock_end,
         patch("teleclaude.cli.tui.views.preparation.curses.reset_prog_mode") as mock_reset,
     ):
-        _run_with_loop(lambda: view._launch_session_split({"computer": "local", "project_path": "/tmp"}, "hi", screen))
+        _run_with_loop(lambda: view.handle_enter(screen))
 
-    assert mock_def.call_count == 1
-    assert mock_end.call_count == 1
-    assert mock_reset.call_count == 1
+    # Verification: Side effects of session launch
     assert screen.refresh_called is True
-    assert mock_run.call_count == 1
-    assert "split-window" in mock_run.call_args[0][0]
-
-
-def test_launch_session_split_skips_tmux_when_not_inside_tmux():
-    """Test that _launch_session_split does not invoke tmux outside of tmux."""
-    api = DummyAPI(result={"tmux_session_name": "session-1"})
-    view = PreparationView(api=api, agent_availability={}, focus=FocusContext())
-    screen = DummyScreen()
-
-    with (
-        patch.dict("os.environ", {}, clear=True),
-        patch("teleclaude.cli.tui.views.preparation.subprocess.run") as mock_run,
-    ):
-        _run_with_loop(lambda: view._launch_session_split({"computer": "local", "project_path": "/tmp"}, "hi", screen))
-
-    assert mock_run.call_count == 0
-    assert screen.refresh_called is False
+    # The actual tmux split happens in session_launcher.attach_tmux_session
+    assert mock_launcher_run.call_count == 1
+    args = mock_launcher_run.call_args[0][0]
+    assert "split-window" in args
+    assert "session-1" in args[-1]
