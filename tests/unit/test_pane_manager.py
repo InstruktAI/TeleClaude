@@ -28,7 +28,7 @@ def test_show_session_tracks_parent_and_child_panes():
 
     mock_run = Mock(side_effect=["%5", "%6"])
     with patch.object(manager, "_run_tmux", mock_run):
-        manager.show_session("parent-session", "child-session", ComputerInfo(name="local"))
+        manager.show_session("parent-session", "child-session", ComputerInfo(name="local", is_local=True))
 
     assert manager.state.parent_pane_id == "%5"
     assert manager.state.child_pane_id == "%6"
