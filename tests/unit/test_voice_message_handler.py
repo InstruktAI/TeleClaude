@@ -255,11 +255,19 @@ async def test_handle_voice_forwards_transcription_to_process():
             mock_get.return_value = mock_session
             mock_polling.return_value = True
             mock_transcribe.return_value = "Transcribed text"
+            mock_delete = AsyncMock()
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice(
+                "test-session-123",
+                audio_path,
+                context,
+                mock_send_feedback,
+                delete_message=mock_delete,
+            )
 
         assert result == "Transcribed text"
+        mock_delete.assert_awaited_once_with("test-session-123", "msg-123")
 
     finally:
         Path(audio_path).unlink(missing_ok=True)

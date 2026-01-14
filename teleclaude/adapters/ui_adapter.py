@@ -383,7 +383,15 @@ class UiAdapter(BaseAdapter):
             audio_path=audio_file_path,
             context=context,  # type: ignore[arg-type]
             send_message=self.send_feedback,  # type: ignore[arg-type]
+            delete_message=self._delete_message_by_session_id,
         )
+
+    async def _delete_message_by_session_id(self, sid: str, message_id: str) -> None:
+        session = await db.get_session(sid)
+        if not session:
+            logger.warning("Session %s not found for delete", sid[:8])
+            return
+        await self.delete_message(session, message_id)
 
     # ==================== File Handling ====================
 
