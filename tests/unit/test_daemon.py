@@ -195,6 +195,7 @@ async def test_agent_then_message_waits_for_stabilization():
         patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0),
         patch("teleclaude.daemon.AGENT_START_POST_STABILIZE_DELAY_S", 0),
         patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
+        patch("teleclaude.daemon.GEMINI_START_EXTRA_DELAY_S", 0),
     ):
         mock_running.return_value = True
         mock_send.side_effect = mock_send_text
@@ -213,6 +214,54 @@ async def test_agent_then_message_waits_for_stabilization():
         # Verify order: stabilize -> inject -> confirm
         assert call_order == ["wait_for_stable", "inject_message", "confirm_acceptance"]
         mock_db.update_session.assert_called_with("sess-123", last_message_sent="/prime-architect")
+
+
+@pytest.mark.asyncio
+async def test_agent_then_message_applies_gemini_delay():
+    """Gemini sessions wait for extra delay before injection."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon._execute_terminal_command = AsyncMock()
+    daemon._poll_and_send_output = AsyncMock()
+
+    async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+        return True, "stable output"
+
+    async def mock_confirm(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    sleep_calls: list[float] = []
+
+    async def mock_sleep(delay: float) -> None:
+        sleep_calls.append(delay)
+
+    with (
+        patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock, return_value=True),
+        patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
+        patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
+        patch("teleclaude.daemon.asyncio.sleep", new=mock_sleep),
+        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_STABILIZE_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
+        patch("teleclaude.daemon.GEMINI_START_EXTRA_DELAY_S", 3.0),
+    ):
+        mock_running.return_value = True
+        mock_db.get_session = AsyncMock(
+            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="gemini")
+        )
+        mock_db.update_session = AsyncMock()
+        mock_db.update_last_activity = AsyncMock()
+
+        result = await daemon._handle_agent_then_message(
+            "sess-123",
+            ["gemini", "slow", "/prime-architect"],
+        )
+
+        assert result["status"] == "success"
+        assert 3.0 in sleep_calls, "Expected gemini extra delay to be applied"
 
 
 @pytest.mark.asyncio

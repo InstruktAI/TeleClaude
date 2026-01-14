@@ -170,6 +170,7 @@ AGENT_START_POST_INJECT_DELAY_S = 1.0
 AGENT_START_STABILIZE_TIMEOUT_S = 15.0  # Max wait for output to stop changing (MCP loading)
 AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stable"
 AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
+GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
 
 logger = get_logger("teleclaude.daemon")
 
@@ -1156,6 +1157,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 AGENT_START_STABILIZE_TIMEOUT_S,
                 session_id[:8],
             )
+
+        if agent_name == AgentName.GEMINI.value and GEMINI_START_EXTRA_DELAY_S > 0:
+            await asyncio.sleep(GEMINI_START_EXTRA_DELAY_S)
 
         # Step 4: Post-stabilization safety buffer
         await asyncio.sleep(AGENT_START_POST_STABILIZE_DELAY_S)
