@@ -390,6 +390,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
 
 @pytest.mark.asyncio
 async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_mcp_server):
+    """Test that run_agent_command passes thinking_mode for new sessions."""
     server = mock_mcp_server
     server.client.handle_event = AsyncMock(return_value={"status": "success", "data": {"session_id": "sess-123"}})
 
@@ -413,6 +414,7 @@ async def test_run_agent_command_passes_mode_for_new_session(monkeypatch, mock_m
 
 @pytest.mark.asyncio
 async def test_run_agent_command_ignores_mode_when_session_provided(mock_mcp_server):
+    """Test that run_agent_command ignores thinking_mode when session_id provided."""
     server = mock_mcp_server
 
     async def fake_send_message(*_args, **_kwargs):
