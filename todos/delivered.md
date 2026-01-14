@@ -26,3 +26,5 @@
 | 2026-01-14 | model-boundary-consolidation | Model Boundary Consolidation | DELIVERED | 44fbd26 | done/021-model-boundary-consolidation |
 | 2026-01-14 | cache-startup-warmup | Warmup remote projects on daemon startup and add digest-based invalidation to heartbeats. | DELIVERED | f47779e | done/022-cache-startup-warmup |
 | 2026-01-14 | test-cleanup | Test Cleanup | DELIVERED | 8eac94f | done/023-test-cleanup |
+
+| 2026-01-14 | test-cleanup | Test Cleanup | DELIVERED | 708b828 | done/024-test-cleanup |
