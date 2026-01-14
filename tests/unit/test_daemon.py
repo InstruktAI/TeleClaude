@@ -10,9 +10,22 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude import config as config_module
-from teleclaude.core.events import CommandEventContext, TeleClaudeEvents, VoiceEventContext
-from teleclaude.core.models import MessageMetadata
-from teleclaude.daemon import TeleClaudeDaemon
+from teleclaude.core.agents import AgentName
+from teleclaude.core.events import (
+    AgentEventContext,
+    AgentHookEvents,
+    AgentStopPayload,
+    CommandEventContext,
+    TeleClaudeEvents,
+    VoiceEventContext,
+)
+from teleclaude.core.models import (
+    MessageMetadata,
+    Session,
+    SessionAdapterMetadata,
+    TelegramAdapterMetadata,
+)
+from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
 
 
 @pytest.fixture
@@ -536,8 +549,6 @@ def test_summarize_output_change_reports_diff():
 @pytest.mark.asyncio
 async def test_process_agent_stop_uses_registered_transcript_when_payload_missing():
     """Agent STOP should use stored transcript path when payload omits it."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -576,8 +587,6 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
 @pytest.mark.asyncio
 async def test_process_agent_stop_sets_native_session_id_from_payload():
     """Agent STOP should persist native_session_id when provided."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -626,8 +635,6 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
 @pytest.mark.asyncio
 async def test_process_agent_stop_sets_active_agent_from_payload():
     """Agent STOP should set active_agent from hook payload when missing."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -674,7 +681,6 @@ async def test_process_agent_stop_sets_active_agent_from_payload():
 @pytest.mark.asyncio
 async def test_process_agent_stop_skips_without_agent_metadata():
     """Agent STOP should skip gracefully when active_agent and payload agent are missing."""
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -713,9 +719,6 @@ async def test_process_agent_stop_skips_without_agent_metadata():
 @pytest.mark.asyncio
 async def test_process_agent_stop_does_not_seed_transcript_output():
     """Agent STOP should not seed transcript output in tmux-only mode."""
-    from teleclaude.core.agents import AgentName
-    from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
-    from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -843,10 +846,6 @@ class TestSessionCleanup:
 @pytest.mark.asyncio
 async def test_dispatch_hook_event_updates_tty_before_polling():
     """TTY metadata should be stored before terminal polling starts."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.models import Session
-    from teleclaude.daemon import TeleClaudeDaemon
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
@@ -889,10 +888,6 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
 @pytest.mark.asyncio
 async def test_ensure_output_polling_uses_tmux():
     """Sessions should use tmux polling when tmux exists."""
-    from unittest.mock import AsyncMock, patch
-
-    from teleclaude.core.models import Session
-    from teleclaude.daemon import TeleClaudeDaemon
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon._poll_and_send_output = AsyncMock()
@@ -922,8 +917,6 @@ def test_all_events_have_handlers():
     This prevents bugs where new events are added but not registered in COMMAND_EVENTS
     or don't have a specific handler method.
     """
-    from teleclaude.core.events import TeleClaudeEvents
-    from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
 
     # Get all events from TeleClaudeEvents
     all_events = []

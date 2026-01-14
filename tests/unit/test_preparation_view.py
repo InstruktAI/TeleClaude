@@ -10,6 +10,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
+from teleclaude.cli.models import CreateSessionResult
 from teleclaude.cli.tui.app import FocusContext
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.views.preparation import PreparationView, PrepTodoDisplayInfo, PrepTodoNode
@@ -22,8 +23,6 @@ class DummyAPI:
         self._result = result
 
     async def create_session(self, **kwargs: object) -> object:
-        from teleclaude.cli.models import CreateSessionResult
-
         return CreateSessionResult(
             session_id=self._result.get("session_id", "sess-123"),
             tmux_session_name=self._result.get("tmux_session_name"),
