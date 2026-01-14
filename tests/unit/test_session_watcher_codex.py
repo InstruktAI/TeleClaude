@@ -7,12 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.models import Session
 
 
 @pytest.mark.asyncio
 async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
+    """Test that CodexWatcher ignores stale log files during scans."""
     client = MagicMock()
     client.handle_event = AsyncMock()
     watcher = CodexWatcher(client=client, db_handle=MagicMock())
@@ -56,6 +59,7 @@ async def test_codex_watcher_does_not_adopt_old_logs(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_rehydrate_watcher_attaches_existing_log(tmp_path: Path) -> None:
+    """Test that CodexWatcher rehydrates and tracks existing log files."""
     client = MagicMock()
     client.handle_event = AsyncMock()
     watcher = CodexWatcher(client=client, db_handle=MagicMock())
