@@ -13,7 +13,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Protocol, cast
+from typing import Any, Mapping, Optional, Protocol, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 
@@ -32,6 +32,7 @@ from teleclaude.core.db import (  # noqa: E402
     get_session_id_by_field_sync,
     get_session_id_by_tmux_name_sync,
 )
+from teleclaude.hooks.adapters.models import NormalizedHookPayload  # noqa: E402
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -68,9 +69,9 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_stdin() -> tuple[str, dict[str, object]]:  # noqa: loose-dict - Agent hook stdin data
+def _read_stdin() -> tuple[str, dict[str, object]]:  # guard: loose-dict - Raw stdin JSON payload.
     raw_input = ""
-    data: dict[str, object] = {}  # noqa: loose-dict - Agent hook stdin data
+    data: dict[str, object] = {}  # guard: loose-dict - Raw stdin JSON payload.
     try:
         if not sys.stdin.isatty():
             raw_input = sys.stdin.read()
@@ -103,7 +104,7 @@ def _log_raw_input(raw_input: str, *, log_raw: bool) -> None:
 def _send_error_event(
     session_id: str,
     message: str,
-    details: dict[str, object],  # noqa: loose-dict - Error detail data
+    details: Mapping[str, Any],
 ) -> None:
     _enqueue_hook_event(
         session_id,
@@ -241,7 +242,7 @@ def _get_parent_process_info() -> tuple[int | None, str | None]:
 def _enqueue_hook_event(
     session_id: str,
     event_type: str,
-    data: dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+    data: Mapping[str, Any],
 ) -> None:
     """Persist hook event to local outbox for durable delivery."""
     db_path = config.database.path
@@ -280,7 +281,7 @@ def _enqueue_hook_event(
         conn.close()
 
 
-def _extract_native_identity(agent: str, data: dict[str, object]) -> tuple[str | None, str | None]:  # noqa: loose-dict - Raw hook payload
+def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str | None, str | None]:
     """Extract native session id + transcript path from raw hook payload."""
     native_session_id: str | None = None
     native_log_file: str | None = None
@@ -349,7 +350,7 @@ def _session_exists(session_id: str) -> bool:
 
 
 class NormalizeFn(Protocol):
-    def __call__(self, event_type: str, data: dict[str, object]) -> dict[str, object]: ...  # noqa: loose-dict - Agent hook protocol
+    def __call__(self, event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload: ...
 
 
 def _get_adapter(agent: str) -> NormalizeFn:
@@ -398,15 +399,17 @@ def main() -> None:
         # Codex notify passes JSON as command-line argument, event is always "stop"
         raw_input = args.event_type or ""
         try:
-            data: dict[str, object] = json.loads(raw_input) if raw_input.strip() else {}  # noqa: loose-dict - Agent hook data
+            raw_data: dict[str, object] = (  # guard: loose-dict - Raw stdin JSON payload.
+                json.loads(raw_input) if raw_input.strip() else {}
+            )
         except json.JSONDecodeError:
             logger.error("Failed to parse JSON from Codex notify argument")
-            data = {}
+            raw_data = {}
         event_type = "stop"
     else:
         # Claude/Gemini pass event_type as arg, JSON on stdin
         event_type = _normalize_event_type(args.agent, cast(str, args.event_type))
-        raw_input, data = _read_stdin()
+        raw_input, raw_data = _read_stdin()
 
     # log_raw = os.getenv("TELECLAUDE_HOOK_LOG_RAW") == "1"
     log_raw = True
@@ -417,13 +420,13 @@ def main() -> None:
         logger.trace("Hook receiver skipped: unhandled event", event_type=event_type)
         sys.exit(0)
 
-    raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, data)
+    raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
     if not raw_native_log_file and args.agent == "gemini":
         gemini_path = _find_gemini_transcript()
         if gemini_path:
             raw_native_log_file = str(gemini_path)
-            data["transcript_path"] = raw_native_log_file
+            raw_data["transcript_path"] = raw_native_log_file
             logger.debug("Auto-discovered Gemini transcript", path=raw_native_log_file)
 
     parent_pid, tty_path = _get_parent_process_info()
@@ -477,7 +480,8 @@ def main() -> None:
 
     normalize_payload = _get_adapter(args.agent)
     try:
-        data = normalize_payload(event_type, data)
+        normalized = normalize_payload(event_type, raw_data)
+        data = normalized.to_dict()
     except Exception as e:
         logger.error("Receiver validation error", error=str(e))
         _send_error_event(
@@ -516,7 +520,7 @@ def main() -> None:
     )
 
     if parent_pid:
-        data["teleclaude_pid"] = parent_pid
+        data["teleclaude_pid"] = str(parent_pid)
     if tty_path:
         data["teleclaude_tty"] = tty_path
 

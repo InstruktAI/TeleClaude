@@ -4,14 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Mapping
 
-# Explicit mapping: Codex notify field -> internal field
-# Only these fields are forwarded; everything else is dropped
-_CODEX_TO_INTERNAL: dict[str, str] = {
-    "thread-id": "session_id",  # Codex native session ID
-    "cwd": "cwd",
-    "input-messages": "prompt",  # List of strings
-}
+from teleclaude.hooks.adapters.models import NormalizedHookPayload
+from teleclaude.hooks.utils.parse_helpers import get_str
 
 
 def _discover_transcript_path(session_id: str) -> str:
@@ -52,7 +48,7 @@ def _discover_transcript_path(session_id: str) -> str:
     return ""
 
 
-def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:  # noqa: loose-dict - Agent hook boundary
+def normalize_payload(event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload:
     """Map Codex notify fields to internal schema.
 
     Codex notify payload format:
@@ -60,7 +56,6 @@ def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, obj
         "type": "agent-turn-complete",
         "thread-id": "019b7ea7-b98c-7431-bf04-ffc0dcd6eec4",
         "turn-id": "12345",
-        "cwd": "/path/to/project",
         "input-messages": ["user prompt"],
         "last-assistant-message": "assistant response"
     }
@@ -70,28 +65,25 @@ def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, obj
         data: Raw Codex notify payload
 
     Returns:
-        Normalized payload with session_id, transcript_path, cwd
+        Normalized payload with session_id, transcript_path
     """
     _ = event_type  # Part of adapter interface
 
     # 1. Normalize: map external -> internal, drop unlisted fields
-    result: dict[str, object] = {}  # noqa: loose-dict - Agent hook normalized payload
-    for external, internal in _CODEX_TO_INTERNAL.items():
-        if external in data:
-            result[internal] = data[external]
+    session_id = get_str(data, "thread-id")
+    prompt: str | None = None
+    raw_prompt = data.get("input-messages")
+    if isinstance(raw_prompt, list) and raw_prompt:
+        prompt = str(raw_prompt[-1])
+    elif isinstance(raw_prompt, str):
+        prompt = raw_prompt
 
     # Codex prompt is a list of messages; take the last one as the current turn's prompt
-    prompts = result.get("prompt")
-    if isinstance(prompts, list) and prompts:
-        result["prompt"] = str(prompts[-1])
-    elif not isinstance(prompts, str):
-        result.pop("prompt", None)
-
     # 2. Enrich: discover transcript_path from session_id
-    session_id = result.get("session_id")
-    if isinstance(session_id, str):
-        transcript_path = _discover_transcript_path(session_id)
-        if transcript_path:
-            result["transcript_path"] = transcript_path
+    transcript_path = _discover_transcript_path(session_id) if session_id else ""
 
-    return result
+    return NormalizedHookPayload(
+        session_id=session_id,
+        transcript_path=transcript_path or None,
+        prompt=prompt,
+    )

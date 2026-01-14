@@ -2,24 +2,18 @@
 
 from __future__ import annotations
 
-# Explicit mapping: Claude external field -> internal field
-# Only these fields are forwarded; everything else is dropped
-_CLAUDE_TO_INTERNAL: dict[str, str] = {
-    "session_id": "session_id",
-    "transcript_path": "transcript_path",
-    "cwd": "cwd",
-    "user_prompt": "prompt",  # UserPromptSubmit
-    "source": "source",  # SessionStart: startup
-    "reason": "reason",  # SessionEnd: exit
-    "message": "message",  # Notification
-    "notification_type": "notification_type",  # Notification
-}
+from typing import Any, Mapping
+
+from teleclaude.hooks.adapters.models import NormalizedHookPayload
+from teleclaude.hooks.utils.parse_helpers import get_str
 
 
-def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, object]:  # noqa: loose-dict - Agent hook boundary
-    """Map Claude external fields to internal schema.
-
-    Drops fields like permission_mode, hook_event_name that we don't use.
-    """
+def normalize_payload(event_type: str, data: Mapping[str, Any]) -> NormalizedHookPayload:
+    """Map Claude external fields to internal schema."""
     _ = event_type  # Part of adapter interface
-    return {internal: data[external] for external, internal in _CLAUDE_TO_INTERNAL.items() if external in data}
+    return NormalizedHookPayload(
+        session_id=get_str(data, "session_id"),
+        transcript_path=get_str(data, "transcript_path"),
+        prompt=get_str(data, "user_prompt"),
+        message=get_str(data, "message"),
+    )

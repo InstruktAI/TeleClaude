@@ -8,6 +8,7 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.hooks import receiver
+from teleclaude.hooks.adapters.models import NormalizedHookPayload
 
 
 def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
@@ -135,8 +136,8 @@ def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
     def fake_enqueue(session_id, event_type, data):
         sent.append((session_id, event_type, data))
 
-    def fake_normalize(_event_type, data):
-        return data
+    def fake_normalize(_event_type, _data):
+        return NormalizedHookPayload()
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
@@ -159,8 +160,8 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch):
     def fake_enqueue(session_id, event_type, data):
         sent.append((session_id, event_type, data))
 
-    def fake_normalize(_event_type, data):
-        return data
+    def fake_normalize(_event_type, _data):
+        return NormalizedHookPayload()
 
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
