@@ -75,3 +75,15 @@
 Priority fixes:
 1. Set `TELECLAUDE_CONFIG_PATH` before importing config-backed modules in `tests/unit/test_preparation_view.py` and `tests/unit/test_mcp_handlers.py`.
 2. Remove unused imports and unused locals in modified tests.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Config isolation in `test_preparation_view.py` | Set `TELECLAUDE_CONFIG_PATH` before import | `a01ca65` |
+| Config isolation and unused imports in `test_mcp_handlers.py` | Set `TELECLAUDE_CONFIG_PATH` and removed `patch`, `ThinkingMode` | `f269c69` |
+| Unused imports in `test_sessions_view.py` | Removed `CreateSessionResult`, `ProjectWithTodosInfo`, `TreeNode` | `be5e061` |
+| Unused local in `test_feedback_cleanup.py` | Removed `initial_delete_calls` | `508bddc` |
+| Loops/conditionals in `test_adapter_client.py` | Replaced `next()` and list comprehension with direct indexing | `44ccfd7` |
