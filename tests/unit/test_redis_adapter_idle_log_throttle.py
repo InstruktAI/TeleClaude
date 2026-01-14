@@ -1,11 +1,17 @@
+"""Unit tests for Redis adapter idle poll log throttling."""
+
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.redis_adapter import RedisAdapter
 
 
 def test_idle_poll_log_is_throttled_to_once_per_minute(monkeypatch):
+    """Test that idle poll logging is suppressed until the throttle window elapses."""
     adapter = RedisAdapter(adapter_client=MagicMock())
 
     trace_mock = MagicMock()

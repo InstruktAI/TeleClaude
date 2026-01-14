@@ -172,6 +172,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Add docstrings in `tests/unit/test_terminal_io_bracketed_paste.py`
 - [x] Add docstrings in `tests/unit/test_hook_outbox.py`
 - [x] Add docstrings in `tests/unit/test_mcp_wrapper_log_throttle.py`
+- [x] Add docstrings in `tests/unit/test_redis_adapter_idle_log_throttle.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
