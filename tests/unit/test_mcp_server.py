@@ -516,6 +516,26 @@ async def test_run_agent_command_with_args(mock_mcp_server):
 
 
 @pytest.mark.asyncio
+async def test_run_agent_command_adds_prompts_prefix_for_codex(mock_mcp_server):
+    """Test that codex commands are prefixed with /prompts:."""
+    server = mock_mcp_server
+    server.client.handle_event = AsyncMock(return_value=None)
+
+    result = await server.teleclaude__run_agent_command(
+        computer="local",
+        command="next-work",
+        session_id="test-session-123",
+        agent="codex",
+        caller_session_id=CALLER_SESSION_ID,
+    )
+
+    assert result["status"] == "sent"
+    call_args = server.client.handle_event.call_args
+    event_data = call_args[0][1]
+    assert event_data["text"] == "/prompts:next-work"
+
+
+@pytest.mark.asyncio
 async def test_run_agent_command_starts_new_session(mock_mcp_server):
     """Test that run_agent_command starts new session when session_id not provided."""
     server = mock_mcp_server
