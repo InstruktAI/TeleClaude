@@ -80,3 +80,16 @@ Priority fixes:
 1. Replace direct calls to private methods with tests that exercise public interfaces.
 2. Remove unused `asyncio` import from `tests/integration/test_mcp_tools.py`.
 3. Remove loop-based validation in `tests/integration/test_feedback_cleanup.py` to align with test structure rules.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| `tests/unit/test_sessions_view.py:59` | Refactored to use public `refresh` and `handle_enter` APIs. | `e4c4e47` |
+| `tests/unit/test_preparation_view.py:65` | Refactored to use public `handle_enter` and `handle_key` actions. | `f6a1c54` |
+| `tests/unit/test_mcp_handlers.py:33` | Refactored to test via public `teleclaude__start_session` API. | `86189ea` |
+| `tests/integration/test_feedback_cleanup.py:71` | Replaced loop with explicit `assert_has_calls` using `unittest.mock.call`. | `266780b` |
+| `tests/integration/test_mcp_tools.py:3` | Removed unused `asyncio` import. | `c992bd2` |
+| `tests/unit/test_pane_manager.py:31` | Fixed `TypeError` by adding missing `is_local` argument. | `ce8a66a` |
