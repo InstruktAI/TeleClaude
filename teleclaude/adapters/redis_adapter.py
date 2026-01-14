@@ -245,27 +245,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return
 
         logger.info("Populating initial cache from remote computers...")
-
-        peers = await self.discover_peers()
-
-        for peer in peers:
-            computer_info = ComputerInfo(
-                name=peer.name,
-                status="online",
-                user=peer.user,
-                host=peer.host,
-                role=peer.role,
-                system_stats=peer.system_stats,
-            )
-            self.cache.update_computer(computer_info)
-
-        for peer in peers:
-            try:
-                await self.pull_remote_projects_with_todos(peer.name)
-            except Exception as e:
-                logger.warning("Failed to pull projects-with-todos from %s: %s", peer.name, e)
-
-        logger.info("Initial cache populated: %d computers", len(peers))
+        await self.refresh_remote_snapshot()
 
     async def refresh_remote_snapshot(self) -> None:
         """Refresh remote computers and project/todo cache (best effort)."""
