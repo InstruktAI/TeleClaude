@@ -78,3 +78,14 @@
 Priority fixes:
 1. Restore global environment after modifying `TMUX` in `tests/unit/test_pane_manager.py`.
 2. Move all inline imports to module top-level and remove list comprehension assertions in test files.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| TMUX env mutation | Wrapped `os.environ.pop` in `patch.dict` | 561553c |
+| Inline imports | Moved `call` and other imports to top-level | 830b192, 2e016f1 |
+| Loops in assertions | Replaced `any()` and list comprehensions with indexing | c624299, 2e016f1 |
+| Internal call assertions | Removed call-count assertion in peer discovery test | 2e016f1 |
