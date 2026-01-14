@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
+import os
 import re
 import ssl
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, cast
 
 from instrukt_ai_logging import get_logger
@@ -115,6 +118,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         # Track pending new_session requests for response
         self._pending_new_session_request: Optional[str] = None
+
+        # Track last-seen project digests for peers
+        self._peer_digests: dict[str, str] = {}
 
         # Initialize redis client placeholder (actual connection established in start)
         self.redis: Redis = self._create_redis_client()
@@ -245,27 +251,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             return
 
         logger.info("Populating initial cache from remote computers...")
-
-        peers = await self.discover_peers()
-
-        for peer in peers:
-            computer_info = ComputerInfo(
-                name=peer.name,
-                status="online",
-                user=peer.user,
-                host=peer.host,
-                role=peer.role,
-                system_stats=peer.system_stats,
-            )
-            self.cache.update_computer(computer_info)
-
-        for peer in peers:
-            try:
-                await self.pull_remote_projects_with_todos(peer.name)
-            except Exception as e:
-                logger.warning("Failed to pull projects-with-todos from %s: %s", peer.name, e)
-
-        logger.info("Initial cache populated: %d computers", len(peers))
+        await self.refresh_remote_snapshot()
 
     async def refresh_remote_snapshot(self) -> None:
         """Refresh remote computers and project/todo cache (best effort)."""
@@ -336,6 +322,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     system_stats=cast("SystemStats | None", info.get("system_stats")),
                 )
                 self.cache.update_computer(computer_info)
+
+                digest_obj = info.get("projects_digest")
+                if isinstance(digest_obj, str):
+                    last_digest = self._peer_digests.get(computer_name)
+                    if last_digest != digest_obj:
+                        logger.info("Project digest changed for %s, refreshing projects", computer_name)
+                        try:
+                            await self.pull_remote_projects_with_todos(computer_name)
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to refresh projects after digest change from %s: %s",
+                                computer_name,
+                                exc,
+                            )
+                        else:
+                            self._peer_digests[computer_name] = digest_obj
             except Exception as exc:
                 logger.warning("Heartbeat peer parse failed: %s", exc)
                 continue
@@ -1244,6 +1246,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 payload["interested_in"] = list(all_data_types)
                 logger.trace("Heartbeat includes interest: %s", all_data_types)
 
+        payload["projects_digest"] = self._compute_projects_digest()
+
         # Set key with auto-expiry
         redis_client = self._require_redis()
         await redis_client.setex(
@@ -1251,6 +1255,22 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self.heartbeat_ttl,
             json.dumps(payload),
         )
+
+    def _compute_projects_digest(self) -> str:
+        """Compute a deterministic digest for local project paths."""
+        trusted_dirs = config.computer.get_all_trusted_dirs()
+        paths: list[str] = []
+
+        for trusted_dir in trusted_dirs:
+            raw_path = getattr(trusted_dir, "path", None)
+            if not isinstance(raw_path, str):
+                continue
+            expanded_path = os.path.expanduser(os.path.expandvars(raw_path))
+            if Path(expanded_path).exists():
+                paths.append(expanded_path)
+
+        joined = "\n".join(sorted(paths))
+        return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
     # === Event Push (Phase 5) ===
 

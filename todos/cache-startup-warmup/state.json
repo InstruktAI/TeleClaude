@@ -1,6 +1,6 @@
 {
-  "build": "pending",
-  "review": "pending",
+  "build": "complete",
+  "review": "approved",
   "breakdown": {
     "assessed": true,
     "todos": []

@@ -206,7 +206,7 @@ async def test_discover_peers_skips_self():
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_includes_required_fields():
+async def test_heartbeat_includes_required_fields(monkeypatch):
     """Test heartbeat message includes all required fields."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
 
@@ -228,6 +228,11 @@ async def test_heartbeat_includes_required_fields():
     mock_redis.setex = capture_setex
     adapter.redis = mock_redis
 
+    def _fake_digest() -> str:
+        return "digest-123"
+
+    monkeypatch.setattr(adapter, "_compute_projects_digest", _fake_digest)
+
     # Call _send_heartbeat
     await adapter._send_heartbeat()
 
@@ -240,6 +245,7 @@ async def test_heartbeat_includes_required_fields():
     assert "computer_name" in heartbeat
     assert "last_seen" in heartbeat
     assert heartbeat["computer_name"] == "TestPC"
+    assert heartbeat["projects_digest"] == "digest-123"
 
 
 @pytest.mark.asyncio
@@ -305,3 +311,32 @@ async def test_connection_error_handling():
     # Should handle error gracefully and return empty list
     peers = await adapter.discover_peers()
     assert peers == []
+
+
+def test_compute_projects_digest_is_deterministic(tmp_path, monkeypatch):
+    """Digest should be deterministic regardless of trusted dir order."""
+    from types import SimpleNamespace
+
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.config import config
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+
+    project_one = tmp_path / "alpha"
+    project_two = tmp_path / "beta"
+    project_one.mkdir()
+    project_two.mkdir()
+
+    trusted_dirs = [
+        SimpleNamespace(path=str(project_two)),
+        SimpleNamespace(path=str(project_one)),
+    ]
+
+    monkeypatch.setattr(config.computer, "get_all_trusted_dirs", lambda: trusted_dirs)
+    digest_first = adapter._compute_projects_digest()
+
+    trusted_dirs.reverse()
+    digest_second = adapter._compute_projects_digest()
+
+    assert digest_first == digest_second
