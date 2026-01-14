@@ -206,7 +206,7 @@ async def test_discover_peers_skips_self():
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_includes_required_fields():
+async def test_heartbeat_includes_required_fields(monkeypatch):
     """Test heartbeat message includes all required fields."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
 
@@ -228,6 +228,11 @@ async def test_heartbeat_includes_required_fields():
     mock_redis.setex = capture_setex
     adapter.redis = mock_redis
 
+    def _fake_digest() -> str:
+        return "digest-123"
+
+    monkeypatch.setattr(adapter, "_compute_projects_digest", _fake_digest)
+
     # Call _send_heartbeat
     await adapter._send_heartbeat()
 
@@ -240,6 +245,7 @@ async def test_heartbeat_includes_required_fields():
     assert "computer_name" in heartbeat
     assert "last_seen" in heartbeat
     assert heartbeat["computer_name"] == "TestPC"
+    assert heartbeat["projects_digest"] == "digest-123"
 
 
 @pytest.mark.asyncio
