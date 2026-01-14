@@ -164,6 +164,8 @@ class TmuxPaneManager:
         Returns:
             Command string to execute
         """
+        attach_cmd = self._build_tmux_attach_command(tmux_session_name)
+
         if computer_info and computer_info.is_remote:
             # Remote: SSH to the computer and attach there
             # Use -t for pseudo-terminal allocation (required for tmux)
@@ -177,18 +179,24 @@ class TmuxPaneManager:
             if env_str:
                 env_str += " "
 
-            cmd = (
-                "ssh -t -A "
-                f"{ssh_target} '{env_str}TERM=tmux-256color {tmux_binary} -u attach-session -t {tmux_session_name}'"
-            )
+            cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color {tmux_binary} -u {attach_cmd}'"
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
 
         # Local: use configured tmux binary
         tmux = config.computer.tmux_binary
-        cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {tmux_session_name}"
+        cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u {attach_cmd}"
         logger.debug("Local attach cmd for %s: %s", tmux_session_name, cmd)
         return cmd
+
+    def _build_tmux_attach_command(self, tmux_session_name: str) -> str:
+        """Build tmux command with inline appearance tweaks before attach."""
+        return (
+            f'set-option -t {tmux_session_name} status-right "" \\; '
+            f"set-option -t {tmux_session_name} status-right-length 0 \\; "
+            f'set-option -t {tmux_session_name} status-style "bg=default" \\; '
+            f"attach-session -t {tmux_session_name}"
+        )
 
     def show_session(
         self,

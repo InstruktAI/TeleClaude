@@ -731,6 +731,22 @@ class Db:
         await self.conn.commit()
         logger.info("Marked agent %s unavailable until %s (%s)", agent, unavailable_until, reason)
 
+    async def mark_agent_available(self, agent: str) -> None:
+        """Mark an agent as available immediately.
+
+        Args:
+            agent: Agent name (e.g., "claude", "gemini", "codex")
+        """
+        await self.conn.execute(
+            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
+               VALUES (?, 1, NULL, NULL)
+               ON CONFLICT(agent) DO UPDATE SET
+                 available = 1, unavailable_until = NULL, reason = NULL""",
+            (agent,),
+        )
+        await self.conn.commit()
+        logger.info("Marked agent %s available", agent)
+
     async def clear_expired_agent_availability(self) -> int:
         """Reset agents whose unavailable_until time has passed.
 

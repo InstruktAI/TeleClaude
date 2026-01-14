@@ -956,10 +956,19 @@ class MCPHandlersMixin:
         )
 
     async def teleclaude__mark_agent_unavailable(
-        self, agent: str, reason: str, unavailable_until: str | None = None
+        self,
+        agent: str,
+        reason: str | None = None,
+        unavailable_until: str | None = None,
+        clear: bool = False,
     ) -> str:
-        """Mark an agent as temporarily unavailable for task assignment."""
+        """Mark an agent as temporarily unavailable for task assignment, or clear unavailability."""
         agent_name = normalize_agent_name(agent)
+        if clear:
+            await db.mark_agent_available(agent_name)
+            return f"OK: {agent_name} marked available"
+        if not reason:
+            return "ERROR: reason is required unless clear is true"
         if not unavailable_until:
             unavailable_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
         await db.mark_agent_unavailable(agent_name, unavailable_until, reason)

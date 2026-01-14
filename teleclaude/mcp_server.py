@@ -465,11 +465,15 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
 
             if name == "teleclaude__mark_agent_unavailable":
                 until = self._str_arg(arguments, "unavailable_until") or None
+                clear = bool(arguments.get("clear")) if arguments else False
                 return [
                     TextContent(
                         type="text",
                         text=await self.teleclaude__mark_agent_unavailable(
-                            self._str_arg(arguments, "agent"), self._str_arg(arguments, "reason"), until
+                            self._str_arg(arguments, "agent"),
+                            self._str_arg(arguments, "reason") or None,
+                            until,
+                            clear,
                         ),
                     )
                 ]

@@ -33,6 +33,7 @@ logger = get_logger(__name__)
 
 # TeleClaude tmux session prefix - used to identify owned sessions
 TMUX_SESSION_PREFIX = "tc_"
+TMUX_TUI_SESSION_NAME = "tc_tui"
 _MCP_WRAPPER_MATCH = "bin/mcp-wrapper.py"
 
 
@@ -285,8 +286,8 @@ async def cleanup_orphan_tmux_sessions() -> int:
         logger.debug("No tmux sessions found")
         return 0
 
-    # Filter to only TeleClaude-owned sessions
-    tc_sessions = [s for s in tmux_sessions if s.startswith(TMUX_SESSION_PREFIX)]
+    # Filter to only TeleClaude-owned sessions (exclude TUI wrapper session)
+    tc_sessions = [s for s in tmux_sessions if s.startswith(TMUX_SESSION_PREFIX) and s != TMUX_TUI_SESSION_NAME]
     if not tc_sessions:
         logger.debug("No TeleClaude tmux sessions found")
         return 0

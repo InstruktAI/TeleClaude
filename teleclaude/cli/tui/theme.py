@@ -37,6 +37,9 @@ Z_SELECTION: dict[int, int] = {
 # Banner color pair
 _BANNER_PAIR_ID = 22
 
+# Tab line color pair (muted in dark mode)
+_TAB_LINE_PAIR_ID = 23
+
 # Track current mode for reference
 _is_dark_mode: bool = True
 
@@ -135,6 +138,9 @@ def init_colors() -> None:
 
         # Banner foreground (muted)
         curses.init_pair(_BANNER_PAIR_ID, 244, -1)
+
+        # Tab lines (muted)
+        curses.init_pair(_TAB_LINE_PAIR_ID, 240, -1)
     else:
         curses.init_pair(14, -1, 252)  # z=0 selection
         curses.init_pair(15, -1, 251)  # z=1 selection
@@ -153,6 +159,9 @@ def init_colors() -> None:
 
         # Banner foreground (muted)
         curses.init_pair(_BANNER_PAIR_ID, 240, -1)
+
+        # Tab lines (default for light mode)
+        curses.init_pair(_TAB_LINE_PAIR_ID, 244, -1)
 
 
 def get_layer_attr(z_index: int) -> int:
@@ -211,3 +220,14 @@ def get_banner_attr(is_dark_mode: bool) -> int:
     if is_dark_mode:
         return curses.color_pair(_BANNER_PAIR_ID)
     return curses.A_BOLD
+
+
+def get_tab_line_attr() -> int:
+    """Get curses attribute for tab bar lines.
+
+    Returns:
+        Curses attribute for tab bar lines
+    """
+    if _is_dark_mode:
+        return curses.color_pair(_TAB_LINE_PAIR_ID)
+    return curses.A_NORMAL

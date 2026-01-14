@@ -546,9 +546,11 @@ def get_tool_definitions() -> list[Tool]:
             name="teleclaude__mark_agent_unavailable",
             title="TeleClaude: Mark Agent Unavailable",
             description=(
-                "Mark an agent as temporarily unavailable for task assignment. "
-                "Used when dispatch fails due to rate limits, quota exhaustion, or outages. "
-                "The agent will be skipped in fallback selection until the specified time."
+                "Mark an agent as temporarily unavailable for task assignment, "
+                "or clear its unavailable state. Used when dispatch fails due to rate limits, "
+                "quota exhaustion, or outages. The agent will be skipped in fallback selection "
+                "until the specified time. If clear is true, the agent becomes available immediately "
+                "and other fields are ignored."
             ),
             inputSchema={
                 "type": "object",
@@ -559,7 +561,10 @@ def get_tool_definitions() -> list[Tool]:
                     },
                     "reason": {
                         "type": "string",
-                        "description": "Reason for marking unavailable (e.g., 'rate_limited', 'quota_exhausted')",
+                        "description": (
+                            "Reason for marking unavailable (e.g., 'rate_limited', 'quota_exhausted'). "
+                            "Required unless clear is true."
+                        ),
                     },
                     "unavailable_until": {
                         "type": "string",
@@ -568,8 +573,12 @@ def get_tool_definitions() -> list[Tool]:
                             "(e.g., '2025-01-01T12:30:00Z'). If omitted, defaults to 30 minutes from now."
                         ),
                     },
+                    "clear": {
+                        "type": "boolean",
+                        "description": "Set true to clear unavailable state and mark the agent available.",
+                    },
                 },
-                "required": ["agent", "reason"],
+                "required": ["agent"],
             },
         ),
     ]

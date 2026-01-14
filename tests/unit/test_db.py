@@ -174,6 +174,28 @@ class TestAgentAvailability:
         assert persisted["unavailable_until"] is None  # type: ignore[index]
         assert persisted["reason"] is None  # type: ignore[index]
 
+    @pytest.mark.asyncio
+    async def test_mark_agent_available_clears_unavailability(self, test_db):
+        """Marking available should clear unavailable_until and reason."""
+        future = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        await test_db.conn.execute(
+            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
+               VALUES (?, 0, ?, ?)""",
+            ("codex", future, "rate_limited"),
+        )
+        await test_db.conn.commit()
+
+        await test_db.mark_agent_available("codex")
+
+        row = await test_db.conn.execute(
+            "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
+            ("codex",),
+        )
+        persisted = await row.fetchone()
+        assert persisted["available"] == 1  # type: ignore[index]
+        assert persisted["unavailable_until"] is None  # type: ignore[index]
+        assert persisted["reason"] is None  # type: ignore[index]
+
 
 class TestUpdateSession:
     """Tests for update_session method."""

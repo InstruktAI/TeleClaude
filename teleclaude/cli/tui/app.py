@@ -22,7 +22,7 @@ from teleclaude.cli.models import (
     WsEvent,
 )
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
-from teleclaude.cli.tui.theme import init_colors
+from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
 from teleclaude.cli.tui.types import CursesWindow
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
@@ -447,7 +447,7 @@ class TelecApp:
             try:
                 _, mx, my, _, bstate = curses.getmouse()
                 mouse_start = time.perf_counter()
-                logger.debug("Mouse event: bstate=%d (0x%x)", bstate, bstate)
+                logger.trace("Mouse event: bstate=%d (0x%x)", bstate, bstate)
                 # Scroll wheel - move selection up/down
                 # BUTTON4_PRESSED (0x80000) = scroll up on macOS
                 # 0x8000000 or 0x200000 = scroll down (varies by system)
@@ -686,7 +686,8 @@ class TelecApp:
         self._render_notification(stdscr, width)
 
         # Row height-4: Separator
-        stdscr.addstr(height - 4, 0, "─" * width)  # type: ignore[attr-defined]
+        separator_attr = get_tab_line_attr()
+        stdscr.addstr(height - 4, 0, "─" * width, separator_attr)  # type: ignore[attr-defined]
 
         # Row height-3: Action bar (view-specific)
         action_bar = current.get_action_bar() if current else ""
