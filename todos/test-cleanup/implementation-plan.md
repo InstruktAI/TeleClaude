@@ -160,6 +160,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Add docstrings in `tests/unit/test_terminal_io.py`
 - [x] Add docstrings in `tests/unit/test_next_machine_git_env.py`
 - [x] Add docstrings in `tests/unit/test_hook_receiver_tty.py`
+- [x] Add docstrings in `tests/unit/test_adapter_client_terminal_origin.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
