@@ -1,15 +1,18 @@
 """Unit tests for voice message handler."""
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 
 @pytest.fixture(autouse=True)
 def reset_voice_handler():
-    """Reset voice handler module state before each test."""
+    """Paranoid reset of voice handler module state before each test."""
     from teleclaude.core import voice_message_handler
 
     voice_message_handler._openai_client = None
@@ -18,7 +21,7 @@ def reset_voice_handler():
 
 
 def test_init_voice_handler_initializes_client():
-    """Test that init_voice_handler creates OpenAI client."""
+    """Paranoid test that init_voice_handler creates OpenAI client."""
     from teleclaude.core import voice_message_handler
 
     with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
@@ -29,7 +32,7 @@ def test_init_voice_handler_initializes_client():
 
 
 def test_init_voice_handler_is_idempotent():
-    """Test that init_voice_handler is safe to call multiple times (idempotent)."""
+    """Paranoid test that init_voice_handler is safe to call multiple times (idempotent)."""
     from teleclaude.core import voice_message_handler
 
     with patch("teleclaude.core.voice_message_handler.AsyncOpenAI") as mock_openai:
@@ -43,7 +46,7 @@ def test_init_voice_handler_is_idempotent():
 
 
 def test_init_voice_handler_requires_api_key():
-    """Test that init_voice_handler requires API key."""
+    """Paranoid test that init_voice_handler requires API key."""
     from teleclaude.core import voice_message_handler
 
     # Clear environment variable
@@ -54,7 +57,7 @@ def test_init_voice_handler_requires_api_key():
 
 @pytest.mark.asyncio
 async def test_transcribe_voice_calls_whisper_api():
-    """Test that transcribe_voice calls Whisper API."""
+    """Paranoid test that transcribe_voice calls Whisper API."""
     from teleclaude.core.voice_message_handler import transcribe_voice
 
     # Create temp audio file
@@ -79,7 +82,7 @@ async def test_transcribe_voice_calls_whisper_api():
 
 @pytest.mark.asyncio
 async def test_transcribe_voice_handles_file_not_found():
-    """Test that transcribe_voice raises FileNotFoundError."""
+    """Paranoid test that transcribe_voice raises FileNotFoundError."""
     from teleclaude.core.voice_message_handler import transcribe_voice
 
     mock_client = MagicMock()
@@ -90,7 +93,7 @@ async def test_transcribe_voice_handles_file_not_found():
 
 @pytest.mark.asyncio
 async def test_transcribe_voice_with_retry_retries_once():
-    """Test that transcribe_voice_with_retry retries once on failure."""
+    """Paranoid test that transcribe_voice_with_retry retries once on failure."""
     from teleclaude.core.voice_message_handler import transcribe_voice_with_retry
 
     # Create temp audio file
@@ -124,7 +127,7 @@ async def test_transcribe_voice_with_retry_retries_once():
 
 @pytest.mark.asyncio
 async def test_transcribe_voice_with_retry_returns_none_after_max_retries():
-    """Test that retry function returns None after all retries fail."""
+    """Paranoid test that retry function returns None after all retries fail."""
     from teleclaude.core.voice_message_handler import transcribe_voice_with_retry
 
     # Create temp audio file
@@ -154,7 +157,7 @@ async def test_transcribe_voice_with_retry_returns_none_after_max_retries():
 
 @pytest.mark.asyncio
 async def test_handle_voice_rejects_no_active_process():
-    """Test that handle_voice rejects when no process is running."""
+    """Paranoid test that handle_voice rejects when no process is running."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
@@ -196,7 +199,7 @@ async def test_handle_voice_rejects_no_active_process():
 
 @pytest.mark.asyncio
 async def test_handle_voice_returns_none_when_session_missing():
-    """Test that handle_voice returns None when session is missing."""
+    """Paranoid test that handle_voice returns None when session is missing."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
@@ -225,7 +228,7 @@ async def test_handle_voice_returns_none_when_session_missing():
 
 @pytest.mark.asyncio
 async def test_handle_voice_forwards_transcription_to_process():
-    """Test that handle_voice returns transcribed text for message pipeline."""
+    """Paranoid test that handle_voice returns transcribed text for message pipeline."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
@@ -267,7 +270,7 @@ async def test_handle_voice_forwards_transcription_to_process():
 
 @pytest.mark.asyncio
 async def test_handle_voice_transcribes_without_feedback_channel():
-    """Test that handle_voice still transcribes when feedback can't be sent."""
+    """Paranoid test that handle_voice still transcribes when feedback can't be sent."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
@@ -311,7 +314,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
 
 @pytest.mark.asyncio
 async def test_handle_voice_cleans_up_temp_file_on_error():
-    """Test that handle_voice cleans up temp file on transcription failure."""
+    """Paranoid test that handle_voice cleans up temp file on transcription failure."""
     from teleclaude.core.events import VoiceEventContext
     from teleclaude.core.voice_message_handler import handle_voice
 
