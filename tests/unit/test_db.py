@@ -3,6 +3,8 @@
 import os
 import tempfile
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 import pytest
 
 from teleclaude.core.db import Db
@@ -63,6 +65,22 @@ class TestCreateSession:
         assert session.title == "Custom Title"
         assert session.adapter_metadata == metadata
         assert session.working_directory == "/home/user"
+
+    @pytest.mark.asyncio
+    async def test_create_session_stores_initiator_session_id(self, test_db):
+        """Test that initiator_session_id is stored and retrieved."""
+        session = await test_db.create_session(
+            computer_name="TestPC",
+            tmux_session_name="child-session",
+            origin_adapter="telegram",
+            title="Child",
+            initiator_session_id="parent-session",
+        )
+
+        retrieved = await test_db.get_session(session.session_id)
+
+        assert retrieved is not None
+        assert retrieved.initiator_session_id == "parent-session"
 
 
 class TestGetSession:
