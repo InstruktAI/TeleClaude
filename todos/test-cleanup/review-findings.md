@@ -22,6 +22,7 @@
 **Verification notes:**
 - `tests/unit/test_preparation_view.py` and `tests/unit/test_mcp_handlers.py` import config-backed modules without setting `TELECLAUDE_CONFIG_PATH`, so the tests can bind to local config and become order-dependent.
 - Unused imports and an unused local variable remain in modified tests, which violates the test quality criteria even though the current lint script does not scan `tests/`.
+- main has a newer commit not merged; diff was computed from merge-base as required.
 
 ### Integration Test Check
 - Main flow integration test exists: yes
