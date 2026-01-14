@@ -304,24 +304,21 @@ def _apply_tail_limit_codex(result: str, tail_chars: int) -> str:
     """Apply tail_chars limit for Codex transcripts.
 
     Codex clients can truncate tool output from the start; for long transcripts
-    we prefer to start at a recent section boundary so the newest content
-    appears near the beginning of the returned text.
+    we prefer to start at a recent section boundary that keeps most of the
+    newest window while dropping older content.
     """
     if not (0 < tail_chars < len(result)):
         return result
 
     truncated = result[-tail_chars:]
 
-    # Prefer the most recent section header ("\n## ") so we start at the newest
-    # readable boundary. This intentionally drops older sections even if they
-    # still fit within the last-N window.
-    last_header_pos = truncated.rfind("\n## ")
-    if last_header_pos >= 0:
-        truncated = truncated[last_header_pos + 1 :]
-    else:
-        first_header_pos = truncated.find("\n## ")
-        if 0 <= first_header_pos < 500:
-            truncated = truncated[first_header_pos + 1 :]
+    # Prefer the first header after a small cutoff so we drop older content
+    # but retain most of the recent window.
+    header_positions = [i for i in range(len(truncated)) if truncated.startswith("\n## ", i)]
+    if header_positions:
+        cutoff = min(500, max(0, int(len(truncated) * 0.1)))
+        chosen_pos = next((pos for pos in header_positions if pos >= cutoff), header_positions[0])
+        truncated = truncated[chosen_pos + 1 :]
 
     return f"[...truncated, showing last {tail_chars} chars...]\n\n{truncated}"
 
