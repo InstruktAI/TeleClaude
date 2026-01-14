@@ -282,13 +282,6 @@ Usage:
             await voice_file.download_to_drive(temp_file_path)
             logger.info("Downloaded voice message to: %s", temp_file_path)
 
-            # Delete the voice message from Telegram (keep UI clean)
-            try:
-                await message.delete()
-                logger.debug("Deleted voice message %s from Telegram", message.message_id)
-            except Exception as e:
-                logger.warning("Failed to delete voice message %s: %s", message.message_id, e)
-
             # Emit voice event to daemon
             await self.client.handle_event(
                 event=TeleClaudeEvents.VOICE,

@@ -344,6 +344,7 @@ async def test_next_work_review_includes_merge_base_note():
             patch("teleclaude.core.next_machine.Repo"),
             patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
             patch("teleclaude.core.next_machine.is_main_ahead", return_value=False),
+            patch("teleclaude.core.next_machine._prepare_worktree"),
         ):
             result = await next_work(db, slug=slug, cwd=tmpdir)
 
@@ -406,6 +407,7 @@ async def test_next_work_finalize_next_call_without_slug():
         with (
             patch("teleclaude.core.next_machine.Repo"),
             patch("teleclaude.core.next_machine.has_uncommitted_changes", return_value=False),
+            patch("teleclaude.core.next_machine._prepare_worktree"),
             patch(
                 "teleclaude.core.next_machine.get_available_agent",
                 new=AsyncMock(return_value=("claude", "med")),

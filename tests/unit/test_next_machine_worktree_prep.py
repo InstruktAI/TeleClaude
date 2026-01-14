@@ -7,7 +7,25 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from teleclaude.core.next_machine import _prepare_worktree
+from teleclaude.core.next_machine import _prepare_worktree, ensure_worktree
+
+
+class TestEnsureWorktreeAlwaysPrepares:
+    """Tests for ensure_worktree always running preparation."""
+
+    @patch("teleclaude.core.next_machine._prepare_worktree")
+    def test_always_runs_preparation_when_worktree_exists(self, mock_prepare: Mock, tmp_path: Path) -> None:
+        """Test that preparation always runs when worktree exists (idempotent)."""
+        # Setup - create worktree dir
+        worktree_dir = tmp_path / "trees" / "test-slug"
+        worktree_dir.mkdir(parents=True)
+
+        # Execute
+        result = ensure_worktree(str(tmp_path), "test-slug")
+
+        # Verify - preparation always runs (idempotent, catches drift)
+        assert result is False  # Worktree already existed
+        mock_prepare.assert_called_once_with(str(tmp_path), "test-slug")
 
 
 class TestPrepareWorktreeMakefile:

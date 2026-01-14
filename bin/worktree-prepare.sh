@@ -62,7 +62,21 @@ print_info "Preparing worktree: $SLUG"
 # Step 1: Install Python dependencies
 print_info "Installing Python dependencies..."
 cd "$WORKTREE_DIR"
-uv sync --extra test
+
+# Check if uv is available
+if command -v uv &> /dev/null; then
+    uv sync --extra test
+else
+    print_warning "uv not found, falling back to pip"
+    # Create venv if it doesn't exist
+    if [ ! -d ".venv" ]; then
+        python3 -m venv .venv
+    fi
+    # Install with pip
+    .venv/bin/python -m pip install --quiet --upgrade pip
+    .venv/bin/python -m pip install --quiet -e ".[test]"
+fi
+
 print_success "Dependencies installed"
 
 # Step 2: Generate config.yml
