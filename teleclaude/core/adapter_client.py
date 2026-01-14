@@ -6,7 +6,7 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast, overload
 
 from instrukt_ai_logging import get_logger
 
@@ -20,13 +20,16 @@ from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
+    AgentEventPayload,
     AgentHookEvents,
     AgentHookEventType,
     AgentNotificationPayload,
+    AgentPromptPayload,
     AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopPayload,
     CommandEventContext,
+    CommandEventType,
     ErrorEventContext,
     EventContext,
     EventType,
@@ -43,8 +46,35 @@ from teleclaude.core.protocols import RemoteExecutionProtocol
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
+    from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+_OUTPUT_SUMMARY_MIN_INTERVAL_S = 2.0
+_OUTPUT_SUMMARY_IDLE_THRESHOLD_S = 2.0
+
+CommandEventHandler = Callable[[CommandEventType, CommandEventContext], Awaitable[object]]
+MessageEventHandler = Callable[[Literal["message"], MessageEventContext], Awaitable[object]]
+VoiceEventHandler = Callable[[Literal["voice"], VoiceEventContext], Awaitable[object]]
+FileEventHandler = Callable[[Literal["file"], FileEventContext], Awaitable[object]]
+SessionLifecycleEventHandler = Callable[[Literal["session_terminated"], SessionLifecycleContext], Awaitable[object]]
+SystemCommandEventHandler = Callable[[Literal["system_command"], SystemCommandContext], Awaitable[object]]
+AgentEventHandler = Callable[[Literal["agent_event"], AgentEventContext], Awaitable[object]]
+ErrorEventHandler = Callable[[Literal["error"], ErrorEventContext], Awaitable[object]]
+SessionUpdatedEventHandler = Callable[[Literal["session_updated"], SessionUpdatedContext], Awaitable[object]]
+GenericEventHandler = Callable[[EventType, EventContext], Awaitable[object]]
+
+EventHandler = (
+    CommandEventHandler
+    | MessageEventHandler
+    | VoiceEventHandler
+    | FileEventHandler
+    | SessionLifecycleEventHandler
+    | SystemCommandEventHandler
+    | AgentEventHandler
+    | ErrorEventHandler
+    | SessionUpdatedEventHandler
+    | GenericEventHandler
+)
 
 
 class AdapterClient:
@@ -61,12 +91,16 @@ class AdapterClient:
     - (Future) Parallel broadcasting to multiple adapters
     """
 
-    def __init__(self) -> None:
+    def __init__(self, task_registry: "TaskRegistry | None" = None) -> None:
         """Initialize AdapterClient with observer pattern.
+
+        Args:
+            task_registry: Optional TaskRegistry for tracking background tasks
 
         No daemon reference - uses observer pattern instead.
         Daemon subscribes to events via client.on(event, handler).
         """
+        self.task_registry = task_registry
         self._handlers: dict[EventType, Callable[[EventType, EventContext], Awaitable[object]]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
 
@@ -162,7 +196,7 @@ class AdapterClient:
             ValueError: If no adapters started
         """
         # REST adapter (local HTTP API)
-        rest = RESTAdapter(self)
+        rest = RESTAdapter(self, task_registry=self.task_registry)
         await rest.start()
         self.adapters["rest"] = rest
 
@@ -175,7 +209,7 @@ class AdapterClient:
 
         # Redis adapter
         if config.redis.enabled:
-            redis = RedisAdapter(self)
+            redis = RedisAdapter(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
             self.adapters["redis"] = redis  # Register ONLY after success
             logger.info("Started redis adapter")
@@ -491,6 +525,18 @@ class AdapterClient:
 
         return first_success
 
+    @staticmethod
+    def _summarize_output(output: str) -> str:
+        """Summarize output for last_output display (single-line tail)."""
+        text = output.strip()
+        if not text:
+            return ""
+        lines = text.splitlines()
+        for line in reversed(lines):
+            if line.strip():
+                return line.strip()[:200]
+        return text[:200]
+
     def _needs_ui_channel(self, session: "Session") -> bool:
         telegram_adapter = self.adapters.get("telegram")
         if isinstance(telegram_adapter, UiAdapter):
@@ -629,6 +675,8 @@ class AdapterClient:
                         peer_dict["role"] = peer_info.role
                     if peer_info.system_stats:
                         peer_dict["system_stats"] = peer_info.system_stats
+                    if peer_info.tmux_binary:
+                        peer_dict["tmux_binary"] = peer_info.tmux_binary
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
             except Exception as e:
@@ -646,7 +694,37 @@ class AdapterClient:
         logger.debug("Total discovered peers (deduplicated): %d", len(unique_peers))
         return unique_peers
 
-    def on(self, event: EventType, handler: Callable[[EventType, EventContext], Awaitable[object]]) -> None:
+    @overload
+    def on(self, event: CommandEventType, handler: CommandEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["message"], handler: MessageEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["voice"], handler: VoiceEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["file"], handler: FileEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["session_terminated"], handler: SessionLifecycleEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["system_command"], handler: SystemCommandEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["agent_event"], handler: AgentEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["error"], handler: ErrorEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["session_updated"], handler: SessionUpdatedEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: EventType, handler: GenericEventHandler) -> None: ...
+
+    def on(self, event: EventType, handler: EventHandler) -> None:
         """Subscribe to event (daemon registers handlers here).
 
         Args:
@@ -654,7 +732,7 @@ class AdapterClient:
             handler: Async handler function(event, context) -> Awaitable[object]
                     context is a typed dataclass (CommandEventContext, MessageEventContext, etc.)
         """
-        self._handlers[event] = handler
+        self._handlers[event] = cast(Callable[[EventType, EventContext], Awaitable[object]], handler)
         logger.trace("Registered handler for event: %s", event)
 
     async def handle_event(
@@ -831,38 +909,52 @@ class AdapterClient:
         self,
         event_type: AgentHookEventType,
         data: dict[str, object],  # noqa: loose-dict - Event data to adapters
-    ) -> AgentSessionStartPayload | AgentStopPayload | AgentNotificationPayload | AgentSessionEndPayload:
+    ) -> AgentEventPayload:
         """Build typed agent payload from normalized hook data."""
+        native_id = cast(str | None, data.get("session_id"))
+
         if event_type == AgentHookEvents.AGENT_SESSION_START:
             return AgentSessionStartPayload(
-                session_id=str(data["session_id"]),
-                transcript_path=str(data["transcript_path"]),
+                session_id=native_id,
+                transcript_path=cast(str | None, data.get("transcript_path")),
                 raw=data,
+            )
+
+        if event_type == AgentHookEvents.AGENT_PROMPT:
+            return AgentPromptPayload(
+                session_id=native_id,
+                transcript_path=cast(str | None, data.get("transcript_path")),
+                prompt=cast(str, data.get("prompt", "")),
+                raw=data,
+                source_computer=cast(str | None, data.get("source_computer")),
             )
 
         if event_type == AgentHookEvents.AGENT_STOP:
             return AgentStopPayload(
-                session_id=str(data["session_id"]),
+                session_id=native_id,
                 transcript_path=cast(str | None, data.get("transcript_path")),
+                prompt=cast(str | None, data.get("prompt")),
                 raw=data,
-                summary=str(data["summary"]) if "summary" in data else None,
-                title=str(data["title"]) if "title" in data else None,
-                source_computer=str(data["source_computer"]) if "source_computer" in data else None,
+                summary=cast(str | None, data.get("summary")),
+                title=cast(str | None, data.get("title")),
+                source_computer=cast(str | None, data.get("source_computer")),
             )
 
         if event_type == AgentHookEvents.AGENT_NOTIFICATION:
             return AgentNotificationPayload(
-                session_id=str(data["session_id"]),
-                transcript_path=str(data["transcript_path"]),
-                message=str(data["message"]),
+                session_id=native_id,
+                transcript_path=cast(str | None, data.get("transcript_path")),
+                message=str(data.get("message", "")),
                 raw=data,
             )
 
         if event_type == AgentHookEvents.AGENT_SESSION_END:
             return AgentSessionEndPayload(
-                session_id=str(data["session_id"]),
+                session_id=native_id,
                 raw=data,
             )
+
+        raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 
         raise ValueError(f"Unknown agent hook event_type '{event_type}'")
 

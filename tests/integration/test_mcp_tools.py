@@ -3,6 +3,7 @@
 import asyncio
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -33,8 +34,18 @@ async def test_teleclaude_list_computers(mcp_server):
     # Mock discover_peers to return test data (remote peers)
     with patch.object(mcp_server.client, "discover_peers", new_callable=AsyncMock) as mock_discover:
         mock_discover.return_value = [
-            {"name": "testcomp", "status": "online", "bot_username": "@teleclaude_testcomp_bot"},
-            {"name": "workstation", "status": "online", "bot_username": "@teleclaude_workstation_bot"},
+            {
+                "name": "testcomp",
+                "status": "online",
+                "last_seen": datetime.now(timezone.utc),
+                "bot_username": "@teleclaude_testcomp_bot",
+            },
+            {
+                "name": "workstation",
+                "status": "online",
+                "last_seen": datetime.now(timezone.utc),
+                "bot_username": "@teleclaude_workstation_bot",
+            },
         ]
 
         result = await mcp_server.teleclaude__list_computers()
@@ -46,7 +57,6 @@ async def test_teleclaude_list_computers(mcp_server):
         # First is local computer (from config mock: "TestComputer")
         assert result[0]["name"] == "TestComputer"
         assert result[0]["status"] == "local"
-        assert result[0]["adapter_type"] == "local"
 
         # Remote peers follow
         assert result[1]["name"] == "testcomp"

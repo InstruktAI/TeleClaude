@@ -68,6 +68,7 @@ If the daemon won't start or is crashing immediately, follow these steps:
 **Error:** `Failed to connect to Redis: Error 61 connecting to <host>:<port>`
 
 **Possible causes:**
+
 1. Redis server is not running
 2. Wrong host or port in config
 3. Firewall blocking connection
@@ -114,16 +115,19 @@ redis-cli -h <host> -p <port> -a <password> ping
 **Solutions:**
 
 1. **Check password in `.env` file:**
+
    ```bash
    grep REDIS_PASSWORD .env
    ```
 
 2. **Test password locally on Redis server:**
+
    ```bash
    redis-cli -h 127.0.0.1 -p <port> -a '<password>' ping
    ```
 
 3. **Verify Redis AUTH is configured:**
+
    ```bash
    sudo grep "^requirepass" /etc/redis/redis.conf
    ```
@@ -143,7 +147,7 @@ redis-cli -h <host> -p <port> -a <password> ping
 ```yaml
 # config.yml
 redis:
-  url: rediss://redis.example.com:6379  # Note: rediss:// not redis://
+  url: rediss://redis.example.com:6379 # Note: rediss:// not redis://
 ```
 
 ### Adapter Not Loading
@@ -157,7 +161,7 @@ redis:
 grep -A 2 "^redis:" config.yml | grep enabled
 
 # 2. Check for startup errors in logs
-tail -100 /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -i redis
+instrukt-ai-logs teleclaude --since 5m | grep -i redis
 
 # 3. Verify redis package is installed
 .venv/bin/pip list | grep redis
@@ -211,7 +215,7 @@ launchctl unload ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
 launchctl load ~/Library/LaunchAgents/ai.instrukt.teleclaude.daemon.plist
 
 # View logs
-tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log
+instrukt-ai-logs teleclaude --since 5m
 ```
 
 **Note:** It is acceptable to kill the daemon process directly (e.g., `kill <PID>`). The service will automatically restart it within 10 seconds.
@@ -222,30 +226,8 @@ tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log
 
 ```bash
 # Monitor daemon logs in real-time
-tail -f /var/log/instrukt-ai/teleclaude/teleclaude.log
+instrukt-ai-logs teleclaude --since 5m
 ```
-
-### CRITICAL: When Debugging Log Issues
-
-1. **ALWAYS check timestamps first** - Don't assume logs are current
-2. **Check if logs were rotated/cleared** - Look for gaps in timestamps or check file modification time with `ls -lh /var/log/instrukt-ai/teleclaude/teleclaude.log`
-3. **Use precise time ranges** - When searching logs, use timestamps from the logs themselves, not assumptions
-4. **Example workflow:**
-
-   ```bash
-   # Check log file age and size
-   ls -lh /var/log/instrukt-ai/teleclaude/teleclaude.log
-
-   # Check first and last timestamps
-   head -5 /var/log/instrukt-ai/teleclaude/teleclaude.log  # First entries
-   tail -5 /var/log/instrukt-ai/teleclaude/teleclaude.log  # Most recent entries
-
-   # Search for specific time range
-   grep "2025-10-31 16:4[0-9]:" /var/log/instrukt-ai/teleclaude/teleclaude.log | grep -E "(Command|Message|ERROR)"
-   ```
-
-5. **Before testing** - Note the current time and look for log entries AFTER that time
-6. **When user reports an issue** - Ask for the approximate time and search around that timestamp
 
 ### Checking macOS System Logs
 
@@ -274,6 +256,7 @@ Use the `/usr/bin/log show` command to check system logs for launchd/daemon erro
 **Issue:** When you delete a Telegram forum topic (not just close it), the session remains in the database.
 
 **Why:** Telegram does not send deletion events to bots. The Bot API only provides events for:
+
 - Topic created (`forum_topic_created`)
 - Topic closed (`forum_topic_closed`) - ✅ Handled (terminates session)
 - Topic reopened (`forum_topic_reopened`) - ignored (session already terminated)

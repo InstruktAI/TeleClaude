@@ -19,7 +19,18 @@ _None currently - all blockers fixed._
 **Expected:** Agent session starts with the specified agent type
 **Actual:** Immediate feedback message: "unknown agent"
 
-### ~~2. Session title doesn't show active agent and mode~~ ✅ FIXED
+### 2. New session launches but tree selection does not update to active session
+
+**Steps to reproduce:**
+
+1. Select a project and start a new session
+2. Observe the nested pane correctly shows the new session
+3. Look at the tree view selection
+
+**Expected:** The tree view auto-selects the newly launched session (the one currently shown)
+**Actual:** Tree view selection remains on the previous node
+
+### ~~4. Session title doesn't show active agent and mode~~ ✅ FIXED
 
 **Fixed:** Session titles now show agent info when known:
 

@@ -1,0 +1,407 @@
+"""Central cache for remote data with TTL management and change notifications.
+
+Provides instant reads for REST endpoints and emits change events when data updates.
+"""
+
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Callable, Generic, TypeVar
+
+from instrukt_ai_logging import get_logger
+
+from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
+
+logger = get_logger(__name__)
+
+T = TypeVar("T")
+
+
+class CachedItem(Generic[T]):
+    """Wrapper for cached items with timestamp tracking."""
+
+    def __init__(self, data: T, cached_at: datetime | None = None) -> None:
+        """Initialize cached item.
+
+        Args:
+            data: The cached data
+            cached_at: Timestamp when data was cached (defaults to now)
+        """
+        self.data = data
+        self.cached_at = cached_at or datetime.now(timezone.utc)
+
+    def is_stale(self, ttl_seconds: int) -> bool:
+        """Check if cached item has exceeded its TTL.
+
+        Args:
+            ttl_seconds: Time-to-live in seconds
+
+        Returns:
+            True if item is older than TTL, False otherwise
+        """
+        if ttl_seconds == 0:
+            return True  # TTL of 0 means always stale (always refresh)
+        if ttl_seconds < 0:
+            return False  # Negative TTL means infinite (never stale)
+
+        age = (datetime.now(timezone.utc) - self.cached_at).total_seconds()
+        return age > ttl_seconds
+
+
+@dataclass(frozen=True)
+class TodoCacheEntry:
+    """Cached todos with context for filtering."""
+
+    computer: str
+    project_path: str
+    todos: list[TodoInfo]
+    is_stale: bool
+
+
+class DaemonCache:
+    """Central cache for remote data with TTL management.
+
+    Data categories:
+    - Computers: From heartbeats, TTL=60s
+    - Projects: Pull once on access, TTL=5min
+    - Sessions: Pull once + event updates, TTL=infinite
+    - Todos: Pull once on access, TTL=5min
+    """
+
+    def __init__(self) -> None:
+        """Initialize empty cache."""
+        # Computer cache: key = computer name
+        self._computers: dict[str, CachedItem[ComputerInfo]] = {}
+
+        # Project cache: key = f"{computer}:{path}"
+        self._projects: dict[str, CachedItem[ProjectInfo]] = {}
+
+        # Session cache: key = session_id
+        self._sessions: dict[str, CachedItem[SessionSummary]] = {}
+
+        # Todo cache: key = f"{computer}:{project_path}"
+        self._todos: dict[str, CachedItem[list[TodoInfo]]] = {}
+
+        # Change subscribers: callbacks notified when cache updates
+        self._subscribers: set[Callable[[str, object], None]] = set()
+
+        # Interest tracking: per-computer interest in data types
+        # Structure: {data_type: {computer1, computer2, ...}}
+        # Examples: {"sessions": {"raspi", "macbook"}, "projects": {"raspi"}}
+        self._interest: dict[str, set[str]] = {}
+
+    # ==================== TTL Management ====================
+
+    def is_stale(self, key: str, ttl_seconds: int) -> bool:
+        """Check if a cached item is stale.
+
+        Args:
+            key: Cache key
+            ttl_seconds: Time-to-live in seconds (0=always stale, <0=never stale)
+
+        Returns:
+            True if item is stale or missing, False otherwise
+        """
+        # Check each cache dictionary explicitly
+        if key in self._computers:
+            return self._computers[key].is_stale(ttl_seconds)
+        if key in self._projects:
+            return self._projects[key].is_stale(ttl_seconds)
+        if key in self._sessions:
+            return self._sessions[key].is_stale(ttl_seconds)
+        if key in self._todos:
+            return self._todos[key].is_stale(ttl_seconds)
+
+        # Not found = stale
+        return True
+
+    def invalidate(self, key: str) -> None:
+        """Remove a specific item from cache.
+
+        Args:
+            key: Cache key to invalidate
+        """
+        # Remove from all caches
+        self._computers.pop(key, None)
+        self._projects.pop(key, None)
+        self._sessions.pop(key, None)
+        self._todos.pop(key, None)
+        logger.debug("Invalidated cache key: %s", key)
+
+    def invalidate_all(self) -> None:
+        """Clear all cached data."""
+        self._computers.clear()
+        self._projects.clear()
+        self._sessions.clear()
+        self._todos.clear()
+        logger.info("Cleared all cache data")
+
+    # ==================== Data Access ====================
+
+    def get_computers(self) -> list[ComputerInfo]:
+        """Get all cached computers (auto-expires stale entries).
+
+        Returns:
+            List of computer info objects
+        """
+        # Filter to non-stale computers (TTL=60s)
+        computers = []
+        for key, cached in list(self._computers.items()):
+            if cached.is_stale(60):
+                self._computers.pop(key)  # Auto-expire
+                logger.debug("Auto-expired stale computer: %s", key)
+            else:
+                computers.append(cached.data)
+        return computers
+
+    def get_projects(self, computer: str | None = None, *, include_stale: bool = False) -> list[ProjectInfo]:
+        """Get cached projects, optionally filtered by computer.
+
+        Args:
+            computer: Optional computer name to filter by
+            include_stale: When True, include stale entries (caller may trigger refresh)
+
+        Returns:
+            List of project info objects
+        """
+        projects: list[ProjectInfo] = []
+        for key, cached in self._projects.items():
+            # Filter by computer if specified
+            if computer and not key.startswith(f"{computer}:"):
+                continue
+
+            # Filter out stale projects (TTL=5min) unless explicitly included
+            if cached.is_stale(300) and not include_stale:
+                continue
+
+            # Include computer name derived from key for optimistic rendering
+            comp_name = key.split(":", 1)[0] if ":" in key else ""
+            project = cached.data
+            project.computer = comp_name
+            projects.append(project)
+
+        return projects
+
+    def get_sessions(self, computer: str | None = None) -> list[SessionSummary]:
+        """Get cached sessions, optionally filtered by computer.
+
+        Args:
+            computer: Optional computer name to filter by
+
+        Returns:
+            List of session summary objects
+        """
+        sessions = []
+        for cached in self._sessions.values():
+            session = cached.data
+            # Filter by computer if specified
+            if computer and session.computer != computer:
+                continue
+            sessions.append(session)
+        return sessions
+
+    def get_todos(self, computer: str, project_path: str, *, include_stale: bool = False) -> list[TodoInfo]:
+        """Get cached todos for a project.
+
+        Args:
+            computer: Computer name
+            project_path: Project path
+
+        Returns:
+            List of todo info objects (empty if not cached or stale unless include_stale)
+        """
+        key = f"{computer}:{project_path}"
+        cached = self._todos.get(key)
+
+        if not cached:
+            return []
+        if cached.is_stale(300) and not include_stale:  # TTL=5min
+            return []
+
+        return cached.data
+
+    def get_todo_entries(
+        self,
+        *,
+        computer: str | None = None,
+        project_path: str | None = None,
+        include_stale: bool = False,
+    ) -> list[TodoCacheEntry]:
+        """Get cached todos with context, optionally filtered.
+
+        Args:
+            computer: Optional computer name to filter by
+            project_path: Optional project path to filter by
+            include_stale: When True, include stale entries
+
+        Returns:
+            List of todo cache entries with context
+        """
+        entries: list[TodoCacheEntry] = []
+        for key, cached in self._todos.items():
+            comp_name, path = key.split(":", 1) if ":" in key else ("", key)
+            if computer and comp_name != computer:
+                continue
+            if project_path and path != project_path:
+                continue
+            is_stale = cached.is_stale(300)
+            if is_stale and not include_stale:
+                continue
+            entries.append(
+                TodoCacheEntry(
+                    computer=comp_name,
+                    project_path=path,
+                    todos=cached.data,
+                    is_stale=is_stale,
+                )
+            )
+        return entries
+
+    # ==================== Data Updates ====================
+
+    def update_computer(self, computer: ComputerInfo) -> None:
+        """Update computer info in cache.
+
+        Args:
+            computer: Computer info object
+        """
+        name = computer.name
+        self._computers[name] = CachedItem(computer)
+        logger.debug("Updated computer cache: %s", name)
+        self._notify("computer_updated", computer)
+
+    def update_session(self, session: SessionSummary) -> None:
+        """Update session info in cache.
+
+        Args:
+            session: Session summary object
+        """
+        session_id = session.session_id
+        self._sessions[session_id] = CachedItem(session)
+        logger.debug("Updated session cache: %s", session_id[:8])
+        self._notify("session_updated", session)
+
+    def remove_session(self, session_id: str) -> None:
+        """Remove session from cache.
+
+        Args:
+            session_id: Session ID to remove
+        """
+        if session_id in self._sessions:
+            self._sessions.pop(session_id)
+            logger.debug("Removed session from cache: %s", session_id[:8])
+            self._notify("session_removed", {"session_id": session_id})
+
+    def set_projects(self, computer: str, projects: list[ProjectInfo]) -> None:
+        """Set projects for a computer.
+
+        Args:
+            computer: Computer name
+            projects: List of project info objects
+        """
+        # Store each project with key = f"{computer}:{path}"
+        for project in projects:
+            path = project.path
+            key = f"{computer}:{path}"
+            project.computer = computer
+            self._projects[key] = CachedItem(project)
+
+        logger.debug("Updated projects cache for %s: %d projects", computer, len(projects))
+        self._notify("projects_updated", {"computer": computer, "projects": projects})
+
+    def set_todos(self, computer: str, project_path: str, todos: list[TodoInfo]) -> None:
+        """Set todos for a project.
+
+        Args:
+            computer: Computer name
+            project_path: Project path
+            todos: List of todo info objects
+        """
+        key = f"{computer}:{project_path}"
+        self._todos[key] = CachedItem(todos)
+        logger.debug("Updated todos cache for %s: %d todos", key, len(todos))
+        self._notify("todos_updated", {"computer": computer, "project_path": project_path, "todos": todos})
+
+    # ==================== Interest Management ====================
+
+    def set_interest(self, data_type: str, computer: str) -> None:
+        """Register interest in a data type for a specific computer.
+
+        Args:
+            data_type: Type of data (e.g., "sessions", "projects", "todos")
+            computer: Computer name to track interest for
+        """
+        if data_type not in self._interest:
+            self._interest[data_type] = set()
+        self._interest[data_type].add(computer)
+        logger.debug("Registered interest: %s for computer %s", data_type, computer)
+
+    def has_interest(self, data_type: str, computer: str) -> bool:
+        """Check if cache has interest in data type for specific computer.
+
+        Args:
+            data_type: Type of data to check
+            computer: Computer name to check
+
+        Returns:
+            True if interest is active for this computer, False otherwise
+        """
+        return computer in self._interest.get(data_type, set())
+
+    def remove_interest(self, data_type: str, computer: str) -> None:
+        """Remove interest in a data type for a specific computer.
+
+        Args:
+            data_type: Type of data (e.g., "sessions", "projects", "todos")
+            computer: Computer name to remove interest for
+        """
+        if data_type in self._interest:
+            self._interest[data_type].discard(computer)
+            # Clean up empty sets
+            if not self._interest[data_type]:
+                del self._interest[data_type]
+            logger.debug("Removed interest: %s for computer %s", data_type, computer)
+
+    def get_interested_computers(self, data_type: str) -> list[str]:
+        """Get all computers with interest in a data type.
+
+        Args:
+            data_type: Type of data to check
+
+        Returns:
+            List of computer names with interest in this data type
+        """
+        return list(self._interest.get(data_type, set()))
+
+    # ==================== Change Notifications ====================
+
+    def subscribe(self, callback: Callable[[str, object], None]) -> None:
+        """Subscribe to cache change notifications.
+
+        Args:
+            callback: Function to call on cache changes (event, data)
+        """
+        self._subscribers.add(callback)
+        logger.debug("Added cache subscriber: %s", callback.__name__)
+
+    def unsubscribe(self, callback: Callable[[str, object], None]) -> None:
+        """Unsubscribe from cache change notifications.
+
+        Args:
+            callback: Function to remove from subscribers
+        """
+        self._subscribers.discard(callback)
+        logger.debug("Removed cache subscriber: %s", callback.__name__)
+
+    def _notify(self, event: str, data: object) -> None:
+        """Notify all subscribers of a cache change.
+
+        Args:
+            event: Event type (e.g., "session_updated", "computer_updated")
+            data: Event data
+        """
+        logger.debug("Cache notification: event=%s, subscribers=%d", event, len(self._subscribers))
+        for callback in self._subscribers:
+            try:
+                callback(event, data)
+            except Exception as e:
+                logger.error("Cache subscriber callback failed: %s", e, exc_info=True)

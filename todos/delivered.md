@@ -14,3 +14,14 @@
 | 2026-01-09 | db-refactor | Eliminate ux_state JSON Blob | DELIVERED | f9e45fb | done/010-db-refactor |
 | 2026-01-09 | telec-enhancements | telec: TUI Client for TeleClaude | DELIVERED | ceb9e4f | done/011-telec-enhancements |
 | 2026-01-10 | terminal-adapter-refactor | Rename TerminalAdapter to RESTAdapter | DELIVERED | 5a1991d | done/012-terminal-adapter-refactor |
+| 2026-01-11 | data-caching-pushing | Data Caching & Push Architecture (Phases 0-7) | DELIVERED | f12331d | done/data-caching-pushing |
+| 2026-01-11 | e2e-smoke-tests | End-to-End Smoke Tests | DELIVERED | 3966dc5 | done/013-e2e-smoke-tests |
+| 2026-01-11 | tui-snapshot-tests | TUI View Architecture Refactor & Tests | DELIVERED | 9210bbe | done/014-tui-snapshot-tests |
+| 2026-01-12 | performance-hardening | Performance Hardening: Async Resilience & Data Efficiency (Phase 1) | DELIVERED | 2a1cbcf | done/015-performance-hardening |
+| 2026-01-12 | cache-deferreds | Cache Population - Deferred Work Completion | DELIVERED | fb5a79d | done/016-cache-deferreds |
+| 2026-01-12 | todo-breakdown-assessment | Todo Breakdown Assessment | DELIVERED | 04b209a | done/017-todo-breakdown-assessment |
+| 2026-01-12 | worktree-preparation | Worktree Preparation | DELIVERED | e88f795 | done/018-worktree-preparation |
+| 2026-01-12 | startup-cache-hook-fixes | Startup Cache Hook Fixes | DELIVERED | 4462b44 | done/019-startup-cache-hook-fixes |
+| 2026-01-13 | delivery-verification-gates | Delivery Verification Gates | DELIVERED | 5b5d668 | done/020-delivery-verification-gates |
+| 2026-01-14 | model-boundary-consolidation | Model Boundary Consolidation | DELIVERED | 44fbd26 | done/021-model-boundary-consolidation |
+| 2026-01-14 | cache-startup-warmup | Warmup remote projects on daemon startup and add digest-based invalidation to heartbeats. | DELIVERED | f47779e | done/022-cache-startup-warmup |

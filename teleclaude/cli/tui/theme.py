@@ -34,6 +34,12 @@ Z_SELECTION: dict[int, int] = {
     2: 16,  # Modal selection
 }
 
+# Banner color pair
+_BANNER_PAIR_ID = 22
+
+# Tab line color pair (muted in dark mode)
+_TAB_LINE_PAIR_ID = 23
+
 # Track current mode for reference
 _is_dark_mode: bool = True
 
@@ -92,15 +98,15 @@ def init_colors() -> None:
     curses.init_pair(2, 172, -1)  # Normal: orange (original Claude color)
     curses.init_pair(3, curses.COLOR_YELLOW, -1)  # Highlight: bright yellow
 
-    # Gemini (cyan tones)
-    curses.init_pair(4, 24, -1)  # Muted: dark cyan
-    curses.init_pair(5, 67, -1)  # Normal: cyan
-    curses.init_pair(6, curses.COLOR_CYAN, -1)  # Highlight: bright cyan
+    # Gemini (lilac/purple tones)
+    curses.init_pair(4, 97, -1)  # Muted: soft lilac
+    curses.init_pair(5, 141, -1)  # Normal: lilac
+    curses.init_pair(6, 183, -1)  # Highlight: light purple
 
-    # Codex (green tones)
-    curses.init_pair(7, 22, -1)  # Muted: dark green
-    curses.init_pair(8, 65, -1)  # Normal: green
-    curses.init_pair(9, curses.COLOR_GREEN, -1)  # Highlight: bright green
+    # Codex (steel blue tones)
+    curses.init_pair(7, 66, -1)  # Muted: steel blue
+    curses.init_pair(8, 109, -1)  # Normal: steel blue
+    curses.init_pair(9, 110, -1)  # Highlight: light steel blue
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -129,6 +135,12 @@ def init_colors() -> None:
 
         # Input field border
         curses.init_pair(21, 245, -1)  # Medium gray for input borders
+
+        # Banner foreground (muted)
+        curses.init_pair(_BANNER_PAIR_ID, 244, -1)
+
+        # Tab lines (muted)
+        curses.init_pair(_TAB_LINE_PAIR_ID, 240, -1)
     else:
         curses.init_pair(14, -1, 252)  # z=0 selection
         curses.init_pair(15, -1, 251)  # z=1 selection
@@ -144,6 +156,12 @@ def init_colors() -> None:
 
         # Input field border
         curses.init_pair(21, 240, -1)  # Medium gray for input borders
+
+        # Banner foreground (muted)
+        curses.init_pair(_BANNER_PAIR_ID, 240, -1)
+
+        # Tab lines (default for light mode)
+        curses.init_pair(_TAB_LINE_PAIR_ID, 244, -1)
 
 
 def get_layer_attr(z_index: int) -> int:
@@ -188,3 +206,28 @@ def get_input_border_attr() -> int:
         Curses color pair attribute for input border
     """
     return curses.color_pair(21)
+
+
+def get_banner_attr(is_dark_mode: bool) -> int:
+    """Get curses attribute for banner text.
+
+    Args:
+        is_dark_mode: True if dark mode, False if light mode
+
+    Returns:
+        Curses attribute for banner text
+    """
+    if is_dark_mode:
+        return curses.color_pair(_BANNER_PAIR_ID)
+    return curses.A_BOLD
+
+
+def get_tab_line_attr() -> int:
+    """Get curses attribute for tab bar lines.
+
+    Returns:
+        Curses attribute for tab bar lines
+    """
+    if _is_dark_mode:
+        return curses.color_pair(_TAB_LINE_PAIR_ID)
+    return curses.A_NORMAL

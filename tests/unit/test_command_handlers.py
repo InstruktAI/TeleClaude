@@ -45,13 +45,13 @@ async def test_handle_get_computer_info_returns_system_stats():
         result = await command_handlers.handle_get_computer_info()
 
     # Verify basic fields
-    assert result["user"] == "testuser"
-    assert result["role"] == "development"
-    assert result["host"] == "test.local"
+    assert result.user == "testuser"
+    assert result.role == "development"
+    assert result.host == "test.local"
 
     # Verify system_stats structure
-    assert "system_stats" in result
-    system_stats = result["system_stats"]
+    assert result.system_stats is not None
+    system_stats = result.system_stats
 
     # Memory stats
     assert "memory" in system_stats
@@ -411,11 +411,11 @@ async def test_handle_list_sessions_formats_output():
         result = await command_handlers.handle_list_sessions()
 
     assert len(result) == 2
-    for session_data in result:
-        assert "session_id" in session_data
-        assert "origin_adapter" in session_data
-        assert "title" in session_data
-        assert session_data["status"] == "active"
+    for session_summary in result:
+        assert session_summary.session_id.startswith("session-")
+        assert session_summary.origin_adapter == "telegram"
+        assert session_summary.title.startswith("Test Session")
+        assert session_summary.status == "active"
 
 
 @pytest.mark.asyncio
@@ -532,9 +532,9 @@ async def test_handle_list_projects_returns_trusted_dirs():
         result = await command_handlers.handle_list_projects()
 
     assert len(result) == 1
-    assert result[0]["name"] == "Project"
-    assert result[0]["desc"] == "Test project"
-    assert "/tmp" in result[0]["location"]
+    assert result[0].name == "Project"
+    assert result[0].description == "Test project"
+    assert "/tmp" in result[0].path
 
 
 @pytest.mark.asyncio
@@ -825,6 +825,61 @@ async def test_handle_agent_resume_uses_continue_template_when_no_native_session
     assert command.endswith("--continue")
     assert "--resume" not in command
     assert "-m " not in command  # continue_template path skips model flag
+
+
+@pytest.mark.asyncio
+async def test_handle_agent_resume_uses_override_session_id_from_args(mock_initialized_db):
+    """Test that handle_agent_resume accepts an explicit native session ID argument."""
+    from teleclaude.config import AgentConfig
+    from teleclaude.core import command_handlers
+    from teleclaude.core.events import EventContext
+
+    mock_session = MagicMock()
+    mock_session.session_id = "test-session-override-123"
+    mock_session.tmux_session_name = "tc_test"
+    mock_session.native_session_id = "native-db-123"
+    mock_session.thinking_mode = "slow"
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_execute = AsyncMock(return_value=True)
+    mock_client = MagicMock()
+
+    mock_agent_config = AgentConfig(
+        command="codex --yolo",
+        session_dir="~/.codex/sessions",
+        log_pattern="*.jsonl",
+        model_flags={},
+        exec_subcommand="",
+        interactive_flag="",
+        non_interactive_flag="",
+        resume_template="{base_cmd} resume {session_id}",
+        continue_template="",
+    )
+
+    with (
+        patch.object(command_handlers, "config") as mock_config,
+        patch.object(command_handlers, "db") as mock_db,
+    ):
+        mock_config.agents.get.return_value = mock_agent_config
+        mock_db.update_session = AsyncMock()
+
+        await command_handlers.handle_agent_resume.__wrapped__(
+            mock_session,
+            mock_context,
+            "codex",
+            ["native-override-999"],
+            mock_client,
+            mock_execute,
+        )
+
+    mock_db.update_session.assert_any_await(
+        "test-session-override-123",
+        native_session_id="native-override-999",
+    )
+    mock_execute.assert_called_once()
+    command = mock_execute.call_args[0][1]
+    assert "resume" in command
+    assert "native-override-999" in command
 
 
 @pytest.mark.asyncio

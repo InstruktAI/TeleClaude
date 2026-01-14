@@ -53,20 +53,27 @@ class MockRedisClient:
 
     async def set(self, key: str, value: bytes, ex: int | None = None) -> bool:
         """Set key-value."""
+        if isinstance(value, str):
+            value = value.encode("utf-8")
         self.data[key] = value
         return True
 
     async def get(self, key: str) -> bytes | None:
         """Get value."""
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
         return self.data.get(key)
 
     async def delete(self, *keys: str) -> int:
         """Delete keys."""
-        count = sum(1 for k in keys if self.data.pop(k, None) is not None)
+        normalized = [(k.decode("utf-8") if isinstance(k, bytes) else k) for k in keys]
+        count = sum(1 for k in normalized if self.data.pop(k, None) is not None)
         return count
 
     async def exists(self, key: str) -> int:
         """Check if key exists."""
+        if isinstance(key, bytes):
+            key = key.decode("utf-8")
         return 1 if key in self.data else 0
 
     async def close(self) -> None:
@@ -90,8 +97,20 @@ class MockRedisClient:
         matching = [k.encode("utf-8") if isinstance(k, str) else k for k in self.data.keys() if regex.match(str(k))]
         return matching
 
+    async def scan(
+        self,
+        cursor: int,  # noqa: ARG002 - cursor unused in mock implementation
+        match: str | bytes,
+        count: int = 100,  # noqa: ARG002 - count unused in mock implementation
+    ) -> tuple[int, list[bytes]]:
+        """Scan keys matching a pattern (single batch for mock)."""
+        matching = await self.keys(match)
+        return 0, matching
+
     async def setex(self, key: str, ttl: int, value: bytes) -> bool:
         """Set key with expiration (expiry ignored for tests)."""
+        if isinstance(value, str):
+            value = value.encode("utf-8")
         self.data[key] = value
         return True
 
@@ -118,6 +137,10 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     temp_db_path = str(tmp_path / "test_teleclaude.db")
     monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
 
+    # CRITICAL: Set unique REST socket path for parallel execution
+    # Keep path short to avoid AF_UNIX length limits on macOS
+    temp_rest_socket = f"/tmp/teleclaude-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+
     # NOW import teleclaude modules (after env var is set)
     from teleclaude import config as config_module
     from teleclaude import constants as constants_module
@@ -128,6 +151,11 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     from teleclaude.core.session_utils import get_output_file
     from teleclaude.daemon import TeleClaudeDaemon
 
+    # CRITICAL: Patch REST_SOCKET_PATH to use unique path per test
+    # Also patch rest_adapter module-level constant to avoid stale import values
+    monkeypatch.setattr(constants_module, "REST_SOCKET_PATH", temp_rest_socket)
+    monkeypatch.setattr(rest_adapter_module, "REST_SOCKET_PATH", temp_rest_socket)
+
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
     class MockDatabase:
         def path(self) -> str:
@@ -137,6 +165,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         name = "TestComputer"
         default_working_dir = "/tmp"
         default_shell = "/bin/sh"
+        tmux_binary = "tmux"
         user = "testuser"
         role = "test"
         host = "test.local"

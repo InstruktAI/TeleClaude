@@ -4,17 +4,39 @@ from __future__ import annotations
 
 import asyncio
 import curses
+import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.models import (
+    AgentAvailabilityInfo,
+    CreateSessionResult,
+    ProjectInfo,
+    ProjectWithTodosInfo,
+    SessionInfo,
+)
+from teleclaude.cli.models import (
+    ComputerInfo as ApiComputerInfo,
+)
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
+from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.theme import AGENT_COLORS
-from teleclaude.cli.tui.tree import TreeNode, build_tree
+from teleclaude.cli.tui.tree import (
+    ComputerDisplayInfo,
+    ComputerNode,
+    ProjectNode,
+    SessionNode,
+    TreeNode,
+    build_tree,
+)
+from teleclaude.cli.tui.types import CursesWindow
+from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
 if TYPE_CHECKING:
+    from teleclaude.cli.api_client import TelecAPIClient
     from teleclaude.cli.tui.app import FocusContext
 
 logger = get_logger(__name__)
@@ -52,13 +74,13 @@ def _relative_time(iso_timestamp: str | None) -> str:
         return ""
 
 
-class SessionsView:
+class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
     """View 1: Sessions - project-centric tree with AI-to-AI nesting."""
 
     def __init__(
         self,
-        api: object,
-        agent_availability: dict[str, dict[str, object]],  # guard: loose-dict
+        api: "TelecAPIClient",
+        agent_availability: dict[str, AgentAvailabilityInfo],
         focus: FocusContext,
         pane_manager: TmuxPaneManager,
     ):
@@ -83,21 +105,27 @@ class SessionsView:
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
         self._active_field: dict[str, str] = {}  # session_id -> "input" | "output" | "none"
         # Store sessions for child lookup
-        self._sessions: list[dict[str, object]] = []  # guard: loose-dict
+        self._sessions: list[SessionInfo] = []
         # Store computers for SSH connection lookup
-        self._computers: list[dict[str, object]] = []  # guard: loose-dict
+        self._computers: list[ApiComputerInfo] = []
         # Row-to-item mapping for mouse click handling (built during render)
         self._row_to_item: dict[int, int] = {}
+        # Row mapping for session ID line clicks (double-click behavior)
+        self._row_to_id_item: dict[int, SessionNode] = {}
+        self._id_row_clicked: bool = False
+        self._missing_last_input_logged: set[str] = set()
         # Signal for app to trigger data refresh
         self.needs_refresh: bool = False
         # Visible height for scroll calculations (updated during render)
         self._visible_height: int = 20  # Default, updated in render
+        # Track rendered item range for scroll calculations
+        self._last_rendered_range: tuple[int, int] = (0, 0)
 
     async def refresh(
         self,
-        computers: list[dict[str, object]],  # guard: loose-dict
-        projects: list[dict[str, object]],  # guard: loose-dict
-        sessions: list[dict[str, object]],  # guard: loose-dict
+        computers: list[ApiComputerInfo],
+        projects: list[ProjectWithTodosInfo],
+        sessions: list[SessionInfo],
     ) -> None:
         """Refresh view data.
 
@@ -121,11 +149,53 @@ class SessionsView:
         # Track state changes for color coding
         self._update_activity_state(sessions)
 
-        self.tree = build_tree(computers, projects, sessions)
+        # Aggregate session counts and recent activity per computer
+        session_counts: dict[str, int] = {}
+        recent_activity: dict[str, bool] = {}
+        now = datetime.now(timezone.utc)
+        for session in sessions:
+            comp_name = session.computer or ""
+            if not comp_name:
+                continue
+            session_counts[comp_name] = session_counts.get(comp_name, 0) + 1
+
+            last_activity = session.last_activity
+            if last_activity:
+                try:
+                    last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+                    if last_dt.tzinfo is None:
+                        last_dt = last_dt.replace(tzinfo=timezone.utc)
+                    if (now - last_dt).total_seconds() <= 300:
+                        recent_activity[comp_name] = True
+                except ValueError:
+                    continue
+
+        # Enrich computer data for badges
+        enriched_computers: list[ComputerDisplayInfo] = []
+        for computer in computers:
+            name = computer.name
+            enriched_computers.append(
+                ComputerDisplayInfo(
+                    computer=computer,
+                    session_count=session_counts.get(name, 0),
+                    recent_activity=bool(recent_activity.get(name, False)),
+                )
+            )
+
+        project_infos = [
+            ProjectInfo(
+                computer=p.computer,
+                name=p.name,
+                path=p.path,
+                description=p.description,
+            )
+            for p in projects
+        ]
+        self.tree = build_tree(enriched_computers, project_infos, sessions)
         logger.debug("Tree built with %d root nodes", len(self.tree))
         self.rebuild_for_focus()
 
-    def _update_activity_state(self, sessions: list[dict[str, object]]) -> None:  # guard: loose-dict
+    def _update_activity_state(self, sessions: list[SessionInfo]) -> None:
         """Update activity state tracking for color coding.
 
         Determines which field (input/output) is "active" (bright) based on changes.
@@ -138,15 +208,12 @@ class SessionsView:
         idle_threshold_seconds = 60
 
         for session in sessions:
-            session_id = str(session.get("session_id", ""))
-            if not session_id:
-                continue
-
-            curr_input = str(session.get("last_input") or "")
-            curr_output = str(session.get("last_output") or "")
+            session_id = session.session_id
+            curr_input = session.last_input or ""
+            curr_output = session.last_output or ""
 
             # Check if last_activity is older than threshold
-            last_activity_str = str(session.get("last_activity") or "")
+            last_activity_str = session.last_activity or ""
             is_idle_by_time = True  # Default to idle if we can't parse or missing
             if last_activity_str:
                 try:
@@ -213,7 +280,7 @@ class SessionsView:
         # If focused on a computer, filter to that computer's children
         if self.focus.computer:
             for node in self.tree:
-                if node.type == "computer" and node.data.get("name") == self.focus.computer:
+                if node.type == "computer" and node.data.computer.name == self.focus.computer:
                     nodes = node.children
                     logger.debug("Filtered to computer '%s': %d children", self.focus.computer, len(nodes))
                     break
@@ -224,7 +291,7 @@ class SessionsView:
         # If also focused on a project, filter to that project's children
         if self.focus.project and nodes:
             for node in nodes:
-                if node.type == "project" and node.data.get("path") == self.focus.project:
+                if node.type == "project" and node.data.path == self.focus.project:
                     nodes = node.children
                     logger.debug("Filtered to project '%s': %d children", self.focus.project, len(nodes))
                     break
@@ -252,14 +319,31 @@ class SessionsView:
         """
         result: list[TreeNode] = []
         for node in nodes:
-            # Create a shallow copy with adjusted depth for display
-            display_node = TreeNode(
-                type=node.type,
-                data=node.data,
-                depth=base_depth,
-                children=node.children,
-                parent=node.parent,
-            )
+            display_node: TreeNode
+            if node.type == "computer":
+                display_node = ComputerNode(
+                    type="computer",
+                    data=node.data,
+                    depth=base_depth,
+                    children=node.children,
+                    parent=node.parent,
+                )
+            elif node.type == "project":
+                display_node = ProjectNode(
+                    type="project",
+                    data=node.data,
+                    depth=base_depth,
+                    children=node.children,
+                    parent=node.parent,
+                )
+            else:
+                display_node = SessionNode(
+                    type="session",
+                    data=node.data,
+                    depth=base_depth,
+                    children=node.children,
+                    parent=node.parent,
+                )
             result.append(display_node)
             result.extend(self._flatten_tree(node.children, base_depth + 1))
         return result
@@ -278,30 +362,16 @@ class SessionsView:
         selected = self.flat_items[self.selected_index]
         if selected.type == "session":
             # Show toggle state in action bar
-            tmux_session = str(selected.data.get("tmux_session_name") or "")
+            tmux_session = selected.data.session.tmux_session_name or ""
             is_previewing = self.pane_manager.active_session == tmux_session
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
-            return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [k] Kill"
+            return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
         if selected.type == "project":
             return f"{back_hint}[n] Untitled"
         # computer
         return f"{back_hint}[→] View Projects"
 
-    def move_up(self) -> None:
-        """Move selection up, adjusting scroll if needed."""
-        self.selected_index = max(0, self.selected_index - 1)
-        # Scroll up if selection moved above visible area
-        if self.selected_index < self.scroll_offset:
-            self.scroll_offset = self.selected_index
-
-    def move_down(self) -> None:
-        """Move selection down, adjusting scroll if needed."""
-        self.selected_index = min(len(self.flat_items) - 1, self.selected_index + 1)
-        # Scroll down if selection moved below visible area
-        # Use a margin of ~3 items from bottom to start scrolling
-        visible_bottom = self.scroll_offset + self._visible_height - 3
-        if self.selected_index > visible_bottom:
-            self.scroll_offset = max(0, self.selected_index - self._visible_height + 4)
+    # move_up() and move_down() inherited from ScrollableViewMixin
 
     def drill_down(self) -> bool:
         """Drill down into selected item (arrow right).
@@ -321,14 +391,14 @@ class SessionsView:
         logger.debug("drill_down: item.type=%s", item.type)
 
         if item.type == "computer":
-            self.focus.push("computer", str(item.data.get("name", "")))
+            self.focus.push("computer", item.data.computer.name)
             self.rebuild_for_focus()
             self.selected_index = 0
             logger.debug("drill_down: pushed computer focus")
             return True
         if item.type == "session":
             # Expand this session (if not already expanded)
-            session_id = str(item.data.get("session_id", ""))
+            session_id = item.data.session.session_id
             if session_id in self.collapsed_sessions:
                 self.collapsed_sessions.discard(session_id)
                 logger.debug("drill_down: expanded session %s", session_id[:8])
@@ -353,7 +423,7 @@ class SessionsView:
         logger.debug("collapse_selected: item.type=%s", item.type)
 
         if item.type == "session":
-            session_id = str(item.data.get("session_id", ""))
+            session_id = item.data.session.session_id
             if session_id not in self.collapsed_sessions:
                 self.collapsed_sessions.add(session_id)
                 logger.debug("collapse_selected: collapsed session %s", session_id[:8])
@@ -382,12 +452,11 @@ class SessionsView:
         """
         for node in nodes:
             if node.type == "session":
-                session_id = str(node.data.get("session_id", ""))
-                self.collapsed_sessions.add(session_id)
+                self.collapsed_sessions.add(node.data.session.session_id)
             if node.children:
                 self._collect_all_session_ids(node.children)
 
-    def handle_enter(self, stdscr: object) -> None:
+    def handle_enter(self, stdscr: CursesWindow) -> None:
         """Handle Enter key - perform action on selected item.
 
         Args:
@@ -395,6 +464,7 @@ class SessionsView:
         """
         if not self.flat_items:
             return
+        enter_start = time.perf_counter()
         item = self.flat_items[self.selected_index]
 
         if item.type == "computer":
@@ -404,8 +474,27 @@ class SessionsView:
             # Start new session on project
             self._start_session_for_project(stdscr, item.data)
         elif item.type == "session":
-            # Toggle session preview pane
-            self._toggle_session_pane(item)
+            # Double-click on ID line shows parent only; otherwise toggle split
+            session_id = item.data.session.session_id
+            is_collapsed = session_id in self.collapsed_sessions
+            if not is_collapsed and self._id_row_clicked:
+                self._show_single_session_pane(item)
+                logger.trace(
+                    "sessions_enter",
+                    item_type="session",
+                    action="show_single",
+                    duration_ms=int((time.perf_counter() - enter_start) * 1000),
+                )
+            else:
+                # Toggle session preview pane
+                self._toggle_session_pane(item)
+                logger.trace(
+                    "sessions_enter",
+                    item_type="session",
+                    action="toggle_pane",
+                    duration_ms=int((time.perf_counter() - enter_start) * 1000),
+                )
+            self._id_row_clicked = False
 
     def _get_computer_info(self, computer_name: str) -> ComputerInfo | None:
         """Get SSH connection info for a computer.
@@ -417,24 +506,26 @@ class SessionsView:
             ComputerInfo with user/host for SSH, or None if not found
         """
         for comp in self._computers:
-            if comp.get("name") == computer_name:
+            if comp.name == computer_name:
                 return ComputerInfo(
                     name=computer_name,
-                    user=comp.get("user"),  # type: ignore[arg-type]
-                    host=comp.get("host"),  # type: ignore[arg-type]
+                    is_local=comp.is_local,
+                    user=comp.user,
+                    host=comp.host,
+                    tmux_binary=comp.tmux_binary,
                 )
         return None
 
-    def _toggle_session_pane(self, item: TreeNode) -> None:
+    def _toggle_session_pane(self, item: SessionNode) -> None:
         """Toggle session preview pane visibility.
 
         Args:
             item: Session node
         """
-        session = item.data
-        session_id = str(session.get("session_id", ""))
-        tmux_session = str(session.get("tmux_session_name") or "")
-        computer_name = str(session.get("computer", "local"))
+        session = item.data.session
+        session_id = session.session_id
+        tmux_session = session.tmux_session_name or ""
+        computer_name = session.computer or "local"
 
         logger.debug(
             "_toggle_session_pane: session_id=%s, tmux=%s, computer=%s",
@@ -458,16 +549,29 @@ class SessionsView:
         # Look for child sessions (sessions where initiator_session_id == this session's id)
         child_tmux_session: str | None = None
         for sess in self._sessions:
-            if sess.get("initiator_session_id") == session_id:
-                child_tmux = sess.get("tmux_session_name")
+            if sess.initiator_session_id == session_id:
+                child_tmux = sess.tmux_session_name
                 if child_tmux:
-                    child_tmux_session = str(child_tmux)
+                    child_tmux_session = child_tmux
                     break
 
         # Toggle pane visibility (handles both local and remote via SSH)
         self.pane_manager.toggle_session(tmux_session, child_tmux_session, computer_info)
 
-    def _start_session_for_project(self, stdscr: object, project: dict[str, object]) -> None:  # guard: loose-dict
+    def _show_single_session_pane(self, item: SessionNode) -> None:
+        """Show only the selected session in the side pane (no child split)."""
+        session = item.data.session
+        tmux_session = session.tmux_session_name or ""
+        computer_name = session.computer or "local"
+
+        if not tmux_session:
+            logger.warning("_show_single_session_pane: tmux_session_name missing, cannot show")
+            return
+
+        computer_info = self._get_computer_info(computer_name)
+        self.pane_manager.show_session(tmux_session, None, computer_info)
+
+    def _start_session_for_project(self, stdscr: CursesWindow, project: ProjectInfo) -> None:
         """Open modal to start session on project.
 
         Args:
@@ -475,25 +579,43 @@ class SessionsView:
             project: Project data
         """
         # Use project's computer field, fallback to focused computer, then "local"
-        computer_value = project.get("computer") or self.focus.computer or "local"
+        computer_value = project.computer or self.focus.computer or "local"
         logger.info(
             "_start_session_for_project: project_computer=%s, focus_computer=%s, resolved=%s",
-            project.get("computer"),
+            project.computer,
             self.focus.computer,
             computer_value,
         )
         modal = StartSessionModal(
             computer=str(computer_value),
-            project_path=str(project.get("path", "")),
+            project_path=project.path,
             api=self.api,
             agent_availability=self.agent_availability,
         )
         result = modal.run(stdscr)
         if result:
-            # Session started - trigger auto-refresh
+            self._attach_new_session(result, str(computer_value), stdscr)
             self.needs_refresh = True
 
-    def handle_key(self, key: int, stdscr: object) -> None:
+    def _attach_new_session(
+        self,
+        result: CreateSessionResult,
+        computer: str,
+        stdscr: CursesWindow,
+    ) -> None:
+        """Attach newly created session to the side pane immediately."""
+        tmux_session_name = result.tmux_session_name or ""
+        if not tmux_session_name:
+            logger.warning("New session missing tmux_session_name, cannot attach")
+            return
+
+        if self.pane_manager.is_available:
+            computer_info = self._get_computer_info(computer)
+            self.pane_manager.show_session(tmux_session_name, None, computer_info)
+        else:
+            attach_tmux_from_result(result, stdscr)
+
+    def handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle view-specific keys.
 
         Args:
@@ -535,9 +657,10 @@ class SessionsView:
                 logger.debug("handle_key: 'k' ignored, not on a session")
                 return  # Only kill sessions, not computers/projects
 
-            session_id = str(selected.data.get("session_id", ""))
-            computer = str(selected.data.get("computer", ""))
-            title = str(selected.data.get("title", "Unknown"))
+            session = selected.data.session
+            session_id = session.session_id
+            computer = session.computer or ""
+            title = session.title
 
             # Confirm kill with modal
             modal = ConfirmModal(
@@ -554,7 +677,7 @@ class SessionsView:
 
             try:
                 result = asyncio.get_event_loop().run_until_complete(
-                    self.api.end_session(session_id=session_id, computer=computer)  # type: ignore[attr-defined]
+                    self.api.end_session(session_id=session_id, computer=computer)
                 )
                 if result:
                     self.needs_refresh = True
@@ -570,13 +693,161 @@ class SessionsView:
         Returns:
             True if an item was selected, False otherwise
         """
+        click_start = time.perf_counter()
         item_idx = self._row_to_item.get(screen_row)
         if item_idx is not None:
             self.selected_index = item_idx
+            self._id_row_clicked = screen_row in self._row_to_id_item
+            logger.trace(
+                "sessions_click",
+                row=screen_row,
+                item_type=self.flat_items[item_idx].type,
+                id_row=self._id_row_clicked,
+                duration_ms=int((time.perf_counter() - click_start) * 1000),
+            )
             return True
+        self._id_row_clicked = False
+        logger.trace(
+            "sessions_click_miss",
+            row=screen_row,
+            duration_ms=int((time.perf_counter() - click_start) * 1000),
+        )
         return False
 
-    def render(self, stdscr: object, start_row: int, height: int, width: int) -> None:
+    def get_render_lines(self, width: int, height: int) -> list[str]:
+        """Return lines this view would render (testable without curses).
+
+        Args:
+            width: Terminal width
+            height: Terminal height
+
+        Returns:
+            List of strings representing what would be rendered
+        """
+        lines: list[str] = []
+
+        if not self.flat_items:
+            lines.append("(no items)")
+            return lines
+
+        # Calculate scroll range
+        max_scroll = max(0, len(self.flat_items) - height + 3)
+        scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+        for i, item in enumerate(self.flat_items):
+            # Skip items before scroll offset
+            if i < scroll_offset:
+                continue
+            if len(lines) >= height:
+                break  # No more space
+
+            is_selected = i == self.selected_index
+            item_lines = self._format_item(item, width, is_selected)
+            lines.extend(item_lines)
+
+        return lines
+
+    def _format_item(self, item: TreeNode, width: int, selected: bool) -> list[str]:
+        """Format a single tree item for display.
+
+        Args:
+            item: Tree node
+            width: Screen width
+            selected: Whether this item is selected
+
+        Returns:
+            List of formatted lines for this item
+        """
+        indent = "  " * item.depth
+
+        if item.type == "computer":
+            name = item.data.computer.name
+            session_count = item.data.session_count
+            suffix = f"({session_count})" if session_count else ""
+            line = f"{indent}🖥  {name} {suffix}"
+            return [line[:width]]
+
+        if item.type == "project":
+            path = item.data.path
+            session_count = len(item.children)
+            suffix = f"({session_count})" if session_count else ""
+            line = f"{indent}📁 {path} {suffix}"
+            return [line[:width]]
+
+        if item.type == "session":
+            return self._format_session(item, width, selected)
+
+        return [""]
+
+    def _format_session(self, item: SessionNode, width: int, selected: bool) -> list[str]:  # noqa: ARG002
+        """Format session for display (1-3 lines).
+
+        Args:
+            item: Session node
+            width: Screen width
+            selected: Whether selected (currently unused but kept for consistency)
+
+        Returns:
+            List of formatted lines (1-3 depending on content and collapsed state)
+        """
+        session_display = item.data
+        session = session_display.session
+        session_id = session.session_id
+        is_collapsed = session_id in self.collapsed_sessions
+
+        indent = "  " * item.depth
+        agent = session.active_agent or "?"
+        mode = session.thinking_mode or "?"
+        title = session.title
+        idx = session_display.display_index
+
+        # Collapse indicator
+        collapse_indicator = "▶" if is_collapsed else "▼"
+
+        # Relative time
+        last_activity = session.last_activity or ""
+        rel_time = _relative_time(last_activity)
+        time_suffix = f"  ({rel_time})" if rel_time else ""
+
+        # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
+        lines: list[str] = []
+        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
+        lines.append(line1[:width])
+
+        # If collapsed, only show title line
+        if is_collapsed:
+            return lines
+
+        # Calculate content indent (align with agent name)
+        content_indent = indent + "      "  # 6 chars for "[X] ▶ "
+
+        # Line 2 (expanded only): ID: <full_session_id>
+        line2 = f"{content_indent}ID: {session_id}"
+        lines.append(line2[:width])
+
+        # Line 3: Last input (only if content exists)
+        last_input = (session.last_input or "").strip()
+        last_input_at = session.last_input_at
+        if last_input:
+            input_text = last_input.replace("\n", " ")[:60]
+            input_time = _relative_time(last_input_at)
+            time_suffix = f" ({input_time})" if input_time else ""
+            line3 = f"{content_indent}in: {input_text}{time_suffix}"
+            lines.append(line3[:width])
+
+        # Line 4: Last output (only if content exists)
+        last_output = (session.last_output or "").strip()
+        last_output_at = session.last_output_at
+        if last_output:
+            output_text = last_output.replace("\n", " ")[:60]
+            output_time = _relative_time(last_output_at)
+            time_suffix = f" ({output_time})" if output_time else ""
+            line4 = f"{content_indent}out: {output_text}{time_suffix}"
+            lines.append(line4[:width])
+
+        return lines
+
+    def render(self, stdscr: CursesWindow, start_row: int, height: int, width: int) -> None:
         """Render view content with scrolling support.
 
         Args:
@@ -599,6 +870,7 @@ class SessionsView:
 
         # Clear row-to-item mapping (rebuilt each render)
         self._row_to_item.clear()
+        self._row_to_id_item.clear()
 
         if not self.flat_items:
             msg = "(no items)"
@@ -612,6 +884,8 @@ class SessionsView:
 
         row = start_row
         items_rendered = 0
+        first_rendered = self.scroll_offset
+        last_rendered = self.scroll_offset
         for i, item in enumerate(self.flat_items):
             # Skip items before scroll offset
             if i < self.scroll_offset:
@@ -620,13 +894,18 @@ class SessionsView:
                 logger.debug("render: stopped at row %d (out of space), rendered %d items", row, items_rendered)
                 break  # No more space
 
+            last_rendered = i
             is_selected = i == self.selected_index
             lines_used = self._render_item(stdscr, row, item, width, is_selected)
             # Map all lines of this item to its index (for mouse click)
             for offset in range(lines_used):
-                self._row_to_item[row + offset] = i
+                screen_row = row + offset
+                self._row_to_item[screen_row] = i
             row += lines_used
             items_rendered += 1
+
+        # Track rendered range for scroll calculations
+        self._last_rendered_range = (first_rendered, last_rendered)
 
         logger.debug(
             "render: rendered %d of %d items (scroll_offset=%d)",
@@ -635,7 +914,7 @@ class SessionsView:
             self.scroll_offset,
         )
 
-    def _render_item(self, stdscr: object, row: int, item: TreeNode, width: int, selected: bool) -> int:
+    def _render_item(self, stdscr: CursesWindow, row: int, item: TreeNode, width: int, selected: bool) -> int:
         """Render a single tree item.
 
         Args:
@@ -652,11 +931,14 @@ class SessionsView:
         attr = curses.A_REVERSE if selected else 0
 
         if item.type == "computer":
-            line = f"{indent}🖥  {item.data.get('name', '')}"
+            name = item.data.computer.name
+            session_count = item.data.session_count
+            suffix = f"({session_count})" if session_count else ""
+            line = f"{indent}🖥  {name} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
         if item.type == "project":
-            path = str(item.data.get("path", ""))
+            path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}📁 {path} {suffix}"
@@ -669,7 +951,7 @@ class SessionsView:
             return self._render_session(stdscr, row, item, width, selected)
         return 1
 
-    def _render_session(self, stdscr: object, row: int, item: TreeNode, width: int, selected: bool) -> int:
+    def _render_session(self, stdscr: CursesWindow, row: int, item: SessionNode, width: int, selected: bool) -> int:
         """Render session with agent-colored text (1-3 lines).
 
         Color coding rules:
@@ -687,15 +969,24 @@ class SessionsView:
         Returns:
             Number of lines used (1-3 depending on content and collapsed state)
         """
-        session = item.data
-        session_id = str(session.get("session_id", ""))
+
+        def _safe_addstr(target_row: int, text: str, attr: int) -> None:
+            line = text[:width].ljust(width)
+            try:
+                stdscr.addstr(target_row, 0, line, attr)  # type: ignore[attr-defined]
+            except curses.error as e:
+                logger.warning("curses error rendering session line at row %d: %s", target_row, e)
+
+        session_display = item.data
+        session = session_display.session
+        session_id = session.session_id
         is_collapsed = session_id in self.collapsed_sessions
 
         indent = "  " * item.depth
-        agent = str(session.get("active_agent") or "?")
-        mode = str(session.get("thinking_mode", "?"))
-        title = str(session.get("title", "Untitled"))
-        idx = str(session.get("display_index", "?"))
+        agent = session.active_agent or "?"
+        mode = session.thinking_mode or "?"
+        title = session.title
+        idx = session_display.display_index
 
         # Get agent color pairs (muted, normal, highlight)
         agent_colors = AGENT_COLORS.get(agent, {"muted": 0, "normal": 0, "highlight": 0})
@@ -713,16 +1004,13 @@ class SessionsView:
         collapse_indicator = "▶" if is_collapsed else "▼"
 
         # Relative time
-        last_activity = str(session.get("last_activity") or "")
+        last_activity = session.last_activity or ""
         rel_time = _relative_time(last_activity)
-        time_suffix = f"  {rel_time}" if rel_time else ""
+        time_suffix = f"  ({rel_time})" if rel_time else ""
 
         # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
         line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
-        try:
-            stdscr.addstr(row, 0, line1[:width], title_attr)  # type: ignore[attr-defined]
-        except curses.error as e:
-            logger.warning("curses error rendering session title at row %d: %s", row, e)
+        _safe_addstr(row, line1, title_attr)
 
         # If collapsed, only show title line
         if is_collapsed:
@@ -736,10 +1024,8 @@ class SessionsView:
 
         # Line 2 (expanded only): ID: <full_session_id>
         line2 = f"{content_indent}ID: {session_id}"
-        try:
-            stdscr.addstr(row + lines_used, 0, line2[:width], normal_attr)  # type: ignore[attr-defined]
-        except curses.error as e:
-            logger.warning("curses error rendering session ID at row %d: %s", row + lines_used, e)
+        _safe_addstr(row + lines_used, line2, normal_attr)
+        self._row_to_id_item[row + lines_used] = item
         lines_used += 1
 
         # Determine which field is "active" (highlight) based on state tracking
@@ -748,25 +1034,28 @@ class SessionsView:
         output_attr = highlight_attr if active == "output" else muted_attr
 
         # Line 3: Last input (only if content exists)
-        last_input = str(session.get("last_input") or "").strip()
+        last_input = (session.last_input or "").strip()
+        last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            line3 = f"{content_indent}last input: {input_text}"
-            try:
-                stdscr.addstr(row + lines_used, 0, line3[:width], input_attr)  # type: ignore[attr-defined]
-            except curses.error as e:
-                logger.warning("curses error rendering session input at row %d: %s", row + lines_used, e)
+            input_time = _relative_time(last_input_at)
+            time_suffix = f" ({input_time})" if input_time else ""
+            line3 = f"{content_indent}in: {input_text}{time_suffix}"
+            _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
 
         # Line 4: Last output (only if content exists)
-        last_output = str(session.get("last_output") or "").strip()
+        last_output = (session.last_output or "").strip()
+        last_output_at = session.last_output_at
+        if last_output and not last_input and session_id not in self._missing_last_input_logged:
+            self._missing_last_input_logged.add(session_id)
+            logger.trace("missing_last_input", session=session_id[:8])
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{content_indent}last output: {output_text}"
-            try:
-                stdscr.addstr(row + lines_used, 0, line4[:width], output_attr)  # type: ignore[attr-defined]
-            except curses.error as e:
-                logger.warning("curses error rendering session output at row %d: %s", row + lines_used, e)
+            output_time = _relative_time(last_output_at)
+            time_suffix = f" ({output_time})" if output_time else ""
+            line4 = f"{content_indent}out: {output_text}{time_suffix}"
+            _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 
         return lines_used

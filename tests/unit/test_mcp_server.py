@@ -2,16 +2,16 @@
 
 import asyncio
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp import types
 from mcp.server import Server
-
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core.models import ThinkingMode
+from teleclaude.core.models import ComputerInfo, SessionSummary, ThinkingMode
 
 CALLER_SESSION_ID = "caller-session-123"
 
@@ -55,17 +55,28 @@ async def test_teleclaude_list_computers_returns_online_computers(mock_mcp_serve
     # Mock handle_get_computer_info for local computer
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.handle_get_computer_info = AsyncMock(
-            return_value={
-                "user": "testuser",
-                "host": "localhost",
-                "role": "development",
-                "system_stats": {"memory": {"percent_used": 50.0}},
-            }
+            return_value=ComputerInfo(
+                name="TestComputer",
+                status="online",
+                user="testuser",
+                host="localhost",
+                role="development",
+                is_local=True,
+                system_stats={"memory": {"percent_used": 50.0}},
+            )
         )
 
         # Mock discover_peers to return remote peers
         server.client.discover_peers = AsyncMock(
-            return_value=[{"name": "RemotePC", "status": "online", "user": "remoteuser", "host": "remote.local"}]
+            return_value=[
+                {
+                    "name": "RemotePC",
+                    "status": "online",
+                    "last_seen": datetime.now(timezone.utc),
+                    "user": "remoteuser",
+                    "host": "remote.local",
+                }
+            ]
         )
 
         result = await server.teleclaude__list_computers()
@@ -87,12 +98,15 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
     with patch("teleclaude.mcp.handlers.command_handlers") as mock_handlers:
         mock_handlers.handle_list_sessions = AsyncMock(
             return_value=[
-                {
-                    "session_id": "test-session-123",
-                    "origin_adapter": "telegram",
-                    "title": "Test Session",
-                    "status": "active",
-                }
+                SessionSummary(
+                    session_id="test-session-123",
+                    origin_adapter="telegram",
+                    title="Test Session",
+                    working_directory="/home/user",
+                    thinking_mode="slow",
+                    active_agent=None,
+                    status="active",
+                )
             ]
         )
 

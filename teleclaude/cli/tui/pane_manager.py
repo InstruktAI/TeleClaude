@@ -18,13 +18,15 @@ class ComputerInfo:
     """SSH connection info for a computer."""
 
     name: str
+    is_local: bool
     user: str | None = None
     host: str | None = None
+    tmux_binary: str | None = None
 
     @property
     def is_remote(self) -> bool:
         """Check if this is a remote computer requiring SSH."""
-        return bool(self.host and self.user)
+        return not self.is_local
 
     @property
     def ssh_target(self) -> str | None:
@@ -102,6 +104,49 @@ class TmuxPaneManager:
         output = self._run_tmux("list-panes", "-F", "#{pane_id}")
         return pane_id in output.split("\n")
 
+    def _get_appearance_env(self) -> dict[str, str]:
+        """Get current appearance settings from the host.
+
+        Captures APPEARANCE_MODE and TERMINAL_BG from the local machine
+        to pass to remote sessions via SSH.
+
+        Returns:
+            Dict with appearance env vars, empty if detection fails.
+        """
+        env_vars: dict[str, str] = {}
+        appearance_bin = os.path.expanduser("~/.local/bin/appearance")
+
+        if not os.path.exists(appearance_bin):
+            return env_vars
+
+        # Get mode
+        try:
+            result = subprocess.run(
+                [appearance_bin, "get-mode"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                env_vars["APPEARANCE_MODE"] = result.stdout.strip()
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+        # Get terminal background
+        try:
+            result = subprocess.run(
+                [appearance_bin, "get-terminal-bg"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                env_vars["TERMINAL_BG"] = result.stdout.strip()
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+
+        return env_vars
+
     def _build_attach_cmd(
         self,
         tmux_session_name: str,
@@ -110,7 +155,7 @@ class TmuxPaneManager:
         """Build the command to attach to a tmux session.
 
         For local sessions: direct tmux attach
-        For remote sessions: SSH with tmux attach
+        For remote sessions: SSH with tmux attach (includes appearance env vars)
 
         Args:
             tmux_session_name: The tmux session name to attach to
@@ -119,21 +164,39 @@ class TmuxPaneManager:
         Returns:
             Command string to execute
         """
+        attach_cmd = self._build_tmux_attach_command(tmux_session_name)
+
         if computer_info and computer_info.is_remote:
             # Remote: SSH to the computer and attach there
-            # Use plain 'tmux' - remote machine has its own tmux binary
             # Use -t for pseudo-terminal allocation (required for tmux)
             # Use -A for SSH agent forwarding
             ssh_target = computer_info.ssh_target
-            cmd = f"ssh -t -A {ssh_target} 'TERM=tmux-256color tmux -u attach-session -t {tmux_session_name}'"
+            tmux_binary = computer_info.tmux_binary or "tmux"
+
+            # Get appearance settings from host to pass to remote
+            appearance_env = self._get_appearance_env()
+            env_str = " ".join(f"{k}={v}" for k, v in appearance_env.items())
+            if env_str:
+                env_str += " "
+
+            cmd = f"ssh -t -A {ssh_target} '{env_str}TERM=tmux-256color {tmux_binary} -u {attach_cmd}'"
             logger.debug("Remote attach cmd for %s via %s: %s", tmux_session_name, ssh_target, cmd)
             return cmd
 
         # Local: use configured tmux binary
         tmux = config.computer.tmux_binary
-        cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u attach-session -t {tmux_session_name}"
+        cmd = f"env -u TMUX TERM=tmux-256color {tmux} -u {attach_cmd}"
         logger.debug("Local attach cmd for %s: %s", tmux_session_name, cmd)
         return cmd
+
+    def _build_tmux_attach_command(self, tmux_session_name: str) -> str:
+        """Build tmux command with inline appearance tweaks before attach."""
+        return (
+            f'set-option -t {tmux_session_name} status-right "" \\; '
+            f"set-option -t {tmux_session_name} status-right-length 0 \\; "
+            f'set-option -t {tmux_session_name} status-style "bg=default" \\; '
+            f"attach-session -t {tmux_session_name}"
+        )
 
     def show_session(
         self,

@@ -677,11 +677,41 @@ class Db:
         row = await cursor.fetchone()
         if not row:
             return None
+        unavailable_until = cast(Optional[str], row["unavailable_until"])
+        if unavailable_until is not None:
+            parsed_until = self._parse_iso_datetime(unavailable_until)
+            if parsed_until and parsed_until < datetime.now(timezone.utc):
+                await self.conn.execute(
+                    """UPDATE agent_availability
+                       SET available = 1, unavailable_until = NULL, reason = NULL
+                       WHERE agent = ?""",
+                    (agent,),
+                )
+                await self.conn.commit()
+                return {
+                    "available": True,
+                    "unavailable_until": None,
+                    "reason": None,
+                }
+        reason = cast(Optional[str], row["reason"])
         return {
             "available": bool(row["available"]),  # type: ignore[misc]  # Row access is Any from aiosqlite
-            "unavailable_until": row["unavailable_until"],  # type: ignore[misc]
-            "reason": row["reason"],  # type: ignore[misc]
+            "unavailable_until": unavailable_until,
+            "reason": reason,
         }
+
+    @staticmethod
+    def _parse_iso_datetime(value: str) -> datetime | None:
+        """Parse ISO datetime with support for trailing 'Z'."""
+        try:
+            normalized = value.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            logger.warning("Failed to parse unavailable_until value: %s", value)
+            return None
 
     async def mark_agent_unavailable(self, agent: str, unavailable_until: str, reason: str) -> None:
         """Mark an agent as unavailable until a specified time.
@@ -700,6 +730,22 @@ class Db:
         )
         await self.conn.commit()
         logger.info("Marked agent %s unavailable until %s (%s)", agent, unavailable_until, reason)
+
+    async def mark_agent_available(self, agent: str) -> None:
+        """Mark an agent as available immediately.
+
+        Args:
+            agent: Agent name (e.g., "claude", "gemini", "codex")
+        """
+        await self.conn.execute(
+            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
+               VALUES (?, 1, NULL, NULL)
+               ON CONFLICT(agent) DO UPDATE SET
+                 available = 1, unavailable_until = NULL, reason = NULL""",
+            (agent,),
+        )
+        await self.conn.commit()
+        logger.info("Marked agent %s available", agent)
 
     async def clear_expired_agent_availability(self) -> int:
         """Reset agents whose unavailable_until time has passed.

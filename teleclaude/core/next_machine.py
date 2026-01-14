@@ -11,6 +11,7 @@ for the orchestrator AI to execute literally.
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Literal, Mapping, cast
 
@@ -222,9 +223,10 @@ def format_hitl_guidance(context: str) -> str:
 Phase = Literal["build", "review"]
 PhaseStatus = Literal["pending", "complete", "approved", "changes_requested"]
 
-DEFAULT_STATE: dict[str, str] = {
+DEFAULT_STATE: dict[str, str | dict[str, bool | list[str]]] = {
     "build": "pending",
     "review": "pending",
+    "breakdown": {"assessed": False, "todos": []},
 }
 
 
@@ -233,7 +235,7 @@ def get_state_path(cwd: str, slug: str) -> Path:
     return Path(cwd) / "todos" / slug / "state.json"
 
 
-def read_phase_state(cwd: str, slug: str) -> dict[str, str]:
+def read_phase_state(cwd: str, slug: str) -> dict[str, str | dict[str, bool | list[str]]]:
     """Read state.json from worktree.
 
     Returns default state if file doesn't exist.
@@ -243,12 +245,12 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, str]:
         return DEFAULT_STATE.copy()
 
     content = state_path.read_text(encoding="utf-8")
-    state: dict[str, str] = json.loads(content)
+    state: dict[str, str | dict[str, bool | list[str]]] = json.loads(content)
     # Merge with defaults for any missing keys
     return {**DEFAULT_STATE, **state}
 
 
-def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
+def write_phase_state(cwd: str, slug: str, state: dict[str, str | dict[str, bool | list[str]]]) -> None:
     """Write state.json and commit to git."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -261,7 +263,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
         relative_path = state_path.relative_to(cwd)
         repo.index.add([str(relative_path)])
         # Create descriptive commit message
-        phases_done = [p for p, s in state.items() if s in ("complete", "approved")]
+        phases_done = [p for p, s in state.items() if isinstance(s, str) and s in ("complete", "approved")]
         msg = f"state({slug}): {', '.join(phases_done) if phases_done else 'init'}"
         repo.index.commit(msg)
         logger.info("Committed state update for %s", slug)
@@ -269,7 +271,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str]) -> None:
         logger.warning("Cannot commit state: %s is not a git repository", cwd)
 
 
-def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str]:
+def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | dict[str, bool | list[str]]]:
     """Mark a phase with a status and commit.
 
     Args:
@@ -287,22 +289,53 @@ def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str]:
     return state
 
 
+def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
+    """Read breakdown state from todos/{slug}/state.json.
+
+    Returns:
+        Breakdown state dict with 'assessed' and 'todos' keys, or None if not present.
+    """
+    state = read_phase_state(cwd, slug)
+    breakdown = state.get("breakdown")
+    if breakdown is None or not isinstance(breakdown, dict):
+        return None
+    # At this point breakdown is dict with bool/list values from json
+    return dict(breakdown)
+
+
+def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
+    """Write breakdown state and commit.
+
+    Args:
+        cwd: Project root directory
+        slug: Work item slug
+        assessed: Whether breakdown assessment has been performed
+        todos: List of todo slugs created from split (empty if no breakdown)
+    """
+    state = read_phase_state(cwd, slug)
+    state["breakdown"] = {"assessed": assessed, "todos": todos}
+    write_phase_state(cwd, slug, state)
+
+
 def is_build_complete(cwd: str, slug: str) -> bool:
     """Check if build phase is complete."""
     state = read_phase_state(cwd, slug)
-    return state.get("build") == "complete"
+    build = state.get("build")
+    return isinstance(build, str) and build == "complete"
 
 
 def is_review_approved(cwd: str, slug: str) -> bool:
     """Check if review phase is approved."""
     state = read_phase_state(cwd, slug)
-    return state.get("review") == "approved"
+    review = state.get("review")
+    return isinstance(review, str) and review == "approved"
 
 
 def is_review_changes_requested(cwd: str, slug: str) -> bool:
     """Check if review requested changes."""
     state = read_phase_state(cwd, slug)
-    return state.get("review") == "changes_requested"
+    review = state.get("review")
+    return isinstance(review, str) and review == "changes_requested"
 
 
 def resolve_slug(
@@ -816,6 +849,7 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
     """Ensure worktree exists, creating it if needed.
 
     Creates: git worktree add trees/{slug} -b {slug}
+    Then calls project-owned preparation hook to make worktree ready for work.
 
     Args:
         cwd: Project root directory
@@ -823,6 +857,9 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
 
     Returns:
         True if a new worktree was created, False if it already existed
+
+    Raises:
+        RuntimeError: If preparation hook not found or fails
     """
     worktree_path = Path(cwd) / "trees" / slug
     if worktree_path.exists():
@@ -838,10 +875,131 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
         repo.git.worktree("add", str(worktree_path), "-b", slug)
         logger.info("Created worktree at %s", worktree_path)
 
+        # Call preparation hook to make worktree ready for work
+        _prepare_worktree(cwd, slug)
+
         return True
     except InvalidGitRepositoryError:
         logger.error("Cannot create worktree: %s is not a git repository", cwd)
         raise
+
+
+def _prepare_worktree(cwd: str, slug: str) -> None:
+    """Call project-owned preparation hook to prepare worktree.
+
+    Detects project type (Makefile or package.json) and calls appropriate hook:
+    - Python/Makefile: make worktree-prepare SLUG={slug}
+    - Node/package.json: npm run worktree:prepare -- {slug}
+
+    Args:
+        cwd: Project root directory (main repo)
+        slug: Work item slug
+
+    Raises:
+        RuntimeError: If hook not found or execution fails
+    """
+    cwd_path = Path(cwd)
+
+    # Check for Makefile
+    makefile = cwd_path / "Makefile"
+    if makefile.exists():
+        # Verify worktree-prepare target exists
+        try:
+            subprocess.run(
+                ["make", "-n", "worktree-prepare"],
+                cwd=cwd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            msg = "make command not found. Install make to use Makefile-based worktree preparation."
+            logger.error(msg)
+            raise RuntimeError(msg) from None
+        except subprocess.CalledProcessError:
+            msg = f"Makefile exists but 'worktree-prepare' target not found in {cwd}"
+            logger.error(msg)
+            raise RuntimeError(msg) from None
+
+        # Call preparation hook
+        logger.info("Preparing worktree with: make worktree-prepare SLUG=%s", slug)
+        try:
+            result = subprocess.run(
+                ["make", "worktree-prepare", f"SLUG={slug}"],
+                cwd=cwd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.info("Worktree preparation output:\n%s", result.stdout)
+        except subprocess.CalledProcessError as e:
+            stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
+            stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: make worktree-prepare SLUG={slug}\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {stdout_str}\n"
+                f"stderr: {stderr_str}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+        return
+
+    # Check for package.json
+    package_json = cwd_path / "package.json"
+    if package_json.exists():
+        # Parse JSON and verify worktree:prepare script exists
+        try:
+            with open(package_json, "r", encoding="utf-8") as f:
+                data: dict[str, dict[str, str]] = json.load(f)
+            if "scripts" not in data or "worktree:prepare" not in data["scripts"]:
+                msg = f"package.json exists but 'worktree:prepare' script not found in {cwd}"
+                logger.error(msg)
+                raise RuntimeError(msg)
+        except (json.JSONDecodeError, KeyError) as e:
+            msg = f"Failed to parse package.json in {cwd}"
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+
+        # Call preparation hook
+        logger.info("Preparing worktree with: npm run worktree:prepare -- %s", slug)
+        try:
+            result = subprocess.run(
+                ["npm", "run", "worktree:prepare", "--", slug],
+                cwd=cwd,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.info("Worktree preparation output:\n%s", result.stdout)
+        except FileNotFoundError:
+            msg = "npm command not found. Install Node.js/npm to use package.json-based worktree preparation."
+            logger.error(msg)
+            raise RuntimeError(msg) from None
+        except subprocess.CalledProcessError as e:
+            stdout_str = str(e.stdout) if e.stdout is not None else ""  # type: ignore[misc]
+            stderr_str = str(e.stderr) if e.stderr is not None else ""  # type: ignore[misc]
+            msg = (
+                f"Worktree preparation failed for {slug}:\n"
+                f"Command: npm run worktree:prepare -- {slug}\n"
+                f"Exit code: {e.returncode}\n"
+                f"stdout: {stdout_str}\n"
+                f"stderr: {stderr_str}"
+            )
+            logger.error(msg)
+            raise RuntimeError(msg) from e
+        return
+
+    # No preparation hook found
+    msg = (
+        f"No worktree preparation hook found in {cwd}. "
+        f"Expected either:\n"
+        f"  - Makefile with 'worktree-prepare' target\n"
+        f"  - package.json with 'worktree:prepare' script"
+    )
+    logger.error(msg)
+    raise RuntimeError(msg)
 
 
 def is_main_ahead(cwd: str, slug: str) -> bool:
@@ -948,6 +1106,38 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
             note=note,
             next_call="teleclaude__next_prepare",
         )
+
+    # 1.6. Check for breakdown assessment
+    has_input = check_file_exists(cwd, f"todos/{resolved_slug}/input.md")
+    breakdown_state = read_breakdown_state(cwd, resolved_slug)
+
+    if has_input and (breakdown_state is None or not breakdown_state.get("assessed")):
+        # Breakdown assessment needed
+        if hitl:
+            return format_hitl_guidance(
+                f"Preparing: {resolved_slug}. Read todos/{resolved_slug}/input.md and assess "
+                "Definition of Ready. If complex, split into smaller todos. Then update state.json "
+                "and create breakdown.md."
+            )
+        # Non-HITL: dispatch architect to assess
+        agent, mode = await get_available_agent(db, "prepare", PREPARE_FALLBACK)
+        return format_tool_call(
+            command="next-prepare",
+            args=resolved_slug,
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder="",
+            note=f"Assess todos/{resolved_slug}/input.md for complexity. Split if needed.",
+            next_call="teleclaude__next_prepare",
+        )
+
+    # If breakdown assessed and has dependent todos, this one is a container
+    if breakdown_state and breakdown_state.get("todos"):
+        dep_todos = breakdown_state["todos"]
+        if isinstance(dep_todos, list):
+            return f"CONTAINER: {resolved_slug} was split into: {', '.join(dep_todos)}. Work on those first."
+        return f"CONTAINER: {resolved_slug} was split. Check state.json for dependent todos."
 
     # 2. Check requirements
     if not check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md"):
@@ -1168,5 +1358,5 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         agent=agent,
         thinking_mode=mode,
         subfolder="",  # Empty = main repo, NOT worktree
-        next_call="teleclaude__next_work",
+        next_call="teleclaude__next_work()",
     )

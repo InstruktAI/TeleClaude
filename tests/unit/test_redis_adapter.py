@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 
@@ -33,7 +33,7 @@ async def test_discover_peers_parses_heartbeat_data():
 
     # Mock Redis client
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(return_value=[b"computer:RemotePC:heartbeat"])
+    mock_redis.scan = AsyncMock(return_value=(0, [b"computer:RemotePC:heartbeat"]))
     mock_redis.get = AsyncMock(
         return_value=json.dumps(
             {
@@ -59,6 +59,74 @@ async def test_discover_peers_parses_heartbeat_data():
 
 
 @pytest.mark.asyncio
+async def test_populate_initial_cache_updates_computers_and_projects():
+    """Initial cache population should update computers and pull projects."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.core.models import PeerInfo
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+
+    mock_cache = MagicMock()
+    adapter.cache = mock_cache
+
+    peers = [
+        PeerInfo(
+            name="RemoteOne",
+            status="online",
+            last_seen=datetime.now(),
+            adapter_type="redis",
+            user="morriz",
+            host="remote-one.local",
+            role="dev",
+            system_stats=None,
+        ),
+        PeerInfo(
+            name="RemoteTwo",
+            status="online",
+            last_seen=datetime.now(),
+            adapter_type="redis",
+            user="morriz",
+            host="remote-two.local",
+            role="dev",
+            system_stats=None,
+        ),
+    ]
+
+    adapter.discover_peers = AsyncMock(return_value=peers)
+    adapter.pull_remote_projects_with_todos = AsyncMock()
+
+    await adapter._populate_initial_cache()
+
+    assert mock_cache.update_computer.call_count == 2
+    adapter.pull_remote_projects_with_todos.assert_has_awaits([call("RemoteOne"), call("RemoteTwo")])
+
+
+@pytest.mark.asyncio
+async def test_startup_populates_initial_cache():
+    """Ensure startup flow populates initial cache after connecting."""
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+    adapter._running = True
+
+    adapter._connect_with_backoff = AsyncMock()
+    adapter._populate_initial_cache = AsyncMock()
+
+    def spawn(coro, name=None):  # noqa: ARG001
+        coro.close()
+        return MagicMock()
+
+    adapter.task_registry = MagicMock()
+    adapter.task_registry.spawn = spawn
+
+    await adapter._ensure_connection_and_start_tasks()
+
+    adapter._populate_initial_cache.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_discover_peers_handles_invalid_json():
     """Test that discover_peers handles corrupted heartbeat data gracefully."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
@@ -69,7 +137,7 @@ async def test_discover_peers_handles_invalid_json():
 
     # Mock Redis to return invalid JSON
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(return_value=[b"computer:RemotePC:heartbeat"])
+    mock_redis.scan = AsyncMock(return_value=(0, [b"computer:RemotePC:heartbeat"]))
     mock_redis.get = AsyncMock(return_value=b"not valid json {{{")
     adapter.redis = mock_redis
 
@@ -121,7 +189,7 @@ async def test_discover_peers_skips_self():
 
     # Mock Redis to return heartbeat for self
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(return_value=[b"computer:LocalPC:heartbeat"])
+    mock_redis.scan = AsyncMock(return_value=(0, [b"computer:LocalPC:heartbeat"]))
     mock_redis.get = AsyncMock(
         return_value=json.dumps(
             {
@@ -138,7 +206,7 @@ async def test_discover_peers_skips_self():
 
 
 @pytest.mark.asyncio
-async def test_heartbeat_includes_required_fields():
+async def test_heartbeat_includes_required_fields(monkeypatch):
     """Test heartbeat message includes all required fields."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
 
@@ -160,6 +228,11 @@ async def test_heartbeat_includes_required_fields():
     mock_redis.setex = capture_setex
     adapter.redis = mock_redis
 
+    def _fake_digest() -> str:
+        return "digest-123"
+
+    monkeypatch.setattr(adapter, "_compute_projects_digest", _fake_digest)
+
     # Call _send_heartbeat
     await adapter._send_heartbeat()
 
@@ -172,6 +245,7 @@ async def test_heartbeat_includes_required_fields():
     assert "computer_name" in heartbeat
     assert "last_seen" in heartbeat
     assert heartbeat["computer_name"] == "TestPC"
+    assert heartbeat["projects_digest"] == "digest-123"
 
 
 @pytest.mark.asyncio
@@ -179,7 +253,6 @@ async def test_send_message_adds_to_stream():
     """Test that send_message adds message to Redis stream."""
     from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.models import (
-        MessageMetadata,
         RedisAdapterMetadata,
         Session,
         SessionAdapterMetadata,
@@ -232,9 +305,38 @@ async def test_connection_error_handling():
 
     # Mock Redis to raise connection error
     mock_redis = AsyncMock()
-    mock_redis.keys = AsyncMock(side_effect=ConnectionError("Connection refused"))
+    mock_redis.scan = AsyncMock(side_effect=ConnectionError("Connection refused"))
     adapter.redis = mock_redis
 
     # Should handle error gracefully and return empty list
     peers = await adapter.discover_peers()
     assert peers == []
+
+
+def test_compute_projects_digest_is_deterministic(tmp_path, monkeypatch):
+    """Digest should be deterministic regardless of trusted dir order."""
+    from types import SimpleNamespace
+
+    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.config import config
+
+    mock_client = MagicMock()
+    adapter = RedisAdapter(mock_client)
+
+    project_one = tmp_path / "alpha"
+    project_two = tmp_path / "beta"
+    project_one.mkdir()
+    project_two.mkdir()
+
+    trusted_dirs = [
+        SimpleNamespace(path=str(project_two)),
+        SimpleNamespace(path=str(project_one)),
+    ]
+
+    monkeypatch.setattr(config.computer, "get_all_trusted_dirs", lambda: trusted_dirs)
+    digest_first = adapter._compute_projects_digest()
+
+    trusted_dirs.reverse()
+    digest_second = adapter._compute_projects_digest()
+
+    assert digest_first == digest_second

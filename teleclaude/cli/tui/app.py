@@ -2,14 +2,29 @@
 
 import asyncio
 import curses
+import queue
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import nest_asyncio
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.models import (
+    AgentAvailabilityInfo,
+    ProjectInfo,
+    ProjectsInitialEvent,
+    ProjectWithTodosInfo,
+    SessionInfo,
+    SessionRemovedEvent,
+    SessionsInitialEvent,
+    SessionUpdateEvent,
+    TodoInfo,
+    WsEvent,
+)
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
-from teleclaude.cli.tui.theme import init_colors
+from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
+from teleclaude.cli.tui.types import CursesWindow
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
@@ -20,6 +35,18 @@ from teleclaude.cli.tui.widgets.tab_bar import TabBar
 nest_asyncio.apply()
 
 logger = get_logger(__name__)
+
+# WebSocket update polling interval in milliseconds
+WS_POLL_INTERVAL_MS = 100
+
+# Mouse mask for curses - clicks, double-clicks, scroll wheel (NOT drag to allow text selection)
+MOUSE_MASK = (
+    curses.BUTTON1_CLICKED
+    | curses.BUTTON1_DOUBLE_CLICKED
+    | curses.BUTTON4_PRESSED
+    | 0x8000000
+    | 0x200000  # Scroll down (varies by system)
+)
 
 # Key name mapping for debug logging
 KEY_NAMES = {
@@ -120,7 +147,7 @@ class Notification:
 class TelecApp:
     """Main TUI application with view switching (1=Sessions, 2=Preparation)."""
 
-    def __init__(self, api: object):
+    def __init__(self, api: "TelecAPIClient"):
         """Initialize TUI app.
 
         Args:
@@ -132,7 +159,7 @@ class TelecApp:
         self.tab_bar = TabBar()
         self.footer: Footer | None = None
         self.running = True
-        self.agent_availability: dict[str, dict[str, object]] = {}  # guard: loose-dict
+        self.agent_availability: dict[str, AgentAvailabilityInfo] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
         self.focus = FocusContext()  # Shared focus across views
         self.notification: Notification | None = None
@@ -140,43 +167,79 @@ class TelecApp:
         # Content area bounds for mouse click handling
         self._content_start: int = 0
         self._content_height: int = 0
+        # WebSocket event queue (thread-safe)
+        self._ws_queue: queue.Queue[WsEvent] = queue.Queue()
+        self._subscribed_computers: set[str] = set()
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
-        await self.api.connect()  # type: ignore[attr-defined]
+        await self.api.connect()
         self._loop = asyncio.get_running_loop()
 
         # Create views BEFORE refresh so they can receive data
         # Pass shared focus context to each view
         self.views[1] = SessionsView(self.api, self.agent_availability, self.focus, self.pane_manager)
-        self.views[2] = PreparationView(self.api, self.agent_availability, self.focus)
+        self.views[2] = PreparationView(self.api, self.agent_availability, self.focus, self.pane_manager)
 
         # Now refresh to populate views with data
         await self.refresh_data()
 
-    async def refresh_data(self) -> None:
+        # Start WebSocket connection for push updates
+        self.api.start_websocket(
+            callback=self._on_ws_event,
+            subscriptions=["sessions", "projects"],
+        )
+
+    async def refresh_data(self, *, include_todos: bool | None = None) -> None:
         """Refresh all data from API."""
         logger.debug("Refreshing data from API...")
         try:
+            fetch_todos = include_todos if include_todos is not None else self.current_view == 2
             computers, projects, sessions, availability = await asyncio.gather(
-                self.api.list_computers(),  # type: ignore[attr-defined]
-                self.api.list_projects(),  # type: ignore[attr-defined]
-                self.api.list_sessions(),  # type: ignore[attr-defined]
-                self.api.get_agent_availability(),  # type: ignore[attr-defined]
+                self.api.list_computers(),
+                self.api.list_projects(),
+                self.api.list_sessions(),
+                self.api.get_agent_availability(),
             )
+            todos: list[TodoInfo] = []
+            if fetch_todos:
+                todos = await self.api.list_todos()
+
+            todos_by_project: dict[tuple[str, str], list[TodoInfo]] = {}
+            for todo in todos:
+                if not todo.computer or not todo.project_path:
+                    continue
+                key = (todo.computer, todo.project_path)
+                todos_by_project.setdefault(key, []).append(todo)
+
+            projects_with_todos: list[ProjectWithTodosInfo] = []
+            for project in projects:
+                computer = project.computer or ""
+                key = (computer, project.path)
+                projects_with_todos.append(
+                    ProjectWithTodosInfo(
+                        computer=project.computer,
+                        name=project.name,
+                        path=project.path,
+                        description=project.description,
+                        todos=todos_by_project.get(key, []),
+                    )
+                )
 
             logger.debug(
                 "API returned: %d computers, %d projects, %d sessions",
                 len(computers),
-                len(projects),
+                len(projects_with_todos),
                 len(sessions),
             )
 
-            self.agent_availability = availability  # type: ignore[assignment]
+            # Update in-place so views keep the same shared dict reference.
+            self.agent_availability.clear()
+            self.agent_availability.update(availability)
 
             # Refresh ALL views with data (not just current)
             for view_num, view in self.views.items():
-                await view.refresh(computers, projects, sessions)  # type: ignore[arg-type]
+                await view.refresh(computers, projects_with_todos, sessions)
                 logger.debug(
                     "View %d refreshed: flat_items=%d",
                     view_num,
@@ -204,6 +267,21 @@ class TelecApp:
             expires_at=time.time() + duration,
         )
 
+    def _sync_focus_subscriptions(self) -> None:
+        """Subscribe/unsubscribe remote computers based on current focus."""
+        current = self.focus.computer
+        if not current or current == "local":
+            for computer in list(self._subscribed_computers):
+                if computer != "local":
+                    self.api.unsubscribe(computer)
+                    self._subscribed_computers.discard(computer)
+            return
+
+        if current not in self._subscribed_computers:
+            self.api.subscribe(current, ["sessions", "projects"])
+            self._subscribed_computers.add(current)
+            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
     def update_session_panes(self) -> None:
         """Hide session panes when leaving Sessions view.
 
@@ -220,12 +298,127 @@ class TelecApp:
     def cleanup(self) -> None:
         """Clean up resources before exit."""
         self.pane_manager.cleanup()
+        # Stop WebSocket connection
+        self.api.stop_websocket()
 
-    def run(self, stdscr: object) -> None:
+    def _on_ws_event(self, event: WsEvent) -> None:
+        """Handle WebSocket event from background thread.
+
+        Queues the event for processing in the main loop (thread-safe).
+
+        Args:
+            event: Event type (e.g., "session_updated", "sessions_initial")
+            data: Event data
+        """
+        self._ws_queue.put(event)
+
+    def _process_ws_events(self) -> bool:
+        """Process pending WebSocket events from the queue.
+
+        Returns:
+            True if any events were processed (view may need re-render)
+        """
+        updated = False
+
+        while True:
+            try:
+                event = self._ws_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            logger.debug("Processing WebSocket event: %s", event.event)
+            updated = True
+
+            # Handle initial state events (sent after subscription)
+            if isinstance(event, SessionsInitialEvent):
+                self._update_sessions_view(event.data.sessions)
+
+            elif isinstance(event, ProjectsInitialEvent):
+                self._update_preparation_view(event.data.projects)
+
+            # Handle incremental update events
+            elif isinstance(event, SessionUpdateEvent):
+                self._apply_session_update(event.data)
+
+            elif isinstance(event, SessionRemovedEvent):
+                self._apply_session_removal(event.data.session_id)
+
+            else:
+                # For now, trigger a full refresh for computer/project updates
+                # In the future, could apply incremental updates
+                asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
+        return updated
+
+    def _update_sessions_view(self, sessions: list[SessionInfo]) -> None:
+        """Update sessions view with fresh session data.
+
+        Args:
+            sessions: List of session dicts
+        """
+        sessions_view = self.views.get(1)
+        if not isinstance(sessions_view, SessionsView):
+            return
+
+        sessions_view._sessions = sessions
+        sessions_view._update_activity_state(sessions)
+        logger.debug("Sessions view updated with %d sessions", len(sessions))
+
+    def _update_preparation_view(self, projects: list[ProjectInfo | ProjectWithTodosInfo]) -> None:  # noqa: ARG002
+        """Update preparation view with fresh project data.
+
+        Args:
+            projects: List of project dicts with todos (unused - triggers full refresh)
+        """
+        # For now, trigger a full async refresh since preparation view
+        # needs to rebuild its tree with todos
+        asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
+    def _apply_session_update(self, session: SessionInfo) -> None:
+        """Apply incremental session update.
+
+        Args:
+            session: Session data dict
+        """
+        sessions_view = self.views.get(1)
+        if not isinstance(sessions_view, SessionsView):
+            return
+
+        session_id = session.session_id
+
+        # Find and update/add the session
+        found = False
+        for i, s in enumerate(sessions_view._sessions):
+            if s.session_id == session_id:
+                sessions_view._sessions[i] = session
+                found = True
+                break
+
+        if not found:
+            sessions_view._sessions.append(session)
+
+        # Update activity state for the changed session
+        sessions_view._update_activity_state([session])
+        logger.debug("Session %s updated", str(session_id)[:8])
+
+    def _apply_session_removal(self, session_id: str) -> None:
+        """Apply session removal.
+
+        Args:
+            session_id: ID of removed session
+        """
+        sessions_view = self.views.get(1)
+        if not isinstance(sessions_view, SessionsView):
+            return
+
+        sessions_view._sessions = [s for s in sessions_view._sessions if s.session_id != session_id]
+        logger.debug("Session %s removed", session_id[:8])
+
+    def run(self, stdscr: CursesWindow) -> None:
         """Main event loop.
 
-        No auto-refresh to allow text selection. User presses 'r' to refresh.
-        Screen updates only on user input.
+        Uses short timeout to poll for WebSocket updates while still responsive
+        to user input. Screen updates on user input or WebSocket events.
 
         Args:
             stdscr: Curses screen object
@@ -233,17 +426,19 @@ class TelecApp:
         curses.curs_set(0)
         init_colors()
 
-        # Enable mouse support for click and double-click only
-        # (don't capture drag events - allow terminal text selection)
-        curses.mousemask(curses.BUTTON1_CLICKED | curses.BUTTON1_DOUBLE_CLICKED)
+        # Enable mouse support (can be toggled with 'm' key to allow tmux copy-mode)
+        curses.mousemask(MOUSE_MASK)
 
-        # Block indefinitely waiting for input (no timeout = no auto-refresh)
-        stdscr.timeout(-1)  # type: ignore[attr-defined]
+        # Use short timeout to poll for WebSocket events
+        stdscr.timeout(WS_POLL_INTERVAL_MS)  # type: ignore[attr-defined]
 
         # Initial render
         self._render(stdscr)
 
         while self.running:
+            # Process any pending WebSocket events
+            ws_updated = self._process_ws_events()
+
             key = stdscr.getch()  # type: ignore[attr-defined]
 
             if key != -1:
@@ -254,8 +449,11 @@ class TelecApp:
                     asyncio.get_event_loop().run_until_complete(self.refresh_data())
                     view.needs_refresh = False
                 self._render(stdscr)
+            elif ws_updated:
+                # Re-render if WebSocket events were processed (no key press)
+                self._render(stdscr)
 
-    def _handle_key(self, key: int, stdscr: object) -> None:
+    def _handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle key press.
 
         Args:
@@ -270,29 +468,86 @@ class TelecApp:
             self.cleanup()
             self.running = False
 
-        # Mouse click - handle tab clicks and content item selection
+        # Mouse events - clicks, double-clicks, and scroll wheel
         elif key == curses.KEY_MOUSE:
             try:
                 _, mx, my, _, bstate = curses.getmouse()
+                mouse_start = time.perf_counter()
+                logger.trace("Mouse event: bstate=%d (0x%x)", bstate, bstate)
+                # Scroll wheel - move selection up/down
+                # BUTTON4_PRESSED (0x80000) = scroll up on macOS
+                # 0x8000000 or 0x200000 = scroll down (varies by system)
+                if bstate & curses.BUTTON4_PRESSED:
+                    view = self.views.get(self.current_view)
+                    if view:
+                        view.move_up()
+                    logger.trace(
+                        "mouse_scroll_up",
+                        view=self.current_view,
+                        x=mx,
+                        y=my,
+                        duration_ms=int((time.perf_counter() - mouse_start) * 1000),
+                    )
+                elif bstate & (0x8000000 | 0x200000):  # Scroll down
+                    view = self.views.get(self.current_view)
+                    if view:
+                        view.move_down()
+                    logger.trace(
+                        "mouse_scroll_down",
+                        view=self.current_view,
+                        x=mx,
+                        y=my,
+                        duration_ms=int((time.perf_counter() - mouse_start) * 1000),
+                    )
                 # Double-click: select item and execute default action
-                if bstate & curses.BUTTON1_DOUBLE_CLICKED:
+                elif bstate & curses.BUTTON1_DOUBLE_CLICKED:
                     if self._content_start <= my < self._content_start + self._content_height:
                         view = self.views.get(self.current_view)
                         if view and hasattr(view, "handle_click"):
+                            click_start = time.perf_counter()
                             if view.handle_click(my):
+                                click_ms = int((time.perf_counter() - click_start) * 1000)
                                 # Item selected, now execute default action
+                                enter_start = time.perf_counter()
                                 view.handle_enter(stdscr)
+                                enter_ms = int((time.perf_counter() - enter_start) * 1000)
+                                logger.trace(
+                                    "mouse_double_click_action",
+                                    view=self.current_view,
+                                    x=mx,
+                                    y=my,
+                                    click_ms=click_ms,
+                                    enter_ms=enter_ms,
+                                    total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                                )
                 # Single click: select item or switch tab
                 elif bstate & curses.BUTTON1_CLICKED:
                     # First check if a tab was clicked
                     clicked_tab = self.tab_bar.handle_click(my, mx)
                     if clicked_tab is not None:
                         self._switch_view(clicked_tab)
+                        logger.trace(
+                            "mouse_single_click_tab",
+                            view=self.current_view,
+                            x=mx,
+                            y=my,
+                            duration_ms=int((time.perf_counter() - mouse_start) * 1000),
+                            tab=clicked_tab,
+                        )
                     # Otherwise check if click is in content area
                     elif self._content_start <= my < self._content_start + self._content_height:
                         view = self.views.get(self.current_view)
                         if view and hasattr(view, "handle_click"):
+                            click_start = time.perf_counter()
                             view.handle_click(my)
+                            logger.trace(
+                                "mouse_single_click_content",
+                                view=self.current_view,
+                                x=mx,
+                                y=my,
+                                click_ms=int((time.perf_counter() - click_start) * 1000),
+                                total_ms=int((time.perf_counter() - mouse_start) * 1000),
+                            )
             except curses.error:
                 pass  # Mouse event couldn't be retrieved
 
@@ -304,6 +559,7 @@ class TelecApp:
                 if view:
                     view.rebuild_for_focus()
                     logger.debug("Focus popped, view rebuilt")
+                self._sync_focus_subscriptions()
 
         # Left Arrow - collapse session or go back in focus stack
         elif key == curses.KEY_LEFT:
@@ -319,9 +575,11 @@ class TelecApp:
                     # Go back in focus stack
                     view.rebuild_for_focus()
                     logger.debug("Focus popped after collapse_selected returned False")
+                    self._sync_focus_subscriptions()
             elif self.focus.pop():
                 if view:
                     view.rebuild_for_focus()
+                self._sync_focus_subscriptions()
 
         # Right Arrow - drill down into selected item
         elif key == curses.KEY_RIGHT:
@@ -330,6 +588,8 @@ class TelecApp:
             if view:
                 result = view.drill_down()
                 logger.debug("drill_down() returned %s", result)
+                if result:
+                    self._sync_focus_subscriptions()
 
         # View switching with number keys
         elif key == ord("1"):
@@ -360,6 +620,22 @@ class TelecApp:
         elif key == ord("r"):
             logger.debug("Refresh requested")
             asyncio.get_event_loop().run_until_complete(self.refresh_data())
+
+        # Agent restart (Sessions view only)
+        elif key == ord("R"):
+            view = self.views.get(self.current_view)
+            if isinstance(view, SessionsView) and view.flat_items:
+                selected = view.flat_items[view.selected_index]
+                if selected.type == "session":
+                    session_id = selected.data.session.session_id
+                    if session_id:
+                        logger.debug("Agent restart requested for session %s", session_id[:8])
+                        try:
+                            asyncio.get_event_loop().run_until_complete(self.api.agent_restart(session_id))
+                            self.notify("Agent restart triggered", "info")
+                        except Exception as e:
+                            logger.error("Error restarting agent: %s", e)
+                            self.notify(f"Restart failed: {e}", "error")
 
         # View-specific actions
         else:
@@ -394,12 +670,14 @@ class TelecApp:
                     len(view.flat_items),
                     view.selected_index,
                 )
+                if view_num == 2:
+                    asyncio.get_event_loop().run_until_complete(self.refresh_data(include_todos=True))
             # Update panes (shows sessions in view 1, hides in view 2)
             self.update_session_panes()
         else:
             logger.warning("Attempted to switch to non-existent view %d", view_num)
 
-    def _render(self, stdscr: object) -> None:
+    def _render(self, stdscr: CursesWindow) -> None:
         """Render current view with banner, tab bar, and footer.
 
         Args:
@@ -436,14 +714,15 @@ class TelecApp:
         self._render_notification(stdscr, width)
 
         # Row height-4: Separator
-        stdscr.addstr(height - 4, 0, "─" * width)  # type: ignore[attr-defined]
+        separator_attr = get_tab_line_attr()
+        stdscr.addstr(height - 4, 0, "─" * width, separator_attr)  # type: ignore[attr-defined]
 
         # Row height-3: Action bar (view-specific)
         action_bar = current.get_action_bar() if current else ""
         stdscr.addstr(height - 3, 0, action_bar[:width])  # type: ignore[attr-defined]
 
         # Row height-2: Global shortcuts bar
-        global_bar = "[+/-] Expand/Collapse All  [r] Refresh  [q] Quit"
+        global_bar = "[+/-] Expand/Collapse  [r] Refresh  [q] Quit"
         stdscr.addstr(height - 2, 0, global_bar[:width], curses.A_DIM)  # type: ignore[attr-defined]
 
         # Row height-1: Footer
@@ -525,3 +804,7 @@ class TelecApp:
             stdscr.addstr(row, start_col, display_msg[: width - start_col], attr)  # type: ignore[attr-defined]
         except curses.error:
             pass  # Ignore if can't render (screen too small)
+
+
+if TYPE_CHECKING:
+    from teleclaude.cli.api_client import TelecAPIClient

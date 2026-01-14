@@ -2,6 +2,8 @@
 
 import curses
 
+from teleclaude.cli.tui.theme import get_tab_line_attr
+
 
 class TabBar:
     """Browser-style tab bar with boxed active tab."""
@@ -55,6 +57,7 @@ class TabBar:
 
         # Row 1: Top border of active tab only
         # Box spans: ╭ at c, ─ from c+1 to c+w, ╮ at c+w+1 (to align with │ borders below)
+        line_attr = get_tab_line_attr()
         line1 = [" "] * width
         for c, w, _, is_active in tab_positions:
             if is_active:
@@ -64,7 +67,7 @@ class TabBar:
                         line1[c + i] = "─"
                 if c + w + 1 < width:
                     line1[c + w + 1] = "╮"
-        stdscr.addstr(row, 0, "".join(line1)[:width])  # type: ignore[attr-defined]
+        stdscr.addstr(row, 0, "".join(line1)[:width], line_attr)  # type: ignore[attr-defined]
 
         # Row 2: Tab labels with side borders for active
         line2 = [" "] * width
@@ -84,6 +87,9 @@ class TabBar:
         for c, _, label, is_active in tab_positions:
             if is_active:
                 stdscr.addstr(row + 1, c + 1, label, curses.A_BOLD)  # type: ignore[attr-defined]
+                stdscr.addstr(row + 1, c, "│", line_attr)  # type: ignore[attr-defined]
+                if c + len(label) + 1 < width:
+                    stdscr.addstr(row + 1, c + len(label) + 1, "│", line_attr)  # type: ignore[attr-defined]
 
         # Row 3: Bottom line with breaks at active tab corners
         line3 = ["─"] * width
@@ -95,7 +101,7 @@ class TabBar:
                         line3[c + i] = " "
                 if c + w + 1 < width:
                     line3[c + w + 1] = "┴"
-        stdscr.addstr(row + 2, 0, "".join(line3)[:width])  # type: ignore[attr-defined]
+        stdscr.addstr(row + 2, 0, "".join(line3)[:width], line_attr)  # type: ignore[attr-defined]
 
     def handle_click(self, screen_row: int, screen_col: int) -> int | None:
         """Handle mouse click, return view number if tab was clicked.

@@ -79,9 +79,18 @@ async def test_next_prepare_hitl_both_exist():
     cwd = "/tmp/test"
     slug = "test-slug"
 
+    # Mock check_file_exists to return True for requirements/impl-plan, False for input.md
+    def mock_check_file_exists(path: str, file: str) -> bool:
+        if "input.md" in file:
+            return False
+        return True  # requirements.md and implementation-plan.md exist
+
     with (
         patch("teleclaude.core.next_machine.slug_in_roadmap", return_value=True),
-        patch("teleclaude.core.next_machine.check_file_exists", return_value=True),
+        patch("teleclaude.core.next_machine.check_file_exists", side_effect=mock_check_file_exists),
+        patch("teleclaude.core.next_machine.read_breakdown_state", return_value=None),
+        patch("teleclaude.core.next_machine.get_roadmap_state", return_value=" "),
+        patch("teleclaude.core.next_machine.update_roadmap_state"),
     ):
         result = await next_prepare(db, slug=slug, cwd=cwd, hitl=True)
         assert f"PREPARED: todos/{slug} is ready for work." in result
@@ -170,7 +179,7 @@ def test_read_phase_state_returns_default_when_no_file():
     """read_phase_state returns default state when state.json doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         state = read_phase_state(tmpdir, "test-slug")
-        assert state == {"build": "pending", "review": "pending"}
+        assert state == {"build": "pending", "review": "pending", "breakdown": {"assessed": False, "todos": []}}
 
 
 def test_read_phase_state_reads_existing_file():
@@ -183,7 +192,8 @@ def test_read_phase_state_reads_existing_file():
         state_file.write_text(json.dumps({"build": "complete", "review": "pending"}))
 
         state = read_phase_state(tmpdir, slug)
-        assert state == {"build": "complete", "review": "pending"}
+        # Should merge with defaults for missing keys
+        assert state == {"build": "complete", "review": "pending", "breakdown": {"assessed": False, "todos": []}}
 
 
 def test_write_phase_state_creates_file():

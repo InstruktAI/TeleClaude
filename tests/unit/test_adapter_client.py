@@ -544,6 +544,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     with (
         patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=updated_session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
@@ -560,7 +561,7 @@ async def test_send_message_broadcasts_to_ui_adapters():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import MessageMetadata, Session
+    from teleclaude.core.models import Session
 
     client = AdapterClient()
 
@@ -595,7 +596,7 @@ async def test_send_message_ephemeral_tracks_for_deletion():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import MessageMetadata, Session
+    from teleclaude.core.models import Session
 
     client = AdapterClient()
 
@@ -627,7 +628,7 @@ async def test_send_message_persistent_not_tracked():
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import MessageMetadata, Session
+    from teleclaude.core.models import Session
 
     client = AdapterClient()
 

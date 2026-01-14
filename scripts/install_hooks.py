@@ -15,6 +15,18 @@ from pathlib import Path
 from typing import Any, Dict
 
 
+def _load_json_settings(path: Path, *, label: str) -> dict[str, object] | None:  # noqa: loose-dict - settings are dynamic JSON
+    if not path.exists():
+        return {}
+
+    raw = path.read_text()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"Warning: Failed to load {label} settings (invalid JSON): {exc}")
+        return None
+
+
 def _extract_receiver_script(command: str) -> str | None:
     try:
         parts = shlex.split(command)
@@ -118,33 +130,147 @@ def _claude_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[
     }
 
 
+def _prune_claude_hooks(existing_hooks: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove TeleClaude receiver hooks from unused Claude events.
+
+    Keep TeleClaude hooks only for SessionStart and Stop.
+    Preserve all non-TeleClaude hooks.
+    """
+    allowed_events = {"SessionStart", "Stop"}
+    pruned: Dict[str, Any] = {}
+
+    for event, blocks in existing_hooks.items():
+        if not isinstance(blocks, list):
+            pruned[event] = blocks
+            continue
+
+        new_blocks = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                new_blocks.append(block)
+                continue
+
+            hooks_list = block.get("hooks", [])
+            if not isinstance(hooks_list, list):
+                new_blocks.append(block)
+                continue
+
+            if event in allowed_events:
+                filtered_hooks = hooks_list
+            else:
+                filtered_hooks = []
+                for hook in hooks_list:
+                    if not isinstance(hook, dict):
+                        filtered_hooks.append(hook)
+                        continue
+                    cmd = hook.get("command", "")
+                    if _extract_receiver_script(cmd) == "receiver":
+                        continue
+                    filtered_hooks.append(hook)
+
+            if filtered_hooks:
+                updated_block = block.copy()
+                updated_block["hooks"] = filtered_hooks
+                new_blocks.append(updated_block)
+
+        if new_blocks:
+            pruned[event] = new_blocks
+
+    return pruned
+
+
 def _gemini_hook_map(python_exe: Path, receiver_script: Path) -> Dict[str, Dict[str, str]]:
     """Return TeleClaude hook definitions for Gemini CLI.
 
     Gemini uses AfterAgent for turn completion (equivalent to Claude's Stop hook).
     Note: BeforeUserInput does NOT exist in Gemini CLI.
     """
-    hooks: Dict[str, Dict[str, str]] = {
-        "SessionStart": {
-            "name": "teleclaude-session-start",
-            "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent gemini session_start",
-            "description": "Notify TeleClaude of session start",
-        },
+    event_args: dict[str, str] = {
+        "SessionStart": "session_start",
+        "SessionEnd": "session_end",
         # AfterAgent fires when agent loop ends = turn completion = stop event
-        "AfterAgent": {
-            "name": "teleclaude-stop",
-            "type": "command",
-            "command": f"{python_exe} {receiver_script} --agent gemini stop",
-            "description": "Notify TeleClaude of turn completion",
-        },
+        "AfterAgent": "stop",
+        "Notification": "notification",
+        "BeforeAgent": "before_agent",
+        "BeforeModel": "before_model",
+        "AfterModel": "after_model",
+        "BeforeToolSelection": "before_tool_selection",
+        "BeforeTool": "before_tool",
+        "AfterTool": "after_tool",
+        "PreCompress": "pre_compress",
     }
 
-    # Note: We don't need intermediate hooks (BeforeAgent, BeforeModel, etc.)
-    # The _discover_transcript_path fallback in gemini.py adapter resolves
-    # transcript_path from cwd + session_id, so we only need the core events.
+    hooks: Dict[str, Dict[str, str]] = {}
+    for event_name, event_arg in event_args.items():
+        hooks[event_name] = {
+            "name": f"teleclaude-{event_arg}",
+            "type": "command",
+            "command": f"{python_exe} {receiver_script} --agent gemini {event_arg}",
+            "description": f"Notify TeleClaude of Gemini {event_name}",
+        }
 
     return hooks
+
+
+def _prune_gemini_hooks(existing_hooks: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove TeleClaude receiver hooks from unused Gemini events.
+
+    Keep TeleClaude hooks for all Gemini events (we use them to keep transcript paths fresh).
+    Preserve all non-TeleClaude hooks.
+    """
+    allowed_events = {
+        "SessionStart",
+        "SessionEnd",
+        "AfterAgent",
+        "Notification",
+        "BeforeAgent",
+        "BeforeModel",
+        "AfterModel",
+        "BeforeToolSelection",
+        "BeforeTool",
+        "AfterTool",
+        "PreCompress",
+    }
+    pruned: Dict[str, Any] = {}
+
+    for event, blocks in existing_hooks.items():
+        if not isinstance(blocks, list):
+            pruned[event] = blocks
+            continue
+
+        new_blocks = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                new_blocks.append(block)
+                continue
+
+            hooks_list = block.get("hooks", [])
+            if not isinstance(hooks_list, list):
+                new_blocks.append(block)
+                continue
+
+            if event in allowed_events:
+                filtered_hooks = hooks_list
+            else:
+                filtered_hooks = []
+                for hook in hooks_list:
+                    if not isinstance(hook, dict):
+                        filtered_hooks.append(hook)
+                        continue
+                    cmd = hook.get("command", "")
+                    if _extract_receiver_script(cmd) == "receiver":
+                        continue
+                    filtered_hooks.append(hook)
+
+            if filtered_hooks:
+                updated_block = block.copy()
+                updated_block["hooks"] = filtered_hooks
+                new_blocks.append(updated_block)
+
+        if new_blocks:
+            pruned[event] = new_blocks
+
+    return pruned
 
 
 def configure_gemini(repo_root: Path) -> None:
@@ -161,45 +287,17 @@ def configure_gemini(repo_root: Path) -> None:
     settings_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Load existing
-    settings = {}
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-        except Exception as e:
-            print(f"Warning: Failed to load Gemini settings: {e}")
+    settings = _load_json_settings(settings_path, label="Gemini")
+    if settings is None:
+        return
 
     # Define hooks (Gemini-specific event names)
     python_exe = _resolve_hook_python(repo_root)
     hooks_map = _gemini_hook_map(python_exe, receiver_script)
 
-    # Remove legacy BeforeUserInput receiver hook
+    # Prune TeleClaude hooks from events we do not use.
     existing_hooks = settings.get("hooks", {})
-    after_model_hooks = existing_hooks.get("BeforeUserInput")
-    if isinstance(after_model_hooks, list):
-        updated_blocks = []
-        for block in after_model_hooks:
-            if not isinstance(block, dict):
-                continue
-            hooks_list = block.get("hooks", [])
-            if not isinstance(hooks_list, list):
-                continue
-            filtered = []
-            for hook in hooks_list:
-                if not isinstance(hook, dict):
-                    continue
-                cmd = hook.get("command", "")
-                if _extract_receiver_script(cmd) == "receiver":
-                    continue
-                filtered.append(hook)
-            if filtered:
-                block["hooks"] = filtered
-                updated_blocks.append(block)
-        if updated_blocks:
-            existing_hooks["BeforeUserInput"] = updated_blocks
-        else:
-            existing_hooks.pop("BeforeUserInput", None)
-    settings["hooks"] = existing_hooks
+    settings["hooks"] = _prune_gemini_hooks(existing_hooks)
 
     # Merge
     current_hooks = settings.get("hooks", {})
@@ -231,20 +329,17 @@ def configure_claude(repo_root: Path) -> None:
     # Claude Code hooks go in ~/.claude/settings.json (NOT ~/.claude.json)
     settings_path = Path.home() / ".claude" / "settings.json"
 
-    settings = {}
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-        except Exception as e:
-            print(f"Warning: Failed to load Claude settings: {e}")
+    settings = _load_json_settings(settings_path, label="Claude")
+    if settings is None:
+        return
 
     # Define hooks (Claude-specific event names)
     python_exe = _resolve_hook_python(repo_root)
     hooks_map = _claude_hook_map(python_exe, receiver_script)
 
     current_hooks = settings.get("hooks", {})
-    settings["hooks"] = merge_hooks(current_hooks, hooks_map)
+    pruned_hooks = _prune_claude_hooks(current_hooks)
+    settings["hooks"] = merge_hooks(pruned_hooks, hooks_map)
 
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     with open(settings_path, "w") as f:

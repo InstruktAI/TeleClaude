@@ -6,9 +6,13 @@ import fcntl
 import hashlib
 import json
 import os
+import platform
 import re
+import resource
 import signal
+import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,8 +23,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
+from teleclaude.adapters.rest_adapter import RESTAdapter
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.constants import MCP_SOCKET_PATH, UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -32,12 +37,14 @@ from teleclaude.core import (
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName
+from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
     AgentEventContext,
     AgentHookEvents,
+    AgentPromptPayload,
     AgentStopPayload,
     CommandEventContext,
     DeployArgs,
@@ -57,11 +64,11 @@ from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
+from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload, TerminalOutboxResponse
 from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
-from teleclaude.utils.transcript import parse_session_transcript
 
 
 # TypedDict definitions for deployment status payloads
@@ -109,12 +116,38 @@ MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_IN
 MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
 MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
 
+# Resource monitoring
+RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
+LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))
+LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"
+
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
 HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
 HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
+
+
+def _get_fd_count() -> int | None:
+    """Return open file descriptor count if available."""
+    try:
+        return len(os.listdir("/dev/fd"))
+    except OSError:
+        return None
+
+
+def _get_rss_kb() -> int | None:
+    """Return resident set size in KB when available."""
+    try:
+        rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except (ValueError, OSError):
+        return None
+
+    if sys.platform == "darwin":
+        return int(rss / 1024)
+    return rss
+
 
 # Terminal outbox worker (telec)
 TERMINAL_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("TERMINAL_OUTBOX_POLL_INTERVAL_S", "0.5"))
@@ -194,8 +227,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
         self.output_poller = OutputPoller()
 
+        # Initialize task registry for tracking background tasks
+        self.task_registry = TaskRegistry()
+
         # Initialize unified adapter client (observer pattern - NO daemon reference)
-        self.client = AdapterClient()
+        self.client = AdapterClient(task_registry=self.task_registry)
+
+        # Initialize cache for remote data
+        self.cache = DaemonCache()
+        logger.info("DaemonCache initialized")
 
         # Initialize Codex watcher for file-based hooks
         self.codex_watcher = CodexWatcher(self.client, db_handle=db)
@@ -249,6 +289,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
         self.mcp_task: asyncio.Task[object] | None = None
+        self.resource_monitor_task: asyncio.Task[object] | None = None
+        self.launchd_watch_task: asyncio.Task[object] | None = None
+        self._start_time = time.time()
+        self._shutdown_reason: str | None = None
         self._mcp_restart_lock = asyncio.Lock()
         self._mcp_restart_attempts = 0
         self._mcp_restart_window_start = 0.0
@@ -876,13 +920,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # Handle STOP event in background to prevent hook timeout during summarization
         if agent_event_type == AgentHookEvents.AGENT_STOP:
-            task = asyncio.create_task(self._process_agent_stop(context))
+            task = self.task_registry.spawn(self._process_agent_stop(context), name="agent-stop")
             task.add_done_callback(self._log_background_task_exception("process_agent_stop"))
             return
 
         # Dispatch other events synchronously
         if agent_event_type == AgentHookEvents.AGENT_SESSION_START:
             await self.agent_coordinator.handle_session_start(context)
+        elif agent_event_type == AgentHookEvents.AGENT_PROMPT:
+            await self._process_agent_prompt(context)
         elif agent_event_type == AgentHookEvents.AGENT_NOTIFICATION:
             await self.agent_coordinator.handle_notification(context)
         elif agent_event_type == AgentHookEvents.AGENT_SESSION_END:
@@ -892,10 +938,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Process agent stop event (summarization + coordination)."""
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
-        source_computer = payload.source_computer
 
-        # Debounce: skip if we processed a stop event for this session recently
-        # Gemini's AfterAgent fires multiple times per turn (after each agent step)
+        # 1. Debounce: skip if we processed a stop event for this session recently
         now = time.monotonic()
         last_stop = self._last_stop_time.get(session_id, 0.0)
         if now - last_stop < self._stop_debounce_seconds:
@@ -903,79 +947,139 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
         self._last_stop_time[session_id] = now
 
-        if source_computer:
+        # 2. Remote stop events skip local enrichment and just coordinate
+        if payload.source_computer:
             await self.agent_coordinator.handle_stop(context)
             return
 
         try:
-            session = await db.get_session(session_id)
-            if not session or not session.active_agent:
-                raise ValueError(f"Session {session_id[:8]} missing active_agent metadata")
-
-            native_session_id = str(payload.session_id) if payload.session_id else ""
-            if native_session_id:
-                await db.update_session(session_id, native_session_id=native_session_id)
-
-            transcript_path = payload.transcript_path or session.native_log_file
-            if not transcript_path:
-                raise ValueError(f"Session {session_id[:8]} missing transcript path on stop event")
-            payload.transcript_path = transcript_path
-
-            agent_name = AgentName.from_str(session.active_agent)
-
-            # Try AI summarization, fall back to raw transcript on API failure
-            try:
-                title, summary = await summarize(agent_name, transcript_path)
-            except Exception as sum_err:
-                logger.warning(
-                    "Summarization failed for %s, falling back to raw transcript: %s", session_id[:8], sum_err
-                )
-                title = None
-                summary = parse_session_transcript(
-                    transcript_path, title="", agent_name=agent_name, tail_chars=UI_MESSAGE_MAX_CHARS
-                )
-
-            payload.summary = summary
-            payload.title = title
-            payload.raw["summary"] = payload.summary
-            payload.raw["title"] = payload.title
-
-            if payload.title:
-                await self._update_session_title(session_id, payload.title)
-
-            session = await db.get_session(session_id)
+            # 3. Synchronize "Ground Truth" state (Agent ID, Agent name)
+            session = await self._sync_session_stop_state(session_id, payload)
             if not session:
-                raise ValueError(f"Summary feedback requires active session: {session_id}")
-            # Use feedback=True to clean up old feedback (transcription, etc.) before sending summary
-            await self.client.send_message(
-                session, summary, metadata=MessageMetadata(adapter_type="internal"), feedback=True
-            )
+                return
 
-            # Track summary as last output (only source of truth for last_output)
-            if summary:
-                await db.update_session(session_id, last_feedback_received=summary[:200])
+            # Update last user message if present in stop payload (Codex fallback)
+            if payload.prompt:
+                await db.update_session(session_id, last_message_sent=payload.prompt)
+                logger.debug(
+                    "Captured last user input from stop hook", session_id=session_id[:8], prompt=payload.prompt[:50]
+                )
 
-            # Dispatch to coordinator
+            # 4. Best-effort Enrichment (Summarization + Title + UI Feedback)
+            await self._enrich_with_summary(session, payload)
+
+            # 5. Final Coordination
             await self.agent_coordinator.handle_stop(context)
 
         except Exception as e:
-            logger.error("Failed to process agent stop event for session %s: %s", session_id[:8], e)
-            # Try to report error to user
+            logger.error("Failed to process agent stop event for session %s: %s", session_id[:8], e, exc_info=True)
+
+    async def _process_agent_prompt(self, context: AgentEventContext) -> None:
+        """Process agent prompt event (immediate input capture)."""
+        session_id = context.session_id
+        payload = cast(AgentPromptPayload, context.data)
+
+        # 1. Surgical update: overwrite last_message_sent with prompt from contract
+        # (Only for local sessions; remote sessions handled via coordination if needed)
+        if not payload.source_computer:
             try:
-                session = await db.get_session(session_id)
-                if session:
-                    await self.client.send_message(
-                        session,
-                        f"Error processing session summary: {e}",
-                        metadata=MessageMetadata(adapter_type="internal"),
-                    )
-            except Exception:
-                pass
+                # payload.prompt is guaranteed by contract for this event type
+                await db.update_session(session_id, last_message_sent=payload.prompt)
+                logger.debug(
+                    "Captured last user input from hook", session_id=session_id[:8], prompt=payload.prompt[:50]
+                )
+            except Exception as e:
+                logger.error("Failed to update last_message_sent from prompt hook: %s", e)
+
+        # 2. Coordinator can also listen if needed (e.g. for subagent flow)
+        await self.agent_coordinator.handle_prompt(context)
+
+    async def _sync_session_stop_state(self, session_id: str, payload: AgentStopPayload) -> Optional[Session]:
+        """Update session record with native agent identity and transcript data."""
+        session = await db.get_session(session_id)
+        if not session:
+            logger.warning("Stop event for unknown session %s", session_id[:8])
+            return None
+
+        updates: dict[str, object] = {}  # guard: loose-dict - Hook payload updates are dynamic
+
+        # Capture native agent session ID
+        if payload.session_id and payload.session_id != session.native_session_id:
+            updates["native_session_id"] = payload.session_id
+
+        # Capture/recover active agent name
+        active_agent_str = session.active_agent
+        if not active_agent_str:
+            agent_name = str(payload.raw.get("agent_name", ""))
+            if agent_name:
+                logger.info("Recovered active_agent from hook for %s: %s", session_id[:8], agent_name)
+                updates["active_agent"] = agent_name
+                active_agent_str = agent_name
+            else:
+                logger.warning("Session %s missing active_agent and no agent in payload", session_id[:8])
+                return None
+
+        # Capture transcript path
+        if payload.transcript_path and payload.transcript_path != session.native_log_file:
+            updates["native_log_file"] = payload.transcript_path
+
+        if updates:
+            await db.update_session(session_id, **updates)
+            return await db.get_session(session_id)
+
+        return session
+
+    async def _enrich_with_summary(self, session: Session, payload: AgentStopPayload) -> None:
+        """Best-effort summarization, title update, and UI feedback."""
+        session_id = session.session_id
+        transcript_path = payload.transcript_path or session.native_log_file
+
+        if not transcript_path:
+            logger.debug("Skipping enrichment for session %s: no transcript path", session_id[:8])
+            return
+
+        active_agent = session.active_agent
+        if not active_agent:
+            return
+        agent_name = AgentName.from_str(active_agent)
+
+        # 1. AI Summarization
+        try:
+            title, summary = await summarize(agent_name, transcript_path)
+        except Exception as sum_err:
+            logger.warning("Summarization failed for %s: %s", session_id[:8], sum_err)
+            return
+
+        if not summary:
+            return
+
+        # 2. Enrich payload for downstream coordinator
+        payload.summary = summary
+        payload.title = title
+
+        # 3. Update Title (Once only)
+        if title:
+            await self._update_session_title(session_id, title)
+
+        # 4. Save summary to DB (Last Output)
+        await db.update_session(session_id, last_feedback_received=summary[:200])
+
+        # 5. Send UI Feedback
+        # feedback=True cleans up previous temporary messages (transcriptions, etc.)
+        await self.client.send_message(
+            session,
+            summary,
+            metadata=MessageMetadata(adapter_type="internal"),
+            feedback=True,
+        )
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
         auto_context = CommandEventContext(session_id=session_id, args=[])
         cmd_name, auto_args = parse_command_string(auto_command)
+
+        if cmd_name and auto_command:
+            await db.update_session(session_id, last_message_sent=auto_command[:200])
 
         if cmd_name == "agent_then_message":
             return await self._handle_agent_then_message(session_id, auto_args)
@@ -1007,6 +1111,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         message = " ".join(args[2:]).strip()
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
+
+        await db.update_session(session_id, last_message_sent=message[:200])
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
         auto_context = CommandEventContext(session_id=session_id, args=[])
@@ -1563,11 +1669,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Start all adapters via AdapterClient (network operation - can fail)
         await self.client.start()
 
-        # Wire MCP server to REST adapter (for operations without event types)
+        # Wire cache to REST adapter
         rest_adapter = self.client.adapters.get("rest")
-        if rest_adapter and hasattr(rest_adapter, "set_mcp_server") and self.mcp_server:
-            rest_adapter.set_mcp_server(self.mcp_server)  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
-            logger.info("Wired MCP server to REST adapter")
+        if rest_adapter and hasattr(rest_adapter, "cache"):
+            rest_adapter.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
+            logger.info("Wired cache to REST adapter")
+
+        # Wire cache to Redis adapter
+        redis_adapter_cache = self.client.adapters.get("redis")
+        if redis_adapter_cache and hasattr(redis_adapter_cache, "cache"):
+            redis_adapter_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
+            logger.info("Wired cache to Redis adapter")
 
         # Initialize voice handler (side effect - only after network succeeds)
         init_voice_handler()
@@ -1626,6 +1738,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.terminal_outbox_task = asyncio.create_task(self._terminal_outbox_worker())
         self.terminal_outbox_task.add_done_callback(self._log_background_task_exception("terminal_outbox"))
         logger.info("Terminal outbox worker started")
+
+        self.resource_monitor_task = asyncio.create_task(self._resource_monitor_loop())
+        self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
+        logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
+        self._log_resource_snapshot("startup")
+
+        if LAUNCHD_WATCH_ENABLED:
+            self.launchd_watch_task = asyncio.create_task(self._launchd_watch_loop())
+            self.launchd_watch_task.add_done_callback(self._log_background_task_exception("launchd_watch"))
+            logger.info("Launchd watch task started (interval=%.0fs)", LAUNCHD_WATCH_INTERVAL_S)
 
         # CodexWatcher disabled - using native Codex notify hook instead (2026-01)
         # Keeping code for fallback. Remove after notify hook proven stable.
@@ -1689,10 +1811,31 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
             logger.info("Terminal outbox worker stopped")
 
+        if self.resource_monitor_task:
+            self.resource_monitor_task.cancel()
+            try:
+                await self.resource_monitor_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Resource monitor stopped")
+
+        if self.launchd_watch_task:
+            self.launchd_watch_task.cancel()
+            try:
+                await self.launchd_watch_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Launchd watch task stopped")
+
         # Stop session watcher
         if hasattr(self, "codex_watcher"):
             await self.codex_watcher.stop()
             logger.info("Session watcher stopped")
+
+        # Shutdown task registry (cancel all tracked background tasks)
+        if hasattr(self, "task_registry"):
+            await self.task_registry.shutdown(timeout=5.0)
+            logger.info("Task registry shutdown complete")
 
         # Stop all adapters
         for adapter_name, adapter in self.client.adapters.items():
@@ -1751,6 +1894,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_list_sessions()
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects()
+        elif command == TeleClaudeEvents.LIST_PROJECTS_WITH_TODOS:
+            return await command_handlers.handle_list_projects_with_todos()
+        elif command == TeleClaudeEvents.LIST_TODOS:
+            # First arg is project path
+            if not args:
+                logger.warning("list_todos called without project_path")
+                return []
+            project_path = args[0]
+            return await command_handlers.handle_list_todos(project_path)
         elif command == TeleClaudeEvents.GET_SESSION_DATA:
             # Parse args: [since_timestamp] [until_timestamp] [tail_chars]
             #
@@ -1952,6 +2104,88 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.error("Error in poller watch loop: %s", e)
             await asyncio.sleep(1.0)
 
+    def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
+        """Collect a lightweight resource snapshot for diagnostics."""
+        rest_adapter_base = self.client.adapters.get("rest")
+        rest_ws_clients: int | None = None
+        if rest_adapter_base and isinstance(rest_adapter_base, RESTAdapter):
+            rest_ws_clients = len(rest_adapter_base._ws_clients)
+
+        mcp_connections: int | None = None
+        if self.mcp_server:
+            mcp_connections = self.mcp_server._active_connections
+
+        uptime_s = int(time.time() - self._start_time)
+        snapshot: dict[str, int | float | str | None] = {
+            "event": "resource_snapshot",
+            "reason": reason,
+            "pid": os.getpid(),
+            "uptime_s": uptime_s,
+            "fd_count": _get_fd_count(),
+            "rss_kb": _get_rss_kb(),
+            "threads": threading.active_count(),
+            "asyncio_tasks": len(cast(set[asyncio.Task[object]], asyncio.all_tasks())),
+            "tracked_tasks": self.task_registry.task_count(),
+            "mcp_connections": mcp_connections,
+            "rest_ws_clients": rest_ws_clients,
+        }
+        return snapshot
+
+    def _log_resource_snapshot(self, reason: str) -> None:
+        """Log a resource snapshot without blocking the event loop."""
+        snapshot = self._collect_resource_snapshot(reason)
+        logger.info("Resource snapshot", **snapshot)
+
+    def request_shutdown(self, reason: str) -> None:
+        """Request graceful shutdown and capture diagnostics."""
+        self._shutdown_reason = reason
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.shutdown_event.set()
+            return
+
+        loop.call_soon_threadsafe(self.shutdown_event.set)
+        loop.call_soon_threadsafe(self._log_resource_snapshot, f"shutdown:{reason}")
+
+    async def _resource_monitor_loop(self) -> None:
+        """Periodically log resource snapshots."""
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(RESOURCE_SNAPSHOT_INTERVAL_S)
+            if self.shutdown_event.is_set():
+                break
+            self._log_resource_snapshot("periodic")
+
+    async def _launchd_watch_loop(self) -> None:
+        """Periodically log launchd state for this job on macOS."""
+        if platform.system().lower() != "darwin":
+            return
+        last_output: str | None = None
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(LAUNCHD_WATCH_INTERVAL_S)
+            if self.shutdown_event.is_set():
+                break
+            try:
+                result = subprocess.run(
+                    ["launchctl", "blame", f"gui/{os.getuid()}/ai.instrukt.teleclaude.daemon"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                output = result.stdout.strip() or result.stderr.strip()
+                if not output:
+                    output = f"launchctl exit={result.returncode}"
+                if output != last_output:
+                    logger.info(
+                        "Launchd state",
+                        event="launchd_state",
+                        reason=output,
+                        exit_code=result.returncode,
+                    )
+                    last_output = output
+            except OSError as e:
+                logger.warning("Launchd probe failed: %s", e)
+
     async def _poller_watch_iteration(self) -> None:
         """Run a single poller watch iteration (extracted for testing)."""
         sessions = await db.get_active_sessions()
@@ -2087,7 +2321,7 @@ async def main() -> None:
         """Handle termination signals."""
         sig_name = signal.Signals(signum).name
         logger.info("Received %s signal...", sig_name)
-        daemon.shutdown_event.set()
+        daemon.request_shutdown(sig_name)
 
     # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)

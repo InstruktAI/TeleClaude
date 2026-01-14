@@ -88,7 +88,7 @@ TeleClaude Daemon
 Monitor MCP operations:
 
 ```bash
-. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
+instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
 ```
 
 ## Debugging
@@ -100,7 +100,7 @@ Monitor MCP operations:
 ls -la /tmp/teleclaude.sock
 
 # Check wrapper logs
-. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
+instrukt-ai-logs teleclaude --since 10m -g mcp-wrapper
 
 # Check if backend is running
 make status
@@ -110,7 +110,7 @@ make status
 
 ```bash
 # Check backend logs
-. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m -g mcp-server
+instrukt-ai-logs teleclaude --since 10m -g mcp-server
 
 # Check daemon health
 make status

@@ -48,6 +48,7 @@ from teleclaude.mcp.types import (
     StartSessionResult,
     StopNotificationsResult,
 )
+from teleclaude.types import SystemStats
 from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
@@ -86,7 +87,7 @@ class MCPHandlersMixin:
         timeout: float = 3.0,
         session_id: str | None = None,
         metadata: MessageMetadata | None = None,
-    ) -> dict[str, object]:  # noqa: loose-dict - MCP envelope
+    ) -> dict[str, object]:  # guard: loose-dict - MCP envelope
         """Send request to remote computer."""
         raise NotImplementedError
 
@@ -106,20 +107,39 @@ class MCPHandlersMixin:
         """List available computers including local and remote."""
         logger.debug("teleclaude__list_computers() called")
 
+        # local_info is ComputerInfo dataclass
         local_info = await command_handlers.handle_get_computer_info()
         local_computer: ComputerInfo = {
             "name": self.computer_name,
             "status": "local",
             "last_seen": datetime.now(timezone.utc),
-            "adapter_type": "local",
-            "user": local_info.get("user"),
-            "host": local_info.get("host"),
-            "role": local_info.get("role"),
-            "system_stats": local_info.get("system_stats"),
+            "user": local_info.user,
+            "host": local_info.host,
+            "role": local_info.role,
+            "system_stats": local_info.system_stats,
+            "tmux_binary": local_info.tmux_binary,
         }
 
+        # discover_peers returns list of dicts
         remote_peers_raw = await self.client.discover_peers()
-        remote_peers: list[ComputerInfo] = cast(list[ComputerInfo], remote_peers_raw)
+        remote_peers: list[ComputerInfo] = []
+        for peer in remote_peers_raw:
+            try:
+                remote_peers.append(
+                    {
+                        "name": str(peer["name"]),
+                        "status": str(peer["status"]),
+                        "last_seen": cast(datetime, peer["last_seen"]),
+                        "user": cast("str | None", peer.get("user")),
+                        "host": cast("str | None", peer.get("host")),
+                        "role": cast("str | None", peer.get("role")),
+                        "system_stats": cast("SystemStats | None", peer.get("system_stats")),
+                        "tmux_binary": cast("str | None", peer.get("tmux_binary")),
+                    }
+                )
+            except Exception as exc:
+                logger.warning("Skipping invalid peer payload: %s", exc)
+                continue
 
         result = [local_computer] + remote_peers
         logger.debug("teleclaude__list_computers() returning %d computers", len(result))
@@ -130,7 +150,12 @@ class MCPHandlersMixin:
         if computer is None:
             return await self._list_all_projects()
         if self._is_local_computer(computer):
-            return await command_handlers.handle_list_projects()
+            # returns ProjectInfo dataclasses
+            projects = await command_handlers.handle_list_projects()
+            return [
+                {"name": p.name, "desc": p.description or "", "path": p.path, "computer": self.computer_name}
+                for p in projects
+            ]
         return await self._list_remote_projects(computer)
 
     async def _list_remote_projects(self, computer: str) -> list[dict[str, str]]:
@@ -153,10 +178,12 @@ class MCPHandlersMixin:
 
     async def _list_all_projects(self) -> list[dict[str, str]]:
         """List projects from ALL computers (local + online remotes)."""
-        # Get local projects with computer name
-        local_projects = await command_handlers.handle_list_projects()
-        for project in local_projects:
-            project["computer"] = self.computer_name
+        # Get local projects
+        projects = await command_handlers.handle_list_projects()
+        local_projects = [
+            {"name": p.name, "desc": p.description or "", "path": p.path, "computer": self.computer_name}
+            for p in projects
+        ]
 
         # Get remote projects from all online computers
         redis_adapter = self._get_redis_adapter()
@@ -170,6 +197,66 @@ class MCPHandlersMixin:
             local_projects.extend(remote_projects)
 
         return local_projects
+
+    # =========================================================================
+    # Todo Tools
+    # =========================================================================
+
+    async def teleclaude__list_todos(
+        self,
+        computer: str,
+        project_path: str,
+        *,
+        skip_peer_check: bool = False,
+    ) -> list[dict[str, object]]:  # guard: loose-dict - Todo structure with mixed value types
+        """List todos from roadmap.md for a project on target computer.
+
+        Args:
+            computer: Target computer name
+            project_path: Absolute path to project directory
+            skip_peer_check: If True, skip the peer online validation (use when caller
+                already validated the computer is online, e.g., TUI after fetching projects)
+        """
+        if self._is_local_computer(computer):
+            # returns TodoInfo dataclasses
+            todos = await command_handlers.handle_list_todos(project_path)
+            return [t.to_dict() for t in todos]
+        return await self._list_remote_todos(computer, project_path, skip_peer_check=skip_peer_check)
+
+    async def _list_remote_todos(
+        self,
+        computer: str,
+        project_path: str,
+        *,
+        skip_peer_check: bool = False,
+    ) -> list[dict[str, object]]:  # guard: loose-dict - Todo structure with mixed value types
+        """List todos from remote computer via Redis.
+
+        Args:
+            computer: Target computer name
+            project_path: Absolute path to project directory
+            skip_peer_check: If True, skip the peer online validation. Use when caller
+                already validated (e.g., TUI fetches projects first which confirms online status).
+        """
+        # Validate peer is online unless caller explicitly skips (e.g., TUI already validated)
+        if not skip_peer_check:
+            peers = await self.client.discover_peers()
+            if not any(p["name"] == computer and p["status"] == "online" for p in peers):
+                logger.warning("Computer %s not online, skipping list_todos", computer)
+                return []
+
+        try:
+            # Pass project_path as part of the command
+            command = f"list_todos {project_path}"
+            envelope = await self._send_remote_request(computer, command, timeout=3.0)
+            data = envelope.get("data", [])
+            if not isinstance(data, list):
+                logger.warning("Unexpected data format from %s: %s", computer, type(data).__name__)
+                return []
+            return list(data)
+        except RemoteRequestError as e:
+            logger.warning("list_todos failed on %s: %s", computer, e.message)
+            return []
 
     # =========================================================================
     # Session Tools
@@ -209,7 +296,7 @@ class MCPHandlersMixin:
         """Create session on local computer directly via handle_event."""
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
-        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # noqa: loose-dict
+        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
         if initiator_agent:
             channel_metadata["initiator_agent"] = initiator_agent
         if initiator_mode:
@@ -301,7 +388,7 @@ class MCPHandlersMixin:
                     session_id=str(remote_session_id),
                 )
 
-            await self._register_remote_listener(remote_session_id, caller_session_id)
+            await self._register_remote_listener(str(remote_session_id), caller_session_id)
 
             # Start agent if message provided (None = skip agent start entirely)
             if message is not None:
@@ -316,7 +403,7 @@ class MCPHandlersMixin:
                     session_id=str(remote_session_id),
                 )
 
-            return {"session_id": remote_session_id, "status": "success"}
+            return {"session_id": str(remote_session_id), "status": "success"}
 
         except TimeoutError:
             return {"status": "error", "message": "Timeout waiting for remote session creation"}
@@ -334,10 +421,14 @@ class MCPHandlersMixin:
 
     async def _list_local_sessions(self) -> list[SessionInfo]:
         """List sessions from local database directly."""
+        # returns SessionSummary dataclasses
         sessions = await command_handlers.handle_list_sessions()
-        for session in sessions:
-            session["computer"] = self.computer_name
-        return cast(list[SessionInfo], sessions)
+        result: list[SessionInfo] = []
+        for s in sessions:
+            data = s.to_dict()
+            data["computer"] = self.computer_name
+            result.append(cast(SessionInfo, data))
+        return result
 
     async def _list_remote_sessions(self, computer: str) -> list[SessionInfo]:
         """List sessions from a specific remote computer via Redis."""
@@ -457,7 +548,7 @@ class MCPHandlersMixin:
         """Create local session and run auto_command via daemon."""
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
-        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # noqa: loose-dict
+        channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
         if initiator_agent:
             channel_metadata["initiator_agent"] = initiator_agent
         if initiator_mode:
@@ -506,7 +597,7 @@ class MCPHandlersMixin:
 
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
-        channel_metadata: dict[str, object] = {}  # noqa: loose-dict
+        channel_metadata: dict[str, object] = {}  # guard: loose-dict
         if initiator_agent:
             channel_metadata["initiator_agent"] = initiator_agent
         if initiator_mode:
@@ -627,7 +718,8 @@ class MCPHandlersMixin:
         """Get session data from remote computer via Redis."""
 
         params = [since_timestamp or "", until_timestamp or "", str(tail_chars)]
-        command = f"/get_session_data {' '.join(params)}"
+        param_str = " ".join(params)
+        command = f"/get_session_data {param_str}"
 
         try:
             envelope = await self._send_remote_request(computer, command, timeout=5.0, session_id=session_id)
@@ -684,7 +776,7 @@ class MCPHandlersMixin:
             return {"_error": {"status": "error", "message": "Redis adapter not available"}}
 
         all_peers = await redis_adapter.discover_peers()
-        available = [str(peer.name) for peer in all_peers if peer.name != self.computer_name]
+        available = [peer.name for peer in all_peers if peer.name != self.computer_name]
         available_set = set(available)
 
         requested = [str(name) for name in (computers or [])]
@@ -850,7 +942,7 @@ class MCPHandlersMixin:
             return "ERROR: NO_ROADMAP\ntodos/roadmap.md not found."
 
         content = roadmap_path.read_text(encoding="utf-8")
-        roadmap_slug_pattern = re.compile(r"^-\s+\[[. >x]\]\s+([a-z0-9-]+)", re.MULTILINE)
+        roadmap_slug_pattern = re.compile(r"^-\s+\[[. >x]\].*?([a-z0-9-]+)", re.MULTILINE)
         roadmap_slugs = set(roadmap_slug_pattern.findall(content))
 
         if slug not in roadmap_slugs:
@@ -863,7 +955,8 @@ class MCPHandlersMixin:
         deps = read_dependencies(cwd)
         cycle = detect_circular_dependency(deps, slug, after)
         if cycle:
-            return f"ERROR: CIRCULAR_DEP\nCircular dependency detected: {' -> '.join(cycle)}"
+            cycle_str = " -> ".join(cycle)
+            return f"ERROR: CIRCULAR_DEP\nCircular dependency detected: {cycle_str}"
 
         if after:
             deps[slug] = after
@@ -878,10 +971,19 @@ class MCPHandlersMixin:
         )
 
     async def teleclaude__mark_agent_unavailable(
-        self, agent: str, reason: str, unavailable_until: str | None = None
+        self,
+        agent: str,
+        reason: str | None = None,
+        unavailable_until: str | None = None,
+        clear: bool = False,
     ) -> str:
-        """Mark an agent as temporarily unavailable for task assignment."""
+        """Mark an agent as temporarily unavailable for task assignment, or clear unavailability."""
         agent_name = normalize_agent_name(agent)
+        if clear:
+            await db.mark_agent_available(agent_name)
+            return f"OK: {agent_name} marked available"
+        if not reason:
+            return "ERROR: reason is required unless clear is true"
         if not unavailable_until:
             unavailable_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
         await db.mark_agent_unavailable(agent_name, unavailable_until, reason)

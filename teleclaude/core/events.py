@@ -14,6 +14,8 @@ EventType = Literal[
     "list_sessions",
     "get_session_data",
     "list_projects",
+    "list_projects_with_todos",
+    "list_todos",
     "get_computer_info",
     "cd",
     "kill",
@@ -44,20 +46,52 @@ EventType = Literal[
     "session_updated",
 ]
 
+# Command events that use CommandEventContext (type alias for static typing).
+CommandEventType = Literal[
+    "new_session",
+    "list_sessions",
+    "get_session_data",
+    "list_projects",
+    "list_projects_with_todos",
+    "list_todos",
+    "get_computer_info",
+    "cd",
+    "kill",
+    "cancel",
+    "cancel2x",
+    "escape",
+    "escape2x",
+    "ctrl",
+    "tab",
+    "shift_tab",
+    "backspace",
+    "enter",
+    "key_up",
+    "key_down",
+    "key_left",
+    "key_right",
+    "rename",
+    "agent",
+    "agent_restart",
+    "agent_resume",
+]
+
 # Agent hook event types (payload event_type values from agents)
-AgentHookEventType = Literal["session_start", "stop", "session_end", "notification", "error"]
+AgentHookEventType = Literal["session_start", "prompt", "stop", "session_end", "notification", "error"]
 
 
 class AgentHookEvents:
     """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
+    AGENT_PROMPT: AgentHookEventType = "prompt"
     AGENT_STOP: AgentHookEventType = "stop"
     AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_NOTIFICATION: AgentHookEventType = "notification"
     AGENT_ERROR: AgentHookEventType = "error"
     ALL: set[AgentHookEventType] = {
         AGENT_SESSION_START,
+        AGENT_PROMPT,
         AGENT_STOP,
         AGENT_SESSION_END,
         AGENT_NOTIFICATION,
@@ -69,17 +103,29 @@ class AgentHookEvents:
 class AgentSessionStartPayload:
     """Internal payload for agent session_start hook."""
 
-    session_id: str
-    transcript_path: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    transcript_path: str | None = None
+    session_id: str | None = None
+
+
+@dataclass
+class AgentPromptPayload:
+    """Internal payload for agent prompt hook (turn started)."""
+
+    prompt: str
+    session_id: str | None = None
+    transcript_path: str | None = None
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    source_computer: str | None = None
 
 
 @dataclass
 class AgentStopPayload:
     """Internal payload for agent stop hook."""
 
-    session_id: str
+    session_id: str | None = None
     transcript_path: str | None = None
+    prompt: str | None = None
     raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
     summary: str | None = None
     title: str | None = None
@@ -90,10 +136,10 @@ class AgentStopPayload:
 class AgentNotificationPayload:
     """Internal payload for agent notification hook."""
 
-    session_id: str
-    transcript_path: str
-    message: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    message: str = ""
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
+    session_id: str | None = None
+    transcript_path: str | None = None
     source_computer: str | None = None
 
 
@@ -101,12 +147,13 @@ class AgentNotificationPayload:
 class AgentSessionEndPayload:
     """Internal payload for agent session_end hook."""
 
-    session_id: str
-    raw: dict[str, object]  # noqa: loose-dict - Agent hook data varies by agent
+    session_id: str | None = None
+    raw: dict[str, object] = field(default_factory=dict)  # noqa: loose-dict - Agent hook data varies by agent
 
 
 AgentEventPayload = Union[
     AgentSessionStartPayload,
+    AgentPromptPayload,
     AgentStopPayload,
     AgentNotificationPayload,
     AgentSessionEndPayload,
@@ -159,6 +206,8 @@ class TeleClaudeEvents:
 
     # Project management
     LIST_PROJECTS: Literal["list_projects"] = "list_projects"
+    LIST_PROJECTS_WITH_TODOS: Literal["list_projects_with_todos"] = "list_projects_with_todos"
+    LIST_TODOS: Literal["list_todos"] = "list_todos"
     GET_COMPUTER_INFO: Literal["get_computer_info"] = "get_computer_info"
     CD: Literal["cd"] = "cd"
 
@@ -371,6 +420,8 @@ COMMAND_EVENTS: set[EventType] = {
     "list_sessions",
     "get_session_data",
     "list_projects",
+    "list_projects_with_todos",
+    "list_todos",
     "get_computer_info",
     "cd",
     "kill",

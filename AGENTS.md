@@ -26,15 +26,17 @@ This file provides guidance to agents when working with code in this repository.
 - If unsure about stability, test in a separate environment first
 - The daemon provides critical infrastructure - treat restarts as production deployments
 
-### Rule #1: SINGLE DATABASE ONLY
+### Rule #1: SINGLE DATABASE ONLY (Daemon Context)
 
-**THERE IS ONLY ONE DATABASE FILE: `teleclaude.db` IN PROJECT ROOT.**
+**THE RUNNING DAEMON USES ONE DATABASE FILE: `teleclaude.db` IN PROJECT ROOT.**
 
-- NEVER create additional database files
-- NEVER copy or duplicate the database
+- The daemon NEVER creates additional database files
+- NEVER copy or duplicate the production database
 - Database path is configured in `config.yml`: `${WORKING_DIR}/teleclaude.db`
-- If you find multiple `.db` files, DELETE the extras immediately
-- Any code that creates a new database file is a CRITICAL BUG
+- If you find multiple `.db` files in the main repo, DELETE the extras immediately
+- Any daemon code that creates a new database file is a CRITICAL BUG
+
+**Exception: Git worktrees** have their own isolated `teleclaude.db` for test isolation and development. This is intentional - worktrees are sandboxed environments that must not touch the production database.
 
 ### Rule #2: MCP CONNECTION RESILIENCE
 
@@ -75,7 +77,7 @@ The service is ALWAYS running (24/7 requirement). Never manually start the daemo
    - Runs `systemctl restart teleclaude` (proper systemd restart)
    - Daemon restarts in ~1-2 seconds
 3. **Verify**: `make status`
-4. **Monitor logs**: `. .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m` (single log file; do not pass `log_filename` in code)
+4. **Monitor logs**: `instrukt-ai-logs teleclaude --since 10m` (single log file; do not pass `log_filename` in code)
 
 ### Service Lifecycle Commands
 
@@ -141,7 +143,7 @@ Replace `{user}` with the user field and `{host}` with the host field from the c
 ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && make status'
 
 # View recent logs
-ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && . .venv/bin/activate && instrukt-ai-logs teleclaude --since 10m'
+ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && instrukt-ai-logs teleclaude --since 10m'
 
 # Restart daemon
 ssh -A morriz@raspberrypi.local 'cd $HOME/apps/TeleClaude && make restart'
@@ -253,12 +255,12 @@ commands = [
 
 The UI should never have message clutter. Two distinct cleanup flows exist:
 
-| Message Type                     | Tracking Mechanism                         | Cleanup Trigger                    |
-| -------------------------------- | ------------------------------------------ | ---------------------------------- |
-| User input messages              | `pending_deletions` (deletion_type='user_input') | Pre-handler on next user input     |
-| Feedback messages (summaries)    | `pending_deletions` (deletion_type='feedback')   | Before sending next feedback       |
-| Persistent messages (AI results) | **NOT tracked**                            | **NEVER deleted**                  |
-| File artifacts (from agent)      | **NOT tracked**                            | **NEVER deleted**                  |
+| Message Type                     | Tracking Mechanism                               | Cleanup Trigger                |
+| -------------------------------- | ------------------------------------------------ | ------------------------------ |
+| User input messages              | `pending_deletions` (deletion_type='user_input') | Pre-handler on next user input |
+| Feedback messages (summaries)    | `pending_deletions` (deletion_type='feedback')   | Before sending next feedback   |
+| Persistent messages (AI results) | **NOT tracked**                                  | **NEVER deleted**              |
+| File artifacts (from agent)      | **NOT tracked**                                  | **NEVER deleted**              |
 
 **Two cleanup flows:**
 
@@ -372,7 +374,7 @@ bin/rsync.sh <computer-name>
 ssh -A user@hostname 'cd $HOME/apps/TeleClaude && make restart'
 
 # Monitor remote logs
-ssh -A user@hostname 'cd $HOME/apps/TeleClaude && . .venv/bin/activate && instrukt-ai-logs teleclaude -f'
+ssh -A user@hostname 'cd $HOME/apps/TeleClaude && instrukt-ai-logs teleclaude -f'
 ```
 
 **3. Iterate quickly** - repeat steps 1-2 until feature works

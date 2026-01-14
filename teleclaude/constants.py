@@ -35,8 +35,8 @@ AGENT_METADATA: dict[str, dict[str, str | dict[str, str]]] = {
         "continue_template": "{base_cmd} --continue",
     },
     "gemini": {
-        "session_dir": "~/.gemini/sessions",
-        "log_pattern": "*.jsonl",
+        "session_dir": "~/.gemini/tmp",
+        "log_pattern": "**/chats/*.json",
         "model_flags": {
             "fast": "-m gemini-2.5-flash-lite",
             "med": "-m gemini-3-flash-preview",

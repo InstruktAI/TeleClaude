@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.cli.models import AgentAvailabilityInfo
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 
 
@@ -18,9 +19,24 @@ def mock_api():
 def test_modal_init_defaults_to_first_available_agent(mock_api):
     """Test modal selects first available agent on init."""
     agent_availability = {
-        "claude": {"available": False},
-        "gemini": {"available": True},
-        "codex": {"available": True},
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
+        "gemini": AgentAvailabilityInfo(
+            agent="gemini",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
+        "codex": AgentAvailabilityInfo(
+            agent="codex",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
     }
 
     modal = StartSessionModal(
@@ -36,7 +52,14 @@ def test_modal_init_defaults_to_first_available_agent(mock_api):
 
 def test_modal_init_defaults_to_slow_mode(mock_api):
     """Test modal defaults to slow mode."""
-    agent_availability = {"claude": {"available": True}}
+    agent_availability = {
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        )
+    }
 
     modal = StartSessionModal(
         computer="local",
@@ -51,9 +74,19 @@ def test_modal_init_defaults_to_slow_mode(mock_api):
 def test_modal_is_agent_available(mock_api):
     """Test _is_agent_available checks availability correctly."""
     agent_availability = {
-        "claude": {"available": True},
-        "gemini": {"available": False},
-        "codex": {},  # No availability info = default available
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
+        "gemini": AgentAvailabilityInfo(
+            agent="gemini",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
+        # Codex missing from map = treated as unavailable
     }
 
     modal = StartSessionModal(
@@ -65,15 +98,30 @@ def test_modal_is_agent_available(mock_api):
 
     assert modal._is_agent_available("claude") is True
     assert modal._is_agent_available("gemini") is False
-    assert modal._is_agent_available("codex") is True  # defaults to True
+    assert modal._is_agent_available("codex") is False
 
 
 def test_modal_get_available_agents(mock_api):
     """Test _get_available_agents returns correct indices."""
     agent_availability = {
-        "claude": {"available": False},
-        "gemini": {"available": True},
-        "codex": {"available": True},
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
+        "gemini": AgentAvailabilityInfo(
+            agent="gemini",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
+        "codex": AgentAvailabilityInfo(
+            agent="codex",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
     }
 
     modal = StartSessionModal(
@@ -90,9 +138,24 @@ def test_modal_get_available_agents(mock_api):
 def test_modal_skips_unavailable_agents_in_navigation(mock_api):
     """Test modal navigation skips unavailable agents."""
     agent_availability = {
-        "claude": {"available": False},
-        "gemini": {"available": True},
-        "codex": {"available": True},
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
+        "gemini": AgentAvailabilityInfo(
+            agent="gemini",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
+        "codex": AgentAvailabilityInfo(
+            agent="codex",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        ),
     }
 
     modal = StartSessionModal(
@@ -113,9 +176,24 @@ def test_modal_skips_unavailable_agents_in_navigation(mock_api):
 def test_modal_all_agents_unavailable(mock_api):
     """Test modal handles case when all agents are unavailable."""
     agent_availability = {
-        "claude": {"available": False},
-        "gemini": {"available": False},
-        "codex": {"available": False},
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
+        "gemini": AgentAvailabilityInfo(
+            agent="gemini",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
+        "codex": AgentAvailabilityInfo(
+            agent="codex",
+            available=False,
+            unavailable_until=None,
+            reason="rate_limited",
+        ),
     }
 
     modal = StartSessionModal(
@@ -140,15 +218,22 @@ def test_modal_empty_availability_dict(mock_api):
         agent_availability=agent_availability,
     )
 
-    # All agents should be considered available (default)
-    assert modal._is_agent_available("claude") is True
-    assert modal._is_agent_available("gemini") is True
-    assert modal._is_agent_available("codex") is True
+    # Unknown availability is treated as unavailable
+    assert modal._is_agent_available("claude") is False
+    assert modal._is_agent_available("gemini") is False
+    assert modal._is_agent_available("codex") is False
 
 
 def test_modal_init_values(mock_api):
     """Test modal initializes with correct values."""
-    agent_availability = {"claude": {"available": True}}
+    agent_availability = {
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        )
+    }
 
     modal = StartSessionModal(
         computer="local",

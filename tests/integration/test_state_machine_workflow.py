@@ -25,8 +25,6 @@ from teleclaude.core.next_machine import (
 @pytest.mark.asyncio
 async def test_workflow_pending_to_archived_with_dependencies():
     """Integration test: [ ] → [.] → [>] → archived with dependency gating"""
-    db = MagicMock(spec=Db)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create roadmap with dependency chain
         roadmap_path = Path(tmpdir) / "todos" / "roadmap.md"
@@ -108,7 +106,7 @@ async def test_next_work_dependency_blocking():
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Step 1: next_work should select independent-feature (no dependencies)
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
             result = await next_work(db, slug=None, cwd=tmpdir)
 
         assert "independent-feature" in result
@@ -133,7 +131,7 @@ async def test_next_work_dependency_blocking():
         (blocked_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Step 5: Now next_work can select blocked-feature (dependency satisfied)
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
             result = await next_work(db, slug="blocked-feature", cwd=tmpdir)
 
         # Should no longer be blocked - verify no errors
@@ -169,7 +167,7 @@ async def test_archived_dependency_satisfaction():
         (item_dir / "state.json").write_text('{"build": "pending", "review": "pending"}')
 
         # Should be able to work on new-feature (archived dependency is satisfied)
-        with patch("teleclaude.core.next_machine.Repo"):
+        with patch("teleclaude.core.next_machine.Repo"), patch("teleclaude.core.next_machine._prepare_worktree"):
             result = await next_work(db, slug="new-feature", cwd=tmpdir)
 
         # Should NOT be blocked

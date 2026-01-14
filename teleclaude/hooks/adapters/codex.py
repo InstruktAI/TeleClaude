@@ -10,6 +10,7 @@ from pathlib import Path
 _CODEX_TO_INTERNAL: dict[str, str] = {
     "thread-id": "session_id",  # Codex native session ID
     "cwd": "cwd",
+    "input-messages": "prompt",  # List of strings
 }
 
 
@@ -78,6 +79,13 @@ def normalize_payload(event_type: str, data: dict[str, object]) -> dict[str, obj
     for external, internal in _CODEX_TO_INTERNAL.items():
         if external in data:
             result[internal] = data[external]
+
+    # Codex prompt is a list of messages; take the last one as the current turn's prompt
+    prompts = result.get("prompt")
+    if isinstance(prompts, list) and prompts:
+        result["prompt"] = str(prompts[-1])
+    elif not isinstance(prompts, str):
+        result.pop("prompt", None)
 
     # 2. Enrich: discover transcript_path from session_id
     session_id = result.get("session_id")

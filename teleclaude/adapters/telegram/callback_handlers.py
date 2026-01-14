@@ -365,6 +365,7 @@ class CallbackHandlersMixin:
         await query.answer("Creating session...", show_alert=False)
 
         # Emit NEW_SESSION event with project_dir in metadata
+        logger.info("_handle_session_start: emitting NEW_SESSION with project_dir=%s", project_path)
         await self.client.handle_event(
             event=TeleClaudeEvents.NEW_SESSION,
             payload={
@@ -416,6 +417,11 @@ class CallbackHandlersMixin:
         await query.answer(f"Creating session with {mode_label}...", show_alert=False)
 
         # Emit NEW_SESSION event with project_dir and auto_command in metadata
+        logger.info(
+            "_handle_agent_start: emitting NEW_SESSION with project_dir=%s, auto_command=%s",
+            project_path,
+            auto_command,
+        )
         await self.client.handle_event(
             event=TeleClaudeEvents.NEW_SESSION,
             payload={
