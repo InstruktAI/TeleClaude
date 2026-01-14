@@ -67,3 +67,13 @@
 Priority fixes:
 1. Replace the mocked integration test with an end to end test for digest driven refresh.
 2. Add tests for startup warmup and heartbeat payload digest.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+| --- | --- | --- |
+| [tests] tests/integration/test_projects_digest_refresh.py:1 - The integration test is fully mocked and does not exercise real Redis heartbeat ingestion or cache updates, so the main flow is unverified. | Replaced mocked test with shared MockRedisClient heartbeat flow and digest change assertions. | 197e2b2 |
+| [tests] teleclaude/adapters/redis_adapter.py:247 - No test verifies warmup runs on daemon startup and triggers a remote snapshot refresh. | Added integration test that starts RedisAdapter and asserts snapshot refresh on startup. | 645c903 |
+| [tests] teleclaude/adapters/redis_adapter.py:1249 - No test verifies heartbeat payload includes projects_digest. | Added unit assertion for projects_digest in heartbeat payload. | d468b48 |
