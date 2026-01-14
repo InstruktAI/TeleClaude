@@ -1,6 +1,5 @@
 """Paranoid integration tests for MCP tools."""
 
-import asyncio
 import os
 import tempfile
 from datetime import datetime, timezone
