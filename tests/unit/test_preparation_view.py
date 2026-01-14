@@ -8,6 +8,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
+
 from teleclaude.cli.tui.app import FocusContext
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.views.preparation import PreparationView, PrepTodoDisplayInfo, PrepTodoNode
