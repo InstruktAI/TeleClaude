@@ -241,6 +241,7 @@ class TestSendKeysExistingTmux:
 
     @pytest.mark.asyncio
     async def test_returns_false_when_session_missing(self):
+        """Test that send_keys_existing_tmux returns False when session is absent."""
         with (
             patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
             patch.object(terminal_bridge, "_send_keys_tmux", new=AsyncMock()) as mock_send,
