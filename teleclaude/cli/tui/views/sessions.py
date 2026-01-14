@@ -807,7 +807,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Relative time
         last_activity = session.last_activity or ""
         rel_time = _relative_time(last_activity)
-        time_suffix = f"  {rel_time}" if rel_time else ""
+        time_suffix = f"  ({rel_time})" if rel_time else ""
 
         # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
         lines: list[str] = []
@@ -827,16 +827,22 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 3: Last input (only if content exists)
         last_input = (session.last_input or "").strip()
+        last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            line3 = f"{content_indent}last input: {input_text}"
+            input_time = _relative_time(last_input_at)
+            time_suffix = f" ({input_time})" if input_time else ""
+            line3 = f"{content_indent}in: {input_text}{time_suffix}"
             lines.append(line3[:width])
 
         # Line 4: Last output (only if content exists)
         last_output = (session.last_output or "").strip()
+        last_output_at = session.last_output_at
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{content_indent}last output: {output_text}"
+            output_time = _relative_time(last_output_at)
+            time_suffix = f" ({output_time})" if output_time else ""
+            line4 = f"{content_indent}out: {output_text}{time_suffix}"
             lines.append(line4[:width])
 
         return lines
@@ -1000,7 +1006,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Relative time
         last_activity = session.last_activity or ""
         rel_time = _relative_time(last_activity)
-        time_suffix = f"  {rel_time}" if rel_time else ""
+        time_suffix = f"  ({rel_time})" if rel_time else ""
 
         # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
         line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
@@ -1029,20 +1035,26 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         # Line 3: Last input (only if content exists)
         last_input = (session.last_input or "").strip()
+        last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            line3 = f"{content_indent}last input: {input_text}"
+            input_time = _relative_time(last_input_at)
+            time_suffix = f" ({input_time})" if input_time else ""
+            line3 = f"{content_indent}in: {input_text}{time_suffix}"
             _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
 
         # Line 4: Last output (only if content exists)
         last_output = (session.last_output or "").strip()
+        last_output_at = session.last_output_at
         if last_output and not last_input and session_id not in self._missing_last_input_logged:
             self._missing_last_input_logged.add(session_id)
             logger.trace("missing_last_input", session=session_id[:8])
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            line4 = f"{content_indent}last output: {output_text}"
+            output_time = _relative_time(last_output_at)
+            time_suffix = f" ({output_time})" if output_time else ""
+            line4 = f"{content_indent}out: {output_text}{time_suffix}"
             _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 

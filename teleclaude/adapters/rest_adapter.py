@@ -130,7 +130,9 @@ class RESTAdapter(BaseAdapter):
             created_at=session.created_at.isoformat() if session.created_at else None,
             last_activity=session.last_activity.isoformat() if session.last_activity else None,
             last_input=session.last_message_sent,
+            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
             last_output=session.last_feedback_received,
+            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
             tmux_session_name=session.tmux_session_name,
             initiator_session_id=session.initiator_session_id,
         )
@@ -890,11 +892,13 @@ class RESTAdapter(BaseAdapter):
     async def start(self) -> None:
         """Start the REST API server on Unix socket."""
         self._running = True
+        logger.info("REST API server starting")
         await self._start_server()
 
     async def stop(self) -> None:
         """Stop the REST API server."""
         self._running = False
+        logger.info("REST API server stopping")
         # Unsubscribe from cache changes
         if self.cache:
             self.cache.unsubscribe(self._on_cache_change)
@@ -929,6 +933,11 @@ class RESTAdapter(BaseAdapter):
             timeout_keep_alive=REST_TIMEOUT_KEEP_ALIVE_S,
         )
         self.server = uvicorn.Server(config)
+        logger.debug(
+            "REST server initialized (should_exit=%s, started=%s)",
+            getattr(self.server, "should_exit", None),
+            getattr(self.server, "started", None),
+        )
 
         # Run server in background task
         self.server_task = asyncio.create_task(self.server.serve())
@@ -947,6 +956,11 @@ class RESTAdapter(BaseAdapter):
         """Stop uvicorn server task safely."""
         # Stop server gracefully if started, cancel if still starting
         if self.server:
+            logger.debug(
+                "REST server stopping (should_exit=%s, started=%s)",
+                getattr(self.server, "should_exit", None),
+                getattr(self.server, "started", None),
+            )
             if self.server.started:
                 # Server is running, do graceful shutdown
                 self.server.should_exit = True
@@ -979,10 +993,26 @@ class RESTAdapter(BaseAdapter):
             return
 
         exc = task.exception()
+        server_started = getattr(self.server, "started", None) if self.server else None
+        server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
+        socket_exists = os.path.exists(REST_SOCKET_PATH)
+
         if exc:
-            logger.error("REST API server task crashed: %s", exc, exc_info=True)
+            logger.error(
+                "REST API server task crashed: %s (started=%s should_exit=%s socket=%s)",
+                exc,
+                server_started,
+                server_should_exit,
+                socket_exists,
+                exc_info=True,
+            )
         else:
-            logger.error("REST API server task exited unexpectedly; restarting")
+            logger.error(
+                "REST API server task exited unexpectedly (started=%s should_exit=%s socket=%s); restarting",
+                server_started,
+                server_should_exit,
+                socket_exists,
+            )
 
         if self.task_registry:
             self.task_registry.spawn(self._restart_server("server_task_done"), name="rest-restart")

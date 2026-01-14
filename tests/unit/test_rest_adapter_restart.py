@@ -41,6 +41,23 @@ def test_rest_server_done_noop_when_stopped() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stop_server_sets_should_exit_when_started() -> None:
+    adapter = RESTAdapter(_DummyClient())
+
+    class _Server:
+        def __init__(self) -> None:
+            self.started = True
+            self.should_exit = False
+
+    adapter.server = _Server()
+    adapter.server_task = None
+
+    await adapter._stop_server()
+
+    assert adapter.server.should_exit is True
+
+
+@pytest.mark.asyncio
 async def test_start_configures_ws_keepalive(monkeypatch) -> None:
     captured = {}
 

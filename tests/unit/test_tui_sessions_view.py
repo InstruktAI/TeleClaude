@@ -66,7 +66,9 @@ class TestSessionsViewLogic:
         active_agent: str = "claude",
         thinking_mode: str = "slow",
         last_input: str | None = None,
+        last_input_at: str | None = None,
         last_output: str | None = None,
+        last_output_at: str | None = None,
         tmux_session_name: str | None = None,
         display_index: str = "1",
     ) -> SessionInfo:
@@ -81,7 +83,9 @@ class TestSessionsViewLogic:
             created_at=None,
             last_activity=None,
             last_input=last_input,
+            last_input_at=last_input_at,
             last_output=last_output,
+            last_output_at=last_output_at,
             tmux_session_name=tmux_session_name,
             initiator_session_id=None,
             computer=computer,
@@ -97,7 +101,9 @@ class TestSessionsViewLogic:
         active_agent: str = "claude",
         thinking_mode: str = "slow",
         last_input: str | None = None,
+        last_input_at: str | None = None,
         last_output: str | None = None,
+        last_output_at: str | None = None,
         tmux_session_name: str | None = None,
         depth: int = 0,
         display_index: str = "1",
@@ -110,7 +116,9 @@ class TestSessionsViewLogic:
             active_agent=active_agent,
             thinking_mode=thinking_mode,
             last_input=last_input,
+            last_input_at=last_input_at,
             last_output=last_output,
+            last_output_at=last_output_at,
             tmux_session_name=tmux_session_name,
             display_index=display_index,
         )
@@ -324,6 +332,25 @@ class TestSessionsViewLogic:
         # First few sessions should not be visible
         assert "Session 0" not in output
         assert "Session 1" not in output
+
+    def test_last_input_output_labels_with_time(self, sessions_view, monkeypatch):
+        """Last input/output render with short labels and relative time."""
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._relative_time", lambda _ts: "5m ago")
+
+        session = self._make_session_node(
+            session_id="s1",
+            last_input="hello",
+            last_input_at="2024-01-01T00:00:00Z",
+            last_output="world",
+            last_output_at="2024-01-01T00:01:00Z",
+        )
+        sessions_view.flat_items = [session]
+
+        lines = sessions_view.get_render_lines(120, 10)
+        output = "\n".join(lines)
+
+        assert "in: hello (5m ago)" in output
+        assert "out: world (5m ago)" in output
 
     def test_double_clicking_session_id_row_shows_single_session(self, mock_focus):
         """Double-clicking the ID row shows only the parent session in the side pane."""
