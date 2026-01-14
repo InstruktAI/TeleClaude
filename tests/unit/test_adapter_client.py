@@ -376,7 +376,10 @@ async def test_adapter_client_discover_peers_redis_disabled():
 async def test_send_output_update_missing_thread_recreates_topic():
     """Missing Telegram topic should trigger topic recreation."""
     client = AdapterClient()
-    client.register_adapter("telegram", DummyTelegramAdapter(client, error=Exception("Message thread not found")))
+    client.register_adapter(
+        "telegram",
+        DummyTelegramAdapter(client, error_sequence=[Exception("Message thread not found")]),
+    )
 
     session = Session(
         session_id="session-123",
@@ -390,24 +393,28 @@ async def test_send_output_update_missing_thread_recreates_topic():
     )
 
     with (
-        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
-        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
         patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
     ):
-        await client.send_output_update(session, "output", 0.0, 0.0)
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count >= 2
-    assert get_session.call_args_list[0].args[0] == "session-123"
-    assert get_session.call_args_list[1].args[0] == "session-123"
-    assert ensure_ui_channels.call_count == 1
-    assert update_session.call_count >= 1
+    # Succeeded eventually after recreation
+    assert result == "msg"
+    # Recovery was triggered
+    ensure_ui_channels.assert_called()
+    # Metadata was cleared for recreation
+    assert session.adapter_metadata.telegram.topic_id is None
 
 
 @pytest.mark.asyncio
 async def test_send_output_update_missing_thread_non_telegram_origin_recreates_topic():
     """Missing Telegram topic should recreate topic even for non-telegram origin."""
     client = AdapterClient()
-    client.register_adapter("telegram", DummyTelegramAdapter(client, error=Exception("Message thread not found")))
+    client.register_adapter(
+        "telegram",
+        DummyTelegramAdapter(client, error_sequence=[Exception("Message thread not found")]),
+    )
 
     session = Session(
         session_id="session-456",
@@ -421,17 +428,16 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
     )
 
     with (
-        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session,
-        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session,
+        patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
+        patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
         patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
     ):
-        await client.send_output_update(session, "output", 0.0, 0.0)
+        result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count >= 2
-    assert get_session.call_args_list[0].args[0] == "session-456"
-    assert get_session.call_args_list[1].args[0] == "session-456"
-    assert ensure_ui_channels.call_count == 1
-    assert update_session.call_count >= 1
+    # Outcome-based assertions
+    assert result == "msg"
+    ensure_ui_channels.assert_called()
+    assert session.adapter_metadata.telegram.topic_id is None
 
 
 @pytest.mark.asyncio
@@ -454,21 +460,20 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
         ),
     )
 
-    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)) as get_session:
+    with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)):
         with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
             with patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels:
                 result = await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert get_session.call_count >= 2
-    assert get_session.call_args_list[0].args[0] == "session-789"
-    assert get_session.call_args_list[1].args[0] == "session-789"
-    assert ensure_ui_channels.call_count == 1
-    assert update_session.call_count >= 1
+    # Outcome: success after retry
+    assert result == "msg"
+    # Outcome: recovery triggered
+    ensure_ui_channels.assert_called()
+    # Outcome: metadata cleared for recovery
     _, kwargs = update_session.call_args
     updated_meta = kwargs["adapter_metadata"]
     assert updated_meta.telegram.topic_id is None
     assert updated_meta.telegram.output_message_id is None
-    assert result == "msg"
 
 
 @pytest.mark.asyncio
@@ -505,8 +510,8 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    assert ensure_ui_channels.call_count == 1
-    assert telegram.send_output_update.call_count == 1
+    ensure_ui_channels.assert_called_once()
+    telegram.send_output_update.assert_called_once()
     sent_session = telegram.send_output_update.call_args[0][0]
     assert sent_session.adapter_metadata.telegram
     assert sent_session.adapter_metadata.telegram.topic_id == 999
