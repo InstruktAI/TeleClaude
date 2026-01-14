@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.config import config
 from teleclaude.core.models import SessionAdapterMetadata
@@ -61,6 +64,7 @@ def _insert_terminal_session(
 
 
 def test_ensure_terminal_session_reuses_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that ensure_terminal_session reuses an existing terminal session."""
     db_path = _init_db(tmp_path, monkeypatch)
     tty_path = "/dev/ttys050"
     session_id = "11111111-1111-1111-1111-111111111111"
@@ -72,6 +76,7 @@ def test_ensure_terminal_session_reuses_open(tmp_path: Path, monkeypatch: pytest
 
 
 def test_ensure_terminal_session_creates_new_when_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that ensure_terminal_session inserts a new session when missing."""
     db_path = _init_db(tmp_path, monkeypatch)
     tty_path = "/dev/ttys051"
     resolved = ensure_terminal_session(tty_path, parent_pid=456, agent="codex", cwd="~")
@@ -94,6 +99,7 @@ def test_ensure_terminal_session_creates_new_when_missing(tmp_path: Path, monkey
 
 
 def test_ensure_terminal_session_sets_title_from_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that ensure_terminal_session persists a title built from inputs."""
     db_path = _init_db(tmp_path, monkeypatch)
     tty_path = "/dev/ttys052"
     cwd = config.computer.default_working_dir or "~"

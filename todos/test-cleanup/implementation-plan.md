@@ -152,6 +152,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Add docstrings in `tests/unit/test_agents.py`
 - [x] Add docstrings in `tests/unit/test_telegram_adapter.py`
 - [x] Add docstrings in `tests/unit/test_hook_receiver.py`
+- [x] Add docstrings in `tests/unit/test_terminal_sessions.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 
