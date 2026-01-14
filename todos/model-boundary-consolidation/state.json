@@ -1,6 +1,6 @@
 {
   "build": "complete",
-  "review": "approved",
+  "review": "changes_requested",
   "breakdown": {
     "assessed": true,
     "todos": []
