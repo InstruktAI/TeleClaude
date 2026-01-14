@@ -51,7 +51,6 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
 
     # Get telegram adapter to check delete_message calls
     telegram_adapter = daemon.client.adapters["telegram"]
-    initial_delete_calls = telegram_adapter.delete_message.call_count
 
     # Mock session_exists to return True
     async def mock_session_exists(name: str, log_missing: bool = True) -> bool:
