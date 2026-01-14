@@ -140,6 +140,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Document terminal bridge system-boundary assertions in `tests/unit/test_terminal_bridge.py`
 - [x] Reduce internal routing assertions in `tests/unit/test_mcp_server.py`
 - [x] Convert daemon tests to capture outcome payloads in `tests/unit/test_daemon.py`
+- [x] Paranoidize output poller tests in `tests/unit/test_output_poller.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 

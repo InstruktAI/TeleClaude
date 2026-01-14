@@ -1,10 +1,13 @@
 """Unit tests for simplified OutputPoller."""
 
 import logging
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.output_poller import (
     DirectoryChanged,
@@ -65,7 +68,7 @@ def _init_terminal_mock(mock_terminal) -> None:
 
 @pytest.mark.asyncio
 class TestOutputPollerPoll:
-    """Test OutputPoller.poll() async generator."""
+    """Paranoid test OutputPoller.poll() async generator."""
 
     @pytest.fixture
     def poller(self):
@@ -73,7 +76,7 @@ class TestOutputPollerPoll:
         return OutputPoller()
 
     async def test_session_death_detection(self, poller, tmp_path):
-        """Test poll detects session death."""
+        """Paranoid test poll detects session death."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -95,7 +98,7 @@ class TestOutputPollerPoll:
                 assert events[0].exit_code is None
 
     async def test_shell_return_keeps_polling(self, poller, tmp_path):
-        """Shell return should not terminate polling."""
+        """Paranoid test that a shell return does not terminate polling."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -116,7 +119,7 @@ class TestOutputPollerPoll:
                 assert not any(isinstance(e, ProcessExited) and e.exit_code == 0 for e in events)
 
     async def test_shell_exit_emits_process_exited_without_code(self, poller, tmp_path):
-        """Shell exit should emit ProcessExited with exit_code None."""
+        """Paranoid test that a shell exit emits ProcessExited with exit_code None."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -138,7 +141,7 @@ class TestOutputPollerPoll:
                 assert "command output" in events[-1].final_output
 
     async def test_periodic_updates_send_full_file_contents(self, poller, tmp_path):
-        """Test that periodic updates always send full file contents, not deltas."""
+        """Paranoid test that periodic updates always send full file contents, not deltas."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -174,7 +177,7 @@ class TestOutputPollerPoll:
                         assert "line 2" in output_events[-1].output
 
     async def test_output_changed_detection(self, poller, tmp_path):
-        """Test poll detects output changes."""
+        """Paranoid test poll detects output changes."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
@@ -208,7 +211,7 @@ class TestOutputPollerPoll:
                 assert isinstance(events[-1], ProcessExited)
 
     async def test_output_change_emits_after_interval_even_if_stable(self, poller, tmp_path):
-        """Output changes should emit after interval even if output stops changing."""
+        """Paranoid test that output still emits after the interval even when nothing changes."""
         output_file = tmp_path / "output.txt"
 
         def time_mock():
@@ -248,7 +251,7 @@ class TestOutputPollerPoll:
                 assert isinstance(events[-1], ProcessExited)
 
     async def test_markerless_exit_forces_final_update(self, poller, tmp_path):
-        """Markerless exit should force a final OutputChanged even if interval hasn't elapsed."""
+        """Paranoid test that markerless exit forces a final OutputChanged even before the interval."""
         output_file = tmp_path / "output.txt"
 
         def time_mock():
@@ -279,7 +282,7 @@ class TestOutputPollerPoll:
         assert isinstance(events[-1], ProcessExited)
 
     async def test_periodic_updates_with_exponential_backoff(self, poller, tmp_path):
-        """Test poll does not send periodic updates when output is unchanged."""
+        """Paranoid test poll does not send periodic updates when output is unchanged."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
@@ -309,7 +312,7 @@ class TestOutputPollerPoll:
                     assert len(output_changed_events) == 1
 
     async def test_idle_summary_logging_suppresses_tick_noise(self, poller, tmp_path, caplog):
-        """Summarize idle ticks instead of per-tick spam."""
+        """Paranoid test that idle logging summarizes ticks instead of spamming each loop."""
         output_file = tmp_path / "output.txt"
 
         trace_level = getattr(logging, "TRACE", logging.DEBUG)
@@ -345,7 +348,7 @@ class TestOutputPollerPoll:
         assert all("Output unchanged" not in msg for msg in messages)
 
     async def test_file_write_error_handling(self, poller):
-        """Test poll handles file write errors gracefully."""
+        """Paranoid test poll handles file write errors gracefully."""
         # Use non-existent directory to trigger write error
         output_file = Path("/nonexistent/output.txt")
 
@@ -367,7 +370,7 @@ class TestOutputPollerPoll:
                 assert isinstance(events[0], ProcessExited)
 
     async def test_directory_change_detection(self, poller, tmp_path):
-        """Test poll detects directory changes and yields DirectoryChanged events."""
+        """Paranoid test poll detects directory changes and yields DirectoryChanged events."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 3):  # Check every 3 seconds
@@ -410,7 +413,7 @@ class TestOutputPollerPoll:
                         assert dir_events[0].new_path == "/home/user/projects/teleclaude"
 
     async def test_directory_check_disabled(self, poller, tmp_path):
-        """Test poll skips directory checks when interval is 0."""
+        """Paranoid test poll skips directory checks when interval is 0."""
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
