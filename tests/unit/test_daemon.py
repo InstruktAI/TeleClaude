@@ -173,7 +173,6 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
     daemon.client = MagicMock()
     daemon.client.send_message = AsyncMock()
     daemon._last_summary_fingerprint = {}
-    daemon._last_summary_native_session = {}
 
     session = MagicMock()
     session.session_id = "sess-123"
@@ -182,6 +181,7 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
 
     payload = MagicMock()
     payload.transcript_path = "/tmp/transcript.jsonl"
+    payload.session_id = "native-123"
     payload.summary = None
     payload.title = None
 
@@ -211,7 +211,6 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
     daemon.client = MagicMock()
     daemon.client.send_message = AsyncMock()
     daemon._last_summary_fingerprint = {}
-    daemon._last_summary_native_session = {}
 
     session = MagicMock()
     session.session_id = "sess-123"
@@ -224,10 +223,11 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
     payload.summary = None
     payload.title = None
 
-    fake_stat = MagicMock(st_size=123, st_mtime_ns=456)
+    first_stat = MagicMock(st_size=123, st_mtime_ns=456)
+    second_stat = MagicMock(st_size=124, st_mtime_ns=789)
 
     with (
-        patch("teleclaude.daemon.Path.stat", return_value=fake_stat),
+        patch("teleclaude.daemon.Path.stat", side_effect=[first_stat, second_stat]),
         patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_sum,
         patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
         patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
@@ -238,9 +238,9 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
         await daemon._enrich_with_summary(session, payload)
         await daemon._enrich_with_summary(session, payload)
 
-    mock_sum.assert_awaited_once()
-    mock_update.assert_awaited_once()
-    daemon.client.send_message.assert_awaited_once()
+    assert mock_sum.await_count == 2
+    assert mock_update.await_count == 2
+    assert daemon.client.send_message.await_count == 2
 
 
 @pytest.mark.asyncio

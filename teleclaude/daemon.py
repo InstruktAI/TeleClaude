@@ -251,8 +251,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         # In-memory dedupe for stop summarization (session_id -> transcript fingerprint)
         self._last_summary_fingerprint: dict[str, str] = {}
-        # In-memory dedupe for stop summarization (session_id -> native agent session id)
-        self._last_summary_native_session: dict[str, str] = {}
 
         # Auto-discover and register event handlers
         for attr_name in dir(TeleClaudeEvents):
@@ -1049,14 +1047,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.debug("Skipping enrichment for session %s: no transcript path", session_id[:8])
             return
 
-        native_session_id = payload.session_id
-        if native_session_id:
-            last_native = self._last_summary_native_session.get(session_id)
-            if last_native == native_session_id:
-                logger.debug("Skipping enrichment for session %s: duplicate native session", session_id[:8])
-                return
-            self._last_summary_native_session[session_id] = native_session_id
-
         transcript_file = Path(transcript_path)
         try:
             stat = transcript_file.stat()
@@ -1065,11 +1055,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return
 
         fingerprint = f"{transcript_path}:{stat.st_size}:{stat.st_mtime_ns}"
+        native_session_id = payload.session_id or ""
+        fingerprint_key = f"{native_session_id}:{fingerprint}"
         last_fingerprint = self._last_summary_fingerprint.get(session_id)
-        if last_fingerprint == fingerprint:
+        if last_fingerprint == fingerprint_key:
             logger.debug("Skipping enrichment for session %s: duplicate transcript", session_id[:8])
             return
-        self._last_summary_fingerprint[session_id] = fingerprint
+        self._last_summary_fingerprint[session_id] = fingerprint_key
 
         active_agent = session.active_agent
         if not active_agent:
