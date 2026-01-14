@@ -10,11 +10,10 @@ from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 
 def test_toggle_session_returns_false_when_not_in_tmux():
     """Test that toggle_session returns False when not running inside tmux."""
-    os.environ.pop("TMUX", None)
-
-    manager = TmuxPaneManager()
-
-    result = manager.toggle_session("session-1")
+    with patch.dict(os.environ):
+        os.environ.pop("TMUX", None)
+        manager = TmuxPaneManager()
+        result = manager.toggle_session("session-1")
 
     assert result is False
     assert manager.active_session is None
