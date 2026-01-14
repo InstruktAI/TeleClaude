@@ -21,7 +21,7 @@
 
 **Verification notes:**
 - `tests/unit/test_preparation_view.py` and `tests/unit/test_mcp_handlers.py` import config-backed modules without setting `TELECLAUDE_CONFIG_PATH`, so the tests can bind to local config and become order-dependent.
-- Ruff linting will fail due to unused imports and an unused local variable in modified tests.
+- Unused imports and an unused local variable remain in modified tests, which violates the test quality criteria even though the current lint script does not scan `tests/`.
 
 ### Integration Test Check
 - Main flow integration test exists: yes
@@ -35,7 +35,7 @@
 |-------------|--------|-------|
 | Do not test private methods | ✅ | New tests use public entry points (`refresh`, `handle_enter`, `teleclaude__start_session`). |
 | Deterministic tests (no external config reliance) | ❌ | `tests/unit/test_preparation_view.py`, `tests/unit/test_mcp_handlers.py` do not set `TELECLAUDE_CONFIG_PATH` before imports. |
-| Lint clean (no unused imports or vars) | ❌ | Unused imports in `tests/unit/test_sessions_view.py` and `tests/unit/test_mcp_handlers.py`; unused local in `tests/integration/test_feedback_cleanup.py`. |
+| No unused imports or vars | ❌ | Unused imports in `tests/unit/test_sessions_view.py` and `tests/unit/test_mcp_handlers.py`; unused local in `tests/integration/test_feedback_cleanup.py`. |
 | Docstrings for every test | ✅ | Added across new and edited files. |
 | No loops or conditionals in tests | ⚠️ | Some assertions use list comprehensions and generator expressions (for example `tests/unit/test_adapter_client.py`). |
 
@@ -49,9 +49,9 @@
   - Suggested fix: set `os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")` before importing `PreparationView`.
 - [tests] `tests/unit/test_mcp_handlers.py:5` — Same config isolation issue for `MCPHandlersMixin`, plus unused imports (`patch`, `ThinkingMode`).
   - Suggested fix: add `os.environ.setdefault(...)` before the teleclaude import and remove unused imports.
-- [lint] `tests/unit/test_sessions_view.py:16` — Unused imports (`CreateSessionResult`, `ProjectWithTodosInfo`, `TreeNode`) will fail ruff.
+- [tests] `tests/unit/test_sessions_view.py:16` — Unused imports (`CreateSessionResult`, `ProjectWithTodosInfo`, `TreeNode`) should be removed to meet test quality criteria.
   - Suggested fix: remove unused imports.
-- [lint] `tests/integration/test_feedback_cleanup.py:54` — `initial_delete_calls` is unused after refactor.
+- [tests] `tests/integration/test_feedback_cleanup.py:54` — `initial_delete_calls` is unused after refactor.
   - Suggested fix: remove the unused local variable.
 
 ## Suggestions (nice to have)
@@ -73,4 +73,4 @@
 
 Priority fixes:
 1. Set `TELECLAUDE_CONFIG_PATH` before importing config-backed modules in `tests/unit/test_preparation_view.py` and `tests/unit/test_mcp_handlers.py`.
-2. Remove unused imports and unused locals so `make lint` passes.
+2. Remove unused imports and unused locals in modified tests.
