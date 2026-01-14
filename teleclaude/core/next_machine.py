@@ -846,10 +846,15 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
 
 
 def ensure_worktree(cwd: str, slug: str) -> bool:
-    """Ensure worktree exists, creating it if needed.
+    """Ensure worktree exists and is prepared, creating/preparing as needed.
 
     Creates: git worktree add trees/{slug} -b {slug}
     Then calls project-owned preparation hook to make worktree ready for work.
+
+    Always runs preparation when worktree exists - this is safe because:
+    - uv sync / pip install are idempotent (fast no-op if deps are current)
+    - Catches any drift, new dependencies added mid-work, or partial installations
+    - config.yml and .env symlink are also idempotent
 
     Args:
         cwd: Project root directory
@@ -863,6 +868,9 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
     """
     worktree_path = Path(cwd) / "trees" / slug
     if worktree_path.exists():
+        # Always run preparation - it's idempotent and catches any drift
+        logger.info("Worktree %s exists, ensuring preparation is current", slug)
+        _prepare_worktree(cwd, slug)
         return False
 
     try:
