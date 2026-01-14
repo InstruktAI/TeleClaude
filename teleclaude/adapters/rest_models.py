@@ -130,6 +130,8 @@ class TodoDTO(BaseModel):  # type: ignore[explicit-any]
     slug: str
     status: str
     description: str | None = None
+    computer: str | None = None
+    project_path: str | None = None
     has_requirements: bool
     has_impl_plan: bool
     build_status: str | None = None

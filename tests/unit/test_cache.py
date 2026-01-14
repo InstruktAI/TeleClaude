@@ -286,6 +286,21 @@ def test_get_todos_returns_empty_for_stale_data():
     assert result == []
 
 
+def test_get_todo_entries_include_stale():
+    """Test get_todo_entries(include_stale=True) returns stale entries with context."""
+    cache = DaemonCache()
+
+    stale_timestamp = datetime.now(timezone.utc) - timedelta(seconds=400)
+    todos = [TodoInfo(slug="todo-1", status="pending")]
+    cache._todos["remote:/path"] = CachedItem(todos, cached_at=stale_timestamp)
+
+    entries = cache.get_todo_entries(include_stale=True)
+    assert len(entries) == 1
+    assert entries[0].computer == "remote"
+    assert entries[0].project_path == "/path"
+    assert entries[0].is_stale is True
+
+
 def test_invalidate_removes_from_cache():
     """Test invalidate() removes key from cache."""
     cache = DaemonCache()

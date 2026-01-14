@@ -1,6 +1,5 @@
 """HTTP client for telec TUI."""
 
-import asyncio
 import json
 import threading
 import time
@@ -435,30 +434,43 @@ class TelecAPIClient:
             APIError: If request fails
         """
         projects = await self.list_projects()
-
-        async def _fetch_project_todos(project: ProjectInfo) -> ProjectWithTodosInfo:
-            todos: list[TodoInfo] = []
-            if project.path:
-                todos = await self.list_todos(project.path, project.computer or None)
-            return ProjectWithTodosInfo(
-                computer=project.computer,
-                name=project.name,
-                path=project.path,
-                description=project.description,
-                todos=todos,
-            )
-
+        todos = await self.list_todos()
         if not projects:
             return []
 
-        return list(await asyncio.gather(*(_fetch_project_todos(project) for project in projects)))
+        todo_map: dict[tuple[str, str], list[TodoInfo]] = {}
+        for todo in todos:
+            if not todo.computer or not todo.project_path:
+                continue
+            key = (todo.computer, todo.project_path)
+            todo_map.setdefault(key, []).append(todo)
 
-    async def list_todos(self, project_path: str, computer: str | None = None) -> list[TodoInfo]:
-        """List todos for a project.
+        result: list[ProjectWithTodosInfo] = []
+        for project in projects:
+            computer = project.computer or ""
+            project_path = project.path
+            todos_for_project = todo_map.get((computer, project_path), [])
+            result.append(
+                ProjectWithTodosInfo(
+                    computer=project.computer,
+                    name=project.name,
+                    path=project.path,
+                    description=project.description,
+                    todos=todos_for_project,
+                )
+            )
+        return result
+
+    async def list_todos(
+        self,
+        project_path: str | None = None,
+        computer: str | None = None,
+    ) -> list[TodoInfo]:
+        """List todos.
 
         Args:
-            project_path: Absolute project path
-            computer: Optional computer name (None = local)
+            project_path: Optional project path filter
+            computer: Optional computer name filter
 
         Returns:
             List of todo objects
@@ -466,7 +478,9 @@ class TelecAPIClient:
         Raises:
             APIError: If request fails
         """
-        params: dict[str, str] = {"project": project_path}
+        params: dict[str, str] = {}
+        if project_path:
+            params["project"] = project_path
         if computer:
             params["computer"] = computer
         resp = await self._request("GET", "/todos", params=params)

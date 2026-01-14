@@ -449,46 +449,57 @@ class RESTAdapter(BaseAdapter):
 
         @self.app.get("/todos")
         async def list_todos(  # pyright: ignore
-            project: str = Query(..., min_length=1),
+            project: str | None = Query(None, min_length=1),
             computer: str | None = None,
         ) -> list[TodoDTO]:
-            """List todos for a project (local + cached remote).
+            """List todos from cache, optionally filtered by computer and project.
 
-            Pure cache reader for remote computers - returns cached data without triggering pulls.
+            Read-only cache endpoint. Returns cached data immediately.
             """
             try:
-                computer_name = computer or "local"
-                if computer_name != "local":
-                    if not self.cache:
-                        return []
-                    cached_todos = self.cache.get_todos(computer_name, project)
-                    self._refresh_stale_todos(computer_name, project)
-                    return [
-                        TodoDTO(
-                            slug=t.slug,
-                            status=t.status,
-                            description=t.description,
-                            has_requirements=t.has_requirements,
-                            has_impl_plan=t.has_impl_plan,
-                            build_status=t.build_status,
-                            review_status=t.review_status,
-                        )
-                        for t in cached_todos
-                    ]
+                if not self.cache:
+                    if project and (computer in (None, "local")):
+                        raw_todos = await command_handlers.handle_list_todos(project)
+                        return [
+                            TodoDTO(
+                                slug=t.slug,
+                                status=t.status,
+                                description=t.description,
+                                computer=config.computer.name,
+                                project_path=project,
+                                has_requirements=t.has_requirements,
+                                has_impl_plan=t.has_impl_plan,
+                                build_status=t.build_status,
+                                review_status=t.review_status,
+                            )
+                            for t in raw_todos
+                        ]
+                    return []
 
-                raw_todos = await command_handlers.handle_list_todos(project)
-                return [
-                    TodoDTO(
-                        slug=t.slug,
-                        status=t.status,
-                        description=t.description,
-                        has_requirements=t.has_requirements,
-                        has_impl_plan=t.has_impl_plan,
-                        build_status=t.build_status,
-                        review_status=t.review_status,
-                    )
-                    for t in raw_todos
-                ]
+                entries = self.cache.get_todo_entries(
+                    computer=computer,
+                    project_path=project,
+                    include_stale=True,
+                )
+                result: list[TodoDTO] = []
+                for entry in entries:
+                    if entry.is_stale:
+                        self._refresh_stale_todos(entry.computer, entry.project_path)
+                    for todo in entry.todos:
+                        result.append(
+                            TodoDTO(
+                                slug=todo.slug,
+                                status=todo.status,
+                                description=todo.description,
+                                computer=entry.computer,
+                                project_path=entry.project_path,
+                                has_requirements=todo.has_requirements,
+                                has_impl_plan=todo.has_impl_plan,
+                                build_status=todo.build_status,
+                                review_status=todo.review_status,
+                            )
+                        )
+                return result
             except Exception as e:
                 logger.error("list_todos: failed to get todos: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list todos: {e}") from e

@@ -3,6 +3,7 @@
 Provides instant reads for REST endpoints and emits change events when data updates.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Generic, TypeVar
 
@@ -44,6 +45,16 @@ class CachedItem(Generic[T]):
 
         age = (datetime.now(timezone.utc) - self.cached_at).total_seconds()
         return age > ttl_seconds
+
+
+@dataclass(frozen=True)
+class TodoCacheEntry:
+    """Cached todos with context for filtering."""
+
+    computer: str
+    project_path: str
+    todos: list[TodoInfo]
+    is_stale: bool
 
 
 class DaemonCache:
@@ -188,7 +199,7 @@ class DaemonCache:
             sessions.append(session)
         return sessions
 
-    def get_todos(self, computer: str, project_path: str) -> list[TodoInfo]:
+    def get_todos(self, computer: str, project_path: str, *, include_stale: bool = False) -> list[TodoInfo]:
         """Get cached todos for a project.
 
         Args:
@@ -196,15 +207,54 @@ class DaemonCache:
             project_path: Project path
 
         Returns:
-            List of todo info objects (empty if not cached or stale)
+            List of todo info objects (empty if not cached or stale unless include_stale)
         """
         key = f"{computer}:{project_path}"
         cached = self._todos.get(key)
 
-        if not cached or cached.is_stale(300):  # TTL=5min
+        if not cached:
+            return []
+        if cached.is_stale(300) and not include_stale:  # TTL=5min
             return []
 
         return cached.data
+
+    def get_todo_entries(
+        self,
+        *,
+        computer: str | None = None,
+        project_path: str | None = None,
+        include_stale: bool = False,
+    ) -> list[TodoCacheEntry]:
+        """Get cached todos with context, optionally filtered.
+
+        Args:
+            computer: Optional computer name to filter by
+            project_path: Optional project path to filter by
+            include_stale: When True, include stale entries
+
+        Returns:
+            List of todo cache entries with context
+        """
+        entries: list[TodoCacheEntry] = []
+        for key, cached in self._todos.items():
+            comp_name, path = key.split(":", 1) if ":" in key else ("", key)
+            if computer and comp_name != computer:
+                continue
+            if project_path and path != project_path:
+                continue
+            is_stale = cached.is_stale(300)
+            if is_stale and not include_stale:
+                continue
+            entries.append(
+                TodoCacheEntry(
+                    computer=comp_name,
+                    project_path=path,
+                    todos=cached.data,
+                    is_stale=is_stale,
+                )
+            )
+        return entries
 
     # ==================== Data Updates ====================
 

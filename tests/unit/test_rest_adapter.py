@@ -29,6 +29,7 @@ def mock_cache():  # type: ignore[explicit-any, unused-ignore]
     cache.get_computers = MagicMock(return_value=[])
     cache.get_projects = MagicMock(return_value=[])
     cache.get_todos = MagicMock(return_value=[])
+    cache.get_todo_entries = MagicMock(return_value=[])
     cache.is_stale = MagicMock(return_value=False)
     return cache
 
@@ -487,47 +488,69 @@ def test_get_agent_availability_defaults_to_available(test_client):  # type: ign
         assert data["claude"]["unavailable_until"] is None
 
 
-def test_list_todos_local_success(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos endpoint returns todos for local project."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
-    ) as mock_todos:
-        mock_todos.return_value = [
-            TodoInfo(slug="feature-1", status="pending", description="Implement feature 1"),
-        ]
+def test_list_todos_all_cached(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos returns cached todos without filters."""
+    from teleclaude.core.cache import TodoCacheEntry
 
-        response = test_client.get("/todos", params={"project": "/path/to/project1"})
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["slug"] == "feature-1"
-
-
-def test_list_todos_remote_cached(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos returns cached todos for remote projects."""
-    mock_cache.get_todos.return_value = [
-        TodoInfo(slug="remote-1", status="pending", description="Remote todo"),
+    mock_cache.get_todo_entries.return_value = [
+        TodoCacheEntry(
+            computer="remote",
+            project_path="/remote/path",
+            todos=[TodoInfo(slug="remote-1", status="pending", description="Remote todo")],
+            is_stale=False,
+        ),
     ]
 
+    response = test_client.get("/todos")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["slug"] == "remote-1"
+    assert data[0]["computer"] == "remote"
+    assert data[0]["project_path"] == "/remote/path"
+    mock_cache.get_todo_entries.assert_called_once_with(computer=None, project_path=None, include_stale=True)
+
+
+def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos applies project filter when provided."""
+    from teleclaude.core.cache import TodoCacheEntry
+
+    mock_cache.get_todo_entries.return_value = [
+        TodoCacheEntry(
+            computer="remote",
+            project_path="/remote/path",
+            todos=[TodoInfo(slug="remote-1", status="pending")],
+            is_stale=True,
+        ),
+    ]
+
+    response = test_client.get("/todos", params={"project": "/remote/path", "computer": "remote"})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["slug"] == "remote-1"
+    mock_cache.get_todo_entries.assert_called_once_with(
+        computer="remote",
+        project_path="/remote/path",
+        include_stale=True,
+    )
+
+
+def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test list_todos falls back to local handler without cache."""
+    adapter = RESTAdapter(client=MagicMock(), cache=None)
+    client = TestClient(adapter.app)
+
     with patch(
         "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
     ) as mock_todos:
-        response = test_client.get(
-            "/todos",
-            params={"project": "/remote/path", "computer": "remote"},
-        )
+        mock_todos.return_value = [TodoInfo(slug="local-1", status="pending")]
+
+        response = client.get("/todos", params={"project": "/local/path"})
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
-        assert data[0]["slug"] == "remote-1"
-        mock_cache.get_todos.assert_called_once_with("remote", "/remote/path")
-        mock_todos.assert_not_called()
-
-
-def test_list_todos_missing_project(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test list_todos requires a project query param."""
-    response = test_client.get("/todos")
-    assert response.status_code == 422
+        assert data[0]["slug"] == "local-1"
 
 
 @pytest.mark.asyncio
