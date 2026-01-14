@@ -1,4 +1,4 @@
-"""Unit tests for set_dependencies validation logic.
+"""Paranoid tests for set_dependencies validation logic.
 
 Tests validation rules (tested directly, not via MCP):
 1. Circular dependency detection works correctly
@@ -7,11 +7,14 @@ Tests validation rules (tested directly, not via MCP):
 """
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
@@ -22,7 +25,7 @@ from teleclaude.mcp_server import TeleClaudeMCPServer
 
 
 def test_detect_circular_dependency_simple_cycle() -> None:
-    """Test detection of simple A -> B -> A cycle."""
+    """Paranoid test detection of simple A -> B -> A cycle."""
     existing_deps = {"b": ["a"]}
     cycle = detect_circular_dependency(existing_deps, "a", ["b"])
     assert cycle is not None
@@ -30,7 +33,7 @@ def test_detect_circular_dependency_simple_cycle() -> None:
 
 
 def test_detect_circular_dependency_self_reference() -> None:
-    """Test detection of self-reference A -> A."""
+    """Paranoid test detection of self-reference A -> A."""
     existing_deps: dict[str, list[str]] = {}
     cycle = detect_circular_dependency(existing_deps, "a", ["a"])
     assert cycle is not None
@@ -38,7 +41,7 @@ def test_detect_circular_dependency_self_reference() -> None:
 
 
 def test_detect_circular_dependency_transitive() -> None:
-    """Test detection of A -> B -> C -> A cycle."""
+    """Paranoid test detection of A -> B -> C -> A cycle."""
     existing_deps = {"b": ["c"], "c": ["a"]}
     cycle = detect_circular_dependency(existing_deps, "a", ["b"])
     assert cycle is not None
@@ -46,14 +49,14 @@ def test_detect_circular_dependency_transitive() -> None:
 
 
 def test_detect_circular_dependency_no_cycle() -> None:
-    """Test that valid DAG returns None."""
+    """Paranoid test that valid DAG returns None."""
     existing_deps = {"b": ["c"], "c": ["d"]}
     cycle = detect_circular_dependency(existing_deps, "a", ["b"])
     assert cycle is None
 
 
 def test_read_write_dependencies_roundtrip() -> None:
-    """Test that write followed by read preserves data."""
+    """Paranoid test that write followed by read preserves data."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
         deps_to_write = {"a": ["b", "c"], "b": ["c"]}
@@ -65,7 +68,7 @@ def test_read_write_dependencies_roundtrip() -> None:
 
 
 def test_read_dependencies_missing_file() -> None:
-    """Test that missing dependencies.json returns empty dict."""
+    """Paranoid test that missing dependencies.json returns empty dict."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
         deps = read_dependencies(cwd)
@@ -73,7 +76,7 @@ def test_read_dependencies_missing_file() -> None:
 
 
 def test_write_dependencies_creates_todos_dir() -> None:
-    """Test that write_dependencies creates todos/ if missing."""
+    """Paranoid test that write_dependencies creates todos/ if missing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
         write_dependencies(cwd, {"a": ["b"]})
@@ -93,7 +96,7 @@ def test_write_dependencies_creates_todos_dir() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_set_dependencies_invalid_slug_format() -> None:
-    """Test that MCP tool rejects invalid slug format."""
+    """Paranoid test that MCP tool rejects invalid slug format."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
@@ -124,7 +127,7 @@ async def test_mcp_set_dependencies_invalid_slug_format() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_set_dependencies_slug_not_in_roadmap() -> None:
-    """Test that MCP tool rejects slug not found in roadmap."""
+    """Paranoid test that MCP tool rejects slug not found in roadmap."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
@@ -147,7 +150,7 @@ async def test_mcp_set_dependencies_slug_not_in_roadmap() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_set_dependencies_dependency_not_in_roadmap() -> None:
-    """Test that MCP tool rejects dependency not found in roadmap."""
+    """Paranoid test that MCP tool rejects dependency not found in roadmap."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
@@ -170,7 +173,7 @@ async def test_mcp_set_dependencies_dependency_not_in_roadmap() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_set_dependencies_self_reference_via_tool() -> None:
-    """Test that MCP tool rejects self-reference."""
+    """Paranoid test that MCP tool rejects self-reference."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
@@ -193,7 +196,7 @@ async def test_mcp_set_dependencies_self_reference_via_tool() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_set_dependencies_circular_via_tool() -> None:
-    """Test that MCP tool detects circular dependencies."""
+    """Paranoid test that MCP tool detects circular dependencies."""
     with tempfile.TemporaryDirectory() as tmpdir:
         cwd = Path(tmpdir)
 
