@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.hooks.receiver import _get_parent_process_info
 
@@ -47,6 +50,7 @@ def _allow_fake_tty(monkeypatch: pytest.MonkeyPatch, tty_path: str) -> None:
 
 
 def test_prefers_shell_parent_with_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that shell parent is preferred when it owns a valid tty."""
     tty_path = "/dev/ttys-test"
     shell = _FakeProc(pid=100, name="zsh", terminal=tty_path, parent=None)
     agent = _FakeProc(pid=200, name="python", terminal=tty_path, parent=shell)
@@ -61,6 +65,7 @@ def test_prefers_shell_parent_with_tty(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_falls_back_to_nearest_tty_holder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test fallback to nearest process that exposes a valid tty."""
     tty_path = "/dev/ttys-test"
     parent = _FakeProc(pid=200, name="python", terminal=tty_path, parent=None)
 
