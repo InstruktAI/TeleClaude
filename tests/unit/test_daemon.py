@@ -173,6 +173,7 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
     daemon.client = MagicMock()
     daemon.client.send_message = AsyncMock()
     daemon._last_summary_fingerprint = {}
+    daemon._last_summary_native_session = {}
 
     session = MagicMock()
     session.session_id = "sess-123"
@@ -181,6 +182,45 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
 
     payload = MagicMock()
     payload.transcript_path = "/tmp/transcript.jsonl"
+    payload.summary = None
+    payload.title = None
+
+    fake_stat = MagicMock(st_size=123, st_mtime_ns=456)
+
+    with (
+        patch("teleclaude.daemon.Path.stat", return_value=fake_stat),
+        patch("teleclaude.daemon.summarize", new_callable=AsyncMock) as mock_sum,
+        patch("teleclaude.daemon.db.update_session", new_callable=AsyncMock) as mock_update,
+        patch("teleclaude.daemon.AgentName.from_str", return_value=MagicMock()),
+        patch.object(daemon, "_update_session_title", new_callable=AsyncMock),
+    ):
+        mock_sum.return_value = ("Title", "Summary")
+
+        await daemon._enrich_with_summary(session, payload)
+        await daemon._enrich_with_summary(session, payload)
+
+    mock_sum.assert_awaited_once()
+    mock_update.assert_awaited_once()
+    daemon.client.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_enrich_with_summary_dedupes_native_session() -> None:
+    """Duplicate stop events with same native session id should summarize once."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.send_message = AsyncMock()
+    daemon._last_summary_fingerprint = {}
+    daemon._last_summary_native_session = {}
+
+    session = MagicMock()
+    session.session_id = "sess-123"
+    session.native_log_file = None
+    session.active_agent = "codex"
+
+    payload = MagicMock()
+    payload.transcript_path = "/tmp/transcript.jsonl"
+    payload.session_id = "native-abc"
     payload.summary = None
     payload.title = None
 
