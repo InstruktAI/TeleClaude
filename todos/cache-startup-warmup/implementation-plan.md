@@ -10,7 +10,7 @@ Add two small features: warmup on daemon startup and digest-based project invali
    - In `RedisAdapter.start()`, after connection is established, call `refresh_remote_snapshot()`.
    - This fetches projects from all peers immediately on daemon startup.
 
-2. [ ] **Generate Project Digest**
+2. [x] **Generate Project Digest**
    - In `_send_heartbeat()`, compute a digest of local project paths.
    - Use a simple hash (e.g., hash of sorted project paths joined).
    - Add `projects_digest` field to heartbeat payload.
