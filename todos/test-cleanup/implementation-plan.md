@@ -145,6 +145,7 @@ def test_toggle_session_hides_pane_when_same_session():
 - [x] Paranoidize UI adapter tests in `tests/unit/test_ui_adapter.py`
 - [x] Paranoidize MCP wrapper tests in `tests/unit/test_mcp_wrapper.py`
 - [x] Paranoidize session cleanup tests in `tests/unit/test_session_cleanup.py`
+- [x] Paranoidize adapter client tests in `tests/unit/test_adapter_client.py`
 
 ### Priority 2: Docstrings + Minor Fixes
 

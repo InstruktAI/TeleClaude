@@ -1,9 +1,12 @@
-"""Unit tests for AdapterClient peer discovery aggregation."""
+"""Paranoid tests for AdapterClient peer discovery aggregation."""
 
+import os
 from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.models import PeerInfo
@@ -86,7 +89,7 @@ class DummyTelegramAdapter(UiAdapter):
 
 @pytest.mark.asyncio
 async def test_adapter_client_register_adapter():
-    """Test adapter registration."""
+    """Paranoid test adapter registration."""
     from unittest.mock import Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -110,7 +113,7 @@ async def test_adapter_client_register_adapter():
 
 @pytest.mark.asyncio
 async def test_adapter_client_discover_peers_single_adapter():
-    """Test peer discovery with single adapter."""
+    """Paranoid test peer discovery with single adapter."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -148,7 +151,7 @@ async def test_adapter_client_discover_peers_single_adapter():
 
 @pytest.mark.asyncio
 async def test_adapter_client_discover_peers_multiple_adapters():
-    """Test peer discovery aggregation from multiple adapters."""
+    """Paranoid test peer discovery aggregation from multiple adapters."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -200,7 +203,7 @@ async def test_adapter_client_discover_peers_multiple_adapters():
 
 @pytest.mark.asyncio
 async def test_adapter_client_deduplication():
-    """Test that duplicate peers are deduplicated (first adapter wins)."""
+    """Paranoid test that duplicate peers are deduplicated (first adapter wins)."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -254,7 +257,7 @@ async def test_adapter_client_deduplication():
 
 @pytest.mark.asyncio
 async def test_adapter_client_handles_adapter_errors():
-    """Test that errors from one adapter don't break discovery from others."""
+    """Paranoid test that errors from one adapter don't break discovery from others."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -289,7 +292,7 @@ async def test_adapter_client_handles_adapter_errors():
 
 @pytest.mark.asyncio
 async def test_adapter_client_empty_peers():
-    """Test behavior when no peers are discovered."""
+    """Paranoid test behavior when no peers are discovered."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -310,7 +313,7 @@ async def test_adapter_client_empty_peers():
 
 @pytest.mark.asyncio
 async def test_adapter_client_no_adapters():
-    """Test behavior when no adapters are registered."""
+    """Paranoid test behavior when no adapters are registered."""
     from teleclaude.core.adapter_client import AdapterClient
 
     client = AdapterClient()
@@ -323,7 +326,7 @@ async def test_adapter_client_no_adapters():
 
 @pytest.mark.asyncio
 async def test_adapter_client_system_stats_passthrough():
-    """Test that system_stats are passed through from PeerInfo to dict."""
+    """Paranoid test that system_stats are passed through from PeerInfo to dict."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -365,7 +368,7 @@ async def test_adapter_client_system_stats_passthrough():
 
 @pytest.mark.asyncio
 async def test_adapter_client_discover_peers_redis_disabled():
-    """Test that discover_peers returns empty list when Redis is disabled."""
+    """Paranoid test that discover_peers returns empty list when Redis is disabled."""
     from unittest.mock import AsyncMock, Mock
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -392,7 +395,7 @@ async def test_adapter_client_discover_peers_redis_disabled():
     assert len(peers) == 0
     assert peers == []
     # Adapter should NOT have been called
-    mock_adapter.discover_peers.assert_not_called()
+    assert mock_adapter.discover_peers.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -425,8 +428,8 @@ async def test_send_output_update_missing_thread_recreates_topic():
         await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert get_session.call_count >= 2
-    get_session.assert_any_call("session-123")
-    ensure_ui_channels.assert_called_once()
+    assert "session-123" in [args[0] for args, _kwargs in get_session.call_args_list]
+    assert ensure_ui_channels.call_count == 1
     assert update_session.call_count >= 1
 
 
@@ -460,8 +463,8 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
         await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert get_session.call_count >= 2
-    get_session.assert_any_call("session-456")
-    ensure_ui_channels.assert_called_once()
+    assert "session-456" in [args[0] for args, _kwargs in get_session.call_args_list]
+    assert ensure_ui_channels.call_count == 1
     assert update_session.call_count >= 1
 
 
@@ -496,8 +499,8 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
                 result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     assert get_session.call_count >= 2
-    get_session.assert_any_call("session-789")
-    ensure_ui_channels.assert_called_once()
+    assert "session-789" in [args[0] for args, _kwargs in get_session.call_args_list]
+    assert ensure_ui_channels.call_count == 1
     assert update_session.call_count >= 1
     _, kwargs = update_session.call_args
     updated_meta = kwargs["adapter_metadata"]
@@ -544,7 +547,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     ):
         await client.send_output_update(session, "output", 0.0, 0.0)
 
-    ensure_ui_channels.assert_called_once()
+    assert ensure_ui_channels.call_count == 1
     assert telegram.send_output_update.call_count == 1
     sent_session = telegram.send_output_update.call_args[0][0]
     assert sent_session.adapter_metadata.telegram
@@ -553,7 +556,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
 
 @pytest.mark.asyncio
 async def test_send_message_broadcasts_to_ui_adapters():
-    """Test send_message broadcasts to all UI adapters."""
+    """Paranoid test send_message broadcasts to all UI adapters."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -583,12 +586,12 @@ async def test_send_message_broadcasts_to_ui_adapters():
         message_id = await client.send_message(session, "hello")
 
     assert message_id == "tg-msg-1"
-    telegram_adapter.send_message.assert_called_once()
+    assert telegram_adapter.send_message.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_send_message_ephemeral_tracks_for_deletion():
-    """Test ephemeral messages are auto-tracked for deletion."""
+    """Paranoid test ephemeral messages are auto-tracked for deletion."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -612,12 +615,15 @@ async def test_send_message_ephemeral_tracks_for_deletion():
         # Default ephemeral=True should track for deletion
         await client.send_message(session, "hello")
 
-    mock_db.add_pending_deletion.assert_called_once_with("session-790", "tg-msg-2", deletion_type="user_input")
+    assert mock_db.add_pending_deletion.call_count == 1
+    _, kwargs = mock_db.add_pending_deletion.call_args
+    assert kwargs == {"deletion_type": "user_input"}
+    assert mock_db.add_pending_deletion.call_args.args == ("session-790", "tg-msg-2")
 
 
 @pytest.mark.asyncio
 async def test_send_message_persistent_not_tracked():
-    """Test persistent messages are NOT tracked for deletion."""
+    """Paranoid test persistent messages are NOT tracked for deletion."""
     from unittest.mock import AsyncMock, patch
 
     from teleclaude.core.adapter_client import AdapterClient
@@ -641,4 +647,4 @@ async def test_send_message_persistent_not_tracked():
         # ephemeral=False should NOT track for deletion
         await client.send_message(session, "hello", ephemeral=False)
 
-    mock_db.add_pending_deletion.assert_not_called()
+    assert mock_db.add_pending_deletion.call_count == 0
