@@ -167,6 +167,7 @@ async def handle_voice(
     audio_path: str,
     context: VoiceEventContext,
     send_message: Callable[[str, str, MessageMetadata], Awaitable[Optional[str]]],
+    delete_message: Optional[Callable[[str, str], Awaitable[None]]] = None,
 ) -> Optional[str]:
     """Handle voice message (adapter-agnostic utility).
 
@@ -247,6 +248,12 @@ async def handle_voice(
         transcribed_message,
         MessageMetadata(parse_mode="MarkdownV2"),
     )
+
+    if msg_id is not None and delete_message is not None:
+        try:
+            await delete_message(session_id, msg_id)
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            logger.warning("Failed to delete transcribing message for session %s: %s", session_id[:8], exc)
 
     logger.debug("Transcribed voice input for session %s: %s", session_id[:8], text)
     return text

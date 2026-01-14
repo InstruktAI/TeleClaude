@@ -10,7 +10,7 @@ import pytest
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude import config as config_module
-from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
+from teleclaude.core.events import CommandEventContext, TeleClaudeEvents, VoiceEventContext
 from teleclaude.core.models import MessageMetadata
 from teleclaude.daemon import TeleClaudeDaemon
 
@@ -135,6 +135,41 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
     assert call_args[1] is None
     assert call_args[2] is None
     assert call_args[3] == 2000
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_forwards_message_without_message_id() -> None:
+    """Voice transcription should forward message without triggering pre-handler cleanup."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+    daemon.client.handle_event = AsyncMock()
+    daemon.client.delete_message = AsyncMock()
+    daemon._send_status_callback = AsyncMock()
+
+    with (
+        patch("teleclaude.daemon.voice_message_handler.handle_voice", new_callable=AsyncMock) as mock_handle,
+        patch("teleclaude.daemon.db") as mock_db,
+    ):
+        mock_handle.return_value = "hello world"
+        session = MagicMock()
+        mock_db.get_session = AsyncMock(return_value=session)
+
+        context = VoiceEventContext(
+            session_id="sess-123",
+            file_path="/tmp/voice.ogg",
+            duration=None,
+            message_id="321",
+            message_thread_id=123,
+            adapter_type="telegram",
+        )
+
+        await daemon._handle_voice("voice", context)
+
+        daemon.client.handle_event.assert_called_once()
+        daemon.client.delete_message.assert_called_once_with(session, "321")
+        call_kwargs = daemon.client.handle_event.call_args.kwargs
+        assert call_kwargs["event"] == TeleClaudeEvents.MESSAGE
+        assert call_kwargs["payload"].get("message_id") is None
 
 
 @pytest.mark.asyncio

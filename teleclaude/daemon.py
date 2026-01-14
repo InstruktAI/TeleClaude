@@ -833,9 +833,15 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             audio_path=context.file_path,
             context=context,
             send_message=self._send_status_callback,
+            delete_message=self._delete_feedback_message,
         )
         if not transcribed:
             return
+
+        if context.message_id:
+            session = await db.get_session(context.session_id)
+            if session:
+                await self.client.delete_message(session, str(context.message_id))
 
         metadata = MessageMetadata(
             adapter_type=context.adapter_type,
@@ -846,7 +852,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             payload={
                 "session_id": context.session_id,
                 "text": transcribed,
-                "message_id": context.message_id,
             },
             metadata=metadata,
         )
@@ -1533,6 +1538,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Session %s not found for message", sid[:8])
             return None
         return await self.client.send_message(session, msg, metadata=metadata, feedback=False)
+
+    async def _delete_feedback_message(self, sid: str, message_id: str) -> None:
+        session = await db.get_session(sid)
+        if not session:
+            logger.warning("Session %s not found for delete", sid[:8])
+            return
+        await self.client.delete_message(session, str(message_id))
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
