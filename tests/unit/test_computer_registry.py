@@ -1,9 +1,12 @@
 """Unit tests for computer registry."""
 
+import os
 import re
 from datetime import datetime, timedelta
 
 import pytest
+
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core.computer_registry import ComputerRegistry
 
@@ -216,20 +219,24 @@ async def test_ping_pong_edit_same_messages():
 
     # Test ping: first call posts, second edits
     await registry._send_ping()
+    # System boundary: ensure only the first ping creates a new Telegram message.
     assert mock_client.send_message_to_topic.call_count == 1
     assert registry.my_ping_message_id == "111"
 
     await registry._send_ping()
+    # System boundary: confirm subsequent pings edit the original message instead of posting.
     assert mock_client.send_message_to_topic.call_count == 1  # Still 1
     assert mock_client.app.bot.edit_message_text.call_count == 1  # Edited
     assert registry.my_ping_message_id == "111"  # Same ID
 
     # Test pong: first call posts, second edits
     await registry.handle_ping_command()
+    # System boundary: first pong posts a new message.
     assert mock_client.send_message_to_topic.call_count == 2  # New message
     assert registry.my_pong_message_id == "222"
 
     await registry.handle_ping_command()
+    # System boundary: follow-up pong edits the existing message instead of posting.
     assert mock_client.send_message_to_topic.call_count == 2  # Still 2
     assert mock_client.app.bot.edit_message_text.call_count == 2  # Edited again
     assert registry.my_pong_message_id == "222"  # Same ID
