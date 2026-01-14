@@ -832,7 +832,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             session_id=context.session_id,
             audio_path=context.file_path,
             context=context,
-            send_message=self._send_message_callback,
+            send_message=self._send_status_callback,
         )
         if not transcribed:
             return
@@ -1520,6 +1520,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Session %s not found for message", sid[:8])
             return None
         return await self.client.send_message(session, msg, metadata=metadata, feedback=True)
+
+    async def _send_status_callback(
+        self,
+        sid: str,
+        msg: str,
+        metadata: MessageMetadata | None = None,
+    ) -> Optional[str]:
+        """Callback for status updates that should survive feedback cycles."""
+        session = await db.get_session(sid)
+        if not session:
+            logger.warning("Session %s not found for message", sid[:8])
+            return None
+        return await self.client.send_message(session, msg, metadata=metadata, feedback=False)
 
     def _acquire_lock(self) -> None:
         """Acquire daemon lock using PID file with fcntl advisory locking.
