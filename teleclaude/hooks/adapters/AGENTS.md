@@ -33,7 +33,6 @@ Sources:
 | :---------------- | :------- | :---------------------------------------------------- |
 | `session_id`      | `string` | Unique identifier for the current CLI session.        |
 | `transcript_path` | `string` | Path to the session's JSON transcript (if available). |
-| `cwd`             | `string` | The current working directory.                        |
 | `hook_event_name` | `string` | The name of the firing event (e.g., `BeforeTool`).    |
 | `timestamp`       | `string` | ISO 8601 timestamp of the event.                      |
 
@@ -106,7 +105,6 @@ Note: Codex currently only supports one hook event type via the `notify` command
 ## Codex hook input contract (selected fields we use)
 
 - `thread-id` (string) - native session ID
-- `cwd` (string)
 - `input-messages` (list of strings) - contains user prompts for the turn
 - `last-assistant-message` (string) - agent response
 
@@ -156,7 +154,6 @@ Base fields (all events):
 
 - `session_id` (string)
 - `transcript_path` (string)
-- `cwd` (string)
 - `permission_mode` (string: `default`, `plan`, `acceptEdits`, `bypassPermissions`)
 - `hook_event_name` (string)
 

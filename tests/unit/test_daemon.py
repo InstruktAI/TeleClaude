@@ -603,7 +603,7 @@ def test_summarize_output_change_reports_diff():
 
 
 @pytest.mark.asyncio
-async def test_process_agent_stop_uses_registered_transcript_when_payload_missing():
+async def test_process_agent_stop_uses_registered_transcript_when_payload_missing(tmp_path):
     """Agent STOP should use stored transcript path when payload omits it."""
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
@@ -617,6 +617,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
     daemon._stop_debounce_seconds = 5.0
+    daemon._last_summary_fingerprint = {}
 
     payload = AgentStopPayload(
         session_id="native-123",
@@ -625,9 +626,12 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
     )
     context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
 
+    transcript_path = tmp_path / "native.json"
+    transcript_path.write_text("log")
+
     mock_session = MagicMock()
     mock_session.active_agent = "gemini"
-    mock_session.native_log_file = "/tmp/native.json"
+    mock_session.native_log_file = str(transcript_path)
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
@@ -639,11 +643,11 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
 
         await daemon._process_agent_stop(context)
 
-        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
+        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
 
 
 @pytest.mark.asyncio
-async def test_process_agent_stop_sets_native_session_id_from_payload():
+async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
     """Agent STOP should persist native_session_id when provided."""
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
@@ -657,17 +661,21 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
     daemon._stop_debounce_seconds = 5.0
+    daemon._last_summary_fingerprint = {}
+
+    transcript_path = tmp_path / "native.json"
+    transcript_path.write_text("log")
 
     payload = AgentStopPayload(
         session_id="native-123",
-        transcript_path="/tmp/native.json",
+        transcript_path=str(transcript_path),
         raw={},
     )
     context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
 
     mock_session = MagicMock()
     mock_session.active_agent = "gemini"
-    mock_session.native_log_file = "/tmp/native.json"
+    mock_session.native_log_file = str(transcript_path)
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
@@ -688,11 +696,11 @@ async def test_process_agent_stop_sets_native_session_id_from_payload():
             c.args == ("tele-123",) and c.kwargs.get("native_session_id") == "native-123" for c in call_args_list
         )
         assert native_call_found, f"Expected native_session_id call, got: {call_args_list}"
-        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
+        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
 
 
 @pytest.mark.asyncio
-async def test_process_agent_stop_sets_active_agent_from_payload():
+async def test_process_agent_stop_sets_active_agent_from_payload(tmp_path):
     """Agent STOP should set active_agent from hook payload when missing."""
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
@@ -705,21 +713,25 @@ async def test_process_agent_stop_sets_active_agent_from_payload():
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
     daemon._stop_debounce_seconds = 0.0
+    daemon._last_summary_fingerprint = {}
+
+    transcript_path = tmp_path / "native.json"
+    transcript_path.write_text("log")
 
     payload = AgentStopPayload(
         session_id="native-123",
-        transcript_path="/tmp/native.json",
+        transcript_path=str(transcript_path),
         raw={"agent_name": "claude"},
     )
     context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
 
     session_missing_agent = MagicMock()
     session_missing_agent.active_agent = None
-    session_missing_agent.native_log_file = "/tmp/native.json"
+    session_missing_agent.native_log_file = str(transcript_path)
 
     session_with_agent = MagicMock()
     session_with_agent.active_agent = "claude"
-    session_with_agent.native_log_file = "/tmp/native.json"
+    session_with_agent.native_log_file = str(transcript_path)
 
     with (
         patch("teleclaude.daemon.db") as mock_db,
@@ -736,7 +748,7 @@ async def test_process_agent_stop_sets_active_agent_from_payload():
             c.args == ("tele-123",) and c.kwargs.get("active_agent") == "claude" for c in call_args_list
         )
         assert active_call_found, f"Expected active_agent call, got: {call_args_list}"
-        mock_summarize.assert_awaited_once_with(AgentName.CLAUDE, "/tmp/native.json")
+        mock_summarize.assert_awaited_once_with(AgentName.CLAUDE, str(transcript_path))
 
 
 @pytest.mark.asyncio
@@ -752,6 +764,7 @@ async def test_process_agent_stop_skips_without_agent_metadata():
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
     daemon._stop_debounce_seconds = 0.0
+    daemon._last_summary_fingerprint = {}
 
     payload = AgentStopPayload(
         session_id="native-123",
@@ -779,7 +792,7 @@ async def test_process_agent_stop_skips_without_agent_metadata():
 
 
 @pytest.mark.asyncio
-async def test_process_agent_stop_does_not_seed_transcript_output():
+async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
     """Agent STOP should not seed transcript output in tmux-only mode."""
     from teleclaude.core.agents import AgentName
     from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentStopPayload
@@ -794,10 +807,14 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
     daemon._update_session_title = AsyncMock()
     daemon._last_stop_time = {}
     daemon._stop_debounce_seconds = 0.0
+    daemon._last_summary_fingerprint = {}
+
+    transcript_path = tmp_path / "native.json"
+    transcript_path.write_text("log")
 
     payload = AgentStopPayload(
         session_id="native-123",
-        transcript_path="/tmp/native.json",
+        transcript_path=str(transcript_path),
         raw={},
     )
     context = AgentEventContext(session_id="tele-123", event_type=AgentHookEvents.AGENT_STOP, data=payload)
@@ -812,7 +829,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="24419")
         ),
         active_agent="gemini",
-        native_log_file="/tmp/native.json",
+        native_log_file=str(transcript_path),
         tui_capture_started=False,
     )
 
@@ -826,7 +843,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output():
 
         await daemon._process_agent_stop(context)
 
-        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, "/tmp/native.json")
+        mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
         assert daemon.client.send_output_update.await_count == 0
 
 
