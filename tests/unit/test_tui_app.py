@@ -25,7 +25,7 @@ class TestTelecAppWebSocketEvents:
                 super().__init__(api)
                 self.refresh_called = False
 
-            async def refresh_data(self) -> None:
+            async def refresh_data(self, *, include_todos: bool | None = None) -> None:
                 self.refresh_called = True
 
         app = DummyApp(MockAPIClient())
@@ -57,7 +57,7 @@ class TestTelecAppWebSocketEvents:
                 super().__init__(api)
                 self.refresh_called = False
 
-            async def refresh_data(self) -> None:
+            async def refresh_data(self, *, include_todos: bool | None = None) -> None:
                 self.refresh_called = True
 
         app = DummyApp(MockAPIClient())
