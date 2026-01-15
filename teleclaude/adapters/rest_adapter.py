@@ -81,7 +81,7 @@ class RESTAdapter(BaseAdapter):
             task_registry: Optional TaskRegistry for tracking background tasks
         """
         self.client = client
-        self._cache = cache
+        self._cache: "DaemonCache | None" = None  # Initialize private variable
         self.task_registry = task_registry
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
@@ -111,6 +111,9 @@ class RESTAdapter(BaseAdapter):
             TeleClaudeEvents.SESSION_REMOVED,
             self._handle_session_removed_event,
         )
+
+        # Set cache through property to trigger subscription
+        self.cache = cache
 
     @property
     def cache(self) -> "DaemonCache | None":
