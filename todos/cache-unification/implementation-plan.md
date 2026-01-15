@@ -47,10 +47,10 @@ In `teleclaude/adapters/rest_adapter.py` `__init__`:
 
 ## Phase 3: Tests
 
-- [ ] Add test: `db.create_session()` → REST handler → cache updated → WS broadcast
-- [ ] Add test: `db.update_session()` → REST handler → cache updated → WS broadcast
-- [ ] Add test: `session_removed` event → REST handler → cache updated → WS broadcast
-- [ ] Verify existing tests still pass
+- [x] Add test: `db.create_session()` → REST handler → cache updated → WS broadcast
+- [x] Add test: `db.update_session()` → REST handler → cache updated → WS broadcast
+- [x] Add test: `session_removed` event → REST handler → cache updated → WS broadcast
+- [x] Verify existing tests still pass
 
 ## Phase 4: Validation
 
