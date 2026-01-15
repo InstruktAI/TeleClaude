@@ -24,3 +24,9 @@
 - Source: https://platform.openai.com/docs/api-reference/realtime-server-events
 - Last Updated: 2026-01-15
 
+## Test Library API
+- Purpose: Reference for testing the research workflow
+- File: `test-doc.md`
+- Source: https://example.com/docs
+- Last Updated: 2026-01-15
+
