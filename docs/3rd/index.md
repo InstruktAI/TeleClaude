@@ -12,12 +12,6 @@
 - Source: Gemini CLI official docs (hooks reference)
 - Last Updated: 2026-01-15
 
-## Codex CLI Hooks
-- Purpose: Reference for implementing agent event hooks in TeleClaude
-- File: `codex-cli-hooks.md`
-- Source: OpenAI Codex CLI / app-server docs
-- Last Updated: 2026-01-15
-
 ## OpenAI Realtime API Events
 - Purpose: Reference for validating research workflow and documentation structure
 - File: `openai-realtime-api.md`
