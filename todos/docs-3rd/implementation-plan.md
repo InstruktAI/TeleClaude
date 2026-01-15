@@ -15,8 +15,8 @@
 
 ## Phase 3: Output conventions
 
-- [ ] Standardize doc headers (title, source, updated date).
-- [ ] Keep summaries short and focused on actionable facts.
+- [x] Standardize doc headers (title, source, updated date).
+- [x] Keep summaries short and focused on actionable facts.
 
 ## Phase 4: Validation
 
