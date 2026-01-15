@@ -300,7 +300,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     )
 
     if success:
-        # Send welcome feedback (temporary, auto-deleted on first user input)
+        # Send welcome feedback in background (don't block session return)
         welcome = f"""Session created!
 
 Computer: {computer_name}
@@ -308,7 +308,16 @@ Working directory: {working_dir}
 
 You can now send commands to this session.
 """
-        await client.send_message(session, welcome, ephemeral=False)
+
+        # Capture session for background closure
+        async def _send_welcome() -> None:
+            try:
+                await client.send_message(session, welcome, ephemeral=False)
+            except Exception as exc:
+                logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
+
+        asyncio.create_task(_send_welcome())
+
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id, "tmux_session_name": tmux_name}
 
@@ -1248,10 +1257,19 @@ async def handle_agent_start(
     cmd = " ".join(cmd_parts)
     logger.info("Executing agent start command for %s: %s", agent_name, cmd)
 
-    # Save active agent and clear previous native session bindings.
-    # Also save initial prompt as last_message_sent for TUI display (nested sessions)
+    # Batch all state updates into a single DB write to reduce contention.
     initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
     truncated_prompt = initial_prompt[:200] if initial_prompt is not None else None
+
+    # Calculate new title (but don't save yet, we want to start the process ASAP)
+    new_title = update_title_with_agent(
+        session.title,
+        agent_name,
+        start_args.thinking_mode.value,
+        config.computer.name,
+    )
+
+    # Perform unified update synchronously to guarantee state
     await db.update_session(
         session.session_id,
         active_agent=agent_name,
@@ -1260,18 +1278,8 @@ async def handle_agent_start(
         native_log_file=None,
         last_message_sent=truncated_prompt,
         last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        title=new_title or session.title,
     )
-
-    # Update session title to include agent info (replaces $Computer with Agent-mode@Computer)
-    new_title = update_title_with_agent(
-        session.title,
-        agent_name,
-        start_args.thinking_mode.value,
-        config.computer.name,
-    )
-    if new_title:
-        await db.update_session(session.session_id, title=new_title)
-        logger.info("Updated session title with agent info: %s", new_title)
 
     # Execute command WITH polling (agents are long-running)
     message_id = str(getattr(context, "message_id", ""))

@@ -303,22 +303,41 @@ class Db:
         if not fields:
             return
 
-        if "last_message_sent" in fields and "last_message_sent_at" not in fields:
-            fields["last_message_sent_at"] = datetime.now(timezone.utc).isoformat()
-        if "last_feedback_received" in fields and "last_feedback_received_at" not in fields:
-            fields["last_feedback_received_at"] = datetime.now(timezone.utc).isoformat()
+        # Fetch current state to avoid redundant writes
+        current = await self.get_session(session_id)
+        if not current:
+            logger.warning("Attempted to update non-existent session: %s", session_id[:8])
+            return
 
-        # Serialize adapter_metadata if it's a dict or dataclass
-        if "adapter_metadata" in fields:
-            metadata = fields["adapter_metadata"]
-            if isinstance(metadata, dict):
-                fields["adapter_metadata"] = json.dumps(metadata)
-            elif hasattr(metadata, "__dataclass_fields__"):  # Check if it's a dataclass
-                fields["adapter_metadata"] = json.dumps(asdict(metadata))  # type: ignore[call-overload,misc]  # Runtime checked for dataclass, asdict returns Any
-            # else: assume it's already JSON string
+        # Prune fields that haven't changed
+        current_dict = current.to_dict()
+        updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
+        for key, value in fields.items():
+            current_val = current_dict.get(key)
+            # Handle serialization comparison for metadata
+            if key == "adapter_metadata" and not isinstance(value, str):
+                if isinstance(value, dict):
+                    serialized = json.dumps(value)
+                elif hasattr(value, "__dataclass_fields__"):
+                    serialized = json.dumps(asdict(value))  # type: ignore[call-overload,misc]
+                else:
+                    serialized = str(value)
+                if current_val != serialized:
+                    updates[key] = serialized
+            elif current_val != value:
+                updates[key] = value
 
-        set_clause = ", ".join(f"{key} = ?" for key in fields)
-        values = list(fields.values()) + [session_id]
+        if not updates:
+            logger.trace("Skipping redundant update for session %s", session_id[:8])
+            return
+
+        if "last_message_sent" in updates and "last_message_sent_at" not in updates:
+            updates["last_message_sent_at"] = datetime.now(timezone.utc).isoformat()
+        if "last_feedback_received" in updates and "last_feedback_received_at" not in updates:
+            updates["last_feedback_received_at"] = datetime.now(timezone.utc).isoformat()
+
+        set_clause = ", ".join(f"{key} = ?" for key in updates)
+        values = list(updates.values()) + [session_id]
 
         await self.conn.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
         await self.conn.commit()
@@ -327,23 +346,20 @@ class Db:
         # Only handle if client is set (tests and standalone tools don't set client)
         client = self._client
         if client:
-            # Trust contract: session exists (we just updated it in db)
-            # CRITICAL: Run event dispatch in background to prevent blocking DB operations
-            # on slow UI adapters (e.g. Telegram rate limits).
-            # This prevents 30s+ delays in agent startup when multiple updates occur.
+            # Fire and forget update event in background
             async def _dispatch_update_event() -> None:
                 try:
+                    # Refresh to get latest state for dispatch
                     session = await self.get_session(session_id)
-                    if session:  # Guard against race condition
+                    if session:
                         await client.handle_event(
                             TeleClaudeEvents.SESSION_UPDATED,
-                            {"session_id": session_id, "updated_fields": fields},
+                            {"session_id": session_id, "updated_fields": updates},
                             MessageMetadata(adapter_type=session.origin_adapter),
                         )
                 except Exception as exc:
                     logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
 
-            # Fire and forget
             asyncio.create_task(_dispatch_update_event())
 
     async def update_last_activity(self, session_id: str) -> None:

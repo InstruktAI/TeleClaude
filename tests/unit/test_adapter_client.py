@@ -95,6 +95,67 @@ class DummyTelegramAdapter(UiAdapter):
         return "msg"
 
 
+class DummyFailingAdapter(UiAdapter):
+    ADAPTER_KEY = "dummy"
+
+    def __init__(self, adapter_client, *, error: Exception) -> None:
+        super().__init__(adapter_client)
+        self._error = error
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    async def create_channel(self, _session, _title, metadata) -> str:
+        _ = metadata
+        return "topic"
+
+    async def update_channel_title(self, _session, _title) -> bool:
+        return True
+
+    async def close_channel(self, _session) -> bool:
+        return True
+
+    async def reopen_channel(self, _session) -> bool:
+        return True
+
+    async def delete_channel(self, _session) -> bool:
+        return True
+
+    async def send_message(self, _session, _text, *, metadata=None) -> str:
+        _ = metadata
+        raise self._error
+
+    async def edit_message(self, _session, _message_id, _text, *, metadata=None) -> bool:
+        _ = metadata
+        return True
+
+    async def delete_message(self, _session, _message_id) -> bool:
+        return True
+
+    async def send_file(self, _session, _file_path, *, caption=None, metadata=None) -> str:
+        _ = (caption, metadata)
+        return "file"
+
+    async def discover_peers(self):
+        return []
+
+    async def poll_output_stream(self, _session, timeout: float = 300.0):
+        if False:  # pragma: no cover - generator shape
+            yield timeout
+
+    def get_max_message_length(self) -> int:
+        return 4096
+
+    def get_ai_session_poll_interval(self) -> float:
+        return 1.0
+
+    async def send_output_update(self, *_args, **_kwargs):  # type: ignore[override]
+        raise self._error
+
+
 @pytest.mark.asyncio
 async def test_adapter_client_register_adapter():
     """Paranoid test adapter registration."""
@@ -195,6 +256,29 @@ async def test_adapter_client_discover_peers_multiple_adapters():
     assert peers[0]["name"] == "macbook"
     assert peers[1]["name"] == "workstation"
     assert peers[2]["name"] == "server"
+
+
+@pytest.mark.asyncio
+async def test_route_to_ui_skips_exceptions_without_origin():
+    """Originless routing should ignore exceptions and return a real message_id."""
+    client = AdapterClient()
+    ok_adapter = DummyTelegramAdapter(client, send_message_return="123")
+    failing_adapter = DummyFailingAdapter(client, error=TimeoutError("Timed out"))
+
+    client.register_adapter("telegram", ok_adapter)
+    client.register_adapter("dummy", failing_adapter)
+
+    session = Session(
+        session_id="session-123",
+        computer_name="test",
+        tmux_session_name="test-tmux",
+        origin_adapter="missing",
+        title="Test Session",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=1)),
+    )
+
+    result = await client.send_message(session, "hello", ephemeral=False)
+    assert result == "123"
 
 
 @pytest.mark.asyncio
