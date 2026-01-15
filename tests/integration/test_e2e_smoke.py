@@ -412,6 +412,175 @@ async def test_full_event_round_trip(
     assert call_args["data"]["computer"] == "remote-computer"
 
 
+@pytest.mark.asyncio
+async def test_local_session_lifecycle_to_websocket(
+    rest_adapter: RESTAdapter,
+    cache: DaemonCache,
+    patched_config: MagicMock,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """
+    Flow: db.create_session() → AdapterClient event → REST adapter handler → cache → WebSocket.
+
+    This test validates the complete local session lifecycle path that bypasses
+    direct cache.update_session() calls and exercises the event handler chain.
+
+    Validates:
+    - Database session creation triggers SESSION_CREATED event
+    - REST adapter's _handle_session_created_event updates cache
+    - Cache update triggers WebSocket broadcast
+    - Complete end-to-end local event flow works
+    """
+    from teleclaude.adapters import rest_adapter as rest_module
+    from teleclaude.core import adapter_client as client_module
+    from teleclaude.core import db as db_module
+    from teleclaude.core.adapter_client import AdapterClient
+    from teleclaude.core.db import Db
+
+    # Set up database with in-memory SQLite
+    db_instance = Db(":memory:")
+    await db_instance.initialize()
+
+    # Patch the global db instance in ALL modules that use it
+    monkeypatch.setattr(db_module, "db", db_instance)
+    monkeypatch.setattr(rest_module, "db", db_instance)
+    monkeypatch.setattr(client_module, "db", db_instance)
+
+    # Ensure config.computer.name is correct in rest_adapter module
+    # The patched_config fixture already sets config.computer.name = "test-computer"
+    monkeypatch.setattr(rest_module, "config", patched_config)
+
+    # Wire up real AdapterClient (not mock) to handle events
+    real_client = AdapterClient()
+    real_client.register_adapter("rest", rest_adapter)
+    db_instance.set_client(real_client)
+
+    # Wire REST adapter to use real client
+    rest_adapter.client = real_client
+
+    # Re-register event handlers with real client
+    real_client.on(
+        "session_created",
+        rest_adapter._handle_session_created_event,
+    )
+    real_client.on(
+        "session_updated",
+        rest_adapter._handle_session_updated_event,
+    )
+    real_client.on(
+        "session_removed",
+        rest_adapter._handle_session_removed_event,
+    )
+
+    # Set up WebSocket client
+    mock_ws = create_mock_websocket()
+    rest_adapter._ws_clients.add(mock_ws)
+    rest_adapter._client_subscriptions[mock_ws] = {"test-computer": {"sessions"}}
+
+    # Update cache interest
+    rest_adapter._update_cache_interest()
+    assert cache.has_interest("sessions", "test-computer")
+
+    # Create session in database (triggers local lifecycle event)
+    session = await db_instance.create_session(
+        computer_name="test-computer",
+        tmux_session_name="test-tmux-session",
+        origin_adapter="telegram",
+        title="Local Lifecycle Test Session",
+        working_directory="/tmp",
+    )
+
+    # Wait for async event propagation: DB → Client → REST adapter → Cache → WS
+    await wait_for_call(mock_ws.send_json, timeout=2.0)
+
+    # Verify WebSocket received the session_updated event (cache uses update_session for creates)
+    mock_ws.send_json.assert_called()
+    call_args = mock_ws.send_json.call_args[0][0]
+    assert call_args["event"] == "session_updated"
+    assert call_args["data"]["session_id"] == session.session_id
+    assert call_args["data"]["computer"] == "test-computer"
+    assert call_args["data"]["title"] == "Local Lifecycle Test Session"
+
+    # Verify session is in cache
+    cached_sessions = cache.get_sessions(computer="test-computer")
+    assert len(cached_sessions) == 1
+    assert cached_sessions[0].session_id == session.session_id
+
+    # Cleanup
+    await db_instance.close()
+
+
+@pytest.mark.asyncio
+async def test_rest_adapter_cache_wired_post_init(
+    cache: DaemonCache,
+    patched_config: MagicMock,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """
+    Flow: RESTAdapter constructed without cache → cache set post-init → cache updates trigger WS.
+
+    This test validates the production startup flow where RESTAdapter is constructed
+    during adapter registration (without cache) and cache is wired later in
+    DaemonLifecycle.startup().
+
+    Validates:
+    - RESTAdapter can be constructed without cache
+    - Setting cache post-init subscribes to cache notifications
+    - Cache updates trigger WebSocket broadcasts after post-init wiring
+    - Production cache wiring pattern works correctly
+    """
+    from teleclaude.adapters import rest_adapter as rest_module
+    from teleclaude.adapters.rest_adapter import RESTAdapter
+    from teleclaude.core.adapter_client import AdapterClient
+
+    # Ensure config.computer.name is correct in rest_adapter module
+    monkeypatch.setattr(rest_module, "config", patched_config)
+
+    # Create AdapterClient
+    client = AdapterClient()
+
+    # CRITICAL: Construct RESTAdapter WITHOUT cache (production init pattern)
+    adapter = RESTAdapter(client, cache=None)
+    assert adapter.cache is None
+
+    # Register adapter with client
+    client.register_adapter("rest", adapter)
+
+    # Set up WebSocket client
+    mock_ws = create_mock_websocket()
+    adapter._ws_clients.add(mock_ws)
+    adapter._client_subscriptions[mock_ws] = {"test-computer": {"sessions"}}
+
+    # Now wire the cache post-initialization (mirrors DaemonLifecycle.startup)
+    adapter.cache = cache
+
+    # Verify cache was set and subscription happened
+    assert adapter.cache is cache
+
+    # Update cache interest
+    adapter._update_cache_interest()
+    assert cache.has_interest("sessions", "test-computer")
+
+    # Trigger cache update (simulating remote session event)
+    test_session = create_test_session(
+        session_id="post-init-session",
+        computer="test-computer",
+        title="Post-Init Cache Test",
+    )
+    cache.update_session(test_session)
+
+    # Wait for async propagation: Cache → RESTAdapter._on_cache_change → WS
+    await wait_for_call(mock_ws.send_json, timeout=2.0)
+
+    # Verify WebSocket received the session_updated event
+    mock_ws.send_json.assert_called()
+    call_args = mock_ws.send_json.call_args[0][0]
+    assert call_args["event"] == "session_updated"
+    assert call_args["data"]["session_id"] == "post-init-session"
+    assert call_args["data"]["computer"] == "test-computer"
+    assert call_args["data"]["title"] == "Post-Init Cache Test"
+
+
 # ==================== Phase 4: Edge Cases and Resilience ====================
 
 

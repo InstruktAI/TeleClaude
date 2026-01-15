@@ -3,7 +3,7 @@
 # type: ignore[explicit-any, unused-ignore] - test uses mocked adapters and dynamic types
 
 import shlex
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -571,6 +571,92 @@ def test_adapter_key():  # type: ignore[explicit-any, unused-ignore]
     from teleclaude.adapters.rest_adapter import RESTAdapter
 
     assert RESTAdapter.ADAPTER_KEY == "rest"
+
+
+@pytest.mark.asyncio
+async def test_handle_session_created_updates_cache(rest_adapter, mock_cache):
+    """Test _handle_session_created_event updates cache."""
+    from teleclaude.core.events import SessionLifecycleContext
+    from teleclaude.core.models import Session
+
+    context = SessionLifecycleContext(session_id="new-sess")
+    session = Session(
+        session_id="new-sess",
+        computer_name="local",
+        tmux_session_name="tc_new",
+        origin_adapter="telegram",
+        title="New Session",
+    )
+
+    with patch("teleclaude.adapters.rest_adapter.db.get_session", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = session
+
+        await rest_adapter._handle_session_created_event("session_created", context)
+
+        mock_cache.update_session.assert_called_once()
+        summary = mock_cache.update_session.call_args[0][0]
+        assert summary.session_id == "new-sess"
+        assert summary.title == "New Session"
+
+
+@pytest.mark.asyncio
+async def test_handle_session_updated_updates_cache(rest_adapter, mock_cache):
+    """Test _handle_session_updated_event updates cache."""
+    from teleclaude.core.events import SessionUpdatedContext
+    from teleclaude.core.models import Session
+
+    context = SessionUpdatedContext(session_id="sess-1", updated_fields={"title": "Updated"})
+    session = Session(
+        session_id="sess-1",
+        computer_name="local",
+        tmux_session_name="tc_1",
+        origin_adapter="telegram",
+        title="Updated",
+    )
+
+    with patch("teleclaude.adapters.rest_adapter.db.get_session", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = session
+
+        await rest_adapter._handle_session_updated_event("session_updated", context)
+
+        mock_cache.update_session.assert_called_once()
+        summary = mock_cache.update_session.call_args[0][0]
+        assert summary.session_id == "sess-1"
+        assert summary.title == "Updated"
+
+
+@pytest.mark.asyncio
+async def test_handle_session_removed_updates_cache(rest_adapter, mock_cache):
+    """Test _handle_session_removed_event updates cache."""
+    from teleclaude.core.events import SessionLifecycleContext
+
+    context = SessionLifecycleContext(session_id="sess-1")
+
+    await rest_adapter._handle_session_removed_event("session_removed", context)
+
+    mock_cache.remove_session.assert_called_once_with("sess-1")
+
+
+def test_rest_adapter_subscriptions(mock_adapter_client, mock_cache):
+    """Test RESTAdapter subscribes to correct events using constants."""
+    from teleclaude.core.events import TeleClaudeEvents
+
+    # Re-initialize to check calls
+    RESTAdapter(client=mock_adapter_client, cache=mock_cache)
+
+    # Check subscriptions
+    mock_adapter_client.on.assert_any_call(
+        TeleClaudeEvents.SESSION_UPDATED,
+        ANY,
+    )
+    mock_adapter_client.on.assert_any_call(
+        TeleClaudeEvents.SESSION_CREATED,
+        ANY,
+    )
+    mock_adapter_client.on.assert_any_call(
+        TeleClaudeEvents.SESSION_REMOVED,
+        ANY,
+    )
 
 
 # ==================== Error Path Tests ====================

@@ -37,7 +37,7 @@ Change string literals to `TeleClaudeEvents.*` constants for consistency with ot
 - [x] Adapters register handlers via `client.on()`
 - [x] Remote sessions update cache and trigger WS broadcasts
 - [x] TUI handles events correctly
-- [ ] REST adapter handlers update cache (not bypass it)
-- [ ] REST adapter uses `TeleClaudeEvents.*` constants
-- [ ] Tests cover local session lifecycle → cache → WS flow
-- [ ] Lint passes
+- [x] REST adapter handlers update cache (not bypass it)
+- [x] REST adapter uses `TeleClaudeEvents.*` constants
+- [x] Tests cover local session lifecycle → cache → WS flow
+- [x] Lint passes
