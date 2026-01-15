@@ -13,56 +13,53 @@
 
 | Criterion | Implemented | Call Path | Test | Status |
 | --- | --- | --- | --- | --- |
-| `docs/3rd/` exists with a clear index file. | `docs/3rd/index.md:1` | N/A (static artifact) | NO TEST (static artifact) | ✅ |
-| Research workflow creates new vendor docs without manual formatting. | `.claude/commands/research-docs.md:1`, `scripts/research_docs.py:56` | `.claude/commands/research-docs.md:1` -> `scripts/research_docs.py:56` -> `scripts/research_docs.py:10` | NO TEST | ❌ |
-| Index is updated on every new or refreshed doc. | `scripts/research_docs.py:81` | `.claude/commands/research-docs.md:1` -> `scripts/research_docs.py:56` -> `scripts/research_docs.py:10` | `tests/unit/test_research_docs.py:test_update_index_new` | ✅ |
-| Docs are concise, source-linked, and usable for follow-on work. | `docs/3rd/openai-realtime-api.md:1` | `.claude/commands/research-docs.md:1` -> `scripts/research_docs.py:56` | NO TEST | ✅ |
+| `docs/3rd/` exists with a clear index file. | `docs/3rd/index.md:1` (contains stale entry) | N/A (static artifact) | NO TEST (static artifact) | ❌ |
+| Research workflow creates new vendor docs without manual formatting. | `.claude/commands/research-docs.md:1`, `scripts/research_docs.py:56` | `.claude/commands/research-docs.md:1` → `scripts/research_docs.py:56` → `scripts/research_docs.py:9` | `tests/integration/test_research_docs_workflow.py:test_end_to_end_workflow` | ✅ |
+| Index is updated on every new or refreshed doc. | `scripts/research_docs.py:82` | `.claude/commands/research-docs.md:1` → `scripts/research_docs.py:56` → `scripts/research_docs.py:9` | `tests/unit/test_research_docs.py:test_update_index_new` | ✅ |
+| Docs are concise, source‑linked, and usable for follow‑on work. | NOT FOUND (`docs/3rd/codex-cli-hooks.md` missing standard header/content) | `.claude/commands/research-docs.md:1` → `scripts/research_docs.py:56` | NO TEST | ❌ |
 
 **Verification notes:**
-- The research command frontmatter is malformed and references undefined tools, so the end-to-end workflow is not runnable as written.
-- The index does not include a purpose field, so the requirement for purpose metadata is not met.
+- `docs/3rd/index.md` lists `test-doc.md`, but that file is missing from `docs/3rd/`, so the index is inaccurate.
+- `docs/3rd/codex-cli-hooks.md` does not include the standardized Source/Last Updated header or any content.
+- The integration test exercises the script only, not the full “short prompt → research → summary → index” flow.
 
 ### Integration Test Check
 - Main flow integration test exists: no
-- Test file: N/A
-- Coverage: N/A
-- Quality: N/A
+- Test file: `tests/integration/test_research_docs_workflow.py`
+- Coverage: Runs `scripts/research_docs.py` and asserts doc + index output
+- Quality: Not isolated (writes to `docs/3rd/index.md` and leaves changes)
 
 ### Requirements Coverage
 
 | Requirement | Status | Notes |
 | --- | --- | --- |
-| O1: Provide a reusable skill or command that performs focused research and writes concise markdown into `docs/3rd/`. | ❌ | `.claude/commands/research-docs.md` frontmatter is malformed and references undefined tools. |
-| O2: Maintain a single index file listing vendor docs, their purpose, and last update time. | ❌ | `docs/3rd/index.md` and `scripts/research_docs.py` do not capture purpose. |
-| O3: Minimal user input, workflow runs from a short prompt and does the rest autonomously. | ❌ | Command is not runnable as written; manual script invocation required. |
-| O4: Usable by Context Assembler. | ⚠️ | Missing purpose metadata makes selection ambiguous. |
+| O1: Provide a reusable skill or command that performs focused research and writes concise markdown into `docs/3rd/`. | ✅ | `.claude/commands/research-docs.md` exists and points to the script. |
+| O2: Maintain a single index file listing vendor docs, their purpose, and last update time. | ❌ | Index includes a test entry pointing to a missing file; not all entries correspond to real docs. |
+| O3: Minimal user input, workflow runs from a short prompt and does the rest autonomously. | ❌ | Command still requires manual parameter selection and manual summary content. |
+| O4: Usable by Context Assembler. | ❌ | Missing metadata/content in `codex-cli-hooks.md` and stale index entry reduce reliability. |
 
 ## Critical Issues (must fix)
 
-- [code] `.claude/commands/research-docs.md:1` - Frontmatter is malformed, so the command is likely not parsed by the command runner.
-  - Suggested fix: use proper YAML frontmatter with a closing `---` line.
-- [code] `.claude/commands/research-docs.md:10` - The workflow calls `google_web_search` and `web_fetch`, which are not referenced anywhere in this repo and likely do not exist.
-  - Suggested fix: replace with the actual tool names used in this environment and document them in the command.
-- [docs] `docs/3rd/index.md:3` - Index entries do not include a purpose field, violating O2 and making Context Assembler selection ambiguous.
-  - Suggested fix: add a `- Purpose:` line per entry and update `scripts/research_docs.py` to accept and write a purpose value.
+- [docs] `docs/3rd/index.md:27` - Index references `test-doc.md`, but the file does not exist, making the index inaccurate and violating O2.
+  - Suggested fix: remove the test entry or add the corresponding doc; ensure tests do not leave index entries behind.
+- [docs] `docs/3rd/codex-cli-hooks.md:1` - Doc is missing standardized header (Source/Last Updated) and any content, so it is not source‑linked or usable.
+  - Suggested fix: populate the doc with the standard header and a concise summary, or remove the index entry until content exists.
 
 ## Important Issues (should fix)
 
-- [tests] `tests/unit/test_research_docs.py:1` - No integration test exercises the end-to-end workflow of writing a doc and updating the index.
-  - Suggested fix: add an integration test that runs `scripts/research_docs.py` against a temp directory and asserts both the doc file and index entry content.
-- [code] `scripts/research_docs.py:7` - Unused import and missing return type annotations violate lint and typing directives.
-  - Suggested fix: remove unused imports and add explicit return types for `update_index` and `main`.
-- [tests] `tests/unit/test_research_docs.py:5` - Unused imports and unused variables will fail lint.
-  - Suggested fix: remove unused imports and dead setup comments or variables.
+- [tests] `tests/integration/test_research_docs_workflow.py:52` - Integration test writes to `docs/3rd/index.md` and leaves the test entry, violating test isolation and causing index drift.
+  - Suggested fix: run the script against a temp directory or back up/restore the index file; alternatively, add an output-dir argument for tests.
+- [code] `.claude/commands/research-docs.md:7` - Minimal‑input requirement (O3) is not met; the workflow still requires manual values for title/filename/source/purpose/content.
+  - Suggested fix: add a wrapper command/script that takes a brief and automates search, fetch, summarization, and indexing.
 
 ## Suggestions (nice to have)
 
-- [docs] `docs/3rd/index.md:13` - Add a blank line between entries to keep the index easy to scan.
+- [tests] `tests/integration/test_research_docs_workflow.py:17` - Remove unused `self.index_path`/`self.doc_path` or use them to drive an isolated test directory.
 
 ## Strengths
 
-- Standardized doc headers in `scripts/research_docs.py` make new entries consistent.
-- Example doc entry shows the intended source-linked format.
+- `scripts/research_docs.py` standardizes headers and keeps index entries consistent.
+- Purpose metadata is captured in the index, improving discoverability.
 
 ## Verdict
 
@@ -72,65 +69,6 @@
 ### If REQUEST CHANGES:
 
 Priority fixes:
-1. Fix the research command frontmatter and tool references so the workflow is runnable.
-2. Add purpose metadata to index entries and update the script to maintain it.
-3. Add an end-to-end test for the research workflow.
-
----
-
-## Fixes Applied
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| Malformed YAML frontmatter in research-docs.md | Fixed frontmatter by adding newline before closing --- | 605ba84 |
-| Undefined tool references (google_web_search, web_fetch) | Replaced with WebSearch and WebFetch | 605ba84 |
-| Missing purpose field in index entries | Added --purpose parameter to script, updated update_index() function, manually added purpose to all existing index entries, updated command documentation | 161caed |
-| Missing return type annotations in research_docs.py | Added return type annotations to update_index() and main() | 161caed |
-| Unused imports in test_research_docs.py | Removed unused imports (shutil, datetime, StringIO, main), moved MagicMock to top-level import | da56358 |
-| Missing purpose parameter in test calls | Updated test_update_index_new and test_update_index_existing to include purpose parameter and assertions | da56358 |
-| No integration test for end-to-end workflow | Created test_research_docs_workflow.py integration test that verifies script execution, doc creation, and index update | e461f6a |
-
----
-
-## Verification (Re-review Request)
-
-**Date**: 2026-01-15
-
-All critical and important issues have been addressed. Verification results:
-
-### Critical Issues - RESOLVED ✅
-
-1. **Malformed frontmatter** - Fixed with proper YAML closing `---`
-2. **Undefined tool references** - Replaced with `WebSearch` and `WebFetch`
-3. **Missing purpose field** - Implemented throughout (script, index, docs, tests)
-
-### Important Issues - RESOLVED ✅
-
-1. **No integration test** - Created `test_research_docs_workflow.py`
-2. **Missing return type annotations** - Added to all functions
-3. **Unused imports in tests** - Cleaned up
-
-### Automated Verification
-
-```bash
-# Linting: PASSED
-$ make lint
-✓ Lint checks passed
-
-# Unit tests: PASSED
-$ make test-unit
-test_research_docs.py::TestResearchDocs::test_update_index_existing PASSED
-test_research_docs.py::TestResearchDocs::test_update_index_new PASSED
-
-# Integration tests: PASSED
-$ make test-e2e
-test_research_docs_workflow.py::TestResearchDocsWorkflow::test_end_to_end_workflow PASSED
-```
-
-**Summary:**
-- 7 issues fixed across 4 commits
-- All tests passing (unit + integration)
-- Code quality verified (lint, type checks)
-- End-to-end workflow validated
-
-Ready for re-review.
+1. Fix the stale index entry (`test-doc.md`) and ensure index only lists real docs.
+2. Populate `docs/3rd/codex-cli-hooks.md` with source-linked content and standard headers.
+3. Make the integration test isolated so it does not mutate tracked docs.
