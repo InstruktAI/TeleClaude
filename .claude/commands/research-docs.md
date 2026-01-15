@@ -1,5 +1,6 @@
 ---
-description: Research 3rd-party documentation and update index---
+description: Research 3rd-party documentation and update index
+---
 
 You are now in **research mode**. Your goal is to collect, summarize, and index 3rd-party documentation.
 
@@ -7,15 +8,15 @@ Research Brief: "$ARGUMENTS"
 
 ## Step 1: Search for Information
 
-Use `google_web_search` to find authoritative sources for the requested documentation.
+Use `WebSearch` to find authoritative sources for the requested documentation.
 
 ```
-google_web_search(query="...")
+WebSearch(query="...")
 ```
 
 ## Step 2: Fetch and Analyze
 
-Use `web_fetch` to retrieve the content of the most relevant sources.
+Use `WebFetch` to retrieve the content of the most relevant sources.
 Extract the most important facts, configuration options, and schemas.
 
 ## Step 3: Summarize and Index
