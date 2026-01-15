@@ -13,73 +13,54 @@
 
 | Criterion | Implemented | Call Path | Test | Status |
 |-----------|-------------|-----------|------|--------|
-| Session lifecycle events defined in `events.py` | teleclaude/core/events.py:201; teleclaude/core/events.py:208; teleclaude/core/events.py:260 | N/A (event constants) | NO TEST | ✅ |
-| Adapters register handlers via `client.on()` | teleclaude/adapters/rest_adapter.py:105; teleclaude/adapters/redis_adapter.py:93; teleclaude/adapters/ui_adapter.py:70 | Adapter __init__ → client.on(...) | tests/unit/test_rest_adapter.py:640 | ✅ |
-| Remote sessions update cache and trigger WS broadcasts | teleclaude/adapters/redis_adapter.py:1772; teleclaude/adapters/rest_adapter.py:807 | RedisAdapter._poll_session_events → cache.update_session → cache._notify → RESTAdapter._on_cache_change → ws.send_json | tests/integration/test_e2e_smoke.py:369 | ✅ |
-| TUI handles events correctly | teleclaude/cli/tui/app.py:319 | WS thread → _process_ws_events → _apply_session_update/_apply_session_removal | NO TEST | ✅ |
-| REST adapter handlers update cache (not bypass it) | teleclaude/adapters/rest_adapter.py:119 | AdapterClient.handle_event → RESTAdapter._handle_session_* → cache.update_session/remove_session | tests/unit/test_rest_adapter.py:576 | ✅ |
-| REST adapter uses `TeleClaudeEvents.*` constants | teleclaude/adapters/rest_adapter.py:105 | RESTAdapter.__init__ → client.on(TeleClaudeEvents.*) | tests/unit/test_rest_adapter.py:640 | ✅ |
-| Tests cover local session lifecycle → cache → WS flow | NOT FOUND | db.create_session/update_session → AdapterClient.handle_event → RESTAdapter._handle_session_* → cache.update_session/remove_session → RESTAdapter._on_cache_change → ws.send_json | NO TEST (local flow) | ❌ |
+| Session lifecycle events defined in `events.py` | `teleclaude/core/events.py:195` | N/A (event constants) | NO TEST | ✅ |
+| Adapters register handlers via `client.on()` | `teleclaude/adapters/rest_adapter.py:106`; `teleclaude/adapters/redis_adapter.py:93`; `teleclaude/adapters/ui_adapter.py:70` | Adapter __init__ → `client.on(...)` | `tests/unit/test_rest_adapter.py:test_rest_adapter_subscriptions` | ✅ |
+| Remote sessions update cache and trigger WS broadcasts | `teleclaude/adapters/redis_adapter.py:1772`; `teleclaude/adapters/rest_adapter.py:807` | RedisAdapter._poll_session_events → cache.update_session → cache._notify → RESTAdapter._on_cache_change → ws.send_json | `tests/integration/test_e2e_smoke.py:test_full_event_round_trip` | ❌ |
+| TUI handles events correctly | `teleclaude/cli/tui/app.py:336` | WS thread → _process_ws_events → _apply_session_update/_apply_session_removal | NO TEST | ✅ |
+| REST adapter handlers update cache (not bypass it) | `teleclaude/adapters/rest_adapter.py:119` | AdapterClient.handle_event → RESTAdapter._handle_session_* → cache.update_session/remove_session | `tests/unit/test_rest_adapter.py:test_handle_session_*` | ✅ |
+| REST adapter uses `TeleClaudeEvents.*` constants | `teleclaude/adapters/rest_adapter.py:106` | RESTAdapter.__init__ → client.on(TeleClaudeEvents.*) | `tests/unit/test_rest_adapter.py:test_rest_adapter_subscriptions` | ✅ |
+| Tests cover local session lifecycle → cache → WS flow | `tests/integration/test_e2e_smoke.py:415` | db.create_session → AdapterClient.handle_event → RESTAdapter._handle_session_created_event → cache.update_session → RESTAdapter._on_cache_change → ws.send_json | `tests/integration/test_e2e_smoke.py:test_local_session_lifecycle_to_websocket` | ✅ |
 | Lint passes | NOT VERIFIED | N/A | NO TEST | ⚠️ |
 
 **Verification notes:**
-- The existing integration tests validate cache → WS broadcast behavior and simulate remote session updates, but there is no test that begins with a local session lifecycle event (DB or AdapterClient) and confirms the WS broadcast path.
-- Lint/test execution is not evidenced in this review (not run here).
+- RESTAdapter is constructed without a cache and wired later in `DaemonLifecycle.startup`. Because RESTAdapter only subscribes to cache updates during `__init__`, cache mutations (including those triggered by local lifecycle handlers) do not trigger `_on_cache_change` in production. This breaks WS broadcasts for both local and remote session updates despite passing tests that inject cache at construction time.
 
 ### Integration Test Check
-- Main flow integration test exists: no
-- Test file: N/A
-- Coverage: N/A
-- Quality: N/A
+- Main flow integration test exists: yes
+- Test file: `tests/integration/test_e2e_smoke.py:test_local_session_lifecycle_to_websocket`
+- Coverage: db.create_session → AdapterClient → REST handler → cache → WS broadcast
+- Quality: Uses real DB + AdapterClient, but injects cache at RESTAdapter construction (does not mirror production cache wiring).
 
 ### Requirements Coverage
 
 | Requirement | Status | Notes |
 |-------------|--------|-------|
-| REST adapter handlers must update cache | ✅ | Implemented in RESTAdapter session event handlers. |
-| REST adapter uses `TeleClaudeEvents.*` constants | ✅ | RESTAdapter subscriptions use TeleClaudeEvents constants. |
-| Remote sessions update cache and trigger WS broadcasts | ✅ | Redis adapter updates cache; REST adapter broadcasts cache updates. |
-| Tests cover local session lifecycle → cache → WS flow | ❌ | Missing integration test that starts from local DB/AdapterClient event. |
-| Lint passes | ⚠️ | Not verified during review. |
+| REST adapter handlers must update cache | ✅ | Handlers now call cache.update_session/remove_session. |
+| REST adapter uses `TeleClaudeEvents.*` constants | ✅ | Subscriptions use TeleClaudeEvents constants. |
+| Remote sessions update cache and trigger WS broadcasts | ❌ | RESTAdapter is not subscribed when cache is wired post-init, so WS broadcasts do not fire in production. |
+| TUI handles events correctly | ✅ | Handlers present; no test coverage. |
+| Tests cover local session lifecycle → cache → WS flow | ⚠️ | Test exists but doesn't exercise production cache wiring or update/remove flows. |
+| Lint passes | ⚠️ | Not verified in this review. |
 
 ## Critical Issues (must fix)
 
-- None
+- [code] `teleclaude/core/lifecycle.py:77` / `teleclaude/adapters/rest_adapter.py:101` - RESTAdapter subscribes to cache changes only during `__init__`, but the cache is wired **after** the adapter starts in `DaemonLifecycle.startup`. With the new cache-based handlers, WS updates never fire in production because `_on_cache_change` is never subscribed.
+  - Suggested fix: Add a cache property setter in RESTAdapter (like RedisAdapter) that subscribes/unsubscribes, or explicitly call `cache.subscribe(rest_adapter._on_cache_change)` when wiring the cache in lifecycle startup.
 
 ## Important Issues (should fix)
 
-- [tests] `tests/integration/test_e2e_smoke.py:183` - No integration test exercises the full local session lifecycle → cache → WS broadcast path. Current tests start at `cache.update_session()` and bypass the local event handlers, so regressions in RESTAdapter’s session event handlers would not be caught end-to-end.
-  - Suggested fix: Add an integration test that triggers a local session lifecycle event (e.g., `db.create_session()` / `db.update_session()` with AdapterClient wired to RESTAdapter) and asserts the WebSocket receives the expected event.
+- [tests] `tests/integration/test_e2e_smoke.py:415` - Integration test injects cache at RESTAdapter construction, so it does not cover the real startup path (cache wired after init). This would miss the production regression above.
+  - Suggested fix: Add an integration test that sets `rest_adapter.cache` after construction (mirroring `DaemonLifecycle.startup`) and asserts WS updates are emitted.
 
 ## Suggestions (nice to have)
 
-- None
+- [tests] `tests/integration/test_e2e_smoke.py:461` - Use `TeleClaudeEvents.*` constants instead of string literals for event registration to keep tests aligned with production conventions.
 
 ## Strengths
 
 - REST adapter now routes session lifecycle updates through the cache, aligning WS broadcasts with the single-source-of-truth model.
-- Event subscriptions are standardized on `TeleClaudeEvents.*` constants with unit coverage.
-- Session summary construction is centralized via `SessionSummary.from_db_session`, reducing duplication.
-
----
-
-## Fixes Applied
-
-| Issue | Fix | Commit |
-|-------|-----|--------|
-| Missing integration test for local session lifecycle → cache → WS flow | Added `test_local_session_lifecycle_to_websocket` that validates DB → AdapterClient → REST adapter → Cache → WebSocket flow | 460943c |
-
-**Fix details:**
-- Created comprehensive integration test in `tests/integration/test_e2e_smoke.py:415`
-- Test validates the complete local session lifecycle path:
-  * `db.create_session()` triggers `SESSION_CREATED` event
-  * `AdapterClient.handle_event()` dispatches to REST adapter handler
-  * `RESTAdapter._handle_session_created_event()` updates cache
-  * Cache update triggers `_on_cache_change` callback
-  * WebSocket clients receive `session_updated` broadcast
-- Uses real Database and AdapterClient instances (not mocks)
-- Patches global `db` instance across all modules that import it
-- All 60 integration tests pass
+- Session summary construction is centralized via `SessionSummary.from_db_session`, reducing duplication and drift.
+- Integration coverage now exercises the local DB → AdapterClient → REST → cache → WS chain (under test wiring).
 
 ## Verdict
 
@@ -89,4 +70,4 @@
 ### If REQUEST CHANGES:
 
 Priority fixes:
-1. ~~Add an integration test for the local session lifecycle → cache → WS flow.~~ **FIXED**
+1. Ensure RESTAdapter subscribes to cache updates when the cache is wired post-init (production path), so WS broadcasts fire correctly.
