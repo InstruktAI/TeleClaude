@@ -61,6 +61,26 @@
 - Event subscriptions are standardized on `TeleClaudeEvents.*` constants with unit coverage.
 - Session summary construction is centralized via `SessionSummary.from_db_session`, reducing duplication.
 
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Missing integration test for local session lifecycle → cache → WS flow | Added `test_local_session_lifecycle_to_websocket` that validates DB → AdapterClient → REST adapter → Cache → WebSocket flow | 460943c |
+
+**Fix details:**
+- Created comprehensive integration test in `tests/integration/test_e2e_smoke.py:415`
+- Test validates the complete local session lifecycle path:
+  * `db.create_session()` triggers `SESSION_CREATED` event
+  * `AdapterClient.handle_event()` dispatches to REST adapter handler
+  * `RESTAdapter._handle_session_created_event()` updates cache
+  * Cache update triggers `_on_cache_change` callback
+  * WebSocket clients receive `session_updated` broadcast
+- Uses real Database and AdapterClient instances (not mocks)
+- Patches global `db` instance across all modules that import it
+- All 60 integration tests pass
+
 ## Verdict
 
 **[ ] APPROVE** - Ready to merge
@@ -69,4 +89,4 @@
 ### If REQUEST CHANGES:
 
 Priority fixes:
-1. Add an integration test for the local session lifecycle → cache → WS flow.
+1. ~~Add an integration test for the local session lifecycle → cache → WS flow.~~ **FIXED**
