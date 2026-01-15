@@ -6,9 +6,9 @@ import os
 from datetime import datetime
 
 
-def update_index(title: str, filename: str, source: str, purpose: str) -> None:
-    """Update docs/3rd/index.md with the new or updated entry."""
-    index_path = "docs/3rd/index.md"
+def update_index(title: str, filename: str, source: str, purpose: str, output_dir: str = "docs/3rd") -> None:
+    """Update index.md with the new or updated entry."""
+    index_path = os.path.join(output_dir, "index.md")
     today = datetime.now().strftime("%Y-%m-%d")
 
     if not os.path.exists(index_path):
@@ -56,10 +56,11 @@ def update_index(title: str, filename: str, source: str, purpose: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Manage 3rd-party research docs.")
     parser.add_argument("--title", required=True, help="Title of the documentation")
-    parser.add_argument("--filename", required=True, help="Target filename in docs/3rd/")
+    parser.add_argument("--filename", required=True, help="Target filename in output directory")
     parser.add_argument("--source", required=True, help="Source URL or description")
     parser.add_argument("--purpose", required=True, help="Brief description of what this doc is for")
     parser.add_argument("--content", required=True, help="Concise markdown content")
+    parser.add_argument("--output-dir", default="docs/3rd", help="Output directory (default: docs/3rd)")
 
     args = parser.parse_args()
 
@@ -68,8 +69,9 @@ def main() -> None:
         args.filename += ".md"
 
     # Write the doc file
-    doc_path = os.path.join("docs/3rd", args.filename)
-    os.makedirs("docs/3rd", exist_ok=True)
+    output_dir = args.output_dir
+    doc_path = os.path.join(output_dir, args.filename)
+    os.makedirs(output_dir, exist_ok=True)
 
     header = f"# {args.title}\n\n"
     header += f"Source: {args.source}\n"
@@ -80,8 +82,9 @@ def main() -> None:
         f.write(args.content)
 
     # Update index
-    update_index(args.title, args.filename, args.source, args.purpose)
-    print(f"Successfully updated {doc_path} and docs/3rd/index.md")
+    update_index(args.title, args.filename, args.source, args.purpose, output_dir)
+    index_path = os.path.join(output_dir, "index.md")
+    print(f"Successfully updated {doc_path} and {index_path}")
 
 
 if __name__ == "__main__":

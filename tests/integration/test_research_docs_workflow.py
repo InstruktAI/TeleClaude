@@ -17,9 +17,9 @@ class TestResearchDocsWorkflow(unittest.TestCase):
     def setUp(self):
         """Set up test directory and ensure it's clean."""
         self.test_dir = Path("docs/3rd_test")
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir)
         self.test_dir.mkdir(parents=True, exist_ok=True)
-        self.index_path = self.test_dir / "index.md"
-        self.doc_path = self.test_dir / "test-doc.md"
 
     def tearDown(self):
         """Clean up test directory."""
@@ -49,7 +49,7 @@ key: value
 ```
 """
 
-        # Run the script with all parameters
+        # Run the script with all parameters, using test directory
         result = subprocess.run(
             [
                 sys.executable,
@@ -64,6 +64,8 @@ key: value
                 purpose,
                 "--content",
                 content,
+                "--output-dir",
+                str(self.test_dir),
             ],
             capture_output=True,
             text=True,
@@ -77,8 +79,8 @@ key: value
             f"Script failed with error:\nstdout: {result.stdout}\nstderr: {result.stderr}",
         )
 
-        # Verify doc file was created
-        doc_file = Path("docs/3rd") / filename
+        # Verify doc file was created in test directory
+        doc_file = self.test_dir / filename
         self.assertTrue(doc_file.exists(), f"Doc file not created at {doc_file}")
 
         # Read and verify doc content
@@ -88,8 +90,8 @@ key: value
         self.assertIn("## Overview", doc_content)
         self.assertIn("Feature 1", doc_content)
 
-        # Verify index was updated
-        index_file = Path("docs/3rd/index.md")
+        # Verify index was created in test directory
+        index_file = self.test_dir / "index.md"
         self.assertTrue(index_file.exists(), "Index file not created")
 
         # Read and verify index content
@@ -99,13 +101,6 @@ key: value
         self.assertIn(f"- File: `{filename}`", index_content)
         self.assertIn(f"- Source: {source}", index_content)
         self.assertIn("- Last Updated:", index_content)
-
-        # Clean up the test doc and index entry
-        doc_file.unlink()
-
-        # Restore original index if it was backed up
-        # For now, just leave the index with the test entry
-        # In a real scenario, we'd want to restore the original state
 
 
 if __name__ == "__main__":
