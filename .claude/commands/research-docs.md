@@ -27,6 +27,7 @@ Use the `scripts/research_docs.py` script to create the markdown file and update
 - `--title`: Clear, descriptive title (e.g., "Library Name v2 API")
 - `--filename`: URL-friendly filename (e.g., "library-name-v2.md")
 - `--source`: Primary source URL
+- `--purpose`: Brief description of what this doc is for (e.g., "Reference for implementing X feature")
 - `--content`: Concise markdown summary of the research findings
 
 ```bash
@@ -34,6 +35,7 @@ Use the `scripts/research_docs.py` script to create the markdown file and update
   --title "..." \
   --filename "..." \
   --source "..." \
+  --purpose "..." \
   --content "..."
 ```
 

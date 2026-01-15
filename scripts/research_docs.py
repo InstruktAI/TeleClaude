@@ -4,10 +4,9 @@
 import argparse
 import os
 from datetime import datetime
-from typing import List
 
 
-def update_index(title: str, filename: str, source: str):
+def update_index(title: str, filename: str, source: str, purpose: str) -> None:
     """Update docs/3rd/index.md with the new or updated entry."""
     index_path = "docs/3rd/index.md"
     today = datetime.now().strftime("%Y-%m-%d")
@@ -27,6 +26,7 @@ def update_index(title: str, filename: str, source: str):
 
     entry_lines = [
         f"## {title}\n",
+        f"- Purpose: {purpose}\n",
         f"- File: `{filename}`\n",
         f"- Source: {source}\n",
         f"- Last Updated: {today}\n",
@@ -53,11 +53,12 @@ def update_index(title: str, filename: str, source: str):
         f.writelines(content)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Manage 3rd-party research docs.")
     parser.add_argument("--title", required=True, help="Title of the documentation")
     parser.add_argument("--filename", required=True, help="Target filename in docs/3rd/")
     parser.add_argument("--source", required=True, help="Source URL or description")
+    parser.add_argument("--purpose", required=True, help="Brief description of what this doc is for")
     parser.add_argument("--content", required=True, help="Concise markdown content")
 
     args = parser.parse_args()
@@ -79,7 +80,7 @@ def main():
         f.write(args.content)
 
     # Update index
-    update_index(args.title, args.filename, args.source)
+    update_index(args.title, args.filename, args.source, args.purpose)
     print(f"Successfully updated {doc_path} and docs/3rd/index.md")
 
 
