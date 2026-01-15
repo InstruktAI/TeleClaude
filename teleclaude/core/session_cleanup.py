@@ -134,84 +134,62 @@ async def terminate_session(
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:
-    """Clean up a single stale session.
-
-    Args:
-        session_id: Session identifier
-        adapter_client: AdapterClient for deleting channels
+    """Detect stale sessions (tmux missing) without deleting DB state.
 
     Returns:
-        True if session was stale and cleaned up, False if session is healthy
+        True if tmux is missing, False otherwise.
     """
     session = await db.get_session(session_id)
     if not session:
         logger.debug("Session %s not found in database", session_id[:8])
         return False
 
-    # Don't clean up sessions that are still being created (race condition guard)
-    # handle_create_session creates DB entry before tmux - give it time to finish
+    # Don't flag sessions that are still being created (race condition guard)
     if session.created_at:
         session_age = (datetime.now(timezone.utc) - session.created_at).total_seconds()
         if session_age < 10.0:
             logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
             return False
 
-    # Check if tmux session exists
     exists = await terminal_bridge.session_exists(session.tmux_session_name)
     if exists:
-        # Session is healthy
         return False
 
-    # Session is stale - tmux gone but DB says active
     logger.warning(
-        "Found stale session %s (tmux %s no longer exists), cleaning up",
+        "Found stale session %s (tmux %s no longer exists); keeping DB session",
         session_id[:8],
         session.tmux_session_name,
     )
-    cleaned = await terminate_session(
-        session_id,
-        adapter_client,
-        reason="stale",
-        session=session,
-        kill_tmux=False,
-    )
-    if cleaned:
-        logger.info("Cleaned up stale session %s", session_id[:8])
-    return cleaned
+    return True
 
 
 async def cleanup_all_stale_sessions(adapter_client: "AdapterClient") -> int:
-    """Find and clean up all stale sessions.
-
-    Args:
-        adapter_client: AdapterClient for deleting channels
+    """Scan for tmux-missing sessions without deleting DB state.
 
     Returns:
-        Number of stale sessions cleaned up
+        Number of sessions detected as stale (tmux missing).
     """
-    logger.info("Starting stale session cleanup scan")
+    logger.info("Starting stale session scan (tmux-missing detection only)")
 
-    # Get all active sessions
     active_sessions = await db.get_active_sessions()
-
     if not active_sessions:
         logger.debug("No active sessions to check")
         return 0
 
     logger.info("Checking %d active sessions for staleness", len(active_sessions))
 
-    cleaned_count = 0
+    stale_count = 0
     for session in active_sessions:
-        was_stale = await cleanup_stale_session(session.session_id, adapter_client)
-        if was_stale:
-            cleaned_count += 1
+        is_stale = await cleanup_stale_session(session.session_id, adapter_client)
+        if is_stale:
+            stale_count += 1
 
-    if cleaned_count > 0:
-        logger.info("Cleaned up %d stale sessions", cleaned_count)
+    if stale_count > 0:
+        logger.info("Detected %d stale sessions (tmux missing, DB kept)", stale_count)
     else:
         logger.debug("No stale sessions found")
 
-    return cleaned_count
+    return stale_count
 
 
 async def cleanup_orphan_mcp_wrappers() -> int:

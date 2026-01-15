@@ -39,7 +39,8 @@ EventType = Literal[
     "message",
     "voice",
     "file",
-    "session_terminated",
+    "session_created",
+    "session_removed",
     "system_command",
     "agent_event",
     "error",
@@ -203,6 +204,8 @@ class TeleClaudeEvents:
     CREATE_SESSION: Literal["create_session"] = "create_session"
     LIST_SESSIONS: Literal["list_sessions"] = "list_sessions"
     GET_SESSION_DATA: Literal["get_session_data"] = "get_session_data"
+    SESSION_CREATED: Literal["session_created"] = "session_created"
+    SESSION_REMOVED: Literal["session_removed"] = "session_removed"
 
     # Project management
     LIST_PROJECTS: Literal["list_projects"] = "list_projects"
@@ -243,9 +246,6 @@ class TeleClaudeEvents:
     # Media and events
     VOICE: Literal["voice"] = "voice"  # Voice message received
     FILE: Literal["file"] = "file"  # File or photo uploaded
-
-    # Session lifecycle events
-    SESSION_TERMINATED: Literal["session_terminated"] = "session_terminated"  # Session terminated and deleted
 
     # System commands
     SYSTEM_COMMAND: Literal["system_command"] = "system_command"  # System-level commands (deploy, etc.)
@@ -336,7 +336,7 @@ class VoiceEventContext:
 
 @dataclass
 class SessionLifecycleContext:
-    """Context for session lifecycle events (terminated)."""
+    """Context for session lifecycle events."""
 
     session_id: str
 

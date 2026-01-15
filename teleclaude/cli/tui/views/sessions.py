@@ -6,7 +6,7 @@ import asyncio
 import curses
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -27,6 +27,7 @@ from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     ComputerNode,
     ProjectNode,
+    SessionDisplayInfo,
     SessionNode,
     TreeNode,
     build_tree,
@@ -42,36 +43,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _relative_time(iso_timestamp: str | None) -> str:
-    """Convert ISO timestamp to relative time string.
+def _format_time(iso_timestamp: str) -> str:
+    """Convert ISO timestamp to HH:MM:SS (24h) local time.
 
     Args:
         iso_timestamp: ISO 8601 timestamp string or None
 
     Returns:
-        Relative time like "5m ago", "1h ago", "2d ago"
+        Time like "17:43:21" or "" if unavailable
     """
-    if not iso_timestamp:
-        return ""
-    try:
-        # Parse ISO timestamp
-        dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        diff = now - dt
-
-        seconds = int(diff.total_seconds())
-        if seconds < 60:
-            return f"{seconds}s ago"
-        minutes = seconds // 60
-        if minutes < 60:
-            return f"{minutes}m ago"
-        hours = minutes // 60
-        if hours < 24:
-            return f"{hours}h ago"
-        days = hours // 24
-        return f"{days}d ago"
-    except (ValueError, TypeError):
-        return ""
+    dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+    local_dt = dt.astimezone()
+    return local_dt.strftime("%H:%M:%S")
 
 
 class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
@@ -265,6 +248,26 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
             # Store current state for next comparison
             self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
+
+    def update_session_node(self, session: SessionInfo) -> bool:
+        """Update a session node in the tree if it exists."""
+        session_id = session.session_id
+
+        def walk(nodes: list[TreeNode]) -> bool:
+            for node in nodes:
+                if node.type == "session":
+                    node_session_id = node.data.session.session_id
+                    if node_session_id == session_id:
+                        node.data = SessionDisplayInfo(
+                            session=session,
+                            display_index=node.data.display_index,
+                        )
+                        return True
+                if node.children and walk(node.children):
+                    return True
+            return False
+
+        return walk(self.tree)
 
     def rebuild_for_focus(self) -> None:
         """Rebuild flat_items based on current focus context."""
@@ -804,14 +807,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
-        # Relative time
-        last_activity = session.last_activity or ""
-        rel_time = _relative_time(last_activity)
-        time_suffix = f"  ({rel_time})" if rel_time else ""
-
-        # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
+        # Line 1: [idx] ▶/▼ agent/mode "title"
         lines: list[str] = []
-        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
+        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
         lines.append(line1[:width])
 
         # If collapsed, only show title line
@@ -821,8 +819,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Calculate content indent (align with agent name)
         content_indent = indent + "      "  # 6 chars for "[X] ▶ "
 
-        # Line 2 (expanded only): ID: <full_session_id>
-        line2 = f"{content_indent}ID: {session_id}"
+        # Line 2 (expanded only): ID + last activity time
+        activity_time = _format_time(cast(str, session.last_activity))
+        line2 = f"{content_indent}[{activity_time}] ID: {session_id}"
         lines.append(line2[:width])
 
         # Line 3: Last input (only if content exists)
@@ -830,9 +829,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            input_time = _relative_time(last_input_at)
-            time_suffix = f" ({input_time})" if input_time else ""
-            line3 = f"{content_indent}in: {input_text}{time_suffix}"
+            input_time = _format_time(cast(str, last_input_at))
+            line3 = f"{content_indent}[{input_time}] in: {input_text}"
             lines.append(line3[:width])
 
         # Line 4: Last output (only if content exists)
@@ -840,9 +838,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_output_at = session.last_output_at
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            output_time = _relative_time(last_output_at)
-            time_suffix = f" ({output_time})" if output_time else ""
-            line4 = f"{content_indent}out: {output_text}{time_suffix}"
+            output_time = _format_time(cast(str, last_output_at))
+            line4 = f"{content_indent}[{output_time}] out: {output_text}"
             lines.append(line4[:width])
 
         return lines
@@ -1003,13 +1000,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # Collapse indicator
         collapse_indicator = "▶" if is_collapsed else "▼"
 
-        # Relative time
-        last_activity = session.last_activity or ""
-        rel_time = _relative_time(last_activity)
-        time_suffix = f"  ({rel_time})" if rel_time else ""
-
-        # Line 1: [idx] ▶/▼ agent/mode "title" Xm ago
-        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"{time_suffix}'
+        # Line 1: [idx] ▶/▼ agent/mode "title"
+        line1 = f'{indent}[{idx}] {collapse_indicator} {agent}/{mode}  "{title}"'
         _safe_addstr(row, line1, title_attr)
 
         # If collapsed, only show title line
@@ -1022,8 +1014,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # indent + "[X] ▶ " = where agent starts
         content_indent = indent + "      "  # 6 chars for "[X] ▶ "
 
-        # Line 2 (expanded only): ID: <full_session_id>
-        line2 = f"{content_indent}ID: {session_id}"
+        # Line 2 (expanded only): ID + last activity time
+        activity_time = _format_time(cast(str, session.last_activity))
+        line2 = f"{content_indent}[{activity_time}] ID: {session_id}"
         _safe_addstr(row + lines_used, line2, normal_attr)
         self._row_to_id_item[row + lines_used] = item
         lines_used += 1
@@ -1038,9 +1031,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            input_time = _relative_time(last_input_at)
-            time_suffix = f" ({input_time})" if input_time else ""
-            line3 = f"{content_indent}in: {input_text}{time_suffix}"
+            input_time = _format_time(cast(str, last_input_at))
+            line3 = f"{content_indent}[{input_time}] in: {input_text}"
             _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
 
@@ -1052,9 +1044,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.trace("missing_last_input", session=session_id[:8])
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            output_time = _relative_time(last_output_at)
-            time_suffix = f" ({output_time})" if output_time else ""
-            line4 = f"{content_indent}out: {output_text}{time_suffix}"
+            output_time = _format_time(cast(str, last_output_at))
+            line4 = f"{content_indent}[{output_time}] out: {output_text}"
             _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1
 

@@ -93,20 +93,39 @@ def init_colors() -> None:
 
     _is_dark_mode = is_dark_mode()
 
-    # Claude (orange tones) - normal is the original Claude color
-    curses.init_pair(1, 130, -1)  # Muted: dark orange/brown
-    curses.init_pair(2, 172, -1)  # Normal: orange (original Claude color)
-    curses.init_pair(3, curses.COLOR_YELLOW, -1)  # Highlight: bright yellow
+    # Agent colors: invert muted/highlight between dark and light mode.
+    # Dark mode: muted is darker, highlight is lighter.
+    # Light mode: muted is lighter, highlight is darker.
+    if _is_dark_mode:
+        # Claude (orange tones) - muted darker, highlight lighter in dark mode
+        curses.init_pair(1, 94, -1)  # Muted: deeper orange/brown
+        curses.init_pair(2, 172, -1)  # Normal: orange (original Claude color)
+        curses.init_pair(3, 214, -1)  # Highlight: brighter yellow-orange
 
-    # Gemini (lilac/purple tones)
-    curses.init_pair(4, 97, -1)  # Muted: soft lilac
-    curses.init_pair(5, 141, -1)  # Normal: lilac
-    curses.init_pair(6, 183, -1)  # Highlight: light purple
+        # Gemini (lilac/purple tones) - muted darker, highlight lighter
+        curses.init_pair(4, 60, -1)  # Muted: deeper purple
+        curses.init_pair(5, 141, -1)  # Normal: lilac
+        curses.init_pair(6, 183, -1)  # Highlight: light purple
 
-    # Codex (steel blue tones)
-    curses.init_pair(7, 66, -1)  # Muted: steel blue
-    curses.init_pair(8, 109, -1)  # Normal: steel blue
-    curses.init_pair(9, 110, -1)  # Highlight: light steel blue
+        # Codex (steel blue tones) - muted darker, highlight lighter
+        curses.init_pair(7, 67, -1)  # Muted: deep steel blue
+        curses.init_pair(8, 109, -1)  # Normal: steel blue
+        curses.init_pair(9, 110, -1)  # Highlight: light steel blue
+    else:
+        # Claude (orange tones)
+        curses.init_pair(1, 178, -1)  # Muted: light orange (slightly darker)
+        curses.init_pair(2, 166, -1)  # Normal: orange (slightly darker)
+        curses.init_pair(3, 124, -1)  # Highlight: dark orange/brown (slightly darker)
+
+        # Gemini (lilac/purple tones)
+        curses.init_pair(4, 177, -1)  # Muted: light purple (slightly darker)
+        curses.init_pair(5, 135, -1)  # Normal: lilac (slightly darker)
+        curses.init_pair(6, 90, -1)  # Highlight: soft lilac (slightly darker)
+
+        # Codex (steel blue tones)
+        curses.init_pair(7, 110, -1)  # Muted: light steel blue (slightly darker)
+        curses.init_pair(8, 67, -1)  # Normal: steel blue (bluish metal)
+        curses.init_pair(9, 24, -1)  # Highlight: deep steel blue (slightly darker)
 
     # Disabled/unavailable
     curses.init_pair(10, curses.COLOR_WHITE, -1)
@@ -218,8 +237,8 @@ def get_banner_attr(is_dark_mode: bool) -> int:
         Curses attribute for banner text
     """
     if is_dark_mode:
-        return curses.color_pair(_BANNER_PAIR_ID)
-    return curses.A_BOLD
+        return curses.A_BOLD
+    return curses.color_pair(_BANNER_PAIR_ID)
 
 
 def get_tab_line_attr() -> int:

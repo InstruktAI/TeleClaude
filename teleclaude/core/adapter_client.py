@@ -6,6 +6,7 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast, overload
 
 from instrukt_ai_logging import get_logger
@@ -56,7 +57,9 @@ CommandEventHandler = Callable[[CommandEventType, CommandEventContext], Awaitabl
 MessageEventHandler = Callable[[Literal["message"], MessageEventContext], Awaitable[object]]
 VoiceEventHandler = Callable[[Literal["voice"], VoiceEventContext], Awaitable[object]]
 FileEventHandler = Callable[[Literal["file"], FileEventContext], Awaitable[object]]
-SessionLifecycleEventHandler = Callable[[Literal["session_terminated"], SessionLifecycleContext], Awaitable[object]]
+SessionLifecycleEventHandler = Callable[
+    [Literal["session_created", "session_removed"], SessionLifecycleContext], Awaitable[object]
+]
 SystemCommandEventHandler = Callable[[Literal["system_command"], SystemCommandContext], Awaitable[object]]
 AgentEventHandler = Callable[[Literal["agent_event"], AgentEventContext], Awaitable[object]]
 ErrorEventHandler = Callable[[Literal["error"], ErrorEventContext], Awaitable[object]]
@@ -103,6 +106,11 @@ class AdapterClient:
         self.task_registry = task_registry
         self._handlers: dict[EventType, list[Callable[[EventType, EventContext], Awaitable[object]]]] = {}
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance
+        self.is_shutting_down = False
+
+    def mark_shutting_down(self) -> None:
+        """Mark client as shutting down to suppress adapter restarts."""
+        self.is_shutting_down = True
 
     def register_adapter(self, adapter_type: str, adapter: BaseAdapter) -> None:
         """Manually register an adapter (for testing).
@@ -707,7 +715,10 @@ class AdapterClient:
     def on(self, event: Literal["file"], handler: FileEventHandler) -> None: ...
 
     @overload
-    def on(self, event: Literal["session_terminated"], handler: SessionLifecycleEventHandler) -> None: ...
+    def on(self, event: Literal["session_created"], handler: SessionLifecycleEventHandler) -> None: ...
+
+    @overload
+    def on(self, event: Literal["session_removed"], handler: SessionLifecycleEventHandler) -> None: ...
 
     @overload
     def on(self, event: Literal["system_command"], handler: SystemCommandEventHandler) -> None: ...
@@ -782,8 +793,12 @@ class AdapterClient:
                 await db.update_session(session.session_id, last_input_adapter=metadata.adapter_type)
                 # Track last user input text for TUI display
                 user_text = payload.get("text") or payload.get("command")
-                if user_text:
-                    await db.update_session(session.session_id, last_message_sent=str(user_text)[:200])
+                if user_text is not None:
+                    await db.update_session(
+                        session.session_id,
+                        last_message_sent=str(user_text)[:200],
+                        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                    )
 
         # 4. Pre-handler (UI cleanup before processing)
         message_id = cast(str | None, payload.get("message_id"))
@@ -875,7 +890,10 @@ class AdapterClient:
                 caption=cast(str | None, payload.get("caption")),
                 file_size=cast(int, payload.get("file_size", 0)),
             ),
-            TeleClaudeEvents.SESSION_TERMINATED: lambda: SessionLifecycleContext(
+            TeleClaudeEvents.SESSION_REMOVED: lambda: SessionLifecycleContext(
+                session_id=str(payload.get("session_id"))
+            ),
+            TeleClaudeEvents.SESSION_CREATED: lambda: SessionLifecycleContext(
                 session_id=str(payload.get("session_id"))
             ),
             TeleClaudeEvents.SYSTEM_COMMAND: lambda: SystemCommandContext(

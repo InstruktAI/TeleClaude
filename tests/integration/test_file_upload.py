@@ -10,11 +10,7 @@ import pytest
 from teleclaude.core import file_handler, terminal_io
 from teleclaude.core.db import Db
 from teleclaude.core.events import FileEventContext
-from teleclaude.core.models import (
-    MessageMetadata,
-    SessionAdapterMetadata,
-    TelegramAdapterMetadata,
-)
+from teleclaude.core.models import MessageMetadata, SessionAdapterMetadata, TelegramAdapterMetadata
 
 
 @pytest.fixture
@@ -69,7 +65,7 @@ class TestFileUploadFlow:
 
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
-            patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
+            patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
         ):
@@ -113,7 +109,7 @@ class TestFileUploadFlow:
 
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
-            patch("teleclaude.core.file_handler.is_claude_code_running", return_value=False),
+            patch("teleclaude.core.file_handler.is_agent_running", return_value=False),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
         ):

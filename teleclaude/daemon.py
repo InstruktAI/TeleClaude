@@ -60,15 +60,17 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.file_handler import handle_file
+from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title
 from teleclaude.core.summarizer import summarize
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload, TerminalOutboxResponse
-from teleclaude.core.voice_message_handler import init_voice_handler
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+
+init_voice_handler = voice_message_handler.init_voice_handler
 
 
 # TypedDict definitions for deployment status payloads
@@ -115,6 +117,11 @@ MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.
 MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_INTERVAL_S", "10"))
 MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
 MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
+
+# REST server restart policy (centralized in lifecycle)
+REST_RESTART_MAX = int(os.getenv("REST_RESTART_MAX", "5"))
+REST_RESTART_WINDOW_S = float(os.getenv("REST_RESTART_WINDOW_S", "60"))
+REST_RESTART_BACKOFF_S = float(os.getenv("REST_RESTART_BACKOFF_S", "1"))
 
 # Resource monitoring
 RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
@@ -167,7 +174,7 @@ AGENT_START_OUTPUT_POLL_INTERVAL_S = 0.2
 AGENT_START_OUTPUT_CHANGE_TIMEOUT_S = 2.5
 AGENT_START_ENTER_INTER_DELAY_S = 0.2
 AGENT_START_POST_INJECT_DELAY_S = 1.0
-AGENT_START_STABILIZE_TIMEOUT_S = 15.0  # Max wait for output to stop changing (MCP loading)
+AGENT_START_STABILIZE_TIMEOUT_S = 10.0  # Max wait for output to stop changing (MCP loading)
 AGENT_START_STABILIZE_QUIET_S = 1.0  # How long output must be quiet to be "stable"
 AGENT_START_POST_STABILIZE_DELAY_S = 0.5  # Safety buffer after stabilization
 GEMINI_START_EXTRA_DELAY_S = float(os.getenv("GEMINI_START_EXTRA_DELAY_S", "3"))
@@ -292,7 +299,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Shutdown event for graceful termination
         self.shutdown_event = asyncio.Event()
         self._background_tasks: set[asyncio.Task[object]] = set()
-        self.mcp_task: asyncio.Task[object] | None = None
         self.resource_monitor_task: asyncio.Task[object] | None = None
         self.launchd_watch_task: asyncio.Task[object] | None = None
         self._start_time = time.time()
@@ -305,6 +311,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
         self.terminal_outbox_task: asyncio.Task[object] | None = None
+
+        self.lifecycle = DaemonLifecycle(
+            client=self.client,
+            cache=self.cache,
+            mcp_server=self.mcp_server,
+            shutdown_event=self.shutdown_event,
+            task_registry=self.task_registry,
+            log_background_task_exception=self._log_background_task_exception,
+            handle_mcp_task_done=self._handle_mcp_task_done,
+            mcp_watch_factory=lambda: asyncio.create_task(self._mcp_watch_loop()),
+            set_last_mcp_restart_at=self._set_last_mcp_restart_at,
+            init_voice_handler=init_voice_handler,
+            rest_restart_max=REST_RESTART_MAX,
+            rest_restart_window_s=REST_RESTART_WINDOW_S,
+            rest_restart_backoff_s=REST_RESTART_BACKOFF_S,
+        )
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
         """Return a done-callback that logs unexpected background task failures."""
@@ -333,6 +355,39 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.error("Background task failed (%s): %s", label, exc, exc_info=True)
 
         task.add_done_callback(_on_done)
+
+    @property
+    def mcp_task(self) -> asyncio.Task[object] | None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            return lifecycle.mcp_task
+        return cast(asyncio.Task[object] | None, getattr(self, "_mcp_task", None))
+
+    @mcp_task.setter
+    def mcp_task(self, value: asyncio.Task[object] | None) -> None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            lifecycle.mcp_task = value
+        else:
+            setattr(self, "_mcp_task", value)
+
+    @property
+    def mcp_watch_task(self) -> asyncio.Task[object] | None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            return lifecycle.mcp_watch_task
+        return cast(asyncio.Task[object] | None, getattr(self, "_mcp_watch_task", None))
+
+    @mcp_watch_task.setter
+    def mcp_watch_task(self, value: asyncio.Task[object] | None) -> None:
+        lifecycle = cast(DaemonLifecycle | None, getattr(self, "lifecycle", None))
+        if lifecycle:
+            lifecycle.mcp_watch_task = value
+        else:
+            setattr(self, "_mcp_watch_task", value)
+
+    def _set_last_mcp_restart_at(self, value: float) -> None:
+        self._last_mcp_restart_at = value
 
     def _handle_mcp_task_done(self, task: asyncio.Task[object]) -> None:
         """Restart MCP server if task exits unexpectedly."""
@@ -859,11 +914,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             metadata=metadata,
         )
 
-    async def _handle_session_terminated(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Handler for session_terminated events - user removed topic.
+    async def _handle_session_removed(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Handler for session_removed events - user removed topic.
 
         Args:
-            _event: Event type (always "session_terminated") - unused but required by event handler signature
+            _event: Event type (always "session_removed") - unused but required by event handler signature
             context: Session lifecycle context
         """
         ctx = context
@@ -873,7 +928,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Session %s not found for termination event", ctx.session_id[:8])
             return
 
-        logger.info("Handling session_terminated for %s", ctx.session_id[:8])
+        logger.info("Handling session_removed for %s", ctx.session_id[:8])
         await session_cleanup.terminate_session(
             ctx.session_id,
             self.client,
@@ -895,6 +950,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             context=context,
             send_message=self._send_message_callback,
         )
+
+    async def _handle_session_created(self, _event: str, _context: SessionLifecycleContext) -> None:
+        """Handler for session_created events (no-op)."""
+        return
 
     async def _handle_system_command(self, _event: str, context: SystemCommandContext) -> None:
         """Handler for SYSTEM_COMMAND events.
@@ -968,8 +1027,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 return
 
             # Update last user message if present in stop payload (Codex fallback)
-            if payload.prompt:
-                await db.update_session(session_id, last_message_sent=payload.prompt)
+            if payload.prompt is not None:
+                await db.update_session(
+                    session_id,
+                    last_message_sent=payload.prompt,
+                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                )
                 logger.debug(
                     "Captured last user input from stop hook", session_id=session_id[:8], prompt=payload.prompt[:50]
                 )
@@ -993,7 +1056,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not payload.source_computer:
             try:
                 # payload.prompt is guaranteed by contract for this event type
-                await db.update_session(session_id, last_message_sent=payload.prompt)
+                await db.update_session(
+                    session_id,
+                    last_message_sent=payload.prompt,
+                    last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+                )
                 logger.debug(
                     "Captured last user input from hook", session_id=session_id[:8], prompt=payload.prompt[:50]
                 )
@@ -1087,16 +1154,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self._update_session_title(session_id, title)
 
         # 4. Save summary to DB (Last Output)
-        await db.update_session(session_id, last_feedback_received=summary[:200])
-
-        # 5. Send UI Feedback
-        # feedback=True cleans up previous temporary messages (transcriptions, etc.)
-        await self.client.send_message(
-            session,
-            summary,
-            metadata=MessageMetadata(adapter_type="internal"),
-            feedback=True,
+        await db.update_session(
+            session_id,
+            last_feedback_received=summary,
+            last_feedback_received_at=datetime.now(timezone.utc).isoformat(),
         )
+
+        # 5. UI feedback is emitted via session_updated event handlers.
 
     async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
         """Execute a post-session auto_command and return status/message."""
@@ -1104,7 +1168,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         cmd_name, auto_args = parse_command_string(auto_command)
 
         if cmd_name and auto_command:
-            await db.update_session(session_id, last_message_sent=auto_command[:200])
+            await db.update_session(
+                session_id,
+                last_message_sent=auto_command[:200],
+                last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+            )
 
         if cmd_name == "agent_then_message":
             return await self._handle_agent_then_message(session_id, auto_args)
@@ -1128,6 +1196,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for TUI to stabilize, then inject message."""
+        start_time = time.time()
+        logger.debug("agent_then_message: started for session=%s", session_id[:8])
+
         if len(args) < 3:
             return {"status": "error", "message": "agent_then_message requires agent, thinking_mode, message"}
 
@@ -1137,11 +1208,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
 
-        await db.update_session(session_id, last_message_sent=message[:200])
+        await db.update_session(
+            session_id,
+            last_message_sent=message[:200],
+            last_message_sent_at=datetime.now(timezone.utc).isoformat(),
+        )
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
         auto_context = CommandEventContext(session_id=session_id, args=[])
         thinking_args: list[str] = [thinking_mode]
+
+        # Fire-and-forget start command (don't wait for 1s driver sleep)
+        t0 = time.time()
         await command_handlers.handle_agent_start(
             auto_context,
             agent_name,
@@ -1149,32 +1227,29 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             self.client,
             self._execute_terminal_command,
         )
+        logger.debug("agent_then_message: handle_agent_start took %.3fs", time.time() - t0)
 
         session = await db.get_session(session_id)
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
-        # Step 1: Wait for agent process to start
-        deadline = time.monotonic() + AGENT_START_TIMEOUT_S
-        while time.monotonic() < deadline:
-            is_running = await terminal_io.is_process_running(session)
-            if is_running:
-                break
-            await asyncio.sleep(AGENT_START_POLL_INTERVAL_S)
-        else:
-            logger.warning("agent_then_message timed out waiting for agent start (session=%s)", session_id[:8])
-            return {"status": "error", "message": "Timeout waiting for agent to start"}
-
-        # Step 2: Initial settle delay
-        await asyncio.sleep(AGENT_START_SETTLE_DELAY_S)
-
-        # Step 3: Wait for output to stabilize (TUI banner + MCP loading complete)
+        # Step 1: Wait for output to stabilize (TUI banner + MCP loading complete)
+        # We integrate the "process running" check into stabilization logic.
+        # Gemini gets a longer quiet window to ensure heavy initialization is done.
         logger.debug("agent_then_message: waiting for TUI to stabilize (session=%s)", session_id[:8])
+
+        quiet_s = AGENT_START_STABILIZE_QUIET_S
+        if agent_name == AgentName.GEMINI.value:
+            quiet_s += max(0, GEMINI_START_EXTRA_DELAY_S)
+
+        t1 = time.time()
         stabilized, _stable_tail = await self._wait_for_output_stable(
             session,
             AGENT_START_STABILIZE_TIMEOUT_S,
-            AGENT_START_STABILIZE_QUIET_S,
+            quiet_s,
         )
+        logger.debug("agent_then_message: stabilization took %.3fs", time.time() - t1)
+
         if not stabilized:
             logger.warning(
                 "agent_then_message: stabilization timed out after %.1fs, proceeding anyway (session=%s)",
@@ -1182,34 +1257,29 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 session_id[:8],
             )
 
-        if agent_name == AgentName.GEMINI.value and GEMINI_START_EXTRA_DELAY_S > 0:
-            await asyncio.sleep(GEMINI_START_EXTRA_DELAY_S)
+        # Verify agent is actually running before injecting message
+        if not await terminal_io.is_process_running(session):
+            logger.error("agent_then_message: process not running after stabilization (session=%s)", session_id[:8])
+            return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
-        # Step 4: Post-stabilization safety buffer
-        await asyncio.sleep(AGENT_START_POST_STABILIZE_DELAY_S)
-
-        # Step 5: Now inject the message (TUI should be ready)
+        # Step 2: Inject the message immediately (TUI should be ready)
         logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
-
-        active_agent = session.active_agent
 
         sanitized_message = terminal_io.wrap_bracketed_paste(message)
         pasted = await terminal_io.send_text(
             session,
             sanitized_message,
             working_dir=session.working_directory,
-            send_enter=False,
-            active_agent=active_agent,
+            send_enter=True,  # Send Enter immediately
+            active_agent=session.active_agent,
         )
         if not pasted:
             return {"status": "error", "message": "Failed to paste command into tmux"}
 
-        # Step 6: Small delay before sending Enter
-        await asyncio.sleep(AGENT_START_POST_INJECT_DELAY_S)
         await db.update_last_activity(session_id)
         await self._poll_and_send_output(session_id, session.tmux_session_name)
 
-        # Step 7: Send Enter and wait for command acceptance
+        # Step 3: Wait for command acceptance (Enter was already sent)
         accepted = await self._confirm_command_acceptance(session)
         if not accepted:
             logger.warning(
@@ -1218,6 +1288,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
             return {"status": "error", "message": "Timeout waiting for command acceptance"}
 
+        logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
         return {"status": "success", "message": "Message injected after agent start"}
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
@@ -1236,8 +1307,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     ) -> tuple[bool, str]:
         """Wait for output to stop changing (stabilize).
 
-        Polls tmux output and waits until it hasn't changed for `quiet_s` seconds.
-        This detects when TUI banner + MCP loading is complete.
+        Polls tmux output and waits until:
+        1. Output has changed from the initial state (indicating process started)
+        2. Output hasn't changed for `quiet_s` seconds (indicating TUI loaded)
 
         Args:
             session: The session to monitor
@@ -1248,7 +1320,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             Tuple of (stabilized, last_output_tail)
         """
         deadline = time.monotonic() + timeout_s
-        last_tail, last_digest = await self._pane_output_snapshot(session)
+        initial_tail, initial_digest = await self._pane_output_snapshot(session)
+        last_tail, last_digest = initial_tail, initial_digest
+
+        has_changed = False
         quiet_since = time.monotonic()
 
         while time.monotonic() < deadline:
@@ -1256,15 +1331,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             current_tail, current_digest = await self._pane_output_snapshot(session)
 
             if current_digest != last_digest:
-                # Output changed - reset quiet timer
+                # Output changed
+                has_changed = True
                 last_tail, last_digest = current_tail, current_digest
                 quiet_since = time.monotonic()
-            elif time.monotonic() - quiet_since >= quiet_s:
-                # Output has been stable for quiet_s seconds
+            elif has_changed and (time.monotonic() - quiet_since >= quiet_s):
+                # Output changed at least once AND has been stable for quiet_s seconds
                 logger.debug("Output stabilized after %.1fs quiet", quiet_s)
                 return True, current_tail
 
-        logger.debug("Output stabilization timed out after %.1fs", timeout_s)
+        logger.debug("Output stabilization timed out after %.1fs (has_changed=%s)", timeout_s, has_changed)
         return False, last_tail
 
     @staticmethod
@@ -1706,68 +1782,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def start(self) -> None:
         """Start the daemon."""
         logger.info("Starting TeleClaude daemon...")
-
-        # Initialize database
-        await db.initialize()
-        logger.info("Database initialized")
-
-        # Wire DB to AdapterClient for UI updates
-        db.set_client(self.client)
-
-        # Start all adapters via AdapterClient (network operation - can fail)
-        await self.client.start()
-
-        # Wire cache to REST adapter
-        rest_adapter = self.client.adapters.get("rest")
-        if rest_adapter and hasattr(rest_adapter, "cache"):
-            rest_adapter.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
-            logger.info("Wired cache to REST adapter")
-
-        # Wire cache to Redis adapter
-        redis_adapter_cache = self.client.adapters.get("redis")
-        if redis_adapter_cache and hasattr(redis_adapter_cache, "cache"):
-            redis_adapter_cache.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]  # Dynamic
-            logger.info("Wired cache to Redis adapter")
-
-        # Initialize voice handler (side effect - only after network succeeds)
-        init_voice_handler()
-        logger.info("Voice handler initialized")
-
-        # Check if we just restarted from deployment
-        redis_adapter_base = self.client.adapters.get("redis")
-        if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
-            redis_adapter: RedisAdapter = redis_adapter_base
-            if redis_adapter.redis:
-                status_key = f"system_status:{config.computer.name}:deploy"
-                status_data = await redis_adapter.redis.get(status_key)
-                if status_data:
-                    try:
-                        status_raw: object = json.loads(status_data.decode("utf-8"))  # type: ignore[misc]
-                        if isinstance(status_raw, dict) and status_raw.get("status") == "restarting":  # type: ignore[misc]
-                            # We successfully restarted from deployment
-                            await redis_adapter.redis.set(
-                                status_key,
-                                json.dumps({"status": "deployed", "timestamp": time.time(), "pid": os.getpid()}),  # type: ignore[misc]
-                            )
-                            logger.info("Deployment complete, daemon restarted successfully (PID: %s)", os.getpid())
-                    except (json.JSONDecodeError, Exception) as e:
-                        logger.warning("Failed to parse deploy status: %s", e)
-
-        # Start MCP server in background task (if enabled)
-        logger.debug("MCP server object exists: %s", self.mcp_server is not None)
-        if self.mcp_server:
-            self.mcp_task = asyncio.create_task(self.mcp_server.start())
-            self.mcp_task.add_done_callback(self._log_background_task_exception("mcp_server"))
-            self.mcp_task.add_done_callback(self._handle_mcp_task_done)
-            # Avoid health checks during initial MCP startup.
-            self._last_mcp_restart_at = asyncio.get_running_loop().time()
-            logger.info("MCP server starting in background")
-
-            self.mcp_watch_task = asyncio.create_task(self._mcp_watch_loop())
-            self.mcp_watch_task.add_done_callback(self._log_background_task_exception("mcp_watch"))
-            logger.info("MCP server watch task started")
-        else:
-            logger.warning("MCP server not started - object is None")
+        await self.lifecycle.startup()
 
         # Start periodic cleanup task (runs every hour)
         self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
@@ -1807,23 +1822,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     async def stop(self) -> None:
         """Stop the daemon."""
         logger.info("Stopping TeleClaude daemon...")
-
-        # Stop MCP server task
-        if self.mcp_task:
-            self.mcp_task.cancel()
-            try:
-                await self.mcp_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("MCP server stopped")
-
-        if hasattr(self, "mcp_watch_task"):
-            self.mcp_watch_task.cancel()
-            try:
-                await self.mcp_watch_task
-            except asyncio.CancelledError:
-                pass
-            logger.info("MCP server watch task stopped")
 
         # Stop periodic cleanup task
         if hasattr(self, "cleanup_task"):
@@ -1885,13 +1883,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await self.task_registry.shutdown(timeout=5.0)
             logger.info("Task registry shutdown complete")
 
-        # Stop all adapters
-        for adapter_name, adapter in self.client.adapters.items():
-            logger.info("Stopping %s adapter...", adapter_name)
-            await adapter.stop()
-
-        # Close database
-        await db.close()
+        await self.lifecycle.shutdown()
 
         logger.info("Daemon stopped")
 
@@ -2078,12 +2070,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.warning("Session %s not found", session_id)
             return
 
-        # Check for stale session (on-the-fly cleanup)
-        was_stale = await session_cleanup.cleanup_stale_session(session_id, self.client)
-        if was_stale:
-            logger.warning("Session %s was stale and has been cleaned up", session_id[:8])
-            return
-
         # Get active agent for agent-specific escaping
         active_agent = session.active_agent
 
@@ -2120,9 +2106,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
                 # Clean up sessions inactive for 72+ hours
                 await self._cleanup_inactive_sessions()
-
-                # Clean up orphaned sessions (tmux gone but DB says active)
-                await session_cleanup.cleanup_all_stale_sessions(self.client)
 
                 # Clean up orphan tmux sessions (tmux exists but no DB entry)
                 await session_cleanup.cleanup_orphan_tmux_sessions()
@@ -2187,6 +2170,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     def request_shutdown(self, reason: str) -> None:
         """Request graceful shutdown and capture diagnostics."""
         self._shutdown_reason = reason
+        self.client.mark_shutting_down()
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -2253,7 +2237,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     )
 
             if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
-                await session_cleanup.cleanup_stale_session(session.session_id, self.client)
                 continue
             if await terminal_bridge.is_pane_dead(session.tmux_session_name):
                 await session_cleanup.terminate_session(

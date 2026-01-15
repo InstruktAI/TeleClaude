@@ -1,5 +1,6 @@
 """Database manager for TeleClaude - handles session persistence and retrieval."""
 
+import asyncio
 import json
 import sqlite3
 import uuid
@@ -216,6 +217,14 @@ class Db:
         )
         await self.conn.commit()
 
+        client = self._client
+        if client:
+            await client.handle_event(
+                TeleClaudeEvents.SESSION_CREATED,
+                {"session_id": session_id},
+                MessageMetadata(adapter_type=session.origin_adapter),
+            )
+
         return session
 
     async def get_session(self, session_id: str) -> Optional[Session]:
@@ -294,6 +303,11 @@ class Db:
         if not fields:
             return
 
+        if "last_message_sent" in fields and "last_message_sent_at" not in fields:
+            fields["last_message_sent_at"] = datetime.now(timezone.utc).isoformat()
+        if "last_feedback_received" in fields and "last_feedback_received_at" not in fields:
+            fields["last_feedback_received_at"] = datetime.now(timezone.utc).isoformat()
+
         # Serialize adapter_metadata if it's a dict or dataclass
         if "adapter_metadata" in fields:
             metadata = fields["adapter_metadata"]
@@ -311,15 +325,26 @@ class Db:
 
         # Emit SESSION_UPDATED event (UI handlers will update channel titles)
         # Only handle if client is set (tests and standalone tools don't set client)
-        if self._client:
+        client = self._client
+        if client:
             # Trust contract: session exists (we just updated it in db)
-            session = await self.get_session(session_id)
-            if session:  # Guard against race condition
-                await self._client.handle_event(
-                    TeleClaudeEvents.SESSION_UPDATED,
-                    {"session_id": session_id, "updated_fields": fields},
-                    MessageMetadata(adapter_type=session.origin_adapter),
-                )
+            # CRITICAL: Run event dispatch in background to prevent blocking DB operations
+            # on slow UI adapters (e.g. Telegram rate limits).
+            # This prevents 30s+ delays in agent startup when multiple updates occur.
+            async def _dispatch_update_event() -> None:
+                try:
+                    session = await self.get_session(session_id)
+                    if session:  # Guard against race condition
+                        await client.handle_event(
+                            TeleClaudeEvents.SESSION_UPDATED,
+                            {"session_id": session_id, "updated_fields": fields},
+                            MessageMetadata(adapter_type=session.origin_adapter),
+                        )
+                except Exception as exc:
+                    logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
+
+            # Fire and forget
+            asyncio.create_task(_dispatch_update_event())
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
