@@ -266,12 +266,14 @@ class Db:
         self,
         computer_name: Optional[str] = None,
         origin_adapter: Optional[str] = None,
+        include_closed: bool = False,
     ) -> list[Session]:
         """List sessions with optional filters.
 
         Args:
             computer_name: Filter by computer name
             origin_adapter: Filter by origin adapter (telegram, redis, etc.)
+            include_closed: Include closed sessions when True
 
         Returns:
             List of Session objects
@@ -279,6 +281,8 @@ class Db:
         query = "SELECT * FROM sessions WHERE 1=1"
         params: list[object] = []
 
+        if not include_closed:
+            query += " AND closed_at IS NULL"
         if computer_name:
             query += " AND computer_name = ?"
             params.append(computer_name)
@@ -361,6 +365,16 @@ class Db:
                     logger.error("Failed to dispatch SESSION_UPDATED for %s: %s", session_id[:8], exc)
 
             asyncio.create_task(_dispatch_update_event())
+
+    async def close_session(self, session_id: str) -> None:
+        """Mark a session as closed without deleting it."""
+        session = await self.get_session(session_id)
+        if not session:
+            logger.warning("Attempted to close non-existent session: %s", session_id[:8])
+            return
+        if session.closed_at:
+            return
+        await self.update_session(session_id, closed_at=datetime.now(timezone.utc).isoformat())
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -484,7 +498,11 @@ class Db:
         return count
 
     async def get_sessions_by_adapter_metadata(
-        self, adapter_type: str, metadata_key: str, metadata_value: object
+        self,
+        adapter_type: str,
+        metadata_key: str,
+        metadata_value: object,
+        include_closed: bool = False,
     ) -> list[Session]:
         """Get sessions by adapter metadata field.
 
@@ -507,6 +525,8 @@ class Db:
             SELECT * FROM sessions
             WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
             """
+        if not include_closed:
+            query += " AND closed_at IS NULL"
         params: list[object] = [metadata_value]
         if isinstance(metadata_value, int):
             query = f"""
@@ -514,13 +534,15 @@ class Db:
                 WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
                    OR json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
                 """
+            if not include_closed:
+                query += " AND closed_at IS NULL"
             params.append(str(metadata_value))
 
         cursor = await self.conn.execute(query, params)
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
-    async def get_sessions_by_title_pattern(self, pattern: str) -> list[Session]:
+    async def get_sessions_by_title_pattern(self, pattern: str, include_closed: bool = False) -> list[Session]:
         """Get sessions where title starts with the given pattern.
 
         Args:
@@ -529,14 +551,14 @@ class Db:
         Returns:
             List of matching sessions
         """
-        cursor = await self.conn.execute(
-            """
+        query = """
             SELECT * FROM sessions
             WHERE title LIKE ?
-            ORDER BY created_at DESC
-            """,
-            (f"{pattern}%",),
-        )
+        """
+        if not include_closed:
+            query += " AND closed_at IS NULL"
+        query += " ORDER BY created_at DESC"
+        cursor = await self.conn.execute(query, (f"{pattern}%",))
         rows = await cursor.fetchall()
         return [Session.from_dict(dict(row)) for row in rows]
 
@@ -548,7 +570,7 @@ class Db:
 
     async def get_active_sessions(self) -> list[Session]:
         """Get all sessions ordered by last activity."""
-        cursor = await self.conn.execute("SELECT * FROM sessions ORDER BY last_activity DESC")
+        cursor = await self.conn.execute("SELECT * FROM sessions WHERE closed_at IS NULL ORDER BY last_activity DESC")
         rows = await cursor.fetchall()
         all_sessions = [Session.from_dict(dict(row)) for row in rows]
 
@@ -1033,7 +1055,9 @@ class Db:
 
 def _field_query(field: str) -> str:
     """Build query to find session by direct column value."""
-    return f"SELECT session_id FROM sessions WHERE {field} = ? ORDER BY last_activity DESC LIMIT 1"
+    return (
+        f"SELECT session_id FROM sessions WHERE {field} = ? AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
+    )
 
 
 def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | None:
@@ -1059,7 +1083,10 @@ def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str
 
 def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:
     """Sync helper to find session_id by tmux session name."""
-    query = "SELECT session_id FROM sessions WHERE tmux_session_name = ? ORDER BY last_activity DESC LIMIT 1"
+    query = (
+        "SELECT session_id FROM sessions WHERE tmux_session_name = ? "
+        "AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
+    )
     return _fetch_session_id_sync(db_path, query, tmux_name)
 
 

@@ -323,7 +323,7 @@ You can now send commands to this session.
 
     # Tmux creation failed - clean up DB and channels
     await cleanup_session_resources(session, client)
-    await db.delete_session(session.session_id)
+    await db.close_session(session.session_id)
     logger.error("Failed to create tmux session")
     raise RuntimeError("Failed to create tmux session")
 

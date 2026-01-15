@@ -25,7 +25,7 @@ from teleclaude.core.session_cleanup import (
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_session_detects_missing_tmux():
-    """Paranoid test that cleanup_stale_session detects missing tmux but keeps DB."""
+    """Paranoid test that cleanup_stale_session detects missing tmux and cleans up."""
     mock_session = MagicMock()
     mock_session.session_id = "stale-session-123"
     mock_session.tmux_session_name = "tc_stale"
@@ -37,13 +37,22 @@ async def test_cleanup_stale_session_detects_missing_tmux():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get.return_value = mock_session
         mock_exists.return_value = False
+        mock_terminate.return_value = True
 
         result = await cleanup_stale_session("stale-session-123", mock_adapter_client)
 
     assert result is True
+    mock_terminate.assert_called_once_with(
+        "stale-session-123",
+        mock_adapter_client,
+        reason="stale",
+        session=mock_session,
+        kill_tmux=False,
+    )
 
 
 @pytest.mark.asyncio
@@ -92,13 +101,16 @@ async def test_cleanup_all_stale_sessions_processes_all():
         patch("teleclaude.core.session_cleanup.db.get_active_sessions", new_callable=AsyncMock) as mock_get_active,
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", side_effect=mock_session_exists),
+        patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get_active.return_value = mock_sessions
         mock_get.side_effect = lambda sid: next((s for s in mock_sessions if s.session_id == sid), None)
+        mock_terminate.return_value = True
 
         count = await cleanup_all_stale_sessions(mock_adapter_client)
 
     assert count == 2
+    assert mock_terminate.await_count == 2
 
 
 @pytest.mark.asyncio

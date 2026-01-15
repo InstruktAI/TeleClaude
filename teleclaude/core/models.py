@@ -244,6 +244,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
     adapter_metadata: SessionAdapterMetadata = field(default_factory=SessionAdapterMetadata)
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
+    closed_at: Optional[datetime] = None
     working_directory: str = "~"
     description: Optional[str] = None
     initiated_by_ai: bool = False
@@ -277,6 +278,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
         if self.last_feedback_received_at:
             data["last_feedback_received_at"] = self.last_feedback_received_at.isoformat()
+        if self.closed_at:
+            data["closed_at"] = self.closed_at.isoformat()
         adapter_meta = self.adapter_metadata
         if isinstance(adapter_meta, dict):
             data["adapter_metadata"] = json.dumps(adapter_meta)
@@ -295,6 +298,9 @@ class Session:  # pylint: disable=too-many-instance-attributes
         last_activity = (
             datetime.fromisoformat(last_activity_raw) if isinstance(last_activity_raw, str) else last_activity_raw
         )
+
+        closed_at_raw = data.get("closed_at")
+        closed_at = datetime.fromisoformat(closed_at_raw) if isinstance(closed_at_raw, str) else closed_at_raw
 
         last_message_sent_at_raw = data.get("last_message_sent_at")
         last_message_sent_at = (
@@ -350,6 +356,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
             adapter_metadata=adapter_metadata,
             created_at=created_at if isinstance(created_at, datetime) else None,
             last_activity=last_activity if isinstance(last_activity, datetime) else None,
+            closed_at=closed_at if isinstance(closed_at, datetime) else None,
             working_directory=_get_required_str("working_directory", default="~"),
             description=_get_optional_str("description"),
             initiated_by_ai=initiated_by_ai,

@@ -144,32 +144,6 @@ class TestMessaging:
             assert result is True
             telegram_adapter.app.bot.delete_message.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_delete_message_invalid_id(self, telegram_adapter):
-        """Invalid message_id should be skipped without calling Telegram."""
-        from teleclaude.core.models import Session
-
-        mock_session = Session(
-            session_id="session-123",
-            computer_name="test",
-            tmux_session_name="test-tmux",
-            origin_adapter="telegram",
-            title="Test Session",
-            adapter_metadata={"channel_id": "123"},
-        )
-
-        telegram_adapter.app = MagicMock()
-        telegram_adapter.app.bot = MagicMock()
-        telegram_adapter.app.bot.delete_message = AsyncMock()
-
-        with patch("teleclaude.adapters.telegram_adapter.db") as mock_sm:
-            mock_sm.get_session = AsyncMock(return_value=mock_session)
-
-            result = await telegram_adapter.delete_message("session-123", "Timed out")
-
-            assert result is False
-            telegram_adapter.app.bot.delete_message.assert_not_called()
-
 
 class TestChannelManagement:
     """Tests for channel/topic management."""

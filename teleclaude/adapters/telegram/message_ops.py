@@ -271,18 +271,7 @@ class MessageOperationsMixin:
         self._ensure_started()
 
         try:
-            try:
-                message_id_int = int(message_id)
-            except (TypeError, ValueError) as exc:
-                logger.warning(
-                    "Skipping delete for invalid message_id %r (session=%s): %s",
-                    message_id,
-                    session.session_id[:8],
-                    exc,
-                )
-                return False
-
-            await self._delete_message_with_retry(message_id_int)
+            await self._delete_message_with_retry(int(message_id))
             return True
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)
