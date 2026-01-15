@@ -7,6 +7,8 @@
 ---
 
 - [>] cache-unification
+- [.] docs-3rd
+- [.] context-ai
 ## Work Preparation Pipeline
 
 ---
