@@ -20,12 +20,12 @@ TeleClaude is a pure terminal bridge - a "dumb pipe" between Telegram and your t
 - 🖥️ **Multiple persistent terminal sessions** - Each session runs in tmux and survives daemon restarts
 - 📱 **Remote control from anywhere** - Send commands from Telegram, receive live output
 - 🏢 **Multi-computer support** - Manage Mac, servers, and other machines from one Telegram group
-- 🤖 **AI-to-AI communication** - MCP server enables Claude Code on different computers to collaborate
+- 🤖 **AI-to-AI communication** - MCP server enables Agents on different computers to collaborate
 - 🔌 **Multi-adapter architecture** - Supports Telegram and Redis adapters for cross-computer messaging
 - 📋 **Organized with Topics** - Each session gets its own Telegram topic for clean organization
 - 🔄 **Live output streaming** - See command output in real-time with smart editing (dual-mode: human vs AI)
 - 🎤 **Voice input** - Speak commands, auto-transcribed with Whisper
-- 📎 **File uploads** - Send documents and photos directly to Claude Code for analysis
+- 📎 **File uploads** - Send documents and photos directly to Agents for analysis
 
 ## Quick Start
 
@@ -209,7 +209,7 @@ Install TeleClaude on multiple computers - each with a **unique bot token** and 
 
 Use `/list-sessions` to see all sessions across all computers.
 
-**AI-to-AI sessions** - Enable Claude Code instances to collaborate (see next section).
+**AI-to-AI sessions** - Enable Agent instances to collaborate (see next section).
 
 For detailed multi-computer setup with MCP server, see [docs/multi-computer-setup.md](docs/multi-computer-setup.md).
 
@@ -316,19 +316,19 @@ ps aux | grep teleclaude.daemon | awk '{print $2}' | xargs -I {} sudo cat /proc/
 
 ### AI-to-AI Communication (MCP Server)
 
-TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claude Code instances on different computers to communicate with each other using Telegram as a distributed message bus.
+TeleClaude includes a **Model Context Protocol (MCP) server** that enables Agent instances on different computers to communicate with each other using Telegram as a distributed message bus.
 
 **What it enables:**
 
-- Claude Code on your **macbook** can ask Claude Code on your **workstation** to check logs
-- Claude Code on your **server** can ask Claude Code on your **laptop** to run tests
+- Agents on your **macbook** can ask Agents on your **deployment server** to deploy artifacts
+- Agents on your **server** can ask Agents on your **laptop** to run tests
 - Multiple computers can collaborate on complex tasks automatically
 
 **Quick Setup:**
 
 1. **Install TeleClaude on each computer** with unique bot tokens
 2. **Add all bots to the same Telegram supergroup**
-3. **Configure Claude Code** to use the TeleClaude MCP server:
+3. **Configure Agents** to use the TeleClaude MCP server:
 
    `make init` configures this automatically. For manual setup, add to `~/.claude.json`:
 
@@ -360,10 +360,10 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claud
 **Example Usage:**
 
 ```bash
-# In Claude Code on macbook:
+# In Agent on macbook:
 > Use teleclaude to ask the workstation computer to check /var/log/nginx/error.log
 
-# Claude Code will:
+# Agent will:
 # 1. List available computers (finds "workstation")
 # 2. Start session with workstation
 # 3. Send command: tail -100 /var/log/nginx/error.log
@@ -413,7 +413,7 @@ TeleClaude includes a **Model Context Protocol (MCP) server** that enables Claud
 └──────────────────────────┘      └──────────────────────────┘
           ↕                                   ↕
 ┌──────────────────────────┐      ┌──────────────────────────┐
-│  Claude Code (macbook)   │      │  Claude Code (server1)   │
+│  Agent (macbook)   │      │  Agent (server1)   │
 │  Uses MCP tools to send  │      │  Executes commands and   │
 │  commands to server1     │      │  streams output back     │
 └──────────────────────────┘      └──────────────────────────┘
@@ -528,7 +528,7 @@ See developer documentation:
 - ✅ Basic commands (/new-session, /cancel, /resize)
 - ✅ **MCP server for AI-to-AI communication**
   - ✅ Computer discovery via heartbeat mechanism
-  - ✅ Real-time streaming between Claude Code instances
+  - ✅ Notifications between Agent instances
   - ✅ Concurrent session support (15+ tested)
   - ✅ Multi-hop communication (Comp1 → Comp2 → Comp3)
 - ✅ Voice input with Whisper transcription

@@ -507,14 +507,55 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 logger.warning("MCP health snapshot failed: %s", exc, exc_info=True)
 
         if snapshot:
+            server_present = bool(snapshot.get("server_present", True))
             is_serving = bool(snapshot.get("is_serving"))
             socket_exists = bool(snapshot.get("socket_exists"))
             active_connections = int(snapshot.get("active_connections") or 0)
             last_accept_age = snapshot.get("last_accept_age_s")
 
-            if not is_serving or not socket_exists:
+            if not socket_exists:
                 logger.warning(
+                    "MCP socket missing",
+                    server_present=server_present,
+                    is_serving=is_serving,
+                    socket_exists=socket_exists,
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                return False
+
+            if not server_present:
+                logger.warning(
+                    "MCP server reference missing",
+                    server_present=server_present,
+                    is_serving=is_serving,
+                    socket_exists=socket_exists,
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                return False
+
+            if not is_serving:
+                if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
+                    return self._last_mcp_probe_ok is not False
+                logger.debug(
+                    "MCP server not reporting is_serving; probing",
+                    active_connections=active_connections,
+                    last_accept_age_s=last_accept_age,
+                )
+                self._last_mcp_probe_at = now
+                probe_ok = await self._probe_mcp_socket(str(socket_path))
+                self._last_mcp_probe_ok = probe_ok
+                if probe_ok:
+                    logger.debug(
+                        "MCP socket probe ok despite is_serving=False",
+                        active_connections=active_connections,
+                        last_accept_age_s=last_accept_age,
+                    )
+                    return True
+                logger.info(
                     "MCP socket precheck failed",
+                    server_present=server_present,
                     is_serving=is_serving,
                     socket_exists=socket_exists,
                     active_connections=active_connections,
@@ -531,14 +572,28 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             if active_connections > 0:
                 if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
                     return self._last_mcp_probe_ok is not False
-                logger.warning(
+                logger.debug(
                     "MCP socket accept stale; probing",
                     active_connections=active_connections,
                     last_accept_age_s=last_accept_age,
+                    accept_grace_s=MCP_SOCKET_HEALTH_ACCEPT_GRACE_S,
                 )
                 self._last_mcp_probe_at = now
                 probe_ok = await self._probe_mcp_socket(str(socket_path))
                 self._last_mcp_probe_ok = probe_ok
+                if probe_ok:
+                    logger.debug(
+                        "MCP socket probe ok after stale accept",
+                        active_connections=active_connections,
+                        last_accept_age_s=last_accept_age,
+                    )
+                else:
+                    logger.warning(
+                        "MCP socket probe failed after stale accept",
+                        active_connections=active_connections,
+                        last_accept_age_s=last_accept_age,
+                        socket_path=str(socket_path),
+                    )
                 return probe_ok
             if (now - self._last_mcp_probe_at) < MCP_SOCKET_HEALTH_PROBE_INTERVAL_S:
                 return self._last_mcp_probe_ok is not False
@@ -577,11 +632,18 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 continue
 
             failures += 1
-            logger.warning(
-                "MCP socket health failure",
-                failures=failures,
-                threshold=MCP_WATCH_FAILURE_THRESHOLD,
-            )
+            if failures < MCP_WATCH_FAILURE_THRESHOLD:
+                logger.info(
+                    "MCP socket health check failed (monitoring)",
+                    failures=failures,
+                    threshold=MCP_WATCH_FAILURE_THRESHOLD,
+                )
+            else:
+                logger.warning(
+                    "MCP socket unhealthy; restarting MCP server",
+                    failures=failures,
+                    threshold=MCP_WATCH_FAILURE_THRESHOLD,
+                )
             if failures >= MCP_WATCH_FAILURE_THRESHOLD:
                 ok = await self._restart_mcp_server("socket_unhealthy")
                 failures = 0

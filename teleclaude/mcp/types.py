@@ -137,6 +137,7 @@ class MarkPhaseResult(TypedDict):
 class MCPHealthSnapshot(TypedDict):
     """Snapshot of MCP server health state."""
 
+    server_present: bool
     is_serving: bool
     socket_exists: bool
     active_connections: int

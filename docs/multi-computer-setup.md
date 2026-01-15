@@ -48,7 +48,7 @@ Before setting up multi-computer communication, ensure:
 - ✅ Each computer has a **unique Telegram bot token** (create via @BotFather)
 - ✅ All bots are added to the **same Telegram supergroup**
 - ✅ Supergroup has **Topics enabled** (Settings → Group Type → Forum)
-- ✅ Claude Code installed on computers that will receive commands
+- ✅ Claude Code, Gemini, Codex installed on computers that will receive commands
 
 ---
 
@@ -164,11 +164,6 @@ telegram:
     - teleclaude_workstation_bot
     - teleclaude_server_bot
     - teleclaude_laptop_bot
-
-mcp:
-  enabled: true
-  transport: stdio
-  claude_command: claude # Command to start Claude Code
 ```
 
 **Critical points:**
@@ -269,13 +264,13 @@ These messages update every 30 seconds (heartbeat mechanism).
 
 ### Test MCP Discovery
 
-If you have Claude Code installed, you can test computer discovery:
+If you have Agents installed, you can test computer discovery:
 
 ```bash
 # On computer 1 (macbook):
 claude
 
-# In Claude Code session:
+# In Agents session:
 > Use the teleclaude__list_computers MCP tool
 
 # Expected output:
@@ -303,13 +298,13 @@ claude
 
 ---
 
-## Step 6: Configure Claude Code MCP Integration
+## Step 6: Configure Agent MCP Integration
 
-To use TeleClaude's MCP tools from Claude Code, add the MCP server to your Claude Code config.
+To use TeleClaude's MCP tools from Agent, add the MCP server to your Agent config.
 
 ### Automatic Configuration (Recommended)
 
-If you used `install.sh`, MCP is already configured. The installer merges TeleClaude's MCP server into your Claude Code config automatically.
+If you used `install.sh`, MCP is already configured. The installer merges TeleClaude's MCP server into your Agent config automatically.
 
 ### Manual Configuration
 
@@ -331,12 +326,9 @@ If you used `install.sh`, MCP is already configured. The installer merges TeleCl
 
 ### Verify MCP Tools Available
 
-Start Claude Code and check available tools:
+Start Claude Code and check available tools with `/mcp`
 
 ```bash
-claude
-
-# In Claude Code:
 > What MCP tools are available?
 
 # You should see:

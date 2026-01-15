@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last Updated**: 2026-01-14
+> **Last Updated**: 2026-01-15
 > **Status Legend**: `[ ]` = Pending | `[.]` = Ready | `[>]` = In Progress
 > (DONE work is tracked in [delivered.md](./delivered.md))
 
@@ -9,6 +9,7 @@
 - [>] cache-unification
 - [>] docs-3rd
 - [.] context-ai
+- [ ] postgres-migration
 ## Work Preparation Pipeline
 
 ---

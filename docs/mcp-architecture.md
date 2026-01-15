@@ -3,7 +3,7 @@
 TeleClaude provides MCP (Model Context Protocol) tools for remote session management via a resilient two-layer architecture:
 
 ```
-MCP Client (Claude Code/Codex)
+MCP Client (Claude Code/Gemini/Codex)
     ↓ stdio
 bin/mcp-wrapper.py (resilient proxy)
     ↓ unix socket (/tmp/teleclaude.sock)

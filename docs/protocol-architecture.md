@@ -14,6 +14,7 @@ TeleClaude uses Python's `Protocol` pattern to distinguish between two types of 
 2. **Transport Adapters** - Cross-computer messaging (Redis, Postgres)
 
 This separation enables clean architecture where:
+
 - **Message broadcasting** uses all adapters with `has_ui=True`
 - **Cross-computer orchestration** uses only transport adapters implementing `RemoteExecutionProtocol`
 
@@ -62,11 +63,13 @@ class RemoteExecutionProtocol(Protocol):
 ### Who Implements This Protocol?
 
 ✅ **Transport Adapters:**
+
 - `RedisAdapter` - Redis Streams (production)
 - `PostgresAdapter` - PostgreSQL LISTEN/NOTIFY (future)
 - Any custom transport adapter for cross-computer messaging
 
 ❌ **UI Adapters:**
+
 - `TelegramAdapter` - Chat platform, not a transport layer
 - `SlackAdapter` - Chat platform, not a transport layer
 
@@ -88,6 +91,7 @@ await adapter_client.send_message(session_id, "Terminal output here")
 ```
 
 **Behavior:**
+
 - Sends to **origin adapter** (CRITICAL - failure throws exception)
 - Broadcasts to **observer adapters** with `has_ui=True` (best-effort)
 - RedisAdapter skipped (has_ui=False, pure transport)
@@ -113,6 +117,7 @@ await adapter_client.send_response(message_id, json_data)
 ```
 
 **Behavior:**
+
 - Routes to **first adapter implementing RemoteExecutionProtocol**
 - Raises `RuntimeError` if no transport adapter available
 - Two patterns: request/response (ephemeral) vs streaming (session output)
@@ -121,7 +126,7 @@ await adapter_client.send_response(message_id, json_data)
 
 ## MCP Server Integration
 
-The MCP server exposes tools for Claude Code to interact with remote computers.
+The MCP server exposes tools for Agent to interact with remote computers.
 
 ### Before Refactoring ❌
 
@@ -151,6 +156,7 @@ class TeleClaudeMCPServer:
 ```
 
 **Benefits:**
+
 - MCP server is adapter-agnostic
 - Swapping Redis for Postgres requires ZERO MCP server changes
 - Clean separation of concerns
@@ -215,6 +221,7 @@ if config.postgres.enabled:
 ### That's It!
 
 **No other changes needed:**
+
 - MCP server automatically uses new transport
 - AdapterClient routes cross-computer operations to it
 - Aggregates with existing transport adapters (discover_computers)

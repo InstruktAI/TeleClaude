@@ -536,12 +536,14 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
     async def health_snapshot(self, socket_path: Path) -> MCPHealthSnapshot:
         """Return a health snapshot for MCP server diagnostics."""
         server = self._server
-        is_serving = bool(server and server.is_serving())
+        server_present = server is not None
+        is_serving = bool(server_present and server and server.is_serving())
         socket_exists = socket_path.exists()
         last_accept_age = None
         if self._last_accept_at is not None:
             last_accept_age = max(0.0, asyncio.get_running_loop().time() - self._last_accept_at)
         return MCPHealthSnapshot(
+            server_present=server_present,
             is_serving=is_serving,
             socket_exists=socket_exists,
             active_connections=self._active_connections,

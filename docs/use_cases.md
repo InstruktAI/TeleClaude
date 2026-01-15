@@ -302,7 +302,7 @@ These use cases involve cross-computer orchestration where one AI controls anoth
 
 ### UC-A1: AI Initiates Cross-Computer Session
 
-**Actor:** AI (Claude Code) via MCP on Computer A
+**Actor:** AI (Agent) via MCP on Computer A
 
 **Trigger:** AI calls `create_session` MCP tool
 
@@ -310,7 +310,7 @@ These use cases involve cross-computer orchestration where one AI controls anoth
 
 ```mermaid
 sequenceDiagram
-    participant AI as Claude Code (A)
+    participant AI as Agent (A)
     participant MCP_A as MCP Server (A)
     participant Redis_A as RedisAdapter (A)
     participant RedisDB as Redis Server
@@ -358,7 +358,7 @@ sequenceDiagram
 
 ### UC-A2: AI Executes Remote Command (AI Mode)
 
-**Actor:** AI (Claude Code) via MCP on Computer A
+**Actor:** AI (Agent) via MCP on Computer A
 
 **Trigger:** AI calls `execute_command` MCP tool
 
@@ -366,7 +366,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant AI as Claude Code (A)
+    participant AI as Agent (A)
     participant MCP_A as MCP Server (A)
     participant Redis_A as RedisAdapter (A)
     participant RedisDB as Redis Server
@@ -425,7 +425,7 @@ sequenceDiagram
 
 ### UC-A3: AI Polls Output Stream
 
-**Actor:** AI (Claude Code) via MCP on Computer A
+**Actor:** AI (Agent) via MCP on Computer A
 
 **Trigger:** AI calls `poll_output_stream` MCP tool (for long-running commands)
 
@@ -433,7 +433,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant AI as Claude Code (A)
+    participant AI as Agent (A)
     participant MCP_A as MCP Server (A)
     participant Redis_A as RedisAdapter (A)
     participant RedisDB as Redis Server
@@ -665,7 +665,7 @@ sequenceDiagram
     participant Client as AdapterClient
     participant Daemon
     participant Redis as RedisAdapter<br/>(observer)
-    participant AI as Claude Code
+    participant AI as Agent
 
     User->>TG: "npm test"
     Note over TG,Daemon: (Execute as UC-H2)

@@ -6,6 +6,10 @@ Create a fast, repeatable way to collect and maintain third‑party documentatio
 
 ## Outcomes
 
+### O0: Prepare Pipeline Integration
+
+Research runs as a prepare‑stage step, always slug‑scoped, and links its outputs back into the todo package. Prepare auto‑detects when research is needed (external interfaces, hooks, API payloads).
+
 ### O1: Research Skill / Command
 
 Provide a reusable skill or command that performs focused research and writes concise markdown into `docs/3rd/`.
