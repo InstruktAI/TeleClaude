@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 
@@ -1048,21 +1049,7 @@ async def handle_rename_session(
     # Update in database
     await db.update_session(session.session_id, title=new_title)
 
-    # Update channel title via AdapterClient (looks up session internally)
-    success = await client.update_channel_title(session, new_title)
-    if success:
-        logger.info("Renamed session %s to '%s'", session.session_id[:8], new_title)
-
-        # Cleanup old messages AND delete current command
-        # NOTE: Message cleanup now handled by AdapterClient.handle_event()
-
-        # Send feedback message (plain text, no Markdown)
-        await client.send_message(session, f"Session renamed to: {new_title}", metadata=MessageMetadata())
-        # Note: Feedback message auto-tracked by send_message(ephemeral=True)
-    else:
-        logger.error("Failed to update channel title for session %s", session.session_id[:8])
-        await client.send_message(session, "Failed to update channel title", metadata=MessageMetadata())
-        # Note: Error message auto-tracked by send_message(ephemeral=True)
+    logger.info("Renamed session %s to '%s'", session.session_id[:8], new_title)
 
 
 @with_session
@@ -1264,13 +1251,15 @@ async def handle_agent_start(
     # Save active agent and clear previous native session bindings.
     # Also save initial prompt as last_message_sent for TUI display (nested sessions)
     initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
+    truncated_prompt = initial_prompt[:200] if initial_prompt is not None else None
     await db.update_session(
         session.session_id,
         active_agent=agent_name,
         thinking_mode=start_args.thinking_mode.value,
         native_session_id=None,
         native_log_file=None,
-        last_message_sent=initial_prompt[:200] if initial_prompt else None,
+        last_message_sent=truncated_prompt,
+        last_message_sent_at=datetime.now(timezone.utc).isoformat(),
     )
 
     # Update session title to include agent info (replaces $Computer with Agent-mode@Computer)

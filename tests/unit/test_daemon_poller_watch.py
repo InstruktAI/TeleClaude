@@ -36,7 +36,6 @@ async def test_poller_watch_creates_ui_channel_when_missing_topic():
         patch("teleclaude.daemon.terminal_bridge.session_exists", new=AsyncMock(return_value=True)),
         patch("teleclaude.daemon.terminal_bridge.is_pane_dead", new=AsyncMock(return_value=False)),
         patch("teleclaude.daemon.terminal_bridge.is_process_running", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.session_cleanup.cleanup_stale_session", new=AsyncMock()),
         patch("teleclaude.daemon.session_cleanup.terminate_session", new=AsyncMock()),
         patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
         patch("teleclaude.daemon.polling_coordinator.schedule_polling", new=AsyncMock()),

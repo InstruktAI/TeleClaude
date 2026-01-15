@@ -1,4 +1,4 @@
-"""Unit tests for REST adapter restart handling."""
+"""Unit tests for REST adapter server exit handling."""
 
 from __future__ import annotations
 
@@ -54,25 +54,38 @@ class _TestRESTAdapter(RESTAdapter):
         return []
 
 
-def test_rest_server_done_schedules_restart_when_running() -> None:
-    registry = MagicMock()
-    registry.spawn.side_effect = lambda coro, name=None: coro.close()
-    adapter = _TestRESTAdapter(_DummyClient(), task_registry=registry)
+def test_rest_server_done_calls_exit_handler_when_running() -> None:
+    adapter = _TestRESTAdapter(_DummyClient())
     adapter._running = True
+
+    class _Server:
+        def __init__(self) -> None:
+            self.started = True
+            self.should_exit = True
+
+    adapter.server = _Server()
+    handler = MagicMock()
+    adapter.set_on_server_exit(handler)
 
     adapter._on_server_task_done(_DummyTask())
 
-    assert registry.spawn.called is True
+    handler.assert_called_once()
+    exc, started, should_exit, socket_exists = handler.call_args.args
+    assert exc is None
+    assert started is True
+    assert should_exit is True
+    assert isinstance(socket_exists, bool)
 
 
 def test_rest_server_done_noop_when_stopped() -> None:
-    registry = MagicMock()
-    adapter = _TestRESTAdapter(_DummyClient(), task_registry=registry)
+    adapter = _TestRESTAdapter(_DummyClient())
     adapter._running = False
+    handler = MagicMock()
+    adapter.set_on_server_exit(handler)
 
     adapter._on_server_task_done(_DummyTask())
 
-    assert registry.spawn.called is False
+    handler.assert_not_called()
 
 
 @pytest.mark.asyncio

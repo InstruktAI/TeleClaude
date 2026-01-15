@@ -211,7 +211,7 @@ Usage:
             return
 
         # Strip leading // and replace with / (Telegram workaround - only at start of input)
-        # Double slash bypasses Telegram command detection so raw command goes to Claude Code
+        # Double slash bypasses Telegram command detection so raw command goes to Agent
         if text.startswith("//"):
             text = "/" + text[2:]
             logger.debug("Stripped leading // from user input (raw mode), result: %s", text[:50])
@@ -411,9 +411,9 @@ Usage:
             session.session_id[:8],
         )
 
-        # Emit session_terminated event to daemon for cleanup
+        # Emit session_removed event to daemon for cleanup
         await self.client.handle_event(
-            event="session_terminated",
+            event="session_removed",
             payload={"session_id": session.session_id},
             metadata=self._metadata(),
         )

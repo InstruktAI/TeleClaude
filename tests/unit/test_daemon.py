@@ -4,7 +4,7 @@ import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -221,7 +221,7 @@ async def test_enrich_with_summary_dedupes_transcript() -> None:
 
     mock_sum.assert_awaited_once()
     mock_update.assert_awaited_once()
-    daemon.client.send_message.assert_awaited_once()
+    daemon.client.send_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -260,7 +260,7 @@ async def test_enrich_with_summary_dedupes_native_session() -> None:
 
     assert mock_sum.await_count == 2
     assert mock_update.await_count == 2
-    assert daemon.client.send_message.await_count == 2
+    assert daemon.client.send_message.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -344,42 +344,38 @@ async def test_agent_then_message_waits_for_stabilization():
         assert result["status"] == "success"
         # Verify order: stabilize -> inject -> confirm
         assert call_order == ["wait_for_stable", "inject_message", "confirm_acceptance"]
-        mock_db.update_session.assert_called_with("sess-123", last_message_sent="/prime-architect")
+        mock_db.update_session.assert_called_with(
+            "sess-123", last_message_sent="/prime-architect", last_message_sent_at=ANY
+        )
 
 
 @pytest.mark.asyncio
 async def test_agent_then_message_applies_gemini_delay():
-    """Gemini sessions wait for extra delay before injection."""
+    """Gemini sessions wait for extra delay before injection via quiet window."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
     daemon._execute_terminal_command = AsyncMock()
     daemon._poll_and_send_output = AsyncMock()
 
-    async def mock_wait_stable(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+    captured_args = {}
+
+    async def mock_wait_stable(self, session, timeout_s, quiet_s) -> tuple[bool, str]:
+        captured_args["quiet_s"] = quiet_s
         return True, "stable output"
 
     async def mock_confirm(*_args: object, **_kwargs: object) -> bool:
         return True
 
-    sleep_calls: list[float] = []
-
-    async def mock_sleep(delay: float) -> None:
-        sleep_calls.append(delay)
-
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
         patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock, return_value=True),
+        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock, return_value=True),
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
-        patch("teleclaude.daemon.asyncio.sleep", new=mock_sleep),
-        patch("teleclaude.daemon.AGENT_START_SETTLE_DELAY_S", 0),
-        patch("teleclaude.daemon.AGENT_START_POST_STABILIZE_DELAY_S", 0),
-        patch("teleclaude.daemon.AGENT_START_POST_INJECT_DELAY_S", 0),
+        patch("teleclaude.daemon.AGENT_START_STABILIZE_QUIET_S", 1.0),
         patch("teleclaude.daemon.GEMINI_START_EXTRA_DELAY_S", 3.0),
     ):
-        mock_running.return_value = True
         mock_db.get_session = AsyncMock(
             return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="gemini")
         )
@@ -392,7 +388,8 @@ async def test_agent_then_message_applies_gemini_delay():
         )
 
         assert result["status"] == "success"
-        assert 3.0 in sleep_calls, "Expected gemini extra delay to be applied"
+        # Should be STABILIZE_QUIET_S (1.0) + EXTRA_DELAY_S (3.0)
+        assert captured_args["quiet_s"] == 4.0, f"Expected quiet_s to be 4.0, got {captured_args.get('quiet_s')}"
 
 
 @pytest.mark.asyncio
@@ -410,7 +407,9 @@ async def test_execute_auto_command_updates_last_message_sent():
 
         await daemon._execute_auto_command("sess-456", "agent codex fast")
 
-        mock_db.update_session.assert_called_with("sess-456", last_message_sent="agent codex fast")
+        mock_db.update_session.assert_called_with(
+            "sess-456", last_message_sent="agent codex fast", last_message_sent_at=ANY
+        )
 
 
 @pytest.mark.asyncio

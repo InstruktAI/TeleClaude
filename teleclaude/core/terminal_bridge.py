@@ -546,7 +546,7 @@ async def _send_keys_tmux(
         )
         return False
 
-    # Small delay to let text be processed
+    # Small delay to ensure text is processed before Enter
     await asyncio.sleep(1.0)
 
     # Send Enter key once if requested

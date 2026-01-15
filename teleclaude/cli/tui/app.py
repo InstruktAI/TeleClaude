@@ -2,7 +2,10 @@
 
 import asyncio
 import curses
+import os
 import queue
+import signal
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -170,6 +173,7 @@ class TelecApp:
         # WebSocket event queue (thread-safe)
         self._ws_queue: queue.Queue[WsEvent] = queue.Queue()
         self._subscribed_computers: set[str] = set()
+        self._theme_refresh_requested = False
 
     async def initialize(self) -> None:
         """Load initial data and create views."""
@@ -396,9 +400,13 @@ class TelecApp:
 
         if not found:
             sessions_view._sessions.append(session)
+            # New session: rebuild tree from source-of-truth data
+            asyncio.get_event_loop().run_until_complete(self.refresh_data())
+            return
 
         # Update activity state for the changed session
         sessions_view._update_activity_state([session])
+        sessions_view.update_session_node(session)
         logger.debug("Session %s updated", str(session_id)[:8])
 
     def _apply_session_removal(self, session_id: str) -> None:
@@ -425,6 +433,7 @@ class TelecApp:
         """
         curses.curs_set(0)
         init_colors()
+        self._install_appearance_hook()
 
         # Enable mouse support (can be toggled with 'm' key to allow tmux copy-mode)
         curses.mousemask(MOUSE_MASK)
@@ -441,6 +450,11 @@ class TelecApp:
 
             key = stdscr.getch()  # type: ignore[attr-defined]
 
+            if self._consume_theme_refresh():
+                init_colors()
+                self._render(stdscr)
+                continue
+
             if key != -1:
                 self._handle_key(key, stdscr)
                 # Check if view needs data refresh
@@ -452,6 +466,33 @@ class TelecApp:
             elif ws_updated:
                 # Re-render if WebSocket events were processed (no key press)
                 self._render(stdscr)
+
+    def _consume_theme_refresh(self) -> bool:
+        if self._theme_refresh_requested:
+            self._theme_refresh_requested = False
+            return True
+        return False
+
+    def _install_appearance_hook(self) -> None:
+        if not os.environ.get("TMUX"):
+            return
+
+        def _handle_signal(_signum: int, _frame: object | None) -> None:
+            self._theme_refresh_requested = True
+
+        signal.signal(signal.SIGUSR1, _handle_signal)
+
+        pid = str(os.getpid())
+        hook_cmd = f'if -F "#{{==:#{{hook_option}},@appearance_mode}}" "run-shell \'kill -USR1 {pid}\'"'
+        try:
+            subprocess.run(
+                ["tmux", "set-hook", "-g", "after-set-option", hook_cmd],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception:
+            return
 
     def _handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle key press.

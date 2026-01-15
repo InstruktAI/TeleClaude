@@ -66,9 +66,10 @@ class TestSessionsViewLogic:
         active_agent: str = "claude",
         thinking_mode: str = "slow",
         last_input: str | None = None,
-        last_input_at: str | None = None,
+        last_input_at: str | None = "2024-01-01T00:00:00Z",
         last_output: str | None = None,
-        last_output_at: str | None = None,
+        last_output_at: str | None = "2024-01-01T00:01:00Z",
+        last_activity: str = "2024-01-01T00:02:00Z",
         tmux_session_name: str | None = None,
         display_index: str = "1",
     ) -> SessionInfo:
@@ -80,8 +81,8 @@ class TestSessionsViewLogic:
             thinking_mode=thinking_mode,
             active_agent=active_agent,
             status=status,
-            created_at=None,
-            last_activity=None,
+            created_at="2024-01-01T00:00:00Z",
+            last_activity=last_activity,
             last_input=last_input,
             last_input_at=last_input_at,
             last_output=last_output,
@@ -225,7 +226,9 @@ class TestSessionsViewLogic:
             session_id="test-session-001",
             title="Test Session",
             last_input="Test input",
+            last_input_at="2024-01-01T00:00:00Z",
             last_output="Test output",
+            last_output_at="2024-01-01T00:01:00Z",
         )
         sessions_view.flat_items = [session]
         # Don't add to collapsed_sessions = expanded by default
@@ -335,7 +338,7 @@ class TestSessionsViewLogic:
 
     def test_last_input_output_labels_with_time(self, sessions_view, monkeypatch):
         """Last input/output render with short labels and relative time."""
-        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._relative_time", lambda _ts: "5m ago")
+        monkeypatch.setattr("teleclaude.cli.tui.views.sessions._format_time", lambda _ts: "17:43:21")
 
         session = self._make_session_node(
             session_id="s1",
@@ -349,8 +352,8 @@ class TestSessionsViewLogic:
         lines = sessions_view.get_render_lines(120, 10)
         output = "\n".join(lines)
 
-        assert "in: hello (5m ago)" in output
-        assert "out: world (5m ago)" in output
+        assert "[17:43:21] in: hello" in output
+        assert "[17:43:21] out: world" in output
 
     def test_double_clicking_session_id_row_shows_single_session(self, mock_focus):
         """Double-clicking the ID row shows only the parent session in the side pane."""

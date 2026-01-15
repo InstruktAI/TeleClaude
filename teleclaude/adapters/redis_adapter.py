@@ -27,7 +27,14 @@ from redis.asyncio import Redis
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import AgentHookEvents, EventType, TeleClaudeEvents, parse_command_string
+from teleclaude.core.events import (
+    AgentHookEvents,
+    EventType,
+    SessionLifecycleContext,
+    SessionUpdatedContext,
+    TeleClaudeEvents,
+    parse_command_string,
+)
 from teleclaude.core.models import (
     ChannelMetadata,
     CommandPayload,
@@ -40,6 +47,7 @@ from teleclaude.core.models import (
     RedisInboundMessage,
     Session,
     SessionSummary,
+    ThinkingMode,
     TodoInfo,
 )
 from teleclaude.core.protocols import RemoteExecutionProtocol
@@ -82,6 +90,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         # Store adapter client reference (ONLY interface to daemon)
         self.client = adapter_client
+        self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
+        self.client.on(TeleClaudeEvents.SESSION_CREATED, self._handle_session_created)
+        self.client.on(TeleClaudeEvents.SESSION_REMOVED, self._handle_session_removed)
 
         # Task registry for tracked background tasks
         self.task_registry = task_registry
@@ -286,11 +297,13 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         while self._running:
             try:
                 await self.refresh_peers_from_heartbeats()
-                await asyncio.sleep(self.heartbeat_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Peer refresh failed: %s", e)
+
+            # Always sleep interval, even on error, to prevent tight loops
+            await asyncio.sleep(self.heartbeat_interval)
 
     async def refresh_peers_from_heartbeats(self) -> None:
         """Refresh peer cache from heartbeat keys."""
@@ -1405,10 +1418,65 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     logger.trace("Computer %s is interested in %s", computer_name, interest_type)
 
             return interested_computers
-
         except Exception as e:
             logger.error("Failed to get interested computers: %s", e)
             return []
+
+    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
+        """Push local session updates to interested peers via Redis."""
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+
+        summary = SessionSummary(
+            session_id=session.session_id,
+            origin_adapter=session.origin_adapter,
+            title=session.title,
+            working_directory=session.working_directory,
+            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
+            active_agent=session.active_agent,
+            status="active",
+            created_at=session.created_at.isoformat() if session.created_at else None,
+            last_activity=session.last_activity.isoformat() if session.last_activity else None,
+            last_input=session.last_message_sent,
+            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
+            last_output=session.last_feedback_received,
+            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
+            tmux_session_name=session.tmux_session_name,
+            initiator_session_id=session.initiator_session_id,
+        )
+
+        await self._push_session_event_to_peers("session_updated", summary.to_dict())
+
+    async def _handle_session_created(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Push local session creations to interested peers via Redis."""
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+
+        summary = SessionSummary(
+            session_id=session.session_id,
+            origin_adapter=session.origin_adapter,
+            title=session.title,
+            working_directory=session.working_directory,
+            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
+            active_agent=session.active_agent,
+            status="active",
+            created_at=session.created_at.isoformat() if session.created_at else None,
+            last_activity=session.last_activity.isoformat() if session.last_activity else None,
+            last_input=session.last_message_sent,
+            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
+            last_output=session.last_feedback_received,
+            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
+            tmux_session_name=session.tmux_session_name,
+            initiator_session_id=session.initiator_session_id,
+        )
+
+        await self._push_session_event_to_peers("session_created", summary.to_dict())
+
+    async def _handle_session_removed(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Push local session removals to interested peers via Redis."""
+        await self._push_session_event_to_peers("session_removed", {"session_id": context.session_id})
 
     async def _pull_initial_sessions(self) -> None:
         """Pull existing sessions from remote computers that have registered interest.

@@ -2,7 +2,7 @@
 
 Provides file upload functionality:
 - Download files to persistent session storage
-- Detect Claude Code and format paths appropriately
+- Detect Agent and format paths appropriately
 - Send file paths to terminal for processing
 
 Extracted as adapter-agnostic utility following voice_message_handler.py pattern.
@@ -36,7 +36,7 @@ def sanitize_filename(filename: str) -> str:
     return safe if safe else "file"
 
 
-async def is_claude_code_running(tmux_session_name: str) -> bool:
+async def is_agent_running(tmux_session_name: str) -> bool:
     """Detect if Claude Code is running in the tmux session.
 
     Strategy: Check pane title for "claude" keyword
@@ -108,11 +108,11 @@ async def handle_file(
         )
         return
 
-    is_claude_running = await is_claude_code_running(session.tmux_session_name)
+    agent_running = await is_agent_running(session.tmux_session_name)
 
     # Build input text with absolute file path (remote AIs need full path)
     absolute_path = Path(file_path).resolve()
-    if is_claude_running:
+    if agent_running:
         input_text = f"@{absolute_path}"
         logger.info("Claude Code detected - sending file with @ prefix: %s", input_text)
     else:

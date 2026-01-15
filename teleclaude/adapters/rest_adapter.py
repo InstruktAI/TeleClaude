@@ -10,9 +10,8 @@ import asyncio
 import json
 import os
 import shlex
-import time
 import traceback
-from typing import TYPE_CHECKING, AsyncIterator, Literal
+from typing import TYPE_CHECKING, AsyncIterator, Callable, Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -44,7 +43,7 @@ from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
-from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, SessionSummary, ThinkingMode
 
 if TYPE_CHECKING:
@@ -55,12 +54,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-REST_RESTART_WINDOW_S = 60.0
-REST_RESTART_MAX = 5
-REST_RESTART_BACKOFF_S = 1.0
 REST_WS_PING_INTERVAL_S = 20.0
 REST_WS_PING_TIMEOUT_S = 20.0
 REST_TIMEOUT_KEEP_ALIVE_S = 5
+REST_STOP_TIMEOUT_S = 5.0
+
+RestServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
 
 class RESTAdapter(BaseAdapter):
@@ -90,9 +89,7 @@ class RESTAdapter(BaseAdapter):
         self.server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
         self._running = False
-        self._restart_lock = asyncio.Lock()
-        self._restart_attempts = 0
-        self._restart_window_start = 0.0
+        self._on_server_exit: RestServerExitHandler | None = None
 
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
@@ -107,17 +104,20 @@ class RESTAdapter(BaseAdapter):
 
         # Subscribe to local session updates
         self.client.on(
-            TeleClaudeEvents.SESSION_UPDATED,
-            self._handle_session_updated,
+            "session_updated",
+            self._handle_session_updated_event,
         )
         self.client.on(
-            TeleClaudeEvents.SESSION_TERMINATED,
-            self._handle_session_terminated,
+            "session_created",
+            self._handle_session_created_event,
+        )
+        self.client.on(
+            "session_removed",
+            self._handle_session_removed_event,
         )
 
-    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
-        """Forward local session updates to WebSocket clients."""
-        session = await db.get_session(context.session_id)
+    async def _emit_session_event(self, event: Literal["session_updated", "session_created"], session_id: str) -> None:
+        session = await db.get_session(session_id)
         if not session:
             return
 
@@ -140,13 +140,44 @@ class RESTAdapter(BaseAdapter):
         )
 
         dto = SessionSummaryDTO.from_core(summary, computer=config.computer.name)
-        event = SessionUpdateEventDTO(event="session_updated", data=dto)
-        self._on_cache_change(event.event, event.data.model_dump(exclude_none=True))
+        event_dto = SessionUpdateEventDTO(event=event, data=dto)
+        self._on_cache_change(event_dto.event, event_dto.data.model_dump(exclude_none=True))
 
-    async def _handle_session_terminated(self, _event: str, context: SessionLifecycleContext) -> None:
+    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
+        """Forward local session updates to WebSocket clients."""
+        await self._emit_session_event("session_updated", context.session_id)
+
+    async def _handle_session_created(self, _event: str, context: SessionLifecycleContext) -> None:
+        """Forward local session creations to WebSocket clients."""
+        await self._emit_session_event("session_created", context.session_id)
+
+    async def _handle_session_removed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Forward local session removals to WebSocket clients."""
         event = SessionRemovedEventDTO(data=SessionRemovedDataDTO(session_id=context.session_id))
         self._on_cache_change(event.event, event.data.model_dump(exclude_none=True))
+
+    async def _handle_session_updated_event(
+        self,
+        event: Literal["session_updated"],
+        context: SessionUpdatedContext,
+    ) -> None:
+        await self._handle_session_updated(event, context)
+
+    async def _handle_session_created_event(
+        self,
+        event: Literal["session_created", "session_removed"],
+        context: SessionLifecycleContext,
+    ) -> None:
+        if event == "session_created":
+            await self._handle_session_created(event, context)
+
+    async def _handle_session_removed_event(
+        self,
+        event: Literal["session_created", "session_removed"],
+        context: SessionLifecycleContext,
+    ) -> None:
+        if event == "session_removed":
+            await self._handle_session_removed(event, context)
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""
@@ -943,8 +974,9 @@ class RESTAdapter(BaseAdapter):
             getattr(self.server, "started", None),
         )
 
-        # Run server in background task
-        self.server_task = asyncio.create_task(self.server.serve())
+        # Run server in background task. Avoid uvicorn's signal handling to keep daemon in control.
+        serve_coro = self.server._serve() if hasattr(self.server, "_serve") else self.server.serve()
+        self.server_task = asyncio.create_task(serve_coro)
         self.server_task.add_done_callback(self._on_server_task_done)
 
         # Wait for server to be ready (socket file created and bound)
@@ -952,9 +984,23 @@ class RESTAdapter(BaseAdapter):
         for _ in range(max_retries):
             if self.server.started:
                 break
+            if self.server_task.done():
+                exc = self.server_task.exception()
+                raise RuntimeError("REST API server exited during startup") from exc
             await asyncio.sleep(0.1)
+        if not self.server.started:
+            raise TimeoutError("REST API server failed to start within timeout")
 
         logger.info("REST API server listening on %s", REST_SOCKET_PATH)
+
+    async def restart_server(self) -> None:
+        """Restart uvicorn server without tearing down adapter state."""
+        await self._stop_server()
+        await self._start_server()
+
+    def set_on_server_exit(self, handler: RestServerExitHandler | None) -> None:
+        """Set callback invoked when the uvicorn server task exits."""
+        self._on_server_exit = handler
 
     async def _stop_server(self) -> None:
         """Stop uvicorn server task safely."""
@@ -975,7 +1021,14 @@ class RESTAdapter(BaseAdapter):
 
         if self.server_task:
             try:
-                await self.server_task
+                await asyncio.wait_for(self.server_task, timeout=REST_STOP_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out stopping REST server; cancelling task")
+                self.server_task.cancel()
+                try:
+                    await self.server_task
+                except asyncio.CancelledError:
+                    pass
             except asyncio.CancelledError:
                 pass
             except Exception as e:
@@ -1045,11 +1098,15 @@ class RESTAdapter(BaseAdapter):
             logger.warning("Failed to remove REST socket %s: %s", REST_SOCKET_PATH, e)
 
     def _on_server_task_done(self, task: asyncio.Task[object]) -> None:
-        """Handle unexpected server exit and schedule restart."""
+        """Handle server exit and notify lifecycle owner."""
         if not self._running:
             return
 
-        exc = task.exception()
+        try:
+            exc = task.exception()
+        except asyncio.CancelledError:
+            logger.debug("REST API server task cancelled")
+            return
         server_started = getattr(self.server, "started", None) if self.server else None
         server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
         socket_exists = os.path.exists(REST_SOCKET_PATH)
@@ -1065,43 +1122,14 @@ class RESTAdapter(BaseAdapter):
             )
         else:
             logger.error(
-                "REST API server task exited unexpectedly (started=%s should_exit=%s socket=%s); restarting",
+                "REST API server task exited unexpectedly (started=%s should_exit=%s socket=%s)",
                 server_started,
                 server_should_exit,
                 socket_exists,
             )
 
-        if self.task_registry:
-            self.task_registry.spawn(self._restart_server("server_task_done"), name="rest-restart")
-        else:
-            asyncio.create_task(self._restart_server("server_task_done"))
-
-    async def _restart_server(self, reason: str) -> bool:
-        """Restart REST API server with backoff and attempt limits."""
-        async with self._restart_lock:
-            now = time.monotonic()
-            if self._restart_window_start == 0.0 or (now - self._restart_window_start) > REST_RESTART_WINDOW_S:
-                self._restart_window_start = now
-                self._restart_attempts = 0
-
-            self._restart_attempts += 1
-            if self._restart_attempts > REST_RESTART_MAX:
-                logger.error(
-                    "REST restart limit exceeded; leaving server down (reason=%s attempts=%d)",
-                    reason,
-                    self._restart_attempts,
-                )
-                return False
-
-            logger.warning(
-                "Restarting REST API server (reason=%s attempt=%d)",
-                reason,
-                self._restart_attempts,
-            )
-            await asyncio.sleep(REST_RESTART_BACKOFF_S)
-            await self._stop_server()
-            await self._start_server()
-            return True
+        if self._on_server_exit:
+            self._on_server_exit(exc, server_started, server_should_exit, socket_exists)
 
     # ==================== BaseAdapter abstract methods (mostly no-ops) ====================
 

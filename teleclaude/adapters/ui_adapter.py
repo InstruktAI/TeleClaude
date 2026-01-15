@@ -456,41 +456,45 @@ class UiAdapter(BaseAdapter):
         if not session:
             return
 
+        title_updated = False
+
         # Handle direct title update (from summary)
         if "title" in updated_fields:
             new_title = str(updated_fields["title"])
             await self.client.update_channel_title(session, new_title)
             logger.info("Synced title to UiAdapters for session %s: %s", session_id[:8], new_title)
-            return  # Title already includes everything, skip working_directory handling
+            title_updated = True
 
-        # Check if working_directory changed
-        if "working_directory" not in updated_fields:
-            return
+        # working_directory update adjusts the path portion in the title
+        if not title_updated and "working_directory" in updated_fields:
+            new_path = str(updated_fields["working_directory"])
 
-        # working_directory was updated - session is already updated in db
-        new_path = str(updated_fields["working_directory"])
+            # Extract last 2 path components
+            path_parts = Path(new_path).parts
+            last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
 
-        # Extract last 2 path components
-        path_parts = Path(new_path).parts
-        last_two = "/".join(path_parts[-2:]) if len(path_parts) >= 2 else path_parts[-1] if path_parts else ""
+            # Parse old title and replace path portion in brackets
+            # Title format: $ComputerName[old/path] - Description
+            # We want: $ComputerName[new/path] - Description
+            title_pattern = r"^(\$\w+\[)[^\]]+(\]\[.*)$"
+            match = re.match(title_pattern, session.title)
 
-        # Parse old title and replace path portion in brackets
-        # Title format: $ComputerName[old/path] - Description
-        # We want: $ComputerName[new/path] - Description
-        title_pattern = r"^(\$\w+\[)[^\]]+(\]\[.*)$"
-        match = re.match(title_pattern, session.title)
+            if not match:
+                logger.warning(
+                    "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
+                    session_id[:8],
+                    session.title,
+                )
+            else:
+                # Replace path portion in brackets
+                new_title = f"{match.group(1)}{last_two}{match.group(2)}"
 
-        if not match:
-            logger.warning(
-                "Session %s title doesn't match expected format '$Computer[path] - Description': %s. Skipping title update.",
-                session_id[:8],
-                session.title,
-            )
-            return
+                # Update via client to distribute to all adapters
+                await self.client.update_channel_title(session, new_title)
+                logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
-        # Replace path portion in brackets
-        new_title = f"{match.group(1)}{last_two}{match.group(2)}"
-
-        # Update via client to distribute to all adapters
-        await self.client.update_channel_title(session, new_title)
-        logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
+        # Handle summary output updates
+        if "last_feedback_received" in updated_fields:
+            summary = session.last_feedback_received or ""
+            if summary:
+                await self.send_feedback(session, summary, metadata=MessageMetadata(adapter_type="internal"))

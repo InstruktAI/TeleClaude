@@ -8,11 +8,7 @@ import pytest
 
 from teleclaude.core import file_handler, terminal_io
 from teleclaude.core.events import FileEventContext
-from teleclaude.core.models import (
-    Session,
-    SessionAdapterMetadata,
-    TelegramAdapterMetadata,
-)
+from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
 
 
 @pytest.fixture
@@ -66,35 +62,35 @@ class TestIsClaudeCodeRunning:
     async def test_detects_claude_in_title(self):
         """Test detection when 'claude' is in pane title."""
         with patch("teleclaude.core.file_handler.terminal_bridge.get_pane_title", return_value="claude"):
-            result = await file_handler.is_claude_code_running("test_session")
+            result = await file_handler.is_agent_running("test_session")
             assert result is True
 
     @pytest.mark.asyncio
     async def test_detects_claude_case_insensitive(self):
         """Test case-insensitive detection."""
         with patch("teleclaude.core.file_handler.terminal_bridge.get_pane_title", return_value="Running Claude Code"):
-            result = await file_handler.is_claude_code_running("test_session")
+            result = await file_handler.is_agent_running("test_session")
             assert result is True
 
     @pytest.mark.asyncio
     async def test_returns_false_for_other_process(self):
         """Test returns False when Claude not detected."""
         with patch("teleclaude.core.file_handler.terminal_bridge.get_pane_title", return_value="vim"):
-            result = await file_handler.is_claude_code_running("test_session")
+            result = await file_handler.is_agent_running("test_session")
             assert result is False
 
     @pytest.mark.asyncio
     async def test_handles_none_title(self):
         """Test handles None return from get_pane_title."""
         with patch("teleclaude.core.file_handler.terminal_bridge.get_pane_title", return_value=None):
-            result = await file_handler.is_claude_code_running("test_session")
+            result = await file_handler.is_agent_running("test_session")
             assert result is False
 
     @pytest.mark.asyncio
     async def test_handles_exception(self):
         """Test handles exception from terminal_bridge."""
         with patch("teleclaude.core.file_handler.terminal_bridge.get_pane_title", side_effect=Exception("tmux error")):
-            result = await file_handler.is_claude_code_running("test_session")
+            result = await file_handler.is_agent_running("test_session")
             assert result is False
 
 
@@ -197,7 +193,7 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
+            patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
@@ -232,7 +228,7 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.is_claude_code_running", return_value=False),
+            patch("teleclaude.core.file_handler.is_agent_running", return_value=False),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
@@ -267,7 +263,7 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
+            patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
             patch("teleclaude.core.file_handler.db.update_last_activity"),
         ):
@@ -300,7 +296,7 @@ class TestHandleFile:
         with (
             patch("teleclaude.core.file_handler.db.get_session", return_value=mock_session),
             patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.is_claude_code_running", return_value=True),
+            patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
             patch("teleclaude.core.file_handler.terminal_io.send_text", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
