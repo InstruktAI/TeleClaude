@@ -75,3 +75,17 @@ Priority fixes:
 1. Fix the research command frontmatter and tool references so the workflow is runnable.
 2. Add purpose metadata to index entries and update the script to maintain it.
 3. Add an end-to-end test for the research workflow.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Malformed YAML frontmatter in research-docs.md | Fixed frontmatter by adding newline before closing --- | 605ba84 |
+| Undefined tool references (google_web_search, web_fetch) | Replaced with WebSearch and WebFetch | 605ba84 |
+| Missing purpose field in index entries | Added --purpose parameter to script, updated update_index() function, manually added purpose to all existing index entries, updated command documentation | 161caed |
+| Missing return type annotations in research_docs.py | Added return type annotations to update_index() and main() | 161caed |
+| Unused imports in test_research_docs.py | Removed unused imports (shutil, datetime, StringIO, main), moved MagicMock to top-level import | da56358 |
+| Missing purpose parameter in test calls | Updated test_update_index_new and test_update_index_existing to include purpose parameter and assertions | da56358 |
+| No integration test for end-to-end workflow | Created test_research_docs_workflow.py integration test that verifies script execution, doc creation, and index update | e461f6a |
