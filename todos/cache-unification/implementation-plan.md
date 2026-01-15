@@ -1,39 +1,61 @@
 # Implementation Plan: Cache Unification for Session UI Updates
 
-## Phase 1: Canonical session events
+## Architecture
 
-- [ ] Add `session_created` and `session_removed` to `teleclaude/core/events.py` alongside `session_updated`.
-- [ ] Ensure the cache emits these three events as the canonical session lifecycle events.
-- [ ] Define a single internal event callback that dispatches these events to subscribers by event constants.
- - [ ] Implement the callback as a DB-layer post-commit hook on session lifecycle methods (`create_session`, `update_session`, `delete_session`) so cache updates are centralized.
+Adapters register their own event handlers via `client.on()` in their `__init__`. The REST adapter owns the cache and is responsible for updating it when session events occur.
 
-## Phase 2: Cache is authoritative for local sessions
+Event flow:
+```
+DB method → client.handle_event() → REST adapter handler → cache.update_session() → cache._notify() → REST _on_cache_change() → WS broadcast
+```
 
-- [ ] On local session creation, update cache with the new session summary and emit `session_created`.
-- [ ] On local session removal, remove the session from cache and emit `session_removed`.
-- [ ] On local session updates, update cache and emit `session_updated`.
-- [ ] Ensure local session summaries match the shape used by remote session summaries.
+## Already Complete
 
-## Phase 3: WS broadcasts from cache only
+- ✅ Session lifecycle events defined in `events.py`
+- ✅ Adapters receive `client` in `__init__` and register handlers via `client.on()`
+- ✅ DB layer emits `SESSION_CREATED` and `SESSION_UPDATED` via `client.handle_event()`
+- ✅ REST adapter owns the cache and subscribes to cache changes (`_on_cache_change`)
+- ✅ Redis adapter registers handlers using `TeleClaudeEvents.*` constants
+- ✅ UiAdapter registers handlers using `TeleClaudeEvents.*` constants
+- ✅ TUI handles session events correctly
 
-- [ ] REST WS broadcasts session events only from cache notifications.
-- [ ] Initial snapshot responses (`sessions_initial`) remain as subscribe responses.
+## The Problem
 
-## Phase 4: TUI session behavior
+REST adapter already registers for session events (lines 106-117), but:
+1. Uses string literals instead of `TeleClaudeEvents.*` constants
+2. Handlers bypass the cache - they manually call `_on_cache_change()` instead of `cache.update_session()`
 
-- [ ] Sessions view subscribes to `session_created`, `session_removed`, `session_updated`.
-- [ ] Sessions view triggers full refresh only on `session_created` and `session_removed`.
-- [ ] Sessions view applies incremental updates on `session_updated`.
-- [ ] Preparation view remains unchanged and does not subscribe to session events.
+## Phase 1: Fix REST adapter handlers to use cache
 
-## Phase 5: Tests
+In `teleclaude/adapters/rest_adapter.py`:
 
-- [ ] Add tests for cache mutation on local create, update, remove.
-- [ ] Add tests that WS session events are emitted from cache changes.
-- [ ] Add tests for TUI session refresh vs incremental update behavior.
+- [ ] Change `_handle_session_created_event()` to call `self.cache.update_session(summary)` instead of `_on_cache_change()`
+- [ ] Change `_handle_session_updated_event()` to call `self.cache.update_session(summary)` instead of `_on_cache_change()`
+- [ ] Change `_handle_session_removed_event()` to call `self.cache.remove_session(session_id)` instead of `_on_cache_change()`
+- [ ] Delete `_emit_session_event()` helper (no longer needed)
+- [ ] Delete `_handle_session_updated()`, `_handle_session_created()`, `_handle_session_removed()` intermediate methods
 
-## Phase 6: Validation
+The cache subscription (`_on_cache_change`) will handle WS broadcasts automatically.
 
-- [ ] Verify local create emits `session_created` and triggers refresh.
-- [ ] Verify local remove emits `session_removed` and triggers refresh.
-- [ ] Verify local updates emit `session_updated` and do not trigger refresh.
+## Phase 2: Use constants instead of string literals
+
+In `teleclaude/adapters/rest_adapter.py` `__init__`:
+
+- [ ] Change `"session_updated"` → `TeleClaudeEvents.SESSION_UPDATED`
+- [ ] Change `"session_created"` → `TeleClaudeEvents.SESSION_CREATED`
+- [ ] Change `"session_removed"` → `TeleClaudeEvents.SESSION_REMOVED`
+
+## Phase 3: Tests
+
+- [ ] Add test: `db.create_session()` → REST handler → cache updated → WS broadcast
+- [ ] Add test: `db.update_session()` → REST handler → cache updated → WS broadcast
+- [ ] Add test: `session_removed` event → REST handler → cache updated → WS broadcast
+- [ ] Verify existing tests still pass
+
+## Phase 4: Validation
+
+- [ ] `make lint` passes
+- [ ] `make test` passes
+- [ ] Manual test: Create session via Telegram, verify TUI updates
+- [ ] Manual test: Update session title, verify TUI updates incrementally
+- [ ] Manual test: Delete Telegram topic, verify TUI removes session
