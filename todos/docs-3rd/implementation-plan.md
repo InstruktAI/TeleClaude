@@ -2,8 +2,8 @@
 
 ## Phase 1: Structure
 
-- [ ] Create `docs/3rd/` folder.
-- [ ] Add `docs/3rd/index.md` with a simple, sortable list of docs.
+- [x] Create `docs/3rd/` folder.
+- [x] Add `docs/3rd/index.md` with a simple, sortable list of docs.
 
 ## Phase 2: Research workflow
 
