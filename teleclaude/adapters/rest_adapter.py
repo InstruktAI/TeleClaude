@@ -81,7 +81,7 @@ class RESTAdapter(BaseAdapter):
             task_registry: Optional TaskRegistry for tracking background tasks
         """
         self.client = client
-        self.cache = cache
+        self._cache = cache
         self.task_registry = task_registry
         self.app = FastAPI(title="TeleClaude API", version="1.0.0")
         self._setup_routes()
@@ -98,10 +98,6 @@ class RESTAdapter(BaseAdapter):
         # Track previous interest to remove stale entries
         self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
 
-        # Subscribe to cache changes
-        if self.cache:
-            self.cache.subscribe(self._on_cache_change)
-
         # Subscribe to local session updates
         self.client.on(
             TeleClaudeEvents.SESSION_UPDATED,
@@ -115,6 +111,21 @@ class RESTAdapter(BaseAdapter):
             TeleClaudeEvents.SESSION_REMOVED,
             self._handle_session_removed_event,
         )
+
+    @property
+    def cache(self) -> "DaemonCache | None":
+        """Get cache reference."""
+        return self._cache
+
+    @cache.setter
+    def cache(self, value: "DaemonCache | None") -> None:
+        """Set cache reference and subscribe to changes."""
+        if self._cache:
+            self._cache.unsubscribe(self._on_cache_change)
+        self._cache = value
+        if value:
+            value.subscribe(self._on_cache_change)
+            logger.info("REST adapter subscribed to cache notifications")
 
     async def _handle_session_updated_event(
         self,
