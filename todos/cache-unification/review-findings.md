@@ -62,6 +62,17 @@
 - Session summary construction is centralized via `SessionSummary.from_db_session`, reducing duplication and drift.
 - Integration coverage now exercises the local DB → AdapterClient → REST → cache → WS chain (under test wiring).
 
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| RESTAdapter cache subscription timing | Converted `cache` to property with setter that subscribes/unsubscribes automatically when cache is set (matching RedisAdapter pattern). Now WS broadcasts fire correctly when cache is wired post-init. | b249e0e |
+| Integration test didn't cover production cache wiring | Added `test_rest_adapter_cache_wired_post_init` that constructs RESTAdapter without cache, then sets cache post-init (mirroring DaemonLifecycle.startup). Verifies WS broadcasts work correctly. | 2f9ede6 |
+
+All critical and important issues have been addressed. Tests passing (61 passed). Ready for re-review.
+
 ## Verdict
 
 **[ ] APPROVE** - Ready to merge
