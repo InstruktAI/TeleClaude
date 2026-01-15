@@ -7,7 +7,7 @@
 ---
 
 - [>] cache-unification
-- [.] context-ai
+- [>] context-ai
 - [ ] postgres-migration
 ## Work Preparation Pipeline
 
