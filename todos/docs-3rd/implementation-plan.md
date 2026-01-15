@@ -7,7 +7,7 @@
 
 ## Phase 2: Research workflow
 
-- [ ] Add a skill or command that:
+- [x] Add a skill or command that:
   - Takes a short research brief
   - Fetches authoritative sources
   - Produces a concise markdown doc in `docs/3rd/`
