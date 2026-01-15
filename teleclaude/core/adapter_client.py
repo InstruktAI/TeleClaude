@@ -314,6 +314,8 @@ class AdapterClient:
         if not origin_ui:
             results = await self._broadcast_to_ui_adapters(session, method, make_task)
             for _, result in results:
+                if isinstance(result, Exception):
+                    continue
                 if result:  # first truthy wins
                     return result
             return None

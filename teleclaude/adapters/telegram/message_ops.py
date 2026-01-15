@@ -271,7 +271,7 @@ class MessageOperationsMixin:
         self._ensure_started()
 
         try:
-            await self._delete_message_with_retry(message_id)
+            await self._delete_message_with_retry(int(message_id))
             return True
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)
@@ -284,9 +284,9 @@ class MessageOperationsMixin:
             return False
 
     @command_retry(max_retries=3, max_timeout=15.0)
-    async def _delete_message_with_retry(self, message_id: str) -> None:
+    async def _delete_message_with_retry(self, message_id: int) -> None:
         """Delete message with retry logic."""
-        await self.bot.delete_message(chat_id=self.supergroup_id, message_id=int(message_id))
+        await self.bot.delete_message(chat_id=self.supergroup_id, message_id=message_id)
 
     async def send_file(
         self,
