@@ -43,8 +43,8 @@ from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
-from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, SessionSummary, ThinkingMode
+from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, SessionSummary
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -104,80 +104,55 @@ class RESTAdapter(BaseAdapter):
 
         # Subscribe to local session updates
         self.client.on(
-            "session_updated",
+            TeleClaudeEvents.SESSION_UPDATED,
             self._handle_session_updated_event,
         )
         self.client.on(
-            "session_created",
+            TeleClaudeEvents.SESSION_CREATED,
             self._handle_session_created_event,
         )
         self.client.on(
-            "session_removed",
+            TeleClaudeEvents.SESSION_REMOVED,
             self._handle_session_removed_event,
         )
 
-    async def _emit_session_event(self, event: Literal["session_updated", "session_created"], session_id: str) -> None:
-        session = await db.get_session(session_id)
-        if not session:
-            return
-
-        summary = SessionSummary(
-            session_id=session.session_id,
-            origin_adapter=session.origin_adapter,
-            title=session.title,
-            working_directory=session.working_directory,
-            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
-            active_agent=session.active_agent,
-            status="active",
-            created_at=session.created_at.isoformat() if session.created_at else None,
-            last_activity=session.last_activity.isoformat() if session.last_activity else None,
-            last_input=session.last_message_sent,
-            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
-            last_output=session.last_feedback_received,
-            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
-            tmux_session_name=session.tmux_session_name,
-            initiator_session_id=session.initiator_session_id,
-        )
-
-        dto = SessionSummaryDTO.from_core(summary, computer=config.computer.name)
-        event_dto = SessionUpdateEventDTO(event=event, data=dto)
-        self._on_cache_change(event_dto.event, event_dto.data.model_dump(exclude_none=True))
-
-    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
-        """Forward local session updates to WebSocket clients."""
-        await self._emit_session_event("session_updated", context.session_id)
-
-    async def _handle_session_created(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Forward local session creations to WebSocket clients."""
-        await self._emit_session_event("session_created", context.session_id)
-
-    async def _handle_session_removed(self, _event: str, context: SessionLifecycleContext) -> None:
-        """Forward local session removals to WebSocket clients."""
-        event = SessionRemovedEventDTO(data=SessionRemovedDataDTO(session_id=context.session_id))
-        self._on_cache_change(event.event, event.data.model_dump(exclude_none=True))
-
     async def _handle_session_updated_event(
         self,
-        event: Literal["session_updated"],
+        _event: str,
         context: SessionUpdatedContext,
     ) -> None:
-        await self._handle_session_updated(event, context)
+        """Handle local session update by updating cache."""
+        if not self.cache:
+            return
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+        summary = SessionSummary.from_db_session(session, computer=config.computer.name)
+        self.cache.update_session(summary)
 
     async def _handle_session_created_event(
         self,
-        event: Literal["session_created", "session_removed"],
+        _event: str,
         context: SessionLifecycleContext,
     ) -> None:
-        if event == "session_created":
-            await self._handle_session_created(event, context)
+        """Handle local session creation by updating cache."""
+        if not self.cache:
+            return
+        session = await db.get_session(context.session_id)
+        if not session:
+            return
+        summary = SessionSummary.from_db_session(session, computer=config.computer.name)
+        self.cache.update_session(summary)
 
     async def _handle_session_removed_event(
         self,
-        event: Literal["session_created", "session_removed"],
+        _event: str,
         context: SessionLifecycleContext,
     ) -> None:
-        if event == "session_removed":
-            await self._handle_session_removed(event, context)
+        """Handle local session removal by updating cache."""
+        if not self.cache:
+            return
+        self.cache.remove_session(context.session_id)
 
     def _setup_routes(self) -> None:
         """Set up all HTTP endpoints."""

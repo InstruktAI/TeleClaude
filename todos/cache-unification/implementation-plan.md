@@ -29,11 +29,11 @@ REST adapter already registers for session events (lines 106-117), but:
 
 In `teleclaude/adapters/rest_adapter.py`:
 
-- [ ] Change `_handle_session_created_event()` to call `self.cache.update_session(summary)` instead of `_on_cache_change()`
-- [ ] Change `_handle_session_updated_event()` to call `self.cache.update_session(summary)` instead of `_on_cache_change()`
-- [ ] Change `_handle_session_removed_event()` to call `self.cache.remove_session(session_id)` instead of `_on_cache_change()`
-- [ ] Delete `_emit_session_event()` helper (no longer needed)
-- [ ] Delete `_handle_session_updated()`, `_handle_session_created()`, `_handle_session_removed()` intermediate methods
+- [x] Change `_handle_session_created_event()` to call `self.cache.update_session(summary)` instead of `_on_cache_change()`
+- [x] Change `_handle_session_updated_event()` to call `self.cache.update_session(summary)` instead of `_on_cache_change()`
+- [x] Change `_handle_session_removed_event()` to call `self.cache.remove_session(session_id)` instead of `_on_cache_change()`
+- [x] Delete `_emit_session_event()` helper (no longer needed)
+- [x] Delete `_handle_session_updated()`, `_handle_session_created()`, `_handle_session_removed()` intermediate methods
 
 The cache subscription (`_on_cache_change`) will handle WS broadcasts automatically.
 
@@ -41,9 +41,9 @@ The cache subscription (`_on_cache_change`) will handle WS broadcasts automatica
 
 In `teleclaude/adapters/rest_adapter.py` `__init__`:
 
-- [ ] Change `"session_updated"` → `TeleClaudeEvents.SESSION_UPDATED`
-- [ ] Change `"session_created"` → `TeleClaudeEvents.SESSION_CREATED`
-- [ ] Change `"session_removed"` → `TeleClaudeEvents.SESSION_REMOVED`
+- [x] Change `"session_updated"` → `TeleClaudeEvents.SESSION_UPDATED`
+- [x] Change `"session_created"` → `TeleClaudeEvents.SESSION_CREATED`
+- [x] Change `"session_removed"` → `TeleClaudeEvents.SESSION_REMOVED`
 
 ## Phase 3: Tests
 

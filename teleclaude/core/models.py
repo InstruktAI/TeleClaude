@@ -565,6 +565,28 @@ class SessionSummary:
         }
 
     @classmethod
+    def from_db_session(cls, session: "Session", computer: Optional[str] = None) -> "SessionSummary":
+        """Create from database Session object."""
+        return cls(
+            session_id=session.session_id,
+            origin_adapter=session.origin_adapter,
+            title=session.title,
+            working_directory=session.working_directory,
+            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
+            active_agent=session.active_agent,
+            status="active",
+            created_at=session.created_at.isoformat() if session.created_at else None,
+            last_activity=session.last_activity.isoformat() if session.last_activity else None,
+            last_input=session.last_message_sent,
+            last_input_at=session.last_message_sent_at.isoformat() if session.last_message_sent_at else None,
+            last_output=session.last_feedback_received,
+            last_output_at=session.last_feedback_received_at.isoformat() if session.last_feedback_received_at else None,
+            tmux_session_name=session.tmux_session_name,
+            initiator_session_id=session.initiator_session_id,
+            computer=computer,
+        )
+
+    @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "SessionSummary":  # guard: loose-dict
         """Create from dict."""
         return cls(
