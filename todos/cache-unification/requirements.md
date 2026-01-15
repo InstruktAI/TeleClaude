@@ -2,46 +2,42 @@
 
 ## Objective
 
-Make the cache the sole source of truth for session list updates in the UI. WebSocket updates must be derived from cache mutations, and all local session lifecycle changes must update the cache. The TUI must refresh only when sessions are added or removed, while session updates remain incremental.
+Make the cache the sole source of truth for session list updates in the UI. WebSocket updates must be derived from cache mutations, not bypass them.
 
-## Outcomes
+## Current State
 
-### O1: Cache is authoritative for session lifecycle
+The following are already implemented:
+- Session lifecycle events defined in `events.py`
+- Adapters register handlers via `client.on()` in their `__init__`
+- DB layer emits events on `create_session()` and `update_session()`
+- REST adapter owns the cache and subscribes to cache changes for WS broadcasts
+- Redis adapter and UiAdapter use `TeleClaudeEvents.*` constants
+- TUI correctly handles incremental updates vs full refresh
 
-All local session lifecycle changes update the cache, and the cache holds the complete session list that the UI consumes.
+## The Problem
 
-### O2: Canonical session lifecycle events
+REST adapter registers for session events but bypasses the cache:
+- Handlers call `_on_cache_change()` directly instead of `cache.update_session()`
+- Uses string literals instead of `TeleClaudeEvents.*` constants
 
-Session lifecycle events are defined once in `teleclaude/core/events.py` and used consistently by cache, WS broadcast, and TUI.
+## Remaining Work
 
-Required session lifecycle events:
-- `session_created`
-- `session_removed`
-- `session_updated`
+### O1: REST adapter handlers must update cache
 
-### O2.1: Single internal event callback
+Change handlers to call `cache.update_session()` / `cache.remove_session()` instead of bypassing.
+Cache notification via `_on_cache_change()` will handle WS broadcasts automatically.
 
-Session lifecycle events are emitted through a single internal callback mechanism. Consumers subscribe by event constants (not string literals).
+### O2: Use event constants
 
-### O3: WS broadcasts derive only from cache
-
-WebSocket updates for sessions are emitted only from cache mutations. There are no parallel WS event sources for sessions.
-
-### O4: TUI behavior for sessions
-
-- `session_updated` updates a single session in place and does not trigger full refresh.
-- `session_created` and `session_removed` trigger a full refresh to rebuild the sessions list and related UI state.
-- Preparation view does not subscribe to session events.
+Change string literals to `TeleClaudeEvents.*` constants for consistency with other adapters.
 
 ## Acceptance Criteria
 
-- [ ] Local session creation results in cache mutation and a `session_created` WS event.
-- [ ] Local session removal results in cache mutation and a `session_removed` WS event.
-- [ ] Local session updates result in cache mutation and a `session_updated` WS event.
-- [ ] WS session events originate only from cache changes.
-- [ ] Sessions view refreshes only on `session_created` and `session_removed`.
-- [ ] Sessions view applies incremental updates on `session_updated`.
-- [ ] Preparation view has no session event subscriptions.
-- [ ] Event consumers subscribe using event constants, not string literals.
-- [ ] Tests cover session lifecycle WS behavior and pass.
-- [ ] Lint passes.
+- [x] Session lifecycle events defined in `events.py`
+- [x] Adapters register handlers via `client.on()`
+- [x] Remote sessions update cache and trigger WS broadcasts
+- [x] TUI handles events correctly
+- [ ] REST adapter handlers update cache (not bypass it)
+- [ ] REST adapter uses `TeleClaudeEvents.*` constants
+- [ ] Tests cover local session lifecycle → cache → WS flow
+- [ ] Lint passes

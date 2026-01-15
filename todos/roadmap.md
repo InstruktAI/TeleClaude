@@ -9,7 +9,7 @@
 - [>] cache-unification
 - [>] context-ai
 - [>] docs-3rd
-- [ ] postgres-migration
+
 ## Work Preparation Pipeline
 
 ---
@@ -20,4 +20,4 @@
 
 ## Test Suite Quality Cleanup
 
-  Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
+Refactor test suite to verify observable behavior, add docstrings, document system boundaries.
