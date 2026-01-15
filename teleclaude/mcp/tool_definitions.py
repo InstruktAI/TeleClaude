@@ -259,7 +259,8 @@ def get_tool_definitions() -> list[Tool]:
             description=(
                 "Retrieve session data from a remote computer's Claude Code session. "
                 "Reads from the claude_session_file which contains complete session history. "
-                "By default returns last 2000 chars. Use timestamp filters to scrub through history. "
+                "By default returns last 2000 chars. Start with the default; increase tail_chars only when needed. "
+                "Use timestamp filters to scrub through history. "
                 "Returns `status: 'error'` if session has ended or is missing (no transcript returned). "
                 "**Use this to check on delegated work** after teleclaude__send_message. "
                 "**Supervising Worker AI Sessions:** "
@@ -297,6 +298,7 @@ def get_tool_definitions() -> list[Tool]:
                         "type": "integer",
                         "description": (
                             "Max characters to return from end of transcript. Default: 2000. "
+                            "Keep the default unless you need more context; use timestamps for paging. "
                             "Set to 0 for unlimited request, but responses are capped at 48,000 chars. "
                             "Use since_timestamp / until_timestamp to fetch more."
                         ),
@@ -453,7 +455,8 @@ def get_tool_definitions() -> list[Tool]:
                 "Phase A state machine: Check preparation state and return instructions. "
                 "Checks for requirements.md and implementation-plan.md, returns exact command to dispatch. "
                 "If roadmap is empty, dispatches roadmap grooming. "
-                "Call this to prepare a work item before building."
+                "Call this to prepare a work item before building. "
+                'Use slug "input" to capture the latest session into a new todos/*/input.md.'
             ),
             inputSchema={
                 "type": "object",
