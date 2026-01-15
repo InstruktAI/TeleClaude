@@ -14,3 +14,8 @@
 - File: `codex-cli-hooks.md`
 - Source: OpenAI Codex CLI / app-server docs
 - Last Updated: 2026-01-15
+## OpenAI Realtime API Events
+- File: `openai-realtime-api.md`
+- Source: https://platform.openai.com/docs/api-reference/realtime-server-events
+- Last Updated: 2026-01-15
+

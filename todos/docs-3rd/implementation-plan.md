@@ -20,5 +20,5 @@
 
 ## Phase 4: Validation
 
-- [ ] Run the workflow once end‑to‑end to generate at least one doc.
-- [ ] Verify index update and readability.
+- [x] Run the workflow once end‑to‑end to generate at least one doc.
+- [x] Verify index update and readability.
