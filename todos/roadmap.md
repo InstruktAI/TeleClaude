@@ -7,7 +7,6 @@
 ---
 
 - [>] cache-unification
-- [>] docs-3rd
 - [.] context-ai
 - [ ] postgres-migration
 ## Work Preparation Pipeline
