@@ -24,7 +24,7 @@ The resulting docs and index are structured so the context assembler can select 
 
 ## Acceptance Criteria
 
-- [ ] `docs/3rd/` exists with a clear index file.
-- [ ] Research workflow creates new vendor docs without manual formatting.
-- [ ] Index is updated on every new or refreshed doc.
-- [ ] Docs are concise, source‑linked, and usable for follow‑on work.
+- [x] `docs/3rd/` exists with a clear index file.
+- [x] Research workflow creates new vendor docs without manual formatting.
+- [x] Index is updated on every new or refreshed doc.
+- [x] Docs are concise, source‑linked, and usable for follow‑on work.
