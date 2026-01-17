@@ -5,28 +5,47 @@ Define the human‑readable requirements for the OpenAPI spec. The spec is gener
 
 ## Endpoints
 
-### POST /commands
-Accept a command request and return the command response envelope immediately.
+### POST /sessions
+Create a session. Request maps to internal `create_session` command.
 
-### GET /commands/{command_id}
-Return the status of a command by `command_id`.
+### POST /sessions/{session_id}/messages
+Send a user message to a session. Maps to internal `send_message` command.
+
+### POST /sessions/{session_id}/commands
+Send a command to a session. Maps to internal `agent_command` command.
+
+### POST /sessions/{session_id}/agent/restart
+Restart an agent for a session. Maps to internal `agent_restart` command.
+
+### POST /sessions/{session_id}/agent/resume
+Resume an agent using native session id. Maps to internal `agent_resume` command.
+
+### DELETE /sessions/{session_id}
+End a session. Maps to internal `end_session` command.
+
+### GET /requests/{request_id}
+Return the status of an asynchronous request by `request_id`.
 
 ## Request Requirements
 
-### Command Request
-- Must include: `command`, `payload`
-- `command` is one of: `create_session`, `agent_restart`, `agent_command`, `send_message`, `end_session`
-- `payload` fields are defined in `docs/command-contracts.md`
+### REST Requests
+Each endpoint accepts a REST‑native payload and is translated into the internal command contract.
+
+Payload fields and implicit behavior are defined in `docs-v2/contracts/command-contracts.md`.
 
 ## Response Requirements
 
-### Command Response (immediate)
-- Must include: `command_id`
+### Response Envelope (immediate)
+- Must include: `request_id`
 - Must include: `expected_events` (ordered list)
 - Must include: `event_timeouts_ms` (per event)
 - May include: `partial_result`
 
-### Command Status
-- Must include: `command_id`, `status`
+### Request Status
+- Must include: `request_id`, `status`
 - `status` is one of: `queued`, `running`, `success`, `failed`
 - May include: `last_event`, `error`
+
+## Naming
+
+`request_id` is the public name. Internally this maps to the command pipeline’s `command_id`.

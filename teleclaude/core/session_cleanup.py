@@ -92,6 +92,7 @@ async def terminate_session(
     session: Optional["Session"] = None,
     kill_tmux: bool | None = None,
     delete_channel: bool = True,
+    delete_db: bool = False,
 ) -> bool:
     """Terminate a session and mark it closed in the DB.
 
@@ -109,6 +110,9 @@ async def terminate_session(
     session = session or await db.get_session(session_id)
     if not session:
         logger.debug("Session %s not found for termination", session_id[:8])
+        return False
+    if session.closed_at and not delete_db:
+        logger.debug("Session %s already closed", session_id[:8])
         return False
 
     logger.info("Terminating session %s (%s)", session_id[:8], reason)
@@ -128,8 +132,12 @@ async def terminate_session(
 
     await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
 
-    await db.delete_session(session.session_id)
-    logger.info("Deleted session %s from database", session.session_id[:8])
+    if delete_db:
+        await db.delete_session(session.session_id)
+        logger.info("Deleted session %s from database", session.session_id[:8])
+    else:
+        await db.close_session(session.session_id)
+        logger.info("Closed session %s in database", session.session_id[:8])
     return True
 
 
@@ -166,6 +174,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
         reason="stale",
         session=session,
         kill_tmux=False,
+        delete_db=True,
     )
     if cleaned:
         logger.info("Cleaned up stale session %s", session_id[:8])

@@ -1,4 +1,4 @@
-# Command Schema
+# Command Schema (Internal)
 
 ## Table: commands
 
@@ -36,3 +36,7 @@ queued → running → failed
 - A command completes when all `expected_events` are observed within their timeout windows.
 - Missing an expected event within its timeout window marks the command as failed.
 - Commands may emit extra events; only `expected_events` are required for success.
+
+## Naming
+
+Public REST responses use `request_id` as the external alias of `command_id`.

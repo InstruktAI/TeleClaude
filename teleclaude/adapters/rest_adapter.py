@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Literal
 
 import uvicorn
@@ -148,6 +149,9 @@ class RESTAdapter(BaseAdapter):
         session = await db.get_session(context.session_id)
         if not session:
             return
+        if session.closed_at:
+            self.cache.remove_session(context.session_id)
+            return
         summary = SessionSummary.from_db_session(session, computer=config.computer.name)
         self.cache.update_session(summary)
 
@@ -234,38 +238,57 @@ class RESTAdapter(BaseAdapter):
 
             args = [title] if title else []
 
-            launch_kind = SessionLaunchKind(request.launch_kind)
-            if launch_kind == SessionLaunchKind.EMPTY:
-                launch_intent = SessionLaunchIntent(kind=SessionLaunchKind.EMPTY)
-            elif launch_kind == SessionLaunchKind.AGENT_RESUME:
-                if not request.agent:
-                    raise HTTPException(status_code=400, detail="agent required for agent_resume")
-                launch_intent = SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT_RESUME,
-                    agent=request.agent,
-                    native_session_id=request.native_session_id,
-                )
-            elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-                if not request.agent or not request.thinking_mode:
-                    raise HTTPException(
-                        status_code=400, detail="agent and thinking_mode required for agent_then_message"
+            auto_command = request.auto_command
+            message_text = request.message if request.message else None
+
+            effective_agent = request.agent or "claude"
+            effective_thinking_mode = request.thinking_mode or "slow"
+
+            launch_intent = None
+            if not auto_command:
+                launch_kind = SessionLaunchKind(request.launch_kind)
+                if launch_kind == SessionLaunchKind.AGENT and message_text is not None:
+                    launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
+
+                if launch_kind == SessionLaunchKind.EMPTY:
+                    launch_intent = SessionLaunchIntent(kind=SessionLaunchKind.EMPTY)
+                elif launch_kind == SessionLaunchKind.AGENT_RESUME:
+                    if not request.agent:
+                        raise HTTPException(status_code=400, detail="agent required for agent_resume")
+                    launch_intent = SessionLaunchIntent(
+                        kind=SessionLaunchKind.AGENT_RESUME,
+                        agent=request.agent,
+                        native_session_id=request.native_session_id,
                     )
-                if request.message is None:
-                    raise HTTPException(status_code=400, detail="message required for agent_then_message")
-                launch_intent = SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                    agent=request.agent,
-                    thinking_mode=request.thinking_mode,
-                    message=request.message,
-                )
-            else:
-                if not request.agent or not request.thinking_mode:
-                    raise HTTPException(status_code=400, detail="agent and thinking_mode required for agent")
-                launch_intent = SessionLaunchIntent(
-                    kind=SessionLaunchKind.AGENT,
-                    agent=request.agent,
-                    thinking_mode=request.thinking_mode,
-                )
+                elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+                    if message_text is None:
+                        raise HTTPException(status_code=400, detail="message required for agent_then_message")
+                    launch_intent = SessionLaunchIntent(
+                        kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                        agent=effective_agent,
+                        thinking_mode=effective_thinking_mode,
+                        message=message_text,
+                    )
+                else:
+                    launch_intent = SessionLaunchIntent(
+                        kind=SessionLaunchKind.AGENT,
+                        agent=effective_agent,
+                        thinking_mode=effective_thinking_mode,
+                    )
+
+            if not auto_command and launch_intent:
+                if launch_intent.kind == SessionLaunchKind.AGENT:
+                    auto_command = f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
+                elif launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+                    quoted_message = shlex.quote(launch_intent.message or "")
+                    auto_command = (
+                        f"agent_then_message {launch_intent.agent} {launch_intent.thinking_mode} {quoted_message}"
+                    )
+                elif launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
+                    if launch_intent.native_session_id:
+                        auto_command = f"agent_resume {launch_intent.agent} {launch_intent.native_session_id}"
+                    else:
+                        auto_command = f"agent_resume {launch_intent.agent}"
 
             try:
                 envelope = await self.client.handle_event(
@@ -279,6 +302,7 @@ class RESTAdapter(BaseAdapter):
                         project_path=request.project_path,
                         subdir=request.subdir,
                         launch_intent=launch_intent,
+                        auto_command=auto_command,
                     ),
                 )
                 if not isinstance(envelope, dict):

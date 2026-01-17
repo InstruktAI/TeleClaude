@@ -106,7 +106,7 @@ async def _create_session_with_intent(
     result = await handle_create_session(context, args, metadata, client)
 
     intent = metadata.launch_intent
-    auto_command = _intent_to_auto_command(intent) if intent else None
+    auto_command = metadata.auto_command or (_intent_to_auto_command(intent) if intent else None)
     if not auto_command or not result.get("session_id"):
         return result
 
@@ -144,6 +144,15 @@ async def create_session(
     """Dispatch to the appropriate session creation intent."""
     intent = metadata.launch_intent
     if not intent or intent.kind == SessionLaunchKind.EMPTY:
+        if metadata.auto_command:
+            return await create_agent_session_with_auto_command(
+                context,
+                args,
+                metadata,
+                client,
+                execute_auto_command,
+                queue_background_task,
+            )
         return await create_empty_session(context, args, metadata, client)
     if intent.kind == SessionLaunchKind.AGENT:
         return await create_agent_session(

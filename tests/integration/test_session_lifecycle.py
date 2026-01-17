@@ -72,9 +72,10 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         # Verify workspace deleted
         assert not workspace_dir.exists(), "Workspace should be deleted"
 
-        # Verify session deleted
+        # Verify session closed
         updated_session = await test_db.get_session(session.session_id)
-        assert updated_session is None, "Session should be deleted"
+        assert updated_session is not None
+        assert updated_session.closed_at is not None
 
     finally:
         # Cleanup
@@ -119,9 +120,10 @@ async def test_close_session_with_active_polling(daemon_with_mocked_telegram):
     exists = await tmux_bridge.session_exists(tmux_session_name)
     assert not exists, "tmux session should be killed"
 
-    # Verify session deleted
+    # Verify session closed
     updated = await test_db.get_session(session.session_id)
-    assert updated is None
+    assert updated is not None
+    assert updated.closed_at is not None
 
 
 @pytest.mark.integration
@@ -161,7 +163,7 @@ async def test_close_session_idempotent(daemon_with_mocked_telegram):
 
 @pytest.mark.integration
 async def test_close_session_deletes_from_db(daemon_with_mocked_telegram):
-    """Test closing session deletes record from DB."""
+    """Test closing session marks record closed in DB."""
     daemon = daemon_with_mocked_telegram
     test_db = daemon.db
 
@@ -183,9 +185,10 @@ async def test_close_session_deletes_from_db(daemon_with_mocked_telegram):
     )
     assert result is True
 
-    # Verify removed from DB
+    # Verify closed in DB
     retrieved = await test_db.get_session(session_id)
-    assert retrieved is None, "Session should be deleted from DB"
+    assert retrieved is not None
+    assert retrieved.closed_at is not None
 
 
 if __name__ == "__main__":

@@ -1441,6 +1441,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         session = await db.get_session(context.session_id)
         if not session:
             return
+        if session.closed_at:
+            await self._push_session_event_to_peers("session_removed", {"session_id": session.session_id})
+            return
 
         summary = SessionSummary(
             session_id=session.session_id,

@@ -52,6 +52,7 @@ async def test_cleanup_stale_session_detects_missing_tmux():
         reason="stale",
         session=mock_session,
         kill_tmux=False,
+        delete_db=True,
     )
 
 
@@ -246,6 +247,7 @@ async def test_terminate_session_deletes_db_and_resources():
             adapter_client,
             reason="test",
             session=mock_session,
+            delete_db=True,
         )
 
     assert result is True
@@ -277,6 +279,7 @@ async def test_terminate_session_kills_tmux_for_terminal_origin():
             adapter_client,
             reason="test",
             session=mock_session,
+            delete_db=True,
         )
 
     assert result is True

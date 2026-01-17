@@ -1,9 +1,9 @@
-# Command Response Contract
+# Response Contract
 
 ## Response Envelope
 
 All command responses return immediately and include:
-- `command_id`
+- `request_id`
 - `expected_events` (ordered)
 - `event_timeouts_ms` (per event)
 - `partial_result` (if available)
@@ -18,3 +18,7 @@ All command responses return immediately and include:
 
 Commands may return identifiers immediately (e.g., `session_id`, `tmux_session_name`).
 These do not imply completion of later events.
+
+## Naming
+
+`request_id` is the public name. Internally this maps to the command pipeline’s `command_id`.

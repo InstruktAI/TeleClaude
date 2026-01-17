@@ -463,6 +463,13 @@ class Db:
             (session_id, message_id, deletion_type),
         )
         await self.conn.commit()
+        if deletion_type == "feedback":
+            logger.debug(
+                "Pending deletion added: session=%s message_id=%s deletion_type=%s",
+                session_id[:8],
+                message_id,
+                deletion_type,
+            )
 
     async def clear_pending_deletions(
         self, session_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
@@ -478,6 +485,12 @@ class Db:
             (session_id, deletion_type),
         )
         await self.conn.commit()
+        if deletion_type == "feedback":
+            logger.debug(
+                "Pending deletions cleared: session=%s deletion_type=%s",
+                session_id[:8],
+                deletion_type,
+            )
 
     async def delete_session(self, session_id: str) -> None:
         """Delete session and handle event.
@@ -486,11 +499,21 @@ class Db:
             session_id: Session ID
         """
         # Get session before deleting for event emission
-        _ = await self.get_session(session_id)
+        session = await self.get_session(session_id)
 
         await self.conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await self.conn.commit()
         logger.debug("Deleted session %s from database", session_id[:8])
+
+        if session and self._client:
+            try:
+                await self._client.handle_event(
+                    TeleClaudeEvents.SESSION_REMOVED,
+                    {"session_id": session_id},
+                    MessageMetadata(adapter_type=session.origin_adapter),
+                )
+            except Exception as exc:
+                logger.error("Failed to dispatch SESSION_REMOVED for %s: %s", session_id[:8], exc)
 
     async def count_sessions(self, computer_name: Optional[str] = None) -> int:
         """Count sessions with optional filters.

@@ -1171,6 +1171,7 @@ async def handle_end_session(
         client,
         reason="end_session",
         session=session,
+        delete_db=False,
     )
     if not terminated:
         return {"status": "error", "message": f"Session {session_id[:8]} not found"}

@@ -355,12 +355,31 @@ class AdapterClient:
         # Feedback mode: delete old feedback before sending new
         if feedback:
             pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
+            if pending:
+                logger.debug(
+                    "Feedback cleanup: session=%s pending_count=%d",
+                    session.session_id[:8],
+                    len(pending),
+                )
+            deleted = 0
+            failed = 0
             for msg_id in pending:
                 try:
-                    await self.delete_message(session, msg_id)
+                    ok = await self.delete_message(session, msg_id)
+                    if ok:
+                        deleted += 1
+                    else:
+                        failed += 1
                 except Exception as e:
                     logger.debug("Best-effort feedback deletion failed: %s", e)
+                    failed += 1
             if pending:
+                logger.debug(
+                    "Feedback cleanup result: session=%s deleted=%d failed=%d",
+                    session.session_id[:8],
+                    deleted,
+                    failed,
+                )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
         # Send message
@@ -371,6 +390,12 @@ class AdapterClient:
         if ephemeral and message_id:
             deletion_type: Literal["user_input", "feedback"] = "feedback" if feedback else "user_input"
             await db.add_pending_deletion(session.session_id, message_id, deletion_type=deletion_type)
+            if feedback:
+                logger.debug(
+                    "Feedback tracked for deletion: session=%s message_id=%s",
+                    session.session_id[:8],
+                    message_id,
+                )
 
         return message_id
 
@@ -918,7 +943,7 @@ class AdapterClient:
                 title=metadata.title,
                 project_path=metadata.project_path,
                 channel_metadata=metadata.channel_metadata,
-                auto_command=None,
+                auto_command=metadata.auto_command,
                 launch_intent=metadata.launch_intent,
             )
 

@@ -20,6 +20,7 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     thinking_mode: Literal["fast", "med", "slow"] | None = None
     title: str | None = None
     message: str | None = None
+    auto_command: str | None = None
     native_session_id: str | None = None
     subdir: str | None = None
 
