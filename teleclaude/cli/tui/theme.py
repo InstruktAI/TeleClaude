@@ -156,7 +156,7 @@ def init_colors() -> None:
         curses.init_pair(21, 245, -1)  # Medium gray for input borders
 
         # Banner foreground (muted)
-        curses.init_pair(_BANNER_PAIR_ID, 244, -1)
+        curses.init_pair(_BANNER_PAIR_ID, 240, -1)
 
         # Tab lines (muted)
         curses.init_pair(_TAB_LINE_PAIR_ID, 240, -1)
@@ -177,7 +177,7 @@ def init_colors() -> None:
         curses.init_pair(21, 240, -1)  # Medium gray for input borders
 
         # Banner foreground (muted)
-        curses.init_pair(_BANNER_PAIR_ID, 240, -1)
+        curses.init_pair(_BANNER_PAIR_ID, 244, -1)
 
         # Tab lines (default for light mode)
         curses.init_pair(_TAB_LINE_PAIR_ID, 244, -1)
@@ -236,8 +236,8 @@ def get_banner_attr(is_dark_mode: bool) -> int:
     Returns:
         Curses attribute for banner text
     """
-    if is_dark_mode:
-        return curses.A_BOLD
+    # if is_dark_mode:
+    #     return curses.A_BOLD
     return curses.color_pair(_BANNER_PAIR_ID)
 
 
