@@ -210,6 +210,9 @@ class CommandMapper:
         if cmd_name == "end_session":
             return CloseSessionCommand(session_id=session_id or "")
 
+        # Query/list commands don't have specific InternalCommand types
+        # They use SystemCommand but with the proper command name
+        # The command name will map to the correct TeleClaudeEvent in handle_command
         return SystemCommand(command=cmd_name or "unknown", args=args)
 
     @staticmethod

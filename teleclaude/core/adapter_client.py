@@ -787,7 +787,14 @@ class AdapterClient:
                 payload,
                 metadata or MessageMetadata(adapter_type="internal"),
             )
-        event_type: EventType = cast(EventType, command.command_type.value)
+
+        # For SystemCommand, use the command name as the event type
+        # This allows query/list commands to route to their proper handlers
+        if isinstance(command, SystemCommand):
+            event_type = cast(EventType, command.command)
+        else:
+            event_type = cast(EventType, command.command_type.value)
+
         payload = command.to_payload()
 
         if metadata is None:
