@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     pass
 
 logger = get_logger(__name__)
+DEFAULT_TRANSCRIBE_LANGUAGE = "en"
 
 # ============================================================================
 # LOW-LEVEL: OpenAI Whisper API Integration
@@ -222,7 +223,7 @@ async def handle_voice(
         )
 
     # Transcribe audio using Whisper
-    text = await transcribe_voice_with_retry(audio_path)
+    text = await transcribe_voice_with_retry(audio_path, language=DEFAULT_TRANSCRIBE_LANGUAGE)
 
     # Clean up temp file
     try:
