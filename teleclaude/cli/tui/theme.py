@@ -9,7 +9,11 @@ Detects macOS dark/light mode via system settings.
 """
 
 import curses
+import os
 import subprocess
+from typing import Optional
+
+from teleclaude.config import config
 
 # Agent color pair IDs (initialized after curses.start_color())
 # Three colors per agent: muted (dim), normal (default), highlight (activity)
@@ -44,6 +48,36 @@ _TAB_LINE_PAIR_ID = 23
 _is_dark_mode: bool = True
 
 
+def _get_tmux_socket_path() -> Optional[str]:
+    tmux_env = os.environ.get("TMUX")
+    if not tmux_env:
+        return None
+    return tmux_env.split(",", 1)[0] or None
+
+
+def _get_tmux_appearance_mode() -> Optional[str]:
+    """Return tmux @appearance_mode if available (dark/light)."""
+    tmux_bin = config.computer.tmux_binary
+    socket_path = _get_tmux_socket_path()
+    cmd = [tmux_bin]
+    if socket_path:
+        cmd.extend(["-S", socket_path])
+    cmd.extend(["show", "-gv", "@appearance_mode"])
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=1,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    mode = (result.stdout or "").strip().lower()
+    if mode in {"dark", "light"}:
+        return mode
+    return None
+
+
 def is_dark_mode() -> bool:
     """Check if system is in dark mode via macOS settings.
 
@@ -53,6 +87,9 @@ def is_dark_mode() -> bool:
     Returns:
         True if dark mode, False if light mode
     """
+    tmux_mode = _get_tmux_appearance_mode()
+    if tmux_mode:
+        return tmux_mode == "dark"
     try:
         result = subprocess.run(
             ["defaults", "read", "-g", "AppleInterfaceStyle"],

@@ -4,9 +4,7 @@ import asyncio
 import curses
 import os
 import queue
-import shlex
 import signal
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -34,7 +32,6 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
 from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
-from teleclaude.config import config
 
 # Allow nested event loops (required for async calls inside curses sync loop)
 nest_asyncio.apply()
@@ -147,18 +144,6 @@ class Notification:
     message: str
     level: str  # "info", "error", "success"
     expires_at: float  # timestamp when it should disappear
-
-
-def _build_tmux_appearance_hook_cmd(tmux_bin: str, pgrep_bin: str = "pgrep") -> str:
-    """Build tmux hook command to signal the TUI on appearance changes."""
-    tmux_cmd = shlex.quote(tmux_bin)
-    pgrep_cmd = shlex.quote(pgrep_bin)
-    return (
-        'if -F "#{==:#{hook_option},@appearance_mode}" "run-shell \''
-        f'pids=$({tmux_cmd} list-panes -t tc_tui -F \\"#{{pane_pid}}\\" 2>/dev/null); '
-        f'if [ -z \\"\\$pids\\" ]; then pids=$({pgrep_cmd} -f \\"teleclaude.cli.telec\\" || true); fi; '
-        'for pid in \\$pids; do kill -USR1 \\"\\$pid\\"; done\'"'
-    )
 
 
 class TelecApp:
@@ -506,18 +491,6 @@ class TelecApp:
             self._theme_refresh_requested = True
 
         signal.signal(signal.SIGUSR1, _handle_signal)
-
-        tmux_bin = config.computer.tmux_binary
-        hook_cmd = _build_tmux_appearance_hook_cmd(tmux_bin, "/usr/bin/pgrep")
-        try:
-            subprocess.run(
-                [tmux_bin, "set-hook", "-g", "after-set-option", hook_cmd],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-        except Exception:
-            return
 
     def _handle_key(self, key: int, stdscr: CursesWindow) -> None:
         """Handle key press.
