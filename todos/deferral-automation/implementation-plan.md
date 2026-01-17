@@ -38,9 +38,9 @@
 
 ## Phase 5: Verification
 
-- [ ] Add tests or scripted checks to ensure:
+- [x] Add tests or scripted checks to ensure:
    - Orchestrator scripts surface deferral resolution steps.
-- [ ] Verify prime-orchestrator is free of deferral logic.
+- [x] Verify prime-orchestrator is free of deferral logic.
 
 ## Definition of Done
 
