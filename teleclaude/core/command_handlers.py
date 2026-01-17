@@ -12,13 +12,11 @@ import shlex
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from time import time
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 
 import psutil
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agents import AgentName, get_agent_command
@@ -301,28 +299,10 @@ Working directory: {working_dir}
 You can now send commands to this session.
 """
 
-        adapter = client.adapters.get(str(adapter_type))
-        if isinstance(adapter, UiAdapter):
-            try:
-                await client.send_message(session, welcome, ephemeral=False)
-                now_ts = time()
-                await client.send_output_update(
-                    session,
-                    "",
-                    now_ts,
-                    now_ts,
-                )
-            except Exception as exc:
-                logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
-        else:
-
-            async def _send_welcome() -> None:
-                try:
-                    await client.send_message(session, welcome, ephemeral=False)
-                except Exception as exc:
-                    logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
-
-            asyncio.create_task(_send_welcome())
+        try:
+            await client.send_message(session, welcome, ephemeral=False)
+        except Exception as exc:
+            logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
 
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id, "tmux_session_name": tmux_name}

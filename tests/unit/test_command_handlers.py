@@ -121,11 +121,6 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
     """Welcome message must be sent before output message creation."""
     order: list[str] = []
 
-    class FakeUiAdapter:
-        pass
-
-    monkeypatch.setattr(command_handlers, "UiAdapter", FakeUiAdapter)
-
     mock_context = MagicMock(spec=EventContext)
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
@@ -140,7 +135,7 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
 
     mock_client.send_message = AsyncMock(side_effect=_send_message)
     mock_client.send_output_update = AsyncMock(side_effect=_send_output_update)
-    mock_client.adapters = {"telegram": FakeUiAdapter()}
+    mock_client.adapters = {}
 
     with tempfile.TemporaryDirectory() as tmpdir:
         mock_metadata = MessageMetadata(adapter_type="telegram", project_path=tmpdir)
@@ -162,7 +157,8 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
 
             await command_handlers.handle_create_session(mock_context, ["Test", "Title"], mock_metadata, mock_client)
 
-    assert order == ["welcome", "output"]
+    assert order == ["welcome"]
+    assert mock_client.send_output_update.await_count == 0
 
 
 @pytest.mark.asyncio
