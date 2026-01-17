@@ -241,7 +241,7 @@ def _insert_roadmap_item(cwd: str, slug: str) -> None:
     roadmap_path = Path(cwd) / "todos" / "roadmap.md"
     if not roadmap_path.exists():
         return
-    content = roadmap_path.read_text(encoding="utf-8")
+    content = read_text_sync(roadmap_path)
     if re.search(rf"^- \[[ .>x]\] {re.escape(slug)}(\s|$)", content, re.MULTILINE):
         return
     insert_at = content.find("\n## ")
@@ -249,7 +249,7 @@ def _insert_roadmap_item(cwd: str, slug: str) -> None:
         updated = content.rstrip() + f"\n- [ ] {slug}\n"
     else:
         updated = content[:insert_at] + f"\n- [ ] {slug}\n" + content[insert_at:]
-    roadmap_path.write_text(updated, encoding="utf-8")
+    write_text_sync(roadmap_path, updated)
 
 
 async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str | None, str]:
@@ -259,7 +259,7 @@ async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str 
     session = sessions[0]
     _, description = parse_session_title(session.title or "")
     base = _slugify(description or "input")
-    slug = _ensure_unique_slug(cwd, base)
+    slug = await asyncio.to_thread(_ensure_unique_slug, cwd, base)
 
     todo_dir = Path(cwd) / "todos" / slug
     todo_dir.mkdir(parents=True, exist_ok=True)
@@ -279,9 +279,9 @@ async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str 
         "## Assistant Output (latest)\n"
         f"{ai_text}\n"
     )
-    (todo_dir / "input.md").write_text(input_body, encoding="utf-8")
+    await write_text_async(todo_dir / "input.md", input_body)
 
-    _insert_roadmap_item(cwd, slug)
+    await asyncio.to_thread(_insert_roadmap_item, cwd, slug)
 
     try:
         repo = Repo(cwd)
@@ -325,7 +325,7 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, str | bool | dict[str, bo
     if not state_path.exists():
         return DEFAULT_STATE.copy()
 
-    content = state_path.read_text(encoding="utf-8")
+    content = read_text_sync(state_path)
     state: dict[str, str | bool | dict[str, bool | list[str]]] = json.loads(content)
     # Merge with defaults for any missing keys
     return {**DEFAULT_STATE, **state}
@@ -335,7 +335,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str | bool | dict[st
     """Write state.json and commit to git."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+    write_text_sync(state_path, json.dumps(state, indent=2) + "\n")
 
     # Commit the state change
     try:
@@ -466,7 +466,7 @@ def resolve_slug(
     if not roadmap_path.exists():
         return None, False, ""
 
-    content = roadmap_path.read_text(encoding="utf-8")
+    content = read_text_sync(roadmap_path)
 
     if ready_only:
         # Only match [.] items for next_work
@@ -507,6 +507,16 @@ def resolve_slug(
     return None, False, ""
 
 
+async def resolve_slug_async(
+    cwd: str,
+    slug: str | None,
+    ready_only: bool = False,
+    dependencies: dict[str, list[str]] | None = None,
+) -> tuple[str | None, bool, str]:
+    """Async wrapper for resolve_slug using a thread to avoid blocking."""
+    return await asyncio.to_thread(resolve_slug, cwd, slug, ready_only, dependencies)
+
+
 def check_file_exists(cwd: str, relative_path: str) -> bool:
     """Check if a file exists relative to cwd."""
     return (Path(cwd) / relative_path).exists()
@@ -518,7 +528,7 @@ def slug_in_roadmap(cwd: str, slug: str) -> bool:
     if not roadmap_path.exists():
         return False
 
-    content = roadmap_path.read_text(encoding="utf-8")
+    content = read_text_sync(roadmap_path)
     pattern = re.compile(rf"^-\s+\[[ .>x]\]\s+{re.escape(slug)}(\s|$)", re.MULTILINE)
     return bool(pattern.search(content))
 
@@ -532,7 +542,7 @@ def has_pending_bugs(cwd: str) -> bool:
     bugs_path = Path(cwd) / "todos" / "bugs.md"
     if not bugs_path.exists():
         return False
-    content = bugs_path.read_text(encoding="utf-8")
+    content = read_text_sync(bugs_path)
     return "[ ]" in content
 
 
@@ -570,7 +580,7 @@ def get_roadmap_state(cwd: str, slug: str) -> str | None:
     if not roadmap_path.exists():
         return None
 
-    content = roadmap_path.read_text(encoding="utf-8")
+    content = read_text_sync(roadmap_path)
 
     # Pattern: - [STATE] slug where STATE is space, ., >, or x
     pattern = re.compile(rf"^- \[([ .>x])\] {re.escape(slug)}(\s|$)", re.MULTILINE)
@@ -598,7 +608,7 @@ def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
     if not roadmap_path.exists():
         return False
 
-    content = roadmap_path.read_text(encoding="utf-8")
+    content = read_text_sync(roadmap_path)
 
     # Pattern: - [STATE] slug where STATE is space, ., >, or x
     pattern = re.compile(rf"^(- \[)[ .>x](\] {re.escape(slug)})(\s|$)", re.MULTILINE)
@@ -607,7 +617,7 @@ def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
     if count == 0:
         return False
 
-    roadmap_path.write_text(new_content, encoding="utf-8")
+    write_text_sync(roadmap_path, new_content)
 
     # Commit the state change
     try:
@@ -640,7 +650,7 @@ def read_dependencies(cwd: str) -> dict[str, list[str]]:
     if not deps_path.exists():
         return {}
 
-    content = deps_path.read_text(encoding="utf-8")
+    content = read_text_sync(deps_path)
     result: dict[str, list[str]] = json.loads(content)
     return result
 
@@ -671,7 +681,7 @@ def write_dependencies(cwd: str, deps: dict[str, list[str]]) -> None:
         return
 
     deps_path.parent.mkdir(parents=True, exist_ok=True)
-    deps_path.write_text(json.dumps(deps, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_text_sync(deps_path, json.dumps(deps, indent=2, sort_keys=True) + "\n")
 
     try:
         repo = Repo(cwd)
@@ -708,7 +718,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
     if not roadmap_path.exists():
         return True  # No roadmap = no blocking
 
-    content = roadmap_path.read_text(encoding="utf-8")
+    content = read_text_sync(roadmap_path)
     pattern = re.compile(r"^- \[([x.> ])\] ([a-z0-9-]+)", re.MULTILINE)
 
     roadmap_items: dict[str, str] = {}
@@ -800,7 +810,7 @@ def parse_impl_plan_done(cwd: str, slug: str) -> bool:
     if not impl_plan_path.exists():
         return False
 
-    content = impl_plan_path.read_text(encoding="utf-8")
+    content = read_text_sync(impl_plan_path)
 
     # Check if file uses Group-based format
     group_pattern = re.compile(r"^##\s+Group\s+(\d+)", re.MULTILINE)
@@ -837,7 +847,7 @@ def check_review_status(cwd: str, slug: str) -> str:
     if not review_path.exists():
         return "missing"
 
-    content = review_path.read_text(encoding="utf-8")
+    content = read_text_sync(review_path)
     if "[x] APPROVE" in content:
         return "approved"
     return "changes_requested"
@@ -915,6 +925,26 @@ def configure_git_env(repo: Repo, cwd: str) -> None:
     """Ensure git commands run with repo-local venv tools available."""
     env = build_git_hook_env(cwd)
     repo.git.update_environment(**env)
+
+
+def read_text_sync(path: Path) -> str:
+    """Read text from a file in a typed sync wrapper."""
+    return path.read_text(encoding="utf-8")
+
+
+def write_text_sync(path: Path, content: str) -> None:
+    """Write text to a file in a typed sync wrapper."""
+    path.write_text(content, encoding="utf-8")
+
+
+async def read_text_async(path: Path) -> str:
+    """Read text from a file without blocking the event loop."""
+    return await asyncio.to_thread(read_text_sync, path)
+
+
+async def write_text_async(path: Path, content: str) -> None:
+    """Write text to a file without blocking the event loop."""
+    await asyncio.to_thread(write_text_sync, path, content)
 
 
 def has_uncommitted_changes(cwd: str, slug: str) -> bool:
@@ -1167,7 +1197,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         return format_hitl_guidance(f"Input capture failed. {note}")
 
     if not slug and not hitl:
-        resolved_slug, _, _ = resolve_slug(cwd, None)
+        resolved_slug, _, _ = await resolve_slug_async(cwd, None)
 
     if not resolved_slug:
         if hitl:
@@ -1191,7 +1221,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         )
 
     # 1.5. Ensure slug exists in roadmap before preparing
-    if not slug_in_roadmap(cwd, resolved_slug):
+    if not await asyncio.to_thread(slug_in_roadmap, cwd, resolved_slug):
         has_requirements = check_file_exists(cwd, f"todos/{resolved_slug}/requirements.md")
         has_impl_plan = check_file_exists(cwd, f"todos/{resolved_slug}/implementation-plan.md")
         missing_docs: list[str] = []
@@ -1225,7 +1255,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
 
     # 1.6. Check for breakdown assessment
     has_input = check_file_exists(cwd, f"todos/{resolved_slug}/input.md")
-    breakdown_state = read_breakdown_state(cwd, resolved_slug)
+    breakdown_state = await asyncio.to_thread(read_breakdown_state, cwd, resolved_slug)
 
     if has_input and (breakdown_state is None or not breakdown_state.get("assessed")):
         # Breakdown assessment needed
@@ -1295,9 +1325,9 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
         )
 
     # 4. Both exist - mark as ready if pending (avoid downgrading [>] or [x])
-    current_state = get_roadmap_state(cwd, resolved_slug)
+    current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
     if current_state == " ":  # Only transition pending -> ready
-        update_roadmap_state(cwd, resolved_slug, ".")
+        await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, ".")
     # else: already [.], [>], or [x] - no state change needed
     return format_prepared(resolved_slug)
 
@@ -1317,7 +1347,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         Plain text instructions for the orchestrator to execute
     """
     # 1. Resolve slug - only ready items when no explicit slug
-    deps = read_dependencies(cwd)
+    deps = await asyncio.to_thread(read_dependencies, cwd)
 
     resolved_slug: str
     if slug:
@@ -1331,7 +1361,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call="Call teleclaude__next_prepare() to create roadmap first.",
             )
 
-        content = roadmap_path.read_text(encoding="utf-8")
+        content = await read_text_async(roadmap_path)
         # Match the slug and extract its state
         pattern = re.compile(rf"^-\s+\[([ .>])\]\s+{re.escape(slug)}\b", re.MULTILINE)
         match = pattern.search(content)
@@ -1353,7 +1383,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
 
         # Item is [.] or [>] - check dependencies
-        if not check_dependencies_satisfied(cwd, slug, deps):
+        if not await asyncio.to_thread(check_dependencies_satisfied, cwd, slug, deps):
             return format_error(
                 "DEPS_UNSATISFIED",
                 f"Item '{slug}' has unsatisfied dependencies.",
@@ -1362,11 +1392,11 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         resolved_slug = slug
     else:
         # R6: Use resolve_slug with dependency gating
-        found_slug, _, _ = resolve_slug(cwd, None, ready_only=True, dependencies=deps)
+        found_slug, _, _ = await resolve_slug_async(cwd, None, True, deps)
 
         if not found_slug:
             # Check if there are [.] items (without dependency gating) to provide better error
-            has_ready_items, _, _ = resolve_slug(cwd, None, ready_only=True)
+            has_ready_items, _, _ = await resolve_slug_async(cwd, None, True)
 
             if has_ready_items:
                 return format_error(
@@ -1411,12 +1441,12 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     # Only mark if currently [.] (not already [>])
     roadmap_path = Path(cwd) / "todos" / "roadmap.md"
     if roadmap_path.exists():
-        content = roadmap_path.read_text(encoding="utf-8")
+        content = await read_text_async(roadmap_path)
         if f"[.] {resolved_slug}" in content:
-            update_roadmap_state(cwd, resolved_slug, ">")
+            await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, ">")
 
     # 7. Check build status (from state.json in worktree)
-    if not is_build_complete(worktree_cwd, resolved_slug):
+    if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "build", WORK_FALLBACK)
         return format_tool_call(
             command="next-build",
@@ -1429,9 +1459,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     # 8. Check review status
-    if not is_review_approved(worktree_cwd, resolved_slug):
+    if not await asyncio.to_thread(is_review_approved, worktree_cwd, resolved_slug):
         # Check if review hasn't started yet or needs fixes
-        if is_review_changes_requested(worktree_cwd, resolved_slug):
+        if await asyncio.to_thread(is_review_changes_requested, worktree_cwd, resolved_slug):
             agent, mode = await get_available_agent(db, "fix", WORK_FALLBACK)
             return format_tool_call(
                 command="next-fix-review",
@@ -1464,7 +1494,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     # 8.5 Check pending deferrals (R7)
-    if has_pending_deferrals(worktree_cwd, resolved_slug):
+    if await asyncio.to_thread(has_pending_deferrals, worktree_cwd, resolved_slug):
         agent, mode = await get_available_agent(db, "defer", WORK_FALLBACK)
         return format_tool_call(
             command="next-defer",
