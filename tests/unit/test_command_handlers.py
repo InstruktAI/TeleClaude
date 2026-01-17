@@ -117,6 +117,55 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
 
 
 @pytest.mark.asyncio
+async def test_handle_create_session_sends_welcome_before_output(mock_initialized_db, monkeypatch):
+    """Welcome message must be sent before output message creation."""
+    order: list[str] = []
+
+    class FakeUiAdapter:
+        pass
+
+    monkeypatch.setattr(command_handlers, "UiAdapter", FakeUiAdapter)
+
+    mock_context = MagicMock(spec=EventContext)
+    mock_client = MagicMock()
+    mock_client.create_channel = AsyncMock()
+
+    async def _send_message(*_args, **_kwargs):
+        order.append("welcome")
+        return "msg-1"
+
+    async def _send_output_update(*_args, **_kwargs):
+        order.append("output")
+        return "msg-2"
+
+    mock_client.send_message = AsyncMock(side_effect=_send_message)
+    mock_client.send_output_update = AsyncMock(side_effect=_send_output_update)
+    mock_client.adapters = {"telegram": FakeUiAdapter()}
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mock_metadata = MessageMetadata(adapter_type="telegram", project_path=tmpdir)
+        with (
+            patch.object(command_handlers, "config") as mock_config,
+            patch.object(command_handlers, "db") as mock_db,
+            patch.object(command_handlers, "tmux_bridge") as mock_tb,
+            patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
+        ):
+            mock_config.computer.name = "TestComputer"
+            mock_config.computer.default_working_dir = tmpdir
+            mock_db.create_session = mock_initialized_db.create_session
+            mock_db.get_session = mock_initialized_db.get_session
+            mock_db.assign_voice = mock_initialized_db.assign_voice
+            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
+            mock_tb.get_pane_tty = AsyncMock(return_value=None)
+            mock_tb.get_pane_pid = AsyncMock(return_value=None)
+            mock_unique.return_value = "$TestComputer[user] - Test Title"
+
+            await command_handlers.handle_create_session(mock_context, ["Test", "Title"], mock_metadata, mock_client)
+
+    assert order == ["welcome", "output"]
+
+
+@pytest.mark.asyncio
 async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
     """Tmux adapter should store terminal metadata on the session."""
 

@@ -2283,6 +2283,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         exc,
                     )
 
+            if session.origin_adapter == "telegram":
+                if (
+                    not session.adapter_metadata
+                    or not session.adapter_metadata.telegram
+                    or not session.adapter_metadata.telegram.output_message_id
+                ):
+                    continue
+
             if not await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
                 recreated = await self._ensure_tmux_session(session)
                 if not recreated:

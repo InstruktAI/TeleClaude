@@ -12,6 +12,7 @@ import shlex
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from time import time
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 
 import psutil
@@ -304,6 +305,13 @@ You can now send commands to this session.
         if isinstance(adapter, UiAdapter):
             try:
                 await client.send_message(session, welcome, ephemeral=False)
+                now_ts = time()
+                await client.send_output_update(
+                    session,
+                    "",
+                    now_ts,
+                    now_ts,
+                )
             except Exception as exc:
                 logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
         else:
