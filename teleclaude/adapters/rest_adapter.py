@@ -1081,7 +1081,7 @@ class RESTAdapter(BaseAdapter):
         # Run server in background task. Avoid uvicorn's signal handling to keep daemon in control.
         serve_coro = server._serve() if hasattr(server, "_serve") else server.serve()
         self.server_task = asyncio.create_task(serve_coro)
-        self.server_task.add_done_callback(self._on_server_task_done)
+        self.server_task.add_done_callback(lambda t, s=server: self._on_server_task_done(t, s))
 
         # Wait for server to be ready (socket file created and bound)
         max_retries = 50  # 5 seconds total
@@ -1200,7 +1200,11 @@ class RESTAdapter(BaseAdapter):
         except OSError as e:
             logger.warning("Failed to remove REST socket %s: %s", REST_SOCKET_PATH, e)
 
-    def _on_server_task_done(self, task: asyncio.Task[object]) -> None:
+    def _on_server_task_done(
+        self,
+        task: asyncio.Task[object],
+        server: uvicorn.Server | None = None,
+    ) -> None:
         """Handle server exit and notify lifecycle owner.
 
         Args:
@@ -1215,9 +1219,9 @@ class RESTAdapter(BaseAdapter):
             logger.debug("REST API server task cancelled")
             return
 
-        server = self.server
-        server_started = getattr(server, "started", None) if server else None
-        server_should_exit = getattr(server, "should_exit", None) if server else None
+        server_ref = server or self.server
+        server_started = getattr(server_ref, "started", None) if server_ref else None
+        server_should_exit = getattr(server_ref, "should_exit", None) if server_ref else None
         socket_exists = os.path.exists(REST_SOCKET_PATH)
 
         if exc:
