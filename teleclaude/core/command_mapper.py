@@ -89,15 +89,30 @@ class CommandMapper:
             launch_intent_obj = launch_intent
 
         if cmd_name == "stop_notification":
-            target_session_id = args[0] if len(args) > 0 else ""
-            source_computer = args[1] if len(args) > 1 else "unknown"
+            # Validate minimum required arguments
+            if len(args) < 2:
+                from instrukt_ai_logging import get_logger
+
+                logger = get_logger(__name__)
+                logger.warning(
+                    "stop_notification requires at least 2 args (session_id, source_computer), got %d", len(args)
+                )
+                # Return no-op SystemCommand for invalid input
+                return SystemCommand(command="noop", args=[])
+
+            target_session_id = args[0]
+            source_computer = args[1]
             title_b64 = args[2] if len(args) > 2 else None
             resolved_title = None
+
             if title_b64:
                 try:
                     resolved_title = base64.b64decode(title_b64).decode()
-                except Exception:
-                    pass
+                except Exception as e:
+                    from instrukt_ai_logging import get_logger
+
+                    logger = get_logger(__name__)
+                    logger.warning("Failed to decode stop_notification title: %s", e)
 
             # Map to AGENT_EVENT stop
             event_data = {
@@ -118,14 +133,30 @@ class CommandMapper:
             )
 
         if cmd_name == "input_notification":
-            target_session_id = args[0] if len(args) > 0 else ""
-            source_computer = args[1] if len(args) > 1 else "unknown"
-            message_b64 = args[2] if len(args) > 2 else ""
+            # Validate minimum required arguments
+            if len(args) < 3:
+                from instrukt_ai_logging import get_logger
+
+                logger = get_logger(__name__)
+                logger.warning(
+                    "input_notification requires 3 args (session_id, source_computer, message_b64), got %d", len(args)
+                )
+                # Return no-op SystemCommand for invalid input
+                return SystemCommand(command="noop", args=[])
+
+            target_session_id = args[0]
+            source_computer = args[1]
+            message_b64 = args[2]
             message = ""
+
             try:
                 message = base64.b64decode(message_b64).decode()
-            except Exception:
-                pass
+            except Exception as e:
+                from instrukt_ai_logging import get_logger
+
+                logger = get_logger(__name__)
+                logger.warning("Failed to decode input_notification message: %s", e)
+                # Continue with empty message rather than failing completely
 
             return SystemCommand(
                 command="agent_event",
