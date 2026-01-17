@@ -15,7 +15,7 @@
 
 ## Phase 2: Deferral Resolution Automation
 
-- [ ] Add `next-defer` command (create `~/.agents/commands/next-defer.md`):
+- [x] Add `next-defer` command (create `~/.agents/commands/next-defer.md`):
    - Read `~/.agents/commands/prime-administrator.md` first.
    - Read deferrals.md.
    - For each entry, apply rule:
@@ -23,8 +23,8 @@
       - `Suggested outcome: NOOP` → do nothing.
    - Set `state.json.deferrals_processed = true`.
    - Assess whether to add a dependency from new todo to current slug.
-- [ ] Ensure `prime-administrator.md` is set up correctly (Create/Update `~/.agents/commands/prime-administrator.md`).
-- [ ] Ensure deferrals.md uses the defined schema fields.
+- [x] Ensure `prime-administrator.md` is set up correctly (Create/Update `~/.agents/commands/prime-administrator.md`).
+- [x] Ensure deferrals.md uses the defined schema fields.
 
 ## Phase 3: Primer Cleanup
 
