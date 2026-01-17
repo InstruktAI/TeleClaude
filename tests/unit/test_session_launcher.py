@@ -1,9 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
 from teleclaude.core import session_launcher
-from teleclaude.core.events import EventContext
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 
 
@@ -21,8 +20,9 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
         assert session_id == "s1"
         return {"status": "success", "message": "ok"}
 
-    def _queue_background_task(*_args, **_kwargs) -> None:
+    def _queue_background_task(coro, _name) -> None:
         order.append("queue")
+        coro.close()
 
     monkeypatch.setattr(session_launcher, "handle_create_session", _fake_create_session)
 
@@ -33,14 +33,17 @@ async def test_create_session_runs_auto_command_after_create(monkeypatch):
         thinking_mode="slow",
     )
 
+    from teleclaude.types.commands import CreateSessionCommand
+
+    cmd = CreateSessionCommand(project_path=".", adapter_type="telegram", launch_intent=metadata.launch_intent)
+
     result = await session_launcher.create_session(
-        context=MagicMock(spec=EventContext),
-        args=[],
-        metadata=metadata,
+        cmd=cmd,
         client=MagicMock(),
         execute_auto_command=_fake_execute_auto_command,
         queue_background_task=_queue_background_task,
     )
 
-    assert order == ["create", "auto"]
+    assert order == ["create", "queue"]
     assert result["session_id"] == "s1"
+    assert result["auto_command_status"] == "queued"

@@ -14,6 +14,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.events import EventContext
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
+from teleclaude.types.commands import CreateSessionCommand
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
@@ -79,13 +80,13 @@ async def test_handle_get_computer_info_returns_system_stats():
 async def test_handle_new_session_creates_session(mock_initialized_db):
     """Test that handle_new_session returns a session_id and persists the session."""
 
-    mock_context = MagicMock(spec=EventContext)
+    MagicMock(spec=EventContext)
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        mock_metadata = MessageMetadata(adapter_type="telegram", project_path=tmpdir)
+        MessageMetadata(adapter_type="telegram", project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
@@ -102,9 +103,8 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
             mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            result = await command_handlers.handle_create_session(
-                mock_context, ["Test", "Title"], mock_metadata, mock_client
-            )
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", adapter_type="telegram")
+            result = await command_handlers.handle_create_session(cmd, mock_client)
 
     assert result["session_id"]
     assert result["tmux_session_name"].startswith(TMUX_SESSION_PREFIX)
@@ -121,7 +121,7 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
     """Welcome message must be sent before output message creation."""
     order: list[str] = []
 
-    mock_context = MagicMock(spec=EventContext)
+    MagicMock(spec=EventContext)
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
 
@@ -138,7 +138,7 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
     mock_client.adapters = {}
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        mock_metadata = MessageMetadata(adapter_type="telegram", project_path=tmpdir)
+        MessageMetadata(adapter_type="telegram", project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
@@ -155,7 +155,8 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
             mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
-            await command_handlers.handle_create_session(mock_context, ["Test", "Title"], mock_metadata, mock_client)
+            cmd = CreateSessionCommand(project_path=tmpdir, title="Test Title", adapter_type="telegram")
+            await command_handlers.handle_create_session(cmd, mock_client)
 
     assert order == ["welcome"]
     assert mock_client.send_output_update.await_count == 0
@@ -165,13 +166,13 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
 async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
     """Tmux adapter should store terminal metadata on the session."""
 
-    mock_context = MagicMock(spec=EventContext)
+    MagicMock(spec=EventContext)
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        mock_metadata = MessageMetadata(
+        MessageMetadata(
             adapter_type="terminal",
             project_path=tmpdir,
             channel_metadata={
@@ -194,9 +195,20 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_db.update_session = mock_initialized_db.update_session
             mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
-            mock_unique.return_value = "$TestComputer[user] - Test Title"
+            mock_unique.return_value = "$TestComputer[user] - Test"
 
-            result = await command_handlers.handle_create_session(mock_context, ["Test"], mock_metadata, mock_client)
+            cmd = CreateSessionCommand(
+                project_path=tmpdir,
+                title="Test",
+                adapter_type="terminal",
+                channel_metadata={
+                    "terminal": {
+                        "tty_path": "/dev/pts/7",
+                        "parent_pid": 4242,
+                    }
+                },
+            )
+            result = await command_handlers.handle_create_session(cmd, mock_client)
 
     stored = await mock_initialized_db.get_session(result["session_id"])
     assert stored is not None
@@ -209,8 +221,8 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
     invalid_path = tmp_path / "not-a-dir.txt"
     invalid_path.write_text("nope", encoding="utf-8")
 
-    mock_context = MagicMock(spec=EventContext)
-    mock_metadata = MessageMetadata(adapter_type="telegram", project_path=str(invalid_path))
+    MagicMock(spec=EventContext)
+    MessageMetadata(adapter_type="telegram", project_path=str(invalid_path))
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
@@ -232,11 +244,11 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
         mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
         mock_tb.get_pane_tty = AsyncMock(return_value=None)
         mock_tb.get_pane_pid = AsyncMock(return_value=None)
-        mock_unique.return_value = "Test Title"
+        mock_unique.return_value = "$TestComputer[user] - Untitled"
 
-        with pytest.raises(ValueError, match="directory"):
-            await command_handlers.handle_create_session(mock_context, [], mock_metadata, mock_client)
-
+        cmd = CreateSessionCommand(project_path="/nonexistent", adapter_type="telegram")
+        with pytest.raises(ValueError, match="Working directory does not exist"):
+            await command_handlers.handle_create_session(cmd, mock_client)
     assert await mock_initialized_db.count_sessions() == 0
 
 
@@ -403,8 +415,12 @@ async def test_handle_rename_updates_title(mock_initialized_db):
     mock_client.send_message = AsyncMock(return_value="msg-123")
     mock_client.send_message = AsyncMock(return_value="msg-123")
 
-    with patch.object(command_handlers, "db") as mock_db:
+    with (
+        patch.object(command_handlers, "db") as mock_db,
+        patch.object(command_handlers, "config") as mock_config,
+    ):
         mock_db.update_session = mock_initialized_db.update_session
+        mock_config.computer.name = "TestComputer"
 
         # handle_rename_session signature: session, context, args, client (no start_polling)
         await command_handlers.handle_rename_session.__wrapped__(session, mock_context, ["New", "Title"], mock_client)

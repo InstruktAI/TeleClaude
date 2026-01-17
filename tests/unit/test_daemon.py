@@ -121,21 +121,12 @@ def mock_daemon():
 
 @pytest.mark.asyncio
 async def test_get_session_data_parses_tail_chars_without_placeholders():
-    """GET_SESSION_DATA should accept '/get_session_data <tail_chars>' form.
-
-    Redis/MCP transport collapses empty placeholders, so callers can't reliably send
-    '/get_session_data <since> <until> <tail_chars>' with empty since/until values.
-    """
+    """get_session_data should parse numeric tail_chars directly."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     context = CommandEventContext(session_id="sess-123", args=[])
-    captured: dict[str, object] = {}  # guard: loose-dict - capture args for assertions
 
-    async def fake_handler(*args, **kwargs):
-        captured["args"] = args
-        captured["kwargs"] = kwargs
-        return {"status": "success"}
-
-    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new=fake_handler):
+    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new_callable=AsyncMock) as mock_handler:
+        mock_handler.return_value = {"status": "success"}
         await daemon.handle_command(
             TeleClaudeEvents.GET_SESSION_DATA,
             ["2000"],
@@ -143,12 +134,13 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
             MessageMetadata(adapter_type="redis"),
         )
 
-    assert captured["kwargs"] == {}
-    call_args = captured["args"]
-    assert call_args[0] is context
-    assert call_args[1] is None
-    assert call_args[2] is None
-    assert call_args[3] == 2000
+        # Verify call to handler
+        mock_handler.assert_called_once()
+        call_args = mock_handler.call_args[0]
+        assert call_args[0] == "sess-123"
+        assert call_args[1] is None
+        assert call_args[2] is None
+        assert call_args[3] == 2000
 
 
 @pytest.mark.asyncio
@@ -156,14 +148,9 @@ async def test_get_session_data_supports_dash_placeholders():
     """GET_SESSION_DATA should treat '-' as an explicit empty placeholder."""
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     context = CommandEventContext(session_id="sess-123", args=[])
-    captured: dict[str, object] = {}  # guard: loose-dict - capture args for assertions
 
-    async def fake_handler(*args, **kwargs):
-        captured["args"] = args
-        captured["kwargs"] = kwargs
-        return {"status": "success"}
-
-    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new=fake_handler):
+    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new_callable=AsyncMock) as mock_handler:
+        mock_handler.return_value = {"status": "success"}
         await daemon.handle_command(
             TeleClaudeEvents.GET_SESSION_DATA,
             ["-", "2026-01-01T00:00:00Z", "2000"],
@@ -171,12 +158,13 @@ async def test_get_session_data_supports_dash_placeholders():
             MessageMetadata(adapter_type="redis"),
         )
 
-    assert captured["kwargs"] == {}
-    call_args = captured["args"]
-    assert call_args[0] is context
-    assert call_args[1] is None
-    assert call_args[2] == "2026-01-01T00:00:00Z"
-    assert call_args[3] == 2000
+        # Verify call to handler
+        mock_handler.assert_called_once()
+        call_args = mock_handler.call_args[0]
+        assert call_args[0] == "sess-123"
+        assert call_args[1] is None
+        assert call_args[2] == "2026-01-01T00:00:00Z"
+        assert call_args[3] == 2000
 
 
 @pytest.mark.asyncio

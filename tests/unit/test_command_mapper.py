@@ -1,14 +1,9 @@
 """Unit tests for CommandMapper."""
 
-import pytest
-
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.types.commands import (
-    CloseSessionCommand,
-    CommandType,
     CreateSessionCommand,
-    ResumeAgentCommand,
     SendMessageCommand,
     StartAgentCommand,
 )

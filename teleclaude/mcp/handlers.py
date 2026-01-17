@@ -24,7 +24,7 @@ from teleclaude.config import config
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import normalize_agent_name
 from teleclaude.core.db import db
-from teleclaude.core.events import CommandEventContext, TeleClaudeEvents
+from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata, ThinkingMode
 from teleclaude.core.next_machine import (
     detect_circular_dependency,
@@ -49,6 +49,11 @@ from teleclaude.mcp.types import (
     StopNotificationsResult,
 )
 from teleclaude.types import SystemStats
+from teleclaude.types.commands import (
+    CreateSessionCommand,
+    SendMessageCommand,
+    StartAgentCommand,
+)
 from teleclaude.utils.markdown import telegramify_markdown
 
 if TYPE_CHECKING:
@@ -295,7 +300,7 @@ class MCPHandlersMixin:
         agent: str = "claude",
         thinking_mode: ThinkingMode = ThinkingMode.SLOW,
     ) -> StartSessionResult:
-        """Create session on local computer directly via handle_event."""
+        """Create session on local computer directly via handle_internal_command."""
         initiator_agent, initiator_mode = await self._get_caller_agent_info(caller_session_id)
 
         channel_metadata: dict[str, object] = {"target_computer": self.computer_name}  # guard: loose-dict
@@ -306,21 +311,29 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
-        result: object = await self.client.handle_event(
-            TeleClaudeEvents.NEW_SESSION,
-            {"session_id": "", "args": [title]},
-            MessageMetadata(
-                adapter_type="redis",
-                project_path=project_path,
-                title=title,
-                channel_metadata=channel_metadata,
-            ),
+        cmd = CreateSessionCommand(
+            project_path=project_path,
+            title=title,
+            adapter_type="redis",  # MCP calls are often treated like Redis for tracking
+            channel_metadata=channel_metadata,
+            initiator_session_id=caller_session_id,
         )
+
+        metadata = MessageMetadata(
+            adapter_type="redis",
+            project_path=project_path,
+            title=title,
+            channel_metadata=channel_metadata,
+        )
+
+        result: object = await self.client.handle_internal_command(cmd, metadata=metadata)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
-            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
+            error_msg = "Session creation failed"
+            if isinstance(result, dict):
+                error_msg = str(result.get("error", "Unknown error"))
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         logger.info("Local session created: %s", session_id[:8])
@@ -328,20 +341,19 @@ class MCPHandlersMixin:
 
         # Start agent in background if message provided (None = skip agent start entirely)
         if message is not None:
-            # Build args: [agent, mode] or [agent, mode, prompt] if prompt non-empty
-            agent_args: list[str] = [agent, thinking_mode.value]
-            if message:
-                agent_args.append(message)
+            agent_args: list[str] = [message] if message else []
 
             async def _run_agent_start() -> None:
                 try:
-                    await self.client.handle_event(
-                        TeleClaudeEvents.AGENT_START,
-                        {"session_id": session_id, "args": agent_args},
-                        MessageMetadata(adapter_type="redis"),
+                    start_cmd = StartAgentCommand(
+                        session_id=session_id,
+                        agent_name=agent,
+                        thinking_mode=thinking_mode.value,
+                        args=[thinking_mode.value] + agent_args,
                     )
+                    await self.client.handle_internal_command(start_cmd, metadata=MessageMetadata(adapter_type="redis"))
                 except Exception as exc:
-                    logger.error("Failed to dispatch AGENT_START for session %s: %s", session_id[:8], exc)
+                    logger.error("Failed to dispatch StartAgentCommand for session %s: %s", session_id[:8], exc)
 
             self._track_background_task(asyncio.create_task(_run_agent_start()), f"agent_start:{session_id[:8]}")
 
@@ -473,11 +485,8 @@ class MCPHandlersMixin:
             await self._register_listener_if_present(session_id, caller_session_id)
 
             if self._is_local_computer(computer):
-                await self.client.handle_event(
-                    TeleClaudeEvents.MESSAGE,
-                    {"session_id": session_id, "args": [], "text": message},
-                    MessageMetadata(adapter_type="mcp"),
-                )
+                cmd = SendMessageCommand(session_id=session_id, text=message)
+                await self.client.handle_internal_command(cmd, metadata=MessageMetadata(adapter_type="mcp"))
             else:
                 await self.client.send_request(
                     computer_name=computer,
@@ -565,22 +574,33 @@ class MCPHandlersMixin:
         if caller_session_id:
             channel_metadata["initiator_session_id"] = caller_session_id
 
-        result: object = await self.client.handle_event(
-            TeleClaudeEvents.NEW_SESSION,
-            {"session_id": "", "args": [title]},
-            MessageMetadata(
-                adapter_type="redis",
-                project_path=project_path,
-                title=title,
-                channel_metadata=channel_metadata,
-                auto_command=auto_command,
-            ),
+        cmd = CreateSessionCommand(
+            project_path=project_path,
+            title=title,
+            subdir=subfolder,
+            working_slug=working_slug,
+            initiator_session_id=caller_session_id,
+            adapter_type="redis",
+            channel_metadata=channel_metadata,
+            auto_command=auto_command,
         )
+
+        metadata = MessageMetadata(
+            adapter_type="redis",
+            project_path=project_path,
+            title=title,
+            channel_metadata=channel_metadata,
+            auto_command=auto_command,
+        )
+
+        result: object = await self.client.handle_internal_command(cmd, metadata=metadata)
 
         session_id = self._extract_session_id(result)
         tmux_session_name = self._extract_tmux_session_name(result)
         if not session_id:
-            error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else "Session creation failed"
+            error_msg = "Session creation failed"
+            if isinstance(result, dict):
+                error_msg = str(result.get("error", "Unknown error"))
             return {"status": "error", "message": f"Local session creation failed: {error_msg}"}
 
         await self._register_listener_if_present(session_id, caller_session_id)
@@ -708,8 +728,9 @@ class MCPHandlersMixin:
         tail_chars: int = 2000,
     ) -> SessionDataResult:
         """Get session data from local computer directly."""
-        context = CommandEventContext(session_id=session_id, args=[])
-        payload = await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
+        payload = await command_handlers.handle_get_session_data(
+            session_id, since_timestamp, until_timestamp, tail_chars
+        )
         return cast(SessionDataResult, payload)
 
     async def _get_remote_session_data(

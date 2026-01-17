@@ -1,8 +1,9 @@
 """Mapper module to normalize transport inputs into internal command models."""
 
+import base64
 from typing import Dict, List, Optional, cast
 
-from teleclaude.core.events import parse_command_string
+from teleclaude.core.events import AgentHookEvents, parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -33,6 +34,7 @@ class CommandMapper:
                 subdir=metadata.subdir,
                 adapter_type="telegram",
                 channel_metadata=metadata.channel_metadata,
+                auto_command=metadata.auto_command,
                 working_slug=cast(Optional[str], metadata.channel_metadata.get("working_slug"))
                 if metadata.channel_metadata
                 else None,
@@ -76,18 +78,113 @@ class CommandMapper:
         project_path: Optional[str] = None,
         title: Optional[str] = None,
         channel_metadata: Optional[Dict[str, object]] = None,
-        launch_intent: Optional[SessionLaunchIntent] = None,
+        launch_intent: Optional[SessionLaunchIntent | Dict[str, object]] = None,
     ) -> InternalCommand:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
+        launch_intent_obj: Optional[SessionLaunchIntent] = None
+        if isinstance(launch_intent, dict):
+            launch_intent_obj = SessionLaunchIntent.from_dict(launch_intent)
+        elif isinstance(launch_intent, SessionLaunchIntent):
+            launch_intent_obj = launch_intent
+
+        if cmd_name == "stop_notification":
+            target_session_id = args[0] if len(args) > 0 else ""
+            source_computer = args[1] if len(args) > 1 else "unknown"
+            title_b64 = args[2] if len(args) > 2 else None
+            resolved_title = None
+            if title_b64:
+                try:
+                    resolved_title = base64.b64decode(title_b64).decode()
+                except Exception:
+                    pass
+
+            # Map to AGENT_EVENT stop
+            event_data = {
+                "session_id": target_session_id,
+                "source_computer": source_computer,
+            }
+            if resolved_title:
+                event_data["title"] = resolved_title
+
+            return SystemCommand(
+                command="agent_event",
+                args=[],
+                data={
+                    "session_id": target_session_id,
+                    "event_type": AgentHookEvents.AGENT_STOP,
+                    "data": event_data,
+                },
+            )
+
+        if cmd_name == "input_notification":
+            target_session_id = args[0] if len(args) > 0 else ""
+            source_computer = args[1] if len(args) > 1 else "unknown"
+            message_b64 = args[2] if len(args) > 2 else ""
+            message = ""
+            try:
+                message = base64.b64decode(message_b64).decode()
+            except Exception:
+                pass
+
+            return SystemCommand(
+                command="agent_event",
+                args=[],
+                data={
+                    "session_id": target_session_id,
+                    "event_type": AgentHookEvents.AGENT_NOTIFICATION,
+                    "data": {
+                        "session_id": target_session_id,
+                        "source_computer": source_computer,
+                        "message": message,
+                    },
+                },
+            )
+
+        if cmd_name == "message":
+            return SendMessageCommand(
+                session_id=session_id or "",
+                text=" ".join(args) if args else "",
+            )
+
+        if cmd_name == "agent":
+            agent_name = args[0] if args else "claude"
+            return StartAgentCommand(
+                session_id=session_id or "",
+                agent_name=agent_name,
+                args=args[1:] if len(args) > 1 else [],
+            )
+
+        if cmd_name in {"claude", "gemini", "codex"}:
+            return StartAgentCommand(
+                session_id=session_id or "",
+                agent_name=cmd_name,
+                args=args,
+            )
+
+        if cmd_name == "agent_resume":
+            agent_name = args[0] if args else None
+            native_session_id = args[1] if len(args) > 1 else None
+            return ResumeAgentCommand(
+                session_id=session_id or "",
+                agent_name=agent_name,
+                native_session_id=native_session_id,
+            )
+
+        if cmd_name in {"claude_resume", "gemini_resume", "codex_resume"}:
+            return ResumeAgentCommand(
+                session_id=session_id or "",
+                agent_name=cmd_name.replace("_resume", ""),
+                native_session_id=args[0] if args else None,
+            )
 
         if cmd_name == "new_session":
             return CreateSessionCommand(
                 project_path=project_path or "",
-                title=title or (args[0] if args else None),
+                title=title or (" ".join(args) if args else None),
                 adapter_type="redis",
                 channel_metadata=channel_metadata,
-                launch_intent=launch_intent,
+                launch_intent=launch_intent_obj,
             )
 
         if cmd_name == "message":
@@ -132,6 +229,7 @@ class CommandMapper:
                 adapter_type="rest",
                 channel_metadata=metadata.channel_metadata,
                 launch_intent=metadata.launch_intent,
+                auto_command=metadata.auto_command,
             )
 
         if event == "message":

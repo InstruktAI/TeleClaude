@@ -13,7 +13,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_adapter import RESTAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
@@ -44,6 +43,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, RedisAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.types.commands import InternalCommand, SystemCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -203,11 +203,6 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
-        # REST adapter (local HTTP API)
-        rest = RESTAdapter(self, task_registry=self.task_registry)
-        await rest.start()
-        self.adapters["rest"] = rest
-
         # Telegram adapter
         if os.getenv("TELEGRAM_BOT_TOKEN"):
             telegram = TelegramAdapter(self)
@@ -223,7 +218,7 @@ class AdapterClient:
             logger.info("Started redis adapter")
 
         # Validate at least one adapter started
-        if len(self.adapters) == 1 and "rest" in self.adapters:
+        if not self.adapters:
             raise ValueError("No adapters started - check config.yml and .env")
 
         logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
@@ -775,6 +770,34 @@ class AdapterClient:
         self._handlers[event].append(cast(Callable[[EventType, EventContext], Awaitable[object]], handler))
         logger.trace("Registered handler for event: %s (total: %d)", event, len(self._handlers[event]))
 
+    async def handle_internal_command(
+        self,
+        command: InternalCommand,
+        metadata: Optional[MessageMetadata] = None,
+    ) -> object:
+        """Handle normalized internal command.
+
+        Converts internal command to event dispatch.
+        This is the new entry point for transport-normalized inputs.
+        """
+        if isinstance(command, SystemCommand) and command.command == "agent_event" and command.data:
+            payload = command.data
+            return await self.handle_event(
+                TeleClaudeEvents.AGENT_EVENT,
+                payload,
+                metadata or MessageMetadata(adapter_type="internal"),
+            )
+        event_type: EventType = cast(EventType, command.command_type.value)
+        payload = command.to_payload()
+
+        if metadata is None:
+            metadata = MessageMetadata(adapter_type="internal")
+
+        # Inject command into payload for context builder
+        payload["internal_command"] = command
+
+        return await self.handle_event(event_type, payload, metadata)
+
     async def handle_event(
         self,
         event: EventType,
@@ -810,7 +833,11 @@ class AdapterClient:
         session = await db.get_session(str(session_id)) if session_id else None
 
         # 3.5 Track last input adapter and message for routing feedback
-        if session and metadata.adapter_type and metadata.adapter_type in self.adapters:
+        if (
+            session
+            and metadata.adapter_type
+            and (metadata.adapter_type in self.adapters or metadata.adapter_type == "rest")
+        ):
             if event in COMMAND_EVENTS or event in (
                 TeleClaudeEvents.MESSAGE,
                 TeleClaudeEvents.VOICE,
@@ -945,6 +972,7 @@ class AdapterClient:
                 channel_metadata=metadata.channel_metadata,
                 auto_command=metadata.auto_command,
                 launch_intent=metadata.launch_intent,
+                internal_command=cast(Optional[InternalCommand], payload.get("internal_command")),
             )
 
         # Fallback - should not happen with EventType literal

@@ -10,7 +10,6 @@ messaging restriction.
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
 import json
 import os
@@ -26,21 +25,17 @@ from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
+from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.events import (
-    AgentHookEvents,
-    EventType,
     SessionLifecycleContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
-    parse_command_string,
 )
 from teleclaude.core.models import (
     ChannelMetadata,
-    CommandPayload,
     ComputerInfo,
     MessageMetadata,
-    MessagePayload,
     PeerInfo,
     ProjectInfo,
     RedisAdapterMetadata,
@@ -54,6 +49,7 @@ from teleclaude.core.models import (
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
+from teleclaude.types.commands import CommandType
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -1008,138 +1004,43 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.warning("Invalid message data: %s", data)
                 return
 
-            session_id = parsed.session_id or ""
-            logger.info("Received message for session %s: %s", session_id[:8], parsed.command[:50])
+            # Normalize via mapper
+            command = CommandMapper.map_redis_input(
+                command_str=parsed.command,
+                session_id=parsed.session_id,
+                project_path=parsed.project_path,
+                title=parsed.title,
+                channel_metadata=parsed.channel_metadata,
+                launch_intent=parsed.launch_intent,
+            )
+            command.request_id = message_id
 
-            # Parse message using centralized parser FIRST
-            cmd_name, args = parse_command_string(parsed.command)
-            if not cmd_name:
-                logger.warning("Empty message received for session %s", session_id[:8])
-                return
-
-            # Emit event to daemon via client
-            event_type: EventType = cmd_name  # pyright: ignore[reportAssignmentType]  # pyright: ignore[reportAssignmentType]
-
-            # MESSAGE and CLAUDE events use text in payload (keep message as single string)
-            # Other commands use args list
-            payload_obj: object
-            if cmd_name == "stop_notification":
-                if len(args) < 2:
-                    logger.warning("stop_notification received with insufficient args: %s", args)
-                    return
-
-                target_session_id = args[0]
-                source_computer = args[1]
-                title: str | None = None
-                if len(args) > 2:
-                    try:
-                        title = base64.b64decode(args[2]).decode()
-                    except Exception as e:
-                        logger.warning("Failed to decode title from base64: %s", e)
-                        title = None
-
-                event_type = TeleClaudeEvents.AGENT_EVENT
-                event_data: dict[str, object] = {  # guard: loose-dict - Event payload assembly
-                    "session_id": target_session_id,
-                    "source_computer": source_computer,
-                }
-                if title:
-                    event_data["title"] = title
-
-                payload_obj = {
-                    "session_id": target_session_id,
-                    "event_type": AgentHookEvents.AGENT_STOP,
-                    "data": event_data,
-                }
-                logger.debug("Emitting AGENT_EVENT stop for remote session %s", target_session_id[:8])
-            elif cmd_name == "input_notification":
-                # Format: "/input_notification {session_id} {computer} {message_b64}"
-                if len(args) < 3:
-                    logger.warning("input_notification received with insufficient args: %s", args)
-                    return
-
-                target_session_id = args[0]
-                source_computer = args[1]
-                try:
-                    message = base64.b64decode(args[2]).decode()
-                except Exception:
-                    logger.warning("input_notification: failed to decode message")
-                    return
-
-                event_type = TeleClaudeEvents.AGENT_EVENT
-                event_data = {
-                    "session_id": target_session_id,
-                    "source_computer": source_computer,
-                    "message": message,
-                }
-
-                payload_obj = {
-                    "session_id": target_session_id,
-                    "event_type": AgentHookEvents.AGENT_NOTIFICATION,
-                    "data": event_data,
-                }
-                logger.debug("Emitting AGENT_EVENT notification for remote session %s", target_session_id[:8])
-            elif event_type == TeleClaudeEvents.MESSAGE:
-                payload_obj = MessagePayload(session_id=session_id, text=" ".join(args) if args else "")
-                logger.debug(
-                    "Emitting MESSAGE event with text: %s",
-                    payload_obj.text if payload_obj.text else "(empty)",
-                )
-            elif cmd_name in ["claude", "gemini", "codex"]:
-                agent_name = cmd_name
-                event_type = TeleClaudeEvents.AGENT_START
-                payload_obj = CommandPayload(session_id=session_id, args=[agent_name] + args)
-                logger.debug("Emitting AGENT_START event for %s with args: %s", agent_name, args)
-            elif cmd_name in ["claude_resume", "gemini_resume", "codex_resume"]:
-                agent_name = cmd_name.replace("_resume", "")
-                event_type = TeleClaudeEvents.AGENT_RESUME
-                payload_obj = CommandPayload(session_id=session_id, args=[agent_name] + args)
-                logger.debug("Emitting AGENT_RESUME event for %s", agent_name)
-            else:
-                payload_obj = CommandPayload(session_id=session_id, args=args)
-                logger.debug("Emitting %s event with args: %s", event_type, args)
-
-            launch_intent = None
-            if parsed.launch_intent:
-                launch_intent = SessionLaunchIntent.from_dict(parsed.launch_intent)
-
-            metadata_to_send = MessageMetadata(
+            launch_intent_obj = None
+            if isinstance(parsed.launch_intent, dict):
+                launch_intent_obj = SessionLaunchIntent.from_dict(parsed.launch_intent)
+            metadata = MessageMetadata(
                 adapter_type="redis",
                 channel_metadata=parsed.channel_metadata,
                 project_path=parsed.project_path,
                 title=parsed.title,
-                launch_intent=launch_intent,
+                launch_intent=launch_intent_obj,
             )
 
             if parsed.initiator:
                 # Ensure target_computer set for stop forwarding
-                metadata_to_send.channel_metadata = metadata_to_send.channel_metadata or {}
-                metadata_to_send.channel_metadata["target_computer"] = parsed.initiator
+                metadata.channel_metadata = metadata.channel_metadata or {}
+                metadata.channel_metadata["target_computer"] = parsed.initiator
 
-            # Enrich payload with optional project/title if supported
-            if parsed.project_path and isinstance(payload_obj, (CommandPayload, MessagePayload)):
-                payload_obj.project_path = parsed.project_path
-            if parsed.title and isinstance(payload_obj, (CommandPayload, MessagePayload)):
-                payload_obj.title = parsed.title
-
-            logger.info(">>> About to call handle_event for event_type: %s", event_type)
-            # Convert dataclass payloads to dict for handler
-            if hasattr(payload_obj, "__dict__"):
-                payload_dict = dict(payload_obj.__dict__)
-            else:
-                payload_dict = cast(dict[str, object], payload_obj)
-
-            result = await self.client.handle_event(
-                event=event_type,
-                payload=payload_dict,
-                metadata=metadata_to_send,
-            )
-            logger.info(
-                ">>> handle_event completed for event_type: %s, result type: %s", event_type, type(result).__name__
-            )
+            logger.info(">>> About to call handle_internal_command for: %s", command.command_type)
+            result = await self.client.handle_internal_command(command, metadata=metadata)
+            logger.info(">>> handle_internal_command completed for: %s", command.command_type)
 
             # Start output stream listener for new AI-to-AI sessions
-            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":
+            if (
+                command.command_type == CommandType.CREATE_SESSION
+                and isinstance(result, dict)
+                and result.get("status") == "success"
+            ):
                 result_data = result.get("data")
                 if isinstance(result_data, dict):
                     new_session_id = result_data.get("session_id")
@@ -1157,6 +1058,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         except Exception as e:
             logger.error("Failed to handle incoming message: %s", e, exc_info=True)
+            # Send error response if possible
+            try:
+                error_response = json.dumps({"status": "error", "error": str(e)})
+                await self.send_response(message_id, error_response)
+            except Exception:
+                pass
 
     def _parse_redis_message(self, data: dict[bytes, bytes]) -> RedisInboundMessage:
         """Decode raw Redis stream entry into typed RedisInboundMessage."""
@@ -1223,17 +1130,18 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
 
         logger.info("Received system command '%s' from %s", command, from_computer)
 
-        # Emit SYSTEM_COMMAND event to daemon
-        payload_dict: dict[str, object] = {
-            "command": command,
-            "args": args_obj,
-            "from_computer": from_computer,
-        }
-        await self.client.handle_event(
-            event=TeleClaudeEvents.SYSTEM_COMMAND,
-            payload=payload_dict,
-            metadata=MessageMetadata(),
+        # Normalize via mapper
+        # map_redis_input doesn't handle system messages with explicit from_computer yet.
+        # But we can use SystemCommand directly or update mapper.
+        from teleclaude.types.commands import SystemCommand
+
+        cmd = SystemCommand(
+            command=command,
+            args=args_obj if isinstance(args_obj, list) else [],
+            data={"from_computer": from_computer, "raw_args": args_obj},
         )
+
+        await self.client.handle_internal_command(cmd, metadata=MessageMetadata(adapter_type="redis"))
 
     async def _heartbeat_loop(self) -> None:
         """Background task: Send heartbeat every N seconds."""

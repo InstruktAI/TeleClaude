@@ -1,6 +1,5 @@
 """Unit tests for deferral automation features."""
 
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch

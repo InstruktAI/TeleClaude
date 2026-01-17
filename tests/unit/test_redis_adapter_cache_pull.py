@@ -10,7 +10,6 @@ import pytest
 
 from teleclaude.core.models import (
     ComputerInfo,
-    TodoInfo,
 )
 
 

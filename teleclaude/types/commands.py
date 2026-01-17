@@ -11,13 +11,13 @@ if TYPE_CHECKING:
 class CommandType(str, Enum):
     """Internal command types."""
 
-    CREATE_SESSION = "create_session"
-    START_AGENT = "start_agent"
-    RESUME_AGENT = "resume_agent"
-    SEND_MESSAGE = "send_message"
+    CREATE_SESSION = "new_session"
+    START_AGENT = "agent"
+    RESUME_AGENT = "agent_resume"
+    SEND_MESSAGE = "message"
     SEND_AGENT_COMMAND = "send_agent_command"
-    CLOSE_SESSION = "close_session"
-    SYSTEM = "system"
+    CLOSE_SESSION = "exit"
+    SYSTEM = "system_command"
 
 
 @dataclass(kw_only=True)
@@ -26,6 +26,10 @@ class InternalCommand:
 
     command_type: CommandType
     request_id: Optional[str] = None
+
+    def to_payload(self) -> Dict[str, object]:
+        """Return payload dict for adapter event dispatch."""
+        return {}
 
 
 @dataclass(kw_only=True)
@@ -40,6 +44,7 @@ class CreateSessionCommand(InternalCommand):
     adapter_type: str = "unknown"
     channel_metadata: Optional[Dict[str, object]] = None
     launch_intent: Optional["SessionLaunchIntent"] = None
+    auto_command: Optional[str] = None
 
     def __init__(
         self,
@@ -52,6 +57,7 @@ class CreateSessionCommand(InternalCommand):
         adapter_type: str = "unknown",
         channel_metadata: Optional[Dict[str, object]] = None,
         launch_intent: Optional["SessionLaunchIntent"] = None,
+        auto_command: Optional[str] = None,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.CREATE_SESSION, request_id=request_id)
@@ -63,6 +69,11 @@ class CreateSessionCommand(InternalCommand):
         self.adapter_type = adapter_type
         self.channel_metadata = channel_metadata
         self.launch_intent = launch_intent
+        self.auto_command = auto_command
+
+    def to_payload(self) -> Dict[str, object]:
+        args: List[str] = [self.title] if self.title else []
+        return {"session_id": "", "args": args}
 
 
 @dataclass(kw_only=True)
@@ -89,6 +100,10 @@ class StartAgentCommand(InternalCommand):
         self.thinking_mode = thinking_mode
         self.args = args or []
 
+    def to_payload(self) -> Dict[str, object]:
+        args = [self.agent_name] + list(self.args)
+        return {"session_id": self.session_id, "args": args}
+
 
 @dataclass(kw_only=True)
 class ResumeAgentCommand(InternalCommand):
@@ -111,6 +126,14 @@ class ResumeAgentCommand(InternalCommand):
         self.agent_name = agent_name
         self.native_session_id = native_session_id
 
+    def to_payload(self) -> Dict[str, object]:
+        args: List[str] = []
+        if self.agent_name:
+            args.append(self.agent_name)
+        if self.native_session_id:
+            args.append(self.native_session_id)
+        return {"session_id": self.session_id, "args": args}
+
 
 @dataclass(kw_only=True)
 class SendMessageCommand(InternalCommand):
@@ -129,6 +152,9 @@ class SendMessageCommand(InternalCommand):
         super().__init__(command_type=CommandType.SEND_MESSAGE, request_id=request_id)
         self.session_id = session_id
         self.text = text
+
+    def to_payload(self) -> Dict[str, object]:
+        return {"session_id": self.session_id, "text": self.text}
 
 
 @dataclass(kw_only=True)
@@ -152,6 +178,9 @@ class SendAgentCommand(InternalCommand):
         self.command = command
         self.args = args
 
+    def to_payload(self) -> Dict[str, object]:
+        return {"session_id": self.session_id, "command": self.command, "args": self.args}
+
 
 @dataclass(kw_only=True)
 class CloseSessionCommand(InternalCommand):
@@ -168,6 +197,9 @@ class CloseSessionCommand(InternalCommand):
         super().__init__(command_type=CommandType.CLOSE_SESSION, request_id=request_id)
         self.session_id = session_id
 
+    def to_payload(self) -> Dict[str, object]:
+        return {"session_id": self.session_id, "args": []}
+
 
 @dataclass(kw_only=True)
 class SystemCommand(InternalCommand):
@@ -175,14 +207,25 @@ class SystemCommand(InternalCommand):
 
     command: str
     args: List[str] = field(default_factory=list)
+    data: Optional[Dict[str, object]] = None
 
     def __init__(
         self,
         *,
         command: str,
         args: Optional[List[str]] = None,
+        data: Optional[Dict[str, object]] = None,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.SYSTEM, request_id=request_id)
         self.command = command
         self.args = args or []
+        self.data = data
+
+    def to_payload(self) -> Dict[str, object]:
+        payload: Dict[str, object] = {"command": self.command, "args": self.args}
+        if self.data is not None:
+            payload["data"] = self.data
+            if "from_computer" in self.data:
+                payload["from_computer"] = self.data["from_computer"]
+        return payload

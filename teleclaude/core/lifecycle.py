@@ -66,6 +66,7 @@ class DaemonLifecycle:
         self._rest_restart_window_s = rest_restart_window_s
         self._rest_restart_backoff_s = rest_restart_backoff_s
         self._started = False
+        self.rest_adapter: RESTAdapter | None = None
 
     async def startup(self) -> None:
         """Start core components in a defined order."""
@@ -80,13 +81,14 @@ class DaemonLifecycle:
 
         await self.client.start()
 
-        rest_adapter = self.client.adapters.get("rest")
-        if isinstance(rest_adapter, RESTAdapter):
-            rest_adapter.cache = self.cache  # type: ignore[reportAttributeAccessIssue, unused-ignore]
-            rest_adapter.set_on_server_exit(self.handle_rest_server_exit)
-            logger.info("Wired cache to REST adapter")
-        else:
-            logger.warning("REST adapter not available for cache wiring")
+        self.rest_adapter = RESTAdapter(
+            self.client,
+            cache=self.cache,
+            task_registry=self.task_registry,
+        )
+        await self.rest_adapter.start()
+        self.rest_adapter.set_on_server_exit(self.handle_rest_server_exit)
+        logger.info("REST server started and cache wired")
 
         redis_adapter_cache = self.client.adapters.get("redis")
         if redis_adapter_cache and hasattr(redis_adapter_cache, "cache"):
@@ -168,6 +170,8 @@ class DaemonLifecycle:
         for adapter_name, adapter in self.client.adapters.items():
             logger.info("Stopping %s adapter...", adapter_name)
             await adapter.stop()
+        if self.rest_adapter:
+            await self.rest_adapter.stop()
 
         await db.close()
 
@@ -237,9 +241,9 @@ class DaemonLifecycle:
                 window_s=self._rest_restart_window_s,
             )
             await asyncio.sleep(self._rest_restart_backoff_s)
-            rest_adapter = self.client.adapters.get("rest")
-            if not isinstance(rest_adapter, RESTAdapter):
-                logger.error("REST adapter not available; cannot restart")
+            rest_adapter = self.rest_adapter
+            if not rest_adapter:
+                logger.error("REST server not available; cannot restart")
                 return False
             try:
                 await rest_adapter.restart_server()

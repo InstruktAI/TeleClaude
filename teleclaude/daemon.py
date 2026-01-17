@@ -62,7 +62,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent
+from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, ThinkingMode
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.rest_events import RestOutboxMetadata, RestOutboxPayload, RestOutboxResponse
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
@@ -71,6 +71,13 @@ from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.types.commands import (
+    CreateSessionCommand,
+    InternalCommand,
+    ResumeAgentCommand,
+    SendMessageCommand,
+    StartAgentCommand,
+)
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -923,6 +930,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             project_path=context.project_path,
             channel_metadata=context.channel_metadata,
             auto_command=context.auto_command,
+            launch_intent=context.launch_intent,
         )
 
         return await self.handle_command(event, args, context, metadata)
@@ -934,8 +942,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             _event: Event type (always "message") - unused but required by event handler signature
             context: Message event context (Pydantic)
         """
-        # Pass typed context directly
-        await self.handle_message(context.session_id, context.text, context)
+        # Map to internal command
+        cmd = SendMessageCommand(session_id=context.session_id, text=context.text)
+        await self.handle_message(cmd)
 
     async def _handle_voice(self, _event: str, context: VoiceEventContext) -> None:
         """Handler for VOICE events - pure business logic (cleanup already done).
@@ -1963,17 +1972,32 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """
         logger.debug("Command received: %s %s", command, args)
 
+        # Use normalized command if present in context
+        internal_cmd = cast(Optional[InternalCommand], getattr(context, "internal_command", None))
+
         if command == TeleClaudeEvents.NEW_SESSION:
+            create_cmd: CreateSessionCommand
+            if isinstance(internal_cmd, CreateSessionCommand):
+                create_cmd = internal_cmd
+            else:
+                # Fallback/Legacy: Map to internal command
+                create_cmd = CreateSessionCommand(
+                    project_path=metadata.project_path or "",
+                    title=metadata.title or (args[0] if args else None),
+                    subdir=metadata.subdir,
+                    adapter_type=metadata.adapter_type or "unknown",
+                    channel_metadata=metadata.channel_metadata,
+                    launch_intent=metadata.launch_intent,
+                    auto_command=metadata.auto_command,
+                )
+
             return await session_launcher.create_session(
-                context,
-                args,
-                metadata,
+                create_cmd,
                 self.client,
                 self._execute_auto_command,
                 self._queue_background_task,
             )
         elif command == TeleClaudeEvents.LIST_SESSIONS:
-            # LIST_SESSIONS is ephemeral command (MCP/Redis only) - return envelope directly
             return await command_handlers.handle_list_sessions()
         elif command == TeleClaudeEvents.LIST_PROJECTS:
             return await command_handlers.handle_list_projects()
@@ -1981,21 +2005,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_list_projects_with_todos()
         elif command == TeleClaudeEvents.LIST_TODOS:
             # First arg is project path
-            if not args:
-                logger.warning("list_todos called without project_path")
-                return []
-            project_path = args[0]
-            return await command_handlers.handle_list_todos(project_path)
+            path = args[0] if args else ""
+            return await command_handlers.handle_list_todos(path)
         elif command == TeleClaudeEvents.GET_SESSION_DATA:
             # Parse args: [since_timestamp] [until_timestamp] [tail_chars]
-            #
-            # NOTE: When commands are sent over Redis as a space-separated string,
-            # empty placeholders collapse (multiple spaces become one) so callers
-            # cannot reliably send "" for since/until. Support flexible forms:
-            # - /get_session_data
-            # - /get_session_data 2000
-            # - /get_session_data <since> 2000
-            # - /get_session_data <since> <until> 2000
             since_timestamp: Optional[str] = None
             until_timestamp: Optional[str] = None
             tail_chars = 5000
@@ -2004,13 +2017,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 return None if value == "-" else value
 
             if len(args) == 1:
-                # Either tail_chars or since_timestamp
                 try:
                     tail_chars = int(args[0])
                 except ValueError:
                     since_timestamp = _normalize_placeholder(args[0] or "")
             elif len(args) == 2:
-                # Either since+tail_chars or since+until
                 try:
                     tail_chars = int(args[1])
                     since_timestamp = _normalize_placeholder(args[0] or "")
@@ -2024,12 +2035,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     tail_chars = int(args[2]) if args[2] else 5000
                 except ValueError:
                     tail_chars = 5000
-            return await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
+            session_id = cast(str, getattr(context, "session_id", ""))
+            return await command_handlers.handle_get_session_data(
+                session_id, since_timestamp, until_timestamp, tail_chars
+            )
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
-            logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
-            result = await command_handlers.handle_get_computer_info()
-            logger.info("handle_get_computer_info returned: %s", result)
-            return result
+            return await command_handlers.handle_get_computer_info()
         elif command == TeleClaudeEvents.CANCEL:
             return await command_handlers.handle_cancel_command(context, self.client, self._start_polling_for_session)
         elif command == TeleClaudeEvents.CANCEL_2X:
@@ -2087,28 +2098,73 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         elif command == TeleClaudeEvents.CD:
             return await command_handlers.handle_cd_session(context, args, self.client, self._execute_terminal_command)
         elif command == TeleClaudeEvents.AGENT_START:
-            agent_name = args.pop(0) if args else ""
+            start_cmd: StartAgentCommand
+            if isinstance(internal_cmd, StartAgentCommand):
+                start_cmd = internal_cmd
+            else:
+                agent_name = args.pop(0) if args else ""
+                start_cmd = StartAgentCommand(
+                    session_id=cast(str, getattr(context, "session_id", "")),
+                    agent_name=agent_name,
+                    args=args,
+                )
+
+            args_to_use: list[str] = list(start_cmd.args)
+            valid_modes = {mode.value for mode in ThinkingMode}
+            if start_cmd.thinking_mode and (not args_to_use or args_to_use[0] not in valid_modes):
+                args_to_use.insert(0, start_cmd.thinking_mode)
+
             return await command_handlers.handle_agent_start(
-                context, agent_name, args, self.client, self._execute_terminal_command
+                context,
+                start_cmd.agent_name,
+                args_to_use,
+                self.client,
+                self._execute_terminal_command,
             )
         elif command == TeleClaudeEvents.AGENT_RESUME:
-            agent_name = args.pop(0) if args else ""
+            resume_cmd: ResumeAgentCommand
+            if isinstance(internal_cmd, ResumeAgentCommand):
+                resume_cmd = internal_cmd
+            else:
+                agent_name = args.pop(0) if args else ""
+                resume_cmd = ResumeAgentCommand(
+                    session_id=cast(str, getattr(context, "session_id", "")),
+                    agent_name=agent_name,
+                )
+
+            resume_args = list(args)
+            if resume_cmd.native_session_id:
+                resume_args = [resume_cmd.native_session_id]
             return await command_handlers.handle_agent_resume(
-                context, agent_name, args, self.client, self._execute_terminal_command
+                context,
+                resume_cmd.agent_name or "",
+                resume_args,
+                self.client,
+                self._execute_terminal_command,
             )
         elif command == TeleClaudeEvents.AGENT_RESTART:
-            agent_name = args.pop(0) if args else ""
             return await command_handlers.handle_agent_restart(
-                context, agent_name, args, self.client, self._execute_terminal_command
+                context, args.pop(0) if args else "", args, self.client, self._execute_terminal_command
             )
         elif command == "exit":
             return await command_handlers.handle_exit_session(context, self.client)
-
         return None
 
-    async def handle_message(self, session_id: str, text: str, _context: EventContext) -> None:
+    async def handle_message(
+        self,
+        cmd_or_session_id: SendMessageCommand | str,
+        text: Optional[str] = None,
+        _context: Optional[EventContext] = None,
+    ) -> None:
         """Handle incoming text messages (commands for tmux)."""
-        logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
+        if isinstance(cmd_or_session_id, SendMessageCommand):
+            session_id = cmd_or_session_id.session_id
+            message_text = cmd_or_session_id.text
+        else:
+            session_id = cmd_or_session_id
+            message_text = text or ""
+
+        logger.debug("Message for session %s: %s...", session_id[:8], message_text[:50])
 
         # Get session
         session = await db.get_session(session_id)
@@ -2119,7 +2175,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Get active agent for agent-specific escaping
         active_agent = session.active_agent
 
-        sanitized_text = tmux_io.wrap_bracketed_paste(text)
+        sanitized_text = tmux_io.wrap_bracketed_paste(message_text)
 
         # Send command to tmux (will create fresh session if needed)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
@@ -2184,10 +2240,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
         """Collect a lightweight resource snapshot for diagnostics."""
-        rest_adapter_base = self.client.adapters.get("rest")
         rest_ws_clients: int | None = None
-        if rest_adapter_base and isinstance(rest_adapter_base, RESTAdapter):
-            rest_ws_clients = len(rest_adapter_base._ws_clients)
+        rest_adapter = self.lifecycle.rest_adapter
+        if isinstance(rest_adapter, RESTAdapter):
+            rest_ws_clients = len(rest_adapter._ws_clients)
 
         mcp_connections: int | None = None
         if self.mcp_server:

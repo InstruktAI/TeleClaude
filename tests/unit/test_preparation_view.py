@@ -6,8 +6,6 @@ import asyncio
 import os
 from unittest.mock import Mock, patch
 
-import pytest
-
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.cli.models import CreateSessionResult
@@ -81,11 +79,11 @@ def test_handle_enter_on_ready_todo_splits_tmux_in_tmux_env():
 
     with (
         patch.dict("os.environ", {"TMUX": "1"}),
-        patch("teleclaude.cli.tui.views.preparation.subprocess.run") as mock_run,
+        patch("teleclaude.cli.tui.views.preparation.subprocess.run"),
         patch("teleclaude.cli.tui.session_launcher.subprocess.run") as mock_launcher_run,
-        patch("teleclaude.cli.tui.views.preparation.curses.def_prog_mode") as mock_def,
-        patch("teleclaude.cli.tui.views.preparation.curses.endwin") as mock_end,
-        patch("teleclaude.cli.tui.views.preparation.curses.reset_prog_mode") as mock_reset,
+        patch("teleclaude.cli.tui.views.preparation.curses.def_prog_mode"),
+        patch("teleclaude.cli.tui.views.preparation.curses.endwin"),
+        patch("teleclaude.cli.tui.views.preparation.curses.reset_prog_mode"),
     ):
         _run_with_loop(lambda: view.handle_enter(screen))
 

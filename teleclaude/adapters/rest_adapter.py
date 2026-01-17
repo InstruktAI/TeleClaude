@@ -41,6 +41,7 @@ from teleclaude.adapters.rest_models import (
 from teleclaude.config import config
 from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
+from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import (
@@ -230,24 +231,28 @@ class RESTAdapter(BaseAdapter):
             request: CreateSessionRequest,
         ) -> CreateSessionResponseDTO:
             """Create new session (local or remote)."""
-            # Derive title from message if not provided
+            # Normalize request into internal command.
+
+            metadata = self._metadata(
+                title=request.title or "Untitled",
+                project_path=request.project_path,
+                subdir=request.subdir,
+                # launch_intent and auto_command logic will be simplified or moved
+            )
+
+            # Extract title from message if not provided (legacy behavior)
             title = request.title
             if not title and request.message and request.message.startswith("/"):
                 title = request.message
             title = title or "Untitled"
 
-            args = [title] if title else []
-
-            auto_command = request.auto_command
-            message_text = request.message if request.message else None
-
             effective_agent = request.agent or "claude"
             effective_thinking_mode = request.thinking_mode or "slow"
 
             launch_intent = None
-            if not auto_command:
+            if not request.auto_command:
                 launch_kind = SessionLaunchKind(request.launch_kind)
-                if launch_kind == SessionLaunchKind.AGENT and message_text is not None:
+                if launch_kind == SessionLaunchKind.AGENT and request.message:
                     launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
 
                 if launch_kind == SessionLaunchKind.EMPTY:
@@ -261,13 +266,13 @@ class RESTAdapter(BaseAdapter):
                         native_session_id=request.native_session_id,
                     )
                 elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-                    if message_text is None:
+                    if request.message is None:
                         raise HTTPException(status_code=400, detail="message required for agent_then_message")
                     launch_intent = SessionLaunchIntent(
                         kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                         agent=effective_agent,
                         thinking_mode=effective_thinking_mode,
-                        message=message_text,
+                        message=request.message,
                     )
                 else:
                     launch_intent = SessionLaunchIntent(
@@ -276,6 +281,7 @@ class RESTAdapter(BaseAdapter):
                         thinking_mode=effective_thinking_mode,
                     )
 
+            auto_command = request.auto_command
             if not auto_command and launch_intent:
                 if launch_intent.kind == SessionLaunchKind.AGENT:
                     auto_command = f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
@@ -290,21 +296,16 @@ class RESTAdapter(BaseAdapter):
                     else:
                         auto_command = f"agent_resume {launch_intent.agent}"
 
+            # Update metadata with derived fields
+            metadata.title = title
+            metadata.launch_intent = launch_intent
+            metadata.auto_command = auto_command
+            cmd = CommandMapper.map_rest_input("new_session", {}, metadata)
+
             try:
-                envelope = await self.client.handle_event(
-                    event="new_session",
-                    payload={
-                        "session_id": "",  # Will be created
-                        "args": args,
-                    },
-                    metadata=self._metadata(
-                        title=title,
-                        project_path=request.project_path,
-                        subdir=request.subdir,
-                        launch_intent=launch_intent,
-                        auto_command=auto_command,
-                    ),
-                )
+                # Use the new handle_internal_command entry point
+                envelope = await self.client.handle_internal_command(cmd, metadata=metadata)
+
                 if not isinstance(envelope, dict):
                     raise HTTPException(status_code=500, detail="Invalid session creation response")
 
@@ -359,22 +360,15 @@ class RESTAdapter(BaseAdapter):
             request: SendMessageRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
-            """Send message to session.
-
-            Args:
-                session_id: Session ID (unique across computers)
-                request: Message request
-                computer: Optional computer name (for API consistency, not used)
-            """
+            """Send message to session."""
             try:
-                result = await self.client.handle_event(
-                    event="message",
-                    payload={
-                        "session_id": session_id,
-                        "text": request.message,
-                    },
-                    metadata=self._metadata(),
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "message",
+                    {"session_id": session_id, "text": request.message},
+                    metadata,
                 )
+                result = await self.client.handle_internal_command(cmd, metadata=metadata)
                 return {"status": "success", "result": result}
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
@@ -386,6 +380,12 @@ class RESTAdapter(BaseAdapter):
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
             try:
+                # Note: SystemCommand context builder in AdapterClient might need session_id if we want to route it
+                # Actually, SYSTEM_COMMAND context doesn't have session_id.
+                # But agent_restart IS session-specific.
+                # Legacy code used handle_event(agent_restart, payload={"session_id": session_id})
+                # CommandEventContext handles session_id.
+
                 await self.client.handle_event(
                     event="agent_restart",
                     payload={"args": [], "session_id": session_id},

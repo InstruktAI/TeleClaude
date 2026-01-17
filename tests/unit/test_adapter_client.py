@@ -481,7 +481,7 @@ async def test_send_output_update_missing_thread_recreates_topic():
     with (
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
-        patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
+        patch.object(client, "ensure_ui_channels", new=AsyncMock()),
     ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
@@ -514,7 +514,7 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
     with (
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)),
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
-        patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
+        patch.object(client, "ensure_ui_channels", new=AsyncMock()),
     ):
         result = await client.send_output_update(session, "output", 0.0, 0.0)
 
@@ -545,7 +545,7 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
 
     with patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=session)):
         with patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()) as update_session:
-            with patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels:
+            with patch.object(client, "ensure_ui_channels", new=AsyncMock()):
                 result = await client.send_output_update(session, "output", 0.0, 0.0)
 
     # Outcome: success after retry
@@ -585,7 +585,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
     )
 
     with (
-        patch.object(client, "ensure_ui_channels", new=AsyncMock()) as ensure_ui_channels,
+        patch.object(client, "ensure_ui_channels", new=AsyncMock()),
         patch("teleclaude.core.adapter_client.db.get_session", new=AsyncMock(return_value=updated_session)),
         patch("teleclaude.core.adapter_client.db.update_session", new=AsyncMock()),
     ):
