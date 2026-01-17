@@ -501,4 +501,10 @@ class UiAdapter(BaseAdapter):
         if "last_feedback_received" in updated_fields:
             summary = session.last_feedback_received or ""
             if summary:
+                logger.debug(
+                    "Summary feedback emit: session=%s len=%d updated_fields=%s",
+                    session_id[:8],
+                    len(summary),
+                    list(updated_fields.keys()),
+                )
                 await self.send_feedback(session, summary, metadata=MessageMetadata(adapter_type="internal"))

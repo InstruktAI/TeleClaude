@@ -346,6 +346,13 @@ class Db:
             updates["last_message_sent_at"] = datetime.now(timezone.utc).isoformat()
         if "last_feedback_received" in updates and "last_feedback_received_at" not in updates:
             updates["last_feedback_received_at"] = datetime.now(timezone.utc).isoformat()
+            summary_val = updates.get("last_feedback_received")
+            summary_len = len(str(summary_val)) if summary_val is not None else 0
+            logger.debug(
+                "Summary updated: session=%s len=%d",
+                session_id[:8],
+                summary_len,
+            )
 
         set_clause = ", ".join(f"{key} = ?" for key in updates)
         values = list(updates.values()) + [session_id]
