@@ -179,7 +179,12 @@ def test_read_phase_state_returns_default_when_no_file():
     """read_phase_state returns default state when state.json doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         state = read_phase_state(tmpdir, "test-slug")
-        assert state == {"build": "pending", "review": "pending", "breakdown": {"assessed": False, "todos": []}}
+        assert state == {
+            "build": "pending",
+            "review": "pending",
+            "deferrals_processed": False,
+            "breakdown": {"assessed": False, "todos": []},
+        }
 
 
 def test_read_phase_state_reads_existing_file():
@@ -193,7 +198,12 @@ def test_read_phase_state_reads_existing_file():
 
         state = read_phase_state(tmpdir, slug)
         # Should merge with defaults for missing keys
-        assert state == {"build": "complete", "review": "pending", "breakdown": {"assessed": False, "todos": []}}
+        assert state == {
+            "build": "complete",
+            "review": "pending",
+            "deferrals_processed": False,
+            "breakdown": {"assessed": False, "todos": []},
+        }
 
 
 def test_write_phase_state_creates_file():
