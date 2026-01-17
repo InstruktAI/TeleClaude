@@ -65,9 +65,13 @@ class DaemonLifecycle:
         self._rest_restart_max = rest_restart_max
         self._rest_restart_window_s = rest_restart_window_s
         self._rest_restart_backoff_s = rest_restart_backoff_s
+        self._started = False
 
     async def startup(self) -> None:
         """Start core components in a defined order."""
+        if self._started:
+            logger.warning("Lifecycle startup already completed; skipping")
+            return
         await db.initialize()
         logger.info("Database initialized")
 
@@ -123,6 +127,7 @@ class DaemonLifecycle:
             logger.info("MCP server watch task started")
         else:
             logger.warning("MCP server not started - object is None")
+        self._started = True
 
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""
