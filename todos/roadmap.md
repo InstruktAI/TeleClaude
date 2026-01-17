@@ -6,7 +6,7 @@
 
 ---
 
-- [.] deferral-automation
+- [>] deferral-automation
 - [.] async-improvements
 - [>] context-ai
 - [>] docs-3rd
