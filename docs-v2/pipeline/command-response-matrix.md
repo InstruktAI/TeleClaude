@@ -8,14 +8,14 @@
 
 ## Matrix (Use Case → Response Mode)
 
-| Use Case | Response Mode | Immediate Return | Completion Signal |
-| --- | --- | --- | --- |
-| Create empty session | Hybrid | `request_id`, `session_id`, `tmux_session_name` | session_created / session_ready |
-| Create session with agent | Hybrid | `request_id`, `session_id`, `tmux_session_name` | session_ready (agent started) |
-| Create session with agent + initial task | Hybrid | `request_id`, `session_id`, `tmux_session_name` | task_started / task_ready |
-| Resume existing agent session | Async | `request_id` | agent_resumed |
-| Restart agent in session | Async | `request_id` | agent_restarted |
-| Send command/message to session | Async | `request_id` | command_completed |
-| View live output from session | Async (stream) | stream subscription | output events |
-| Attach to session in TUI | Sync | session attachment handle | attached |
-| End session | Async | `request_id` | session_ended |
+| Use Case | Interfaces | Response Mode | Immediate Return | Completion Signal |
+| --- | --- | --- | --- | --- |
+| Create empty session (escape hatch) | Telegram UI only | Hybrid | `request_id`, `session_id`, `tmux_session_name` | session_created |
+| Create session with agent | UI adapters, REST | Hybrid | `request_id`, `session_id`, `tmux_session_name` | agent_ready |
+| Create session with agent + initial task | UI adapters, REST, MCP | Hybrid | `request_id`, `session_id`, `tmux_session_name` | agent_ready → task_delivered |
+| Resume existing agent session | UI adapters, REST, MCP | Async | `request_id` | agent_resumed |
+| Restart agent in session | UI adapters, REST, MCP | Async | `request_id` | agent_restarted |
+| Send command to session | UI adapters, REST, MCP | Async | `request_id` | command_delivered |
+| Send message to session | UI adapters, REST, MCP | Async | `request_id` | message_delivered |
+| View live output from session | UI adapters (WS), REST (WS) | Async (stream) | stream subscription | output events |
+| End (close) session | UI adapters, REST, MCP | Async | `request_id` | session_closed |
