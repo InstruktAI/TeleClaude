@@ -1,9 +1,9 @@
 # Implementation Plan
 
 ## Group 1 — Normalize Inputs (Core Models + Mapper)
-- [ ] Add internal command model(s) that represent normalized intent (session create, agent start, send message/command, resume, close).
-- [ ] Create a command mapper module that converts REST/Redis/Telegram inputs into these models.
-- [ ] Add tests for the mapper covering at least REST + Telegram shapes.
+- [x] Add internal command model(s) that represent normalized intent (session create, agent start, send message/command, resume, close).
+- [x] Create a command mapper module that converts REST/Redis/Telegram inputs into these models.
+- [x] Add tests for the mapper covering at least REST + Telegram shapes.
 
 ## Group 2 — Transport Demotion (REST/Redis)
 - [ ] Refactor REST adapter/server entry to use the mapper and dispatch normalized commands.
