@@ -251,8 +251,20 @@ class CommandMapper:
             )
 
         if event == "agent_restart":
-            # agent_restart in REST is currently mapped to a specific behavior in daemon
-            # but we can normalize it to a command.
-            return SystemCommand(command="agent_restart", args=cast(List[str], payload.get("args", [])))
+            return SystemCommand(
+                command="agent_restart",
+                args=cast(List[str], payload.get("args", [])),
+                session_id=session_id,
+            )
+
+        if event == "end_session":
+            return CloseSessionCommand(session_id=session_id)
+
+        if event == "get_session_data":
+            return SystemCommand(
+                command="get_session_data",
+                args=cast(List[str], payload.get("args", [])),
+                session_id=session_id,
+            )
 
         return SystemCommand(command=event, args=cast(List[str], payload.get("args", [])))

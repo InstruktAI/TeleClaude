@@ -347,9 +347,15 @@ class RESTAdapter(BaseAdapter):
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             try:
-                # Use command handler directly - only supports LOCAL sessions
-                result = await command_handlers.handle_end_session(session_id, self.client)
-                return dict(result)
+                # Normalize command through mapper before dispatching
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "end_session",
+                    {"session_id": session_id},
+                    metadata,
+                )
+                result = await self.client.handle_internal_command(cmd, metadata=metadata)
+                return dict(result) if isinstance(result, dict) else {"status": "success"}
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
@@ -380,17 +386,14 @@ class RESTAdapter(BaseAdapter):
         ) -> dict[str, str]:
             """Restart agent in session (preserves conversation via --resume)."""
             try:
-                # Note: SystemCommand context builder in AdapterClient might need session_id if we want to route it
-                # Actually, SYSTEM_COMMAND context doesn't have session_id.
-                # But agent_restart IS session-specific.
-                # Legacy code used handle_event(agent_restart, payload={"session_id": session_id})
-                # CommandEventContext handles session_id.
-
-                await self.client.handle_event(
-                    event="agent_restart",
-                    payload={"args": [], "session_id": session_id},
-                    metadata=self._metadata(),
+                # Normalize command through mapper before dispatching
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "agent_restart",
+                    {"session_id": session_id, "args": []},
+                    metadata,
                 )
+                await self.client.handle_internal_command(cmd, metadata=metadata)
                 return {"status": "ok"}
             except Exception as e:
                 logger.error("agent_restart failed for session %s: %s", session_id, e, exc_info=True)
@@ -410,14 +413,14 @@ class RESTAdapter(BaseAdapter):
                 tail_chars: Number of characters from end of transcript
             """
             try:
-                result = await self.client.handle_event(
-                    event="get_session_data",
-                    payload={
-                        "session_id": session_id,
-                        "args": [str(tail_chars)],
-                    },
-                    metadata=self._metadata(),
+                # Normalize command through mapper before dispatching
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "get_session_data",
+                    {"session_id": session_id, "args": [str(tail_chars)]},
+                    metadata,
                 )
+                result = await self.client.handle_internal_command(cmd, metadata=metadata)
                 if not isinstance(result, dict):
                     raise HTTPException(status_code=500, detail="Invalid transcript response")
                 return SessionDataDTO.model_validate(result)

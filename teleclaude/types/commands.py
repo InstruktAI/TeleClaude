@@ -208,6 +208,7 @@ class SystemCommand(InternalCommand):
     command: str
     args: List[str] = field(default_factory=list)
     data: Optional[Dict[str, object]] = None
+    session_id: Optional[str] = None  # For session-specific system commands like agent_restart
 
     def __init__(
         self,
@@ -215,15 +216,19 @@ class SystemCommand(InternalCommand):
         command: str,
         args: Optional[List[str]] = None,
         data: Optional[Dict[str, object]] = None,
+        session_id: Optional[str] = None,
         request_id: Optional[str] = None,
     ):
         super().__init__(command_type=CommandType.SYSTEM, request_id=request_id)
         self.command = command
         self.args = args or []
         self.data = data
+        self.session_id = session_id
 
     def to_payload(self) -> Dict[str, object]:
         payload: Dict[str, object] = {"command": self.command, "args": self.args}
+        if self.session_id:
+            payload["session_id"] = self.session_id
         if self.data is not None:
             payload["data"] = self.data
             if "from_computer" in self.data:
