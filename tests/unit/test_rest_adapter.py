@@ -64,20 +64,30 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
                 session_id="sess-1",
                 title="Test Session",
                 origin_adapter="telegram",
-                working_directory="~",
+                project_path="~",
                 thinking_mode="slow",
                 active_agent=None,
                 status="active",
             ),
         ]
-        # Mock cache to return one remote session
+        # Mock cache to return one duplicate + one remote session
         mock_cache.get_sessions.return_value = [
+            SessionSummary(
+                session_id="sess-1",
+                title="Duplicate Session",
+                computer="remote",
+                origin_adapter="telegram",
+                project_path="~",
+                thinking_mode="slow",
+                active_agent=None,
+                status="active",
+            ),
             SessionSummary(
                 session_id="sess-2",
                 title="Remote Session",
                 computer="remote",
                 origin_adapter="telegram",
-                working_directory="~",
+                project_path="~",
                 thinking_mode="slow",
                 active_agent=None,
                 status="active",
@@ -107,7 +117,7 @@ def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: i
                 session_id="sess-1",
                 title="Local",
                 origin_adapter="telegram",
-                working_directory="~",
+                project_path="~",
                 thinking_mode="slow",
                 active_agent=None,
                 status="active",
@@ -134,7 +144,7 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
                 session_id="sess-1",
                 title="Local",
                 origin_adapter="telegram",
-                working_directory="~",
+                project_path="~",
                 thinking_mode="slow",
                 active_agent=None,
                 status="active",
@@ -176,7 +186,7 @@ def test_create_session_success(test_client, mock_adapter_client):  # type: igno
         "/sessions",
         json={
             "computer": "local",
-            "project_dir": "/path/to/project",
+            "project_path": "/path/to/project",
             "agent": "claude",
             "thinking_mode": "slow",
             "title": "Test Session",
@@ -206,7 +216,7 @@ def test_create_session_derives_title_from_message(  # type: ignore[explicit-any
         "/sessions",
         json={
             "computer": "local",
-            "project_dir": "/path",
+            "project_path": "/path",
             "message": "/next-work feature-123",
         },
     )
@@ -229,7 +239,7 @@ def test_create_session_defaults_title_to_untitled(  # type: ignore[explicit-any
         "/sessions",
         json={
             "computer": "local",
-            "project_dir": "/path",
+            "project_path": "/path",
         },
     )
     assert response.status_code == 200
@@ -250,7 +260,7 @@ def test_create_session_uses_auto_command_override(  # type: ignore[explicit-any
         "/sessions",
         json={
             "computer": "local",
-            "project_dir": "/path",
+            "project_path": "/path",
             "auto_command": "agent gemini med",
             "message": "ignored",
         },
@@ -277,7 +287,7 @@ def test_create_session_populates_tmux_session_name(  # type: ignore[explicit-an
             "/sessions",
             json={
                 "computer": "local",
-                "project_dir": "/path",
+                "project_path": "/path",
             },
         )
         assert response.status_code == 200
@@ -680,7 +690,7 @@ def test_create_session_handler_exception(test_client, mock_adapter_client):  # 
 
     response = test_client.post(
         "/sessions",
-        json={"computer": "local", "project_dir": "/path/to/project"},
+        json={"computer": "local", "project_path": "/path/to/project"},
     )
     assert response.status_code == 500
     assert "Failed to create session" in response.json()["detail"]
@@ -764,7 +774,7 @@ def test_create_session_empty_computer_rejected(test_client):  # type: ignore[ex
     """Test create_session rejects empty computer name."""
     response = test_client.post(
         "/sessions",
-        json={"computer": "", "project_dir": "/path/to/project"},
+        json={"computer": "", "project_path": "/path/to/project"},
     )
     assert response.status_code == 422
 
@@ -773,25 +783,25 @@ def test_create_session_single_char_computer_rejected(test_client):  # type: ign
     """Test create_session rejects single character computer name."""
     response = test_client.post(
         "/sessions",
-        json={"computer": "x", "project_dir": "/path/to/project"},
+        json={"computer": "x", "project_path": "/path/to/project"},
     )
     assert response.status_code == 422
 
 
-def test_create_session_empty_project_dir_rejected(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test create_session rejects empty project_dir."""
+def test_create_session_empty_project_path_rejected(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test create_session rejects empty project_path."""
     response = test_client.post(
         "/sessions",
-        json={"computer": "local", "project_dir": ""},
+        json={"computer": "local", "project_path": ""},
     )
     assert response.status_code == 422
 
 
-def test_create_session_single_char_project_dir_rejected(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test create_session rejects single character project_dir."""
+def test_create_session_single_char_project_path_rejected(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test create_session rejects single character project_path."""
     response = test_client.post(
         "/sessions",
-        json={"computer": "local", "project_dir": "/"},
+        json={"computer": "local", "project_path": "/"},
     )
     assert response.status_code == 422
 
@@ -800,13 +810,13 @@ def test_create_session_missing_computer_rejected(test_client):  # type: ignore[
     """Test create_session rejects missing computer field."""
     response = test_client.post(
         "/sessions",
-        json={"project_dir": "/path/to/project"},
+        json={"project_path": "/path/to/project"},
     )
     assert response.status_code == 422
 
 
-def test_create_session_missing_project_dir_rejected(test_client):  # type: ignore[explicit-any, unused-ignore]
-    """Test create_session rejects missing project_dir field."""
+def test_create_session_missing_project_path_rejected(test_client):  # type: ignore[explicit-any, unused-ignore]
+    """Test create_session rejects missing project_path field."""
     response = test_client.post(
         "/sessions",
         json={"computer": "local"},
@@ -838,7 +848,7 @@ def test_create_session_invalid_agent_rejected(test_client):  # type: ignore[exp
         "/sessions",
         json={
             "computer": "local",
-            "project_dir": "/path/to/project",
+            "project_path": "/path/to/project",
             "agent": "invalid_agent",
         },
     )
@@ -851,7 +861,7 @@ def test_create_session_invalid_thinking_mode_rejected(test_client):  # type: ig
         "/sessions",
         json={
             "computer": "local",
-            "project_dir": "/path/to/project",
+            "project_path": "/path/to/project",
             "thinking_mode": "turbo",
         },
     )

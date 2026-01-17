@@ -2,7 +2,9 @@
 
 import asyncio
 import curses
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
+
+from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.models import AgentAvailabilityInfo, CreateSessionResult
 from teleclaude.cli.tui.theme import (
@@ -12,6 +14,8 @@ from teleclaude.cli.tui.theme import (
     get_selection_attr,
 )
 from teleclaude.cli.tui.types import CursesWindow
+
+logger = get_logger(__name__)
 
 
 def _apply_dim_overlay(stdscr: CursesWindow) -> None:
@@ -49,6 +53,7 @@ class StartSessionModal:
         api: "TelecAPIClient",
         agent_availability: dict[str, AgentAvailabilityInfo],
         default_prompt: str = "",
+        notify: Callable[[str, str], None] | None = None,
     ):
         """Initialize modal.
 
@@ -63,6 +68,8 @@ class StartSessionModal:
         self.project_path = project_path
         self.api = api
         self.agent_availability = agent_availability
+        self.notify = notify
+        self.start_requested = False
 
         # Find first available agent
         self.selected_agent = 0
@@ -127,7 +134,7 @@ class StartSessionModal:
             if key == 27:  # Escape
                 return None
             if key in (curses.KEY_ENTER, 10, 13):
-                return self._start_session()
+                return self._start_session(stdscr)
             elif key == ord("\t"):
                 self.current_field = (self.current_field + 1) % 5
                 if self.current_field == 0 and not self._get_available_agents():
@@ -207,7 +214,7 @@ class StartSessionModal:
         elif 32 <= key <= 126:
             self.native_session_id += chr(key)
 
-    def _start_session(self) -> CreateSessionResult:
+    def _start_session(self, stdscr: CursesWindow) -> CreateSessionResult | None:
         """Start the session via API.
 
         Returns:
@@ -215,7 +222,9 @@ class StartSessionModal:
         """
         self._ensure_selected_agent_available()
         if not self._is_agent_available(self.AGENTS[self.selected_agent]):
-            return CreateSessionResult(status="error", session_id=None, tmux_session_name=None)
+            if self.notify:
+                self.notify("No agents available to start a session", "error")
+            return None
 
         agent = self.AGENTS[self.selected_agent]
         mode = self.MODES[self.selected_mode]
@@ -223,16 +232,38 @@ class StartSessionModal:
         auto_command = f"agent_resume {agent} {native_session_id}" if native_session_id else None
         message = None if native_session_id else self.prompt
 
-        return asyncio.get_event_loop().run_until_complete(
-            self.api.create_session(
-                computer=self.computer,
-                project_dir=self.project_path,
-                agent=agent,
-                thinking_mode=mode,
-                message=message,
-                auto_command=auto_command,
-            )
-        )
+        if self.notify:
+            self.notify("Starting session...", "info")
+        self.start_requested = True
+
+        async def _do_create() -> None:
+            try:
+                result = await self.api.create_session(
+                    computer=self.computer,
+                    project_path=self.project_path,
+                    agent=agent,
+                    thinking_mode=mode,
+                    message=message,
+                    auto_command=auto_command,
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.error("Failed to start session: %s", exc, exc_info=True)
+                if self.notify:
+                    self.notify(f"Start failed: {exc}", "error")
+                return
+
+            if result.status != "success":
+                error_msg = result.error or "Unknown error"
+                logger.error("Session start failed: %s", error_msg)
+                if self.notify:
+                    self.notify(f"Start failed: {error_msg}", "error")
+
+        self._schedule_session_start(_do_create())
+        return None
+
+    def _schedule_session_start(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Schedule session creation without blocking the modal."""
+        asyncio.get_event_loop().create_task(coro)
 
     def _render(self, stdscr: CursesWindow) -> None:
         """Render the modal.

@@ -4,9 +4,10 @@ This module provides shared utilities for session creation and management
 to avoid code duplication across command handlers and MCP server.
 """
 
+import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from teleclaude.core.db import db
 
@@ -56,7 +57,7 @@ def get_session_output_dir(session_id: str) -> Path:
 
     Creates workspace/{session_id} directory if it doesn't exist.
     This directory stores all session-related files:
-    - tmux.txt: Terminal output
+    - tmux.txt: Tmux output
     - Subdirectories for file downloads, etc.
 
     Args:
@@ -74,7 +75,7 @@ def get_output_file(session_id: str) -> Path:
     """Get output file for a session, creating it if needed.
 
     Creates workspace/{session_id} directory and tmux.txt file if they don't exist.
-    Output file stores RAW terminal output for:
+    Output file stores RAW tmux output for:
     1. Delta calculation (ignore old scrollback noise)
     2. Download functionality
     3. Daemon restart recovery (checkpoint)
@@ -166,39 +167,48 @@ def build_session_title(
     return f"{short_project}: {target_prefix} - {description}"
 
 
-def get_short_project_name(working_dir: str, base_project: str | None = None) -> str:
-    """Extract short project name from path.
+def get_short_project_name(project_path: str | None, subdir: str | None) -> str:
+    """Extract short project name from project_path + subdir."""
+    base = project_path.rstrip("/") if project_path else ""
+    if not base:
+        return "unknown"
+    root_name = base.split("/")[-1] if base else "unknown"
+    if subdir:
+        slug = subdir.split("/")[-1] if subdir else ""
+        return f"{root_name}/{slug}" if slug else root_name
+    return root_name
 
-    Format depends on whether base_project is provided:
-    - With base_project: "RootFolder" or "RootFolder/slug" if working in subfolder
-    - Without base_project: Just last folder name
 
-    Args:
-        working_dir: Full working directory path (e.g., /home/morriz/apps/TeleClaude/trees/fix)
-        base_project: Optional base project path (e.g., /home/morriz/apps/TeleClaude)
+def resolve_working_dir(project_path: str | None, subdir: str | None) -> str:
+    """Resolve actual working directory from project_path and subdir."""
+    if not project_path:
+        raise ValueError("project_path is required to resolve working directory")
+    if subdir and Path(subdir).is_absolute():
+        raise ValueError(f"subdir must be relative: {subdir}")
+    base = os.path.expanduser(os.path.expandvars(str(project_path)))
+    return str(Path(base) / subdir) if subdir else str(Path(base))
 
-    Returns:
-        Short name like "TeleClaude" or "TeleClaude/fix"
-    """
-    working_dir = working_dir.rstrip("/")
 
-    if base_project:
-        base_project = base_project.rstrip("/")
-        # Get root folder name from base_project
-        root_name = base_project.split("/")[-1] if base_project else "unknown"
+def split_project_path_and_subdir(
+    target_dir: str,
+    trusted_roots: Iterable[str],
+) -> tuple[str, str | None]:
+    """Split a working directory into project_path + subdir using trusted roots."""
+    resolved_target = Path(os.path.expanduser(os.path.expandvars(target_dir))).resolve()
+    best_root: Path | None = None
 
-        # Check if working_dir has a subfolder beyond base_project
-        if working_dir.startswith(base_project) and len(working_dir) > len(base_project):
-            # Extract subfolder part and get the slug (last component)
-            subfolder = working_dir[len(base_project) :].strip("/")
-            slug = subfolder.split("/")[-1] if subfolder else ""
-            if slug:
-                return f"{root_name}/{slug}"
-        return root_name
+    for root in trusted_roots:
+        root_path = Path(os.path.expanduser(os.path.expandvars(root))).resolve()
+        if resolved_target == root_path or root_path in resolved_target.parents:
+            if best_root is None or len(str(root_path)) > len(str(best_root)):
+                best_root = root_path
 
-    # Fallback: just last folder name
-    parts = working_dir.split("/")
-    return parts[-1] if parts else "unknown"
+    if best_root is None:
+        return str(resolved_target), None
+
+    rel = resolved_target.relative_to(best_root)
+    subdir = str(rel) if str(rel) != "." else None
+    return str(best_root), subdir
 
 
 # Regex patterns for parsing session titles

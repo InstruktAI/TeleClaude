@@ -57,7 +57,7 @@ async def test_list_sessions_success():
                 "session_id": "sess-1",
                 "origin_adapter": "telegram",
                 "title": "Test",
-                "working_directory": "/tmp",
+                "project_path": "/tmp",
                 "thinking_mode": "slow",
                 "active_agent": "claude",
                 "status": "active",
@@ -143,7 +143,7 @@ async def test_create_session_success():
     with patch.object(client._client, "post", return_value=mock_response) as mock_post:
         result = await client.create_session(
             computer="local",
-            project_dir="/home/user/project",
+            project_path="/home/user/project",
             agent="claude",
             thinking_mode="slow",
         )
@@ -154,7 +154,7 @@ async def test_create_session_success():
             params=None,
             json={
                 "computer": "local",
-                "project_dir": "/home/user/project",
+                "project_path": "/home/user/project",
                 "agent": "claude",
                 "thinking_mode": "slow",
                 "title": None,
@@ -195,7 +195,7 @@ async def test_api_error_on_connect_error():
         with pytest.raises(APIError) as exc_info:
             await client.list_sessions()
 
-        assert "Cannot connect to TeleClaude daemon" in str(exc_info.value)
+        assert "Cannot connect to REST API server" in str(exc_info.value)
 
     await client.close()
 
@@ -210,7 +210,7 @@ async def test_api_error_on_timeout():
         with pytest.raises(APIError) as exc_info:
             await client.list_sessions()
 
-        assert "Request timed out" in str(exc_info.value)
+    assert "request timed out" in str(exc_info.value).lower()
 
     await client.close()
 

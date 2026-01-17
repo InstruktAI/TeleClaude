@@ -265,7 +265,7 @@ class MCPHandlersMixin:
     async def teleclaude__start_session(
         self,
         computer: str,
-        project_dir: str,
+        project_path: str,
         title: str,
         message: str | None = None,
         caller_session_id: str | None = None,
@@ -279,14 +279,16 @@ class MCPHandlersMixin:
             self._is_local_computer(computer),
         )
         if self._is_local_computer(computer):
-            return await self._start_local_session(project_dir, title, message, caller_session_id, agent, thinking_mode)
+            return await self._start_local_session(
+                project_path, title, message, caller_session_id, agent, thinking_mode
+            )
         return await self._start_remote_session(
-            computer, project_dir, title, message, caller_session_id, agent, thinking_mode
+            computer, project_path, title, message, caller_session_id, agent, thinking_mode
         )
 
     async def _start_local_session(
         self,
-        project_dir: str,
+        project_path: str,
         title: str,
         message: str | None = None,
         caller_session_id: str | None = None,
@@ -309,7 +311,7 @@ class MCPHandlersMixin:
             {"session_id": "", "args": [title]},
             MessageMetadata(
                 adapter_type="redis",
-                project_dir=project_dir,
+                project_path=project_path,
                 title=title,
                 channel_metadata=channel_metadata,
             ),
@@ -348,7 +350,7 @@ class MCPHandlersMixin:
     async def _start_remote_session(
         self,
         computer: str,
-        project_dir: str,
+        project_path: str,
         title: str,
         message: str | None = None,
         caller_session_id: str | None = None,
@@ -359,7 +361,7 @@ class MCPHandlersMixin:
         if not await self._is_computer_online(computer):
             return {"status": "error", "message": f"Computer '{computer}' is offline"}
 
-        metadata = MessageMetadata(project_dir=project_dir, title=title)
+        metadata = MessageMetadata(project_path=project_path, title=title)
         message_id = await self.client.send_request(computer_name=computer, command="/new_session", metadata=metadata)
 
         try:
@@ -380,10 +382,10 @@ class MCPHandlersMixin:
 
             logger.info("Remote session created: %s on %s", remote_session_id[:8], computer)
 
-            if project_dir:
+            if project_path:
                 await self.client.send_request(
                     computer_name=computer,
-                    command=f"/cd {project_dir}",
+                    command=f"/cd {project_path}",
                     metadata=MessageMetadata(),
                     session_id=str(remote_session_id),
                 )
@@ -541,7 +543,7 @@ class MCPHandlersMixin:
 
     async def _start_local_session_with_auto_command(
         self,
-        project_dir: str,
+        project_path: str,
         title: str,
         auto_command: str,
         caller_session_id: str | None = None,
@@ -568,7 +570,7 @@ class MCPHandlersMixin:
             {"session_id": "", "args": [title]},
             MessageMetadata(
                 adapter_type="redis",
-                project_dir=project_dir,
+                project_path=project_path,
                 title=title,
                 channel_metadata=channel_metadata,
                 auto_command=auto_command,
@@ -587,7 +589,7 @@ class MCPHandlersMixin:
     async def _start_remote_session_with_auto_command(
         self,
         computer: str,
-        project_dir: str,
+        project_path: str,
         title: str,
         auto_command: str,
         caller_session_id: str | None = None,
@@ -613,7 +615,7 @@ class MCPHandlersMixin:
             channel_metadata["initiator_session_id"] = caller_session_id
 
         metadata = MessageMetadata(
-            project_dir=project_dir,
+            project_path=project_path,
             title=title,
             auto_command=auto_command,
             channel_metadata=channel_metadata if channel_metadata else None,
@@ -676,7 +678,7 @@ class MCPHandlersMixin:
         if isinstance(messages, str):
             capped_messages, truncated = self._cap_session_messages(messages, MCP_SESSION_DATA_MAX_CHARS)
             result["messages"] = capped_messages
-            if truncated or requested_tail_chars != tail_chars:
+            if truncated:
                 result["truncated"] = True
                 result["max_chars"] = MCP_SESSION_DATA_MAX_CHARS
                 result["requested_tail_chars"] = requested_tail_chars
@@ -720,7 +722,7 @@ class MCPHandlersMixin:
     ) -> SessionDataResult:
         """Get session data from remote computer via Redis."""
 
-        params = [since_timestamp or "", until_timestamp or "", str(tail_chars)]
+        params = [since_timestamp or "-", until_timestamp or "-", str(tail_chars)]
         param_str = " ".join(params)
         command = f"/get_session_data {param_str}"
 
@@ -1010,14 +1012,20 @@ class MCPHandlersMixin:
         if not isinstance(result, dict) or result.get("status") != "success":
             return None
         data: object = result.get("data", {})
-        return data.get("session_id") if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        session_id = data.get("session_id")
+        return str(session_id) if session_id is not None else None
 
     def _extract_tmux_session_name(self, result: object) -> str | None:
         """Extract tmux_session_name from handle_event result."""
         if not isinstance(result, dict) or result.get("status") != "success":
             return None
         data: object = result.get("data", {})
-        return data.get("tmux_session_name") if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        tmux_name = data.get("tmux_session_name")
+        return str(tmux_name) if tmux_name is not None else None
 
     async def _is_computer_online(self, computer: str) -> bool:
         """Check if a remote computer is online."""

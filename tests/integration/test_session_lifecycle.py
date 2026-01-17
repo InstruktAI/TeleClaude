@@ -6,7 +6,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core import session_cleanup, terminal_bridge
+from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.session_utils import get_session_output_dir
 
 
@@ -43,11 +43,9 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         output_file_path = workspace_dir / "tmux.txt"
 
         # Create tmux session (MOCKED)
-        success = await terminal_bridge.create_tmux_session(
+        success = await tmux_bridge.ensure_tmux_session(
             name=tmux_session_name,
             working_dir="/tmp",
-            cols=80,
-            rows=24,
         )
         assert success, "tmux session should be created"
 
@@ -68,7 +66,7 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
         assert result is True
 
         # Verify tmux session killed (MOCKED)
-        exists = await terminal_bridge.session_exists(tmux_session_name)
+        exists = await tmux_bridge.session_exists(tmux_session_name)
         assert not exists, "tmux session should be killed"
 
         # Verify workspace deleted
@@ -103,11 +101,9 @@ async def test_close_session_with_active_polling(daemon_with_mocked_telegram):
     )
 
     # Create tmux session (MOCKED)
-    await terminal_bridge.create_tmux_session(
+    await tmux_bridge.ensure_tmux_session(
         name=tmux_session_name,
         working_dir="/tmp",
-        cols=80,
-        rows=24,
     )
 
     # Terminate session
@@ -120,7 +116,7 @@ async def test_close_session_with_active_polling(daemon_with_mocked_telegram):
     assert result is True
 
     # Verify tmux killed (MOCKED)
-    exists = await terminal_bridge.session_exists(tmux_session_name)
+    exists = await tmux_bridge.session_exists(tmux_session_name)
     assert not exists, "tmux session should be killed"
 
     # Verify session deleted

@@ -438,7 +438,7 @@ class AdapterClient:
 
         Args:
             session: Session object
-            output: Filtered terminal output (ANSI codes/markers already stripped)
+            output: Filtered tmux output (ANSI codes/markers already stripped)
             started_at: When process started (timestamp)
             last_output_changed_at: When output last changed (timestamp)
             is_final: Whether this is the final message (process completed)
@@ -600,7 +600,7 @@ class AdapterClient:
 
         Args:
             session: Session object
-            output: Terminal output
+            output: Tmux output
             exit_text: Exit message text
         """
         await self._route_to_ui(session, "send_exit_message", output, exit_text)
@@ -916,9 +916,10 @@ class AdapterClient:
                 adapter_type=metadata.adapter_type,
                 message_thread_id=metadata.message_thread_id,
                 title=metadata.title,
-                project_dir=metadata.project_dir,
+                project_path=metadata.project_path,
                 channel_metadata=metadata.channel_metadata,
-                auto_command=metadata.auto_command,
+                auto_command=None,
+                launch_intent=metadata.launch_intent,
             )
 
         # Fallback - should not happen with EventType literal
@@ -1340,7 +1341,7 @@ class AdapterClient:
             computer_name: Target computer identifier
             command: Command to send to remote computer
             session_id: Optional TeleClaude session ID (for session commands)
-            metadata: Optional metadata (title, project_dir for session creation)
+            metadata: Optional metadata (title, project_path for session creation)
 
         Returns:
             Redis message ID (for response correlation via read_response)

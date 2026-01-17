@@ -36,7 +36,7 @@ async def test_cleanup_stale_session_detects_missing_tmux():
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
         patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get.return_value = mock_session
@@ -68,7 +68,7 @@ async def test_cleanup_stale_session_skips_healthy_session():
 
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.session_exists", new_callable=AsyncMock) as mock_exists,
     ):
         mock_get.return_value = mock_session
         mock_exists.return_value = True
@@ -100,7 +100,7 @@ async def test_cleanup_all_stale_sessions_processes_all():
     with (
         patch("teleclaude.core.session_cleanup.db.get_active_sessions", new_callable=AsyncMock) as mock_get_active,
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
-        patch("teleclaude.core.session_cleanup.terminal_bridge.session_exists", side_effect=mock_session_exists),
+        patch("teleclaude.core.session_cleanup.tmux_bridge.session_exists", side_effect=mock_session_exists),
         patch("teleclaude.core.session_cleanup.terminate_session", new_callable=AsyncMock) as mock_terminate,
     ):
         mock_get_active.return_value = mock_sessions
@@ -235,7 +235,7 @@ async def test_terminate_session_deletes_db_and_resources():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.delete_session", new_callable=AsyncMock) as mock_delete,
-        patch("teleclaude.core.session_cleanup.terminal_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
         patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock) as mock_cleanup,
     ):
         mock_get.return_value = mock_session
@@ -267,7 +267,7 @@ async def test_terminate_session_kills_tmux_for_terminal_origin():
     with (
         patch("teleclaude.core.session_cleanup.db.get_session", new_callable=AsyncMock) as mock_get,
         patch("teleclaude.core.session_cleanup.db.delete_session", new_callable=AsyncMock) as mock_delete,
-        patch("teleclaude.core.session_cleanup.terminal_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
+        patch("teleclaude.core.session_cleanup.tmux_bridge.kill_session", new_callable=AsyncMock) as mock_kill,
         patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock) as mock_cleanup,
     ):
         mock_get.return_value = mock_session

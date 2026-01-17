@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -129,7 +130,7 @@ class InputHandlersMixin:
 {commands_text}
 
 Usage:
-1. Use /new_session to create a terminal session
+1. Use /new_session to create a tmux session
 2. Send text messages in the session topic to execute commands
 3. Use /cancel to interrupt a running command
 4. Use /claude to start Claude Code
@@ -405,6 +406,15 @@ Usage:
             return
 
         session = sessions[0]
+        if session.created_at:
+            session_age = (datetime.now(timezone.utc) - session.created_at).total_seconds()
+            if session_age < 10.0:
+                logger.warning(
+                    "Ignoring topic_closed for new session %s (age=%.1fs)",
+                    session.session_id[:8],
+                    session_age,
+                )
+                return
         logger.info(
             "Topic %s ended by user, terminating session %s",
             topic_id,

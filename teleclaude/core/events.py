@@ -5,7 +5,10 @@ Provides type-safe event definitions for adapter-daemon communication.
 
 import shlex
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, Optional, Union
+
+if TYPE_CHECKING:
+    from teleclaude.core.models import SessionLaunchIntent
 
 # Type alias for valid event names - provides compile-time type checking
 EventType = Literal[
@@ -184,9 +187,9 @@ UiCommands = {
     "key_right": "Send RIGHT arrow key (optional repeat count)",
     "key_up": "Send UP arrow key (optional repeat count)",
     "kill": "Force kill current process (SIGKILL)",
-    "new_session": "Create a new terminal session",
+    "new_session": "Create a new tmux session",
     "rename": "Rename current session",
-    "resize": "Resize terminal window",
+    "resize": "Resize tmux window",
     "shift_tab": "Send SHIFT+TAB key (optional count)",
     "tab": "Send TAB key",
 }
@@ -219,7 +222,7 @@ class TeleClaudeEvents:
     CANCEL: Literal["cancel"] = "cancel"
     CANCEL_2X: Literal["cancel2x"] = "cancel2x"
 
-    # Terminal control
+    # Tmux control
     ESCAPE: Literal["escape"] = "escape"
     ESCAPE_2X: Literal["escape2x"] = "escape2x"
     CTRL: Literal["ctrl"] = "ctrl"
@@ -367,9 +370,10 @@ class CommandEventContext:  # pylint: disable=too-many-instance-attributes  # Ev
     adapter_type: Optional[str] = None
     message_thread_id: Optional[int] = None
     title: Optional[str] = None
-    project_dir: Optional[str] = None
+    project_path: Optional[str] = None
     channel_metadata: Optional[dict[str, object]] = None  # noqa: loose-dict - Adapter communication metadata
-    auto_command: Optional[str] = None  # For chaining commands (e.g., start agent after session creation)
+    auto_command: Optional[str] = None  # Legacy adapter boundary (deprecated)
+    launch_intent: Optional["SessionLaunchIntent"] = None
 
 
 @dataclass

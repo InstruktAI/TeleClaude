@@ -23,7 +23,7 @@ async def test_cleanup_orphan_tmux_sessions_skips_tui_session() -> None:
     ]
     with (
         patch(
-            "teleclaude.core.session_cleanup.terminal_bridge.list_tmux_sessions",
+            "teleclaude.core.session_cleanup.tmux_bridge.list_tmux_sessions",
             new=AsyncMock(return_value=["tc_tui", "tc_orphan", "other"]),
         ),
         patch(
@@ -31,7 +31,7 @@ async def test_cleanup_orphan_tmux_sessions_skips_tui_session() -> None:
             new=AsyncMock(return_value=mock_sessions),
         ),
         patch(
-            "teleclaude.core.session_cleanup.terminal_bridge.kill_session",
+            "teleclaude.core.session_cleanup.tmux_bridge.kill_session",
             new=AsyncMock(return_value=True),
         ) as kill_session,
     ):

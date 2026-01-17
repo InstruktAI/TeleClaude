@@ -68,33 +68,34 @@ Only values that vary are listed. All rows inherit the global rules above.
 | Resource | Scope | TTL |
 | --- | --- | --- |
 | Computers | Global | 60s |
-| Projects | Per-computer | 24h (or longer) |
+| Projects | Per-computer | 5m |
 | Todos | Per-project | 5m |
-| Sessions | Per-computer | 15s |
+| Sessions | Per-computer | Infinite (event-driven) |
 | Agent availability | Global | 30s |
 
-## Behavior Rules (Target)
+## Behavior Rules
 
 - **All REST reads go through the cache.**
 - **Serve stale immediately**, then **schedule refresh** if TTL expired.
 - Refresh is asynchronous and must not block API calls.
 - Cache publishes updates to subscribers (WS clients).
-- Projects can be long TTL because invalidation is driven by heartbeat digests.
+- Projects and Todos use heartbeat digests for efficient invalidation.
 
-## Invalidation Rules (Target)
+## Invalidation Rules
 
 - **TTL** controls refresh cadence for each resource and scope.
 - **Digest changes** override TTL and trigger immediate refresh:
-  - Each heartbeat includes an opaque projects digest per computer.
-  - If the digest changes, refresh that computer's project list once.
-- No file watching is required for remote project changes.
+  - Each heartbeat includes an opaque fingerprint (digest) for projects and todos per computer.
+  - If the digest changes or version increments, refresh that computer's data list.
+- **Event-driven**: Session updates are pushed via domain events to keep cache fresh without polling.
 
-## Cache Responsibilities (Target)
+## Cache Responsibilities
 
 - Accept a request for a data type and return the best cached view immediately.
 - Determine staleness based on TTL matrix.
 - If stale, schedule a background refresh for the relevant data scope.
 - Publish updates to subscribers when refreshed.
+- Track "interest" per computer to optimize broadcast of snapshots.
 
 ## REST Adapter Responsibilities (Target)
 

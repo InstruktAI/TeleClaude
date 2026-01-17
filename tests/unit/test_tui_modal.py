@@ -2,11 +2,12 @@
 
 # type: ignore - test uses mock objects
 
-from unittest.mock import MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.cli.models import AgentAvailabilityInfo
+from teleclaude.cli.models import AgentAvailabilityInfo, CreateSessionResult
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 
 
@@ -247,3 +248,47 @@ def test_modal_init_values(mock_api):
     assert modal.api == mock_api
     assert modal.prompt == ""
     assert modal.current_field == 0  # starts at agent field
+
+
+def test_modal_start_requests_session_and_notifies(mock_api):
+    """Test start request schedules session creation and notifies."""
+    agent_availability = {
+        "claude": AgentAvailabilityInfo(
+            agent="claude",
+            available=True,
+            unavailable_until=None,
+            reason=None,
+        )
+    }
+
+    mock_api.create_session = AsyncMock(
+        return_value=CreateSessionResult(status="success", session_id="sess-1", tmux_session_name="tmux-1")
+    )
+    notify_calls = []
+
+    def notify(message: str, level: str) -> None:
+        notify_calls.append((message, level))
+
+    modal = StartSessionModal(
+        computer="local",
+        project_path="/home/user/project",
+        api=mock_api,
+        agent_availability=agent_availability,
+        notify=notify,
+    )
+
+    scheduled = {}
+
+    def schedule(coro):
+        scheduled["coro"] = coro
+
+    modal._schedule_session_start = schedule
+
+    result = modal._start_session(MagicMock())
+
+    assert result is None
+    assert modal.start_requested is True
+    assert ("Starting session...", "info") in notify_calls
+    assert "coro" in scheduled
+
+    asyncio.get_event_loop().run_until_complete(scheduled["coro"])

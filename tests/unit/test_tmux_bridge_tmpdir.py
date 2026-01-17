@@ -1,4 +1,4 @@
-"""Unit tests for per-session TMPDIR handling in terminal_bridge."""
+"""Unit tests for per-session TMPDIR handling in tmux_bridge."""
 
 from __future__ import annotations
 
@@ -14,15 +14,15 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypatch):
-    """Ensure create_tmux_session injects TMPDIR/TMP/TEMP pointing at a per-session empty dir."""
-    from teleclaude.core import terminal_bridge
+    """Ensure _create_tmux_session injects TMPDIR/TMP/TEMP pointing at a per-session empty dir."""
+    from teleclaude.core import tmux_bridge
 
     base = tmp_path / "teleclaude_tmp"
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(base))
 
     proc = MagicMock()
     proc.returncode = 0
-    proc.wait = AsyncMock(return_value=None)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
     proc_opt = MagicMock()
     proc_opt.returncode = 0
     proc_opt.communicate = AsyncMock(return_value=(b"", b""))
@@ -32,11 +32,11 @@ async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypa
 
     original_env = {"FOO": "bar"}
     with patch.object(
-        terminal_bridge.asyncio,
+        tmux_bridge.asyncio,
         "create_subprocess_exec",
         new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
     ) as mock_exec:
-        ok = await terminal_bridge.create_tmux_session(
+        ok = await tmux_bridge._create_tmux_session(
             name="tc_test",
             working_dir=str(tmp_path),
             session_id="abc123",
@@ -63,7 +63,7 @@ async def test_create_tmux_session_injects_per_session_tmpdir(tmp_path, monkeypa
 @pytest.mark.asyncio
 async def test_create_tmux_session_cleans_existing_tmpdir_with_socket(tmp_path, monkeypatch):
     """Ensure any pre-existing unix sockets in the per-session TMPDIR are removed before tmux starts."""
-    from teleclaude.core import terminal_bridge
+    from teleclaude.core import tmux_bridge
 
     # AF_UNIX socket paths have a fairly small length limit (notably on macOS).
     # Use a short base path under /tmp to keep the socket path safely below the limit.
@@ -85,7 +85,7 @@ async def test_create_tmux_session_cleans_existing_tmpdir_with_socket(tmp_path, 
 
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock(return_value=None)
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         proc_opt = MagicMock()
         proc_opt.returncode = 0
         proc_opt.communicate = AsyncMock(return_value=(b"", b""))
@@ -94,11 +94,11 @@ async def test_create_tmux_session_cleans_existing_tmpdir_with_socket(tmp_path, 
         proc_hook.communicate = AsyncMock(return_value=(b"", b""))
 
         with patch.object(
-            terminal_bridge.asyncio,
+            tmux_bridge.asyncio,
             "create_subprocess_exec",
             new=AsyncMock(side_effect=[proc, proc_opt, proc_hook]),
         ):
-            ok = await terminal_bridge.create_tmux_session(
+            ok = await tmux_bridge._create_tmux_session(
                 name="tc_test",
                 working_dir=str(tmp_path),
                 session_id="abc123",

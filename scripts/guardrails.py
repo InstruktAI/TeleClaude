@@ -83,7 +83,13 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
 
     max_allowed = 0  # TODO: Reduce to 0 as we type everything (see todos/reduce-loose-dict-typings/)
     if len(matches) > max_allowed:
-        _fail(f"loose dict typings detected ({len(matches)} > {max_allowed})\nFIX by replacing with typed dicts!!\n")
+        formatted = "\n".join(f"- {match}" for match in matches)
+        _fail(
+            "loose dict typings detected "
+            f"({len(matches)} > {max_allowed})\n"
+            "FIX by replacing with typed dicts!!\n"
+            f"{formatted}\n"
+        )
 
     if len(matches) > 0:
         _fail("guardrails warning: loose dict typings detected\n")

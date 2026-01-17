@@ -251,7 +251,7 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
     Returns:
         Number of listeners successfully notified
     """
-    from teleclaude.core.terminal_delivery import deliver_listener_message
+    from teleclaude.core.tmux_delivery import deliver_listener_message
 
     listeners = get_listeners(target_session_id)
     if not listeners:

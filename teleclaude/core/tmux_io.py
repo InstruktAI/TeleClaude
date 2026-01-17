@@ -1,4 +1,4 @@
-"""Session-aware terminal I/O routing (tmux only)."""
+"""Session-aware tmux I/O routing (tmux only)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Optional
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
@@ -34,20 +34,18 @@ async def _send_to_tmux(
     *,
     send_enter: bool,
     active_agent: Optional[str] = None,
-    working_dir: Optional[str] = None,
+    working_dir: str,
 ) -> bool:
     tmux_name = session.tmux_session_name
-    if tmux_name and await terminal_bridge.session_exists(tmux_name):
-        return await terminal_bridge.send_keys_existing_tmux(
+    if tmux_name and await tmux_bridge.session_exists(tmux_name):
+        return await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
             text=text,
             send_enter=send_enter,
             active_agent=active_agent,
         )
 
-    working_dir = working_dir if working_dir is not None else session.working_directory
-
-    return await terminal_bridge.send_keys(
+    return await tmux_bridge.send_keys(
         session.tmux_session_name,
         text,
         session_id=session.session_id,
@@ -63,7 +61,7 @@ async def send_text(
     *,
     send_enter: bool = True,
     active_agent: Optional[str] = None,
-    working_dir: Optional[str] = None,
+    working_dir: str,
 ) -> bool:
     return await _send_to_tmux(
         session,
@@ -75,33 +73,33 @@ async def send_text(
 
 
 async def send_escape(session: Session) -> bool:
-    return await terminal_bridge.send_escape(session.tmux_session_name)
+    return await tmux_bridge.send_escape(session.tmux_session_name)
 
 
 async def send_ctrl_key(session: Session, key: str) -> bool:
-    return await terminal_bridge.send_ctrl_key(session.tmux_session_name, key)
+    return await tmux_bridge.send_ctrl_key(session.tmux_session_name, key)
 
 
 async def send_tab(session: Session) -> bool:
-    return await terminal_bridge.send_tab(session.tmux_session_name)
+    return await tmux_bridge.send_tab(session.tmux_session_name)
 
 
 async def send_shift_tab(session: Session, count: int = 1) -> bool:
     if count < 1:
         logger.warning("Invalid shift-tab count %d for session %s", count, session.session_id[:8])
         return False
-    return await terminal_bridge.send_shift_tab(session.tmux_session_name, count)
+    return await tmux_bridge.send_shift_tab(session.tmux_session_name, count)
 
 
 async def send_backspace(session: Session, count: int = 1) -> bool:
     if count < 1:
         logger.warning("Invalid backspace count %d for session %s", count, session.session_id[:8])
         return False
-    return await terminal_bridge.send_backspace(session.tmux_session_name, count)
+    return await tmux_bridge.send_backspace(session.tmux_session_name, count)
 
 
 async def send_enter(session: Session) -> bool:
-    return await terminal_bridge.send_enter(session.tmux_session_name)
+    return await tmux_bridge.send_enter(session.tmux_session_name)
 
 
 async def send_arrow_key(session: Session, direction: str, count: int = 1) -> bool:
@@ -109,16 +107,16 @@ async def send_arrow_key(session: Session, direction: str, count: int = 1) -> bo
         logger.warning("Invalid arrow count %d for session %s", count, session.session_id[:8])
         return False
 
-    return await terminal_bridge.send_arrow_key(session.tmux_session_name, direction, count)
+    return await tmux_bridge.send_arrow_key(session.tmux_session_name, direction, count)
 
 
 async def send_signal(session: Session, signal: str) -> bool:
-    return await terminal_bridge.send_signal(session.tmux_session_name, signal)
+    return await tmux_bridge.send_signal(session.tmux_session_name, signal)
 
 
 async def is_process_running(session: Session) -> bool:
-    return await terminal_bridge.is_process_running(session.tmux_session_name)
+    return await tmux_bridge.is_process_running(session.tmux_session_name)
 
 
 async def wait_for_shell_ready(session: Session) -> bool:
-    return await terminal_bridge.wait_for_shell_ready(session.tmux_session_name)
+    return await tmux_bridge.wait_for_shell_ready(session.tmux_session_name)

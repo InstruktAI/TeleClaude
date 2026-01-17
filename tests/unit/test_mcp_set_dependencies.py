@@ -108,8 +108,8 @@ async def test_mcp_set_dependencies_invalid_slug_format() -> None:
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
-        mock_terminal_bridge = MagicMock()
-        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        mock_tmux_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
         # Test invalid slug with uppercase
         result = await mcp.teleclaude__set_dependencies("Invalid-Slug", [], cwd=str(cwd))
@@ -139,8 +139,8 @@ async def test_mcp_set_dependencies_slug_not_in_roadmap() -> None:
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
-        mock_terminal_bridge = MagicMock()
-        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        mock_tmux_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
         # Test slug not in roadmap
         result = await mcp.teleclaude__set_dependencies("nonexistent-slug", [], cwd=str(cwd))
@@ -162,8 +162,8 @@ async def test_mcp_set_dependencies_dependency_not_in_roadmap() -> None:
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
-        mock_terminal_bridge = MagicMock()
-        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        mock_tmux_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
         # Test dependency not in roadmap
         result = await mcp.teleclaude__set_dependencies("item-a", ["nonexistent-dep"], cwd=str(cwd))
@@ -185,8 +185,8 @@ async def test_mcp_set_dependencies_self_reference_via_tool() -> None:
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
-        mock_terminal_bridge = MagicMock()
-        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        mock_tmux_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
         # Test self-reference
         result = await mcp.teleclaude__set_dependencies("item-a", ["item-a"], cwd=str(cwd))
@@ -208,8 +208,8 @@ async def test_mcp_set_dependencies_circular_via_tool() -> None:
 
         # Create MCP server with mocked dependencies
         mock_client = MagicMock()
-        mock_terminal_bridge = MagicMock()
-        mcp = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        mock_tmux_bridge = MagicMock()
+        mcp = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
         # Set up: b depends on c
         await mcp.teleclaude__set_dependencies("item-b", ["item-c"], cwd=str(cwd))

@@ -1,9 +1,9 @@
-"""File upload handling for terminal sessions.
+"""File upload handling for tmux sessions.
 
 Provides file upload functionality:
 - Download files to persistent session storage
 - Detect Agent and format paths appropriately
-- Send file paths to terminal for processing
+- Send file paths to tmux for processing
 
 Extracted as adapter-agnostic utility following voice_message_handler.py pattern.
 """
@@ -14,10 +14,11 @@ from typing import Awaitable, Callable, Optional
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import terminal_bridge, terminal_io
+from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.db import db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import MessageMetadata
+from teleclaude.core.session_utils import resolve_working_dir
 
 logger = get_logger(__name__)
 
@@ -48,7 +49,7 @@ async def is_agent_running(tmux_session_name: str) -> bool:
         True if Claude Code detected, False otherwise
     """
     try:
-        output = await terminal_bridge.get_pane_title(tmux_session_name)
+        output = await tmux_bridge.get_pane_title(tmux_session_name)
         if not output:
             return False
 
@@ -86,7 +87,7 @@ async def handle_file(
         logger.warning("Session %s not found", session_id)
         return
 
-    is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
+    is_process_running = await tmux_bridge.is_process_running(session.tmux_session_name)
 
     if not is_process_running:
         await send_message(
@@ -128,18 +129,20 @@ async def handle_file(
     active_agent = session.active_agent
 
     # Automatic detection: if process running, no marker
-    sanitized_text = terminal_io.wrap_bracketed_paste(input_text)
-    success = await terminal_io.send_text(
+    sanitized_text = tmux_io.wrap_bracketed_paste(input_text)
+    working_dir = resolve_working_dir(session.project_path, session.subdir)
+    success = await tmux_io.send_text(
         session,
         sanitized_text,
         active_agent=active_agent,
+        working_dir=working_dir,
     )
 
     if not success:
         logger.error("Failed to send file path to session %s", session_id[:8])
         await send_message(
             session_id,
-            "❌ Failed to send file to terminal",
+            "❌ Failed to send file to tmux",
             MessageMetadata(),
         )
         return

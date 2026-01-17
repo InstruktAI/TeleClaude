@@ -19,7 +19,7 @@ async def test_process_detection_uses_output_message_id(daemon_with_mocked_teleg
         tmux_session_name="test-exit-detection",
         origin_adapter="telegram",
         title="Test Exit Detection",
-        working_directory="/tmp",
+        project_path="/tmp",
     )
 
     # Simulate process running - set output_message_id
@@ -74,7 +74,7 @@ async def test_process_detection_survives_daemon_restart(daemon_with_mocked_tele
         tmux_session_name="test-restart-detection",
         origin_adapter="telegram",
         title="Test Restart",
-        working_directory="/tmp",
+        project_path="/tmp",
     )
 
     # Set output_message_id (polling active)

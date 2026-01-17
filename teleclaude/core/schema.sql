@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP,
     terminal_size TEXT DEFAULT '80x24',
-    working_directory TEXT DEFAULT '~',
+    project_path TEXT,  -- Base project path (first-class, no subdir)
+    subdir TEXT,  -- Optional subdirectory/worktree relative to project_path
     description TEXT,  -- Description of why this session was created (for AI-to-AI sessions)
     initiated_by_ai BOOLEAN DEFAULT 0,  -- 0 = human-initiated (Opus), 1 = AI-initiated (Sonnet)
     initiator_session_id TEXT,  -- Session ID of the AI that created this session (for AI-to-AI nesting)
@@ -23,9 +24,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     native_log_file TEXT,
     active_agent TEXT,
     thinking_mode TEXT,
-    native_tty_path TEXT,
-    tmux_tty_path TEXT,
-    native_pid INTEGER,
     tui_log_file TEXT,
     tui_capture_started INTEGER DEFAULT 0,
     last_message_sent TEXT,
@@ -100,8 +98,8 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
 
--- Terminal outbox for local CLI (telec) commands (durable with response)
-CREATE TABLE IF NOT EXISTS terminal_outbox (
+-- Tmux outbox for local CLI (telec) commands (durable with response)
+CREATE TABLE IF NOT EXISTS rest_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
@@ -116,5 +114,5 @@ CREATE TABLE IF NOT EXISTS terminal_outbox (
     response TEXT                     -- JSON response envelope from handler
 );
 
-CREATE INDEX IF NOT EXISTS idx_terminal_outbox_pending ON terminal_outbox(delivered_at, next_attempt_at);
-CREATE INDEX IF NOT EXISTS idx_terminal_outbox_request ON terminal_outbox(request_id);
+CREATE INDEX IF NOT EXISTS idx_rest_outbox_pending ON rest_outbox(delivered_at, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_rest_outbox_request ON rest_outbox(request_id);

@@ -69,9 +69,9 @@ class TestHeartbeatKeyboard:
         # Verify 4 rows
         assert len(keyboard) == 4
 
-        # Row 1: Terminal Session
+        # Row 1: Tmux Session
         assert len(keyboard[0]) == 1
-        assert "Terminal Session" in keyboard[0][0].text
+        assert "Tmux Session" in keyboard[0][0].text
         assert keyboard[0][0].callback_data == f"ssel:{bot_username}"
 
         # Row 2: Claude

@@ -138,7 +138,7 @@ class RedisAdapterMetadata:  # pylint: disable=too-many-instance-attributes
     output_stream: Optional[str] = None
     target_computer: Optional[str] = None
     native_session_id: Optional[str] = None
-    project_dir: Optional[str] = None
+    project_path: Optional[str] = None
     last_checkpoint_time: Optional[str] = None
     title: Optional[str] = None
     channel_metadata: Optional[str] = None  # JSON string
@@ -199,7 +199,7 @@ class SessionAdapterMetadata:
                     output_stream=_get_str("output_stream"),
                     target_computer=_get_str("target_computer"),
                     native_session_id=_get_str("native_session_id"),
-                    project_dir=_get_str("project_dir"),
+                    project_path=_get_str("project_path"),
                     last_checkpoint_time=_get_str("last_checkpoint_time"),
                     title=_get_str("title"),
                     channel_metadata=channel_meta_str,
@@ -227,14 +227,55 @@ class MessageMetadata:
     adapter_type: Optional[str] = None
     channel_id: Optional[str] = None
     title: Optional[str] = None
-    project_dir: Optional[str] = None
+    project_path: Optional[str] = None
+    subdir: Optional[str] = None
     channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
-    auto_command: Optional[str] = None
+    auto_command: Optional[str] = None  # legacy adapter boundary (deprecated)
+    launch_intent: Optional["SessionLaunchIntent"] = None
+
+
+@dataclass
+class SessionLaunchIntent:
+    """Normalized session launch intent (adapter boundary to core)."""
+
+    kind: "SessionLaunchKind"
+    agent: Optional[str] = None
+    thinking_mode: Optional[str] = None
+    message: Optional[str] = None
+    native_session_id: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "kind": self.kind.value,
+            "agent": self.agent,
+            "thinking_mode": self.thinking_mode,
+            "message": self.message,
+            "native_session_id": self.native_session_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object]) -> "SessionLaunchIntent":
+        if "kind" not in data or data["kind"] is None:
+            raise ValueError("launch_intent.kind is required")
+        return cls(
+            kind=SessionLaunchKind(str(data["kind"])),
+            agent=cast(Optional[str], data.get("agent")),
+            thinking_mode=cast(Optional[str], data.get("thinking_mode")),
+            message=cast(Optional[str], data.get("message")),
+            native_session_id=cast(Optional[str], data.get("native_session_id")),
+        )
+
+
+class SessionLaunchKind(Enum):
+    EMPTY = "empty"
+    AGENT = "agent"
+    AGENT_THEN_MESSAGE = "agent_then_message"
+    AGENT_RESUME = "agent_resume"
 
 
 @dataclass
 class Session:  # pylint: disable=too-many-instance-attributes
-    """Represents a terminal session."""
+    """Represents a tmux session."""
 
     session_id: str
     computer_name: str
@@ -245,7 +286,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
     created_at: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     closed_at: Optional[datetime] = None
-    working_directory: str = "~"
+    project_path: Optional[str] = None
+    subdir: Optional[str] = None
     description: Optional[str] = None
     initiated_by_ai: bool = False
     initiator_session_id: Optional[str] = None
@@ -256,9 +298,6 @@ class Session:  # pylint: disable=too-many-instance-attributes
     native_log_file: Optional[str] = None
     active_agent: Optional[str] = None
     thinking_mode: Optional[str] = None
-    native_tty_path: Optional[str] = None
-    tmux_tty_path: Optional[str] = None
-    native_pid: Optional[int] = None
     tui_log_file: Optional[str] = None
     tui_capture_started: bool = False
     last_message_sent: Optional[str] = None
@@ -339,14 +378,6 @@ class Session:  # pylint: disable=too-many-instance-attributes
             value = data.get(key)
             return str(value) if value is not None else None
 
-        native_pid_val = data.get("native_pid")
-        if isinstance(native_pid_val, int):
-            native_pid = native_pid_val
-        elif isinstance(native_pid_val, str) and native_pid_val.isdigit():
-            native_pid = int(native_pid_val)
-        else:
-            native_pid = None
-
         return cls(
             session_id=_get_required_str("session_id"),
             computer_name=_get_required_str("computer_name"),
@@ -357,7 +388,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
             created_at=created_at if isinstance(created_at, datetime) else None,
             last_activity=last_activity if isinstance(last_activity, datetime) else None,
             closed_at=closed_at if isinstance(closed_at, datetime) else None,
-            working_directory=_get_required_str("working_directory", default="~"),
+            project_path=_get_optional_str("project_path"),
+            subdir=_get_optional_str("subdir"),
             description=_get_optional_str("description"),
             initiated_by_ai=initiated_by_ai,
             initiator_session_id=_get_optional_str("initiator_session_id"),
@@ -368,9 +400,6 @@ class Session:  # pylint: disable=too-many-instance-attributes
             native_log_file=_get_optional_str("native_log_file"),
             active_agent=_get_optional_str("active_agent"),
             thinking_mode=_get_optional_str("thinking_mode"),
-            native_tty_path=_get_optional_str("native_tty_path"),
-            tmux_tty_path=_get_optional_str("tmux_tty_path"),
-            native_pid=native_pid,
             tui_log_file=_get_optional_str("tui_log_file"),
             tui_capture_started=tui_capture_started,
             last_message_sent=_get_optional_str("last_message_sent"),
@@ -385,7 +414,7 @@ class Session:  # pylint: disable=too-many-instance-attributes
 
 @dataclass
 class Recording:
-    """Represents a terminal recording file."""
+    """Represents a tmux recording file."""
 
     recording_id: Optional[int]
     session_id: str
@@ -433,7 +462,7 @@ class StartSessionArgs:
     """Typed arguments for starting a session via MCP/Redis tools."""
 
     computer: str
-    project_dir: str
+    project_path: str
     title: str
     message: str
     agent: str = "claude"
@@ -447,7 +476,7 @@ class StartSessionArgs:
         caller_session_id: Optional[str],
     ) -> "StartSessionArgs":
         """Build args from MCP tool call."""
-        required = ["computer", "project_dir", "title", "message"]
+        required = ["computer", "project_path", "title", "message"]
         missing = [r for r in required if r not in arguments]
         if missing:
             raise ValueError(f"Arguments required for teleclaude__start_session: {', '.join(missing)}")
@@ -461,7 +490,7 @@ class StartSessionArgs:
 
         return cls(
             computer=str(arguments["computer"]),
-            project_dir=str(arguments["project_dir"]),
+            project_path=str(arguments["project_path"]),
             title=str(arguments["title"]),
             message=str(arguments["message"]),
             agent=agent,
@@ -525,9 +554,9 @@ class RedisInboundMessage:
     command: str
     channel_metadata: Optional[Dict[str, object]] = None  # guard: loose-dict
     initiator: Optional[str] = None
-    project_dir: Optional[str] = None
+    project_path: Optional[str] = None
     title: Optional[str] = None
-    auto_command: Optional[str] = None
+    launch_intent: Optional[Dict[str, object]] = None  # guard: loose-dict
 
 
 @dataclass
@@ -537,10 +566,11 @@ class SessionSummary:
     session_id: str
     origin_adapter: str
     title: str
-    working_directory: str
-    thinking_mode: str
+    thinking_mode: str | None
     active_agent: Optional[str]
     status: str
+    project_path: Optional[str] = None
+    subdir: Optional[str] = None
     created_at: Optional[str] = None
     last_activity: Optional[str] = None
     last_input: Optional[str] = None
@@ -556,7 +586,8 @@ class SessionSummary:
             "session_id": self.session_id,
             "origin_adapter": self.origin_adapter,
             "title": self.title,
-            "working_directory": self.working_directory,
+            "project_path": self.project_path,
+            "subdir": self.subdir,
             "thinking_mode": self.thinking_mode,
             "active_agent": self.active_agent,
             "status": self.status,
@@ -578,8 +609,9 @@ class SessionSummary:
             session_id=session.session_id,
             origin_adapter=session.origin_adapter,
             title=session.title,
-            working_directory=session.working_directory,
-            thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
+            project_path=session.project_path,
+            subdir=session.subdir,
+            thinking_mode=session.thinking_mode,
             active_agent=session.active_agent,
             status="active",
             created_at=session.created_at.isoformat() if session.created_at else None,
@@ -600,8 +632,9 @@ class SessionSummary:
             session_id=str(data["session_id"]),
             origin_adapter=str(data["origin_adapter"]),
             title=str(data["title"]),
-            working_directory=str(data["working_directory"]),
-            thinking_mode=str(data["thinking_mode"]),
+            project_path=str(data.get("project_path")) if data.get("project_path") else None,
+            subdir=str(data.get("subdir")) if data.get("subdir") else None,
+            thinking_mode=str(data["thinking_mode"]) if data.get("thinking_mode") is not None else None,
             active_agent=str(data.get("active_agent")) if data.get("active_agent") else None,
             status=str(data["status"]),
             created_at=str(data.get("created_at")) if data.get("created_at") else None,
@@ -661,7 +694,7 @@ class MessagePayload:
 
     session_id: str
     text: str
-    project_dir: Optional[str] = None
+    project_path: Optional[str] = None
     title: Optional[str] = None
 
 
@@ -748,5 +781,5 @@ class CommandPayload:
 
     session_id: str
     args: List[str]
-    project_dir: Optional[str] = None
+    project_path: Optional[str] = None
     title: Optional[str] = None

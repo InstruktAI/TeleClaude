@@ -67,7 +67,7 @@ def create_mock_session(
         "active_agent": active_agent,
         "thinking_mode": thinking_mode,
         "origin_adapter": "telegram",
-        "working_directory": "/test/path",
+        "project_path": "/test/path",
         "created_at": now,
         "last_activity": last_activity or now,
         "last_input": last_input,
@@ -156,7 +156,7 @@ class MockAPIClient:
     async def create_session(
         self,
         computer: str | None = None,  # noqa: ARG002
-        project_dir: str | None = None,  # noqa: ARG002
+        project_path: str | None = None,  # noqa: ARG002
         agent: str = "claude",  # noqa: ARG002
         thinking_mode: str = "slow",  # noqa: ARG002
         message: str | None = None,  # noqa: ARG002
@@ -165,7 +165,7 @@ class MockAPIClient:
 
         Args:
             computer: Computer name
-            project_dir: Project directory
+            project_path: Project directory
             agent: Agent name
             thinking_mode: Thinking mode
             message: Initial message

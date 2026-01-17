@@ -97,7 +97,7 @@ def create_test_session(
         session_id=session_id,
         origin_adapter="telegram",
         title=title,
-        working_directory="/tmp",
+        project_path="/tmp",
         status="active",
         created_at=datetime.now(timezone.utc).isoformat(),
         last_activity=datetime.now(timezone.utc).isoformat(),
@@ -208,7 +208,7 @@ async def test_cache_update_notifies_websocket_clients(
     # Verify WebSocket received notification
     mock_ws.send_json.assert_called_once()
     call_args = mock_ws.send_json.call_args[0][0]
-    assert call_args["event"] == "session_updated"
+    assert call_args["event"] == "session_created"
     assert call_args["data"]["session_id"] == "test-session-123"
 
 
@@ -407,7 +407,7 @@ async def test_full_event_round_trip(
     # Verify end-to-end: WebSocket received the event
     mock_ws.send_json.assert_called()
     call_args = mock_ws.send_json.call_args[0][0]
-    assert call_args["event"] == "session_updated"
+    assert call_args["event"] == "session_created"
     assert call_args["data"]["session_id"] == "round-trip-789"
     assert call_args["data"]["computer"] == "remote-computer"
 
@@ -487,16 +487,16 @@ async def test_local_session_lifecycle_to_websocket(
         tmux_session_name="test-tmux-session",
         origin_adapter="telegram",
         title="Local Lifecycle Test Session",
-        working_directory="/tmp",
+        project_path="/tmp",
     )
 
     # Wait for async event propagation: DB → Client → REST adapter → Cache → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
-    # Verify WebSocket received the session_updated event (cache uses update_session for creates)
+    # Verify WebSocket received the session_created event
     mock_ws.send_json.assert_called()
     call_args = mock_ws.send_json.call_args[0][0]
-    assert call_args["event"] == "session_updated"
+    assert call_args["event"] == "session_created"
     assert call_args["data"]["session_id"] == session.session_id
     assert call_args["data"]["computer"] == "test-computer"
     assert call_args["data"]["title"] == "Local Lifecycle Test Session"
@@ -572,10 +572,10 @@ async def test_rest_adapter_cache_wired_post_init(
     # Wait for async propagation: Cache → RESTAdapter._on_cache_change → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
-    # Verify WebSocket received the session_updated event
+    # Verify WebSocket received the session_created event
     mock_ws.send_json.assert_called()
     call_args = mock_ws.send_json.call_args[0][0]
-    assert call_args["event"] == "session_updated"
+    assert call_args["event"] == "session_created"
     assert call_args["data"]["session_id"] == "post-init-session"
     assert call_args["data"]["computer"] == "test-computer"
     assert call_args["data"]["title"] == "Post-Init Cache Test"
@@ -620,8 +620,8 @@ async def test_multiple_websocket_clients_receive_updates(
     # Verify same event sent to both
     call1 = mock_ws1.send_json.call_args[0][0]
     call2 = mock_ws2.send_json.call_args[0][0]
-    assert call1["event"] == "session_updated"
-    assert call2["event"] == "session_updated"
+    assert call1["event"] == "session_created"
+    assert call2["event"] == "session_created"
     assert call1["data"]["session_id"] == "broadcast-test"
     assert call2["data"]["session_id"] == "broadcast-test"
 
@@ -657,7 +657,7 @@ async def test_unsubscribed_client_receives_all_events(
     # NOTE: Current implementation does NOT filter by subscription
     assert mock_ws.send_json.called
     call_args = mock_ws.send_json.call_args[0][0]
-    assert call_args["event"] == "session_updated"
+    assert call_args["event"] == "session_created"
 
 
 @pytest.mark.asyncio

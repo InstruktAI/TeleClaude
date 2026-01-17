@@ -174,7 +174,7 @@ async def test_handle_voice_rejects_no_active_process():
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
             patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+                "teleclaude.core.voice_message_handler.tmux_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
         ):
             mock_get.return_value = mock_session
@@ -242,7 +242,7 @@ async def test_handle_voice_forwards_transcription_to_process():
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
             patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+                "teleclaude.core.voice_message_handler.tmux_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
@@ -290,7 +290,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
             patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+                "teleclaude.core.voice_message_handler.tmux_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",
@@ -332,7 +332,7 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
             patch(
-                "teleclaude.core.voice_message_handler.terminal_bridge.is_process_running", new_callable=AsyncMock
+                "teleclaude.core.voice_message_handler.tmux_bridge.is_process_running", new_callable=AsyncMock
             ) as mock_polling,
             patch(
                 "teleclaude.core.voice_message_handler.transcribe_voice_with_retry",

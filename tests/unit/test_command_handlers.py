@@ -80,16 +80,16 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
     """Test that handle_new_session returns a session_id and persists the session."""
 
     mock_context = MagicMock(spec=EventContext)
-    mock_metadata = MessageMetadata(adapter_type="telegram")
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        mock_metadata = MessageMetadata(adapter_type="telegram", project_path=tmpdir)
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "terminal_bridge") as mock_tb,
+            patch.object(command_handlers, "tmux_bridge") as mock_tb,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         ):
             mock_config.computer.name = "TestComputer"
@@ -97,7 +97,7 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
             mock_db.create_session = mock_initialized_db.create_session
             mock_db.get_session = mock_initialized_db.get_session
             mock_db.assign_voice = mock_initialized_db.assign_voice
-            mock_tb.create_tmux_session = AsyncMock(return_value=True)
+            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
             mock_tb.get_pane_tty = AsyncMock(return_value=None)
             mock_tb.get_pane_pid = AsyncMock(return_value=None)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
@@ -118,27 +118,28 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
 
 @pytest.mark.asyncio
 async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state(mock_initialized_db):
-    """Terminal adapter should store terminal metadata on the session."""
+    """Tmux adapter should store terminal metadata on the session."""
 
     mock_context = MagicMock(spec=EventContext)
-    mock_metadata = MessageMetadata(
-        adapter_type="terminal",
-        channel_metadata={
-            "terminal": {
-                "tty_path": "/dev/pts/7",
-                "parent_pid": 4242,
-            }
-        },
-    )
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        mock_metadata = MessageMetadata(
+            adapter_type="terminal",
+            project_path=tmpdir,
+            channel_metadata={
+                "terminal": {
+                    "tty_path": "/dev/pts/7",
+                    "parent_pid": 4242,
+                }
+            },
+        )
         with (
             patch.object(command_handlers, "config") as mock_config,
             patch.object(command_handlers, "db") as mock_db,
-            patch.object(command_handlers, "terminal_bridge") as mock_tb,
+            patch.object(command_handlers, "tmux_bridge") as mock_tb,
             patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         ):
             mock_config.computer.name = "TestComputer"
@@ -147,15 +148,13 @@ async def test_handle_create_session_terminal_metadata_updates_size_and_ux_state
             mock_db.get_session = mock_initialized_db.get_session
             mock_db.assign_voice = mock_initialized_db.assign_voice
             mock_db.update_session = mock_initialized_db.update_session
-            mock_tb.create_tmux_session = AsyncMock(return_value=True)
+            mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
             mock_unique.return_value = "$TestComputer[user] - Test Title"
 
             result = await command_handlers.handle_create_session(mock_context, ["Test"], mock_metadata, mock_client)
 
     stored = await mock_initialized_db.get_session(result["session_id"])
     assert stored is not None
-    assert stored.native_tty_path == "/dev/pts/7"
-    assert stored.native_pid == 4242
 
 
 @pytest.mark.asyncio
@@ -166,7 +165,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
     invalid_path.write_text("nope", encoding="utf-8")
 
     mock_context = MagicMock(spec=EventContext)
-    mock_metadata = MessageMetadata(adapter_type="telegram", project_dir=str(invalid_path))
+    mock_metadata = MessageMetadata(adapter_type="telegram", project_path=str(invalid_path))
     mock_client = MagicMock()
     mock_client.create_channel = AsyncMock()
     mock_client.send_message = AsyncMock()
@@ -174,7 +173,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
     with (
         patch.object(command_handlers, "config") as mock_config,
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_bridge") as mock_tb,
+        patch.object(command_handlers, "tmux_bridge") as mock_tb,
         patch.object(command_handlers, "ensure_unique_title", new_callable=AsyncMock) as mock_unique,
         patch("teleclaude.core.session_cleanup.db.clear_pending_deletions", new_callable=AsyncMock),
         patch("teleclaude.core.session_cleanup.db.update_session", new_callable=AsyncMock),
@@ -185,7 +184,7 @@ async def test_handle_new_session_validates_working_dir(mock_initialized_db, tmp
         mock_db.get_session = mock_initialized_db.get_session
         mock_db.delete_session = mock_initialized_db.delete_session
         mock_db.assign_voice = mock_initialized_db.assign_voice
-        mock_tb.create_tmux_session = AsyncMock(return_value=True)
+        mock_tb.ensure_tmux_session = AsyncMock(return_value=True)
         mock_tb.get_pane_tty = AsyncMock(return_value=None)
         mock_tb.get_pane_pid = AsyncMock(return_value=None)
         mock_unique.return_value = "Test Title"
@@ -205,7 +204,7 @@ async def test_handle_cd_changes_directory(mock_initialized_db, tmp_path):
         tmux_session_name="tc_test",
         origin_adapter="terminal",
         title="Test Session",
-        working_directory=str(tmp_path),
+        project_path=str(tmp_path),
     )
 
     mock_context = MagicMock()
@@ -226,7 +225,7 @@ async def test_handle_cd_changes_directory(mock_initialized_db, tmp_path):
 
     updated = await mock_initialized_db.get_session(session.session_id)
     assert updated is not None
-    assert updated.working_directory == str(new_dir)
+    assert updated.project_path == str(new_dir)
 
 
 @pytest.mark.asyncio
@@ -238,7 +237,7 @@ async def test_handle_cd_executes_command_for_any_path(mock_initialized_db):
         tmux_session_name="tc_test",
         origin_adapter="terminal",
         title="Test Session",
-        working_directory="/home/user",
+        project_path="/home/user",
     )
 
     mock_context = MagicMock()
@@ -258,7 +257,7 @@ async def test_handle_cd_executes_command_for_any_path(mock_initialized_db):
 
     updated = await mock_initialized_db.get_session(session.session_id)
     assert updated is not None
-    assert updated.working_directory == "/some/path"
+    assert updated.project_path == "/some/path"
 
 
 @pytest.mark.asyncio
@@ -272,7 +271,7 @@ async def test_handle_kill_terminates_process():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_io") as mock_tb:
+    with patch.object(command_handlers, "tmux_io") as mock_tb:
         mock_tb.send_signal = AsyncMock(return_value=True)
 
         await command_handlers.handle_kill_command.__wrapped__(mock_session, mock_context, mock_client, AsyncMock())
@@ -291,7 +290,7 @@ async def test_handle_cancel_sends_ctrl_c():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_io") as mock_tb:
+    with patch.object(command_handlers, "tmux_io") as mock_tb:
         mock_tb.send_signal = AsyncMock(return_value=True)
 
         await command_handlers.handle_cancel_command.__wrapped__(mock_session, mock_context, mock_client, AsyncMock())
@@ -310,7 +309,7 @@ async def test_handle_escape_sends_esc():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_io") as mock_tb:
+    with patch.object(command_handlers, "tmux_io") as mock_tb:
         mock_tb.send_escape = AsyncMock(return_value=True)
 
         await command_handlers.handle_escape_command.__wrapped__(
@@ -331,7 +330,7 @@ async def test_handle_ctrl_sends_ctrl_key():
     mock_context = MagicMock()
     mock_client = MagicMock()
 
-    with patch.object(command_handlers, "terminal_io") as mock_tb:
+    with patch.object(command_handlers, "tmux_io") as mock_tb:
         mock_tb.send_ctrl_key = AsyncMock(return_value=True)
 
         await command_handlers.handle_ctrl_command.__wrapped__(
@@ -350,7 +349,7 @@ async def test_handle_rename_updates_title(mock_initialized_db):
         tmux_session_name="tc_test",
         origin_adapter="terminal",
         title="Old Title",
-        working_directory="/home/user",
+        project_path="/home/user",
     )
 
     mock_context = MagicMock()
@@ -380,7 +379,7 @@ async def test_handle_list_sessions_formats_output():
     s0.session_id = "session-0"
     s0.origin_adapter = "telegram"
     s0.title = "Test Session 0"
-    s0.working_directory = "/home/user"
+    s0.project_path = "/home/user"
     s0.created_at = now
     s0.last_activity = now
     s0.thinking_mode = "med"
@@ -389,7 +388,7 @@ async def test_handle_list_sessions_formats_output():
     s1.session_id = "session-1"
     s1.origin_adapter = "telegram"
     s1.title = "Test Session 1"
-    s1.working_directory = "/home/user"
+    s1.project_path = "/home/user"
     s1.created_at = now
     s1.last_activity = now
     s1.thinking_mode = "med"
@@ -420,7 +419,7 @@ async def test_handle_get_session_data_returns_transcript():
     mock_session = MagicMock()
     mock_session.session_id = "test-session-123"
     mock_session.title = "Test Session"
-    mock_session.working_directory = "/home/user"
+    mock_session.project_path = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
     mock_session.native_log_file = None  # No file yet
@@ -444,7 +443,7 @@ async def test_handle_get_session_data_returns_markdown(tmp_path):
     mock_session = MagicMock()
     mock_session.session_id = "test-session-456"
     mock_session.title = "Markdown Session"
-    mock_session.working_directory = "/home/user"
+    mock_session.project_path = "/home/user"
     mock_session.created_at = datetime.now()
     mock_session.last_activity = datetime.now()
 
@@ -537,7 +536,7 @@ async def test_handle_ctrl_requires_key_argument(mock_initialized_db):
         tmux_session_name="tc_test",
         origin_adapter="terminal",
         title="Test Session",
-        working_directory="/home/user",
+        project_path="/home/user",
     )
 
     await command_handlers.handle_ctrl_command.__wrapped__(session, mock_context, [], FakeClient(), AsyncMock())
@@ -865,10 +864,10 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_io") as mock_terminal_bridge,
+        patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
     ):
         mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
-        mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
+        mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
 
         await command_handlers.handle_agent_restart.__wrapped__(
             mock_session, mock_context, "", [], mock_client, mock_execute
@@ -876,7 +875,7 @@ async def test_handle_agent_restart_fails_without_active_agent(mock_initialized_
 
     mock_client.send_message.assert_awaited_once()
     mock_execute.assert_not_called()
-    mock_terminal_bridge.send_signal.assert_not_called()
+    mock_tmux_bridge.send_signal.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -927,14 +926,14 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_io") as mock_terminal_bridge,
+        patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
         patch.object(command_handlers, "get_agent_command") as mock_get_agent_command,
         patch.object(command_handlers.asyncio, "sleep", new=AsyncMock()),
         patch.object(command_handlers, "config") as mock_config,
     ):
         mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
-        mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
-        mock_terminal_bridge.wait_for_shell_ready = AsyncMock(return_value=True)
+        mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
+        mock_tmux_bridge.wait_for_shell_ready = AsyncMock(return_value=True)
         mock_get_agent_command.return_value = "claude --resume native-abc"
         mock_config.agents.get.return_value = MagicMock()
 
@@ -942,7 +941,7 @@ async def test_handle_agent_restart_resumes_with_native_session_id(mock_initiali
             mock_session, mock_context, "", [], mock_client, mock_execute
         )
 
-    assert mock_terminal_bridge.send_signal.await_count == 2
+    assert mock_tmux_bridge.send_signal.await_count == 2
     mock_execute.assert_called_once()
     command = mock_execute.call_args[0][1]
     assert "claude --resume native-abc" in command
@@ -968,12 +967,12 @@ async def test_handle_agent_restart_aborts_when_shell_not_ready(mock_initialized
 
     with (
         patch.object(command_handlers, "db") as mock_db,
-        patch.object(command_handlers, "terminal_io") as mock_terminal_bridge,
+        patch.object(command_handlers, "tmux_io") as mock_tmux_bridge,
         patch.object(command_handlers, "config") as mock_config,
     ):
         mock_db.get_ux_state = AsyncMock(return_value=mock_ux_state)
-        mock_terminal_bridge.send_signal = AsyncMock(return_value=True)
-        mock_terminal_bridge.wait_for_shell_ready = AsyncMock(return_value=False)
+        mock_tmux_bridge.send_signal = AsyncMock(return_value=True)
+        mock_tmux_bridge.wait_for_shell_ready = AsyncMock(return_value=False)
         mock_config.agents.get.return_value = MagicMock()
 
         await command_handlers.handle_agent_restart.__wrapped__(

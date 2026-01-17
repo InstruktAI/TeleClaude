@@ -198,7 +198,7 @@ telegram:
 
 1. **Master bot** registers all commands with **trailing spaces**:
 
-   - Example: `BotCommand("new_session ", "Create a new terminal session")`
+   - Example: `BotCommand("new_session ", "Create a new tmux session")`
    - The trailing space prevents Telegram from appending `@botname` in autocomplete
    - Commands become universal: `/new_session` works for any bot
 

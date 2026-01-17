@@ -18,7 +18,7 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.core import terminal_bridge, terminal_io
+from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.events import EventContext
@@ -35,8 +35,14 @@ from teleclaude.core.models import (
     TodoInfo,
 )
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, cleanup_session_resources, terminate_session
-from teleclaude.core.session_utils import build_session_title, ensure_unique_title, update_title_with_agent
-from teleclaude.core.terminal_events import TerminalEventMetadata
+from teleclaude.core.session_utils import (
+    build_session_title,
+    ensure_unique_title,
+    get_short_project_name,
+    resolve_working_dir,
+    split_project_path_and_subdir,
+    update_title_with_agent,
+)
 from teleclaude.core.voice_assignment import get_random_voice, get_voice_env_vars
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
@@ -63,9 +69,9 @@ class SessionDataPayload(TypedDict, total=False):
     session_id: str
     transcript: str | None
     last_activity: str | None
-    working_directory: str | None
+    project_path: str | None
+    subdir: str | None
     error: str  # Present in error responses
-    project_dir: str  # Sometimes present
     messages: str  # Sometimes present
     created_at: str | None  # Sometimes present
 
@@ -94,7 +100,7 @@ def with_session(
         @with_session
         async def handle_cancel(session: Session, context: EventContext, ...) -> None:
             # session is already validated and injected
-            await terminal_io.send_signal(session, "SIGINT")
+            await tmux_io.send_signal(session, "SIGINT")
     """
 
     @functools.wraps(func)
@@ -118,9 +124,9 @@ def with_session(
 
 
 async def _execute_control_key(
-    terminal_action: Callable[..., Awaitable[bool]],
+    tmux_action: Callable[..., Awaitable[bool]],
     session: Session,
-    *terminal_args: object,
+    *tmux_args: object,
 ) -> bool:
     """Execute control/navigation key without polling (TUI interaction).
 
@@ -128,14 +134,14 @@ async def _execute_control_key(
     arrow keys, tab, shift+tab, escape, ctrl, cancel, kill.
 
     Args:
-        terminal_action: Terminal bridge function to execute
+        tmux_action: Tmux bridge function to execute
         session: Session object (contains tmux_session_name)
-        *terminal_args: Additional arguments for terminal_action
+        *tmux_args: Additional arguments for tmux_action
 
     Returns:
-        True if terminal action succeeded, False otherwise
+        True if tmux action succeeded, False otherwise
     """
-    return await terminal_action(session, *terminal_args)
+    return await tmux_action(session, *tmux_args)
 
 
 async def handle_create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
@@ -144,12 +150,12 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     metadata: MessageMetadata,
     client: "AdapterClient",
 ) -> dict[str, str]:
-    """Create a new terminal session.
+    """Create a new tmux session.
 
     Args:
         context: Command context
         args: Command arguments (optional custom title)
-        metadata: Message metadata (adapter_type, project_dir, etc.)
+        metadata: Message metadata (adapter_type, project_path, etc.)
         client: AdapterClient for channel operations
 
     Returns:
@@ -161,25 +167,19 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         raise ValueError("Metadata missing adapter_type")
 
     computer_name = config.computer.name
-    working_dir = os.path.expanduser(os.path.expandvars(config.computer.default_working_dir))
-
-    terminal_meta = TerminalEventMetadata.from_channel_metadata(metadata.channel_metadata)
-
-    # For AI-to-AI sessions, use project_dir from metadata
-    project_dir = metadata.project_dir
-    if project_dir:
-        working_dir = os.path.expanduser(os.path.expandvars(project_dir))
+    project_path = metadata.project_path
+    if not project_path:
+        raise ValueError("project_path is required for session creation")
+    project_path = os.path.expanduser(os.path.expandvars(project_path))
 
     # tmux silently falls back to its own cwd if -c points at a non-existent directory.
     # This shows up as sessions "starting in /tmp" (or similar) even though we asked for a project dir.
+    working_dir = resolve_working_dir(project_path, None)
     working_dir_path = Path(working_dir)
     if not working_dir_path.is_absolute():
         raise ValueError(f"Working directory must be an absolute path: {working_dir}")
     if not working_dir_path.exists():
-        try:
-            working_dir_path.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise ValueError(f"Working directory does not exist and could not be created: {working_dir}") from e
+        raise ValueError(f"Working directory does not exist: {working_dir}")
     if not working_dir_path.is_dir():
         raise ValueError(f"Working directory is not a directory: {working_dir}")
     working_dir = str(working_dir_path)
@@ -204,27 +204,24 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         initiator_mode = str(initiator_mode_raw) if initiator_mode_raw else None
         subfolder_raw = metadata.channel_metadata.get("subfolder")
         subfolder = str(subfolder_raw) if subfolder_raw else None
+        if subfolder:
+            if Path(subfolder).is_absolute():
+                raise ValueError(f"subdir must be relative: {subfolder}")
+            subfolder = subfolder.strip("/")
         working_slug_raw = metadata.channel_metadata.get("working_slug")
         working_slug = str(working_slug_raw) if working_slug_raw else None
         initiator_session_id_raw = metadata.channel_metadata.get("initiator_session_id")
         initiator_session_id = str(initiator_session_id_raw) if initiator_session_id_raw else None
 
-    # Derive working_dir and short_project from raw inputs (project_dir + subfolder)
-    # project_dir is the base project, subfolder is the optional worktree/branch path
+    # Derive working_dir and short_project from raw inputs (project_path + subfolder)
+    # project_path is the base project, subfolder is the optional worktree/branch path
     if subfolder:
-        # Append subfolder to get actual working directory
-        working_dir = f"{working_dir}/{subfolder}"
+        working_dir = resolve_working_dir(project_path, subfolder)
         working_dir_path = Path(working_dir)
         if not working_dir_path.exists():
             working_dir_path.mkdir(parents=True, exist_ok=True)
         working_dir = str(working_dir_path)
-        # Derive short_project from raw inputs: project_name/slug
-        project_name = project_dir.rstrip("/").split("/")[-1] if project_dir else "unknown"
-        slug = subfolder.split("/")[-1]
-        short_project = f"{project_name}/{slug}"
-    else:
-        # No subfolder - just use last folder name
-        short_project = working_dir.rstrip("/").split("/")[-1] if working_dir else "unknown"
+    short_project = get_short_project_name(project_path, subfolder)
 
     # Build session title using standard format
     # Target agent info not yet known (will be updated when agent starts)
@@ -257,18 +254,12 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
         tmux_session_name=tmux_name,
         origin_adapter=str(adapter_type),
         title=title,
-        working_directory=working_dir,
+        project_path=project_path,
+        subdir=subfolder,
         session_id=session_id,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
     )
-
-    if adapter_type == "terminal" and (terminal_meta.tty_path or terminal_meta.parent_pid is not None):
-        await db.update_session(
-            session_id,
-            native_tty_path=terminal_meta.tty_path,
-            native_pid=terminal_meta.parent_pid,
-        )
 
     # Create channel via client (session object passed, adapter_metadata updated in DB)
     # Pass initiator (target_computer) for AI-to-AI sessions so stop events can be forwarded
@@ -292,7 +283,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     env_vars = voice_env_vars.copy()
     env_vars["TELECLAUDE_SESSION_ID"] = session_id
 
-    success = await terminal_bridge.create_tmux_session(
+    success = await tmux_bridge.ensure_tmux_session(
         name=tmux_name,
         working_dir=working_dir,
         session_id=session_id,
@@ -322,6 +313,12 @@ You can now send commands to this session.
         return {"session_id": session_id, "tmux_session_name": tmux_name}
 
     # Tmux creation failed - clean up DB and channels
+    logger.error(
+        "Failed to create tmux session for %s (tmux=%s, working_dir=%s)",
+        session.session_id[:8],
+        tmux_name,
+        working_dir,
+    )
     await cleanup_session_resources(session, client)
     await db.close_session(session.session_id)
     logger.error("Failed to create tmux session")
@@ -340,13 +337,15 @@ async def handle_list_sessions() -> list[SessionSummary]:
     sessions = await db.list_sessions()
 
     summaries: list[SessionSummary] = []
+    local_name = config.computer.name
     for s in sessions:
         summaries.append(
             SessionSummary(
                 session_id=s.session_id,
                 origin_adapter=s.origin_adapter,
                 title=s.title,
-                working_directory=s.working_directory,
+                project_path=s.project_path,
+                subdir=s.subdir,
                 thinking_mode=s.thinking_mode or ThinkingMode.SLOW.value,
                 active_agent=s.active_agent,
                 status="active",
@@ -358,6 +357,7 @@ async def handle_list_sessions() -> list[SessionSummary]:
                 last_output_at=s.last_feedback_received_at.isoformat() if s.last_feedback_received_at else None,
                 tmux_session_name=s.tmux_session_name,
                 initiator_session_id=s.initiator_session_id,
+                computer=local_name,
             )
         )
 
@@ -608,7 +608,8 @@ async def handle_get_session_data(
     return {
         "status": "success",
         "session_id": session_id,
-        "project_dir": session.working_directory,
+        "project_path": session.project_path,
+        "subdir": session.subdir,
         "messages": markdown_content,
         "created_at": session.created_at.isoformat() if session.created_at else None,
         "last_activity": (session.last_activity.isoformat() if session.last_activity else None),
@@ -634,7 +635,7 @@ async def handle_cancel_command(
     """
     # Send SIGINT (CTRL+C) to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_io.send_signal,
+        tmux_io.send_signal,
         session,
         "SIGINT",
     )
@@ -643,7 +644,7 @@ async def handle_cancel_command(
         # Wait a moment then send second SIGINT
         await asyncio.sleep(0.2)
         success = await _execute_control_key(
-            terminal_io.send_signal,
+            tmux_io.send_signal,
             session,
             "SIGINT",
         )
@@ -675,7 +676,7 @@ async def handle_kill_command(
     """
     # Send SIGKILL (forceful termination) to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_io.send_signal,
+        tmux_io.send_signal,
         session,
         "SIGKILL",
     )
@@ -711,7 +712,7 @@ async def handle_escape_command(
         text = " ".join(args)
 
         # Send ESCAPE first
-        success = await terminal_io.send_escape(session)
+        success = await tmux_io.send_escape(session)
         if not success:
             logger.error("Failed to send ESCAPE to session %s", session.session_id[:8])
             return
@@ -719,7 +720,7 @@ async def handle_escape_command(
         # Send second ESCAPE if double flag set
         if double:
             await asyncio.sleep(0.1)
-            success = await terminal_io.send_escape(session)
+            success = await tmux_io.send_escape(session)
             if not success:
                 logger.error("Failed to send second ESCAPE to session %s", session.session_id[:8])
                 return
@@ -728,17 +729,18 @@ async def handle_escape_command(
         await asyncio.sleep(0.1)
 
         # Check if process is running for polling decision
-        is_process_running = await terminal_io.is_process_running(session)
+        is_process_running = await tmux_io.is_process_running(session)
 
         # Get active agent for agent-specific escaping
         active_agent = session.active_agent
 
         # Send text + ENTER
-        sanitized_text = terminal_io.wrap_bracketed_paste(text)
-        success = await terminal_io.send_text(
+        sanitized_text = tmux_io.wrap_bracketed_paste(text)
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        success = await tmux_io.send_text(
             session,
             sanitized_text,
-            working_dir=session.working_directory,
+            working_dir=working_dir,
             active_agent=active_agent,
         )
 
@@ -765,7 +767,7 @@ async def handle_escape_command(
 
     # No args: send ESCAPE only (TUI navigation, no polling)
     success = await _execute_control_key(
-        terminal_io.send_escape,
+        tmux_io.send_escape,
         session,
     )
 
@@ -773,7 +775,7 @@ async def handle_escape_command(
         # Wait a moment then send second ESCAPE
         await asyncio.sleep(0.2)
         success = await _execute_control_key(
-            terminal_io.send_escape,
+            tmux_io.send_escape,
             session,
         )
 
@@ -832,7 +834,7 @@ async def handle_ctrl_command(
 
     # Send CTRL+key to the tmux session (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_io.send_ctrl_key,
+        tmux_io.send_ctrl_key,
         session,
         key,
     )
@@ -859,7 +861,7 @@ async def handle_tab_command(
         start_polling: Function to start polling for a session
     """
     success = await _execute_control_key(
-        terminal_io.send_tab,
+        tmux_io.send_tab,
         session,
     )
 
@@ -899,7 +901,7 @@ async def handle_shift_tab_command(
             count = 1
 
     success = await _execute_control_key(
-        terminal_io.send_shift_tab,
+        tmux_io.send_shift_tab,
         session,
         count,
     )
@@ -940,7 +942,7 @@ async def handle_backspace_command(
             count = 1
 
     success = await _execute_control_key(
-        terminal_io.send_backspace,
+        tmux_io.send_backspace,
         session,
         count,
     )
@@ -968,7 +970,7 @@ async def handle_enter_command(
     """
     # Send ENTER key (TUI interaction, no polling)
     success = await _execute_control_key(
-        terminal_io.send_enter,
+        tmux_io.send_enter,
         session,
     )
 
@@ -1011,7 +1013,7 @@ async def handle_arrow_key_command(
             count = 1
 
     success = await _execute_control_key(
-        terminal_io.send_arrow_key,
+        tmux_io.send_arrow_key,
         session,
         direction,
         count,
@@ -1075,7 +1077,7 @@ async def handle_cd_session(
         context: Command context with session_id and message_id
         args: Command arguments (directory path or empty to list)
         client: AdapterClient for message operations
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
 
     # Normalize args to a single path or None
@@ -1112,11 +1114,13 @@ async def handle_cd_session(
 
     # Save working directory to DB if successful
     if success:
-        await db.update_session(session.session_id, working_directory=target_dir)
+        trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
+        project_path, subdir = split_project_path_and_subdir(target_dir, trusted_dirs)
+        await db.update_session(session.session_id, project_path=project_path, subdir=subdir)
         logger.debug(
-            "Updated working_directory for session %s: %s",
+            "Updated project_path for session %s: %s",
             session.session_id[:8],
-            target_dir,
+            project_path,
         )
 
 
@@ -1194,7 +1198,7 @@ async def handle_agent_start(
         agent_name: The name of the agent to start (e.g., "claude", "gemini")
         args: Command arguments (passed to agent command)
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     logger.debug(
         "handle_agent_start: session=%s agent_name=%r args=%s config_agents=%s",
@@ -1306,7 +1310,7 @@ async def handle_agent_resume(
         agent_name: The name of the agent to resume (if empty, uses active_agent from UX state)
         args: Command arguments (currently unused - session ID comes from database)
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     # If no agent_name provided, use active_agent from session
     if not agent_name:
@@ -1321,7 +1325,7 @@ async def handle_agent_resume(
         await client.send_message(session, f"Unknown agent: {agent_name}")
         return
 
-    thinking_raw = session.thinking_mode if isinstance(session.thinking_mode, str) else None
+    thinking_raw = session.thinking_mode
     native_session_id_override = args[0].strip() if args else ""
     native_session_id = native_session_id_override or session.native_session_id
     if native_session_id_override:
@@ -1330,7 +1334,7 @@ async def handle_agent_resume(
     resume_args = AgentResumeArgs(
         agent_name=agent_name,
         native_session_id=native_session_id,
-        thinking_mode=ThinkingMode(thinking_raw) if thinking_raw else ThinkingMode.SLOW,
+        thinking_mode=ThinkingMode(thinking_raw),
     )
 
     cmd = get_agent_command(
@@ -1398,13 +1402,13 @@ async def handle_agent_restart(
     )
 
     # Kill any existing process (send CTRL+C twice).
-    sent = await terminal_io.send_signal(session, "SIGINT")
+    sent = await tmux_io.send_signal(session, "SIGINT")
     if sent:
         await asyncio.sleep(0.2)
-        await terminal_io.send_signal(session, "SIGINT")
+        await tmux_io.send_signal(session, "SIGINT")
         await asyncio.sleep(0.5)
 
-    ready = await terminal_io.wait_for_shell_ready(session)
+    ready = await tmux_io.wait_for_shell_ready(session)
     if not ready:
         await client.send_message(
             session,
@@ -1438,7 +1442,7 @@ async def handle_claude_session(
         context: Command context with message_id
         args: Command arguments (passed to claude command)
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     await handle_agent_start(session, context, "claude", args, client, execute_terminal_command)
 
@@ -1456,7 +1460,7 @@ async def handle_claude_resume_session(
         session: Session object (injected by @with_session)
         context: Command context with message_id
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     await handle_agent_resume(session, context, "claude", [], client, execute_terminal_command)
 
@@ -1476,7 +1480,7 @@ async def handle_gemini_session(
         context: Command context with message_id
         args: Command arguments (passed to gemini command)
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     await handle_agent_start(session, context, "gemini", args, client, execute_terminal_command)
 
@@ -1494,7 +1498,7 @@ async def handle_gemini_resume_session(
         session: Session object (injected by @with_session)
         context: Command context with message_id
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     await handle_agent_resume(session, context, "gemini", [], client, execute_terminal_command)
 
@@ -1514,7 +1518,7 @@ async def handle_codex_session(
         context: Command context with message_id
         args: Command arguments (passed to codex command)
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     await handle_agent_start(session, context, "codex", args, client, execute_terminal_command)
 
@@ -1532,6 +1536,6 @@ async def handle_codex_resume_session(
         session: Session object (injected by @with_session)
         context: Command context with message_id
         client: AdapterClient for sending feedback
-        execute_terminal_command: Function to execute terminal command
+        execute_terminal_command: Function to execute tmux command
     """
     await handle_agent_resume(session, context, "codex", [], client, execute_terminal_command)

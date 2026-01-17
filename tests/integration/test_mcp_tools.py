@@ -10,7 +10,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
 FIXED_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -22,7 +22,7 @@ async def mcp_server(daemon_with_mocked_telegram):
     daemon = daemon_with_mocked_telegram
 
     # Create MCP server using daemon's adapter_client
-    server = TeleClaudeMCPServer(adapter_client=daemon.client, terminal_bridge=terminal_bridge)
+    server = TeleClaudeMCPServer(adapter_client=daemon.client, tmux_bridge=tmux_bridge)
 
     return server
 
@@ -116,7 +116,7 @@ async def test_teleclaude_start_session(mcp_server, daemon_with_mocked_telegram)
 
                 result = await mcp_server.teleclaude__start_session(
                     computer="workstation",
-                    project_dir="/home/user/project",
+                    project_path="/home/user/project",
                     title="TEST: start session",
                     message="ls -la",
                     caller_session_id="caller-session-123",

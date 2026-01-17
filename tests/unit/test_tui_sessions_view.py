@@ -77,7 +77,7 @@ class TestSessionsViewLogic:
             session_id=session_id,
             origin_adapter="telegram",
             title=title,
-            working_directory="/test/project",
+            project_path="/test/project",
             thinking_mode=thinking_mode,
             active_agent=active_agent,
             status=status,

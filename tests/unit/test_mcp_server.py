@@ -28,7 +28,7 @@ def mock_mcp_server():
     mock_client.discover_peers = AsyncMock(return_value=[])
     mock_client.handle_event = AsyncMock(return_value={"status": "success", "data": {}})
 
-    mock_terminal_bridge = MagicMock()
+    mock_tmux_bridge = MagicMock()
 
     # Mock caller session for db.get_session
     mock_caller_session = MagicMock()
@@ -43,7 +43,7 @@ def mock_mcp_server():
         mock_config.mcp.socket_path = "/tmp/test.sock"
         mock_db.get_session = AsyncMock(return_value=mock_caller_session)
 
-        server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        server = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
         yield server
 
@@ -103,7 +103,7 @@ async def test_teleclaude_list_sessions_formats_sessions(mock_mcp_server):
                     session_id="test-session-123",
                     origin_adapter="telegram",
                     title="Test Session",
-                    working_directory="/home/user",
+                    project_path="/home/user",
                     thinking_mode="slow",
                     active_agent=None,
                     status="active",
@@ -134,7 +134,7 @@ async def test_teleclaude_start_session_creates_session(mock_mcp_server):
 
         result = await server.teleclaude__start_session(
             computer="local",
-            project_dir="/home/user/project",
+            project_path="/home/user/project",
             title="Test Session",
             message="Hello Claude",
             caller_session_id=CALLER_SESSION_ID,
@@ -310,7 +310,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         # Test 1: Gemini agent
         result = await server.teleclaude__start_session(
             computer="local",
-            project_dir="/home/user/project",
+            project_path="/home/user/project",
             title="Gemini Session",
             message="Hello Gemini",
             agent="gemini",
@@ -326,7 +326,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         # Test 2: Codex agent
         result = await server.teleclaude__start_session(
             computer="local",
-            project_dir="/home/user/project",
+            project_path="/home/user/project",
             title="Codex Session",
             message="Hello Codex",
             agent="codex",
@@ -342,7 +342,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
         # Test 3: Claude agent (default)
         result = await server.teleclaude__start_session(
             computer="local",
-            project_dir="/home/user/project",
+            project_path="/home/user/project",
             title="Claude Session",
             message="Hello Claude",
             agent="claude",
@@ -357,7 +357,7 @@ async def test_teleclaude_start_session_with_agent_parameter(mock_mcp_server):
 
         result = await server.teleclaude__start_session(
             computer="local",
-            project_dir="/home/user/project",
+            project_path="/home/user/project",
             title="Fast Claude Session",
             message="Hello Claude",
             agent="claude",
@@ -562,7 +562,7 @@ async def test_run_agent_command_with_subfolder(mock_mcp_server):
     # handle_create_session derives working_dir from these
     first_call = server.client.handle_event.call_args_list[0]
     metadata = first_call[0][2]  # Third arg is MessageMetadata
-    assert metadata.project_dir == "/home/user/myproject"
+    assert metadata.project_path == "/home/user/myproject"
     assert metadata.channel_metadata["subfolder"] == "worktrees/my-feature"
 
 

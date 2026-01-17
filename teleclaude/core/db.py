@@ -16,7 +16,7 @@ from teleclaude.config import config
 
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata
-from .terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload
+from .rest_events import RestOutboxMetadata, RestOutboxPayload
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ class HookOutboxRow(TypedDict):
     attempt_count: int
 
 
-class TerminalOutboxRow(TypedDict):
+class RestOutboxRow(TypedDict):
     id: int
     request_id: str
     event_type: str
@@ -43,7 +43,7 @@ class TerminalOutboxRow(TypedDict):
 
 
 class Db:
-    """Database interface for terminal sessions and state management."""
+    """Database interface for tmux sessions and state management."""
 
     def __init__(self, db_path: str) -> None:
         """Initialize database.
@@ -65,6 +65,9 @@ class Db:
         # Connect to database
         self._db = await aiosqlite.connect(self.db_path)
         self._db.row_factory = aiosqlite.Row
+        await self._db.execute("PRAGMA journal_mode = WAL")
+        await self._db.execute("PRAGMA synchronous = NORMAL")
+        await self._db.execute("PRAGMA busy_timeout = 5000")
 
         # Load and execute base schema (CREATE TABLE IF NOT EXISTS - safe for existing DBs)
         schema_path = Path(__file__).parent / "schema.sql"
@@ -149,7 +152,8 @@ class Db:
         origin_adapter: str,
         title: str,
         adapter_metadata: Optional[SessionAdapterMetadata] = None,
-        working_directory: str = "~",
+        project_path: Optional[str] = None,
+        subdir: Optional[str] = None,
         description: Optional[str] = None,
         session_id: Optional[str] = None,
         working_slug: Optional[str] = None,
@@ -163,7 +167,8 @@ class Db:
             origin_adapter: Origin adapter type (e.g., "telegram", "redis")
             title: Optional session title
             adapter_metadata: Optional adapter-specific metadata
-            working_directory: Initial working directory
+            project_path: Base project path (no subdir)
+            subdir: Optional subdirectory/worktree relative to project_path
             description: Optional description (for AI-to-AI sessions)
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
             working_slug: Optional slug of work item this session is working on
@@ -184,7 +189,8 @@ class Db:
             adapter_metadata=adapter_metadata or SessionAdapterMetadata(),
             created_at=now,
             last_activity=now,
-            working_directory=working_directory,
+            project_path=project_path,
+            subdir=subdir,
             description=description,
             working_slug=working_slug,
             initiator_session_id=initiator_session_id,
@@ -196,9 +202,9 @@ class Db:
             INSERT INTO sessions (
                 session_id, computer_name, title, tmux_session_name,
                 origin_adapter, adapter_metadata, created_at,
-                last_activity, working_directory, description,
+                last_activity, project_path, subdir, description,
                 working_slug, initiator_session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["session_id"],
@@ -209,7 +215,8 @@ class Db:
                 data["adapter_metadata"],
                 data["created_at"],
                 data["last_activity"],
-                data["working_directory"],
+                data.get("project_path"),
+                data.get("subdir"),
                 data["description"],
                 data["working_slug"],
                 data.get("initiator_session_id"),
@@ -302,7 +309,7 @@ class Db:
 
         Args:
             session_id: Session ID
-            **fields: Fields to update (title, status, terminal_size, etc.)
+            **fields: Fields to update (title, status, tmux_size, etc.)
         """
         if not fields:
             return
@@ -375,6 +382,15 @@ class Db:
         if session.closed_at:
             return
         await self.update_session(session_id, closed_at=datetime.now(timezone.utc).isoformat())
+        if self._client:
+            try:
+                await self._client.handle_event(
+                    TeleClaudeEvents.SESSION_REMOVED,
+                    {"session_id": session_id},
+                    MessageMetadata(adapter_type=session.origin_adapter),
+                )
+            except Exception as exc:
+                logger.error("Failed to dispatch SESSION_REMOVED for %s: %s", session_id[:8], exc)
 
     async def update_last_activity(self, session_id: str) -> None:
         """Update last activity timestamp for session.
@@ -833,7 +849,7 @@ class Db:
         self,
         session_id: str,
         event_type: str,
-        payload: dict[str, object],  # noqa: loose-dict - Hook payload is dynamic JSON
+        payload: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     ) -> int:
         """Persist a hook event in the outbox for durable delivery."""
         now = datetime.now(timezone.utc).isoformat()
@@ -936,20 +952,20 @@ class Db:
         )
         await self.conn.commit()
 
-    async def enqueue_terminal_event(
+    async def enqueue_rest_event(
         self,
         request_id: str,
         event_type: str,
-        payload: TerminalOutboxPayload,
-        metadata: TerminalOutboxMetadata,
+        payload: RestOutboxPayload,
+        metadata: RestOutboxMetadata,
     ) -> int:
-        """Persist a terminal-origin event in the outbox for durable delivery."""
+        """Persist a REST-origin event in the outbox for durable delivery."""
         now = datetime.now(timezone.utc).isoformat()
         payload_json = json.dumps(payload)
         metadata_json = json.dumps(metadata)
         cursor = await self.conn.execute(
             """
-            INSERT INTO terminal_outbox (
+            INSERT INTO rest_outbox (
                 request_id, event_type, payload, metadata, created_at, next_attempt_at, attempt_count
             ) VALUES (?, ?, ?, ?, ?, ?, 0)
             """,
@@ -958,20 +974,20 @@ class Db:
         await self.conn.commit()
         row_id = cursor.lastrowid
         if row_id is None:
-            raise RuntimeError("Failed to insert terminal outbox row")
+            raise RuntimeError("Failed to insert REST outbox row")
         return int(row_id)
 
-    async def fetch_terminal_outbox_batch(
+    async def fetch_rest_outbox_batch(
         self,
         now_iso: str,
         limit: int,
         lock_cutoff_iso: str,
-    ) -> list[TerminalOutboxRow]:
-        """Fetch a batch of due terminal outbox events."""
+    ) -> list[RestOutboxRow]:
+        """Fetch a batch of due REST outbox events."""
         cursor = await self.conn.execute(
             """
             SELECT id, request_id, event_type, payload, metadata, attempt_count
-            FROM terminal_outbox
+            FROM rest_outbox
             WHERE delivered_at IS NULL
               AND next_attempt_at <= ?
               AND (locked_at IS NULL OR locked_at <= ?)
@@ -981,7 +997,7 @@ class Db:
             (now_iso, lock_cutoff_iso, limit),
         )
         rows = await cursor.fetchall()
-        typed_rows: list[TerminalOutboxRow] = []
+        typed_rows: list[RestOutboxRow] = []
         for row in rows:
             row_id = cast(int, row["id"])
             request_id = cast(str, row["request_id"])
@@ -990,7 +1006,7 @@ class Db:
             metadata = cast(str, row["metadata"])
             attempt_count = cast(int, row["attempt_count"])
             typed_rows.append(
-                TerminalOutboxRow(
+                RestOutboxRow(
                     id=row_id,
                     request_id=request_id,
                     event_type=event_type,
@@ -1001,11 +1017,11 @@ class Db:
             )
         return typed_rows
 
-    async def claim_terminal_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
-        """Claim a terminal outbox row for processing."""
+    async def claim_rest_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
+        """Claim a REST outbox row for processing."""
         cursor = await self.conn.execute(
             """
-            UPDATE terminal_outbox
+            UPDATE rest_outbox
             SET locked_at = ?
             WHERE id = ?
               AND delivered_at IS NULL
@@ -1016,17 +1032,17 @@ class Db:
         await self.conn.commit()
         return cursor.rowcount == 1
 
-    async def mark_terminal_outbox_delivered(
+    async def mark_rest_outbox_delivered(
         self,
         row_id: int,
         response_json: str,
         error: str | None = None,
     ) -> None:
-        """Mark a terminal outbox row delivered with response payload."""
+        """Mark a REST outbox row delivered with response payload."""
         now = datetime.now(timezone.utc).isoformat()
         await self.conn.execute(
             """
-            UPDATE terminal_outbox
+            UPDATE rest_outbox
             SET delivered_at = ?, last_error = ?, locked_at = NULL, response = ?
             WHERE id = ?
             """,
@@ -1034,17 +1050,17 @@ class Db:
         )
         await self.conn.commit()
 
-    async def mark_terminal_outbox_failed(
+    async def mark_rest_outbox_failed(
         self,
         row_id: int,
         attempt_count: int,
         next_attempt_at: str,
         error: str,
     ) -> None:
-        """Record a terminal outbox failure and schedule a retry."""
+        """Record a REST outbox failure and schedule a retry."""
         await self.conn.execute(
             """
-            UPDATE terminal_outbox
+            UPDATE rest_outbox
             SET attempt_count = ?, next_attempt_at = ?, last_error = ?, locked_at = NULL
             WHERE id = ?
             """,
@@ -1061,9 +1077,10 @@ def _field_query(field: str) -> str:
 
 
 def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | None:
-    conn = sqlite3.connect(db_path, timeout=1.0)
+    conn = sqlite3.connect(db_path, timeout=5.0)
     try:
-        conn.execute("PRAGMA busy_timeout = 1000")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
         try:
             cursor = conn.execute(query, (value,))
         except sqlite3.OperationalError as exc:

@@ -34,7 +34,7 @@ class RemoteExecutionProtocol(Protocol):
             computer_name: Target computer identifier
             command: Command to send to remote computer
             session_id: Optional TeleClaude session ID (for session commands)
-            metadata: Metadata (title, project_dir for session creation)
+            metadata: Metadata (title, project_path for session creation)
 
         Returns:
             Redis message ID (for response correlation via read_response)

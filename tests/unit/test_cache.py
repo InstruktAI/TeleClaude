@@ -79,7 +79,7 @@ def test_get_sessions_filters_by_computer():
             computer="local",
             title="Local",
             origin_adapter="redis",
-            working_directory="~",
+            project_path="~",
             thinking_mode="slow",
             active_agent=None,
             status="active",
@@ -91,7 +91,7 @@ def test_get_sessions_filters_by_computer():
             computer="remote",
             title="Remote",
             origin_adapter="redis",
-            working_directory="~",
+            project_path="~",
             thinking_mode="slow",
             active_agent=None,
             status="active",
@@ -133,13 +133,18 @@ def test_update_session_notifies_subscribers():
         computer="local",
         title="Test",
         origin_adapter="redis",
-        working_directory="~",
+        project_path="~",
         thinking_mode="slow",
         active_agent=None,
         status="active",
     )
     cache.update_session(session)
 
+    callback.assert_called_once_with("session_created", session)
+
+    # Update same session again should emit session_updated
+    callback.reset_mock()
+    cache.update_session(session)
     callback.assert_called_once_with("session_updated", session)
 
 
@@ -156,7 +161,7 @@ def test_remove_session_notifies_subscribers():
         computer="local",
         title="Test",
         origin_adapter="redis",
-        working_directory="~",
+        project_path="~",
         thinking_mode="slow",
         active_agent=None,
         status="active",
@@ -167,6 +172,27 @@ def test_remove_session_notifies_subscribers():
     cache.remove_session("sess-123")
 
     callback.assert_called_once_with("session_removed", {"session_id": "sess-123"})
+
+
+def test_apply_projects_snapshot_dedupes_notifications():
+    """Apply snapshot should notify only on changes."""
+    cache = DaemonCache()
+    callback = MagicMock()
+    callback.__name__ = "test_callback"
+    cache.subscribe(callback)
+
+    projects = [
+        ProjectInfo(name="Proj", path="/tmp/proj", description="Test"),
+    ]
+
+    changed = cache.apply_projects_snapshot("remote", projects)
+    assert changed is True
+    callback.assert_called_once_with("projects_snapshot", {"computer": "remote", "version": 1})
+
+    callback.reset_mock()
+    changed = cache.apply_projects_snapshot("remote", projects)
+    assert changed is False
+    callback.assert_not_called()
     assert "sess-123" not in cache._sessions
 
 
@@ -313,7 +339,7 @@ def test_invalidate_removes_from_cache():
             computer="local",
             title="Test",
             origin_adapter="redis",
-            working_directory="~",
+            project_path="~",
             thinking_mode="slow",
             active_agent=None,
             status="active",
@@ -342,7 +368,7 @@ def test_invalidate_all_clears_everything():
             computer="local",
             title="Test",
             origin_adapter="redis",
-            working_directory="~",
+            project_path="~",
             thinking_mode="slow",
             active_agent=None,
             status="active",

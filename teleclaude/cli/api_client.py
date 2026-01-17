@@ -267,9 +267,9 @@ class TelecAPIClient:
         except httpx.HTTPStatusError as e:
             raise APIError(f"API request failed: {e.response.status_code} {e.response.text}") from e
         except httpx.ConnectError as e:
-            raise APIError("Cannot connect to TeleClaude daemon. Is it running?") from e
+            raise APIError("Cannot connect to REST API server. Socket may be missing.") from e
         except httpx.TimeoutException as e:
-            raise APIError("Request timed out. Daemon may be overloaded.") from e
+            raise APIError("REST API request timed out. Server may be blocked or overloaded.") from e
         except Exception as e:
             raise APIError(f"Unexpected error: {e}") from e
 
@@ -321,7 +321,8 @@ class TelecAPIClient:
         self,
         *,
         computer: str,
-        project_dir: str,
+        project_path: str,
+        subdir: str | None = None,
         agent: str,
         thinking_mode: str,
         title: str | None = None,
@@ -331,7 +332,7 @@ class TelecAPIClient:
         """Create a new session.
 
         Args:
-            **kwargs: Session parameters (computer, project_dir, agent, thinking_mode, title, message)
+            **kwargs: Session parameters (computer, project_path, agent, thinking_mode, title, message)
 
         Returns:
             Session creation result
@@ -342,13 +343,15 @@ class TelecAPIClient:
         # Session creation spawns tmux + agent, needs longer timeout
         payload = {
             "computer": computer,
-            "project_dir": project_dir,
+            "project_path": project_path,
             "agent": agent,
             "thinking_mode": thinking_mode,
             "title": title,
             "message": message,
             "auto_command": auto_command,
         }
+        if subdir is not None:
+            payload["subdir"] = subdir
         resp = await self._request("POST", "/sessions", timeout=30.0, json_body=payload)
         return TypeAdapter(CreateSessionResult).validate_json(resp.text)
 

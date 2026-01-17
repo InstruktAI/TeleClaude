@@ -58,3 +58,8 @@ workspace/
 trees/
 worktrees/
 .state.json
+
+# TeleClaude runtime DB artifacts
+teleclaude.db
+teleclaude.db-wal
+teleclaude.db-shm

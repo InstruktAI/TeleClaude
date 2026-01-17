@@ -77,11 +77,11 @@ def _make_terminal_session() -> Session:
         computer_name="TestPC",
         tmux_session_name="terminal:deadbeef",
         origin_adapter="rest",
-        title="Terminal",
+        title="Tmux",
         adapter_metadata=SessionAdapterMetadata(),
         created_at=None,
         last_activity=None,
-        working_directory="~",
+        project_path="~",
         description=None,
         initiated_by_ai=False,
     )

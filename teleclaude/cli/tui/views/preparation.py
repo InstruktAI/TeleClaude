@@ -9,7 +9,7 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Sequence
+from typing import TYPE_CHECKING, Callable, Literal, Sequence
 
 from instrukt_ai_logging import get_logger
 
@@ -137,6 +137,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         agent_availability: dict[str, AgentAvailabilityInfo],
         focus: FocusContext,
         pane_manager: TmuxPaneManager,
+        notify: Callable[[str, str], None] | None = None,
     ):
         """Initialize preparation view.
 
@@ -149,6 +150,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         self.agent_availability = agent_availability
         self.focus = focus
         self.pane_manager = pane_manager
+        self.notify = notify
         # Tree structure
         self.tree: list[PrepTreeNode] = []
         self.flat_items: list[PrepTreeNode] = []
@@ -595,11 +597,14 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             api=self.api,
             agent_availability=self.agent_availability,
             default_prompt="/next-prepare",
+            notify=self.notify,
         )
 
         result = modal.run(stdscr)
         if result:
             self._attach_new_session(result, computer, stdscr)
+            self.needs_refresh = True
+        elif modal.start_requested:
             self.needs_refresh = True
 
     def _launch_session_split(
@@ -619,7 +624,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         result = asyncio.get_event_loop().run_until_complete(
             self.api.create_session(
                 computer=item.computer,
-                project_dir=item.project_path,
+                project_path=item.project_path,
                 agent="claude",
                 thinking_mode="slow",
                 message=message,
@@ -819,8 +824,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         """Return lines this view would render (testable without curses).
 
         Args:
-            width: Terminal width
-            height: Terminal height
+            width: Tmux width
+            height: Tmux height
 
         Returns:
             List of strings representing what would be rendered

@@ -33,7 +33,8 @@ class SessionInfo(TypedDict):
     session_id: str
     origin_adapter: str
     title: str
-    working_directory: str
+    project_path: str | None
+    subdir: str | None
     status: str
     created_at: str
     last_activity: str
@@ -47,7 +48,8 @@ class SessionDataResult(TypedDict, total=False):
     session_id: str
     transcript: str | None
     last_activity: str | None
-    working_directory: str | None
+    project_path: str | None
+    subdir: str | None
     error: str  # Present in error responses
     effective_tail_chars: int  # Present in success responses
     cap_notice: str  # Present when transcript is capped

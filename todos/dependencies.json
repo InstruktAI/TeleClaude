@@ -1,4 +1,7 @@
 {
-  "cache-startup-warmup": ["model-boundary-consolidation"],
-  "context-ai": []
+  "cache-startup-warmup": [
+    "model-boundary-consolidation"
+  ],
+  "context-ai": [],
+  "repo-cleanup": []
 }

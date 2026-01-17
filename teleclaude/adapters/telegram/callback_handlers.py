@@ -192,7 +192,7 @@ class CallbackHandlersMixin:
             await query.edit_message_text(f"❌ Error sending file: {e}", parse_mode="Markdown")
 
     async def _handle_session_select(self, query: object) -> None:
-        """Handle ssel callback to show project selection for Terminal Session."""
+        """Handle ssel callback to show project selection for Tmux Session."""
         from telegram import CallbackQuery
 
         if not isinstance(query, CallbackQuery):
@@ -223,7 +223,7 @@ class CallbackHandlersMixin:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            "**Select project for Terminal Session:**",
+            "**Select project for Tmux Session:**",
             reply_markup=reply_markup,
             parse_mode="Markdown",
         )
@@ -336,7 +336,7 @@ class CallbackHandlersMixin:
         await query.edit_message_text(text, reply_markup=reply_markup)
 
     async def _handle_session_start(self, query: object, args: list[str]) -> None:
-        """Handle s callback to create Terminal Session in selected project."""
+        """Handle s callback to create Tmux Session in selected project."""
         from telegram import CallbackQuery
 
         if not isinstance(query, CallbackQuery):
@@ -364,14 +364,14 @@ class CallbackHandlersMixin:
         # Acknowledge immediately
         await query.answer("Creating session...", show_alert=False)
 
-        # Emit NEW_SESSION event with project_dir in metadata
-        logger.info("_handle_session_start: emitting NEW_SESSION with project_dir=%s", project_path)
+        # Emit NEW_SESSION event with project_path in metadata
+        logger.info("_handle_session_start: emitting NEW_SESSION with project_path=%s", project_path)
         await self.client.handle_event(
             event=TeleClaudeEvents.NEW_SESSION,
             payload={
                 "args": [],
             },
-            metadata=self._metadata(project_dir=project_path),
+            metadata=self._metadata(project_path=project_path),
         )
 
     async def _handle_agent_start(self, query: object, action: str, args: list[str]) -> None:
@@ -416,9 +416,9 @@ class CallbackHandlersMixin:
         # Acknowledge immediately
         await query.answer(f"Creating session with {mode_label}...", show_alert=False)
 
-        # Emit NEW_SESSION event with project_dir and auto_command in metadata
+        # Emit NEW_SESSION event with project_path and auto_command in metadata
         logger.info(
-            "_handle_agent_start: emitting NEW_SESSION with project_dir=%s, auto_command=%s",
+            "_handle_agent_start: emitting NEW_SESSION with project_path=%s, auto_command=%s",
             project_path,
             auto_command,
         )
@@ -427,5 +427,5 @@ class CallbackHandlersMixin:
             payload={
                 "args": [],
             },
-            metadata=self._metadata(project_dir=project_path, auto_command=auto_command),
+            metadata=self._metadata(project_path=project_path, auto_command=auto_command),
         )

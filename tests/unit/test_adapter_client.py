@@ -525,7 +525,7 @@ async def test_send_output_update_missing_thread_non_telegram_origin_recreates_t
 
 @pytest.mark.asyncio
 async def test_send_output_update_missing_thread_terminal_recreates_topic():
-    """Terminal-origin sessions should recreate missing Telegram topics."""
+    """Tmux-origin sessions should recreate missing Telegram topics."""
     client = AdapterClient()
     client.register_adapter(
         "telegram",
@@ -537,7 +537,7 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
         computer_name="test",
         tmux_session_name="tc_session_789",
         origin_adapter="rest",
-        title="Test Terminal Session",
+        title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
         ),
@@ -570,7 +570,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         computer_name="test",
         tmux_session_name="tc_session_999",
         origin_adapter="rest",
-        title="Test Terminal Session",
+        title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(),
     )
     updated_session = Session(
@@ -578,7 +578,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         computer_name="test",
         tmux_session_name="tc_session_999",
         origin_adapter="rest",
-        title="Test Terminal Session",
+        title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=999, output_message_id="msg-1")
         ),

@@ -30,13 +30,14 @@ from teleclaude.core import (
     command_handlers,
     polling_coordinator,
     session_cleanup,
-    terminal_bridge,
-    terminal_io,
+    session_launcher,
+    tmux_bridge,
+    tmux_io,
     voice_message_handler,
 )
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
-from teleclaude.core.agents import AgentName
+from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.db import db
@@ -61,12 +62,13 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.session_utils import get_output_file, parse_session_title
+from teleclaude.core.rest_events import RestOutboxMetadata, RestOutboxPayload, RestOutboxResponse
+from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
 from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.core.terminal_events import TerminalOutboxMetadata, TerminalOutboxPayload, TerminalOutboxResponse
+from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
 
@@ -156,12 +158,12 @@ def _get_rss_kb() -> int | None:
     return rss
 
 
-# Terminal outbox worker (telec)
-TERMINAL_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("TERMINAL_OUTBOX_POLL_INTERVAL_S", "0.5"))
-TERMINAL_OUTBOX_BATCH_SIZE: int = int(os.getenv("TERMINAL_OUTBOX_BATCH_SIZE", "25"))
-TERMINAL_OUTBOX_LOCK_TTL_S: float = float(os.getenv("TERMINAL_OUTBOX_LOCK_TTL_S", "30"))
-TERMINAL_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("TERMINAL_OUTBOX_BASE_BACKOFF_S", "1"))
-TERMINAL_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("TERMINAL_OUTBOX_MAX_BACKOFF_S", "60"))
+# Tmux outbox worker (telec)
+REST_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("REST_OUTBOX_POLL_INTERVAL_S", "0.5"))
+REST_OUTBOX_BATCH_SIZE: int = int(os.getenv("REST_OUTBOX_BATCH_SIZE", "25"))
+REST_OUTBOX_LOCK_TTL_S: float = float(os.getenv("REST_OUTBOX_LOCK_TTL_S", "30"))
+REST_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("REST_OUTBOX_BASE_BACKOFF_S", "1"))
+REST_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("REST_OUTBOX_MAX_BACKOFF_S", "60"))
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -231,7 +233,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.pid_file = project_root / "teleclaude.pid"
         self.pid_file_handle: Optional[TextIO] = None  # Will hold the locked file handle
 
-        # Note: terminal_bridge and db are functional modules (no instantiation)
+        # Note: tmux_bridge and db are functional modules (no instantiation)
         # UI output management is now handled by UiAdapter (base class for Telegram, Slack, etc.)
         self.output_poller = OutputPoller()
 
@@ -290,7 +292,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         try:
             self.mcp_server = TeleClaudeMCPServer(
                 adapter_client=self.client,
-                terminal_bridge=terminal_bridge,
+                tmux_bridge=tmux_bridge,
             )
             logger.info("MCP server object created successfully")
         except Exception as e:
@@ -310,7 +312,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_probe_ok: bool | None = None
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
-        self.terminal_outbox_task: asyncio.Task[object] | None = None
+        self.rest_outbox_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -662,19 +664,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return False
         return True
 
-    def _terminal_outbox_backoff(self, attempt: int) -> float:
-        """Compute exponential backoff for terminal outbox retries."""
+    def _rest_outbox_backoff(self, attempt: int) -> float:
+        """Compute exponential backoff for REST outbox retries."""
         safe_attempt = max(1, attempt)
-        delay: float = float(TERMINAL_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
-        return min(delay, float(TERMINAL_OUTBOX_MAX_BACKOFF_S))
+        delay: float = float(REST_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
+        return min(delay, float(REST_OUTBOX_MAX_BACKOFF_S))
 
-    def _is_retryable_terminal_error(self, exc: Exception) -> bool:
-        """Return True if terminal dispatch errors should be retried."""
+    def _is_retryable_rest_error(self, exc: Exception) -> bool:
+        """Return True if REST dispatch errors should be retried."""
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
         return True
 
-    def _coerce_message_metadata(self, metadata: TerminalOutboxMetadata) -> MessageMetadata:
+    def _coerce_message_metadata(self, metadata: RestOutboxMetadata) -> MessageMetadata:
         """Build MessageMetadata from outbox metadata payload."""
         adapter_type = metadata.get("adapter_type")
         message_thread_id = metadata.get("message_thread_id")
@@ -682,9 +684,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         raw_format = metadata.get("raw_format", False)
         channel_id = metadata.get("channel_id")
         title = metadata.get("title")
-        project_dir = metadata.get("project_dir")
+        project_path = metadata.get("project_path")
+        subdir = metadata.get("subdir")
         channel_metadata = metadata.get("channel_metadata")
-        auto_command = metadata.get("auto_command")
+        launch_intent_raw = metadata.get("launch_intent")
+        launch_intent = (
+            SessionLaunchIntent.from_dict(
+                launch_intent_raw  # guard: loose-dict - Launch intent payload
+            )
+            if isinstance(launch_intent_raw, dict)
+            else None
+        )
 
         return MessageMetadata(
             adapter_type=str(adapter_type) if adapter_type is not None else None,
@@ -693,26 +703,28 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             raw_format=bool(raw_format),
             channel_id=str(channel_id) if channel_id is not None else None,
             title=str(title) if title is not None else None,
-            project_dir=str(project_dir) if project_dir is not None else None,
+            project_path=str(project_path) if project_path is not None else None,
+            subdir=str(subdir) if subdir is not None else None,
             channel_metadata=cast(dict[str, object] | None, channel_metadata),  # noqa: loose-dict - MessageMetadata contract
-            auto_command=str(auto_command) if auto_command is not None else None,
+            auto_command=None,
+            launch_intent=launch_intent,
         )
 
-    async def _dispatch_terminal_event(
+    async def _dispatch_rest_event(
         self,
         event_type: str,
-        payload: TerminalOutboxPayload,
+        payload: RestOutboxPayload,
         metadata: MessageMetadata,
-    ) -> TerminalOutboxResponse:
-        """Dispatch a terminal-origin event directly via AdapterClient."""
+    ) -> RestOutboxResponse:
+        """Dispatch a REST-origin event directly via AdapterClient."""
         response = await self.client.handle_event(
             cast(EventType, event_type),
             cast(dict[str, object], payload),  # noqa: loose-dict - AdapterClient expects loose dict
             metadata,
         )
         if isinstance(response, dict):
-            return cast(TerminalOutboxResponse, response)
-        return cast(TerminalOutboxResponse, {"status": "success", "data": response})
+            return cast(RestOutboxResponse, response)
+        return cast(RestOutboxResponse, {"status": "success", "data": response})
 
     async def _dispatch_hook_event(
         self,
@@ -728,21 +740,6 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         transcript_path = data.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path:
             await db.update_session(session_id, native_log_file=transcript_path)
-
-        teleclaude_pid = data.get("teleclaude_pid")
-        teleclaude_tty = data.get("teleclaude_tty")
-        if isinstance(teleclaude_pid, int) or isinstance(teleclaude_tty, str):
-            updates: dict[str, object] = {}  # noqa: loose-dict - Hook payload is dynamic JSON
-            if isinstance(teleclaude_pid, int):
-                updates["native_pid"] = teleclaude_pid
-            if isinstance(teleclaude_tty, str):
-                if session.native_tty_path:
-                    if session.native_tty_path != teleclaude_tty:
-                        updates["tmux_tty_path"] = teleclaude_tty
-                else:
-                    updates["native_tty_path"] = teleclaude_tty
-            if updates:
-                await db.update_session(session_id, **updates)
 
         await self._ensure_output_polling(session)
 
@@ -833,70 +830,70 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     )
                     await db.mark_hook_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
-    async def _terminal_outbox_worker(self) -> None:
-        """Drain terminal outbox for telec-origin commands with responses."""
+    async def _rest_outbox_worker(self) -> None:
+        """Drain REST outbox for REST client commands with responses."""
         while not self.shutdown_event.is_set():
             now = datetime.now(timezone.utc)
             now_iso = now.isoformat()
-            lock_cutoff = (now - timedelta(seconds=TERMINAL_OUTBOX_LOCK_TTL_S)).isoformat()
-            rows = await db.fetch_terminal_outbox_batch(now_iso, TERMINAL_OUTBOX_BATCH_SIZE, lock_cutoff)
+            lock_cutoff = (now - timedelta(seconds=REST_OUTBOX_LOCK_TTL_S)).isoformat()
+            rows = await db.fetch_rest_outbox_batch(now_iso, REST_OUTBOX_BATCH_SIZE, lock_cutoff)
 
             if not rows:
-                await asyncio.sleep(TERMINAL_OUTBOX_POLL_INTERVAL_S)
+                await asyncio.sleep(REST_OUTBOX_POLL_INTERVAL_S)
                 continue
 
             for row in rows:
                 if self.shutdown_event.is_set():
                     break
-                claimed = await db.claim_terminal_outbox(row["id"], now_iso, lock_cutoff)
+                claimed = await db.claim_rest_outbox(row["id"], now_iso, lock_cutoff)
                 if not claimed:
                     continue
 
                 try:
-                    payload = cast(TerminalOutboxPayload, json.loads(row["payload"]))
+                    payload = cast(RestOutboxPayload, json.loads(row["payload"]))
                 except json.JSONDecodeError as exc:
                     error_str = f"Invalid payload JSON: {exc}"
                     error_payload: dict[str, str] = {"status": "error", "error": ""}
                     error_payload["error"] = error_str
                     response_json = json.dumps(error_payload)
-                    await db.mark_terminal_outbox_delivered(row["id"], response_json, error_str)
+                    await db.mark_rest_outbox_delivered(row["id"], response_json, error_str)
                     continue
 
                 try:
-                    metadata_raw = cast(TerminalOutboxMetadata, json.loads(row["metadata"]))
+                    metadata_raw = cast(RestOutboxMetadata, json.loads(row["metadata"]))
                     metadata = self._coerce_message_metadata(metadata_raw)
                     if not metadata.adapter_type:
-                        metadata.adapter_type = "terminal"
+                        metadata.adapter_type = "rest"
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     error_str: str = f"Invalid metadata JSON: {exc}"
                     error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
                     response_json = json.dumps(error_payload)
-                    await db.mark_terminal_outbox_delivered(row["id"], response_json, error_str)
+                    await db.mark_rest_outbox_delivered(row["id"], response_json, error_str)
                     continue
 
                 try:
-                    response = await self._dispatch_terminal_event(row["event_type"], payload, metadata)
+                    response = await self._dispatch_rest_event(row["event_type"], payload, metadata)
                     response_json = json.dumps(response)
-                    await db.mark_terminal_outbox_delivered(row["id"], response_json)
+                    await db.mark_rest_outbox_delivered(row["id"], response_json)
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     attempt = int(row.get("attempt_count", 0)) + 1
                     error_str: str = str(exc)
-                    if not self._is_retryable_terminal_error(exc):
+                    if not self._is_retryable_rest_error(exc):
                         error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
                         response_json = json.dumps(error_payload)
-                        await db.mark_terminal_outbox_delivered(row["id"], response_json, error_str)
+                        await db.mark_rest_outbox_delivered(row["id"], response_json, error_str)
                         continue
 
-                    delay = self._terminal_outbox_backoff(attempt)
+                    delay = self._rest_outbox_backoff(attempt)
                     next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
                     logger.error(
-                        "Terminal outbox dispatch failed (retrying)",
+                        "REST outbox dispatch failed (retrying)",
                         row_id=row["id"],
                         attempt=attempt,
                         next_attempt_in_s=round(delay, 2),
                         error=error_str,
                     )
-                    await db.mark_terminal_outbox_failed(row["id"], attempt, next_attempt, error_str)
+                    await db.mark_rest_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -923,7 +920,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             adapter_type=context.adapter_type,
             message_thread_id=context.message_thread_id,
             title=context.title,
-            project_dir=context.project_dir,
+            project_path=context.project_path,
             channel_metadata=context.channel_metadata,
             auto_command=context.auto_command,
         )
@@ -1320,18 +1317,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             )
 
         # Verify agent is actually running before injecting message
-        if not await terminal_io.is_process_running(session):
+        if not await tmux_io.is_process_running(session):
             logger.error("agent_then_message: process not running after stabilization (session=%s)", session_id[:8])
             return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
         # Step 2: Inject the message immediately (TUI should be ready)
         logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
 
-        sanitized_message = terminal_io.wrap_bracketed_paste(message)
-        pasted = await terminal_io.send_text(
+        sanitized_message = tmux_io.wrap_bracketed_paste(message)
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        pasted = await tmux_io.send_text(
             session,
             sanitized_message,
-            working_dir=session.working_directory,
+            working_dir=working_dir,
             send_enter=True,  # Send Enter immediately
             active_agent=session.active_agent,
         )
@@ -1354,7 +1352,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return {"status": "success", "message": "Message injected after agent start"}
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
-        output = await terminal_bridge.capture_pane(session.tmux_session_name)
+        output = await tmux_bridge.capture_pane(session.tmux_session_name)
         if not output:
             return "", ""
         tail = output[-AGENT_START_OUTPUT_TAIL_CHARS:]
@@ -1469,9 +1467,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         attempts = max(1, AGENT_START_CONFIRM_ENTER_ATTEMPTS)
         for attempt in range(attempts):
             before_tail, before_digest = await self._pane_output_snapshot(session)
-            await terminal_io.send_enter(session)
+            await tmux_io.send_enter(session)
             await asyncio.sleep(AGENT_START_ENTER_INTER_DELAY_S)
-            await terminal_io.send_enter(session)
+            await tmux_io.send_enter(session)
 
             changed, after_tail = await self._wait_for_output_change(
                 session,
@@ -1797,7 +1795,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         _message_id: Optional[str] = None,
         start_polling: bool = True,
     ) -> bool:
-        """Execute command in terminal and start polling if needed.
+        """Execute command in tmux and start polling if needed.
 
         Args:
             session_id: Session ID
@@ -1814,11 +1812,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             logger.error("Session %s not found", session_id[:8])
             return False
 
-        sanitized_command = terminal_io.wrap_bracketed_paste(command)
-        success = await terminal_io.send_text(
+        sanitized_command = tmux_io.wrap_bracketed_paste(command)
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        success = await tmux_io.send_text(
             session,
             sanitized_command,
-            working_dir=session.working_directory,
+            working_dir=working_dir,
         )
 
         if not success:
@@ -1860,9 +1859,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
         logger.info("Hook outbox worker started")
 
-        self.terminal_outbox_task = asyncio.create_task(self._terminal_outbox_worker())
-        self.terminal_outbox_task.add_done_callback(self._log_background_task_exception("terminal_outbox"))
-        logger.info("Terminal outbox worker started")
+        self.rest_outbox_task = asyncio.create_task(self._rest_outbox_worker())
+        self.rest_outbox_task.add_done_callback(self._log_background_task_exception("rest_outbox"))
+        logger.info("Tmux outbox worker started")
 
         self.resource_monitor_task = asyncio.create_task(self._resource_monitor_loop())
         self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
@@ -1911,13 +1910,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
             logger.info("Hook outbox worker stopped")
 
-        if self.terminal_outbox_task:
-            self.terminal_outbox_task.cancel()
+        if self.rest_outbox_task:
+            self.rest_outbox_task.cancel()
             try:
-                await self.terminal_outbox_task
+                await self.rest_outbox_task
             except asyncio.CancelledError:
                 pass
-            logger.info("Terminal outbox worker stopped")
+            logger.info("Tmux outbox worker stopped")
 
         if self.resource_monitor_task:
             self.resource_monitor_task.cancel()
@@ -1965,32 +1964,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         logger.debug("Command received: %s %s", command, args)
 
         if command == TeleClaudeEvents.NEW_SESSION:
-            result = await command_handlers.handle_create_session(context, args, metadata, self.client)
-            logger.debug(
-                "NEW_SESSION result: session_id=%s, auto_command=%s",
-                result.get("session_id"),
-                metadata.auto_command,
+            return await session_launcher.create_session(
+                context,
+                args,
+                metadata,
+                self.client,
+                self._execute_auto_command,
+                self._queue_background_task,
             )
-
-            # Handle auto_command if specified (e.g., start Claude after session creation)
-            if metadata.auto_command and result.get("session_id"):
-                session_id = str(result["session_id"])
-                auto_command = metadata.auto_command
-
-                if metadata.adapter_type in ("redis", "mcp"):
-                    self._queue_background_task(
-                        self._execute_auto_command(session_id, auto_command),
-                        f"auto_command:{session_id[:8]}",
-                    )
-                    result["auto_command_status"] = "queued"
-                    result["auto_command_message"] = "Auto-command queued"
-                else:
-                    auto_result = await self._execute_auto_command(session_id, auto_command)
-                    result["auto_command_status"] = auto_result.get("status", "error")
-                    if auto_result.get("message"):
-                        result["auto_command_message"] = auto_result["message"]
-
-            return result
         elif command == TeleClaudeEvents.LIST_SESSIONS:
             # LIST_SESSIONS is ephemeral command (MCP/Redis only) - return envelope directly
             return await command_handlers.handle_list_sessions()
@@ -2019,23 +2000,26 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             until_timestamp: Optional[str] = None
             tail_chars = 5000
 
+            def _normalize_placeholder(value: str) -> Optional[str]:
+                return None if value == "-" else value
+
             if len(args) == 1:
                 # Either tail_chars or since_timestamp
                 try:
                     tail_chars = int(args[0])
                 except ValueError:
-                    since_timestamp = args[0] or None
+                    since_timestamp = _normalize_placeholder(args[0] or "")
             elif len(args) == 2:
                 # Either since+tail_chars or since+until
                 try:
                     tail_chars = int(args[1])
-                    since_timestamp = args[0] or None
+                    since_timestamp = _normalize_placeholder(args[0] or "")
                 except ValueError:
-                    since_timestamp = args[0] or None
-                    until_timestamp = args[1] or None
+                    since_timestamp = _normalize_placeholder(args[0] or "")
+                    until_timestamp = _normalize_placeholder(args[1] or "")
             elif len(args) >= 3:
-                since_timestamp = args[0] or None
-                until_timestamp = args[1] or None
+                since_timestamp = _normalize_placeholder(args[0] or "")
+                until_timestamp = _normalize_placeholder(args[1] or "")
                 try:
                     tail_chars = int(args[2]) if args[2] else 5000
                 except ValueError:
@@ -2043,7 +2027,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_get_session_data(context, since_timestamp, until_timestamp, tail_chars)
         elif command == TeleClaudeEvents.GET_COMPUTER_INFO:
             logger.info(">>> BRANCH MATCHED: GET_COMPUTER_INFO")
-            result = await command_handlers.handle_get_computer_info()  # type: ignore[assignment]
+            result = await command_handlers.handle_get_computer_info()
             logger.info("handle_get_computer_info returned: %s", result)
             return result
         elif command == TeleClaudeEvents.CANCEL:
@@ -2123,7 +2107,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return None
 
     async def handle_message(self, session_id: str, text: str, _context: EventContext) -> None:
-        """Handle incoming text messages (commands for terminal)."""
+        """Handle incoming text messages (commands for tmux)."""
         logger.debug("Message for session %s: %s...", session_id[:8], text[:50])
 
         # Get session
@@ -2135,19 +2119,20 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Get active agent for agent-specific escaping
         active_agent = session.active_agent
 
-        sanitized_text = terminal_io.wrap_bracketed_paste(text)
+        sanitized_text = tmux_io.wrap_bracketed_paste(text)
 
-        # Send command to terminal (will create fresh session if needed)
-        success = await terminal_io.send_text(
+        # Send command to tmux (will create fresh session if needed)
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        success = await tmux_io.send_text(
             session,
             sanitized_text,
-            working_dir=session.working_directory,
+            working_dir=working_dir,
             active_agent=active_agent,
         )
 
         if not success:
             logger.error("Failed to send command to session %s", session_id[:8])
-            await self.client.send_message(session, "Failed to send command to terminal", metadata=MessageMetadata())
+            await self.client.send_message(session, "Failed to send command to tmux", metadata=MessageMetadata())
             return
 
         # Update activity
@@ -2298,9 +2283,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         exc,
                     )
 
-            if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
-                continue
-            if await terminal_bridge.is_pane_dead(session.tmux_session_name):
+            if not await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
+                recreated = await self._ensure_tmux_session(session)
+                if not recreated:
+                    continue
+            if await tmux_bridge.is_pane_dead(session.tmux_session_name):
                 await session_cleanup.terminate_session(
                     session.session_id,
                     self.client,
@@ -2323,7 +2310,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         """Clean up sessions inactive for 72+ hours."""
         try:
             cutoff_time = datetime.now(timezone.utc) - timedelta(hours=72)
-            sessions = await db.list_sessions()
+            sessions = await db.list_sessions(include_closed=True)
 
             for session in sessions:
                 # Check last_activity timestamp
@@ -2364,6 +2351,57 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             get_output_file=self._get_output_file_path,
         )
 
+    async def _build_tmux_env_vars(self, session_id: str) -> dict[str, str]:
+        env_vars: dict[str, str] = {"TELECLAUDE_SESSION_ID": session_id}
+        voice = await db.get_voice(session_id)
+        if voice:
+            env_vars.update(get_voice_env_vars(voice))
+        return env_vars
+
+    async def _ensure_tmux_session(self, session: Session) -> bool:
+        working_dir = resolve_working_dir(session.project_path, session.subdir)
+        env_vars = await self._build_tmux_env_vars(session.session_id)
+        created = await tmux_bridge.ensure_tmux_session(
+            name=session.tmux_session_name,
+            working_dir=working_dir,
+            session_id=session.session_id,
+            env_vars=env_vars,
+        )
+        if not created:
+            logger.warning("Failed to recreate tmux session for %s", session.session_id[:8])
+            return False
+
+        # If we recreated the tmux session, restore the agent inside it.
+        if session.active_agent and session.native_session_id:
+            cmd = get_agent_command(
+                agent=session.active_agent,
+                thinking_mode=session.thinking_mode,
+                exec=False,
+                native_session_id=session.native_session_id,
+            )
+
+            restored = await tmux_bridge.send_keys(
+                session_name=session.tmux_session_name,
+                text=cmd,
+                session_id=session.session_id,
+                working_dir=working_dir,
+                active_agent=session.active_agent,
+            )
+            if restored:
+                logger.info(
+                    "Restored agent %s for session %s (native=%s)",
+                    session.active_agent,
+                    session.session_id[:8],
+                    session.native_session_id[:8],
+                )
+            else:
+                logger.warning(
+                    "Failed to restore agent %s for session %s",
+                    session.active_agent,
+                    session.session_id[:8],
+                )
+        return created
+
     async def _ensure_output_polling(self, session: Session) -> None:
         if await polling_coordinator.is_polling(session.session_id):
             return
@@ -2380,7 +2418,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     session.session_id[:8],
                     exc,
                 )
-        if not await terminal_bridge.session_exists(session.tmux_session_name, log_missing=False):
+        if not await self._ensure_tmux_session(session):
             logger.warning("Tmux session missing for %s; polling skipped", session.session_id[:8])
             return
 

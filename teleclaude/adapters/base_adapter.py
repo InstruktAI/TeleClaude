@@ -296,7 +296,7 @@ class BaseAdapter(ABC):
 
         Feedback messages are ephemeral UI notifications that:
         - Appear in UI platforms (Telegram, Slack, etc.)
-        - Do NOT appear in terminal/tmux output
+        - Do NOT appear in tmux/tmux output
         - Auto-tracked for deletion on next user input
 
         Base implementation does nothing (for transport adapters like Redis).

@@ -13,11 +13,11 @@ def mock_mcp_server():
     mock_client = MagicMock()
     mock_client.send_message = AsyncMock(return_value="msg-123")
 
-    mock_terminal_bridge = MagicMock()
+    mock_tmux_bridge = MagicMock()
 
     with patch("teleclaude.mcp_server.config") as mock_config:
         mock_config.computer.name = "TestComputer"
-        server = TeleClaudeMCPServer(adapter_client=mock_client, terminal_bridge=mock_terminal_bridge)
+        server = TeleClaudeMCPServer(adapter_client=mock_client, tmux_bridge=mock_tmux_bridge)
 
     return server
 

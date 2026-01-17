@@ -1,6 +1,6 @@
-"""Terminal output polling - pure poller with no I/O side effects.
+"""Tmux output polling - pure poller with no I/O side effects.
 
-Reads raw terminal output logs (tmux pipe-pane) and yields output events.
+Reads raw tmux output logs (tmux pipe-pane) and yields output events.
 Daemon handles all message sending.
 """
 
@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.constants import DIRECTORY_CHECK_INTERVAL
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 
 logger = get_logger(__name__)
@@ -59,7 +59,7 @@ class DirectoryChanged(OutputEvent):
 class OutputPoller:
     """Pure poller - yields output events, no message sending.
 
-    All dependencies (config, terminal_bridge) are imported at module level.
+    All dependencies (config, tmux_bridge) are imported at module level.
     """
 
     async def poll(  # pylint: disable=too-many-locals  # Poll loop naturally has many state variables
@@ -68,7 +68,7 @@ class OutputPoller:
         tmux_session_name: str,
         output_file: Path,
     ) -> AsyncIterator[OutputEvent]:
-        """Poll terminal output and yield events.
+        """Poll tmux output and yield events.
 
         Args:
             session_id: Session ID
@@ -136,9 +136,9 @@ class OutputPoller:
             while True:
                 poll_iteration += 1
 
-                session_exists_now = await terminal_bridge.session_exists(tmux_session_name, log_missing=False)
+                session_exists_now = await tmux_bridge.session_exists(tmux_session_name, log_missing=False)
                 if session_exists_now:
-                    captured_output = await terminal_bridge.capture_pane(tmux_session_name)
+                    captured_output = await tmux_bridge.capture_pane(tmux_session_name)
                 else:
                     captured_output = ""
 
@@ -194,7 +194,7 @@ class OutputPoller:
 
                 session_existed_last_poll = session_exists_now
 
-                captured_output = await terminal_bridge.capture_pane(tmux_session_name)
+                captured_output = await tmux_bridge.capture_pane(tmux_session_name)
                 output_changed = captured_output != previous_output
                 current_cleaned = captured_output
 
@@ -240,7 +240,7 @@ class OutputPoller:
                     pass
 
                 # Exit condition 2: tmux pane fully exited (shell ended)
-                if await terminal_bridge.is_pane_dead(tmux_session_name):
+                if await tmux_bridge.is_pane_dead(tmux_session_name):
                     # Force a final snapshot if output changed since last yield (or nothing was sent yet).
                     if pending_output or output_changed or not output_sent_at_least_once:
                         yield OutputChanged(
@@ -276,7 +276,7 @@ class OutputPoller:
                     directory_check_ticks += 1
                     if directory_check_ticks >= directory_check_interval:
                         directory_check_ticks = 0
-                        current_directory = await terminal_bridge.get_current_directory(tmux_session_name)
+                        current_directory = await tmux_bridge.get_current_directory(tmux_session_name)
 
                         if current_directory:
                             # Only yield event if we moved FROM a directory (not startup)

@@ -76,9 +76,10 @@ def build_tree(
     sessions_by_initiator: dict[str, list[SessionInfo]] = {}
     root_sessions: list[SessionInfo] = []
 
+    session_ids = {s.session_id for s in sessions}
     for session in sessions:
         initiator_id = session.initiator_session_id
-        if initiator_id:
+        if initiator_id and initiator_id in session_ids:
             sessions_by_initiator.setdefault(initiator_id, []).append(session)
         else:
             root_sessions.append(session)
@@ -108,7 +109,7 @@ def build_tree(
 
             # Get root sessions for this project
             proj_path = project.path
-            proj_sessions = [s for s in root_sessions if s.computer == comp_name and s.working_directory == proj_path]
+            proj_sessions = [s for s in root_sessions if s.computer == comp_name and s.project_path == proj_path]
 
             for idx, session in enumerate(proj_sessions, 1):
                 sess_node = _build_session_node(session, idx, 2, proj_node, sessions_by_initiator)
@@ -117,28 +118,28 @@ def build_tree(
 
             comp_node.children.append(proj_node)
 
-        # Find orphan sessions (not matched to any project) and group by working_directory
+        # Find orphan sessions (not matched to any project) and group by project_path
         orphan_sessions = [
             s for s in root_sessions if s.computer == comp_name and s.session_id not in matched_session_ids
         ]
 
-        # Group orphans by their working_directory to create project nodes
+        # Group orphans by their project_path to create project nodes
         orphans_by_path: dict[str, list[SessionInfo]] = {}
         for session in orphan_sessions:
-            wd = session.working_directory
-            orphans_by_path.setdefault(wd, []).append(session)
+            proj_path = session.project_path or ""
+            orphans_by_path.setdefault(proj_path, []).append(session)
 
-        # Create project nodes for each unique working_directory
-        for wd_path, wd_sessions in orphans_by_path.items():
+        # Create project nodes for each unique project_path
+        for proj_path, proj_sessions in orphans_by_path.items():
             proj_node = ProjectNode(
                 type="project",
-                data=ProjectInfo(computer=comp_name, name="", path=wd_path, description=None),
+                data=ProjectInfo(computer=comp_name, name="", path=proj_path, description=None),
                 depth=1,
                 children=[],
                 parent=comp_node,
             )
 
-            for idx, session in enumerate(wd_sessions, 1):
+            for idx, session in enumerate(proj_sessions, 1):
                 sess_node = _build_session_node(session, idx, 2, proj_node, sessions_by_initiator)
                 proj_node.children.append(sess_node)
 

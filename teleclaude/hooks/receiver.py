@@ -9,11 +9,10 @@ import argparse
 import json
 import os
 import sqlite3
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional, Protocol, cast
+from typing import Any, Mapping, Protocol, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 
@@ -28,10 +27,6 @@ from adapters import gemini as gemini_adapter  # noqa: E402
 
 from teleclaude.config import config  # noqa: E402
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
-from teleclaude.core.db import (  # noqa: E402
-    get_session_id_by_field_sync,
-    get_session_id_by_tmux_name_sync,
-)
 from teleclaude.hooks.adapters.models import NormalizedHookPayload  # noqa: E402
 
 configure_logging("teleclaude")
@@ -113,132 +108,6 @@ def _send_error_event(
     )
 
 
-def _find_gemini_transcript() -> Optional[Path]:
-    """Smarter discovery of Gemini transcript file.
-
-    Checks default chats dir and all project-specific tmp dirs.
-    Returns the most recently modified session JSON file.
-    """
-    candidates: list[Path] = []
-    gemini_dir = Path("~/.gemini").expanduser()
-
-    # 1. Check default location
-    chat_dir = gemini_dir / "chats"
-    if chat_dir.exists():
-        candidates.extend(chat_dir.glob("session-*.json"))
-
-    # 2. Check all project-specific tmp dirs
-    tmp_dir = gemini_dir / "tmp"
-    if tmp_dir.exists():
-        for project_tmp in tmp_dir.iterdir():
-            if project_tmp.is_dir():
-                project_chats = project_tmp / "chats"
-                if project_chats.exists():
-                    candidates.extend(project_chats.glob("session-*.json"))
-
-    if not candidates:
-        return None
-
-    # Return the newest one
-    return max(candidates, key=lambda p: p.stat().st_mtime)
-
-
-def _get_parent_process_info() -> tuple[int | None, str | None]:
-    """Capture parent PID + controlling TTY for hook caller.
-
-    Walk the parent process chain and select the most reliable TTY owner.
-    Prefer a shell parent when available; fall back to the nearest TTY-holding ancestor.
-    """
-    parent_pid = os.getppid()
-    if parent_pid <= 1:
-        parent_pid = None
-
-    def _normalize_tty(value: str | None) -> str | None:
-        if not value:
-            return None
-        tty = value if value.startswith("/dev/") else f"/dev/{value}"
-        return tty if Path(tty).exists() else None
-
-    def _stdio_tty() -> str | None:
-        for stream in (sys.stdin, sys.stdout, sys.stderr):
-            try:
-                if stream is not None and stream.isatty():
-                    return _normalize_tty(os.ttyname(stream.fileno()))
-            except Exception:
-                continue
-        return None
-
-    stdio_tty = _stdio_tty()
-
-    try:
-        import psutil  # type: ignore[import-not-found]
-
-        if parent_pid:
-            shell_names = {
-                "bash",
-                "zsh",
-                "fish",
-                "sh",
-                "ksh",
-                "tcsh",
-                Path(os.environ.get("SHELL") or "").name,
-            }
-
-            chain = []
-            proc = psutil.Process(parent_pid)
-            while proc and proc.pid > 1 and len(chain) < 50:
-                chain.append(proc)
-                try:
-                    proc = proc.parent()
-                except Exception:
-                    break
-
-            # Prefer a shell process with a tty.
-            for proc in chain:
-                tty = _normalize_tty(proc.terminal() if hasattr(proc, "terminal") else None)
-                if not tty:
-                    continue
-                try:
-                    name = proc.name()
-                except Exception:
-                    name = ""
-                if name in shell_names:
-                    return proc.pid, tty
-
-            # Fallback to the nearest ancestor with a tty.
-            for proc in chain:
-                tty = _normalize_tty(proc.terminal() if hasattr(proc, "terminal") else None)
-                if tty:
-                    return proc.pid, tty
-    except Exception:
-        pass
-
-    if parent_pid:
-        try:
-            result = subprocess.run(
-                ["ps", "-o", "tty=", "-p", str(parent_pid)],
-                capture_output=True,
-                text=True,
-                timeout=1.0,
-                check=False,
-            )
-            tty_name = result.stdout.strip()
-            tty_path = _normalize_tty(tty_name)
-            if tty_path:
-                return parent_pid, tty_path
-        except Exception:
-            pass
-
-    ssh_tty = _normalize_tty(os.getenv("SSH_TTY"))
-    if ssh_tty:
-        return parent_pid, ssh_tty
-
-    if stdio_tty:
-        return parent_pid, stdio_tty
-
-    return parent_pid, None
-
-
 def _enqueue_hook_event(
     session_id: str,
     event_type: str,
@@ -249,9 +118,10 @@ def _enqueue_hook_event(
     now = datetime.now(timezone.utc).isoformat()
     payload_json = json.dumps(data)
 
-    conn = sqlite3.connect(db_path, timeout=1.0)
+    conn = sqlite3.connect(db_path, timeout=5.0)
     try:
-        conn.execute("PRAGMA busy_timeout = 1000")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS hook_outbox (
@@ -300,53 +170,18 @@ def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str |
     return native_session_id, native_log_file
 
 
-def _find_session_by_native_id(native_session_id: str) -> str | None:
-    """Locate a TeleClaude session by stored native_session_id."""
-    return get_session_id_by_field_sync(config.database.path, "native_session_id", native_session_id)
-
-
-def _find_session_by_log_path(native_log_file: str) -> str | None:
-    """Locate a TeleClaude session by stored native_log_file."""
-    return get_session_id_by_field_sync(config.database.path, "native_log_file", native_log_file)
-
-
-def _find_session_by_tmux_name(tmux_name: str) -> str | None:
-    """Locate a TeleClaude session by tmux session name."""
-    return get_session_id_by_tmux_name_sync(config.database.path, tmux_name)
-
-
-def _update_session_log_file_sync(session_id: str, native_log_file: str) -> None:
-    """Update native_log_file for a session synchronously."""
-    db_path = config.database.path
-    conn = sqlite3.connect(db_path, timeout=1.0)
+def _get_teleclaude_session_id() -> str | None:
+    tmpdir = os.getenv("TMPDIR")
+    if not tmpdir:
+        return None
+    candidate = Path(tmpdir) / "teleclaude_session_id"
+    if not candidate.exists():
+        return None
     try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        conn.execute(
-            "UPDATE sessions SET native_log_file = ? WHERE session_id = ?",
-            (native_log_file, session_id),
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error("Failed to update session log file", error=str(e), session_id=session_id)
-    finally:
-        conn.close()
-
-
-def _session_exists(session_id: str) -> bool:
-    """Return True if a TeleClaude session exists in the DB."""
-    db_path = config.database.path
-    conn = sqlite3.connect(db_path, timeout=1.0)
-    try:
-        conn.execute("PRAGMA busy_timeout = 1000")
-        try:
-            cursor = conn.execute("SELECT 1 FROM sessions WHERE session_id = ? LIMIT 1", (session_id,))
-            return cursor.fetchone() is not None
-        except sqlite3.OperationalError as exc:
-            if "no such table" in str(exc).lower():
-                return False
-            raise
-    finally:
-        conn.close()
+        session_id = candidate.read_text(encoding="utf-8").strip()
+    except Exception:
+        return None
+    return session_id or None
 
 
 class NormalizeFn(Protocol):
@@ -390,7 +225,7 @@ def main() -> None:
         argv=sys.argv,
         cwd=os.getcwd(),
         stdin_tty=sys.stdin.isatty(),
-        has_session_id="TELECLAUDE_SESSION_ID" in os.environ,
+        has_session_id=bool(_get_teleclaude_session_id()),
         agent=args.agent,
     )
 
@@ -422,61 +257,10 @@ def main() -> None:
 
     raw_native_session_id, raw_native_log_file = _extract_native_identity(args.agent, raw_data)
 
-    if not raw_native_log_file and args.agent == "gemini":
-        gemini_path = _find_gemini_transcript()
-        if gemini_path:
-            raw_native_log_file = str(gemini_path)
-            raw_data["transcript_path"] = raw_native_log_file
-            logger.debug("Auto-discovered Gemini transcript", path=raw_native_log_file)
-
-    parent_pid, tty_path = _get_parent_process_info()
-
-    teleclaude_session_id = os.getenv("TELECLAUDE_SESSION_ID")
-    if teleclaude_session_id and not _session_exists(teleclaude_session_id):
-        logger.warning(
-            "Hook receiver session id missing in DB; attempting recovery",
-            session_id=teleclaude_session_id,
-        )
-        teleclaude_session_id = None
-
+    teleclaude_session_id = _get_teleclaude_session_id()
     if not teleclaude_session_id:
-        tmux_name = None
-        if os.getenv("TMUX"):
-            try:
-                tmux_result = subprocess.run(
-                    [config.computer.tmux_binary, "display-message", "-p", "#{session_name}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=1.0,
-                    check=False,
-                )
-                tmux_name = tmux_result.stdout.strip() if tmux_result.returncode == 0 else None
-            except Exception:
-                tmux_name = None
-
-        if tmux_name:
-            teleclaude_session_id = _find_session_by_tmux_name(tmux_name)
-            if teleclaude_session_id:
-                logger.info(
-                    "Hook receiver recovered session from tmux",
-                    session_id=teleclaude_session_id,
-                    tmux_session=tmux_name,
-                )
-
-        if not teleclaude_session_id:
-            if raw_native_session_id:
-                teleclaude_session_id = _find_session_by_native_id(raw_native_session_id)
-            if not teleclaude_session_id and raw_native_log_file:
-                teleclaude_session_id = _find_session_by_log_path(raw_native_log_file)
-            if teleclaude_session_id:
-                logger.info(
-                    "Hook receiver recovered session from native id",
-                    session_id=teleclaude_session_id,
-                    native_session_id=raw_native_session_id,
-                )
-            else:
-                # No TeleClaude session found - this is valid for standalone Claude sessions
-                sys.exit(0)
+        # No TeleClaude session found - this is valid for standalone sessions
+        sys.exit(0)
 
     normalize_payload = _get_adapter(args.agent)
     try:
@@ -501,12 +285,6 @@ def main() -> None:
         agent=args.agent,
     )
 
-    normalized_native_session_id = data.get("session_id") if isinstance(data.get("session_id"), str) else None
-    normalized_log_file = data.get("transcript_path") if isinstance(data.get("transcript_path"), str) else None
-
-    if teleclaude_session_id and normalized_log_file:
-        _update_session_log_file_sync(teleclaude_session_id, str(normalized_log_file))
-
     logger.debug(
         "Hook payload summary",
         event_type=event_type,
@@ -514,17 +292,10 @@ def main() -> None:
         session_id=teleclaude_session_id,
         raw_native_session_id=raw_native_session_id,
         raw_transcript_path=raw_native_log_file,
-        normalized_native_session_id=normalized_native_session_id,
-        normalized_transcript_path=normalized_log_file,
-        transcript_missing=not normalized_log_file,
     )
 
-    if parent_pid:
-        data["teleclaude_pid"] = str(parent_pid)
-    if tty_path:
-        data["teleclaude_tty"] = tty_path
-
     data["agent_name"] = args.agent
+    data["received_at"] = datetime.now(timezone.utc).isoformat()
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 

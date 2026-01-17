@@ -50,7 +50,7 @@ async def test_start_session_extracts_tmux_name_from_event_result():
 
     result = await handler.teleclaude__start_session(
         computer="local",
-        project_dir="/tmp",
+        project_path="/tmp",
         title="Test Session",
         message=None,  # skip agent start for simplicity
     )
@@ -72,7 +72,7 @@ async def test_start_session_handles_missing_tmux_name():
     }
 
     result = await handler.teleclaude__start_session(
-        computer="local", project_dir="/tmp", title="Test Session", message=None
+        computer="local", project_path="/tmp", title="Test Session", message=None
     )
 
     assert result["status"] == "success"

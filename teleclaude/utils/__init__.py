@@ -208,19 +208,19 @@ def format_completed_status_line(exit_code: int, started_timestamp: float, size_
     return f"{exit_emoji} started: {started_time} | completed: {completed_time} | 📊 {size_str}{truncation_marker}"
 
 
-def format_terminal_message(terminal_output: str, status_line: str) -> str:
-    """Format terminal output with status line.
+def format_tmux_message(tmux_output: str, status_line: str) -> str:
+    """Format tmux output with status line.
 
     Args:
-        terminal_output: Terminal output text
+        tmux_output: Tmux output text
         status_line: Status line text
 
     Returns:
         Formatted message with code block and status line
     """
     message_parts = []
-    if terminal_output:
-        message_parts.append(f"```\n{terminal_output}\n```")
+    if tmux_output:
+        message_parts.append(f"```\n{tmux_output}\n```")
     message_parts.append(status_line)
     return "\n".join(message_parts)
 

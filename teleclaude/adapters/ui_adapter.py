@@ -34,7 +34,7 @@ from teleclaude.utils import (
     format_active_status_line,
     format_completed_status_line,
     format_size,
-    format_terminal_message,
+    format_tmux_message,
 )
 from teleclaude.utils.markdown import telegramify_markdown
 
@@ -181,7 +181,7 @@ class UiAdapter(BaseAdapter):
         """
         # Truncate to platform limit
         is_truncated = len(output) > self.max_message_size
-        terminal_output = output[-self.max_message_size :] if is_truncated else output
+        tmux_output = output[-self.max_message_size :] if is_truncated else output
 
         # Format status line
         if is_final and exit_code is not None:
@@ -219,10 +219,10 @@ class UiAdapter(BaseAdapter):
             if is_truncated:
                 prefix = f"[...truncated, showing last {self.max_message_size} chars...]"
                 max_body = max(self.max_message_size - len(prefix) - 2, 0)
-                terminal_output = output[-max_body:] if max_body else ""
-                body = f"{prefix}\n\n{terminal_output}" if terminal_output else prefix
+                tmux_output = output[-max_body:] if max_body else ""
+                body = f"{prefix}\n\n{tmux_output}" if tmux_output else prefix
             else:
-                body = terminal_output
+                body = tmux_output
 
             if body:
                 display_output = f"{body}\n\n{full_status}"
@@ -232,7 +232,7 @@ class UiAdapter(BaseAdapter):
             if self.ADAPTER_KEY == "telegram":
                 display_output = telegramify_markdown(display_output)
         else:
-            display_output = self.format_message(terminal_output, full_status)
+            display_output = self.format_message(tmux_output, full_status)
 
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated)
@@ -250,24 +250,24 @@ class UiAdapter(BaseAdapter):
             await self._store_output_message_id(session, new_id)
         return new_id
 
-    def format_message(self, terminal_output: str, status_line: str) -> str:
-        """Format message with terminal output and status line.
+    def format_message(self, tmux_output: str, status_line: str) -> str:
+        """Format message with tmux output and status line.
 
         Base implementation wraps output in code block and adds status line.
         Override in subclasses to apply additional formatting like shortening lines.
 
         Args:
-            terminal_output: Terminal output text
+            tmux_output: Tmux output text
             status_line: Status line text
 
         Returns:
             Formatted message text
         """
         message_parts = []
-        if terminal_output:
+        if tmux_output:
             # Escape internal ``` markers to prevent nested code blocks breaking markdown
             # Use zero-width space (\u200b) to break the sequence
-            sanitized = terminal_output.replace("```", "`\u200b``")
+            sanitized = tmux_output.replace("```", "`\u200b``")
             message_parts.append(f"```\n{sanitized}\n```")
         message_parts.append(status_line)
         return "\n".join(message_parts)
@@ -312,7 +312,7 @@ class UiAdapter(BaseAdapter):
 
     async def send_exit_message(self, session: "Session", output: str, exit_text: str) -> None:
         """Send exit message when session dies - default implementation."""
-        final_output = format_terminal_message(output if output else "", exit_text)
+        final_output = format_tmux_message(output if output else "", exit_text)
         metadata = MessageMetadata(raw_format=True)
 
         # Try to edit existing message, fallback to send new
@@ -369,7 +369,7 @@ class UiAdapter(BaseAdapter):
         1. Validate session and check if process is running
         2. Send "Transcribing..." feedback to user
         3. Transcribe audio using voice_message_handler.py
-        4. Send transcribed text to terminal
+        4. Send transcribed text to tmux
         5. Send feedback on success/failure
 
         Args:
@@ -442,7 +442,7 @@ class UiAdapter(BaseAdapter):
 
         Handles:
         - title: Direct title update (from summary) → sync to UiAdapter instances
-        - working_directory: Path change → update path portion in title
+        - project_path/subdir: Path change → update path portion in title
 
         Args:
             event: Event type
@@ -465,9 +465,13 @@ class UiAdapter(BaseAdapter):
             logger.info("Synced title to UiAdapters for session %s: %s", session_id[:8], new_title)
             title_updated = True
 
-        # working_directory update adjusts the path portion in the title
-        if not title_updated and "working_directory" in updated_fields:
-            new_path = str(updated_fields["working_directory"])
+        # project_path/subdir update adjusts the path portion in the title
+        if not title_updated and ("project_path" in updated_fields or "subdir" in updated_fields):
+            project_path = str(updated_fields.get("project_path") or session.project_path or "")
+            subdir = str(updated_fields.get("subdir") or session.subdir or "")
+            new_path = project_path
+            if subdir:
+                new_path = str(Path(project_path) / subdir)
 
             # Extract last 2 path components
             path_parts = Path(new_path).parts

@@ -1,4 +1,4 @@
-"""Voice message handling for terminal sessions.
+"""Voice message handling for tmux sessions.
 
 Provides complete voice message functionality:
 - OpenAI Whisper API integration (low-level transcription)
@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from instrukt_ai_logging import get_logger
 from openai import AsyncOpenAI
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.events import VoiceEventContext
 from teleclaude.core.models import MessageMetadata
@@ -190,7 +190,7 @@ async def handle_voice(
         return None
 
     # Check if a process is currently running (foreground command != shell)
-    is_process_running = await terminal_bridge.is_process_running(session.tmux_session_name)
+    is_process_running = await tmux_bridge.is_process_running(session.tmux_session_name)
 
     # Reject voice messages if no active process to send them to
     if not is_process_running:

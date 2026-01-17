@@ -1,7 +1,7 @@
 """Agent Coordinator - orchestrates agent events and cross-computer communication.
 
 Handles agent lifecycle events (start, stop, notification) and routes them to:
-1. Local listeners (via terminal injection)
+1. Local listeners (via tmux injection)
 2. Remote initiators (via Redis transport)
 3. Human UI (via AdapterClient feedback)
 """
@@ -161,7 +161,7 @@ class AgentCoordinator:
         title: str | None = None,
         source_computer: str | None = None,
     ) -> None:
-        """Notify local listeners via terminal injection."""
+        """Notify local listeners via tmux injection."""
         target_session = await db.get_session(target_session_id)
         display_title = title or (target_session.title if target_session else "Unknown")
         computer = source_computer or "local"

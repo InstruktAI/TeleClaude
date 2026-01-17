@@ -1,4 +1,4 @@
-"""Unit tests for terminal_bridge.py."""
+"""Unit tests for tmux_bridge.py."""
 
 import errno
 import os
@@ -8,7 +8,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 
 # System boundary: verify tmux subprocess commands via mock call args.
 
@@ -18,8 +18,8 @@ def setup_config():
     """Initialize config for all tests."""
     # Mock _SHELL_NAME for consistent test behavior and tmux_binary for predictable commands
     with (
-        patch.object(terminal_bridge, "_SHELL_NAME", "zsh"),
-        patch.object(terminal_bridge.config.computer, "tmux_binary", "tmux"),
+        patch.object(tmux_bridge, "_SHELL_NAME", "zsh"),
+        patch.object(tmux_bridge.config.computer, "tmux_binary", "tmux"),
     ):
         yield
 
@@ -37,12 +37,12 @@ async def test_send_keys_to_tty_injects_input():
         return 0
 
     with (
-        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
-        patch.object(terminal_bridge.os, "open", return_value=3),
-        patch.object(terminal_bridge.os, "close"),
-        patch.object(terminal_bridge.fcntl, "ioctl", side_effect=_ioctl),
+        patch.object(tmux_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(tmux_bridge.os, "open", return_value=3),
+        patch.object(tmux_bridge.os, "close"),
+        patch.object(tmux_bridge.fcntl, "ioctl", side_effect=_ioctl),
     ):
-        ok = await terminal_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
+        ok = await tmux_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
 
     assert ok is True
     assert b"hello\n" == b"".join(injected)
@@ -62,12 +62,12 @@ async def test_send_keys_to_tty_writes_to_pty_master():
         return write_len
 
     with (
-        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
-        patch.object(terminal_bridge.os, "open", return_value=3),
-        patch.object(terminal_bridge.os, "close"),
-        patch.object(terminal_bridge.os, "write", side_effect=_write),
+        patch.object(tmux_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(tmux_bridge.os, "open", return_value=3),
+        patch.object(tmux_bridge.os, "close"),
+        patch.object(tmux_bridge.os, "write", side_effect=_write),
     ):
-        ok = await terminal_bridge.send_keys_to_tty("/dev/ptys001", "hello", send_enter=True)
+        ok = await tmux_bridge.send_keys_to_tty("/dev/ptys001", "hello", send_enter=True)
 
     assert ok is True
     assert b"hello\n" == b"".join(written)
@@ -84,12 +84,12 @@ async def test_send_keys_to_tty_returns_false_on_hard_error():
         raise OSError(errno.EPERM, "not permitted")
 
     with (
-        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
-        patch.object(terminal_bridge.os, "open", return_value=3),
-        patch.object(terminal_bridge.os, "close"),
-        patch.object(terminal_bridge.fcntl, "ioctl", side_effect=_ioctl),
+        patch.object(tmux_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(tmux_bridge.os, "open", return_value=3),
+        patch.object(tmux_bridge.os, "close"),
+        patch.object(tmux_bridge.fcntl, "ioctl", side_effect=_ioctl),
     ):
-        ok = await terminal_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
+        ok = await tmux_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
 
     assert ok is False
 
@@ -112,12 +112,12 @@ async def test_send_keys_to_tty_retries_on_eagain():
         return 0
 
     with (
-        patch.object(terminal_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
-        patch.object(terminal_bridge.os, "open", return_value=3),
-        patch.object(terminal_bridge.os, "close"),
-        patch.object(terminal_bridge.fcntl, "ioctl", side_effect=_ioctl),
+        patch.object(tmux_bridge.asyncio, "to_thread", new=AsyncMock(side_effect=_run)),
+        patch.object(tmux_bridge.os, "open", return_value=3),
+        patch.object(tmux_bridge.os, "close"),
+        patch.object(tmux_bridge.fcntl, "ioctl", side_effect=_ioctl),
     ):
-        ok = await terminal_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
+        ok = await tmux_bridge.send_keys_to_tty("/dev/ttys001", "hello", send_enter=True)
 
     assert ok is True
     assert b"hello\n" == b"".join(injected)
@@ -138,10 +138,10 @@ class TestSendKeys:
 
             # Mock session exists
             with (
-                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
                 patch("asyncio.sleep", new=AsyncMock()) as mock_sleep,
             ):
-                success = await terminal_bridge.send_keys(session_name="test-session", text="ls -la")
+                success = await tmux_bridge.send_keys(session_name="test-session", text="ls -la")
 
                 assert success is True
                 mock_sleep.assert_awaited_once_with(1.0)
@@ -163,11 +163,10 @@ class TestSendKeys:
             mock_exec.return_value = mock_process
 
             with (
-                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
-                patch.object(terminal_bridge, "create_tmux_session", new=AsyncMock(return_value=True)) as mock_create,
+                patch.object(tmux_bridge, "ensure_tmux_session", new=AsyncMock(return_value=True)) as mock_ensure,
                 patch("asyncio.sleep", new=AsyncMock()),
             ):
-                success = await terminal_bridge.send_keys(
+                success = await tmux_bridge.send_keys(
                     session_name="test-session",
                     text="echo hello",
                     session_id="sid-123",
@@ -175,8 +174,32 @@ class TestSendKeys:
                 )
 
         assert success is True
+        mock_ensure.assert_awaited_once()
+        assert mock_ensure.await_args.kwargs.get("session_id") == "sid-123"
+
+    @pytest.mark.asyncio
+    async def test_ensure_tmux_session_returns_true_when_exists(self):
+        with (
+            patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=True)) as mock_exists,
+            patch.object(tmux_bridge, "_create_tmux_session", new=AsyncMock(return_value=True)) as mock_create,
+        ):
+            ok = await tmux_bridge.ensure_tmux_session(name="test-session", working_dir="/tmp")
+
+        assert ok is True
+        mock_exists.assert_awaited_once()
+        mock_create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ensure_tmux_session_rechecks_after_failed_create(self):
+        with (
+            patch.object(tmux_bridge, "session_exists", new=AsyncMock(side_effect=[False, True])) as mock_exists,
+            patch.object(tmux_bridge, "_create_tmux_session", new=AsyncMock(return_value=False)) as mock_create,
+        ):
+            ok = await tmux_bridge.ensure_tmux_session(name="test-session", working_dir="/tmp")
+
+        assert ok is True
+        assert mock_exists.await_count == 2
         mock_create.assert_awaited_once()
-        assert mock_create.await_args.kwargs.get("session_id") == "sid-123"
 
     @pytest.mark.asyncio
     async def test_escapes_exclamation_for_gemini(self):
@@ -188,10 +211,10 @@ class TestSendKeys:
             mock_exec.return_value = mock_process
 
             with (
-                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
                 patch("asyncio.sleep", new=AsyncMock()),
             ):
-                success = await terminal_bridge.send_keys(
+                success = await tmux_bridge.send_keys(
                     session_name="test-session",
                     text="Hello! World!",
                     active_agent="gemini",
@@ -217,10 +240,10 @@ class TestSendKeys:
             mock_exec.return_value = mock_process
 
             with (
-                patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=True)),
+                patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=True)),
                 patch("asyncio.sleep", new=AsyncMock()),
             ):
-                success = await terminal_bridge.send_keys(
+                success = await tmux_bridge.send_keys(
                     session_name="test-session",
                     text="Hello! World!",
                     active_agent="claude",
@@ -243,10 +266,10 @@ class TestSendKeysExistingTmux:
     async def test_returns_false_when_session_missing(self):
         """Test that send_keys_existing_tmux returns False when session is absent."""
         with (
-            patch.object(terminal_bridge, "session_exists", new=AsyncMock(return_value=False)),
-            patch.object(terminal_bridge, "_send_keys_tmux", new=AsyncMock()) as mock_send,
+            patch.object(tmux_bridge, "session_exists", new=AsyncMock(return_value=False)),
+            patch.object(tmux_bridge, "_send_keys_tmux", new=AsyncMock()) as mock_send,
         ):
-            success = await terminal_bridge.send_keys_existing_tmux(
+            success = await tmux_bridge.send_keys_existing_tmux(
                 session_name="missing-session",
                 text="hello",
             )
@@ -267,7 +290,7 @@ class TestSendCtrlKey:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_ctrl_key(session_name="test-session", key="d")
+            success = await tmux_bridge.send_ctrl_key(session_name="test-session", key="d")
 
             assert success is True
             mock_exec.assert_called_once()
@@ -283,7 +306,7 @@ class TestSendCtrlKey:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_ctrl_key(session_name="test-session", key="Z")
+            success = await tmux_bridge.send_ctrl_key(session_name="test-session", key="Z")
 
             assert success is True
             call_args = mock_exec.call_args[0]
@@ -302,7 +325,7 @@ class TestSendTab:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_tab(session_name="test-session")
+            success = await tmux_bridge.send_tab(session_name="test-session")
 
             assert success is True
             mock_exec.assert_called_once()
@@ -318,7 +341,7 @@ class TestSendTab:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_tab(session_name="test-session")
+            success = await tmux_bridge.send_tab(session_name="test-session")
 
             assert success is False
 
@@ -335,7 +358,7 @@ class TestSendShiftTab:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_shift_tab(session_name="test-session")
+            success = await tmux_bridge.send_shift_tab(session_name="test-session")
 
             assert success is True
             mock_exec.assert_called_once()
@@ -351,7 +374,7 @@ class TestSendShiftTab:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_shift_tab(session_name="test-session")
+            success = await tmux_bridge.send_shift_tab(session_name="test-session")
 
             assert success is False
 
@@ -364,7 +387,7 @@ class TestSendShiftTab:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_shift_tab(session_name="test-session", count=3)
+            success = await tmux_bridge.send_shift_tab(session_name="test-session", count=3)
 
             assert success is True
             mock_exec.assert_called_once()
@@ -375,7 +398,7 @@ class TestSendShiftTab:
     async def test_send_shift_tab_invalid_count(self):
         """Test sending SHIFT+TAB key with invalid count returns False."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
-            success = await terminal_bridge.send_shift_tab(session_name="test-session", count=0)
+            success = await tmux_bridge.send_shift_tab(session_name="test-session", count=0)
 
             assert success is False
             mock_exec.assert_not_called()
@@ -393,7 +416,7 @@ class TestSendArrowKey:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="up", count=1)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="up", count=1)
 
             assert success is True
             mock_exec.assert_called_once()
@@ -409,7 +432,7 @@ class TestSendArrowKey:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="down", count=5)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="down", count=5)
 
             assert success is True
             call_args = mock_exec.call_args[0]
@@ -424,7 +447,7 @@ class TestSendArrowKey:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="left", count=3)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="left", count=3)
 
             assert success is True
             call_args = mock_exec.call_args[0]
@@ -439,7 +462,7 @@ class TestSendArrowKey:
             mock_process.wait = AsyncMock()
             mock_exec.return_value = mock_process
 
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="right", count=10)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="right", count=10)
 
             assert success is True
             call_args = mock_exec.call_args[0]
@@ -449,7 +472,7 @@ class TestSendArrowKey:
     async def test_send_arrow_invalid_direction(self):
         """Test failure with invalid direction."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="invalid", count=1)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="invalid", count=1)
 
             assert success is False
             mock_exec.assert_not_called()
@@ -458,7 +481,7 @@ class TestSendArrowKey:
     async def test_send_arrow_invalid_count(self):
         """Test failure with invalid count."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="up", count=0)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="up", count=0)
 
             assert success is False
             mock_exec.assert_not_called()
@@ -467,7 +490,7 @@ class TestSendArrowKey:
     async def test_send_arrow_negative_count(self):
         """Test failure with negative count."""
         with patch("asyncio.create_subprocess_exec") as mock_exec:
-            success = await terminal_bridge.send_arrow_key(session_name="test-session", direction="down", count=-5)
+            success = await tmux_bridge.send_arrow_key(session_name="test-session", direction="down", count=-5)
 
             assert success is False
             mock_exec.assert_not_called()

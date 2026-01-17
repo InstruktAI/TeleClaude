@@ -1,4 +1,4 @@
-"""Unit tests for subprocess timeout helpers in terminal_bridge."""
+"""Unit tests for subprocess timeout helpers in tmux_bridge."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.core.terminal_bridge import (
+from teleclaude.core.tmux_bridge import (
     SUBPROCESS_TIMEOUT_DEFAULT,
     SUBPROCESS_TIMEOUT_QUICK,
     SubprocessTimeoutError,

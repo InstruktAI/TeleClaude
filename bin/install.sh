@@ -132,7 +132,7 @@ install_package() {
 check_python() {
     print_info "Checking Python version..."
 
-    for cmd in python3.12 python3.11 python3; do
+    for cmd in python3.14 python3.13 python3.12 python3.11 python3; do
         if command -v "$cmd" &> /dev/null; then
             PYTHON_CMD="$cmd"
             PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | awk '{print $2}')

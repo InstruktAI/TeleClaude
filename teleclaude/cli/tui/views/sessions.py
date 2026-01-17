@@ -6,7 +6,7 @@ import asyncio
 import curses
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def _format_time(iso_timestamp: str) -> str:
+def _format_time(iso_timestamp: str | None) -> str:
     """Convert ISO timestamp to HH:MM:SS (24h) local time.
 
     Args:
@@ -52,6 +52,8 @@ def _format_time(iso_timestamp: str) -> str:
     Returns:
         Time like "17:43:21" or "" if unavailable
     """
+    if not iso_timestamp:
+        return ""
     dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
     local_dt = dt.astimezone()
     return local_dt.strftime("%H:%M:%S")
@@ -66,6 +68,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         agent_availability: dict[str, AgentAvailabilityInfo],
         focus: FocusContext,
         pane_manager: TmuxPaneManager,
+        notify: Callable[[str, str], None] | None = None,
     ):
         """Initialize sessions view.
 
@@ -79,6 +82,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.agent_availability = agent_availability
         self.focus = focus
         self.pane_manager = pane_manager
+        self.notify = notify
         self.tree: list[TreeNode] = []
         self.flat_items: list[TreeNode] = []
         self.selected_index = 0
@@ -594,10 +598,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             project_path=project.path,
             api=self.api,
             agent_availability=self.agent_availability,
+            notify=self.notify,
         )
         result = modal.run(stdscr)
         if result:
             self._attach_new_session(result, str(computer_value), stdscr)
+            self.needs_refresh = True
+        elif modal.start_requested:
             self.needs_refresh = True
 
     def _attach_new_session(
@@ -721,8 +728,8 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """Return lines this view would render (testable without curses).
 
         Args:
-            width: Terminal width
-            height: Terminal height
+            width: Tmux width
+            height: Tmux height
 
         Returns:
             List of strings representing what would be rendered
@@ -820,7 +827,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         content_indent = indent + "      "  # 6 chars for "[X] ▶ "
 
         # Line 2 (expanded only): ID + last activity time
-        activity_time = _format_time(cast(str, session.last_activity))
+        activity_time = _format_time(session.last_activity)
         line2 = f"{content_indent}[{activity_time}] ID: {session_id}"
         lines.append(line2[:width])
 
@@ -829,7 +836,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            input_time = _format_time(cast(str, last_input_at))
+            input_time = _format_time(last_input_at)
             line3 = f"{content_indent}[{input_time}] in: {input_text}"
             lines.append(line3[:width])
 
@@ -838,7 +845,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_output_at = session.last_output_at
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            output_time = _format_time(cast(str, last_output_at))
+            output_time = _format_time(last_output_at)
             line4 = f"{content_indent}[{output_time}] out: {output_text}"
             lines.append(line4[:width])
 
@@ -1015,7 +1022,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         content_indent = indent + "      "  # 6 chars for "[X] ▶ "
 
         # Line 2 (expanded only): ID + last activity time
-        activity_time = _format_time(cast(str, session.last_activity))
+        activity_time = _format_time(session.last_activity)
         line2 = f"{content_indent}[{activity_time}] ID: {session_id}"
         _safe_addstr(row + lines_used, line2, normal_attr)
         self._row_to_id_item[row + lines_used] = item
@@ -1031,7 +1038,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         last_input_at = session.last_input_at
         if last_input:
             input_text = last_input.replace("\n", " ")[:60]
-            input_time = _format_time(cast(str, last_input_at))
+            input_time = _format_time(last_input_at)
             line3 = f"{content_indent}[{input_time}] in: {input_text}"
             _safe_addstr(row + lines_used, line3, input_attr)
             lines_used += 1
@@ -1044,7 +1051,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             logger.trace("missing_last_input", session=session_id[:8])
         if last_output:
             output_text = last_output.replace("\n", " ")[:60]
-            output_time = _format_time(cast(str, last_output_at))
+            output_time = _format_time(last_output_at)
             line4 = f"{content_indent}[{output_time}] out: {output_text}"
             _safe_addstr(row + lines_used, line4, output_attr)
             lines_used += 1

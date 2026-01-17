@@ -7,7 +7,7 @@ checking whether the tmux pane has returned to the user's shell.
 
 ## How It Works
 
-- `terminal_bridge.is_process_running()` compares `#{pane_current_command}` with
+- `tmux_bridge.is_process_running()` compares `#{pane_current_command}` with
   the user's shell (`$SHELL`, resolved at import time).
 - `OutputPoller` stops polling when the foreground command is the shell and
   emits a `ProcessExited` event for UI completion status.

@@ -1,4 +1,4 @@
-"""Polling coordinator for terminal output streaming.
+"""Polling coordinator for tmux output streaming.
 
 Extracted from daemon.py to reduce file size and improve organization.
 Handles polling lifecycle orchestration and event routing to message manager.
@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import session_cleanup, terminal_bridge
+from teleclaude.config import config
+from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.output_poller import (
     DirectoryChanged,
@@ -19,6 +20,7 @@ from teleclaude.core.output_poller import (
     OutputPoller,
     ProcessExited,
 )
+from teleclaude.core.session_utils import split_project_path_and_subdir
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -89,7 +91,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
     get_output_file: Callable[[str], Path],
     _skip_register: bool = False,
 ) -> None:
-    """Poll terminal output and send to all adapters for session.
+    """Poll tmux output and send to all adapters for session.
 
     Pure orchestration - consumes events from poller, delegates to message manager.
     SINGLE RESPONSIBILITY: Owns the polling lifecycle for a session.
@@ -149,7 +151,9 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
 
             elif isinstance(event, DirectoryChanged):
                 # Directory changed - update session (db dispatcher handles title update)
-                await db.update_session(event.session_id, working_directory=event.new_path)
+                trusted_dirs = [d.path for d in config.computer.get_all_trusted_dirs()]
+                project_path, subdir = split_project_path_and_subdir(event.new_path, trusted_dirs)
+                await db.update_session(event.session_id, project_path=project_path, subdir=subdir)
 
             elif isinstance(event, ProcessExited):
                 # Process exited - output is already clean from file
@@ -177,7 +181,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-p
                     )
                     tmux_alive = True
                     if session.tmux_session_name:
-                        tmux_alive = await terminal_bridge.session_exists(
+                        tmux_alive = await tmux_bridge.session_exists(
                             session.tmux_session_name,
                             log_missing=False,
                         )

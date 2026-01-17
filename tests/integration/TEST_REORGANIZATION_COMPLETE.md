@@ -18,7 +18,7 @@
 - Tests moved:
   - `test_session_manager_crud`
   - `test_session_manager_with_metadata`
-- Test removed: `test_terminal_bridge_tmux_operations` (duplicates functionality tested in other integration tests)
+- Test removed: `test_tmux_bridge_tmux_operations` (duplicates functionality tested in other integration tests)
 
 **test_send_message_flow.py → DELETED**
 - Reason: Heavily mocked (all MCP methods mocked = unit test, not integration)
@@ -66,10 +66,10 @@
 ✅ **Telegram → AdapterClient → Command Handlers**
    Covered by: `test_command_e2e.py`, `test_ai_to_ai_session_init_e2e.py`
 
-✅ **Command Handlers → Terminal Bridge → tmux**
+✅ **Command Handlers → Tmux Bridge → tmux**
    Covered by: `test_command_e2e.py`, `test_ai_to_ai_session_init_e2e.py`
 
-✅ **Polling → Terminal Bridge → AdapterClient → Telegram**
+✅ **Polling → Tmux Bridge → AdapterClient → Telegram**
    Covered by: `test_command_e2e.py`, `test_polling_restart.py`, `test_process_exit_detection.py`
 
 ✅ **Redis → AdapterClient → Command Handlers → Database**

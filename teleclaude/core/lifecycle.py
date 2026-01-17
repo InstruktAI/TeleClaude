@@ -14,6 +14,7 @@ from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.rest_adapter import RESTAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
+from teleclaude.core.models import SessionSummary
 
 if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.core.adapter_client import AdapterClient
@@ -71,6 +72,7 @@ class DaemonLifecycle:
         logger.info("Database initialized")
 
         db.set_client(self.client)
+        await self._warm_local_sessions_cache()
 
         await self.client.start()
 
@@ -121,6 +123,24 @@ class DaemonLifecycle:
             logger.info("MCP server watch task started")
         else:
             logger.warning("MCP server not started - object is None")
+
+    async def _warm_local_sessions_cache(self) -> None:
+        """Seed cache with current local sessions for initial UI state."""
+        try:
+            sessions = await db.list_sessions(computer_name=config.computer.name)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to warm session cache: %s", exc, exc_info=True)
+            return
+
+        if not sessions:
+            logger.debug("No local sessions to seed in cache")
+            return
+
+        for session in sessions:
+            summary = SessionSummary.from_db_session(session, computer=config.computer.name)
+            self.cache.update_session(summary)
+
+        logger.info("Seeded cache with %d local sessions", len(sessions))
 
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""

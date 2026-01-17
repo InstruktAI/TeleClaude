@@ -16,7 +16,7 @@ This document provides guidance for developers working on TeleClaude codebase.
 
 **CRITICAL**: Telegram adapter (`has_ui=True`) follows strict message management rules for clean UX:
 
-**Output Messages (from terminal commands):**
+**Output Messages (from tmux commands):**
 
 - **ALWAYS EDITED**, never create new messages
 - One persistent message per session output

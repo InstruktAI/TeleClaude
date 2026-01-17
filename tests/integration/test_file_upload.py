@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core import file_handler, terminal_io
+from teleclaude.core import file_handler, tmux_io
 from teleclaude.core.db import Db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import MessageMetadata, SessionAdapterMetadata, TelegramAdapterMetadata
@@ -40,6 +40,7 @@ async def test_session(session_manager):
             telegram=TelegramAdapterMetadata(topic_id=12345, output_message_id="msg_out")
         ),
         title="Test Session",
+        project_path="/tmp",
     )
     return session
 
@@ -66,8 +67,8 @@ class TestFileUploadFlow:
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=True),
-            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
+            patch("teleclaude.core.file_handler.tmux_bridge.send_keys", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,
@@ -86,7 +87,7 @@ class TestFileUploadFlow:
         assert sent_keys[0][0] == "tmux_test"
         # Path is resolved to absolute path (on macOS /tmp -> /private/tmp)
         expected_path = str(Path("/tmp/document.pdf").resolve())
-        expected_text = terminal_io.wrap_bracketed_paste(f"@{expected_path}")
+        expected_text = tmux_io.wrap_bracketed_paste(f"@{expected_path}")
         assert sent_keys[0][1] == expected_text
 
         assert len(sent_messages) == 1
@@ -110,8 +111,8 @@ class TestFileUploadFlow:
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
             patch("teleclaude.core.file_handler.is_agent_running", return_value=False),
-            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=True),
-            patch("teleclaude.core.file_handler.terminal_bridge.send_keys", side_effect=mock_send_keys),
+            patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=True),
+            patch("teleclaude.core.file_handler.tmux_bridge.send_keys", side_effect=mock_send_keys),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,
@@ -128,7 +129,7 @@ class TestFileUploadFlow:
 
         assert len(sent_keys) == 1
         expected_path = str(Path("/tmp/image.jpg").resolve())
-        expected_text = terminal_io.wrap_bracketed_paste(expected_path)
+        expected_text = tmux_io.wrap_bracketed_paste(expected_path)
         assert sent_keys[0][1] == expected_text
 
     @pytest.mark.asyncio
@@ -142,7 +143,7 @@ class TestFileUploadFlow:
 
         with (
             patch("teleclaude.core.file_handler.db", session_manager),
-            patch("teleclaude.core.file_handler.terminal_bridge.is_process_running", return_value=False),
+            patch("teleclaude.core.file_handler.tmux_bridge.is_process_running", return_value=False),
         ):
             await file_handler.handle_file(
                 session_id=test_session.session_id,

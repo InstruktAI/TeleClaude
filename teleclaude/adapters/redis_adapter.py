@@ -46,6 +46,7 @@ from teleclaude.core.models import (
     RedisAdapterMetadata,
     RedisInboundMessage,
     Session,
+    SessionLaunchIntent,
     SessionSummary,
     ThinkingMode,
     TodoInfo,
@@ -258,7 +259,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     async def _populate_initial_cache(self) -> None:
         """Populate cache with remote computers and projects on startup."""
         if not self.cache:
-            logger.debug("Cache unavailable, skipping initial cache population")
+            logger.warning("Cache unavailable, skipping initial cache population")
             return
 
         logger.info("Populating initial cache from remote computers...")
@@ -267,7 +268,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     async def refresh_remote_snapshot(self) -> None:
         """Refresh remote computers and project/todo cache (best effort)."""
         if not self.cache:
-            logger.debug("Cache unavailable, skipping remote snapshot refresh")
+            logger.warning("Cache unavailable, skipping remote snapshot refresh")
             return
 
         logger.info("Refreshing remote cache snapshot...")
@@ -308,6 +309,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     async def refresh_peers_from_heartbeats(self) -> None:
         """Refresh peer cache from heartbeat keys."""
         if not self.cache:
+            logger.warning("Cache unavailable, skipping peer refresh from heartbeats")
             return
 
         redis_client = self._require_redis()
@@ -1097,12 +1099,16 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 payload_obj = CommandPayload(session_id=session_id, args=args)
                 logger.debug("Emitting %s event with args: %s", event_type, args)
 
+            launch_intent = None
+            if parsed.launch_intent:
+                launch_intent = SessionLaunchIntent.from_dict(parsed.launch_intent)
+
             metadata_to_send = MessageMetadata(
                 adapter_type="redis",
                 channel_metadata=parsed.channel_metadata,
-                project_dir=parsed.project_dir,
+                project_path=parsed.project_path,
                 title=parsed.title,
-                auto_command=parsed.auto_command,
+                launch_intent=launch_intent,
             )
 
             if parsed.initiator:
@@ -1111,8 +1117,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 metadata_to_send.channel_metadata["target_computer"] = parsed.initiator
 
             # Enrich payload with optional project/title if supported
-            if parsed.project_dir and isinstance(payload_obj, (CommandPayload, MessagePayload)):
-                payload_obj.project_dir = parsed.project_dir
+            if parsed.project_path and isinstance(payload_obj, (CommandPayload, MessagePayload)):
+                payload_obj.project_path = parsed.project_path
             if parsed.title and isinstance(payload_obj, (CommandPayload, MessagePayload)):
                 payload_obj.title = parsed.title
 
@@ -1168,9 +1174,17 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 logger.warning("Invalid channel_metadata JSON in message")
 
         initiator = data.get(b"initiator", b"").decode("utf-8") or None
-        project_dir = data.get(b"project_dir", b"").decode("utf-8") or None
+        project_path = data.get(b"project_path", b"").decode("utf-8") or None
         title = data.get(b"title", b"").decode("utf-8") or None
-        auto_command = data.get(b"auto_command", b"").decode("utf-8") or None
+        launch_intent_raw = data.get(b"launch_intent", b"").decode("utf-8") or None
+        launch_intent = None
+        if launch_intent_raw:
+            try:
+                parsed_intent = json.loads(launch_intent_raw)
+                if isinstance(parsed_intent, dict):
+                    launch_intent = cast(dict[str, object], parsed_intent)
+            except json.JSONDecodeError:
+                logger.warning("Invalid launch_intent JSON in message")
 
         return RedisInboundMessage(
             msg_type=msg_type,
@@ -1178,9 +1192,9 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             command=command,
             channel_metadata=channel_metadata,
             initiator=initiator,
-            project_dir=project_dir,
+            project_path=project_path,
             title=title,
-            auto_command=auto_command,
+            launch_intent=launch_intent,
         )
 
     async def _handle_system_message(self, data: dict[bytes, bytes]) -> None:
@@ -1432,7 +1446,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             session_id=session.session_id,
             origin_adapter=session.origin_adapter,
             title=session.title,
-            working_directory=session.working_directory,
+            project_path=session.project_path,
+            subdir=session.subdir,
             thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
             active_agent=session.active_agent,
             status="active",
@@ -1458,7 +1473,8 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             session_id=session.session_id,
             origin_adapter=session.origin_adapter,
             title=session.title,
-            working_directory=session.working_directory,
+            project_path=session.project_path,
+            subdir=session.subdir,
             thinking_mode=session.thinking_mode or ThinkingMode.SLOW.value,
             active_agent=session.active_agent,
             status="active",
@@ -1601,7 +1617,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                     projects.append(info)
 
             # Store in cache
-            self.cache.set_projects(computer, projects)
+            self.cache.apply_projects_snapshot(computer, projects)
             logger.info("Pulled %d projects from %s", len(projects), computer)
 
         except Exception as e:
@@ -1641,6 +1657,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 return
 
             projects: list[ProjectInfo] = []
+            todos_by_project: dict[str, list[TodoInfo]] = {}
             for project_obj in data:
                 if not isinstance(project_obj, dict):
                     continue
@@ -1650,11 +1667,10 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 info = ProjectInfo.from_dict(project_obj)
                 info.computer = computer
                 projects.append(info)
+                todos_by_project[project_path] = info.todos
 
-                # Set todos separately in cache
-                self.cache.set_todos(computer, project_path, info.todos)
-
-            self.cache.set_projects(computer, projects)
+            self.cache.apply_projects_snapshot(computer, projects)
+            self.cache.apply_todos_snapshot(computer, todos_by_project)
             logger.info("Pulled %d projects-with-todos from %s", len(projects), computer)
 
         except Exception as e:
@@ -1947,7 +1963,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             computer_name: Target computer name
             command: Command to send
             session_id: Optional TeleClaude session ID (for session commands)
-            metadata: Optional metadata (title, project_dir for session creation)
+            metadata: Optional metadata (title, project_path for session creation)
             args: Optional command arguments (e.g., project_path for list_todos)
 
         Returns:
@@ -1974,12 +1990,12 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Add optional session creation metadata
         if metadata.title:
             data[b"title"] = metadata.title.encode("utf-8")
-        if metadata.project_dir:
-            data[b"project_dir"] = metadata.project_dir.encode("utf-8")
+        if metadata.project_path:
+            data[b"project_path"] = metadata.project_path.encode("utf-8")
         if metadata.channel_metadata:
             data[b"channel_metadata"] = json.dumps(metadata.channel_metadata).encode("utf-8")
-        if metadata.auto_command:
-            data[b"auto_command"] = metadata.auto_command.encode("utf-8")
+        if metadata.launch_intent:
+            data[b"launch_intent"] = json.dumps(metadata.launch_intent.to_dict()).encode("utf-8")
 
         # Send to Redis stream - XADD returns unique message_id
         # This message_id is used for response correlation (receiver sends response to output:{message_id})

@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Optional
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.core.db import db
 from teleclaude.core.session_listeners import cleanup_caller_listeners, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
@@ -118,7 +118,7 @@ async def terminate_session(
 
     if kill_tmux:
         try:
-            killed = await terminal_bridge.kill_session(session.tmux_session_name)
+            killed = await tmux_bridge.kill_session(session.tmux_session_name)
             if killed:
                 logger.info("Killed tmux session %s", session.tmux_session_name)
             else:
@@ -151,7 +151,7 @@ async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient"
             logger.debug("Session %s is too young (%.1fs), skipping stale check", session_id[:8], session_age)
             return False
 
-    exists = await terminal_bridge.session_exists(session.tmux_session_name)
+    exists = await tmux_bridge.session_exists(session.tmux_session_name)
     if exists:
         return False
 
@@ -268,7 +268,7 @@ async def cleanup_orphan_tmux_sessions() -> int:
     Returns:
         Number of orphan tmux sessions killed
     """
-    tmux_sessions = await terminal_bridge.list_tmux_sessions()
+    tmux_sessions = await tmux_bridge.list_tmux_sessions()
     if not tmux_sessions:
         logger.debug("No tmux sessions found")
         return 0
@@ -287,7 +287,7 @@ async def cleanup_orphan_tmux_sessions() -> int:
     for tmux_name in tc_sessions:
         if tmux_name not in known_tmux_names:
             logger.warning("Found orphan tmux session: %s (not in DB), killing", tmux_name)
-            success = await terminal_bridge.kill_session(tmux_name)
+            success = await tmux_bridge.kill_session(tmux_name)
             if success:
                 killed_count += 1
                 logger.info("Killed orphan tmux session: %s", tmux_name)

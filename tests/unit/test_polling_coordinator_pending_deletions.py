@@ -62,7 +62,7 @@ async def test_polling_does_not_clear_pending_deletions():
 
     # Run polling
     with patch(
-        "teleclaude.core.terminal_bridge.session_exists",
+        "teleclaude.core.tmux_bridge.session_exists",
         new_callable=AsyncMock,
         return_value=True,
     ):

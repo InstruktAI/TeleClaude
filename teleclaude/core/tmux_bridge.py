@@ -1,4 +1,4 @@
-"""Terminal bridge for TeleClaude - handles tmux session management.
+"""Tmux bridge for TeleClaude - handles tmux session management.
 
 All functions are stateless and use config imported from teleclaude.config.
 """
@@ -22,6 +22,29 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 
 logger = get_logger(__name__)
+
+__all__ = [
+    "capture_pane",
+    "ensure_tmux_session",
+    "is_pane_dead",
+    "is_process_running",
+    "kill_session",
+    "list_tmux_sessions",
+    "send_arrow_key",
+    "send_backspace",
+    "send_ctrl_key",
+    "send_enter",
+    "send_escape",
+    "send_keys",
+    "send_keys_existing_tmux",
+    "send_shift_tab",
+    "send_signal",
+    "send_tab",
+    "session_exists",
+    "start_pipe_pane",
+    "update_tmux_session",
+    "wait_for_shell_ready",
+]
 
 # Subprocess timeout constants
 SUBPROCESS_TIMEOUT_DEFAULT = 30.0  # Default timeout for subprocess operations
@@ -189,7 +212,7 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
     return session_tmp
 
 
-async def create_tmux_session(
+async def _create_tmux_session(
     name: str,
     working_dir: str,
     session_id: Optional[str] = None,
@@ -199,7 +222,7 @@ async def create_tmux_session(
 
     Tmux automatically uses the $SHELL environment variable to determine which shell to use.
     No explicit shell parameter needed - tmux handles this natively.
-    Terminal size is not specified - tmux uses its default (80x24) which is fine for AI TUIs.
+    Tmux size is not specified - tmux uses its default (80x24) which is fine for AI TUIs.
 
     Args:
         name: Session name
@@ -249,12 +272,21 @@ async def create_tmux_session(
             for var_name, var_value in effective_env_vars.items():
                 cmd.extend(["-e", f"{var_name}={var_value}"])
 
-        # Don't capture stdout/stderr - let tmux create its own PTY
-        # Using PIPE can leak file descriptors to child processes in tmux
-        result = await asyncio.create_subprocess_exec(*cmd)
-        await wait_with_timeout(result, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+        # Capture stderr for diagnostics on failure (no special handling otherwise).
+        result = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
 
         if result.returncode != 0:
+            logger.error(
+                "tmux new-session failed for %s: returncode=%d stderr=%s",
+                name,
+                result.returncode,
+                stderr.decode().strip() if stderr else "",
+            )
             return False
 
         # Ensure detach does NOT destroy the session (respect persistent TC sessions).
@@ -288,6 +320,39 @@ async def create_tmux_session(
 
     except Exception as e:
         print(f"Error creating tmux session: {e}")
+        return False
+
+
+async def ensure_tmux_session(
+    name: str,
+    *,
+    working_dir: str = "~",
+    session_id: Optional[str] = None,
+    env_vars: Optional[Dict[str, str]] = None,
+) -> bool:
+    """Ensure a tmux session exists, creating it if missing.
+
+    This is the single choke point for tmux session creation. It is idempotent:
+    if the session already exists, returns True without creating.
+    """
+    try:
+        if await session_exists(name, log_missing=False):
+            return True
+
+        success = await _create_tmux_session(
+            name=name,
+            working_dir=working_dir,
+            session_id=session_id,
+            env_vars=env_vars,
+        )
+        if success:
+            return True
+
+        # If creation failed, re-check existence to handle race/duplicate creation.
+        return await session_exists(name, log_missing=False)
+
+    except Exception as e:
+        logger.error("Exception ensuring tmux session %s: %s", name, e)
         return False
 
 
@@ -358,17 +423,13 @@ async def send_keys(
     """
     try:
         # Check if session exists, create if not
-        if not await session_exists(session_name):
-            logger.info("Session %s not found, creating new session...", session_name)
-            success = await create_tmux_session(
-                name=session_name,
-                working_dir=working_dir,
-                session_id=session_id,
-            )
-            if not success:
-                logger.error("Failed to create session %s", session_name)
-                return False
-            logger.info("Created fresh session %s", session_name)
+        if not await ensure_tmux_session(
+            name=session_name,
+            working_dir=working_dir,
+            session_id=session_id,
+        ):
+            logger.error("Failed to ensure session %s", session_name)
+            return False
 
         return await _send_keys_tmux(
             session_name=session_name,

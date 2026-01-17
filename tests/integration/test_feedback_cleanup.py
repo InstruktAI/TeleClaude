@@ -11,7 +11,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import (
     MessageMetadata,
@@ -35,6 +35,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
         tmux_session_name="test-ephemeral-cleanup",
         origin_adapter="telegram",
         title="Test Ephemeral Cleanup",
+        project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67890)),
     )
 
@@ -56,7 +57,7 @@ async def test_ephemeral_messages_cleaned_on_user_input(daemon_with_mocked_teleg
     async def mock_session_exists(name: str, log_missing: bool = True) -> bool:
         return True
 
-    with patch.object(terminal_bridge, "session_exists", mock_session_exists):
+    with patch.object(tmux_bridge, "session_exists", mock_session_exists):
         # Simulate user input - this triggers pre-handler cleanup
         await daemon.client.handle_event(
             event=TeleClaudeEvents.MESSAGE,
@@ -93,6 +94,7 @@ async def test_send_message_ephemeral_auto_tracks(daemon_with_mocked_telegram):
         tmux_session_name="test-auto-track",
         origin_adapter="telegram",
         title="Test Auto Track",
+        project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67891)),
     )
 
@@ -115,6 +117,7 @@ async def test_send_message_persistent_not_tracked(daemon_with_mocked_telegram):
         tmux_session_name="test-persistent",
         origin_adapter="telegram",
         title="Test Persistent",
+        project_path="/tmp",
         adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=67892)),
     )
 

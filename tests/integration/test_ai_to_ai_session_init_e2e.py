@@ -10,7 +10,7 @@ import pytest
 
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 
 
 @pytest.mark.asyncio
@@ -46,9 +46,9 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     with patch.object(daemon.client, "handle_event", side_effect=track_handle_event):
         # Simulate incoming create_session command from initiator (MozBook)
         request_id = "test-request-123"
-        project_dir = tmp_path / "apps" / "TeleClaude"
-        project_dir.mkdir(parents=True, exist_ok=True)
-        project_dir = str(project_dir)
+        project_path = tmp_path / "apps" / "TeleClaude"
+        project_path.mkdir(parents=True, exist_ok=True)
+        project_path = str(project_path)
         channel_metadata = {
             "telegram": {"channel_id": "12345"},
             "redis": {"channel_id": "test-channel", "output_stream": "output:initiator-session-456"},
@@ -57,7 +57,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
         initiator_computer = "WorkstationA"
         {
             b"title": b"Test AI-to-AI Session",
-            b"project_dir": project_dir.encode("utf-8"),
+            b"project_path": project_path.encode("utf-8"),
             b"initiator": initiator_computer.encode("utf-8"),
             b"channel_metadata": json.dumps(channel_metadata).encode("utf-8"),
         }
@@ -84,7 +84,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
                 b"request_id": request_id.encode("utf-8"),
                 b"session_id": request_id.encode("utf-8"),  # Used as request_id in protocol
                 b"command": b"/new_session Test AI-to-AI Session",  # Title passed as command arg
-                b"project_dir": project_dir.encode("utf-8"),
+                b"project_path": project_path.encode("utf-8"),
                 b"initiator": initiator_computer.encode("utf-8"),
                 b"channel_metadata": json.dumps(channel_metadata).encode("utf-8"),
             }
@@ -126,10 +126,10 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram):
+async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram):
     """Test AI-to-AI session initialization without project directory.
 
-    Verifies that when project_dir is not provided:
+    Verifies that when project_path is not provided:
     1. Session is created successfully
     2. /cd command is NOT called
     3. /claude command is still called
@@ -153,7 +153,7 @@ async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram)
         return await original_handle_event(event, payload, metadata)
 
     with patch.object(daemon.client, "handle_event", side_effect=track_handle_event):
-        # Simulate create_session command WITHOUT project_dir
+        # Simulate create_session command WITH project_path
         request_id = "test-request-456"
 
         response_sent = None
@@ -170,7 +170,7 @@ async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram)
             b"session_id": request_id.encode("utf-8"),
             b"command": b"/new_session",
             b"title": b"Test Session No Project",
-            b"project_dir": b"",
+            b"project_path": b"/tmp",
             b"initiator": b"WorkStation",
             b"channel_metadata": b"{}",
         }
@@ -188,7 +188,7 @@ async def test_ai_to_ai_session_without_project_dir(daemon_with_mocked_telegram)
 
     # NOTE: /cd and /claude commands are NOT auto-called by the handler anymore
     # The MCP client (teleclaude__start_session) is responsible for orchestrating those commands
-    # This test only verifies session creation without project_dir
+    # This test only verifies session creation with explicit project_path
 
     # Verify response was sent
     assert response_sent is not None
@@ -208,7 +208,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     This test verifies the complete flow from handle_event to tmux execution:
     1. Commands are dispatched to command handlers
     2. Commands execute in the correct tmux session
-    3. Terminal shows expected output
+    3. Tmux shows expected output
     """
     daemon = daemon_with_mocked_telegram
 
@@ -221,10 +221,10 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
 
     # Create session
     request_id = "test-request-789"
-    project_dir = "/tmp/test-project"
+    project_path = "/tmp/test-project"
     {
         b"title": b"Test Tmux Execution",
-        b"project_dir": project_dir.encode("utf-8"),
+        b"project_path": project_path.encode("utf-8"),
         b"initiator": b"TestComputer",
         b"channel_metadata": b"{}",
     }
@@ -243,7 +243,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
         b"session_id": request_id.encode("utf-8"),
         b"command": b"/new_session",
         b"title": b"Test Tmux Execution",
-        b"project_dir": project_dir.encode("utf-8"),
+        b"project_path": project_path.encode("utf-8"),
         b"initiator": b"TestComputer",
         b"channel_metadata": b"{}",
     }
@@ -258,14 +258,14 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     # Wait for commands to execute
     await asyncio.sleep(0.01)
 
-    # Capture terminal output
-    output = await terminal_bridge.capture_pane(session.tmux_session_name)
-    assert output is not None, "Should have terminal output"
+    # Capture tmux output
+    output = await tmux_bridge.capture_pane(session.tmux_session_name)
+    assert output is not None, "Should have tmux output"
 
     # Verify /cd executed (should see directory change)
     # Note: actual directory change might not be visible, but command should have been sent
     # We can verify by checking session still exists and tmux session is alive
-    assert await terminal_bridge.session_exists(session.tmux_session_name), "Tmux session should exist"
+    assert await tmux_bridge.session_exists(session.tmux_session_name), "Tmux session should exist"
 
     # Verify /claude was executed (should see "Starting Claude Code..." or similar)
     # Since we're testing with real tmux but mocked Claude startup, we verify the command was sent

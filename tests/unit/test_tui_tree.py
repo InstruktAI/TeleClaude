@@ -26,7 +26,7 @@ def make_session(
     session_id: str,
     *,
     computer: str = "local",
-    working_directory: str = "/home/user/project",
+    project_path: str = "/home/user/project",
     title: str = "Main Session",
     initiator_session_id: str | None = None,
 ) -> SessionInfo:
@@ -34,7 +34,7 @@ def make_session(
         session_id=session_id,
         origin_adapter="telegram",
         title=title,
-        working_directory=working_directory,
+        project_path=project_path,
         thinking_mode="slow",
         active_agent=None,
         status="active",
@@ -190,7 +190,7 @@ def test_build_tree_sets_parent_references():
 
 
 def test_build_tree_orphaned_session():
-    """Test build_tree handles orphaned sessions (initiator doesn't exist)."""
+    """Test build_tree promotes orphaned sessions to root."""
     computers = [make_computer()]
     projects = [make_project()]
     sessions = [
@@ -198,7 +198,6 @@ def test_build_tree_orphaned_session():
     ]
     tree = build_tree(computers, projects, sessions)
 
-    # Orphaned session won't appear since its initiator doesn't exist
-    # (it's not a root session)
+    # Orphaned session should appear as a root session
     project_node = tree[0].children[0]
-    assert len(project_node.children) == 0
+    assert len(project_node.children) == 1

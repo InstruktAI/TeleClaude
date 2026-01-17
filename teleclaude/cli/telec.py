@@ -183,7 +183,7 @@ async def _quick_start_via_api(agent: str, mode: str, prompt: str | None) -> Cre
     try:
         return await api.create_session(
             computer=config.computer.name,
-            project_dir=os.getcwd(),
+            project_path=os.getcwd(),
             agent=agent,
             thinking_mode=mode,
             message=prompt,

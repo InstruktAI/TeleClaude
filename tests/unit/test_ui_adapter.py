@@ -380,9 +380,9 @@ class TestFormatMessage:
     def test_preserves_output_without_code_blocks(self):
         """Paranoid test normal output without ``` is unchanged."""
         adapter = MockUiAdapter()
-        output = "Simple terminal output\nNo code blocks here"
+        output = "Simple tmux output\nNo code blocks here"
 
         result = adapter.format_message(output, "status line")
 
-        assert "```\nSimple terminal output\nNo code blocks here\n```" in result
+        assert "```\nSimple tmux output\nNo code blocks here\n```" in result
         assert "status line" in result

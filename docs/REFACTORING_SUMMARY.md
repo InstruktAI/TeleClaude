@@ -86,7 +86,7 @@ class AdapterClient:
 ```python
 # ✅ CORRECT: Adapter-agnostic
 class TeleClaudeMCPServer:
-    def __init__(self, adapter_client, terminal_bridge, session_manager):
+    def __init__(self, adapter_client, tmux_bridge, session_manager):
         self.client = adapter_client  # ONLY dependency
 
     async def list_projects(self, computer: str):

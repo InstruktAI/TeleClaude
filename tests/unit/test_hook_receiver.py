@@ -2,6 +2,7 @@
 
 import argparse
 import os
+from pathlib import Path
 
 import pytest
 
@@ -11,7 +12,7 @@ from teleclaude.hooks import receiver
 from teleclaude.hooks.adapters.models import NormalizedHookPayload
 
 
-def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
+def test_receiver_emits_error_event_on_normalize_failure(monkeypatch, tmp_path):
     """Test that normalization exceptions emit error events and exit nonzero."""
     sent = []
 
@@ -25,8 +26,10 @@ def test_receiver_emits_error_event_on_normalize_failure(monkeypatch):
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
-    monkeypatch.setattr(receiver, "_session_exists", lambda _sid: True)
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-1")
+    tmpdir = tmp_path / "tmp"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
 
     with pytest.raises(SystemExit) as exc:
         receiver.main()
@@ -51,8 +54,7 @@ def test_receiver_exits_cleanly_without_session(monkeypatch):
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
-    monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (None, None))
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMPDIR", raising=False)
     monkeypatch.delenv("TMUX", raising=False)  # Prevent tmux recovery from running
 
     with pytest.raises(SystemExit) as exc:
@@ -72,9 +74,7 @@ def test_receiver_exits_cleanly_when_tmux_recovery_fails(monkeypatch):
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
-    monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (123, "/dev/ttys001"))
-    monkeypatch.setattr(receiver, "_find_session_by_tmux_name", lambda _name: None)
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
+    monkeypatch.delenv("TMPDIR", raising=False)
 
     with pytest.raises(SystemExit) as exc:
         receiver.main()
@@ -93,10 +93,7 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
     monkeypatch.setattr(receiver, "_enqueue_hook_event", fake_enqueue)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
-    monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (123, "/dev/ttys001"))
-    monkeypatch.setattr(receiver, "_session_exists", lambda _sid: False)
-    monkeypatch.setattr(receiver, "_find_session_by_tmux_name", lambda _name: None)
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-old")
+    monkeypatch.delenv("TMPDIR", raising=False)
 
     with pytest.raises(SystemExit) as exc:
         receiver.main()
@@ -105,7 +102,7 @@ def test_receiver_exits_cleanly_when_session_not_in_db(monkeypatch):
     assert not sent
 
 
-def test_receiver_recovers_from_native_session_id(monkeypatch):
+def test_receiver_recovers_from_native_session_id(monkeypatch, tmp_path):
     """Test that missing env session is recovered from native session id."""
     sent = []
 
@@ -116,10 +113,10 @@ def test_receiver_recovers_from_native_session_id(monkeypatch):
     monkeypatch.setattr(
         receiver, "_parse_args", lambda: argparse.Namespace(agent="codex", event_type='{"thread-id": "native-1"}')
     )
-    monkeypatch.setattr(receiver, "_get_parent_process_info", lambda: (None, None))
-    monkeypatch.setattr(receiver, "_find_session_by_native_id", lambda _sid: "sess-native")
-    monkeypatch.delenv("TELECLAUDE_SESSION_ID", raising=False)
-    monkeypatch.delenv("TMUX", raising=False)  # Prevent tmux recovery from running first
+    tmpdir = tmp_path / "tmp-native"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-native")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
 
     receiver.main()
 
@@ -129,7 +126,7 @@ def test_receiver_recovers_from_native_session_id(monkeypatch):
     assert event_type == "stop"
 
 
-def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
+def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch, tmp_path):
     """Test that gemini after_agent is mapped to stop before enqueue."""
     sent = []
 
@@ -143,8 +140,10 @@ def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="gemini", event_type="after_agent"))
-    monkeypatch.setattr(receiver, "_session_exists", lambda _sid: True)
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-1")
+    tmpdir = tmp_path / "tmp-gemini"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
 
     receiver.main()
 
@@ -154,7 +153,7 @@ def test_receiver_maps_gemini_after_agent_to_stop(monkeypatch):
     assert event_type == "stop"
 
 
-def test_receiver_includes_agent_name_in_payload(monkeypatch):
+def test_receiver_includes_agent_name_in_payload(monkeypatch, tmp_path):
     sent = []
 
     def fake_enqueue(session_id, event_type, data):
@@ -167,8 +166,10 @@ def test_receiver_includes_agent_name_in_payload(monkeypatch):
     monkeypatch.setattr(receiver, "_get_adapter", lambda _agent: fake_normalize)
     monkeypatch.setattr(receiver, "_read_stdin", lambda: ("{}", {}))
     monkeypatch.setattr(receiver, "_parse_args", lambda: argparse.Namespace(agent="claude", event_type="stop"))
-    monkeypatch.setattr(receiver, "_session_exists", lambda _sid: True)
-    monkeypatch.setenv("TELECLAUDE_SESSION_ID", "sess-1")
+    tmpdir = tmp_path / "tmp-agent"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    (tmpdir / "teleclaude_session_id").write_text("sess-1")
+    monkeypatch.setenv("TMPDIR", str(tmpdir))
 
     receiver.main()
 

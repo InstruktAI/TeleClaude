@@ -1,0 +1,67 @@
+"""Unit tests for Telegram topic_closed handling."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
+from teleclaude.adapters.telegram.input_handlers import InputHandlersMixin
+from teleclaude.core.models import Session, SessionAdapterMetadata, TelegramAdapterMetadata
+
+
+class DummyHandlers(InputHandlersMixin):
+    """Minimal mixin host for testing."""
+
+    def __init__(self) -> None:
+        self.client = Mock()
+        self.client.handle_event = AsyncMock()
+        self.user_whitelist = set()
+        self._topic_message_cache = {}
+        self._mcp_message_queues = {}
+        self._processed_voice_messages = set()
+        self._topic_ready_events = {}
+        self._topic_ready_cache = set()
+
+    def _metadata(self, **kwargs: object):  # type: ignore[override]
+        return None
+
+    async def _get_session_from_topic(self, update):  # type: ignore[override]
+        return None
+
+    def _topic_owned_by_this_bot(self, update, topic_id: int) -> bool:  # type: ignore[override]
+        return True
+
+    async def _delete_orphan_topic(self, topic_id: int) -> None:  # type: ignore[override]
+        return None
+
+    async def send_feedback(self, session, message: str, *, metadata=None, persistent: bool = False):  # type: ignore[override]
+        return None
+
+
+@pytest.mark.asyncio
+async def test_topic_closed_ignores_new_session() -> None:
+    """Topic_closed should be ignored for very new sessions (race guard)."""
+    handlers = DummyHandlers()
+
+    session = Session(
+        session_id="sess-123",
+        computer_name="test",
+        tmux_session_name="tc_sess_123",
+        origin_adapter="telegram",
+        title="Test",
+        adapter_metadata=SessionAdapterMetadata(telegram=TelegramAdapterMetadata(topic_id=456)),
+        created_at=datetime.now(timezone.utc),
+    )
+
+    update = SimpleNamespace(message=SimpleNamespace(message_thread_id=456))
+
+    with patch(
+        "teleclaude.adapters.telegram.input_handlers.db.get_sessions_by_adapter_metadata",
+        new=AsyncMock(return_value=[session]),
+    ):
+        await handlers._handle_topic_closed(update, None)
+
+    handlers.client.handle_event.assert_not_called()

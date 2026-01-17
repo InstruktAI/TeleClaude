@@ -15,8 +15,8 @@ class BaseView:
         """Return lines this view would render (testable without curses).
 
         Args:
-            width: Terminal width
-            height: Terminal height
+            width: Tmux width
+            height: Tmux height
 
         Returns:
             List of strings representing rendered output

@@ -9,8 +9,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shlex
-import traceback
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Literal
 
 import uvicorn
@@ -44,7 +42,13 @@ from teleclaude.constants import REST_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, SessionSummary
+from teleclaude.core.models import (
+    ChannelMetadata,
+    MessageMetadata,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+    SessionSummary,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -90,13 +94,15 @@ class RESTAdapter(BaseAdapter):
         self._metrics_task: asyncio.Task[object] | None = None
         self._running = False
         self._on_server_exit: RestServerExitHandler | None = None
-
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
         self._client_subscriptions: dict[WebSocket, dict[str, set[str]]] = {}
         # Track previous interest to remove stale entries
         self._previous_interest: dict[str, set[str]] = {}  # {data_type: {computers}}
+        # Debounce refresh-style WS events to avoid burst refresh storms
+        self._refresh_debounce_task: asyncio.Task[object] | None = None
+        self._refresh_pending_payload: dict[str, object] | None = None  # guard: loose-dict - WS payload
 
         # Subscribe to local session updates
         self.client.on(
@@ -137,6 +143,7 @@ class RESTAdapter(BaseAdapter):
     ) -> None:
         """Handle local session update by updating cache."""
         if not self.cache:
+            logger.warning("Cache unavailable, cannot update session in cache")
             return
         session = await db.get_session(context.session_id)
         if not session:
@@ -151,6 +158,7 @@ class RESTAdapter(BaseAdapter):
     ) -> None:
         """Handle local session creation by updating cache."""
         if not self.cache:
+            logger.warning("Cache unavailable, cannot create session in cache")
             return
         session = await db.get_session(context.session_id)
         if not session:
@@ -165,6 +173,7 @@ class RESTAdapter(BaseAdapter):
     ) -> None:
         """Handle local session removal by updating cache."""
         if not self.cache:
+            logger.warning("Cache unavailable, cannot remove session from cache")
             return
         self.cache.remove_session(context.session_id)
 
@@ -180,24 +189,34 @@ class RESTAdapter(BaseAdapter):
         async def list_sessions(  # pyright: ignore
             computer: str | None = None,
         ) -> list[SessionSummaryDTO]:
-            """List sessions from local computer + cached remote sessions."""
+            """List sessions from cache (includes local and remote)."""
             try:
-                # Get LOCAL sessions from command handler
                 local_sessions = await command_handlers.handle_list_sessions()
-                # Add computer field for consistency
-                computer_name = config.computer.name
-                result: list[SessionSummaryDTO] = []
-                for session in local_sessions:
-                    result.append(SessionSummaryDTO.from_core(session, computer=computer_name))
 
-                # Add REMOTE sessions from cache (if available)
-                if self.cache:
-                    cached_sessions = self.cache.get_sessions(computer)
+                # No cache: serve local sessions only (respect computer filter)
+                if not self.cache:
+                    if computer and computer not in ("local", config.computer.name):
+                        return []
+                    return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in local_sessions]
+
+                # With cache, merge local + cached sessions
+                if computer:
+                    cached_filtered = self.cache.get_sessions(computer)
+                    if computer in ("local", config.computer.name):
+                        by_id = {s.session_id: s for s in local_sessions}
+                        for s in cached_filtered:
+                            by_id.setdefault(s.session_id, s)
+                        merged = list(by_id.values())
+                    else:
+                        merged = cached_filtered
+                else:
+                    cached_sessions = self.cache.get_sessions()
+                    by_id = {s.session_id: s for s in local_sessions}
                     for s in cached_sessions:
-                        # cached_sessions returns SessionSummary dataclasses
-                        result.append(SessionSummaryDTO.from_core(s, computer=s.computer))
+                        by_id.setdefault(s.session_id, s)
+                    merged = list(by_id.values())
 
-                return result
+                return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in merged]
             except Exception as e:
                 logger.error("list_sessions failed: %s", e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to list sessions: {e}") from e
@@ -215,13 +234,38 @@ class RESTAdapter(BaseAdapter):
 
             args = [title] if title else []
 
-            auto_command = request.auto_command
-            if not auto_command:
-                if request.message:
-                    quoted_message = shlex.quote(request.message)
-                    auto_command = f"agent_then_message {request.agent} {request.thinking_mode} {quoted_message}"
-                else:
-                    auto_command = f"agent {request.agent} {request.thinking_mode}"
+            launch_kind = SessionLaunchKind(request.launch_kind)
+            if launch_kind == SessionLaunchKind.EMPTY:
+                launch_intent = SessionLaunchIntent(kind=SessionLaunchKind.EMPTY)
+            elif launch_kind == SessionLaunchKind.AGENT_RESUME:
+                if not request.agent:
+                    raise HTTPException(status_code=400, detail="agent required for agent_resume")
+                launch_intent = SessionLaunchIntent(
+                    kind=SessionLaunchKind.AGENT_RESUME,
+                    agent=request.agent,
+                    native_session_id=request.native_session_id,
+                )
+            elif launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+                if not request.agent or not request.thinking_mode:
+                    raise HTTPException(
+                        status_code=400, detail="agent and thinking_mode required for agent_then_message"
+                    )
+                if request.message is None:
+                    raise HTTPException(status_code=400, detail="message required for agent_then_message")
+                launch_intent = SessionLaunchIntent(
+                    kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                    agent=request.agent,
+                    thinking_mode=request.thinking_mode,
+                    message=request.message,
+                )
+            else:
+                if not request.agent or not request.thinking_mode:
+                    raise HTTPException(status_code=400, detail="agent and thinking_mode required for agent")
+                launch_intent = SessionLaunchIntent(
+                    kind=SessionLaunchKind.AGENT,
+                    agent=request.agent,
+                    thinking_mode=request.thinking_mode,
+                )
 
             try:
                 envelope = await self.client.handle_event(
@@ -232,8 +276,9 @@ class RESTAdapter(BaseAdapter):
                     },
                     metadata=self._metadata(
                         title=title,
-                        project_dir=request.project_dir,
-                        auto_command=auto_command,
+                        project_path=request.project_path,
+                        subdir=request.subdir,
+                        launch_intent=launch_intent,
                     ),
                 )
                 if not isinstance(envelope, dict):
@@ -788,7 +833,7 @@ class RESTAdapter(BaseAdapter):
             if data_type == "sessions":
                 # Send current sessions from cache for this computer
                 if self.cache:
-                    cached_sessions = self.cache.get_sessions(computer if computer != "local" else None)
+                    cached_sessions = self.cache.get_sessions(computer)
                     sessions = [SessionSummaryDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await websocket.send_json(event.model_dump(exclude_none=True))
@@ -825,9 +870,11 @@ class RESTAdapter(BaseAdapter):
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
+        if event == "session_updated":
+            return
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
-        if event in ("session_updated", "session_created"):
+        if event == "session_created":
             if isinstance(data, SessionSummary):
                 dto = SessionSummaryDTO.from_core(data, computer=data.computer)
                 # Proper cast for Mypy Literal
@@ -847,7 +894,14 @@ class RESTAdapter(BaseAdapter):
                 ).model_dump(exclude_none=True)
             else:
                 payload = {"event": event, "data": data}
-        elif event in ("computer_updated", "project_updated", "projects_updated", "todos_updated"):
+        elif event in (
+            "computer_updated",
+            "project_updated",
+            "projects_updated",
+            "todos_updated",
+            "projects_snapshot",
+            "todos_snapshot",
+        ):
             computer: str | None = None
             project_path: str | None = None
             if isinstance(data, dict):
@@ -871,10 +925,20 @@ class RESTAdapter(BaseAdapter):
                     if isinstance(name_val, str):
                         computer = name_val
 
+            normalized_event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
+            if event == "projects_snapshot":
+                normalized_event = "projects_updated"
+            elif event == "todos_snapshot":
+                normalized_event = "todos_updated"
+            else:
+                normalized_event = event
+
             payload = RefreshEventDTO(
-                event=event,
+                event=normalized_event,
                 data=RefreshDataDTO(computer=computer, project_path=project_path),
             ).model_dump(exclude_none=True)
+            self._schedule_refresh_broadcast(payload)
+            return
         else:
             # Fallback for other events
             if hasattr(data, "to_dict"):
@@ -883,7 +947,29 @@ class RESTAdapter(BaseAdapter):
             else:
                 payload = {"event": event, "data": data}
 
-        # Push to all connected WebSocket clients
+        self._broadcast_payload(event, payload)
+
+    def _schedule_refresh_broadcast(self, payload: dict[str, object]) -> None:  # guard: loose-dict - WS payload
+        """Coalesce refresh events into a single WS broadcast."""
+        self._refresh_pending_payload = payload
+        if self._refresh_debounce_task and not self._refresh_debounce_task.done():
+            return
+
+        async def _debounced() -> None:
+            await asyncio.sleep(0.25)
+            pending = self._refresh_pending_payload
+            self._refresh_pending_payload = None
+            if pending is None:
+                return
+            self._broadcast_payload("refresh", pending)
+
+        if self.task_registry:
+            self._refresh_debounce_task = self.task_registry.spawn(_debounced(), name="ws-broadcast-refresh")
+        else:
+            self._refresh_debounce_task = asyncio.create_task(_debounced())
+
+    def _broadcast_payload(self, event: str, payload: dict[str, object]) -> None:  # guard: loose-dict - WS payload
+        """Send a WS payload to all connected clients."""
         for ws in list(self._ws_clients):
             # Create tracked async task to send message (don't block)
             coro = ws.send_json(payload)
@@ -957,27 +1043,28 @@ class RESTAdapter(BaseAdapter):
             timeout_keep_alive=REST_TIMEOUT_KEEP_ALIVE_S,
         )
         self.server = uvicorn.Server(config)
+        server = self.server
         logger.debug(
             "REST server initialized (should_exit=%s, started=%s)",
-            getattr(self.server, "should_exit", None),
-            getattr(self.server, "started", None),
+            getattr(server, "should_exit", None),
+            getattr(server, "started", None),
         )
 
         # Run server in background task. Avoid uvicorn's signal handling to keep daemon in control.
-        serve_coro = self.server._serve() if hasattr(self.server, "_serve") else self.server.serve()
+        serve_coro = server._serve() if hasattr(server, "_serve") else server.serve()
         self.server_task = asyncio.create_task(serve_coro)
         self.server_task.add_done_callback(self._on_server_task_done)
 
         # Wait for server to be ready (socket file created and bound)
         max_retries = 50  # 5 seconds total
         for _ in range(max_retries):
-            if self.server.started:
+            if server.started:
                 break
             if self.server_task.done():
                 exc = self.server_task.exception()
                 raise RuntimeError("REST API server exited during startup") from exc
             await asyncio.sleep(0.1)
-        if not self.server.started:
+        if not server.started:
             raise TimeoutError("REST API server failed to start within timeout")
 
         logger.info("REST API server listening on %s", REST_SOCKET_PATH)
@@ -994,15 +1081,16 @@ class RESTAdapter(BaseAdapter):
     async def _stop_server(self) -> None:
         """Stop uvicorn server task safely."""
         # Stop server gracefully if started, cancel if still starting
-        if self.server:
+        server = self.server
+        if server:
             logger.debug(
                 "REST server stopping (should_exit=%s, started=%s)",
-                getattr(self.server, "should_exit", None),
-                getattr(self.server, "started", None),
+                getattr(server, "should_exit", None),
+                getattr(server, "started", None),
             )
-            if self.server.started:
+            if server.started:
                 # Server is running, do graceful shutdown
-                self.server.should_exit = True
+                server.should_exit = True
             else:
                 # Server still starting, force cancel
                 if self.server_task:
@@ -1052,8 +1140,9 @@ class RESTAdapter(BaseAdapter):
             fd_count = _get_fd_count()
             ws_count = len(self._ws_clients)
             task_count = self.task_registry.task_count() if self.task_registry else 0
-            server_started = getattr(self.server, "started", None) if self.server else None
-            server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
+            server = self.server
+            server_started = getattr(server, "started", None) if server else None
+            server_should_exit = getattr(server, "should_exit", None) if server else None
             server_task_done = self.server_task.done() if self.server_task else None
             logger.info(
                 "REST metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
@@ -1071,23 +1160,21 @@ class RESTAdapter(BaseAdapter):
         if not os.path.exists(REST_SOCKET_PATH):
             return
         try:
-            server_started = getattr(self.server, "started", None) if self.server else None
-            server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
-            stack = "".join(traceback.format_stack(limit=6))
             logger.warning(
-                "Removing REST socket (reason=%s started=%s should_exit=%s): %s",
+                "Removing REST socket (reason=%s): %s",
                 reason,
-                server_started,
-                server_should_exit,
                 REST_SOCKET_PATH,
             )
-            logger.debug("REST socket removal stack:\n%s", stack)
             os.unlink(REST_SOCKET_PATH)
         except OSError as e:
             logger.warning("Failed to remove REST socket %s: %s", REST_SOCKET_PATH, e)
 
     def _on_server_task_done(self, task: asyncio.Task[object]) -> None:
-        """Handle server exit and notify lifecycle owner."""
+        """Handle server exit and notify lifecycle owner.
+
+        Args:
+            task: The completed server task
+        """
         if not self._running:
             return
 
@@ -1096,8 +1183,10 @@ class RESTAdapter(BaseAdapter):
         except asyncio.CancelledError:
             logger.debug("REST API server task cancelled")
             return
-        server_started = getattr(self.server, "started", None) if self.server else None
-        server_should_exit = getattr(self.server, "should_exit", None) if self.server else None
+
+        server = self.server
+        server_started = getattr(server, "started", None) if server else None
+        server_should_exit = getattr(server, "should_exit", None) if server else None
         socket_exists = os.path.exists(REST_SOCKET_PATH)
 
         if exc:
@@ -1109,9 +1198,16 @@ class RESTAdapter(BaseAdapter):
                 socket_exists,
                 exc_info=True,
             )
-        else:
+        elif not server_should_exit:
             logger.error(
                 "REST API server task exited unexpectedly (started=%s should_exit=%s socket=%s)",
+                server_started,
+                server_should_exit,
+                socket_exists,
+            )
+        else:
+            logger.debug(
+                "REST API server task exited cleanly (started=%s should_exit=%s socket=%s)",
                 server_started,
                 server_should_exit,
                 socket_exists,

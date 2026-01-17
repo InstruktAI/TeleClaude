@@ -146,7 +146,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     from teleclaude import constants as constants_module
     from teleclaude.adapters import rest_adapter as rest_adapter_module
     from teleclaude.core import db as db_module
-    from teleclaude.core import terminal_bridge
+    from teleclaude.core import tmux_bridge
     from teleclaude.core.db import Db
     from teleclaude.core.session_utils import get_output_file
     from teleclaude.daemon import TeleClaudeDaemon
@@ -410,7 +410,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         telegram_adapter.send_output_update = AsyncMock(return_value="output-msg-123")  # type: ignore[method-assign]
         telegram_adapter._cleanup_pending_deletions = AsyncMock()  # type: ignore[method-assign]
 
-    # CRITICAL: Mock terminal_bridge.send_keys to prevent actual command execution
+    # CRITICAL: Mock tmux_bridge.send_keys to prevent actual command execution
     # Set daemon.mock_command_mode to control behavior:
     # - "short": Quick completion (default)
     # - "long": Long-running interactive process
@@ -518,8 +518,8 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             active_agent=active_agent,
         )
 
-    monkeypatch.setattr(terminal_bridge, "send_keys", mock_send_keys)
-    monkeypatch.setattr(terminal_bridge, "send_keys_existing_tmux", mock_send_keys_existing_tmux)
+    monkeypatch.setattr(tmux_bridge, "send_keys", mock_send_keys)
+    monkeypatch.setattr(tmux_bridge, "send_keys_existing_tmux", mock_send_keys_existing_tmux)
 
     # Mock all tmux operations - no real tmux sessions created
     created_sessions = set()
@@ -545,6 +545,22 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     async def mock_session_exists(session_name: str, log_missing: bool = True):
         """Mock session_exists with same signature as real function."""
         return session_name in created_sessions
+
+    async def mock_ensure_tmux_session(
+        name: str,
+        *,
+        working_dir: str = "~",
+        session_id: str = None,
+        env_vars: dict = None,
+    ):
+        if name in created_sessions:
+            return True
+        return await mock_create_tmux(
+            name=name,
+            working_dir=working_dir,
+            session_id=session_id,
+            env_vars=env_vars,
+        )
 
     async def mock_kill_session(name):
         created_sessions.discard(name)
@@ -572,14 +588,15 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     async def mock_get_pane_pid(_name: str):
         return None
 
-    monkeypatch.setattr(terminal_bridge, "create_tmux_session", mock_create_tmux)
-    monkeypatch.setattr(terminal_bridge, "session_exists", mock_session_exists)
-    monkeypatch.setattr(terminal_bridge, "kill_session", mock_kill_session)
-    monkeypatch.setattr(terminal_bridge, "capture_pane", mock_capture_pane)
-    monkeypatch.setattr(terminal_bridge, "is_process_running", mock_is_process_running)
-    monkeypatch.setattr(terminal_bridge, "start_pipe_pane", AsyncMock(return_value=True))
-    monkeypatch.setattr(terminal_bridge, "get_pane_tty", mock_get_pane_tty)
-    monkeypatch.setattr(terminal_bridge, "get_pane_pid", mock_get_pane_pid)
+    monkeypatch.setattr(tmux_bridge, "_create_tmux_session", mock_create_tmux)
+    monkeypatch.setattr(tmux_bridge, "ensure_tmux_session", mock_ensure_tmux_session)
+    monkeypatch.setattr(tmux_bridge, "session_exists", mock_session_exists)
+    monkeypatch.setattr(tmux_bridge, "kill_session", mock_kill_session)
+    monkeypatch.setattr(tmux_bridge, "capture_pane", mock_capture_pane)
+    monkeypatch.setattr(tmux_bridge, "is_process_running", mock_is_process_running)
+    monkeypatch.setattr(tmux_bridge, "start_pipe_pane", AsyncMock(return_value=True))
+    monkeypatch.setattr(tmux_bridge, "get_pane_tty", mock_get_pane_tty)
+    monkeypatch.setattr(tmux_bridge, "get_pane_pid", mock_get_pane_pid)
 
     try:
         yield daemon

@@ -68,7 +68,7 @@ async def test_pull_initial_sessions_happy_path():
                         "computer": "RemotePC1",
                         "status": "active",
                         "title": "Test Session",
-                        "working_directory": "/home/user/project",
+                        "project_path": "/home/user/project",
                         "thinking_mode": "slow",
                         "active_agent": "claude",
                         "tmux_session_name": "tmux-sess-1",
@@ -283,8 +283,8 @@ async def test_pull_remote_projects_happy_path():
     await adapter.pull_remote_projects("RemotePC")
 
     # Verify cache was populated
-    mock_cache.set_projects.assert_called_once()
-    call_args = mock_cache.set_projects.call_args
+    mock_cache.apply_projects_snapshot.assert_called_once()
+    call_args = mock_cache.apply_projects_snapshot.call_args
     assert call_args[0][0] == "RemotePC"
     assert len(call_args[0][1]) == 2
 
@@ -422,23 +422,13 @@ async def test_pull_remote_projects_with_todos_happy_path():
 
     await adapter.pull_remote_projects_with_todos("RemotePC")
 
-    mock_cache.set_projects.assert_called_once()
-    mock_cache.set_todos.assert_any_call(
-        "RemotePC",
-        "/home/user/projectA",
-        [
-            TodoInfo(
-                slug="todo-1",
-                status="pending",
-                description="Todo 1",
-                has_requirements=False,
-                has_impl_plan=False,
-                build_status=None,
-                review_status=None,
-            )
-        ],
-    )
-    mock_cache.set_todos.assert_any_call("RemotePC", "/home/user/projectB", [])
+    mock_cache.apply_projects_snapshot.assert_called_once()
+    mock_cache.apply_todos_snapshot.assert_called_once()
+    todos_call = mock_cache.apply_todos_snapshot.call_args
+    assert todos_call[0][0] == "RemotePC"
+    todos_by_project = todos_call[0][1]
+    assert "/home/user/projectA" in todos_by_project
+    assert "/home/user/projectB" in todos_by_project
 
 
 @pytest.mark.unit

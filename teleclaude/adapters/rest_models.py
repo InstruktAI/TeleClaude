@@ -14,12 +14,14 @@ class CreateSessionRequest(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(frozen=True)
 
     computer: str = Field(..., min_length=2)
-    project_dir: str = Field(..., min_length=2)
-    agent: Literal["claude", "gemini", "codex"] = "claude"
-    thinking_mode: Literal["fast", "med", "slow"] = "slow"
+    project_path: str = Field(..., min_length=2)
+    launch_kind: Literal["empty", "agent", "agent_then_message", "agent_resume"] = "agent"
+    agent: Literal["claude", "gemini", "codex"] | None = None
+    thinking_mode: Literal["fast", "med", "slow"] | None = None
     title: str | None = None
     message: str | None = None
-    auto_command: str | None = None
+    native_session_id: str | None = None
+    subdir: str | None = None
 
 
 class CreateSessionResponseDTO(BaseModel):  # type: ignore[explicit-any]
@@ -49,8 +51,9 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
     session_id: str
     origin_adapter: str
     title: str
-    working_directory: str
-    thinking_mode: str
+    project_path: str | None = None
+    subdir: str | None = None
+    thinking_mode: str | None = None
     active_agent: str | None = None
     status: str
     created_at: str | None = None
@@ -70,7 +73,8 @@ class SessionSummaryDTO(BaseModel):  # type: ignore[explicit-any]
             session_id=summary.session_id,
             origin_adapter=summary.origin_adapter,
             title=summary.title,
-            working_directory=summary.working_directory,
+            project_path=summary.project_path,
+            subdir=summary.subdir,
             thinking_mode=summary.thinking_mode,
             active_agent=summary.active_agent,
             status=summary.status,
@@ -96,8 +100,8 @@ class SessionDataDTO(BaseModel):  # type: ignore[explicit-any]
     transcript: str | None = None
     messages: str | None = None  # Alias for transcript in some contexts
     last_activity: str | None = None
-    working_directory: str | None = None
-    project_dir: str | None = None  # Alias for working_directory
+    project_path: str | None = None
+    subdir: str | None = None
     created_at: str | None = None
     error: str | None = None
 
@@ -206,7 +210,7 @@ class SessionUpdateEventDTO(BaseModel):  # type: ignore[explicit-any]
 
     model_config = ConfigDict(frozen=True)
 
-    event: Literal["session_updated", "session_created"]
+    event: Literal["session_created"]
     data: SessionSummaryDTO
 
 

@@ -10,10 +10,10 @@ This document maps integration tests to use cases defined in `docs/use_cases.md`
 
 | Use Case | Test File | Test Name | Status |
 |----------|-----------|-----------|--------|
-| **UC-H1: Create New Terminal Session** | test_core.py | test_session_manager_crud | ✅ Partial (DB only) |
-| **UC-H1: Create New Terminal Session** | test_full_flow.py | test_message_execution_and_output_polling | ✅ Full |
-| **UC-H2: Execute Terminal Command (Human Mode)** | test_full_flow.py | test_command_execution_via_terminal | ✅ Full |
-| **UC-H2: Execute Terminal Command (Human Mode)** | test_process_exit_detection.py | test_process_detection_uses_output_message_id | ✅ Full |
+| **UC-H1: Create New Tmux Session** | test_core.py | test_session_manager_crud | ✅ Partial (DB only) |
+| **UC-H1: Create New Tmux Session** | test_full_flow.py | test_message_execution_and_output_polling | ✅ Full |
+| **UC-H2: Execute Tmux Command (Human Mode)** | test_full_flow.py | test_command_execution_via_terminal | ✅ Full |
+| **UC-H2: Execute Tmux Command (Human Mode)** | test_process_exit_detection.py | test_process_detection_uses_output_message_id | ✅ Full |
 | **UC-H3: Long-Running Command with Idle Notification** | - | - | ❌ Missing |
 | **UC-H4: Download Large Output** | - | - | ❌ Missing |
 | **UC-H5: Send Voice Command** | test_voice_status_append.py | test_append_status_to_existing_output | ✅ Partial (status only) |

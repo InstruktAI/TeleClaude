@@ -89,7 +89,7 @@ class TestSession:
             adapter_metadata=metadata,
             created_at=now,
             last_activity=now,
-            working_directory="/home/user",
+            project_path="/home/user",
         )
 
         # Convert to dict and back
@@ -102,7 +102,7 @@ class TestSession:
         assert restored.tmux_session_name == original.tmux_session_name
         assert restored.origin_adapter == original.origin_adapter
         assert restored.title == original.title
-        assert restored.working_directory == original.working_directory
+        assert restored.project_path == original.project_path
 
     def test_session_from_dict_parses_string_topic_id(self):
         """Test adapter_metadata topic_id stored as string is parsed to int."""
@@ -201,7 +201,7 @@ class TestMcpArgs:
         """Deep is not allowed in MCP args."""
         args = {
             "computer": "local",
-            "project_dir": "/tmp/project",
+            "project_path": "/tmp/project",
             "title": "Test",
             "message": "Hello",
             "thinking_mode": "deep",

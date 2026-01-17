@@ -83,11 +83,11 @@ class RemoteExecutionProtocol(Protocol):
 
 #### 1. Message Broadcasting (Local Sessions)
 
-Distributes terminal output to all connected clients.
+Distributes tmux output to all connected clients.
 
 ```python
 # Used by: Daemon, OutputPoller
-await adapter_client.send_message(session_id, "Terminal output here")
+await adapter_client.send_message(session_id, "Tmux output here")
 ```
 
 **Behavior:**
@@ -145,7 +145,7 @@ class TeleClaudeMCPServer:
 
 ```python
 class TeleClaudeMCPServer:
-    def __init__(self, adapter_client, terminal_bridge, session_manager):
+    def __init__(self, adapter_client, tmux_bridge, session_manager):
         self.client = adapter_client  # ✅ ONLY dependency
 
     async def list_projects(self, computer: str):

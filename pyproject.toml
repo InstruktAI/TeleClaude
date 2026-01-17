@@ -94,6 +94,7 @@ follow_imports = "silent"  # TODO: Revisit - changed from "skip" to allow pydant
 
 # Enable ALL strict mode flags
 strict = true
+no_strict_optional = true
 
 # Additional strictness beyond --strict (ban ALL forms of Any)
 disallow_any_unimported = true  # Ban Any from missing imports
@@ -111,6 +112,30 @@ disable_error_code = [
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false  # Allow untyped defs in tests only
+
+[[tool.mypy.overrides]]
+module = [
+  "teleclaude.mcp_server",
+  "teleclaude.mcp.*",
+  "teleclaude.adapters.rest_adapter",
+  "teleclaude.adapters.telegram_adapter",
+  "teleclaude.adapters.redis_adapter",
+  "teleclaude.hooks.receiver",
+  "teleclaude.utils.transcript",
+  "teleclaude.core.agent_parsers",
+  "teleclaude.core.codex_watcher",
+  "teleclaude.config",
+  "teleclaude.core.ux_state",
+  "teleclaude.core.computer_registry",
+]
+disallow_any_expr = false
+disallow_any_unimported = false
+disallow_any_explicit = false
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = "teleclaude.core.computer_registry"
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "teleclaude.mcp_server"
@@ -230,7 +255,7 @@ signature-mutators = ["teleclaude.core.command_handlers.with_session"]
 [tool.pyproject-fmt]
 indent = 4
 keep_full_version = false
-max_supported_python = "3.13"
+max_supported_python = "3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

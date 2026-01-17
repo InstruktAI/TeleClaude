@@ -36,8 +36,8 @@
 
 ### 2. tmux Operations - 100% Mocked
 
-**All terminal_bridge operations mocked in `conftest.py:daemon_with_mocked_telegram`:**
-- ✅ `create_tmux_session()` - Session creation
+**All tmux_bridge operations mocked in `conftest.py:daemon_with_mocked_telegram`:**
+- ✅ `ensure_tmux_session()` - Session creation
 - ✅ `session_exists()` - Session existence check
 - ✅ `send_keys()` - Command execution
 - ✅ `capture_pane()` - Output capture
@@ -57,7 +57,7 @@ async def test_close_session_full_cleanup():
     await test_db.initialize()
 
     # CREATED REAL TMUX SESSION!
-    await terminal_bridge.create_tmux_session(...)
+    await tmux_bridge.ensure_tmux_session(...)
 ```
 
 **After Fix:**
@@ -68,7 +68,7 @@ async def test_close_session_full_cleanup(daemon_with_mocked_telegram):
     test_db = daemon.db  # Uses mocked db from fixture
 
     # MOCKED - no real tmux session created!
-    await terminal_bridge.create_tmux_session(...)
+    await tmux_bridge.ensure_tmux_session(...)
 ```
 
 ## Verification

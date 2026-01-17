@@ -5,7 +5,7 @@ import asyncio
 
 import pytest
 
-from teleclaude.core import terminal_bridge
+from teleclaude.core import tmux_bridge
 from teleclaude.core.models import MessageMetadata
 
 
@@ -26,7 +26,13 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
 
     # Create a test session
     context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
-    await daemon.handle_command("new_session", ["Short", "Test"], context, MessageMetadata(adapter_type="telegram"))
+    project_path = "/tmp"
+    await daemon.handle_command(
+        "new_session",
+        ["Short", "Test"],
+        context,
+        MessageMetadata(adapter_type="telegram", project_path=project_path),
+    )
 
     sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
@@ -47,8 +53,8 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     await asyncio.sleep(4.5)
 
     # Verify command was executed in tmux
-    output = await terminal_bridge.capture_pane(session.tmux_session_name)
-    assert output is not None, "Should have terminal output"
+    output = await tmux_bridge.capture_pane(session.tmux_session_name)
+    assert output is not None, "Should have tmux output"
     assert "Command executed" in output, f"Should see mocked command output, got: {output[:300]}"
 
     # Verify output was sent to Telegram via send_output_update (used by polling coordinator)
@@ -76,7 +82,13 @@ async def test_long_running_command(daemon_with_mocked_telegram):
 
     # Create a test session
     context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
-    await daemon.handle_command("new_session", ["Long", "Test"], context, MessageMetadata(adapter_type="telegram"))
+    project_path = "/tmp"
+    await daemon.handle_command(
+        "new_session",
+        ["Long", "Test"],
+        context,
+        MessageMetadata(adapter_type="telegram", project_path=project_path),
+    )
 
     sessions = await daemon.db.list_sessions()
     assert len(sessions) == 1
@@ -96,8 +108,8 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     await asyncio.sleep(0.01)
 
     # Verify initial output
-    output = await terminal_bridge.capture_pane(session.tmux_session_name)
-    assert output is not None, "Should have terminal output"
+    output = await tmux_bridge.capture_pane(session.tmux_session_name)
+    assert output is not None, "Should have tmux output"
     assert "Ready" in output, f"Should see initial output, got: {output[:500]}"
 
     # For the second send (sending input to running process), temporarily disable mock
@@ -105,14 +117,14 @@ async def test_long_running_command(daemon_with_mocked_telegram):
 
     try:
         # Send input to the interactive process
-        await terminal_bridge.send_keys(session.tmux_session_name, "test message")
+        await tmux_bridge.send_keys(session.tmux_session_name, "test message")
 
         # Wait for response and polling to send output to Telegram
         # Poll loop: 1s initial delay + 3s base update interval
         await asyncio.sleep(4.5)
 
         # Verify terminal has both initial output and response
-        output = await terminal_bridge.capture_pane(session.tmux_session_name)
+        output = await tmux_bridge.capture_pane(session.tmux_session_name)
         assert "Echo: test message" in output, f"Should see response to input, got: {output[:500]}"
 
         # Verify output was sent to Telegram via send_output_update (used by polling coordinator)

@@ -34,10 +34,10 @@ def mock_daemon():
     """Create a mocked daemon for testing."""
     with (
         patch("teleclaude.daemon.Db") as mock_sm,
-        patch("teleclaude.core.terminal_bridge") as mock_tb,
-        patch("teleclaude.core.message_handler.terminal_bridge", mock_tb),
-        patch("teleclaude.core.voice_message_handler.terminal_bridge", mock_tb),
-        patch("teleclaude.core.terminal_io.terminal_bridge", mock_tb),
+        patch("teleclaude.core.tmux_bridge") as mock_tb,
+        patch("teleclaude.core.message_handler.tmux_bridge", mock_tb),
+        patch("teleclaude.core.voice_message_handler.tmux_bridge", mock_tb),
+        patch("teleclaude.core.tmux_io.tmux_bridge", mock_tb),
         patch("teleclaude.daemon.TelegramAdapter") as mock_ta,
         patch("teleclaude.daemon.ComputerRegistry") as mock_cr,
         patch("teleclaude.daemon.TeleClaudeMCPServer") as mock_mcp,
@@ -53,7 +53,7 @@ def mock_daemon():
             "polling": {"directory_check_interval": 5},
         }
 
-        # Initialize global config (critical for terminal_bridge and other modules)
+        # Initialize global config (critical for tmux_bridge and other modules)
         # Config no longer needs initialization
 
         # Mock essential attributes
@@ -67,7 +67,7 @@ def mock_daemon():
         daemon.db.update_session = AsyncMock()
         daemon.db.delete_session = AsyncMock()
 
-        # Mock terminal_bridge (patched at core level for all modules)
+        # Mock tmux_bridge (patched at core level for all modules)
         mock_tb.send_keys = AsyncMock(return_value=True)
         mock_tb.send_signal = AsyncMock(return_value=True)
         mock_tb.send_escape = AsyncMock(return_value=True)
@@ -75,7 +75,7 @@ def mock_daemon():
         mock_tb.kill_session = AsyncMock(return_value=True)
         mock_tb.list_sessions = AsyncMock(return_value=[])
 
-        # Make terminal_bridge accessible as daemon.terminal for tests
+        # Make tmux_bridge accessible as daemon.terminal for tests
         daemon.terminal = mock_tb
 
         # Mock telegram adapter with ASYNC methods
@@ -148,6 +148,34 @@ async def test_get_session_data_parses_tail_chars_without_placeholders():
     assert call_args[0] is context
     assert call_args[1] is None
     assert call_args[2] is None
+    assert call_args[3] == 2000
+
+
+@pytest.mark.asyncio
+async def test_get_session_data_supports_dash_placeholders():
+    """GET_SESSION_DATA should treat '-' as an explicit empty placeholder."""
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    context = CommandEventContext(session_id="sess-123", args=[])
+    captured: dict[str, object] = {}  # guard: loose-dict - capture args for assertions
+
+    async def fake_handler(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {"status": "success"}
+
+    with patch("teleclaude.daemon.command_handlers.handle_get_session_data", new=fake_handler):
+        await daemon.handle_command(
+            TeleClaudeEvents.GET_SESSION_DATA,
+            ["-", "2026-01-01T00:00:00Z", "2000"],
+            context,
+            MessageMetadata(adapter_type="redis"),
+        )
+
+    assert captured["kwargs"] == {}
+    call_args = captured["args"]
+    assert call_args[0] is context
+    assert call_args[1] is None
+    assert call_args[2] == "2026-01-01T00:00:00Z"
     assert call_args[3] == 2000
 
 
@@ -273,7 +301,7 @@ async def test_new_session_auto_command_agent_then_message():
     daemon._execute_auto_command = AsyncMock(return_value={"status": "success"})
     daemon._queue_background_task = MagicMock(side_effect=lambda coro, _label: coro.close())
 
-    with patch("teleclaude.daemon.command_handlers.handle_create_session", new_callable=AsyncMock) as mock_create:
+    with patch("teleclaude.core.session_launcher.handle_create_session", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = {"session_id": "sess-123"}
 
         context = CommandEventContext(session_id="sess-ctx", args=[])
@@ -318,8 +346,8 @@ async def test_agent_then_message_waits_for_stabilization():
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         # Patch delays to make test fast
@@ -331,7 +359,7 @@ async def test_agent_then_message_waits_for_stabilization():
         mock_running.return_value = True
         mock_send.side_effect = mock_send_text
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="gemini")
+            return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="gemini")
         )
         mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
@@ -369,15 +397,15 @@ async def test_agent_then_message_applies_gemini_delay():
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock, return_value=True),
-        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock, return_value=True),
+        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock, return_value=True),
+        patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock, return_value=True),
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         patch("teleclaude.daemon.AGENT_START_STABILIZE_QUIET_S", 1.0),
         patch("teleclaude.daemon.GEMINI_START_EXTRA_DELAY_S", 3.0),
     ):
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="gemini")
+            return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="gemini")
         )
         mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
@@ -430,8 +458,8 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         # Patch delays to make test fast
@@ -442,7 +470,7 @@ async def test_agent_then_message_proceeds_after_stabilization_timeout():
         mock_running.return_value = True
         mock_send.return_value = True
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="claude")
+            return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="claude")
         )
         mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
@@ -473,8 +501,8 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
     with (
         patch("teleclaude.daemon.command_handlers.handle_agent_start", new_callable=AsyncMock),
         patch("teleclaude.daemon.db") as mock_db,
-        patch("teleclaude.daemon.terminal_io.is_process_running", new_callable=AsyncMock) as mock_running,
-        patch("teleclaude.daemon.terminal_io.send_text", new_callable=AsyncMock) as mock_send,
+        patch("teleclaude.daemon.tmux_io.is_process_running", new_callable=AsyncMock) as mock_running,
+        patch("teleclaude.daemon.tmux_io.send_text", new_callable=AsyncMock) as mock_send,
         patch.object(TeleClaudeDaemon, "_wait_for_output_stable", mock_wait_stable),
         patch.object(TeleClaudeDaemon, "_confirm_command_acceptance", mock_confirm),
         # Patch delays to make test fast
@@ -485,7 +513,7 @@ async def test_agent_then_message_fails_on_command_acceptance_timeout():
         mock_running.return_value = True
         mock_send.return_value = True
         mock_db.get_session = AsyncMock(
-            return_value=MagicMock(tmux_session_name="tc_123", working_directory=".", active_agent="claude")
+            return_value=MagicMock(tmux_session_name="tc_123", project_path=".", active_agent="claude")
         )
         mock_db.update_session = AsyncMock()
         mock_db.update_last_activity = AsyncMock()
@@ -867,42 +895,105 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
         mock_summarize.assert_awaited_once_with(AgentName.GEMINI, str(transcript_path))
         assert daemon.client.send_output_update.await_count == 0
 
-    @pytest.mark.asyncio
-    async def test_cleanup_terminates_sessions_inactive_72h(self):
-        """Test that sessions inactive for >72h are terminated."""
-        # Create daemon instance
-        daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
-        daemon.client = MagicMock()
 
-        # Create session inactive for 73 hours relative to a fixed "now"
-        fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
-        old_time = fixed_now - timedelta(hours=73)
-        inactive_session = Session(
-            session_id="inactive-123",
-            computer_name="TestMac",
-            tmux_session_name="inactive-tmux",
-            origin_adapter="telegram",
-            title="Inactive",
-            last_activity=old_time,
+@pytest.mark.asyncio
+async def test_cleanup_terminates_sessions_inactive_72h():
+    """Test that sessions inactive for >72h are terminated."""
+    # Create daemon instance
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+    daemon.client = MagicMock()
+
+    # Create session inactive for 73 hours relative to a fixed "now"
+    fixed_now = datetime(2026, 1, 14, 12, 0, 0, tzinfo=timezone.utc)
+    old_time = fixed_now - timedelta(hours=73)
+    inactive_session = Session(
+        session_id="inactive-123",
+        computer_name="TestMac",
+        tmux_session_name="inactive-tmux",
+        origin_adapter="telegram",
+        title="Inactive",
+        last_activity=old_time,
+    )
+
+    with (
+        patch("teleclaude.daemon.datetime") as mock_datetime,
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
+    ):
+        mock_datetime.now.return_value = fixed_now
+        mock_db.list_sessions = AsyncMock(return_value=[inactive_session])
+
+        # Execute cleanup
+        await daemon._cleanup_inactive_sessions()
+
+        mock_db.list_sessions.assert_awaited_once_with(include_closed=True)
+        terminate_session.assert_called_once_with(
+            "inactive-123",
+            daemon.client,
+            reason="inactive_72h",
+            session=inactive_session,
         )
 
-        with (
-            patch("teleclaude.daemon.datetime") as mock_datetime,
-            patch("teleclaude.daemon.db") as mock_db,
-            patch("teleclaude.daemon.session_cleanup.terminate_session", new_callable=AsyncMock) as terminate_session,
-        ):
-            mock_datetime.now.return_value = fixed_now
-            mock_db.list_sessions = AsyncMock(return_value=[inactive_session])
 
-            # Execute cleanup
-            await daemon._cleanup_inactive_sessions()
+@pytest.mark.asyncio
+async def test_ensure_tmux_session_recreates_when_missing():
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
 
-            terminate_session.assert_called_once_with(
-                "inactive-123",
-                daemon.client,
-                reason="inactive_72h",
-                session=inactive_session,
-            )
+    session = Session(
+        session_id="sess-123",
+        computer_name="TestMac",
+        tmux_session_name="tc_sess-123",
+        origin_adapter="telegram",
+        title="Test session",
+        project_path="/tmp/project",
+        subdir="subdir",
+    )
+
+    with (
+        patch("teleclaude.daemon.db") as mock_db,
+        patch("teleclaude.daemon.tmux_bridge.session_exists", new_callable=AsyncMock, return_value=False),
+        patch(
+            "teleclaude.daemon.tmux_bridge.ensure_tmux_session", new_callable=AsyncMock, return_value=True
+        ) as create_tmux,
+    ):
+        mock_db.get_voice = AsyncMock(return_value=None)
+        result = await daemon._ensure_tmux_session(session)
+
+        assert result is True
+        create_tmux.assert_awaited_once()
+        kwargs = create_tmux.await_args.kwargs
+        assert kwargs["name"] == "tc_sess-123"
+        assert kwargs["working_dir"] == "/tmp/project/subdir"
+        assert kwargs["session_id"] == "sess-123"
+        assert kwargs["env_vars"]["TELECLAUDE_SESSION_ID"] == "sess-123"
+
+
+@pytest.mark.asyncio
+async def test_ensure_tmux_session_skips_when_exists():
+    daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
+
+    session = Session(
+        session_id="sess-456",
+        computer_name="TestMac",
+        tmux_session_name="tc_sess-456",
+        origin_adapter="telegram",
+        title="Test session",
+        project_path="/tmp/project",
+    )
+
+    with (
+        patch("teleclaude.daemon.resolve_working_dir", return_value="/tmp/project"),
+        patch.object(
+            daemon, "_build_tmux_env_vars", new_callable=AsyncMock, return_value={"TELECLAUDE_SESSION_ID": "sess-456"}
+        ),
+        patch(
+            "teleclaude.daemon.tmux_bridge.ensure_tmux_session", new_callable=AsyncMock, return_value=True
+        ) as ensure_tmux,
+    ):
+        result = await daemon._ensure_tmux_session(session)
+
+        assert result is True
+        ensure_tmux.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_cleanup_skips_recently_active_sessions(self):
@@ -932,6 +1023,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
 
             await daemon._cleanup_inactive_sessions()
 
+            mock_db.list_sessions.assert_awaited_once_with(include_closed=True)
             terminate_session.assert_not_called()
 
 
@@ -950,7 +1042,7 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
         computer_name="TestMac",
         tmux_session_name="terminal:deadbeef",
         origin_adapter="rest",
-        title="TeleClaude: $TestMac - Terminal",
+        title="TeleClaude: $TestMac - Tmux",
     )
 
     call_order: list[str] = []
@@ -991,12 +1083,13 @@ async def test_ensure_output_polling_uses_tmux():
         computer_name="TestMac",
         tmux_session_name="telec_1234",
         origin_adapter="rest",
-        title="TeleClaude: $TestMac - Terminal",
+        title="TeleClaude: $TestMac - Tmux",
+        project_path="/tmp/project",
     )
 
     with (
         patch("teleclaude.daemon.polling_coordinator.is_polling", new=AsyncMock(return_value=False)),
-        patch("teleclaude.daemon.terminal_bridge.session_exists", new=AsyncMock(return_value=True)),
+        patch.object(daemon, "_ensure_tmux_session", new=AsyncMock(return_value=True)),
     ):
         await daemon._ensure_output_polling(session)
 

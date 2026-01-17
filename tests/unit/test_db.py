@@ -64,12 +64,12 @@ class TestCreateSession:
             origin_adapter="telegram",
             title="Custom Title",
             adapter_metadata=metadata,
-            working_directory="/home/user",
+            project_path="/home/user",
         )
 
         assert session.title == "Custom Title"
         assert session.adapter_metadata == metadata
-        assert session.working_directory == "/home/user"
+        assert session.project_path == "/home/user"
 
     @pytest.mark.asyncio
     async def test_create_session_stores_initiator_session_id(self, test_db):
@@ -86,6 +86,23 @@ class TestCreateSession:
 
         assert retrieved is not None
         assert retrieved.initiator_session_id == "parent-session"
+
+
+class TestDbSettings:
+    """Tests for database connection settings."""
+
+    @pytest.mark.asyncio
+    async def test_pragmas_applied(self, test_db):
+        """Ensure WAL + busy_timeout are configured on the main connection."""
+        cursor = await test_db.conn.execute("PRAGMA journal_mode")
+        row = await cursor.fetchone()
+        assert row is not None
+        assert str(row[0]).lower() == "wal"
+
+        cursor = await test_db.conn.execute("PRAGMA busy_timeout")
+        row = await cursor.fetchone()
+        assert row is not None
+        assert int(row[0]) >= 5000
 
 
 class TestGetSession:
@@ -237,11 +254,11 @@ class TestUpdateSession:
         """Test updating multiple fields at once."""
         session = await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
 
-        await test_db.update_session(session.session_id, title="Updated Title", working_directory="/new/path")
+        await test_db.update_session(session.session_id, title="Updated Title", project_path="/new/path")
 
         updated = await test_db.get_session(session.session_id)
         assert updated.title == "Updated Title"
-        assert updated.working_directory == "/new/path"
+        assert updated.project_path == "/new/path"
 
     @pytest.mark.asyncio
     async def test_update_no_fields(self, test_db):

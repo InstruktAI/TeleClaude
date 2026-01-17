@@ -106,12 +106,12 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
     def __init__(
         self,
         adapter_client: "AdapterClient",
-        terminal_bridge: types.ModuleType,
+        tmux_bridge: types.ModuleType,
     ):
         # config already imported
 
         self.client = adapter_client
-        self.terminal_bridge = terminal_bridge
+        self.tmux_bridge = tmux_bridge
 
         self.computer_name = config.computer.name
         self._background_tasks: set[asyncio.Task[None]] = set()

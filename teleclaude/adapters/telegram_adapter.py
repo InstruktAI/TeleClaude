@@ -275,13 +275,13 @@ class TelegramAdapter(
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def format_message(self, terminal_output: str, status_line: str) -> str:
+    def format_message(self, tmux_output: str, status_line: str) -> str:
         """Apply Telegram-specific formatting to shorten long separator lines.
 
         Overrides UiAdapter.format_message().
         Reduces sequences of 118 repeating chars to 47 chars.
         """
-        message = super().format_message(terminal_output, status_line)
+        message = super().format_message(tmux_output, status_line)
 
         lines = []
         for line in message.split("\n"):
@@ -731,7 +731,7 @@ class TelegramAdapter(
         - crsel = claude resume select
         """
         keyboard = [
-            [InlineKeyboardButton(text="🚀 Terminal Session", callback_data=f"ssel:{bot_username}")],
+            [InlineKeyboardButton(text="🚀 Tmux Session", callback_data=f"ssel:{bot_username}")],
             [
                 InlineKeyboardButton(text="🤖 New Claude", callback_data=f"csel:{bot_username}"),
                 InlineKeyboardButton(text="🔄 Resume Claude", callback_data=f"crsel:{bot_username}"),

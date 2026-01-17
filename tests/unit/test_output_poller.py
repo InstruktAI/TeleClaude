@@ -37,7 +37,7 @@ def make_advancing_time_mock(start_time=1000.0, increment=1.0):
     return advancing_time
 
 
-class _StubTerminalReader:
+class _StubTmuxReader:
     def __init__(self, outputs: list[str | None]) -> None:
         self._outputs = outputs
         self._index = 0
@@ -55,9 +55,9 @@ class _StubTerminalReader:
 
 
 def _patch_reader(outputs: list[str | None]):
-    reader = _StubTerminalReader(outputs)
+    reader = _StubTmuxReader(outputs)
     return patch(
-        "teleclaude.core.output_poller.terminal_bridge.capture_pane",
+        "teleclaude.core.output_poller.tmux_bridge.capture_pane",
         new=AsyncMock(side_effect=lambda _name, lines=None: reader.read()),
     )
 
@@ -79,7 +79,7 @@ class TestOutputPollerPoll:
         """Paranoid test poll detects session death."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with _patch_reader([]):
@@ -101,7 +101,7 @@ class TestOutputPollerPoll:
         """Paranoid test that a shell return does not terminate polling."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
@@ -122,7 +122,7 @@ class TestOutputPollerPoll:
         """Paranoid test that a shell exit emits ProcessExited with exit_code None."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
@@ -144,7 +144,7 @@ class TestOutputPollerPoll:
         """Paranoid test that periodic updates always send full file contents, not deltas."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
@@ -180,7 +180,7 @@ class TestOutputPollerPoll:
         """Paranoid test poll detects output changes."""
         output_file = tmp_path / "output.txt"
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
@@ -226,7 +226,7 @@ class TestOutputPollerPoll:
 
             return _time
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with patch("teleclaude.core.output_poller.time.time", new=time_mock()):
@@ -264,7 +264,7 @@ class TestOutputPollerPoll:
         time_iter = time_mock()
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
-            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
                 _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.db") as mock_db:
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
@@ -286,7 +286,7 @@ class TestOutputPollerPoll:
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
-            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
                 _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
@@ -320,7 +320,7 @@ class TestOutputPollerPoll:
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):
             with patch("teleclaude.core.output_poller.IDLE_SUMMARY_INTERVAL_S", 0.5):
-                with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+                with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
                     _init_terminal_mock(mock_terminal)
                     with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                         with patch(
@@ -352,7 +352,7 @@ class TestOutputPollerPoll:
         # Use non-existent directory to trigger write error
         output_file = Path("/nonexistent/output.txt")
 
-        with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
             _init_terminal_mock(mock_terminal)
             with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                 with _patch_reader([]):
@@ -374,7 +374,7 @@ class TestOutputPollerPoll:
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 3):  # Check every 3 seconds
-            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
                 _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with _patch_reader(["output\n"]):
@@ -417,7 +417,7 @@ class TestOutputPollerPoll:
         output_file = tmp_path / "output.txt"
 
         with patch("teleclaude.core.output_poller.DIRECTORY_CHECK_INTERVAL", 0):  # Disable directory checking
-            with patch("teleclaude.core.output_poller.terminal_bridge") as mock_terminal:
+            with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
                 _init_terminal_mock(mock_terminal)
                 with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
                     with _patch_reader(["output\n"]):

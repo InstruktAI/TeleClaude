@@ -3,7 +3,7 @@
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional, cast
 
@@ -117,6 +117,10 @@ def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], u
             return True
         if until_dt and entry_dt and entry_dt > until_dt:
             return True
+        if (since_dt or until_dt) and entry_dt is None:
+            return True
+    elif since_dt or until_dt:
+        return True
 
     return False
 
@@ -340,11 +344,13 @@ def _parse_timestamp(ts: str) -> Optional[datetime]:
         # Try with microseconds first, then without
         for fmt in ["%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S"]:
             try:
-                return datetime.strptime(ts_clean, fmt)
+                parsed = datetime.strptime(ts_clean, fmt)
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
         # Fallback: fromisoformat handles most cases
-        return datetime.fromisoformat(ts_clean)
+        parsed = datetime.fromisoformat(ts_clean)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         return None
 
@@ -416,12 +422,19 @@ def _render_transcript_from_entries(
 
     lines: list[str] = [f"# {title}", ""]
     last_section: Optional[str] = None
+    emitted = False
 
     for entry in entries:
         if _should_skip_entry(entry, since_dt, until_dt):
             continue
 
+        before_len = len(lines)
         last_section = _process_entry(entry, lines, last_section, collapse_tool_results)
+        if len(lines) != before_len:
+            emitted = True
+
+    if not emitted and (since_timestamp or until_timestamp):
+        lines.append("_No entries in the requested time range._")
 
     result = "\n".join(lines)
     return tail_limit_fn(result, tail_chars)

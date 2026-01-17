@@ -104,7 +104,7 @@ def get_tool_definitions() -> list[Tool]:
                 "**REQUIRED WORKFLOW:** "
                 "1) Call teleclaude__list_projects FIRST to discover available projects "
                 "2) Match and select the correct project from the results "
-                "3) Use the exact project path from list_projects in the project_dir parameter here. "
+                "3) Use the exact project path from list_projects in the project_path parameter here. "
                 f"Returns session_id. {REMOTE_AI_TIMER_INSTRUCTION}"
             ),
             inputSchema={
@@ -128,7 +128,7 @@ def get_tool_definitions() -> list[Tool]:
                         "enum": ["fast", "med", "slow"],
                         "default": "slow",
                     },
-                    "project_dir": {
+                    "project_path": {
                         "type": "string",
                         "description": (
                             "**MUST come from teleclaude__list_projects output** "
@@ -153,7 +153,7 @@ def get_tool_definitions() -> list[Tool]:
                         ),
                     },
                 },
-                "required": ["computer", "project_dir", "title"],
+                "required": ["computer", "project_path", "title"],
             },
         ),
         Tool(
@@ -260,9 +260,18 @@ def get_tool_definitions() -> list[Tool]:
                 "Retrieve session data from a remote computer's Claude Code session. "
                 "Reads from the claude_session_file which contains complete session history. "
                 "By default returns last 2000 chars. Start with the default; increase tail_chars only when needed. "
-                "Use timestamp filters to scrub through history. "
+                "Use timestamp filters (inclusive) to scrub through history; ISO 8601 UTC "
+                "(e.g., 2025-11-11T04:25:33.890Z). "
                 "Returns `status: 'error'` if session has ended or is missing (no transcript returned). "
-                "**Use this to check on delegated work** after teleclaude__send_message. "
+                "**Use this to check on delegated work**. "
+                "**Reason gate:** Only call with a concrete reason: "
+                "(1) the 5-minute wait timer elapsed with no notification, "
+                "(2) the user explicitly asked for a check/re-check, "
+                "or (3) you must verify a specific hypothesis. "
+                "**Cadence gate:** Do not call successively without a new signal; "
+                "minimum wait between calls is 5 minutes unless the user requests faster checks. "
+                "If calling again, use `since_timestamp` and keep the window minimal. "
+                "**Stop condition:** If no new activity is found, stop and wait. "
                 "**Supervising Worker AI Sessions:** "
                 "Responses are capped at 48,000 chars to keep MCP transport stable. "
                 "Use `since_timestamp` / `until_timestamp` to page through history. "
@@ -360,7 +369,7 @@ def get_tool_definitions() -> list[Tool]:
             title="TeleClaude: Send Result",
             description=(
                 "Send formatted results to the user as a separate message "
-                "(not in the streaming terminal output).\n\n"
+                "(not in the streaming tmux output).\n\n"
                 "Use this tool when the user explicitly asks to send results.\n\n"
                 "Content can be markdown or html."
             ),

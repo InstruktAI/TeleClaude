@@ -9,7 +9,7 @@ This document maps all critical user pathways to integration tests, identifying 
 
 ## Critical User Pathways
 
-### 1. Human User → Telegram → Terminal (Interactive Mode)
+### 1. Human User → Telegram → Tmux (Interactive Mode)
 
 **Flow**: User sends command via Telegram → Daemon executes → Output polled → Sent back to Telegram
 
@@ -210,7 +210,7 @@ When implementing missing tests, ensure:
 1. **Use proper fixtures**: `daemon_with_mocked_telegram` from `conftest.py`
 2. **Test actual pathways**: Don't mock the chain, test it end-to-end
 3. **Verify side effects**: Check database state, message counts, file cleanup
-4. **Use real tmux**: Integration tests should use actual `terminal_bridge` operations
+4. **Use real tmux**: Integration tests should use actual `tmux_bridge` operations
 5. **Clean up resources**: Use `try/finally` to clean up tmux sessions, files, etc.
 6. **Timeout appropriately**: Use `@pytest.mark.timeout(15)` for integration tests
 7. **Document intent**: Clear docstring explaining what pathway is being tested

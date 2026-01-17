@@ -103,7 +103,7 @@ def init_colors() -> None:
         curses.init_pair(3, 214, -1)  # Highlight: brighter yellow-orange
 
         # Gemini (lilac/purple tones) - muted darker, highlight lighter
-        curses.init_pair(4, 60, -1)  # Muted: deeper purple
+        curses.init_pair(4, 103, -1)  # Muted: lighter purple for dark mode
         curses.init_pair(5, 141, -1)  # Normal: lilac
         curses.init_pair(6, 183, -1)  # Highlight: light purple
 

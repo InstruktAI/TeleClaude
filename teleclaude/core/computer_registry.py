@@ -110,7 +110,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
         # Restore message IDs from previous session (if any)
         try:
-            ux_state = await get_system_ux_state(db._db)  # type: ignore[arg-type]
+            ux_state = await get_system_ux_state(db._db)
             self.my_ping_message_id = ux_state.registry.ping_message_id
             self.my_pong_message_id = ux_state.registry.pong_message_id
             if self.my_ping_message_id or self.my_pong_message_id:
@@ -168,7 +168,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
                 # Persist message ID
                 await update_system_ux_state(
-                    db._db,  # type: ignore[arg-type]
+                    db._db,
                     registry_ping_message_id=self.my_ping_message_id,
                     registry_pong_message_id=self.my_pong_message_id,
                 )
@@ -178,7 +178,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         else:
             # Edit existing message (keep General topic clean)
             try:
-                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(  # type: ignore[assignment,union-attr,misc]
+                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_ping_message_id,
                     text=text,
@@ -224,7 +224,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
                 # Persist message ID
                 await update_system_ux_state(
-                    db._db,  # type: ignore[arg-type]
+                    db._db,
                     registry_ping_message_id=self.my_ping_message_id,
                     registry_pong_message_id=self.my_pong_message_id,
                 )
@@ -233,7 +233,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         else:
             # Edit existing pong message
             try:
-                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(  # type: ignore[assignment,union-attr,misc]
+                edited_message: Message = await self.telegram_adapter.app.bot.edit_message_text(
                     chat_id=self.telegram_adapter.supergroup_id,
                     message_id=self.my_pong_message_id,
                     text=text,
@@ -315,11 +315,11 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
             List of dicts with computer info, sorted by name.
         """
         computers = [c for c in self.computers.values() if c["status"] == "online"]
-        return sorted(computers, key=lambda c: str(c["name"]))  # type: ignore[misc]
+        return sorted(computers, key=lambda c: str(c["name"]))
 
     def get_all_computers(self) -> list[dict[str, object]]:  # noqa: loose-dict - Computer registry data
         """Get all computers (online + offline), sorted by name."""
-        return sorted(self.computers.values(), key=lambda c: str(c["name"]))  # type: ignore[misc]
+        return sorted(self.computers.values(), key=lambda c: str(c["name"]))
 
     def is_computer_online(self, computer_name: str) -> bool:
         """Check if specific computer is currently online."""

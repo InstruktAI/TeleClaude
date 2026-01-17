@@ -11,10 +11,10 @@ Map component interactions covered by each e2e test to identify:
 ### Key Components
 1. **Telegram Adapter** - Telegram bot interface
 2. **Redis Adapter** - Multi-computer communication
-3. **UI Adapter** - Terminal UI interface
+3. **UI Adapter** - Tmux UI interface
 4. **AdapterClient** - Orchestrates all adapters
 5. **Database (Db)** - Session persistence
-6. **Terminal Bridge** - tmux operations
+6. **Tmux Bridge** - tmux operations
 7. **Polling Coordinator** - Output polling & broadcasting
 8. **Command Handlers** - Command execution logic
 9. **MCP Server** - MCP tools for cross-computer ops
@@ -28,10 +28,10 @@ Map component interactions covered by each e2e test to identify:
 **Tests:** 3
 **Interactions Covered:**
 - Redis → AdapterClient → Command Handlers → Database (create session)
-- Redis → AdapterClient → Terminal Bridge (session creation)
-- Command Handlers → Terminal Bridge (/cd, /claude commands)
+- Redis → AdapterClient → Tmux Bridge (session creation)
+- Command Handlers → Tmux Bridge (/cd, /claude commands)
 
-**Mocks:** Telegram (all), Redis (connection), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Redis (connection), Tmux (send_keys, tmux)
 **Focus:** AI-to-AI session initialization flow
 
 ---
@@ -39,12 +39,12 @@ Map component interactions covered by each e2e test to identify:
 ### test_command_e2e.py
 **Tests:** 2
 **Interactions Covered:**
-- Command Handlers → Terminal Bridge → tmux (short-lived commands)
-- Command Handlers → Terminal Bridge → tmux (long-running commands)
-- Polling → Terminal Bridge (output capture)
+- Command Handlers → Tmux Bridge → tmux (short-lived commands)
+- Command Handlers → Tmux Bridge → tmux (long-running commands)
+- Polling → Tmux Bridge (output capture)
 - Polling → AdapterClient → Telegram (output delivery)
 
-**Mocks:** Telegram (all), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Tmux (send_keys, tmux)
 **Focus:** Command execution patterns (short vs long-running)
 
 ---
@@ -53,12 +53,12 @@ Map component interactions covered by each e2e test to identify:
 **Tests:** 3
 **Interactions Covered:**
 - Database CRUD operations (direct)
-- Terminal Bridge → tmux (create, send_keys, capture, kill)
+- Tmux Bridge → tmux (create, send_keys, capture, kill)
 
 **Mocks:** Telegram (all in one test)
 **Focus:** Core component functionality in isolation
 
-**OVERLAP WARNING:** Terminal Bridge operations duplicated with other tests
+**OVERLAP WARNING:** Tmux Bridge operations duplicated with other tests
 
 ---
 
@@ -82,7 +82,7 @@ Map component interactions covered by each e2e test to identify:
 - Session cleanup → File deletion
 - Process state → Upload rejection
 
-**Mocks:** Telegram (all), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Tmux (send_keys, tmux)
 **Focus:** File upload and cleanup lifecycle
 
 ---
@@ -91,10 +91,10 @@ Map component interactions covered by each e2e test to identify:
 **Tests:** 3
 **Interactions Covered:**
 - Command execution → Polling → Output delivery (full chain)
-- Terminal Bridge → tmux (direct command execution)
+- Tmux Bridge → tmux (direct command execution)
 - Polling Coordinator → OutputPoller → AdapterClient
 
-**Mocks:** Telegram (all), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Tmux (send_keys, tmux)
 **Focus:** Complete message → execution → output flow
 
 **OVERLAP WARNING:** Duplicates test_command_e2e.py flow
@@ -108,7 +108,7 @@ Map component interactions covered by each e2e test to identify:
 - AdapterClient → Database (UX state for notifications)
 - Notification → cleanup on output resume
 
-**Mocks:** Telegram (all), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Tmux (send_keys, tmux)
 **Focus:** Idle notification lifecycle
 
 ---
@@ -158,7 +158,7 @@ Map component interactions covered by each e2e test to identify:
 - New command → polling restart
 - Polling guard (prevent duplicates)
 
-**Mocks:** Telegram (all), Terminal (partial)
+**Mocks:** Telegram (all), Tmux (partial)
 **Focus:** Polling lifecycle across commands
 
 **CRITICAL:** Tests polling state management edge case
@@ -172,7 +172,7 @@ Map component interactions covered by each e2e test to identify:
 - Database → UX state (process state tracking)
 - Daemon restart → state persistence
 
-**Mocks:** Telegram (all), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Tmux (send_keys, tmux)
 **Focus:** Process exit detection reliability
 
 ---
@@ -210,7 +210,7 @@ Map component interactions covered by each e2e test to identify:
 - Session close → database persistence
 - Active polling → session close coordination
 
-**Mocks:** Telegram (all), Terminal (send_keys, tmux)
+**Mocks:** Telegram (all), Tmux (send_keys, tmux)
 **Focus:** Session cleanup lifecycle
 
 ---
@@ -220,9 +220,9 @@ Map component interactions covered by each e2e test to identify:
 | Component A → Component B | Covered By |
 |---------------------------|------------|
 | Telegram → AdapterClient → Command Handlers | test_command_e2e, test_full_flow |
-| Command Handlers → Terminal Bridge | test_command_e2e, test_full_flow, test_ai_to_ai |
-| Terminal Bridge → tmux | test_core, test_command_e2e, test_full_flow, test_ai_to_ai |
-| Polling → Terminal Bridge | test_command_e2e, test_full_flow, test_polling_restart |
+| Command Handlers → Tmux Bridge | test_command_e2e, test_full_flow, test_ai_to_ai |
+| Tmux Bridge → tmux | test_core, test_command_e2e, test_full_flow, test_ai_to_ai |
+| Polling → Tmux Bridge | test_command_e2e, test_full_flow, test_polling_restart |
 | Polling → AdapterClient → Telegram | test_command_e2e, test_full_flow, test_idle_notification |
 | Redis → AdapterClient → Command Handlers | test_ai_to_ai_session_init |
 | MCP Server → AdapterClient → Redis | test_mcp_tools |
@@ -245,7 +245,7 @@ Map component interactions covered by each e2e test to identify:
    - **Recommendation:** Consolidate into single comprehensive test
 
 2. **test_core.py (terminal bridge tests)**
-   - Terminal Bridge operations tested in isolation
+   - Tmux Bridge operations tested in isolation
    - Same operations tested in context by other tests
    - **Recommendation:** Remove from integration suite, move to unit tests
 
