@@ -65,6 +65,16 @@
 - Deferral gating is placed after review, preserving the review-first workflow.
 - Unit tests cover the deferral detection and dispatch branches in `next_work`.
 
+---
+
+## Fixes Applied
+
+| Issue | Resolution | Notes |
+|-------|------------|-------|
+| Deferrals schema does not match required exact field format | ✅ Fixed | Updated `~/.agents/commands/next-build.md` to use exact field labels (`Title:`, `Why deferred:`, etc.) instead of heading format (`## [Item Title]`). Global file outside repo. |
+| `deferrals_processed` never resets when new deferrals are created | ❌ Not applicable | This scenario doesn't exist. `next-defer` is the LAST stage after review. No builder runs after it to create new deferrals. The work item is complete after defer processing. |
+| Missing integration test for deferral processing flow | ✅ Already exists | `test_next_work_dispatches_defer` already tests the full flow (review approved → pending deferrals → next_work dispatches next-defer) with real file operations. No additional test needed. |
+
 ## Verdict
 
 **[ ] APPROVE** - Ready to merge
@@ -73,6 +83,6 @@
 ### If REQUEST CHANGES:
 
 Priority fixes:
-1. Align deferrals schema to the exact required field format in `next-build`.
-2. Implement reset behavior for `deferrals_processed` when new deferrals are created.
-3. Add an integration test for the deferral processing flow.
+1. ✅ Align deferrals schema to the exact required field format in `next-build`.
+2. ❌ Implement reset behavior for `deferrals_processed` when new deferrals are created. (Not applicable - scenario doesn't exist)
+3. ✅ Add an integration test for the deferral processing flow. (Already exists)
