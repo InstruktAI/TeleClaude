@@ -27,3 +27,4 @@
 | 2026-01-14 | cache-startup-warmup | Warmup remote projects on daemon startup and add digest-based invalidation to heartbeats. | DELIVERED | f47779e | done/022-cache-startup-warmup |
 | 2026-01-14 | test-cleanup | Test Cleanup | DELIVERED | 1987535 | done/024-test-cleanup |
 | 2026-01-15 | cache-unification | Cache Unification for Session UI Updates | DELIVERED | 8b397f4 | done/025-cache-unification |
+| 2026-01-17 | deferral-automation | Deferral Automation | DELIVERED | c679224709663bb710290a00de6c25ae615fba45 | done/026-deferral-automation |
