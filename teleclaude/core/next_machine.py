@@ -51,7 +51,7 @@ POST_COMPLETION: dict[str, str] = {
    - Keep session alive and guide worker to resolution
 """,
     "next-build": """WHEN WORKER COMPLETES:
-1. MANDATORY VERIFICATION - Never trust worker self-reports:
+1. MANDATORY VERIFICATION - Never trust worker self-reports, so FROM WITHIN WORKTREE:
      - Run linter
      - Run tests
      - Commits with --no-verify indicate incomplete work
