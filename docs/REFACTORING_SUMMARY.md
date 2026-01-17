@@ -15,7 +15,7 @@ Refactor TeleClaude to properly implement **AdapterClient as the central hub** f
 
 ### Architectural Violation
 
-MCP server had **direct references to RedisAdapter**, bypassing AdapterClient:
+MCP server had **direct references to RedisTransport**, bypassing AdapterClient:
 
 ```python
 # ❌ WRONG: Direct adapter access
@@ -55,7 +55,7 @@ class RemoteExecutionProtocol(Protocol):
 ### Adapter Classification
 
 **Transport Adapters** (implement RemoteExecutionProtocol):
-- ✅ RedisAdapter - Redis Streams
+- ✅ RedisTransport - Redis Streams
 - ✅ PostgresAdapter (future) - PostgreSQL LISTEN/NOTIFY
 - `has_ui = False` (pure transport)
 
@@ -107,7 +107,7 @@ class TeleClaudeMCPServer:
 
 2. **`tests/unit/test_protocols.py`** - Protocol verification (6 tests)
    - Runtime checkable protocol tests
-   - RedisAdapter protocol compliance
+   - RedisTransport protocol compliance
    - Method signature validation
 
 3. **`tests/unit/test_adapter_client_protocols.py`** - Cross-computer tests (11 tests)
@@ -131,7 +131,7 @@ class TeleClaudeMCPServer:
    - Added `discover_remote_computers()`
    - Added `_get_transport_adapter()`
 
-2. **`teleclaude/adapters/redis_adapter.py`**
+2. **`teleclaude/transport/redis_transport.py`**
    - Now implements `RemoteExecutionProtocol` explicitly
    - Added `discover_computers()` method
 

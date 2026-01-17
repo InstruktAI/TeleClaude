@@ -1,4 +1,4 @@
-"""Unit tests for REST adapter endpoints."""
+"""Unit tests for API server endpoints."""
 
 # type: ignore[explicit-any, unused-ignore] - test uses mocked adapters and dynamic types
 
@@ -7,9 +7,9 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_adapter import RESTAdapter
+from teleclaude.api_server import APIServer
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
+from teleclaude.transport.redis_transport import RedisTransport
 
 
 @pytest.fixture
@@ -35,16 +35,16 @@ def mock_cache():  # type: ignore[explicit-any, unused-ignore]
 
 
 @pytest.fixture
-def rest_adapter(mock_adapter_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
-    """Create RESTAdapter instance with mocked client and cache."""
-    adapter = RESTAdapter(client=mock_adapter_client, cache=mock_cache)
+def api_server(mock_adapter_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
+    """Create APIServer instance with mocked client and cache."""
+    adapter = APIServer(client=mock_adapter_client, cache=mock_cache)
     return adapter
 
 
 @pytest.fixture
-def test_client(rest_adapter):  # type: ignore[explicit-any, unused-ignore]
-    """Create TestClient for REST adapter."""
-    return TestClient(rest_adapter.app)
+def test_client(api_server):  # type: ignore[explicit-any, unused-ignore]
+    """Create TestClient for API server."""
+    return TestClient(api_server.app)
 
 
 def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-ignore]
@@ -56,9 +56,7 @@ def test_health_endpoint(test_client):  # type: ignore[explicit-any, unused-igno
 
 def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions returns local sessions with computer field."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
             SessionSummary(
                 session_id="sess-1",
@@ -109,9 +107,7 @@ def test_list_sessions_success(test_client, mock_cache):  # type: ignore[explici
 
 def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions passes computer parameter to cache."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
             SessionSummary(
                 session_id="sess-1",
@@ -133,12 +129,10 @@ def test_list_sessions_with_computer_filter(test_client, mock_cache):  # type: i
 
 def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions works without cache (local-only mode)."""
-    adapter = RESTAdapter(client=mock_adapter_client, cache=None)
+    adapter = APIServer(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
 
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
             SessionSummary(
                 session_id="sess-1",
@@ -159,17 +153,17 @@ def test_list_sessions_without_cache(mock_adapter_client):  # type: ignore[expli
 
 
 @pytest.mark.asyncio
-async def test_refresh_remote_cache_notifies_projects(rest_adapter, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
+async def test_refresh_remote_cache_notifies_projects(api_server, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Initial refresh should notify clients to refresh projects."""
-    redis_adapter = MagicMock(spec=RedisAdapter)
+    redis_adapter = MagicMock(spec=RedisTransport)
     redis_adapter.refresh_remote_snapshot = AsyncMock()
     mock_adapter_client.adapters = {"redis": redis_adapter}
-    rest_adapter._on_cache_change = MagicMock()
+    api_server._on_cache_change = MagicMock()
 
-    await rest_adapter._refresh_remote_cache_and_notify()
+    await api_server._refresh_remote_cache_and_notify()
 
     redis_adapter.refresh_remote_snapshot.assert_awaited_once()
-    rest_adapter._on_cache_change.assert_called_once_with("projects_updated", {"computer": None})
+    api_server._on_cache_change.assert_called_once_with("projects_updated", {"computer": None})
 
 
 def test_create_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -349,7 +343,7 @@ def test_get_transcript_success(test_client, mock_adapter_client):  # type: igno
 def test_list_computers_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Test list_computers returns local + cached computers."""
     with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
+        "teleclaude.api_server.command_handlers.handle_get_computer_info", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = ComputerInfo(
             name="local",
@@ -387,11 +381,11 @@ def test_list_computers_success(test_client, mock_cache):  # type: ignore[explic
 
 def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_computers works without cache (local-only mode)."""
-    adapter = RESTAdapter(client=mock_adapter_client, cache=None)
+    adapter = APIServer(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
 
     with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
+        "teleclaude.api_server.command_handlers.handle_get_computer_info", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.return_value = ComputerInfo(
             name="local",
@@ -411,9 +405,7 @@ def test_list_computers_without_cache(mock_adapter_client):  # type: ignore[expl
 
 def test_list_projects_success(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects returns local + cached projects."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_projects", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [
             ProjectInfo(name="project1", path="/path1", description="Local project", computer="local"),
         ]
@@ -433,9 +425,7 @@ def test_list_projects_success(test_client, mock_cache):  # type: ignore[explici
 
 def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects filters by computer."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_projects", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [ProjectInfo(name="project1", path="/path1", computer="local")]
         mock_cache.get_projects.return_value = []
 
@@ -447,12 +437,10 @@ def test_list_projects_with_computer_filter(test_client, mock_cache):  # type: i
 
 def test_list_projects_without_cache(mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects works without cache (local-only mode)."""
-    adapter = RESTAdapter(client=mock_adapter_client, cache=None)
+    adapter = APIServer(client=mock_adapter_client, cache=None)
     client = TestClient(adapter.app)
 
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_projects", new_callable=AsyncMock) as mock_handler:
         mock_handler.return_value = [ProjectInfo(name="project1", path="/path1", description="Local", computer="local")]
 
         response = client.get("/projects")
@@ -542,12 +530,10 @@ def test_list_todos_project_filter(test_client, mock_cache):  # type: ignore[exp
 
 def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_todos falls back to local handler without cache."""
-    adapter = RESTAdapter(client=MagicMock(), cache=None)
+    adapter = APIServer(client=MagicMock(), cache=None)
     client = TestClient(adapter.app)
 
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_todos", new_callable=AsyncMock
-    ) as mock_todos:
+    with patch("teleclaude.api_server.command_handlers.handle_list_todos", new_callable=AsyncMock) as mock_todos:
         mock_todos.return_value = [TodoInfo(slug="local-1", status="pending")]
 
         response = client.get("/todos", params={"project": "/local/path"})
@@ -558,27 +544,20 @@ def test_list_todos_without_cache_falls_back_to_local(test_client):  # type: ign
 
 
 @pytest.mark.asyncio
-async def test_adapter_lifecycle(rest_adapter):  # type: ignore[explicit-any, unused-ignore]
+async def test_adapter_lifecycle(api_server):  # type: ignore[explicit-any, unused-ignore]
     """Test adapter start/stop lifecycle."""
     # Start adapter
-    await rest_adapter.start()
-    assert rest_adapter.server is not None
-    assert rest_adapter.server_task is not None
+    await api_server.start()
+    assert api_server.server is not None
+    assert api_server.server_task is not None
 
     # Stop adapter
-    await rest_adapter.stop()
-    assert rest_adapter.server.should_exit is True
-
-
-def test_adapter_key():  # type: ignore[explicit-any, unused-ignore]
-    """Test adapter key is 'rest'."""
-    from teleclaude.adapters.rest_adapter import RESTAdapter
-
-    assert RESTAdapter.ADAPTER_KEY == "rest"
+    await api_server.stop()
+    assert api_server.server.should_exit is True
 
 
 @pytest.mark.asyncio
-async def test_handle_session_created_updates_cache(rest_adapter, mock_cache):
+async def test_handle_session_created_updates_cache(api_server, mock_cache):
     """Test _handle_session_created_event updates cache."""
     from teleclaude.core.events import SessionLifecycleContext
     from teleclaude.core.models import Session
@@ -592,10 +571,10 @@ async def test_handle_session_created_updates_cache(rest_adapter, mock_cache):
         title="New Session",
     )
 
-    with patch("teleclaude.adapters.rest_adapter.db.get_session", new_callable=AsyncMock) as mock_get:
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = session
 
-        await rest_adapter._handle_session_created_event("session_created", context)
+        await api_server._handle_session_created_event("session_created", context)
 
         mock_cache.update_session.assert_called_once()
         summary = mock_cache.update_session.call_args[0][0]
@@ -604,7 +583,7 @@ async def test_handle_session_created_updates_cache(rest_adapter, mock_cache):
 
 
 @pytest.mark.asyncio
-async def test_handle_session_updated_updates_cache(rest_adapter, mock_cache):
+async def test_handle_session_updated_updates_cache(api_server, mock_cache):
     """Test _handle_session_updated_event updates cache."""
     from teleclaude.core.events import SessionUpdatedContext
     from teleclaude.core.models import Session
@@ -618,10 +597,10 @@ async def test_handle_session_updated_updates_cache(rest_adapter, mock_cache):
         title="Updated",
     )
 
-    with patch("teleclaude.adapters.rest_adapter.db.get_session", new_callable=AsyncMock) as mock_get:
+    with patch("teleclaude.api_server.db.get_session", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = session
 
-        await rest_adapter._handle_session_updated_event("session_updated", context)
+        await api_server._handle_session_updated_event("session_updated", context)
 
         mock_cache.update_session.assert_called_once()
         summary = mock_cache.update_session.call_args[0][0]
@@ -630,23 +609,23 @@ async def test_handle_session_updated_updates_cache(rest_adapter, mock_cache):
 
 
 @pytest.mark.asyncio
-async def test_handle_session_removed_updates_cache(rest_adapter, mock_cache):
+async def test_handle_session_removed_updates_cache(api_server, mock_cache):
     """Test _handle_session_removed_event updates cache."""
     from teleclaude.core.events import SessionLifecycleContext
 
     context = SessionLifecycleContext(session_id="sess-1")
 
-    await rest_adapter._handle_session_removed_event("session_removed", context)
+    await api_server._handle_session_removed_event("session_removed", context)
 
     mock_cache.remove_session.assert_called_once_with("sess-1")
 
 
-def test_rest_adapter_subscriptions(mock_adapter_client, mock_cache):
-    """Test RESTAdapter subscribes to correct events using constants."""
+def test_api_server_subscriptions(mock_adapter_client, mock_cache):
+    """Test APIServer subscribes to correct events using constants."""
     from teleclaude.core.events import TeleClaudeEvents
 
     # Re-initialize to check calls
-    RESTAdapter(client=mock_adapter_client, cache=mock_cache)
+    APIServer(client=mock_adapter_client, cache=mock_cache)
 
     # Check subscriptions
     mock_adapter_client.on.assert_any_call(
@@ -668,9 +647,7 @@ def test_rest_adapter_subscriptions(mock_adapter_client, mock_cache):
 
 def test_list_sessions_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_sessions returns 500 when command handler raises exception."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_sessions", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_sessions", new_callable=AsyncMock) as mock_handler:
         mock_handler.side_effect = Exception("Connection failed")
 
         response = test_client.get("/sessions")
@@ -720,7 +697,7 @@ def test_get_transcript_handler_exception(test_client, mock_adapter_client):  # 
 def test_list_computers_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_computers returns 500 when command handler raises exception."""
     with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_get_computer_info", new_callable=AsyncMock
+        "teleclaude.api_server.command_handlers.handle_get_computer_info", new_callable=AsyncMock
     ) as mock_handler:
         mock_handler.side_effect = Exception("Computer info failed")
 
@@ -731,9 +708,7 @@ def test_list_computers_handler_exception(test_client):  # type: ignore[explicit
 
 def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
     """Test list_projects returns 500 when command handler raises exception."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_list_projects", new_callable=AsyncMock
-    ) as mock_handler:
+    with patch("teleclaude.api_server.command_handlers.handle_list_projects", new_callable=AsyncMock) as mock_handler:
         mock_handler.side_effect = Exception("Project list failed")
 
         response = test_client.get("/projects")
@@ -741,9 +716,9 @@ def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-
         assert "Failed to list projects" in response.json()["detail"]
 
 
-def test_end_session_handler_exception(test_client, rest_adapter):  # type: ignore[explicit-any, unused-ignore]
+def test_end_session_handler_exception(test_client, api_server):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session returns 500 when command handler raises exception."""
-    rest_adapter.client.handle_internal_command = AsyncMock(side_effect=Exception("Session not found"))
+    api_server.client.handle_internal_command = AsyncMock(side_effect=Exception("Session not found"))
 
     response = test_client.delete("/sessions/sess-123?computer=local")
     assert response.status_code == 500

@@ -1,7 +1,7 @@
-"""REST adapter for HTTP/Unix socket access.
+"""API server for HTTP/Unix socket access.
 
-This adapter provides HTTP endpoints for local clients (telec CLI, etc.)
-and routes all requests through AdapterClient like other adapters.
+This server provides HTTP endpoints for local clients (telec CLI, etc.)
+and routes write requests through AdapterClient.
 """
 
 from __future__ import annotations
@@ -10,15 +10,13 @@ import asyncio
 import json
 import os
 import shlex
-from typing import TYPE_CHECKING, AsyncIterator, Callable, Literal
+from typing import TYPE_CHECKING, Callable, Literal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     AgentAvailabilityDTO,
     ComputerDTO,
     CreateSessionRequest,
@@ -39,39 +37,31 @@ from teleclaude.adapters.rest_models import (
     TodoDTO,
 )
 from teleclaude.config import config
-from teleclaude.constants import REST_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
-from teleclaude.core.models import (
-    ChannelMetadata,
-    MessageMetadata,
-    SessionLaunchIntent,
-    SessionLaunchKind,
-    SessionSummary,
-)
+from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSummary
+from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
-    from teleclaude.core.models import PeerInfo, Session
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
 
-REST_WS_PING_INTERVAL_S = 20.0
-REST_WS_PING_TIMEOUT_S = 20.0
-REST_TIMEOUT_KEEP_ALIVE_S = 5
-REST_STOP_TIMEOUT_S = 5.0
+API_WS_PING_INTERVAL_S = 20.0
+API_WS_PING_TIMEOUT_S = 20.0
+API_TIMEOUT_KEEP_ALIVE_S = 5
+API_STOP_TIMEOUT_S = 5.0
 
-RestServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
+ServerExitHandler = Callable[[BaseException | None, bool | None, bool | None, bool], None]
 
 
-class RESTAdapter(BaseAdapter):
-    """REST adapter exposing HTTP API on Unix socket."""
-
-    ADAPTER_KEY = "rest"
+class APIServer:
+    """HTTP API server on Unix socket."""
 
     def __init__(
         self,
@@ -79,7 +69,7 @@ class RESTAdapter(BaseAdapter):
         cache: "DaemonCache | None" = None,
         task_registry: "TaskRegistry | None" = None,
     ) -> None:
-        """Initialize REST adapter.
+        """Initialize API server.
 
         Args:
             client: AdapterClient instance for routing events
@@ -95,7 +85,7 @@ class RESTAdapter(BaseAdapter):
         self.server_task: asyncio.Task[object] | None = None
         self._metrics_task: asyncio.Task[object] | None = None
         self._running = False
-        self._on_server_exit: RestServerExitHandler | None = None
+        self._on_server_exit: ServerExitHandler | None = None
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
@@ -123,6 +113,10 @@ class RESTAdapter(BaseAdapter):
         # Set cache through property to trigger subscription
         self.cache = cache
 
+    def _metadata(self, **kwargs: object) -> MessageMetadata:
+        """Build API boundary metadata."""
+        return MessageMetadata(adapter_type="api", **kwargs)
+
     @property
     def cache(self) -> "DaemonCache | None":
         """Get cache reference."""
@@ -136,7 +130,7 @@ class RESTAdapter(BaseAdapter):
         self._cache = value
         if value:
             value.subscribe(self._on_cache_change)
-            logger.info("REST adapter subscribed to cache notifications")
+            logger.info("API server subscribed to cache notifications")
 
     async def _handle_session_updated_event(
         self,
@@ -344,7 +338,7 @@ class RESTAdapter(BaseAdapter):
         async def end_session(  # pyright: ignore
             session_id: str,
             computer: str = Query(...),  # noqa: ARG001 - For API consistency, only local sessions supported
-        ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             try:
                 metadata = self._metadata()
@@ -364,7 +358,7 @@ class RESTAdapter(BaseAdapter):
             session_id: str,
             request: SendMessageRequest,
             computer: str | None = Query(None),  # noqa: ARG001 - Optional param for API consistency
-        ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
+        ) -> dict[str, object]:  # guard: loose-dict - API boundary
             """Send message to session."""
             try:
                 metadata = self._metadata()
@@ -788,7 +782,7 @@ class RESTAdapter(BaseAdapter):
     def _trigger_initial_refresh(self) -> None:
         """Kick off background cache refresh for remote computers on first UI connect."""
         adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisAdapter):
+        if not isinstance(adapter, RedisTransport):
             return
         coro = self._refresh_remote_cache_and_notify()
         if self.task_registry:
@@ -799,7 +793,7 @@ class RESTAdapter(BaseAdapter):
     async def _refresh_remote_cache_and_notify(self) -> None:
         """Refresh remote cache snapshot and notify clients to refresh projects."""
         adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisAdapter):
+        if not isinstance(adapter, RedisTransport):
             return
         await adapter.refresh_remote_snapshot()
         self._on_cache_change("projects_updated", {"computer": None})
@@ -809,7 +803,7 @@ class RESTAdapter(BaseAdapter):
         if computer == "local":
             return
         adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisAdapter):
+        if not isinstance(adapter, RedisTransport):
             return
 
         await adapter.refresh_peers_from_heartbeats()
@@ -823,7 +817,7 @@ class RESTAdapter(BaseAdapter):
         if not computers:
             return
         adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisAdapter):
+        if not isinstance(adapter, RedisTransport):
             return
 
         for computer in sorted(computers):
@@ -843,7 +837,7 @@ class RESTAdapter(BaseAdapter):
         if not self.cache.is_stale(cache_key, 300):
             return
         adapter = self.client.adapters.get("redis")
-        if not isinstance(adapter, RedisAdapter):
+        if not isinstance(adapter, RedisTransport):
             return
         coro = adapter.pull_remote_todos(computer, project_path)
         if self.task_registry:
@@ -1028,16 +1022,16 @@ class RESTAdapter(BaseAdapter):
             pass
 
     async def start(self) -> None:
-        """Start the REST API server on Unix socket."""
+        """Start the API server on Unix socket."""
         self._running = True
-        logger.info("REST API server starting")
+        logger.info("API server starting")
         await self._start_server()
         self._start_metrics_task()
 
     async def stop(self) -> None:
-        """Stop the REST API server."""
+        """Stop the API server."""
         self._running = False
-        logger.info("REST API server stopping")
+        logger.info("API server stopping")
         await self._stop_metrics_task()
         # Unsubscribe from cache changes
         if self.cache:
@@ -1058,28 +1052,28 @@ class RESTAdapter(BaseAdapter):
         await self._stop_server()
         self._cleanup_socket("stop")
 
-        logger.info("REST API server stopped")
+        logger.info("API server stopped")
 
     async def _start_server(self) -> None:
         """Start uvicorn server and attach restart handler."""
         if self.server_task and not self.server_task.done():
-            logger.warning("REST server already running; skipping start")
+            logger.warning("API server already running; skipping start")
             return
 
         self._cleanup_socket("start_server")
 
         config = uvicorn.Config(
             self.app,
-            uds=REST_SOCKET_PATH,
+            uds=API_SOCKET_PATH,
             log_level="warning",
-            ws_ping_interval=REST_WS_PING_INTERVAL_S,
-            ws_ping_timeout=REST_WS_PING_TIMEOUT_S,
-            timeout_keep_alive=REST_TIMEOUT_KEEP_ALIVE_S,
+            ws_ping_interval=API_WS_PING_INTERVAL_S,
+            ws_ping_timeout=API_WS_PING_TIMEOUT_S,
+            timeout_keep_alive=API_TIMEOUT_KEEP_ALIVE_S,
         )
         self.server = uvicorn.Server(config)
         server = self.server
         logger.debug(
-            "REST server initialized (should_exit=%s, started=%s)",
+            "API server initialized (should_exit=%s, started=%s)",
             getattr(server, "should_exit", None),
             getattr(server, "started", None),
         )
@@ -1096,22 +1090,22 @@ class RESTAdapter(BaseAdapter):
                 break
             if self.server_task.done():
                 exc = self.server_task.exception()
-                raise RuntimeError("REST API server exited during startup") from exc
+                raise RuntimeError("API server exited during startup") from exc
             await asyncio.sleep(0.1)
         if not server.started:
-            raise TimeoutError("REST API server failed to start within timeout")
+            raise TimeoutError("API server failed to start within timeout")
 
-        logger.info("REST API server listening on %s", REST_SOCKET_PATH)
+        logger.info("API server listening on %s", API_SOCKET_PATH)
 
     async def restart_server(self) -> None:
-        """Restart uvicorn server without tearing down adapter state."""
+        """Restart uvicorn server without tearing down server state."""
         await self._stop_server()
         if self.server_task and not self.server_task.done():
-            logger.error("REST server stop incomplete; aborting restart")
+            logger.error("API server stop incomplete; aborting restart")
             return
         await self._start_server()
 
-    def set_on_server_exit(self, handler: RestServerExitHandler | None) -> None:
+    def set_on_server_exit(self, handler: ServerExitHandler | None) -> None:
         """Set callback invoked when the uvicorn server task exits."""
         self._on_server_exit = handler
 
@@ -1121,7 +1115,7 @@ class RESTAdapter(BaseAdapter):
         server = self.server
         if server:
             logger.debug(
-                "REST server stopping (should_exit=%s, started=%s)",
+                "API server stopping (should_exit=%s, started=%s)",
                 getattr(server, "should_exit", None),
                 getattr(server, "started", None),
             )
@@ -1135,9 +1129,9 @@ class RESTAdapter(BaseAdapter):
 
         if self.server_task:
             try:
-                await asyncio.wait_for(self.server_task, timeout=REST_STOP_TIMEOUT_S)
+                await asyncio.wait_for(self.server_task, timeout=API_STOP_TIMEOUT_S)
             except asyncio.TimeoutError:
-                logger.warning("Timed out stopping REST server; cancelling task")
+                logger.warning("Timed out stopping API server; cancelling task")
                 self.server_task.cancel()
                 try:
                     await self.server_task
@@ -1150,7 +1144,7 @@ class RESTAdapter(BaseAdapter):
                 logger.debug("Error during server shutdown: %s", e)
 
     def _start_metrics_task(self) -> None:
-        """Start periodic REST metrics logging."""
+        """Start periodic API server metrics logging."""
         if self._metrics_task and not self._metrics_task.done():
             return
         coro = self._metrics_loop()
@@ -1160,7 +1154,7 @@ class RESTAdapter(BaseAdapter):
             self._metrics_task = asyncio.create_task(coro)
 
     async def _stop_metrics_task(self) -> None:
-        """Stop periodic REST metrics logging."""
+        """Stop periodic API server metrics logging."""
         if not self._metrics_task:
             return
         if not self._metrics_task.done():
@@ -1172,7 +1166,7 @@ class RESTAdapter(BaseAdapter):
         self._metrics_task = None
 
     async def _metrics_loop(self) -> None:
-        """Log REST server resource metrics periodically."""
+        """Log API server resource metrics periodically."""
         while self._running:
             fd_count = _get_fd_count()
             ws_count = len(self._ws_clients)
@@ -1182,7 +1176,7 @@ class RESTAdapter(BaseAdapter):
             server_should_exit = getattr(server, "should_exit", None) if server else None
             server_task_done = self.server_task.done() if self.server_task else None
             logger.info(
-                "REST metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
+                "API server metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
                 fd_count,
                 ws_count,
                 task_count,
@@ -1193,18 +1187,18 @@ class RESTAdapter(BaseAdapter):
             await asyncio.sleep(60)
 
     def _cleanup_socket(self, reason: str) -> None:
-        """Remove REST socket file if present."""
-        if not os.path.exists(REST_SOCKET_PATH):
+        """Remove API server socket file if present."""
+        if not os.path.exists(API_SOCKET_PATH):
             return
         try:
             logger.warning(
-                "Removing REST socket (reason=%s): %s",
+                "Removing API server socket (reason=%s): %s",
                 reason,
-                REST_SOCKET_PATH,
+                API_SOCKET_PATH,
             )
-            os.unlink(REST_SOCKET_PATH)
+            os.unlink(API_SOCKET_PATH)
         except OSError as e:
-            logger.warning("Failed to remove REST socket %s: %s", REST_SOCKET_PATH, e)
+            logger.warning("Failed to remove API server socket %s: %s", API_SOCKET_PATH, e)
 
     def _on_server_task_done(
         self,
@@ -1222,17 +1216,17 @@ class RESTAdapter(BaseAdapter):
         try:
             exc = task.exception()
         except asyncio.CancelledError:
-            logger.debug("REST API server task cancelled")
+            logger.debug("API server task cancelled")
             return
 
         server_ref = server or self.server
         server_started = getattr(server_ref, "started", None) if server_ref else None
         server_should_exit = getattr(server_ref, "should_exit", None) if server_ref else None
-        socket_exists = os.path.exists(REST_SOCKET_PATH)
+        socket_exists = os.path.exists(API_SOCKET_PATH)
 
         if exc:
             logger.error(
-                "REST API server task crashed: %s (started=%s should_exit=%s socket=%s)",
+                "API server task crashed: %s (started=%s should_exit=%s socket=%s)",
                 exc,
                 server_started,
                 server_should_exit,
@@ -1241,14 +1235,14 @@ class RESTAdapter(BaseAdapter):
             )
         elif not server_should_exit:
             logger.error(
-                "REST API server task exited unexpectedly (started=%s should_exit=%s socket=%s)",
+                "API server task exited unexpectedly (started=%s should_exit=%s socket=%s)",
                 server_started,
                 server_should_exit,
                 socket_exists,
             )
         else:
             logger.debug(
-                "REST API server task exited cleanly (started=%s should_exit=%s socket=%s)",
+                "API server task exited cleanly (started=%s should_exit=%s socket=%s)",
                 server_started,
                 server_should_exit,
                 socket_exists,
@@ -1256,96 +1250,6 @@ class RESTAdapter(BaseAdapter):
 
         if self._on_server_exit:
             self._on_server_exit(exc, server_started, server_should_exit, socket_exists)
-
-    # ==================== BaseAdapter abstract methods (mostly no-ops) ====================
-
-    async def create_channel(
-        self,
-        session: Session,
-        title: str,
-        metadata: ChannelMetadata,
-    ) -> str:
-        """No-op for REST adapter (no channels)."""
-        _ = (session, title, metadata)
-        return ""
-
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        """No-op for REST adapter."""
-        _ = (session, title)
-        return True
-
-    async def close_channel(self, session: Session) -> bool:
-        """No-op for REST adapter."""
-        _ = session
-        return True
-
-    async def reopen_channel(self, session: Session) -> bool:
-        """No-op for REST adapter."""
-        _ = session
-        return True
-
-    async def delete_channel(self, session: Session) -> bool:
-        """No-op for REST adapter."""
-        _ = session
-        return True
-
-    async def send_message(
-        self,
-        session: Session,
-        text: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> str:
-        """No-op for REST adapter (clients poll for output)."""
-        _ = (session, text, metadata)
-        return ""
-
-    async def edit_message(
-        self,
-        session: Session,
-        message_id: str,
-        text: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> bool:
-        """No-op for REST adapter."""
-        _ = (session, message_id, text, metadata)
-        return True
-
-    async def delete_message(self, session: Session, message_id: str) -> bool:
-        """No-op for REST adapter."""
-        _ = (session, message_id)
-        return True
-
-    async def send_file(
-        self,
-        session: Session,
-        file_path: str,
-        *,
-        caption: str | None = None,
-        metadata: MessageMetadata | None = None,
-    ) -> str:
-        """No-op for REST adapter."""
-        _ = (session, file_path, caption, metadata)
-        return ""
-
-    async def discover_peers(self) -> list[PeerInfo]:
-        """REST adapter doesn't discover peers."""
-        return []
-
-    async def poll_output_stream(
-        self,
-        session: Session,
-        timeout: float = 300.0,
-    ) -> AsyncIterator[str]:
-        """No-op for REST adapter."""
-        _ = (session, timeout)
-
-        async def _empty() -> AsyncIterator[str]:
-            if False:
-                yield ""
-
-        return _empty()
 
 
 def _get_fd_count() -> int:

@@ -4,52 +4,52 @@ from __future__ import annotations
 
 from typing import TypeAlias, Union
 
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     AgentAvailabilityDTO as AgentAvailabilityInfo,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     ComputerDTO as ComputerInfo,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     CreateSessionResponseDTO as CreateSessionResult,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     ProjectDTO as ProjectInfo,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     ProjectsInitialDataDTO as ProjectsInitialData,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     ProjectsInitialEventDTO as ProjectsInitialEvent,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     ProjectWithTodosDTO as ProjectWithTodosInfo,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     RefreshDataDTO as RefreshData,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     RefreshEventDTO as RefreshEvent,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     SessionRemovedDataDTO as SessionRemovedData,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     SessionRemovedEventDTO as SessionRemovedEvent,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     SessionsInitialDataDTO as SessionsInitialData,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     SessionsInitialEventDTO as SessionsInitialEvent,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     SessionSummaryDTO as SessionInfo,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     SessionUpdateEventDTO as SessionUpdateEvent,
 )
-from teleclaude.adapters.rest_models import (
+from teleclaude.api_models import (
     TodoDTO as TodoInfo,
 )
 

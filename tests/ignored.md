@@ -43,7 +43,7 @@ This file documents source files that don't have dedicated unit tests and why.
 
 - Tested implicitly through integration tests
 
-### teleclaude/adapters/redis_adapter.py
+### teleclaude/transport/redis_transport.py
 
 **Reason**: Integration tested.
 

@@ -130,7 +130,7 @@ ab -n 100 -c 10 http+unix:///tmp/teleclaude-api.sock/health
 
 ## Related Files
 
-- `teleclaude/adapters/rest_adapter.py` - REST server implementation
+- `teleclaude/api_server.py` - API server implementation
 - `teleclaude/core/command_handlers.py` - Command handlers called by REST
 - `teleclaude/core/next_machine.py` - Work orchestration with subprocess calls
 - `teleclaude/core/db.py` - Database operations

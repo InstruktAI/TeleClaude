@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, O
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
@@ -43,6 +42,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, RedisAdapterMetadata, TelegramAdapterMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import InternalCommand, SystemCommand
 
 if TYPE_CHECKING:
@@ -83,13 +83,13 @@ EventHandler = (
 class AdapterClient:
     """Unified interface for multi-adapter operations.
 
-    Manages multiple adapters (Telegram, Redis, etc.) and provides a clean,
-    adapter-agnostic API. Owns the complete adapter lifecycle.
+    Manages UI adapters (Telegram) and transport services (Redis), and provides
+    a clean, boundary-agnostic API. Owns the lifecycle of registered components.
 
     Key responsibilities:
-    - Adapter creation and registration
-    - Adapter lifecycle management
-    - Peer discovery aggregation from all adapters
+    - Component creation and registration
+    - Component lifecycle management
+    - Peer discovery aggregation from transports
     - (Future) Session-aware routing
     - (Future) Parallel broadcasting to multiple adapters
     """
@@ -212,10 +212,10 @@ class AdapterClient:
 
         # Redis adapter
         if config.redis.enabled:
-            redis = RedisAdapter(self, task_registry=self.task_registry)
+            redis = RedisTransport(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
             self.adapters["redis"] = redis  # Register ONLY after success
-            logger.info("Started redis adapter")
+            logger.info("Started redis transport")
 
         # Validate at least one adapter started
         if not self.adapters:

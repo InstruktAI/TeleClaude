@@ -26,7 +26,7 @@ from teleclaude.cli.models import (
     UnsubscribeRequest,
     WsEvent,
 )
-from teleclaude.constants import REST_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH
 
 logger = get_logger(__name__)
 
@@ -50,7 +50,7 @@ class APIError(Exception):
 class TelecAPIClient:
     """Async HTTP client for telec with WebSocket push support."""
 
-    def __init__(self, socket_path: str = REST_SOCKET_PATH):
+    def __init__(self, socket_path: str = API_SOCKET_PATH):
         """Initialize client.
 
         Args:

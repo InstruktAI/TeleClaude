@@ -22,8 +22,7 @@ from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_adapter import RESTAdapter
+from teleclaude.api_server import APIServer
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
@@ -71,6 +70,7 @@ from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import (
     CreateSessionCommand,
     InternalCommand,
@@ -127,10 +127,10 @@ MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_IN
 MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
 MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
 
-# REST server restart policy (centralized in lifecycle)
-REST_RESTART_MAX = int(os.getenv("REST_RESTART_MAX", "5"))
-REST_RESTART_WINDOW_S = float(os.getenv("REST_RESTART_WINDOW_S", "60"))
-REST_RESTART_BACKOFF_S = float(os.getenv("REST_RESTART_BACKOFF_S", "1"))
+# API server restart policy (centralized in lifecycle)
+API_RESTART_MAX = int(os.getenv("API_RESTART_MAX", os.getenv("REST_RESTART_MAX", "5")))
+API_RESTART_WINDOW_S = float(os.getenv("API_RESTART_WINDOW_S", os.getenv("REST_RESTART_WINDOW_S", "60")))
+API_RESTART_BACKOFF_S = float(os.getenv("API_RESTART_BACKOFF_S", os.getenv("REST_RESTART_BACKOFF_S", "1")))
 
 # Resource monitoring
 RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
@@ -166,11 +166,17 @@ def _get_rss_kb() -> int | None:
 
 
 # Tmux outbox worker (telec)
-REST_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("REST_OUTBOX_POLL_INTERVAL_S", "0.5"))
-REST_OUTBOX_BATCH_SIZE: int = int(os.getenv("REST_OUTBOX_BATCH_SIZE", "25"))
-REST_OUTBOX_LOCK_TTL_S: float = float(os.getenv("REST_OUTBOX_LOCK_TTL_S", "30"))
-REST_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("REST_OUTBOX_BASE_BACKOFF_S", "1"))
-REST_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("REST_OUTBOX_MAX_BACKOFF_S", "60"))
+API_OUTBOX_POLL_INTERVAL_S: float = float(
+    os.getenv("API_OUTBOX_POLL_INTERVAL_S", os.getenv("REST_OUTBOX_POLL_INTERVAL_S", "0.5"))
+)
+API_OUTBOX_BATCH_SIZE: int = int(os.getenv("API_OUTBOX_BATCH_SIZE", os.getenv("REST_OUTBOX_BATCH_SIZE", "25")))
+API_OUTBOX_LOCK_TTL_S: float = float(os.getenv("API_OUTBOX_LOCK_TTL_S", os.getenv("REST_OUTBOX_LOCK_TTL_S", "30")))
+API_OUTBOX_BASE_BACKOFF_S: float = float(
+    os.getenv("API_OUTBOX_BASE_BACKOFF_S", os.getenv("REST_OUTBOX_BASE_BACKOFF_S", "1"))
+)
+API_OUTBOX_MAX_BACKOFF_S: float = float(
+    os.getenv("API_OUTBOX_MAX_BACKOFF_S", os.getenv("REST_OUTBOX_MAX_BACKOFF_S", "60"))
+)
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -332,9 +338,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             mcp_watch_factory=lambda: asyncio.create_task(self._mcp_watch_loop()),
             set_last_mcp_restart_at=self._set_last_mcp_restart_at,
             init_voice_handler=init_voice_handler,
-            rest_restart_max=REST_RESTART_MAX,
-            rest_restart_window_s=REST_RESTART_WINDOW_S,
-            rest_restart_backoff_s=REST_RESTART_BACKOFF_S,
+            rest_restart_max=API_RESTART_MAX,
+            rest_restart_window_s=API_RESTART_WINDOW_S,
+            rest_restart_backoff_s=API_RESTART_BACKOFF_S,
         )
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
@@ -674,8 +680,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
     def _rest_outbox_backoff(self, attempt: int) -> float:
         """Compute exponential backoff for REST outbox retries."""
         safe_attempt = max(1, attempt)
-        delay: float = float(REST_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
-        return min(delay, float(REST_OUTBOX_MAX_BACKOFF_S))
+        delay: float = float(API_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
+        return min(delay, float(API_OUTBOX_MAX_BACKOFF_S))
 
     def _is_retryable_rest_error(self, exc: Exception) -> bool:
         """Return True if REST dispatch errors should be retried."""
@@ -842,11 +848,11 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         while not self.shutdown_event.is_set():
             now = datetime.now(timezone.utc)
             now_iso = now.isoformat()
-            lock_cutoff = (now - timedelta(seconds=REST_OUTBOX_LOCK_TTL_S)).isoformat()
-            rows = await db.fetch_rest_outbox_batch(now_iso, REST_OUTBOX_BATCH_SIZE, lock_cutoff)
+            lock_cutoff = (now - timedelta(seconds=API_OUTBOX_LOCK_TTL_S)).isoformat()
+            rows = await db.fetch_rest_outbox_batch(now_iso, API_OUTBOX_BATCH_SIZE, lock_cutoff)
 
             if not rows:
-                await asyncio.sleep(REST_OUTBOX_POLL_INTERVAL_S)
+                await asyncio.sleep(API_OUTBOX_POLL_INTERVAL_S)
                 continue
 
             for row in rows:
@@ -1549,14 +1555,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             _args: Deploy arguments (verify_health currently unused)
         """
         # Get Redis adapter for status updates
-        redis_adapter_base = self.client.adapters.get("redis")
-        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
-            logger.error("Redis adapter not available, cannot update deploy status")
+        redis_transport_base = self.client.adapters.get("redis")
+        if not redis_transport_base or not isinstance(redis_transport_base, RedisTransport):
+            logger.error("Redis transport not available, cannot update deploy status")
             return
 
-        redis_adapter: RedisAdapter = redis_adapter_base
+        redis_transport: RedisTransport = redis_transport_base
         status_key = f"system_status:{config.computer.name}:deploy"
-        redis_client = redis_adapter._require_redis()
+        redis_client = redis_transport._require_redis()
 
         async def update_status(payload: DeployStatusPayload | DeployErrorPayload) -> None:
             await redis_client.set(status_key, json.dumps(payload))
@@ -2229,10 +2235,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
         """Collect a lightweight resource snapshot for diagnostics."""
-        rest_ws_clients: int | None = None
-        rest_adapter = self.lifecycle.rest_adapter
-        if isinstance(rest_adapter, RESTAdapter):
-            rest_ws_clients = len(rest_adapter._ws_clients)
+        api_ws_clients: int | None = None
+        api_server = self.lifecycle.api_server
+        if isinstance(api_server, APIServer):
+            api_ws_clients = len(api_server._ws_clients)
 
         mcp_connections: int | None = None
         if self.mcp_server:
@@ -2250,7 +2256,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             "asyncio_tasks": len(cast(set[asyncio.Task[object]], asyncio.all_tasks())),
             "tracked_tasks": self.task_registry.task_count(),
             "mcp_connections": mcp_connections,
-            "rest_ws_clients": rest_ws_clients,
+            "api_ws_clients": api_ws_clients,
         }
         return snapshot
 

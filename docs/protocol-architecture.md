@@ -64,7 +64,7 @@ class RemoteExecutionProtocol(Protocol):
 
 ✅ **Transport Adapters:**
 
-- `RedisAdapter` - Redis Streams (production)
+- `RedisTransport` - Redis Streams (production)
 - `PostgresAdapter` - PostgreSQL LISTEN/NOTIFY (future)
 - Any custom transport adapter for cross-computer messaging
 
@@ -94,7 +94,7 @@ await adapter_client.send_message(session_id, "Tmux output here")
 
 - Sends to **origin adapter** (CRITICAL - failure throws exception)
 - Broadcasts to **observer adapters** with `has_ui=True` (best-effort)
-- RedisAdapter skipped (has_ui=False, pure transport)
+- RedisTransport skipped (has_ui=False, pure transport)
 
 #### 2. Cross-Computer Orchestration (Remote Sessions)
 
@@ -237,8 +237,8 @@ Test Protocol implementation and AdapterClient routing:
 ```python
 # tests/unit/test_protocols.py
 def test_redis_adapter_implements_protocol():
-    """Verify RedisAdapter implements RemoteExecutionProtocol."""
-    assert issubclass(RedisAdapter, RemoteExecutionProtocol)
+    """Verify RedisTransport implements RemoteExecutionProtocol."""
+    assert issubclass(RedisTransport, RemoteExecutionProtocol)
 
 # tests/unit/test_adapter_client_protocols.py
 async def test_send_remote_command_success():

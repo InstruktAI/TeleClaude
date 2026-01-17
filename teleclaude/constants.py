@@ -5,7 +5,7 @@ This module defines shared constants to ensure consistency.
 
 # MCP Configuration
 MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
-REST_SOCKET_PATH = "/tmp/teleclaude-api.sock"
+API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
 
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks

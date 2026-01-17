@@ -11,7 +11,7 @@ flowchart LR
     end
 
     subgraph ServiceInterfaces["Service Interfaces"]
-        RESTServer["REST Server"]
+        RESTServer["API Server"]
         MCPServer["MCP Server"]
         TGAdapter["Telegram Adapter"]
     end
@@ -73,13 +73,13 @@ TeleClaude uses Python Protocols (`teleclaude/core/protocols.py`) to decouple th
 
 ### Transport Adapters
 Adapters that implement `RemoteExecutionProtocol` are responsible for cross-computer orchestration.
-- **RedisAdapter**: Uses Redis Streams for command transport and heartbeat discovery.
+- **RedisTransport**: Uses Redis Streams for command transport and heartbeat discovery.
 - (Future) **PostgresAdapter**: Uses PostgreSQL LISTEN/NOTIFY.
 
 ### UI Adapters
 Adapters that implement `UiAdapter` (via `teleclaude/adapters/ui_adapter.py`) manage human-facing interactions.
 - **TelegramAdapter**: Normalizes chat interactions.
-- **RESTAdapter**: Provides a resource-first API for TUIs and web clients.
+- **APIServer**: Provides a resource-first API for TUIs and web clients.
 - **MCPServer**: Specialized adapter for AI agent integration.
 
 ## Durable Execution (Outbox Pattern)
@@ -92,10 +92,10 @@ The system uses an Outbox pattern in SQLite to ensure reliable event delivery an
 ## Boundaries
 
 ### Clients
-- Issue requests and receive responses. TUIs (Telec) use the REST/WS interface.
+- Issue requests and receive responses. TUIs (Telec) use the HTTP/WS interface.
 
 ### Service Interfaces
-- REST and MCP are first-class service boundaries.
+- API and MCP are first-class service boundaries.
 - Telegram is a UI adapter boundary.
 - All inputs normalize into command ingress via `AdapterClient.handle_event`.
 

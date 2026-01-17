@@ -322,7 +322,7 @@ class BaseAdapter(ABC):
 
         Each adapter implements its own discovery mechanism:
         - TelegramAdapter: Polls General topic for [REGISTRY] messages
-        - RedisAdapter: Reads Redis heartbeat keys
+        - RedisTransport: Reads Redis heartbeat keys
 
         Returns:
             List of PeerInfo instances with peer computer information
@@ -341,7 +341,7 @@ class BaseAdapter(ABC):
         Used for bidirectional AI-to-AI communication.
 
         Implementations:
-        - RedisAdapter: XREAD output:{session_id} stream
+        - RedisTransport: XREAD output:{session_id} stream
         - TelegramAdapter: Not applicable (no AI-to-AI support)
 
         Args:

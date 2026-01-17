@@ -59,8 +59,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too-many-instance-attributes  # Redis adapter requires many connection and state attributes
-    """Adapter for AI-to-AI communication via Redis Streams.
+class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too-many-instance-attributes  # Redis transport requires many connection and state attributes
+    """Transport for AI-to-AI communication via Redis Streams.
 
     Uses Redis Streams for reliable, ordered message delivery between computers.
 
@@ -77,7 +77,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     """
 
     def __init__(self, adapter_client: "AdapterClient", task_registry: "TaskRegistry | None" = None):
-        """Initialize Redis adapter.
+        """Initialize Redis transport.
 
         Args:
             adapter_client: AdapterClient instance for event emission
@@ -85,7 +85,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         """
         super().__init__()
 
-        # Store adapter client reference (ONLY interface to daemon)
+        # Store client reference (ONLY interface to daemon)
         self.client = adapter_client
         self.client.on(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         self.client.on(TeleClaudeEvents.SESSION_CREATED, self._handle_session_created)
@@ -97,7 +97,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         # Cache reference (wired by daemon after start via property setter)
         self._cache: "DaemonCache | None" = None
 
-        # Adapter state
+        # Transport state
         self._message_poll_task: Optional[asyncio.Task[object]] = None
         self._heartbeat_task: Optional[asyncio.Task[object]] = None
         self._session_events_poll_task: Optional[asyncio.Task[object]] = None
@@ -137,7 +137,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         self._idle_poll_last_log_at: float | None = None
         self._idle_poll_suppressed: int = 0
 
-        logger.info("RedisAdapter initialized for computer: %s", self.computer_name)
+        logger.info("RedisTransport initialized for computer: %s", self.computer_name)
 
     @property
     def cache(self) -> "DaemonCache | None":
@@ -204,7 +204,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
     async def start(self) -> None:
         """Initialize Redis connection and start background tasks."""
         if self._running:
-            logger.warning("RedisAdapter already running")
+            logger.warning("RedisTransport already running")
             return
 
         self._running = True
@@ -220,7 +220,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
                 self._ensure_connection_and_start_tasks(), name="redis-connection"
             )
             self._connection_task.add_done_callback(self._log_task_exception)
-        logger.info("RedisAdapter start triggered (connection handled asynchronously)")
+        logger.info("RedisTransport start triggered (connection handled asynchronously)")
 
     async def _ensure_connection_and_start_tasks(self) -> None:
         """Connect and launch background tasks with retry, without blocking daemon startup."""
@@ -250,7 +250,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
             self._session_events_poll_task = asyncio.create_task(self._poll_session_events())
             self._session_events_poll_task.add_done_callback(self._log_task_exception)
 
-        logger.info("RedisAdapter connected and background tasks started")
+        logger.info("RedisTransport connected and background tasks started")
 
     async def _populate_initial_cache(self) -> None:
         """Populate cache with remote computers and projects on startup."""
@@ -459,7 +459,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         if self.redis:
             await self.redis.aclose()
 
-        logger.info("RedisAdapter stopped")
+        logger.info("RedisTransport stopped")
 
     async def _get_last_processed_message_id(self) -> Optional[str]:
         """Get last processed Redis message ID from database.
@@ -605,7 +605,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         Returns:
             Empty string (not supported)
         """
-        logger.warning("send_file not supported by RedisAdapter")
+        logger.warning("send_file not supported by RedisTransport")
         return ""
 
     async def send_general_message(self, text: str, *, metadata: MessageMetadata | None = None) -> str:
@@ -620,7 +620,7 @@ class RedisAdapter(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=too
         Returns:
             Empty string
         """
-        logger.warning("send_general_message not supported by RedisAdapter")
+        logger.warning("send_general_message not supported by RedisTransport")
         return ""
 
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:

@@ -59,6 +59,7 @@ def _warn_for_loose_dicts(repo_root: Path) -> None:
 
     excluded_files = {
         repo_root / "teleclaude" / "adapters" / "redis_adapter.py",
+        repo_root / "teleclaude" / "transport" / "redis_transport.py",
     }
 
     for root in scan_roots:

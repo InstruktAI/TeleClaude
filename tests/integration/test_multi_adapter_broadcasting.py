@@ -192,12 +192,12 @@ async def test_origin_adapter_receives_output():
 
 @pytest.mark.integration
 async def test_redis_observer_skipped_no_ui():
-    """Test RedisAdapter (has_ui=False) skipped for broadcasts.
+    """Test RedisTransport (has_ui=False) skipped for broadcasts.
 
     Use Case: UC-M1
     Flow:
     1. Create session with telegram origin
-    2. Register both TelegramAdapter (origin) and RedisAdapter (observer)
+    2. Register both TelegramAdapter (origin) and RedisTransport (observer)
     3. Send message via adapter_client
     4. Verify output sent to telegram (origin)
     5. Verify Redis send_message() NOT called (has_ui=False)

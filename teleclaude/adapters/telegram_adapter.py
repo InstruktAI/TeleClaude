@@ -842,7 +842,7 @@ class TelegramAdapter(
         presence via heartbeat messages (visible to humans in Telegram UI), but
         cannot discover other computers.
 
-        Actual peer discovery must be handled by other adapters (e.g., RedisAdapter)
+        Actual peer discovery must be handled by other adapters (e.g., RedisTransport)
         that support bot-to-bot communication.
 
         Returns:
@@ -977,7 +977,7 @@ class TelegramAdapter(
         """Poll for output chunks (not implemented for Telegram).
 
         Telegram doesn't support bidirectional streaming like Redis.
-        This method is only implemented in RedisAdapter.
+        This method is only implemented in RedisTransport.
 
         Args:
             session: Session object
