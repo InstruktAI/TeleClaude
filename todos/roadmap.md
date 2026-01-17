@@ -9,6 +9,8 @@
 - [.] async-improvements
 - [>] context-ai
 - [>] docs-3rd
+- [ ] v2-transport-normalization
+- [ ] v2-transport-normalization
 
 ## Work Preparation Pipeline
 
