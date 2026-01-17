@@ -18,7 +18,7 @@ shapes into these internal commands.
 **Emitted events:**
 - `session_created`
 - `agent_ready` (if agent started)
-- `task_started` (if message injected after agent ready)
+- `task_delivered` (if message injected after agent ready)
 - `agent_resumed` (if native_session_id used)
 - `message_delivered` (if message injected without agent)
 
@@ -38,7 +38,7 @@ shapes into these internal commands.
 **Required:** `session_id`, `agent`, `command_text`
 
 **Emitted events:**
-- `agent_command_delivered`
+- `command_delivered`
 
 ---
 
@@ -56,4 +56,4 @@ shapes into these internal commands.
 **Required:** `session_id`
 
 **Emitted events:**
-- `session_ended`
+- `session_closed`
