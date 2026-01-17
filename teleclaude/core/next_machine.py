@@ -36,6 +36,7 @@ WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
     "review": [("codex", "slow"), ("claude", "slow"), ("gemini", "slow")],
     "fix": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
     "finalize": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
+    "defer": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
 }
 
 # Post-completion instructions for each command (used in format_tool_call)
@@ -79,6 +80,11 @@ POST_COMPLETION: dict[str, str] = {
    - Call {next_call}
 3. If fixes incomplete:
    - Keep session alive and guide worker to finish
+""",
+    "next-defer": """WHEN WORKER COMPLETES:
+1. Verify state.json.deferrals_processed is true
+2. teleclaude__end_session(computer="local", session_id="<session_id>")
+3. Call {next_call}
 """,
     "next-finalize": """WHEN WORKER COMPLETES:
 1. Verify merge and archive succeeded
@@ -296,9 +302,10 @@ async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str 
 Phase = Literal["build", "review"]
 PhaseStatus = Literal["pending", "complete", "approved", "changes_requested"]
 
-DEFAULT_STATE: dict[str, str | dict[str, bool | list[str]]] = {
+DEFAULT_STATE: dict[str, str | bool | dict[str, bool | list[str]]] = {
     "build": "pending",
     "review": "pending",
+    "deferrals_processed": False,
     "breakdown": {"assessed": False, "todos": []},
 }
 
@@ -308,7 +315,7 @@ def get_state_path(cwd: str, slug: str) -> Path:
     return Path(cwd) / "todos" / slug / "state.json"
 
 
-def read_phase_state(cwd: str, slug: str) -> dict[str, str | dict[str, bool | list[str]]]:
+def read_phase_state(cwd: str, slug: str) -> dict[str, str | bool | dict[str, bool | list[str]]]:
     """Read state.json from worktree.
 
     Returns default state if file doesn't exist.
@@ -318,12 +325,12 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, str | dict[str, bool | li
         return DEFAULT_STATE.copy()
 
     content = state_path.read_text(encoding="utf-8")
-    state: dict[str, str | dict[str, bool | list[str]]] = json.loads(content)
+    state: dict[str, str | bool | dict[str, bool | list[str]]] = json.loads(content)
     # Merge with defaults for any missing keys
     return {**DEFAULT_STATE, **state}
 
 
-def write_phase_state(cwd: str, slug: str, state: dict[str, str | dict[str, bool | list[str]]]) -> None:
+def write_phase_state(cwd: str, slug: str, state: dict[str, str | bool | dict[str, bool | list[str]]]) -> None:
     """Write state.json and commit to git."""
     state_path = get_state_path(cwd, slug)
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -344,7 +351,7 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str | dict[str, bool
         logger.warning("Cannot commit state: %s is not a git repository", cwd)
 
 
-def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | dict[str, bool | list[str]]]:
+def mark_phase(cwd: str, slug: str, phase: str, status: str) -> dict[str, str | bool | dict[str, bool | list[str]]]:
     """Mark a phase with a status and commit.
 
     Args:
@@ -409,6 +416,19 @@ def is_review_changes_requested(cwd: str, slug: str) -> bool:
     state = read_phase_state(cwd, slug)
     review = state.get("review")
     return isinstance(review, str) and review == "changes_requested"
+
+
+def has_pending_deferrals(cwd: str, slug: str) -> bool:
+    """Check if there are pending deferrals.
+
+    Returns true if deferrals.md exists AND state.json.deferrals_processed is NOT true.
+    """
+    deferrals_path = Path(cwd) / "todos" / slug / "deferrals.md"
+    if not deferrals_path.exists():
+        return False
+
+    state = read_phase_state(cwd, slug)
+    return state.get("deferrals_processed") is not True
 
 
 def resolve_slug(
@@ -1435,6 +1455,19 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             subfolder=f"trees/{resolved_slug}",
             next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
             note=REVIEW_DIFF_NOTE,
+        )
+
+    # 8.5 Check pending deferrals (R7)
+    if has_pending_deferrals(worktree_cwd, resolved_slug):
+        agent, mode = await get_available_agent(db, "defer", WORK_FALLBACK)
+        return format_tool_call(
+            command="next-defer",
+            args=resolved_slug,
+            project=cwd,
+            agent=agent,
+            thinking_mode=mode,
+            subfolder=f"trees/{resolved_slug}",
+            next_call=f'teleclaude__next_work(slug="{resolved_slug}")',
         )
 
     # 9. Review approved - dispatch finalize
