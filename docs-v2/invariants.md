@@ -14,7 +14,7 @@
 - No duplicate DB files except worktrees.
 
 ## Command & Event Contract
-- Command response always includes `command_id`.
+- Response always includes `request_id`.
 - Response includes expected events with per‑event timeouts.
 - Events are emitted once per state transition.
 

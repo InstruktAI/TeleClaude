@@ -8,12 +8,12 @@
 - Returns full result immediately
 
 ### Async
-- Returns `command_id` immediately
+- Returns `request_id` immediately
 - Completion via events only
 - No sync timeout
 
 ### Hybrid
-- Returns `command_id` + partial identifiers immediately
+- Returns `request_id` + partial identifiers immediately
 - Completion via events only
 - No sync timeout
 
@@ -33,11 +33,11 @@
 
 | Command | Mode | Immediate Return | Success Event(s) | Failure Event | Timeout |
 | --- | --- | --- | --- | --- | --- |
-| create_session | Hybrid | `command_id`, `session_id`, `tmux_session_name` | `session_created` (+ `agent_ready` / `task_started` when applicable) | `command_failed` | n/a |
-| agent_restart | Async | `command_id` | `agent_restarted` | `command_failed` | n/a |
-| agent_command | Async | `command_id` | `agent_command_delivered` | `command_failed` | n/a |
-| send_message | Async | `command_id` | `message_delivered` | `command_failed` | n/a |
-| end_session | Async | `command_id` | `session_ended` | `command_failed` | n/a |
+| create_session | Hybrid | `request_id`, `session_id`, `tmux_session_name` | `session_created` (+ `agent_ready` / `task_started` when applicable) | `command_failed` | n/a |
+| agent_restart | Async | `request_id` | `agent_restarted` | `command_failed` | n/a |
+| agent_command | Async | `request_id` | `agent_command_delivered` | `command_failed` | n/a |
+| send_message | Async | `request_id` | `message_delivered` | `command_failed` | n/a |
+| end_session | Async | `request_id` | `session_ended` | `command_failed` | n/a |
 
 ## Completion Semantics
 

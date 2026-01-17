@@ -72,7 +72,8 @@ flowchart LR
 - Issue requests and receive responses
 
 ### Service Interfaces
-- REST and MCP are first-class service boundaries
+- REST is a public facade (REST‑native endpoints mapped to internal commands)
+- MCP is a service boundary for AI orchestration
 - Telegram is a UI adapter boundary
 - All inputs normalize into command ingress
 

@@ -18,9 +18,11 @@ Events are published to channels named after the event:
 ## Event Requirements
 
 ### Common fields
-- `command_id`
+- `request_id`
 - `event`
 - `timestamp`
+
+`request_id` is the public name. Internally this maps to the command pipeline’s `command_id`.
 
 ### Event-specific fields
 - Defined in `docs/event-contracts.md`
