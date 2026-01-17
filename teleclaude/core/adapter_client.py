@@ -6,6 +6,7 @@ a clean, unified interface for the daemon and MCP server.
 
 import asyncio
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, Optional, cast, overload
 
@@ -122,9 +123,30 @@ class AdapterClient:
         self.adapters[adapter_type] = adapter
         logger.info("Registered adapter: %s", adapter_type)
 
-    def _origin_ui_adapter(self, session: "Session") -> UiAdapter | None:
-        adapter = self.adapters.get(session.origin_adapter)
-        return adapter if isinstance(adapter, UiAdapter) else None
+    @dataclass(frozen=True)
+    class _UiDeliveryPlan:
+        origin_type: str | None
+        origin: UiAdapter | None
+        observers: list[tuple[str, UiAdapter]]
+        all_ui: list[tuple[str, UiAdapter]]
+
+    def _ui_delivery_plan(self, session: "Session") -> "_UiDeliveryPlan":
+        """Compute UI delivery plan once (origin + observers)."""
+        all_ui = self._ui_adapters()
+        origin_type = session.origin_adapter
+        origin: UiAdapter | None = None
+        observers: list[tuple[str, UiAdapter]] = []
+        for adapter_type, adapter in all_ui:
+            if adapter_type == origin_type:
+                origin = adapter
+            else:
+                observers.append((adapter_type, adapter))
+        return self._UiDeliveryPlan(
+            origin_type=origin_type,
+            origin=origin,
+            observers=observers,
+            all_ui=all_ui,
+        )
 
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
         return [
@@ -248,6 +270,7 @@ class AdapterClient:
     async def _broadcast_to_observers(
         self,
         session: "Session",
+        observers: list[tuple[str, UiAdapter]],
         operation: str,
         task_factory: Callable[[UiAdapter], Awaitable[object]],
     ) -> None:
@@ -261,12 +284,9 @@ class AdapterClient:
             operation: Operation name for logging
             task_factory: Function that takes adapter and returns awaitable
         """
-        observer_tasks: list[tuple[str, Awaitable[object]]] = []
-        for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.origin_adapter:
-                continue
-            if isinstance(adapter, UiAdapter):
-                observer_tasks.append((adapter_type, task_factory(adapter)))
+        observer_tasks: list[tuple[str, Awaitable[object]]] = [
+            (adapter_type, task_factory(adapter)) for adapter_type, adapter in observers
+        ]
 
         if operation == "delete_message":
             logger.debug(
@@ -314,12 +334,12 @@ class AdapterClient:
         Returns:
             First truthy result, or None if no truthy results
         """
-        origin_ui = self._origin_ui_adapter(session)
+        plan = self._ui_delivery_plan(session)
 
         def make_task(adapter: UiAdapter) -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(session, *args, **kwargs))
 
-        if not origin_ui:
+        if not plan.origin:
             results = await self._broadcast_to_ui_adapters(session, method, make_task)
             for _, result in results:
                 if isinstance(result, Exception):
@@ -329,10 +349,10 @@ class AdapterClient:
             return None
 
         # Call origin (let exceptions propagate)
-        result = await cast(Awaitable[object], getattr(origin_ui, method)(session, *args, **kwargs))
+        result = await cast(Awaitable[object], getattr(plan.origin, method)(session, *args, **kwargs))
 
         # Broadcast to observers (best-effort)
-        await self._broadcast_to_observers(session, method, make_task)
+        await self._broadcast_to_observers(session, plan.observers, method, make_task)
 
         return result
 
@@ -1020,7 +1040,8 @@ class AdapterClient:
         Uses source adapter (where message came from) rather than origin adapter,
         so AI-to-AI sessions can still have UI cleanup on Telegram.
         """
-        adapter_type = source_adapter or session.origin_adapter
+        plan = self._ui_delivery_plan(session)
+        adapter_type = source_adapter or plan.origin_type
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -1083,7 +1104,8 @@ class AdapterClient:
         Uses source adapter (where message came from) rather than origin adapter,
         so AI-to-AI sessions can still have UI state tracking on Telegram.
         """
-        adapter_type = source_adapter or session.origin_adapter
+        plan = self._ui_delivery_plan(session)
+        adapter_type = source_adapter or plan.origin_type
         adapter = self.adapters.get(adapter_type)
         if not adapter or not isinstance(adapter, UiAdapter):
             return
@@ -1113,12 +1135,9 @@ class AdapterClient:
         if not action_text:
             return
 
-        for adapter_type, adapter in self.adapters.items():
-            if adapter_type == session.origin_adapter:
-                continue
+        plan = self._ui_delivery_plan(session)
+        for adapter_type, adapter in plan.observers:
             if adapter_type == source_adapter:
-                continue
-            if not isinstance(adapter, UiAdapter):
                 continue
 
             try:
@@ -1177,7 +1196,6 @@ class AdapterClient:
         self,
         session: "Session",
         title: str,
-        origin_adapter: str,
         target_computer: Optional[str] = None,
     ) -> str:
         """Create channels in ALL adapters for new session.
@@ -1201,9 +1219,10 @@ class AdapterClient:
         """
         session_id = session.session_id
 
-        channel_origin_adapter = origin_adapter
-        if origin_adapter not in self.adapters:
-            raise ValueError(f"Origin adapter {origin_adapter} not found")
+        plan = self._ui_delivery_plan(session)
+        channel_origin_adapter = plan.origin_type
+        if not channel_origin_adapter or channel_origin_adapter not in self.adapters:
+            raise ValueError(f"Origin adapter {channel_origin_adapter} not found")
 
         origin_adapter_instance = self.adapters.get(channel_origin_adapter)
         origin_requires_channel = isinstance(origin_adapter_instance, UiAdapter)
@@ -1240,7 +1259,7 @@ class AdapterClient:
                     origin_channel_id = channel_id
 
         if origin_requires_channel and not origin_channel_id:
-            raise ValueError(f"Origin adapter {origin_adapter} not found or did not return channel_id")
+            raise ValueError(f"Origin adapter {channel_origin_adapter} not found or did not return channel_id")
         if not origin_channel_id:
             origin_channel_id = ""
 

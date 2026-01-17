@@ -266,7 +266,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     await client.create_channel(
         session=session,
         title=title,
-        origin_adapter=str(adapter_type),
         target_computer=str(initiator) if initiator else None,
     )
 
