@@ -8,6 +8,7 @@ Both derive state from files (stateless) and return plain text instructions
 for the orchestrator AI to execute literally.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -985,6 +986,11 @@ def ensure_worktree(cwd: str, slug: str) -> bool:
         raise
 
 
+async def ensure_worktree_async(cwd: str, slug: str) -> bool:
+    """Async wrapper to ensure worktree without blocking the event loop."""
+    return await asyncio.to_thread(ensure_worktree, cwd, slug)
+
+
 def _prepare_worktree(cwd: str, slug: str) -> None:
     """Call project-owned preparation hook to prepare worktree.
 
@@ -1391,7 +1397,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         )
 
     # 4. Ensure worktree exists
-    worktree_created = ensure_worktree(cwd, resolved_slug)
+    worktree_created = await ensure_worktree_async(cwd, resolved_slug)
     if worktree_created:
         logger.info("Created new worktree for %s", resolved_slug)
 

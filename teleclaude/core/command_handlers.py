@@ -488,9 +488,9 @@ async def handle_get_computer_info() -> ComputerInfo:
         raise ValueError("Computer configuration is incomplete - user, role, and host are required")
 
     # Gather system stats
-    memory = psutil.virtual_memory()
-    disk = psutil.disk_usage("/")
-    cpu_percent = psutil.cpu_percent(interval=0.1)
+    memory = await asyncio.to_thread(psutil.virtual_memory)
+    disk = await asyncio.to_thread(psutil.disk_usage, "/")
+    cpu_percent = await asyncio.to_thread(psutil.cpu_percent, 0.1)
 
     # Build typed system stats
     memory_stats: MemoryStats = {
