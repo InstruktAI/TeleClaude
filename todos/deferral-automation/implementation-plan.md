@@ -33,8 +33,8 @@
 
 ## Phase 4: Commit & Distribute (agents repo)
 
-- [ ] Commit changes in `~/.agents` (commands) with a clear message.
-- [ ] Deploy per `~/.agents/README.md`.
+- [x] Commit changes in `~/.agents` (commands) with a clear message.
+- [x] Deploy per `~/.agents/README.md`.
 
 ## Phase 5: Verification
 
