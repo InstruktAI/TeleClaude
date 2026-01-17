@@ -95,6 +95,7 @@ class RESTAdapter(BaseAdapter):
         self._metrics_task: asyncio.Task[object] | None = None
         self._running = False
         self._on_server_exit: RestServerExitHandler | None = None
+        self._socket_missing_reported = False
         # WebSocket state
         self._ws_clients: set[WebSocket] = set()
         # Per-computer subscriptions: {websocket: {computer: {data_types}}}
@@ -1168,6 +1169,7 @@ class RESTAdapter(BaseAdapter):
             server_started = getattr(server, "started", None) if server else None
             server_should_exit = getattr(server, "should_exit", None) if server else None
             server_task_done = self.server_task.done() if self.server_task else None
+            socket_exists = os.path.exists(REST_SOCKET_PATH)
             logger.info(
                 "REST metrics: fds=%d ws=%d tasks=%d started=%s should_exit=%s task_done=%s",
                 fd_count,
@@ -1177,6 +1179,21 @@ class RESTAdapter(BaseAdapter):
                 server_should_exit,
                 server_task_done,
             )
+            if server_started and not socket_exists and not self._socket_missing_reported:
+                self._socket_missing_reported = True
+                logger.error(
+                    "REST socket missing while server running; scheduling restart",
+                    socket=REST_SOCKET_PATH,
+                )
+                if self._on_server_exit:
+                    self._on_server_exit(
+                        RuntimeError("rest_socket_missing"),
+                        server_started,
+                        server_should_exit,
+                        socket_exists,
+                    )
+            elif socket_exists and self._socket_missing_reported:
+                self._socket_missing_reported = False
             await asyncio.sleep(60)
 
     def _cleanup_socket(self, reason: str) -> None:
