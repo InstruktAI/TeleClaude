@@ -179,6 +179,10 @@ class UiAdapter(BaseAdapter):
 
         Subclasses can override _build_output_metadata() for platform-specific formatting.
         """
+        existing_message_id = await self._get_output_message_id(session)
+        if not existing_message_id and not output.strip():
+            return None
+
         # Truncate to platform limit
         is_truncated = len(output) > self.max_message_size
         tmux_output = output[-self.max_message_size :] if is_truncated else output
