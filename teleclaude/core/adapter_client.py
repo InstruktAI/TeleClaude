@@ -788,10 +788,12 @@ class AdapterClient:
                 metadata or MessageMetadata(adapter_type="internal"),
             )
 
-        # For SystemCommand, use the command name as the event type
-        # This allows query/list commands to route to their proper handlers
+        # For SystemCommand, use the command name for known command events.
         if isinstance(command, SystemCommand):
-            event_type = cast(EventType, command.command)
+            if command.command in COMMAND_EVENTS:
+                event_type = cast(EventType, command.command)  # pyright: ignore[reportUnnecessaryCast]
+            else:
+                event_type = TeleClaudeEvents.SYSTEM_COMMAND
         else:
             event_type = cast(EventType, command.command_type.value)
 

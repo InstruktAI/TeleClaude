@@ -40,6 +40,8 @@ EventType = Literal[
     "agent",
     "agent_restart",
     "agent_resume",
+    "exit",
+    "exit",
     "message",
     "voice",
     "file",
@@ -79,6 +81,7 @@ CommandEventType = Literal[
     "agent",
     "agent_restart",
     "agent_resume",
+    "exit",
 ]
 
 # Agent hook event types (payload event_type values from agents)
@@ -448,4 +451,5 @@ COMMAND_EVENTS: set[EventType] = {
     "agent",
     "agent_restart",
     "agent_resume",
+    "exit",
 }

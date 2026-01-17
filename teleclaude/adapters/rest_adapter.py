@@ -347,15 +347,8 @@ class RESTAdapter(BaseAdapter):
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             try:
-                # Normalize command through mapper before dispatching
-                metadata = self._metadata()
-                cmd = CommandMapper.map_rest_input(
-                    "end_session",
-                    {"session_id": session_id},
-                    metadata,
-                )
-                result = await self.client.handle_internal_command(cmd, metadata=metadata)
-                return dict(result) if isinstance(result, dict) else {"status": "success"}
+                result = await command_handlers.handle_end_session(session_id, self.client)
+                return dict(result)
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e
@@ -413,17 +406,21 @@ class RESTAdapter(BaseAdapter):
                 tail_chars: Number of characters from end of transcript
             """
             try:
-                # Normalize command through mapper before dispatching
-                metadata = self._metadata()
-                cmd = CommandMapper.map_rest_input(
-                    "get_session_data",
-                    {"session_id": session_id, "args": [str(tail_chars)]},
-                    metadata,
+                result = await self.client.handle_event(
+                    event="get_session_data",
+                    payload={"session_id": session_id, "args": [str(tail_chars)]},
+                    metadata=self._metadata(),
                 )
-                result = await self.client.handle_internal_command(cmd, metadata=metadata)
                 if not isinstance(result, dict):
                     raise HTTPException(status_code=500, detail="Invalid transcript response")
-                return SessionDataDTO.model_validate(result)
+                if result.get("status") == "error":
+                    raise HTTPException(status_code=500, detail=str(result.get("error", "Invalid transcript response")))
+                data = result.get("data")
+                if isinstance(data, dict):
+                    return SessionDataDTO.model_validate(data)
+                if data is None:
+                    return SessionDataDTO(status="success", session_id=session_id)
+                raise HTTPException(status_code=500, detail="Invalid transcript response")
             except Exception as e:
                 logger.error("get_transcript failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to get transcript: {e}") from e
