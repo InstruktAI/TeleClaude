@@ -28,8 +28,8 @@
 
 ## Phase 3: Primer Cleanup
 
-- [ ] Remove the deferral handling block from `~/.agents/commands/prime-orchestrator.md`.
-- [ ] Keep the orchestrator primer focused on execution-only behavior.
+- [x] Remove the deferral handling block from `~/.agents/commands/prime-orchestrator.md`.
+- [x] Keep the orchestrator primer focused on execution-only behavior.
 
 ## Phase 4: Commit & Distribute (agents repo)
 
