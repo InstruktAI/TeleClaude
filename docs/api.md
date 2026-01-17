@@ -1,16 +1,16 @@
-# REST API Overview (Target)
+# API Overview (Target)
 
-This document describes the intended resource-first REST surface. All reads are cache-backed; handlers do not fetch.
+This document describes the intended resource-first API surface. All reads are cache-backed; handlers do not fetch.
 
 Source of truth:
 - Core resource models: `teleclaude/core/models.py`
-- REST and WS DTOs: `teleclaude/adapters/rest_models.py` (target consolidation)
+- API and WS DTOs: `teleclaude/api_models.py` (target consolidation)
 
 ## Principles
 
 - Resource-only endpoints, no aggregates like "projects with todos".
-- Consistent shapes across REST and WebSocket.
-- Cache decides staleness and refresh; REST returns cache only.
+- Consistent shapes across API and WebSocket.
+- Cache decides staleness and refresh; API returns cache only.
 - Project identifiers are derived from full paths, not repo metadata.
 
 ## HTTP Endpoints
@@ -31,7 +31,7 @@ Source of truth:
 
 Notes:
 - Read endpoints return cached data immediately.
-- Cache refresh is triggered by TTL rules and invalidation signals, not by REST handlers.
+- Cache refresh is triggered by TTL rules and invalidation signals, not by API handlers.
 - Sessions list is a lightweight summary for fast tree rendering.
 - Session details and live events are delivered via WebSocket when a session node is expanded.
 - Unfiltered reads are allowed but scoped queries are preferred to reduce payload and churn.

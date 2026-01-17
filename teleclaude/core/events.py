@@ -237,10 +237,11 @@ class TeleClaudeEvents:
 
     # Session management
     RENAME: Literal["rename"] = "rename"
+    AGENT_RESTART: Literal["agent_restart"] = "agent_restart"
 
     # AI commands
     AGENT_START: Literal["agent"] = "agent"
-    AGENT_RESTART: Literal["agent_restart"] = "agent_restart"
+    AGENT_APIART: Literal["agent_restart"] = "agent_restart"
     AGENT_RESUME: Literal["agent_resume"] = "agent_resume"
 
     # User input
@@ -266,7 +267,7 @@ class TeleClaudeEvents:
 def parse_command_string(command_str: str) -> tuple[Optional[str], list[str]]:
     """Parse command string into event name and arguments.
 
-    Used by adapters that receive raw command strings (e.g., Redis, REST API).
+    Used by adapters that receive raw command strings (e.g., Redis, API API).
     Telegram adapter doesn't need this - python-telegram-bot parses for us.
 
     Args:

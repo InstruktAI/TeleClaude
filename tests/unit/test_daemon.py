@@ -871,7 +871,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
         session_id="tele-123",
         computer_name="TestMac",
         tmux_session_name="terminal:abc",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="Test session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="24419")
@@ -1041,7 +1041,7 @@ async def test_dispatch_hook_event_updates_tty_before_polling():
         session_id="sess-tty",
         computer_name="TestMac",
         tmux_session_name="terminal:deadbeef",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="TeleClaude: $TestMac - Tmux",
     )
 
@@ -1082,7 +1082,7 @@ async def test_ensure_output_polling_uses_tmux():
         session_id="sess-term",
         computer_name="TestMac",
         tmux_session_name="telec_1234",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="TeleClaude: $TestMac - Tmux",
         project_path="/tmp/project",
     )

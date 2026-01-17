@@ -117,9 +117,9 @@ disallow_untyped_defs = false  # Allow untyped defs in tests only
 module = [
   "teleclaude.mcp_server",
   "teleclaude.mcp.*",
-  "teleclaude.adapters.rest_adapter",
+  "teleclaude.api_server",
   "teleclaude.adapters.telegram_adapter",
-  "teleclaude.adapters.redis_adapter",
+  "teleclaude.transport.redis_transport",
   "teleclaude.hooks.receiver",
   "teleclaude.utils.transcript",
   "teleclaude.core.agent_parsers",
@@ -155,12 +155,12 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-module = "teleclaude.adapters.redis_adapter"
+module = "teleclaude.transport.redis_transport"
 # Redis client returns Any types that propagate.
 disable_error_code = ["misc", "no-any-return", "attr-defined", "explicit-any", "arg-type", "assignment", "override"]
 
 [[tool.mypy.overrides]]
-module = "teleclaude.adapters.rest_adapter"
+module = "teleclaude.api_server"
 # FastAPI decorators and Pydantic models introduce Any-typed boundaries.
 disable_error_code = ["misc", "assignment", "arg-type"]
 

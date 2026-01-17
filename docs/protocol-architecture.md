@@ -64,7 +64,7 @@ class RemoteExecutionProtocol(Protocol):
 
 ✅ **Transport Adapters:**
 
-- `RedisAdapter` - Redis Streams (production)
+- `RedisTransport` - Redis Streams (production)
 - `PostgresAdapter` - PostgreSQL LISTEN/NOTIFY (future)
 - Any custom transport adapter for cross-computer messaging
 
@@ -94,7 +94,7 @@ await adapter_client.send_message(session_id, "Tmux output here")
 
 - Sends to **origin adapter** (CRITICAL - failure throws exception)
 - Broadcasts to **observer adapters** with `has_ui=True` (best-effort)
-- RedisAdapter skipped (has_ui=False, pure transport)
+- RedisTransport skipped (has_ui=False, pure transport)
 
 #### 2. Cross-Computer Orchestration (Remote Sessions)
 
@@ -132,13 +132,13 @@ The MCP server exposes tools for Agent to interact with remote computers.
 
 ```python
 class TeleClaudeMCPServer:
-    def __init__(self, redis_adapter, adapter_client, ...):
-        self.redis_adapter = redis_adapter  # ❌ Direct reference
+    def __init__(self, redis_transport, adapter_client, ...):
+        self.redis_transport = redis_transport  # ❌ Direct reference
 
     async def list_projects(self, computer: str):
         # ❌ Bypasses AdapterClient
-        await self.redis_adapter.send_request(...)
-        response = await self.redis_adapter.read_response(...)
+        await self.redis_transport.send_request(...)
+        response = await self.redis_transport.read_response(...)
 ```
 
 ### After Refactoring ✅
@@ -236,9 +236,9 @@ Test Protocol implementation and AdapterClient routing:
 
 ```python
 # tests/unit/test_protocols.py
-def test_redis_adapter_implements_protocol():
-    """Verify RedisAdapter implements RemoteExecutionProtocol."""
-    assert issubclass(RedisAdapter, RemoteExecutionProtocol)
+def test_redis_transport_implements_protocol():
+    """Verify RedisTransport implements RemoteExecutionProtocol."""
+    assert issubclass(RedisTransport, RemoteExecutionProtocol)
 
 # tests/unit/test_adapter_client_protocols.py
 async def test_send_remote_command_success():

@@ -1,8 +1,8 @@
 # Command Schema (Durable Outbox)
 
-TeleClaude uses a durable outbox pattern for commands requiring exactly-once delivery and response tracking (primarily for the `telec` CLI via the REST API).
+TeleClaude uses a durable outbox pattern for commands requiring exactly-once delivery and response tracking (primarily for the `telec` CLI via the API).
 
-## Table: rest_outbox
+## Table: api_outbox
 
 **Primary key**
 - `id` (integer, autoincrement)

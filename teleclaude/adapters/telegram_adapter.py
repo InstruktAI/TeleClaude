@@ -206,6 +206,16 @@ class TelegramAdapter(
 
             setattr(self, handler_name, make_handler(event))
 
+    async def delete_message(self, session: "Session | str", message_id: str) -> bool:
+        """Delete a message by session or session_id."""
+        if isinstance(session, str):
+            session_obj = await db.get_session(session)
+            if not session_obj:
+                return False
+        else:
+            session_obj = session
+        return await MessageOperationsMixin.delete_message(self, session_obj, message_id)
+
     async def _handle_simple_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, event: EventType
     ) -> None:
@@ -835,7 +845,7 @@ class TelegramAdapter(
         presence via heartbeat messages (visible to humans in Telegram UI), but
         cannot discover other computers.
 
-        Actual peer discovery must be handled by other adapters (e.g., RedisAdapter)
+        Actual peer discovery must be handled by other adapters (e.g., RedisTransport)
         that support bot-to-bot communication.
 
         Returns:
@@ -970,7 +980,7 @@ class TelegramAdapter(
         """Poll for output chunks (not implemented for Telegram).
 
         Telegram doesn't support bidirectional streaming like Redis.
-        This method is only implemented in RedisAdapter.
+        This method is only implemented in RedisTransport.
 
         Args:
             session: Session object

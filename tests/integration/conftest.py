@@ -137,24 +137,24 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     temp_db_path = str(tmp_path / "test_teleclaude.db")
     monkeypatch.setenv("TELECLAUDE_DB_PATH", temp_db_path)
 
-    # CRITICAL: Set unique REST socket path for parallel execution
+    # CRITICAL: Set unique API socket path for parallel execution
     # Keep path short to avoid AF_UNIX length limits on macOS
-    temp_rest_socket = f"/tmp/teleclaude-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
+    temp_api_socket = f"/tmp/teleclaude-{os.getpid()}-{uuid.uuid4().hex[:8]}.sock"
 
     # NOW import teleclaude modules (after env var is set)
+    from teleclaude import api_server as api_server_module
     from teleclaude import config as config_module
     from teleclaude import constants as constants_module
-    from teleclaude.adapters import rest_adapter as rest_adapter_module
     from teleclaude.core import db as db_module
     from teleclaude.core import tmux_bridge
     from teleclaude.core.db import Db
     from teleclaude.core.session_utils import get_output_file
     from teleclaude.daemon import TeleClaudeDaemon
 
-    # CRITICAL: Patch REST_SOCKET_PATH to use unique path per test
-    # Also patch rest_adapter module-level constant to avoid stale import values
-    monkeypatch.setattr(constants_module, "REST_SOCKET_PATH", temp_rest_socket)
-    monkeypatch.setattr(rest_adapter_module, "REST_SOCKET_PATH", temp_rest_socket)
+    # CRITICAL: Patch API_SOCKET_PATH to use unique path per test
+    # Also patch api_server module-level constant to avoid stale import values
+    monkeypatch.setattr(constants_module, "API_SOCKET_PATH", temp_api_socket)
+    monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", temp_api_socket)
 
     # CRITICAL: Mock config exhaustively - ALL sections (no sensitive data)
     class MockDatabase:
@@ -253,9 +253,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
 
     monkeypatch.setattr(config_module.config.redis, "url", "redis://localhost:6379")
 
-    rest_socket_path = f"/tmp/teleclaude-api-{os.getpid()}-{uuid.uuid4().hex[:6]}.sock"
-    monkeypatch.setattr(constants_module, "REST_SOCKET_PATH", rest_socket_path)
-    monkeypatch.setattr(rest_adapter_module, "REST_SOCKET_PATH", rest_socket_path)
+    api_socket_path = f"/tmp/teleclaude-api-{os.getpid()}-{uuid.uuid4().hex[:6]}.sock"
+    monkeypatch.setattr(constants_module, "API_SOCKET_PATH", api_socket_path)
+    monkeypatch.setattr(api_server_module, "API_SOCKET_PATH", api_socket_path)
 
     # CRITICAL: Reinitialize db singleton with test database path
     # This ensures each test gets isolated database even in parallel execution
@@ -268,7 +268,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.adapters.base_adapter",
         "teleclaude.adapters.telegram_adapter",
         "teleclaude.core.adapter_client",
-        "teleclaude.adapters.redis_adapter",
+        "teleclaude.transport.redis_transport",
         "teleclaude.daemon",
         "teleclaude.mcp_server",
         "teleclaude.mcp.handlers",
@@ -293,7 +293,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         "teleclaude.core.command_handlers",
         "teleclaude.core.db",
         "teleclaude.core.output_poller",
-        "teleclaude.adapters.redis_adapter",
+        "teleclaude.transport.redis_transport",
         "teleclaude.adapters.telegram_adapter",
         "teleclaude.adapters.ui_adapter",
         "teleclaude.daemon",
@@ -374,8 +374,10 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     with (
         patch("redis.asyncio.Redis.from_url", return_value=mock_redis_client),
         patch("teleclaude.core.adapter_client.TelegramAdapter", MockTelegramAdapter),
-        patch("teleclaude.adapters.redis_adapter.RedisAdapter._poll_redis_messages", new=AsyncMock(return_value=None)),
-        patch("teleclaude.adapters.redis_adapter.RedisAdapter._heartbeat_loop", new=AsyncMock(return_value=None)),
+        patch(
+            "teleclaude.transport.redis_transport.RedisTransport._poll_redis_messages", new=AsyncMock(return_value=None)
+        ),
+        patch("teleclaude.transport.redis_transport.RedisTransport._heartbeat_loop", new=AsyncMock(return_value=None)),
     ):
         # Create daemon (config is loaded automatically from config.yml)
         daemon = TeleClaudeDaemon(str(base_dir / ".env"))
@@ -387,11 +389,11 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
     daemon.db = db_module.db
 
     # Mock Redis adapter messaging methods (used by client.send_message for redis-originated sessions)
-    redis_adapter = daemon.client.adapters.get("redis")
-    if redis_adapter:
-        monkeypatch.setattr(redis_adapter, "send_message", AsyncMock(return_value="redis-msg-123"))
-        monkeypatch.setattr(redis_adapter, "edit_message", AsyncMock(return_value=True))
-        monkeypatch.setattr(redis_adapter, "delete_message", AsyncMock())
+    redis_transport = daemon.client.adapters.get("redis")
+    if redis_transport:
+        monkeypatch.setattr(redis_transport, "send_message", AsyncMock(return_value="redis-msg-123"))
+        monkeypatch.setattr(redis_transport, "edit_message", AsyncMock(return_value=True))
+        monkeypatch.setattr(redis_transport, "delete_message", AsyncMock())
 
     # Replace Telegram adapter methods with trackable AsyncMocks
     telegram_adapter = daemon.client.adapters.get("telegram")

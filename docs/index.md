@@ -14,7 +14,7 @@
 - [Command Response Contract](contracts/command-response-contract.md)
 - [OpenAPI Requirements](api/openapi-requirements.md)
 - [AsyncAPI Requirements](api/asyncapi-requirements.md)
-- [REST API](rest-api.md)
+- [API](api.md)
 
 ## Pipeline & Execution
 - [Command Pipeline](pipeline/command-pipeline.md)
@@ -33,4 +33,4 @@
 - [Definition of Done](definition-of-done.md)
 - [Modeling](modeling.md)
 - [Refactoring Summary](REFACTORING_SUMMARY.md)
-- [REST Reliability Analysis](rest-reliability-analysis.md)
+- [API Reliability Analysis](api-reliability-analysis.md)

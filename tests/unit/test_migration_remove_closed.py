@@ -50,7 +50,7 @@ async def test_remove_closed_column_migrates_schema_and_data() -> None:
         await db.execute(
             """
             INSERT INTO sessions (session_id, computer_name, title, tmux_session_name, origin_adapter, closed)
-            VALUES ('sess-1', 'TestMac', 'Test', 'tmux-1', 'rest', 0)
+            VALUES ('sess-1', 'TestMac', 'Test', 'tmux-1', 'api', 0)
             """
         )
         await db.commit()

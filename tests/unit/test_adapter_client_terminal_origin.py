@@ -76,7 +76,7 @@ def _make_terminal_session() -> Session:
         session_id="sess-1",
         computer_name="TestPC",
         tmux_session_name="terminal:deadbeef",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="Tmux",
         adapter_metadata=SessionAdapterMetadata(),
         created_at=None,

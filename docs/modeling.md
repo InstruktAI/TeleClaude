@@ -6,8 +6,8 @@ This document defines how data models are structured across the codebase. It is 
 
 - One source of truth for resource shapes.
 - Pydantic validation only at system boundaries.
-- No aggregate payloads in REST responses.
-- Consistent shapes across REST, WS, and TUI.
+- No aggregate payloads in API responses.
+- Consistent shapes across API, WS, and TUI.
 
 ## Source of Truth
 
@@ -23,20 +23,20 @@ These dataclasses are the canonical shapes for:
 
 ## Boundary DTOs
 
-REST and WebSocket payloads use DTOs that map 1:1 to the core dataclasses:
-- DTOs live with the adapters (target location: `teleclaude/adapters/rest_models.py`).
+API and WebSocket payloads use DTOs that map 1:1 to the core dataclasses:
+- DTOs live with the adapters (target location: `teleclaude/api_models.py`).
 - DTOs may add transport metadata only (example `computer`).
 - DTOs are validated at the boundary only.
 
 ## Validation Policy
 
-- Use Pydantic for request and response validation at REST and WS boundaries.
+- Use Pydantic for request and response validation at API and WS boundaries.
 - Do not use Pydantic inside core logic or cache internals.
 - TypedDict should be limited to local helpers or short-lived internal payloads.
 
 ## Session Summary vs Detail
 
-- REST returns session summary only.
+- API returns session summary only.
 - Session detail and live events are delivered via WebSocket when expanded.
 
 ## Identifiers
@@ -47,5 +47,5 @@ REST and WebSocket payloads use DTOs that map 1:1 to the core dataclasses:
 ## Implementation Notes
 
 - Centralize mapping functions (core dataclasses -> DTOs) in a single module.
-- Remove aggregate payloads (example "projects with todos") from REST.
-- Align TUI models with REST DTOs; avoid new parallel shapes.
+- Remove aggregate payloads (example "projects with todos") from API.
+- Align TUI models with API DTOs; avoid new parallel shapes.

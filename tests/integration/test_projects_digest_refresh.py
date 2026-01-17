@@ -11,17 +11,17 @@ from tests.integration.conftest import MockRedisClient
 @pytest.mark.asyncio
 async def test_refresh_peers_triggers_pull_on_digest_change():
     """Refresh should pull projects when peer digest changes."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
     redis_client = MockRedisClient()
 
-    remote_adapter = RedisAdapter(mock_client)
+    remote_adapter = RedisTransport(mock_client)
     remote_adapter.redis = redis_client
     remote_adapter.computer_name = "RemotePC"
 
-    local_adapter = RedisAdapter(mock_client)
+    local_adapter = RedisTransport(mock_client)
     local_adapter.redis = redis_client
     local_adapter.computer_name = "LocalPC"
     local_adapter.cache = DaemonCache()

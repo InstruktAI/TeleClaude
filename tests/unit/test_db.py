@@ -136,7 +136,7 @@ class TestListSessions:
     async def test_list_all_sessions(self, test_db):
         """Test listing all sessions."""
         await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-        await test_db.create_session("PC2", "session-2", "rest", "Test Session")
+        await test_db.create_session("PC2", "session-2", "api", "Test Session")
         await test_db.create_session("PC1", "session-3", "telegram", "Test Session")
 
         sessions = await test_db.list_sessions()
@@ -159,7 +159,7 @@ class TestListSessions:
     async def test_list_sessions_filter_by_adapter_type(self, test_db):
         """Test filtering sessions by adapter type."""
         await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
-        await test_db.create_session("PC1", "session-2", "rest", "Test Session")
+        await test_db.create_session("PC1", "session-2", "api", "Test Session")
         await test_db.create_session("PC1", "session-3", "telegram", "Test Session")
 
         sessions = await test_db.list_sessions(origin_adapter="telegram")
@@ -172,9 +172,9 @@ class TestListSessions:
         """Test filtering sessions with multiple criteria."""
         await test_db.create_session("PC1", "session-1", "telegram", "Test Session")
         await test_db.create_session("PC2", "session-2", "telegram", "Test Session")
-        s3 = await test_db.create_session("PC1", "session-3", "rest", "Test Session")
+        s3 = await test_db.create_session("PC1", "session-3", "api", "Test Session")
 
-        sessions = await test_db.list_sessions(computer_name="PC1", origin_adapter="rest")
+        sessions = await test_db.list_sessions(computer_name="PC1", origin_adapter="api")
 
         assert len(sessions) == 1
         assert sessions[0].session_id == s3.session_id
@@ -455,7 +455,7 @@ class TestGetSessionsByAdapterMetadata:
     @pytest.mark.asyncio
     async def test_get_by_metadata_excludes_sessions_without_metadata(self, test_db):
         """Test that sessions without the specified adapter metadata are NOT returned."""
-        from teleclaude.core.models import RedisAdapterMetadata, SessionAdapterMetadata, TelegramAdapterMetadata
+        from teleclaude.core.models import RedisTransportMetadata, SessionAdapterMetadata, TelegramAdapterMetadata
 
         # Create session WITH telegram metadata
         await test_db.create_session(
@@ -471,7 +471,7 @@ class TestGetSessionsByAdapterMetadata:
             "session-2",
             "redis",
             "No Telegram",
-            adapter_metadata=SessionAdapterMetadata(redis=RedisAdapterMetadata(channel_id="test")),
+            adapter_metadata=SessionAdapterMetadata(redis=RedisTransportMetadata(channel_id="test")),
         )
 
         sessions = await test_db.get_sessions_by_adapter_metadata("telegram", "topic_id", 123)

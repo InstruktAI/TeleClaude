@@ -1,6 +1,6 @@
 """Central cache for remote data with TTL management and change notifications.
 
-Provides instant reads for REST endpoints and emits change events when data updates.
+Provides instant reads for API endpoints and emits change events when data updates.
 """
 
 import hashlib

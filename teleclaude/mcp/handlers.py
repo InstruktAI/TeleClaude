@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.config import config
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import normalize_agent_name
@@ -48,6 +47,7 @@ from teleclaude.mcp.types import (
     StartSessionResult,
     StopNotificationsResult,
 )
+from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types import SystemStats
 from teleclaude.utils.markdown import telegramify_markdown
 
@@ -186,11 +186,11 @@ class MCPHandlersMixin:
         ]
 
         # Get remote projects from all online computers
-        redis_adapter = self._get_redis_adapter()
-        if not redis_adapter:
+        redis_transport = self._get_redis_transport()
+        if not redis_transport:
             return local_projects
 
-        for computer_name in await redis_adapter._get_online_computers():
+        for computer_name in await redis_transport._get_online_computers():
             remote_projects = await self._list_remote_projects(computer_name)
             for project in remote_projects:
                 project["computer"] = computer_name
@@ -452,11 +452,11 @@ class MCPHandlersMixin:
         """List sessions from ALL computers."""
         all_sessions = await self._list_local_sessions()
 
-        redis_adapter = self._get_redis_adapter()
-        if not redis_adapter:
+        redis_transport = self._get_redis_transport()
+        if not redis_transport:
             return all_sessions
 
-        for computer_name in await redis_adapter._get_online_computers():
+        for computer_name in await redis_transport._get_online_computers():
             all_sessions.extend(await self._list_remote_sessions(computer_name))
 
         return all_sessions
@@ -776,11 +776,11 @@ class MCPHandlersMixin:
 
     async def teleclaude__deploy(self, computers: list[str] | None = None) -> dict[str, DeployComputerResult]:
         """Deploy latest code to remote computers via Redis."""
-        redis_adapter = self._get_redis_adapter()
-        if not redis_adapter:
+        redis_transport = self._get_redis_transport()
+        if not redis_transport:
             return {"_error": {"status": "error", "message": "Redis adapter not available"}}
 
-        all_peers = await redis_adapter.discover_peers()
+        all_peers = await redis_transport.discover_peers()
         available = [peer.name for peer in all_peers if peer.name != self.computer_name]
         available_set = set(available)
 
@@ -806,13 +806,13 @@ class MCPHandlersMixin:
         logger.info("Deploying to computers: %s", targets)
 
         for computer in targets:
-            await redis_adapter.send_system_command(
+            await redis_transport.send_system_command(
                 computer_name=computer, command="deploy", args={"verify_health": True}
             )
 
         for computer in targets:
             for _ in range(60):
-                status = await redis_adapter.get_system_command_status(computer_name=computer, command="deploy")
+                status = await redis_transport.get_system_command_status(computer_name=computer, command="deploy")
                 status_str = str(status.get("status", "unknown"))
                 if status_str in ("deployed", "error"):
                     results[computer] = cast(DeployComputerResult, status)
@@ -1032,11 +1032,11 @@ class MCPHandlersMixin:
         peers = await self.client.discover_peers()
         return any(p["name"] == computer and p["status"] == "online" for p in peers)
 
-    def _get_redis_adapter(self) -> RedisAdapter | None:
+    def _get_redis_transport(self) -> RedisTransport | None:
         """Get Redis adapter if available."""
-        redis_adapter_base = self.client.adapters.get("redis")
-        if redis_adapter_base and isinstance(redis_adapter_base, RedisAdapter):
-            return redis_adapter_base
+        redis_transport_base = self.client.adapters.get("redis")
+        if redis_transport_base and isinstance(redis_transport_base, RedisTransport):
+            return redis_transport_base
         logger.warning("Redis adapter not available")
         return None
 

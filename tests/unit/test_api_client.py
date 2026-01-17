@@ -195,7 +195,7 @@ async def test_api_error_on_connect_error():
         with pytest.raises(APIError) as exc_info:
             await client.list_sessions()
 
-        assert "Cannot connect to REST API server" in str(exc_info.value)
+        assert "Cannot connect to API server" in str(exc_info.value)
 
     await client.close()
 

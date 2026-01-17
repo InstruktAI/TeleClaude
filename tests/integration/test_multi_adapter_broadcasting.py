@@ -77,7 +77,7 @@ class MockTelegramAdapter(UiAdapter):
         return
 
 
-class MockRedisAdapter(BaseAdapter):
+class MockRedisTransport(BaseAdapter):
     """Mock Redis adapter (has_ui=False, observer)."""
 
     has_ui = False  # Pure transport, no UI
@@ -192,12 +192,12 @@ async def test_origin_adapter_receives_output():
 
 @pytest.mark.integration
 async def test_redis_observer_skipped_no_ui():
-    """Test RedisAdapter (has_ui=False) skipped for broadcasts.
+    """Test RedisTransport (has_ui=False) skipped for broadcasts.
 
     Use Case: UC-M1
     Flow:
     1. Create session with telegram origin
-    2. Register both TelegramAdapter (origin) and RedisAdapter (observer)
+    2. Register both TelegramAdapter (origin) and RedisTransport (observer)
     3. Send message via adapter_client
     4. Verify output sent to telegram (origin)
     5. Verify Redis send_message() NOT called (has_ui=False)
@@ -223,10 +223,10 @@ async def test_redis_observer_skipped_no_ui():
                 # Create adapter_client with both adapters
                 adapter_client = AdapterClient()
                 telegram_adapter = MockTelegramAdapter(adapter_client)
-                redis_adapter = MockRedisAdapter()
+                redis_transport = MockRedisTransport()
                 adapter_client.adapters = {
                     "telegram": telegram_adapter,
-                    "redis": redis_adapter,
+                    "redis": redis_transport,
                 }
 
                 # Send message (origin: telegram, observer: redis)
@@ -236,7 +236,7 @@ async def test_redis_observer_skipped_no_ui():
                 assert len(telegram_adapter.send_message_calls) == 1
 
                 # Verify redis (observer with has_ui=False) NOT called
-                assert len(redis_adapter.send_message_calls) == 0
+                assert len(redis_transport.send_message_calls) == 0
 
     finally:
         await test_db.close()
@@ -607,7 +607,7 @@ async def test_discover_peers_respects_redis_enabled_flag():
     from teleclaude.core.models import PeerInfo
 
     # Create mock Redis adapter that would return peers if called
-    class MockRedisAdapterWithPeers(BaseAdapter):
+    class MockRedisTransportWithPeers(BaseAdapter):
         """Mock Redis adapter that returns peers."""
 
         has_ui = False
@@ -689,20 +689,20 @@ async def test_discover_peers_respects_redis_enabled_flag():
         with patch("teleclaude.core.db.db", test_db):
             with patch("teleclaude.core.adapter_client.db", test_db):
                 # Create adapter client with mock Redis adapter
-                redis_adapter = MockRedisAdapterWithPeers()
+                redis_transport = MockRedisTransportWithPeers()
                 adapter_client = AdapterClient()
-                adapter_client.adapters = {"redis": redis_adapter}
+                adapter_client.adapters = {"redis": redis_transport}
 
                 # Test 1: redis_enabled=False - should return empty without calling adapter
                 peers = await adapter_client.discover_peers(redis_enabled=False)
                 assert peers == [], "Should return empty list when Redis disabled"
-                assert not redis_adapter.discover_peers_called, "Should NOT call adapter when Redis disabled"
+                assert not redis_transport.discover_peers_called, "Should NOT call adapter when Redis disabled"
 
                 # Test 2: redis_enabled=True - should query adapter and return peers
                 peers = await adapter_client.discover_peers(redis_enabled=True)
                 assert len(peers) == 1, "Should return peers when Redis enabled"
                 assert peers[0]["name"] == "RemotePC"
-                assert redis_adapter.discover_peers_called, "Should call adapter when Redis enabled"
+                assert redis_transport.discover_peers_called, "Should call adapter when Redis enabled"
 
                 # Test 3: Local session creation works regardless (isolation test)
                 session = await test_db.create_session(

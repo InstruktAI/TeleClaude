@@ -1,4 +1,4 @@
-"""Unit tests for REST adapter server exit handling."""
+"""Unit tests for API server server exit handling."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from teleclaude.adapters.rest_adapter import REST_TIMEOUT_KEEP_ALIVE_S, RESTAdapter, _get_fd_count
+from teleclaude.api_server import API_TIMEOUT_KEEP_ALIVE_S, APIServer, _get_fd_count
 
 
 class _DummyClient:
@@ -19,7 +19,7 @@ class _DummyTask:
         return None
 
 
-class _TestRESTAdapter(RESTAdapter):
+class _TestAPIServer(APIServer):
     async def create_channel(self, *_args, **_kwargs):  # type: ignore[override]
         return ""
 
@@ -54,8 +54,8 @@ class _TestRESTAdapter(RESTAdapter):
         return []
 
 
-def test_rest_server_done_calls_exit_handler_when_running() -> None:
-    adapter = _TestRESTAdapter(_DummyClient())
+def test_api_server_done_calls_exit_handler_when_running() -> None:
+    adapter = _TestAPIServer(_DummyClient())
     adapter._running = True
 
     class _Server:
@@ -77,8 +77,8 @@ def test_rest_server_done_calls_exit_handler_when_running() -> None:
     assert isinstance(socket_exists, bool)
 
 
-def test_rest_server_done_noop_when_stopped() -> None:
-    adapter = _TestRESTAdapter(_DummyClient())
+def test_api_server_done_noop_when_stopped() -> None:
+    adapter = _TestAPIServer(_DummyClient())
     adapter._running = False
     handler = MagicMock()
     adapter.set_on_server_exit(handler)
@@ -90,7 +90,7 @@ def test_rest_server_done_noop_when_stopped() -> None:
 
 @pytest.mark.asyncio
 async def test_stop_server_sets_should_exit_when_started() -> None:
-    adapter = _TestRESTAdapter(_DummyClient())
+    adapter = _TestAPIServer(_DummyClient())
 
     class _Server:
         def __init__(self) -> None:
@@ -120,19 +120,19 @@ async def test_start_configures_ws_keepalive(monkeypatch) -> None:
         async def serve(self) -> None:
             return None
 
-    monkeypatch.setattr("teleclaude.adapters.rest_adapter.uvicorn.Config", fake_config)
-    monkeypatch.setattr("teleclaude.adapters.rest_adapter.uvicorn.Server", _FakeServer)
-    adapter = _TestRESTAdapter(_DummyClient())
+    monkeypatch.setattr("teleclaude.api_server.uvicorn.Config", fake_config)
+    monkeypatch.setattr("teleclaude.api_server.uvicorn.Server", _FakeServer)
+    adapter = _TestAPIServer(_DummyClient())
 
     monkeypatch.setattr(adapter, "_cleanup_socket", lambda _reason: None)
     await adapter._start_server()
 
     assert captured["ws_ping_interval"] == 20.0
     assert captured["ws_ping_timeout"] == 20.0
-    assert captured["timeout_keep_alive"] == REST_TIMEOUT_KEEP_ALIVE_S
+    assert captured["timeout_keep_alive"] == API_TIMEOUT_KEEP_ALIVE_S
 
 
 def test_get_fd_count_uses_dev_fd(monkeypatch) -> None:
-    monkeypatch.setattr("teleclaude.adapters.rest_adapter.os.listdir", lambda _path: ["0", "1", "2", "3"])
+    monkeypatch.setattr("teleclaude.api_server.os.listdir", lambda _path: ["0", "1", "2", "3"])
 
     assert _get_fd_count() == 4

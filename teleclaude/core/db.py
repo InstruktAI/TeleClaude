@@ -14,9 +14,9 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 
+from .api_events import ApiOutboxMetadata, ApiOutboxPayload
 from .events import TeleClaudeEvents
 from .models import MessageMetadata, Session, SessionAdapterMetadata
-from .rest_events import RestOutboxMetadata, RestOutboxPayload
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ class HookOutboxRow(TypedDict):
     attempt_count: int
 
 
-class RestOutboxRow(TypedDict):
+class ApiOutboxRow(TypedDict):
     id: int
     request_id: str
     event_type: str
@@ -978,20 +978,20 @@ class Db:
         )
         await self.conn.commit()
 
-    async def enqueue_rest_event(
+    async def enqueue_api_event(
         self,
         request_id: str,
         event_type: str,
-        payload: RestOutboxPayload,
-        metadata: RestOutboxMetadata,
+        payload: ApiOutboxPayload,
+        metadata: ApiOutboxMetadata,
     ) -> int:
-        """Persist a REST-origin event in the outbox for durable delivery."""
+        """Persist a API-origin event in the outbox for durable delivery."""
         now = datetime.now(timezone.utc).isoformat()
         payload_json = json.dumps(payload)
         metadata_json = json.dumps(metadata)
         cursor = await self.conn.execute(
             """
-            INSERT INTO rest_outbox (
+            INSERT INTO api_outbox (
                 request_id, event_type, payload, metadata, created_at, next_attempt_at, attempt_count
             ) VALUES (?, ?, ?, ?, ?, ?, 0)
             """,
@@ -1000,20 +1000,20 @@ class Db:
         await self.conn.commit()
         row_id = cursor.lastrowid
         if row_id is None:
-            raise RuntimeError("Failed to insert REST outbox row")
+            raise RuntimeError("Failed to insert API outbox row")
         return int(row_id)
 
-    async def fetch_rest_outbox_batch(
+    async def fetch_api_outbox_batch(
         self,
         now_iso: str,
         limit: int,
         lock_cutoff_iso: str,
-    ) -> list[RestOutboxRow]:
-        """Fetch a batch of due REST outbox events."""
+    ) -> list[ApiOutboxRow]:
+        """Fetch a batch of due API outbox events."""
         cursor = await self.conn.execute(
             """
             SELECT id, request_id, event_type, payload, metadata, attempt_count
-            FROM rest_outbox
+            FROM api_outbox
             WHERE delivered_at IS NULL
               AND next_attempt_at <= ?
               AND (locked_at IS NULL OR locked_at <= ?)
@@ -1023,7 +1023,7 @@ class Db:
             (now_iso, lock_cutoff_iso, limit),
         )
         rows = await cursor.fetchall()
-        typed_rows: list[RestOutboxRow] = []
+        typed_rows: list[ApiOutboxRow] = []
         for row in rows:
             row_id = cast(int, row["id"])
             request_id = cast(str, row["request_id"])
@@ -1032,7 +1032,7 @@ class Db:
             metadata = cast(str, row["metadata"])
             attempt_count = cast(int, row["attempt_count"])
             typed_rows.append(
-                RestOutboxRow(
+                ApiOutboxRow(
                     id=row_id,
                     request_id=request_id,
                     event_type=event_type,
@@ -1043,11 +1043,11 @@ class Db:
             )
         return typed_rows
 
-    async def claim_rest_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
-        """Claim a REST outbox row for processing."""
+    async def claim_api_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
+        """Claim a API outbox row for processing."""
         cursor = await self.conn.execute(
             """
-            UPDATE rest_outbox
+            UPDATE api_outbox
             SET locked_at = ?
             WHERE id = ?
               AND delivered_at IS NULL
@@ -1058,17 +1058,17 @@ class Db:
         await self.conn.commit()
         return cursor.rowcount == 1
 
-    async def mark_rest_outbox_delivered(
+    async def mark_api_outbox_delivered(
         self,
         row_id: int,
         response_json: str,
         error: str | None = None,
     ) -> None:
-        """Mark a REST outbox row delivered with response payload."""
+        """Mark a API outbox row delivered with response payload."""
         now = datetime.now(timezone.utc).isoformat()
         await self.conn.execute(
             """
-            UPDATE rest_outbox
+            UPDATE api_outbox
             SET delivered_at = ?, last_error = ?, locked_at = NULL, response = ?
             WHERE id = ?
             """,
@@ -1076,17 +1076,17 @@ class Db:
         )
         await self.conn.commit()
 
-    async def mark_rest_outbox_failed(
+    async def mark_api_outbox_failed(
         self,
         row_id: int,
         attempt_count: int,
         next_attempt_at: str,
         error: str,
     ) -> None:
-        """Record a REST outbox failure and schedule a retry."""
+        """Record a API outbox failure and schedule a retry."""
         await self.conn.execute(
             """
-            UPDATE rest_outbox
+            UPDATE api_outbox
             SET attempt_count = ?, next_attempt_at = ?, last_error = ?, locked_at = NULL
             WHERE id = ?
             """,

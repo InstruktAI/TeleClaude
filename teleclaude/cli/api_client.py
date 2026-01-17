@@ -26,7 +26,7 @@ from teleclaude.cli.models import (
     UnsubscribeRequest,
     WsEvent,
 )
-from teleclaude.constants import REST_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH
 
 logger = get_logger(__name__)
 
@@ -50,7 +50,7 @@ class APIError(Exception):
 class TelecAPIClient:
     """Async HTTP client for telec with WebSocket push support."""
 
-    def __init__(self, socket_path: str = REST_SOCKET_PATH):
+    def __init__(self, socket_path: str = API_SOCKET_PATH):
         """Initialize client.
 
         Args:
@@ -222,7 +222,7 @@ class TelecAPIClient:
             except ValidationError as e:
                 logger.warning("Invalid WebSocket event payload: %s", e)
 
-    # --- REST API Methods ---
+    # --- API Methods ---
 
     async def _request(
         self,
@@ -267,9 +267,9 @@ class TelecAPIClient:
         except httpx.HTTPStatusError as e:
             raise APIError(f"API request failed: {e.response.status_code} {e.response.text}") from e
         except httpx.ConnectError as e:
-            raise APIError("Cannot connect to REST API server. Socket may be missing.") from e
+            raise APIError("Cannot connect to API server. Socket may be missing.") from e
         except httpx.TimeoutException as e:
-            raise APIError("REST API request timed out. Server may be blocked or overloaded.") from e
+            raise APIError("API request timed out. Server may be blocked or overloaded.") from e
         except Exception as e:
             raise APIError(f"Unexpected error: {e}") from e
 

@@ -15,17 +15,17 @@ Refactor TeleClaude to properly implement **AdapterClient as the central hub** f
 
 ### Architectural Violation
 
-MCP server had **direct references to RedisAdapter**, bypassing AdapterClient:
+MCP server had **direct references to RedisTransport**, bypassing AdapterClient:
 
 ```python
 # ❌ WRONG: Direct adapter access
 class TeleClaudeMCPServer:
-    def __init__(self, redis_adapter, adapter_client, ...):
-        self.redis_adapter = redis_adapter  # Direct reference
+    def __init__(self, redis_transport, adapter_client, ...):
+        self.redis_transport = redis_transport  # Direct reference
 
     async def list_projects(self, computer: str):
         # Bypasses AdapterClient
-        await self.redis_adapter.send_command_to_computer(...)
+        await self.redis_transport.send_command_to_computer(...)
 ```
 
 ### Issues
@@ -55,7 +55,7 @@ class RemoteExecutionProtocol(Protocol):
 ### Adapter Classification
 
 **Transport Adapters** (implement RemoteExecutionProtocol):
-- ✅ RedisAdapter - Redis Streams
+- ✅ RedisTransport - Redis Streams
 - ✅ PostgresAdapter (future) - PostgreSQL LISTEN/NOTIFY
 - `has_ui = False` (pure transport)
 
@@ -107,7 +107,7 @@ class TeleClaudeMCPServer:
 
 2. **`tests/unit/test_protocols.py`** - Protocol verification (6 tests)
    - Runtime checkable protocol tests
-   - RedisAdapter protocol compliance
+   - RedisTransport protocol compliance
    - Method signature validation
 
 3. **`tests/unit/test_adapter_client_protocols.py`** - Cross-computer tests (11 tests)
@@ -131,17 +131,17 @@ class TeleClaudeMCPServer:
    - Added `discover_remote_computers()`
    - Added `_get_transport_adapter()`
 
-2. **`teleclaude/adapters/redis_adapter.py`**
+2. **`teleclaude/adapters/redis_transport.py`**
    - Now implements `RemoteExecutionProtocol` explicitly
    - Added `discover_computers()` method
 
 3. **`teleclaude/mcp_server.py`**
-   - Removed `redis_adapter` parameter from `__init__()`
-   - Replaced all `self.redis_adapter.X()` with `self.client.X()`
+   - Removed `redis_transport` parameter from `__init__()`
+   - Replaced all `self.redis_transport.X()` with `self.client.X()`
    - Updated all MCP tools (list_projects, start_session, send_message)
 
 4. **`teleclaude/daemon.py`**
-   - Simplified MCP server initialization (no redis_adapter parameter)
+   - Simplified MCP server initialization (no redis_transport parameter)
 
 5. **`tests/integration/test_mcp_redis.py`**
    - Updated fixtures for new MCP server signature
@@ -197,8 +197,8 @@ Just implement `RemoteExecutionProtocol` and register in config.
 
 ```python
 # Before: Hard to test (specific adapter)
-mock_redis_adapter = MockRedisAdapter()
-mcp_server = TeleClaudeMCPServer(redis_adapter=mock_redis_adapter, ...)
+mock_redis_transport = MockRedisTransport()
+mcp_server = TeleClaudeMCPServer(redis_transport=mock_redis_transport, ...)
 
 # After: Easy to test (abstract interface)
 mock_adapter_client = Mock()

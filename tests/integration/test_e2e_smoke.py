@@ -26,7 +26,7 @@ from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary
 if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
-    from teleclaude.adapters.rest_adapter import RESTAdapter
+    from teleclaude.api_server import APIServer
     from teleclaude.core.cache import DaemonCache
 
 
@@ -68,12 +68,12 @@ def mock_adapter_client(patched_config: MagicMock) -> MagicMock:
 
 
 @pytest.fixture
-def rest_adapter(patched_config: MagicMock, mock_adapter_client: MagicMock, cache: DaemonCache):
-    """REST adapter with cache wired."""
-    from teleclaude.adapters.rest_adapter import RESTAdapter
+def api_server(patched_config: MagicMock, mock_adapter_client: MagicMock, cache: DaemonCache):
+    """API server with cache wired."""
+    from teleclaude.api_server import APIServer
 
     _ = patched_config  # Fixture dependency for config patching
-    adapter = RESTAdapter(mock_adapter_client, cache=cache)
+    adapter = APIServer(mock_adapter_client, cache=cache)
     return adapter
 
 
@@ -107,7 +107,7 @@ def create_test_session(
     )
 
 
-async def test_projects_initial_payload_parses(rest_adapter, cache: DaemonCache) -> None:
+async def test_projects_initial_payload_parses(api_server, cache: DaemonCache) -> None:
     """Ensure projects_initial payloads parse with CLI WebSocket models."""
     from teleclaude.cli.models import WsEvent
 
@@ -115,7 +115,7 @@ async def test_projects_initial_payload_parses(rest_adapter, cache: DaemonCache)
     cache.set_projects("local", [project])
 
     mock_ws = create_mock_websocket()
-    await rest_adapter._send_initial_state(mock_ws, "projects", "local")
+    await api_server._send_initial_state(mock_ws, "projects", "local")
 
     await wait_for_call(mock_ws.send_json)
     payload = mock_ws.send_json.call_args[0][0]
@@ -146,7 +146,7 @@ async def wait_for_call(mock_fn: AsyncMock, timeout: float = 1.0, interval: floa
 
 @pytest.mark.asyncio
 async def test_websocket_subscription_registers_interest(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
@@ -161,20 +161,20 @@ async def test_websocket_subscription_registers_interest(
 
     # Simulate WebSocket connection and subscription (new per-computer format)
     mock_ws = create_mock_websocket()
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Update cache interest
-    rest_adapter._update_cache_interest()
+    api_server._update_cache_interest()
 
     # Verify interest registered for local computer
     assert cache.has_interest("sessions", "local")
     assert cache.get_interested_computers("sessions") == ["local"]
 
     # Simulate disconnect
-    rest_adapter._ws_clients.discard(mock_ws)
-    rest_adapter._client_subscriptions.pop(mock_ws, None)
-    rest_adapter._update_cache_interest()
+    api_server._ws_clients.discard(mock_ws)
+    api_server._client_subscriptions.pop(mock_ws, None)
+    api_server._update_cache_interest()
 
     # Verify interest cleared
     assert cache.get_interested_computers("sessions") == []
@@ -182,21 +182,21 @@ async def test_websocket_subscription_registers_interest(
 
 @pytest.mark.asyncio
 async def test_cache_update_notifies_websocket_clients(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
-    Flow: cache.update_session() → REST adapter callback → ws.send_json().
+    Flow: cache.update_session() → API server callback → ws.send_json().
 
     Validates:
     - Cache updates trigger subscriber callbacks
-    - REST adapter receives notification
+    - API server receives notification
     - WebSocket clients receive pushed events
     """
     # Set up WebSocket client
     mock_ws = create_mock_websocket()
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Update session in cache (triggers notification)
     test_session = create_test_session()
@@ -214,7 +214,7 @@ async def test_cache_update_notifies_websocket_clients(
 
 @pytest.mark.asyncio
 async def test_session_removal_notifies_websocket(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
@@ -226,8 +226,8 @@ async def test_session_removal_notifies_websocket(
     """
     # Set up WebSocket client
     mock_ws = create_mock_websocket()
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Add session first
     test_session = create_test_session()
@@ -342,7 +342,7 @@ async def test_redis_event_updates_local_cache(cache: DaemonCache) -> None:
     - Updated data available via cache
     """
     # Simulate receiving Redis event with session data
-    # (In real system, RedisAdapter would parse stream and call cache.update_session())
+    # (In real system, RedisTransport would parse stream and call cache.update_session())
     event_session = create_test_session(
         session_id="redis-session-456",
         computer="remote-computer",
@@ -368,7 +368,7 @@ async def test_redis_event_updates_local_cache(cache: DaemonCache) -> None:
 
 @pytest.mark.asyncio
 async def test_full_event_round_trip(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
@@ -382,11 +382,11 @@ async def test_full_event_round_trip(
     """
     # Set up WebSocket client with per-computer subscription
     mock_ws = create_mock_websocket()
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"remote-computer": {"sessions"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"remote-computer": {"sessions"}}
 
     # Update cache interest
-    rest_adapter._update_cache_interest()
+    api_server._update_cache_interest()
     assert cache.has_interest("sessions", "remote-computer")
 
     # Simulate remote session change (from Redis)
@@ -400,8 +400,8 @@ async def test_full_event_round_trip(
     # Step 2: Redis adapter updates cache
     cache.update_session(remote_session)
 
-    # Step 3: Cache notifies subscribers (REST adapter)
-    # Step 4: REST adapter pushes to WebSocket clients
+    # Step 3: Cache notifies subscribers (API server)
+    # Step 4: API server pushes to WebSocket clients
     await wait_for_call(mock_ws.send_json)
 
     # Verify end-to-end: WebSocket received the event
@@ -414,24 +414,24 @@ async def test_full_event_round_trip(
 
 @pytest.mark.asyncio
 async def test_local_session_lifecycle_to_websocket(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
     patched_config: MagicMock,
     monkeypatch: MonkeyPatch,
 ) -> None:
     """
-    Flow: db.create_session() → AdapterClient event → REST adapter handler → cache → WebSocket.
+    Flow: db.create_session() → AdapterClient event → API server handler → cache → WebSocket.
 
     This test validates the complete local session lifecycle path that bypasses
     direct cache.update_session() calls and exercises the event handler chain.
 
     Validates:
     - Database session creation triggers SESSION_CREATED event
-    - REST adapter's _handle_session_created_event updates cache
+    - API server's _handle_session_created_event updates cache
     - Cache update triggers WebSocket broadcast
     - Complete end-to-end local event flow works
     """
-    from teleclaude.adapters import rest_adapter as rest_module
+    from teleclaude import api_server as api_module
     from teleclaude.core import adapter_client as client_module
     from teleclaude.core import db as db_module
     from teleclaude.core.adapter_client import AdapterClient
@@ -443,42 +443,42 @@ async def test_local_session_lifecycle_to_websocket(
 
     # Patch the global db instance in ALL modules that use it
     monkeypatch.setattr(db_module, "db", db_instance)
-    monkeypatch.setattr(rest_module, "db", db_instance)
+    monkeypatch.setattr(api_module, "db", db_instance)
     monkeypatch.setattr(client_module, "db", db_instance)
 
-    # Ensure config.computer.name is correct in rest_adapter module
+    # Ensure config.computer.name is correct in api_server module
     # The patched_config fixture already sets config.computer.name = "test-computer"
-    monkeypatch.setattr(rest_module, "config", patched_config)
+    monkeypatch.setattr(api_module, "config", patched_config)
 
     # Wire up real AdapterClient (not mock) to handle events
     real_client = AdapterClient()
-    real_client.register_adapter("rest", rest_adapter)
+    real_client.register_adapter("api", api_server)
     db_instance.set_client(real_client)
 
-    # Wire REST adapter to use real client
-    rest_adapter.client = real_client
+    # Wire API server to use real client
+    api_server.client = real_client
 
     # Re-register event handlers with real client
     real_client.on(
         "session_created",
-        rest_adapter._handle_session_created_event,
+        api_server._handle_session_created_event,
     )
     real_client.on(
         "session_updated",
-        rest_adapter._handle_session_updated_event,
+        api_server._handle_session_updated_event,
     )
     real_client.on(
         "session_removed",
-        rest_adapter._handle_session_removed_event,
+        api_server._handle_session_removed_event,
     )
 
     # Set up WebSocket client
     mock_ws = create_mock_websocket()
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"test-computer": {"sessions"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"test-computer": {"sessions"}}
 
     # Update cache interest
-    rest_adapter._update_cache_interest()
+    api_server._update_cache_interest()
     assert cache.has_interest("sessions", "test-computer")
 
     # Create session in database (triggers local lifecycle event)
@@ -490,7 +490,7 @@ async def test_local_session_lifecycle_to_websocket(
         project_path="/tmp",
     )
 
-    # Wait for async event propagation: DB → Client → REST adapter → Cache → WS
+    # Wait for async event propagation: DB → Client → API server → Cache → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
     # Verify WebSocket received the session_created event
@@ -511,40 +511,40 @@ async def test_local_session_lifecycle_to_websocket(
 
 
 @pytest.mark.asyncio
-async def test_rest_adapter_cache_wired_post_init(
+async def test_api_server_cache_wired_post_init(
     cache: DaemonCache,
     patched_config: MagicMock,
     monkeypatch: MonkeyPatch,
 ) -> None:
     """
-    Flow: RESTAdapter constructed without cache → cache set post-init → cache updates trigger WS.
+    Flow: APIServer constructed without cache → cache set post-init → cache updates trigger WS.
 
-    This test validates the production startup flow where RESTAdapter is constructed
+    This test validates the production startup flow where APIServer is constructed
     during adapter registration (without cache) and cache is wired later in
     DaemonLifecycle.startup().
 
     Validates:
-    - RESTAdapter can be constructed without cache
+    - APIServer can be constructed without cache
     - Setting cache post-init subscribes to cache notifications
     - Cache updates trigger WebSocket broadcasts after post-init wiring
     - Production cache wiring pattern works correctly
     """
-    from teleclaude.adapters import rest_adapter as rest_module
-    from teleclaude.adapters.rest_adapter import RESTAdapter
+    from teleclaude import api_server as api_module
+    from teleclaude.api_server import APIServer
     from teleclaude.core.adapter_client import AdapterClient
 
-    # Ensure config.computer.name is correct in rest_adapter module
-    monkeypatch.setattr(rest_module, "config", patched_config)
+    # Ensure config.computer.name is correct in api_server module
+    monkeypatch.setattr(api_module, "config", patched_config)
 
     # Create AdapterClient
     client = AdapterClient()
 
-    # CRITICAL: Construct RESTAdapter WITHOUT cache (production init pattern)
-    adapter = RESTAdapter(client, cache=None)
+    # CRITICAL: Construct APIServer WITHOUT cache (production init pattern)
+    adapter = APIServer(client, cache=None)
     assert adapter.cache is None
 
     # Register adapter with client
-    client.register_adapter("rest", adapter)
+    client.register_adapter("api", adapter)
 
     # Set up WebSocket client
     mock_ws = create_mock_websocket()
@@ -569,7 +569,7 @@ async def test_rest_adapter_cache_wired_post_init(
     )
     cache.update_session(test_session)
 
-    # Wait for async propagation: Cache → RESTAdapter._on_cache_change → WS
+    # Wait for async propagation: Cache → APIServer._on_cache_change → WS
     await wait_for_call(mock_ws.send_json, timeout=2.0)
 
     # Verify WebSocket received the session_created event
@@ -586,7 +586,7 @@ async def test_rest_adapter_cache_wired_post_init(
 
 @pytest.mark.asyncio
 async def test_multiple_websocket_clients_receive_updates(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
@@ -600,10 +600,10 @@ async def test_multiple_websocket_clients_receive_updates(
     mock_ws1 = create_mock_websocket()
     mock_ws2 = create_mock_websocket()
 
-    rest_adapter._ws_clients.add(mock_ws1)
-    rest_adapter._ws_clients.add(mock_ws2)
-    rest_adapter._client_subscriptions[mock_ws1] = {"local": {"sessions"}}
-    rest_adapter._client_subscriptions[mock_ws2] = {"local": {"sessions"}}
+    api_server._ws_clients.add(mock_ws1)
+    api_server._ws_clients.add(mock_ws2)
+    api_server._client_subscriptions[mock_ws1] = {"local": {"sessions"}}
+    api_server._client_subscriptions[mock_ws2] = {"local": {"sessions"}}
 
     # Update session in cache
     test_session = create_test_session(session_id="broadcast-test")
@@ -628,7 +628,7 @@ async def test_multiple_websocket_clients_receive_updates(
 
 @pytest.mark.asyncio
 async def test_unsubscribed_client_receives_all_events(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
@@ -643,8 +643,8 @@ async def test_unsubscribed_client_receives_all_events(
     """
     # Set up client subscribed to preparation only
     mock_ws = create_mock_websocket()
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"local": {"preparation"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"preparation"}}
 
     # Update session (not in preparation topic)
     test_session = create_test_session(session_id="unfiltered-test")
@@ -662,7 +662,7 @@ async def test_unsubscribed_client_receives_all_events(
 
 @pytest.mark.asyncio
 async def test_dead_websocket_client_removed_on_error(
-    rest_adapter: RESTAdapter,
+    api_server: APIServer,
     cache: DaemonCache,
 ) -> None:
     """
@@ -676,11 +676,11 @@ async def test_dead_websocket_client_removed_on_error(
     mock_ws = create_mock_websocket()
     mock_ws.send_json.side_effect = Exception("Connection closed")
 
-    rest_adapter._ws_clients.add(mock_ws)
-    rest_adapter._client_subscriptions[mock_ws] = {"local": {"sessions"}}
+    api_server._ws_clients.add(mock_ws)
+    api_server._client_subscriptions[mock_ws] = {"local": {"sessions"}}
 
     # Verify client registered
-    assert mock_ws in rest_adapter._ws_clients
+    assert mock_ws in api_server._ws_clients
 
     # Update session (triggers notification)
     test_session = create_test_session(session_id="dead-client-test")
@@ -695,5 +695,5 @@ async def test_dead_websocket_client_removed_on_error(
 
     # Verify dead client removed from tracking
     # The _on_cache_change callback creates task with done_callback that removes failed clients
-    assert mock_ws not in rest_adapter._ws_clients
-    assert mock_ws not in rest_adapter._client_subscriptions
+    assert mock_ws not in api_server._ws_clients
+    assert mock_ws not in api_server._client_subscriptions

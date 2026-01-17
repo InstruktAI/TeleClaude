@@ -17,7 +17,7 @@ def test_adapter_key_detection():
         class_name = obj.__class__.__name__
         if class_name == "TelegramAdapter":
             return "telegram"
-        if class_name == "RedisAdapter":
+        if class_name == "RedisTransport":
             return "redis"
         return "unknown"
 
@@ -25,7 +25,7 @@ def test_adapter_key_detection():
     class TelegramAdapter:
         pass
 
-    class RedisAdapter:
+    class RedisTransport:
         pass
 
     class UnknownAdapter:
@@ -38,12 +38,12 @@ def test_adapter_key_detection():
     assert key == "telegram", f"Expected 'telegram', got '{key}'"
     print("✓ TelegramAdapter returns correct key")
 
-    # Test RedisAdapter
-    redis = RedisAdapter()
+    # Test RedisTransport
+    redis = RedisTransport()
     key = _get_adapter_key(redis)
-    print(f"RedisAdapter → _get_adapter_key() = '{key}'")
+    print(f"RedisTransport → _get_adapter_key() = '{key}'")
     assert key == "redis", f"Expected 'redis', got '{key}'"
-    print("✓ RedisAdapter returns correct key")
+    print("✓ RedisTransport returns correct key")
 
     # Test unknown adapter
     unknown = UnknownAdapter()

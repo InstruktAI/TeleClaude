@@ -12,10 +12,9 @@ from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Literal, O
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_adapter import RESTAdapter
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.api_server import APIServer
 from teleclaude.config import config
 from teleclaude.core.db import db
 from teleclaude.core.events import (
@@ -42,8 +41,9 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     VoiceEventContext,
 )
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, RedisAdapterMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, RedisTransportMetadata, TelegramAdapterMetadata
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.transport.redis_transport import RedisTransport
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -203,10 +203,10 @@ class AdapterClient:
             Exception: If adapter start() fails (daemon crashes - this is intentional)
             ValueError: If no adapters started
         """
-        # REST adapter (local HTTP API)
-        rest = RESTAdapter(self, task_registry=self.task_registry)
-        await rest.start()
-        self.adapters["rest"] = rest
+        # API adapter (local HTTP API)
+        api_server = APIServer(self, task_registry=self.task_registry)
+        await api_server.start()
+        self.adapters["api"] = api_server
 
         # Telegram adapter
         if os.getenv("TELEGRAM_BOT_TOKEN"):
@@ -217,13 +217,13 @@ class AdapterClient:
 
         # Redis adapter
         if config.redis.enabled:
-            redis = RedisAdapter(self, task_registry=self.task_registry)
+            redis = RedisTransport(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
             self.adapters["redis"] = redis  # Register ONLY after success
             logger.info("Started redis adapter")
 
         # Validate at least one adapter started
-        if len(self.adapters) == 1 and "rest" in self.adapters:
+        if len(self.adapters) == 1 and "api" in self.adapters:
             raise ValueError("No adapters started - check config.yml and .env")
 
         logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
@@ -267,6 +267,14 @@ class AdapterClient:
                 continue
             if isinstance(adapter, UiAdapter):
                 observer_tasks.append((adapter_type, task_factory(adapter)))
+
+        if operation == "delete_message":
+            logger.debug(
+                "Broadcast delete to observers: session=%s origin=%s observers=%s",
+                session.session_id[:8],
+                session.origin_adapter,
+                [t for t, _ in observer_tasks],
+            )
 
         if observer_tasks:
             results = await asyncio.gather(*[task for _, task in observer_tasks], return_exceptions=True)
@@ -1246,7 +1254,7 @@ class AdapterClient:
                     if adapter_type == "telegram":
                         adapter_meta = TelegramAdapterMetadata()
                     elif adapter_type == "redis":
-                        adapter_meta = RedisAdapterMetadata()
+                        adapter_meta = RedisTransportMetadata()
                     else:
                         continue
                     setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
@@ -1254,7 +1262,7 @@ class AdapterClient:
                 # Store channel_id - telegram uses topic_id, redis uses channel_id
                 if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
                     adapter_meta.topic_id = int(channel_id)
-                elif adapter_type == "redis" and isinstance(adapter_meta, RedisAdapterMetadata):
+                elif adapter_type == "redis" and isinstance(adapter_meta, RedisTransportMetadata):
                     adapter_meta.channel_id = channel_id
 
             await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)

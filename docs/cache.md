@@ -1,13 +1,13 @@
 # Cache Contract
 
-This document describes the cache as a single smart in-memory layer that sits between REST API calls and underlying data sources.
+This document describes the cache as a single smart in-memory layer that sits between API calls and underlying data sources.
 
 ## Simple Architecture Overview
 
 ```mermaid
 flowchart TB
-  TUI[TUI (REST + WS)]
-  API[REST API\n(thin, read-only)]
+  TUI[TUI (API + WS)]
+  API[API\n(thin, read-only)]
   CACHE[Smart Cache\n(single source of truth)]
   LOCAL[Local sources\n(DB, command handlers)]
   REMOTE[Remote sources\n(Redis adapter calls)]
@@ -20,8 +20,8 @@ flowchart TB
 ```
 
 Placement:
-- Cache lives inside the daemon, above adapters and below REST.
-- REST never fetches. It only reads cache.
+- Cache lives inside the daemon, above adapters and below API.
+- API never fetches. It only reads cache.
 - Cache owns TTL decisions and refresh scheduling.
 - WebSocket notifications originate from cache updates.
 
@@ -54,7 +54,7 @@ Sessions are split into two layers:
 
 ## Summary - Consolidated Model
 
-- **Single smart cache** is the only read path for REST.
+- **Single smart cache** is the only read path for API.
 - **Always serve stale**, refresh in the background based on TTL.
 - **Project invalidation** uses heartbeat digests:
   - Heartbeat includes an opaque **projects digest** per computer.
@@ -75,7 +75,7 @@ Only values that vary are listed. All rows inherit the global rules above.
 
 ## Behavior Rules
 
-- **All REST reads go through the cache.**
+- **All API reads go through the cache.**
 - **Serve stale immediately**, then **schedule refresh** if TTL expired.
 - Refresh is asynchronous and must not block API calls.
 - Cache publishes updates to subscribers (WS clients).
@@ -97,7 +97,7 @@ Only values that vary are listed. All rows inherit the global rules above.
 - Publish updates to subscribers when refreshed.
 - Track "interest" per computer to optimize broadcast of snapshots.
 
-## REST Adapter Responsibilities (Target)
+## API Server Responsibilities (Target)
 
 - Do not fetch remote data directly.
 - Read only from cache and return results.

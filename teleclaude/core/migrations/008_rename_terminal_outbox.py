@@ -1,4 +1,4 @@
-"""Rename terminal_outbox to rest_outbox."""
+"""Rename terminal/rest outbox tables to api_outbox."""
 
 from __future__ import annotations
 
@@ -9,13 +9,21 @@ logger = get_logger(__name__)
 
 
 async def up(db: aiosqlite.Connection) -> None:
-    """Rename terminal_outbox table + indexes to rest_outbox."""
-    try:
-        await db.execute("ALTER TABLE terminal_outbox RENAME TO rest_outbox")
-    except Exception as exc:  # table may not exist on fresh installs
-        logger.info("Skip rest_outbox rename: %s", exc)
+    """Rename legacy outbox tables + indexes to api_outbox."""
+    renamed = False
+    for legacy_table in ("terminal_outbox", "rest_outbox"):
+        try:
+            await db.execute(f"ALTER TABLE {legacy_table} RENAME TO api_outbox")
+            renamed = True
+            logger.info("Renamed %s to api_outbox", legacy_table)
+            break
+        except Exception as exc:  # table may not exist on fresh installs
+            logger.info("Skip %s rename: %s", legacy_table, exc)
 
-    await db.execute("DROP INDEX IF EXISTS idx_terminal_outbox_pending")
-    await db.execute("DROP INDEX IF EXISTS idx_terminal_outbox_request")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_rest_outbox_pending ON rest_outbox(delivered_at, next_attempt_at)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_rest_outbox_request ON rest_outbox(request_id)")
+    if not renamed:
+        logger.info("No legacy outbox table found to rename")
+
+    await db.execute("DROP INDEX IF EXISTS idx_api_outbox_pending")
+    await db.execute("DROP INDEX IF EXISTS idx_api_outbox_request")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_api_outbox_pending ON api_outbox(delivered_at, next_attempt_at)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_api_outbox_request ON api_outbox(request_id)")

@@ -1,18 +1,18 @@
-"""REST-origin outbox payload contracts."""
+"""API-origin outbox payload contracts."""
 
 from __future__ import annotations
 
 from typing import Mapping, TypedDict
 
 
-class RestOutboxPayload(TypedDict, total=False):
+class ApiOutboxPayload(TypedDict, total=False):
     session_id: str
     args: list[str]
     text: str
     message_id: str
 
 
-class RestOutboxMetadata(TypedDict, total=False):
+class ApiOutboxMetadata(TypedDict, total=False):
     adapter_type: str
     project_path: str
     subdir: str
@@ -25,7 +25,7 @@ class RestOutboxMetadata(TypedDict, total=False):
     parse_mode: str
 
 
-class RestOutboxResponse(TypedDict, total=False):
+class ApiOutboxResponse(TypedDict, total=False):
     status: str
     data: object
     error: str

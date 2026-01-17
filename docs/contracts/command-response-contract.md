@@ -2,7 +2,7 @@
 
 ## Response Envelope
 
-Commands processed via the REST API or Durable Outbox return a standard envelope:
+Commands processed via the API or Durable Outbox return a standard envelope:
 - `status`: "success" or "error"
 - `data`: Partial result or success payload
 - `error`: Error message (if status is error)

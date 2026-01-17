@@ -163,17 +163,17 @@ async def test_adapter_client_register_adapter():
 
     # Create mock adapters
     mock_telegram_adapter = Mock()
-    mock_redis_adapter = Mock()
+    mock_redis_transport = Mock()
 
     # Register adapters
     client.register_adapter("telegram", mock_telegram_adapter)
-    client.register_adapter("redis", mock_redis_adapter)
+    client.register_adapter("redis", mock_redis_transport)
 
     # Verify registration
     assert "telegram" in client.adapters
     assert "redis" in client.adapters
     assert client.adapters["telegram"] == mock_telegram_adapter
-    assert client.adapters["redis"] == mock_redis_adapter
+    assert client.adapters["redis"] == mock_redis_transport
 
 
 @pytest.mark.asyncio
@@ -536,7 +536,7 @@ async def test_send_output_update_missing_thread_terminal_recreates_topic():
         session_id="session-789",
         computer_name="test",
         tmux_session_name="tc_session_789",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=123, output_message_id="msg-1")
@@ -569,7 +569,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(),
     )
@@ -577,7 +577,7 @@ async def test_send_output_update_missing_metadata_creates_ui_channel():
         session_id="session-999",
         computer_name="test",
         tmux_session_name="tc_session_999",
-        origin_adapter="rest",
+        origin_adapter="api",
         title="Test Tmux Session",
         adapter_metadata=SessionAdapterMetadata(
             telegram=TelegramAdapterMetadata(topic_id=999, output_message_id="msg-1")
@@ -603,13 +603,13 @@ async def test_send_message_broadcasts_to_ui_adapters():
     client = AdapterClient()
 
     # Non-UI adapter (Redis) should not receive send_message
-    redis_adapter = AsyncMock()
-    redis_adapter.send_message = AsyncMock(return_value=None)
+    redis_transport = AsyncMock()
+    redis_transport.send_message = AsyncMock(return_value=None)
 
     # UI adapter (Telegram) should receive send_message
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg-1")
 
-    client.register_adapter("redis", redis_adapter)
+    client.register_adapter("redis", redis_transport)
     client.register_adapter("telegram", telegram_adapter)
 
     session = Session(

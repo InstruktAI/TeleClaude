@@ -10,7 +10,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_discover_peers_parses_heartbeat_data():
     """Test that discover_peers correctly parses heartbeat data from Redis."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     # Create adapter with mocked client
     mock_client = MagicMock()
@@ -28,7 +28,7 @@ async def test_discover_peers_parses_heartbeat_data():
         )
     )
 
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     # Mock Redis client
@@ -61,11 +61,11 @@ async def test_discover_peers_parses_heartbeat_data():
 @pytest.mark.asyncio
 async def test_populate_initial_cache_updates_computers_and_projects():
     """Initial cache population should update computers and pull projects."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.models import PeerInfo
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
 
     mock_cache = MagicMock()
     adapter.cache = mock_cache
@@ -105,10 +105,10 @@ async def test_populate_initial_cache_updates_computers_and_projects():
 @pytest.mark.asyncio
 async def test_startup_populates_initial_cache():
     """Ensure startup flow populates initial cache after connecting."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter._running = True
 
     adapter._connect_with_backoff = AsyncMock()
@@ -129,10 +129,10 @@ async def test_startup_populates_initial_cache():
 @pytest.mark.asyncio
 async def test_discover_peers_handles_invalid_json():
     """Test that discover_peers handles corrupted heartbeat data gracefully."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     # Mock Redis to return invalid JSON
@@ -149,13 +149,13 @@ async def test_discover_peers_handles_invalid_json():
 @pytest.mark.asyncio
 async def test_stop_notification_emits_agent_stop_event():
     """stop_notification should emit agent stop event with minimal payload."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
     mock_client.handle_event = AsyncMock(return_value={"status": "success"})
 
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.send_response = AsyncMock()
 
     data = {
@@ -181,10 +181,10 @@ async def test_stop_notification_emits_agent_stop_event():
 @pytest.mark.asyncio
 async def test_discover_peers_skips_self():
     """Test that discover_peers excludes the local computer."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     # Mock Redis to return heartbeat for self
@@ -208,10 +208,10 @@ async def test_discover_peers_skips_self():
 @pytest.mark.asyncio
 async def test_heartbeat_includes_required_fields(monkeypatch):
     """Test heartbeat message includes all required fields."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "TestPC"
     adapter.heartbeat_ttl = 30
 
@@ -251,15 +251,15 @@ async def test_heartbeat_includes_required_fields(monkeypatch):
 @pytest.mark.asyncio
 async def test_send_message_adds_to_stream():
     """Test that send_message adds message to Redis stream."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.models import (
-        RedisAdapterMetadata,
+        RedisTransportMetadata,
         Session,
         SessionAdapterMetadata,
     )
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     # Track xadd calls
@@ -283,7 +283,7 @@ async def test_send_message_adds_to_stream():
     )
     # Set up adapter_metadata with redis channel info
     session.adapter_metadata = SessionAdapterMetadata(
-        redis=RedisAdapterMetadata(channel_id="session:test-session-123:output")
+        redis=RedisTransportMetadata(channel_id="session:test-session-123:output")
     )
 
     # Send message
@@ -297,10 +297,10 @@ async def test_send_message_adds_to_stream():
 @pytest.mark.asyncio
 async def test_connection_error_handling():
     """Test Redis connection error handling returns empty peers list."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     # Mock Redis to raise connection error
@@ -317,11 +317,11 @@ def test_compute_projects_digest_is_deterministic(tmp_path, monkeypatch):
     """Digest should be deterministic regardless of trusted dir order."""
     from types import SimpleNamespace
 
-    from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.config import config
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
 
     project_one = tmp_path / "alpha"
     project_two = tmp_path / "beta"

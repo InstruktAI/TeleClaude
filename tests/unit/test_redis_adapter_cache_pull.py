@@ -36,11 +36,11 @@ database:
 @pytest.mark.asyncio
 async def test_pull_initial_sessions_happy_path():
     """Test _pull_initial_sessions successfully pulls sessions from remote computers."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     # Setup
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     # Mock cache
@@ -90,10 +90,10 @@ async def test_pull_initial_sessions_happy_path():
 @pytest.mark.asyncio
 async def test_populate_initial_cache_pulls_projects_with_todos():
     """Startup cache population should pull projects-with-todos for all peers."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     adapter.cache = MagicMock()
@@ -128,10 +128,10 @@ async def test_populate_initial_cache_pulls_projects_with_todos():
 @pytest.mark.asyncio
 async def test_pull_initial_sessions_no_cache():
     """Test _pull_initial_sessions skips when cache is unavailable."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
     adapter.cache = None
     adapter.send_request = AsyncMock()
@@ -147,10 +147,10 @@ async def test_pull_initial_sessions_no_cache():
 @pytest.mark.asyncio
 async def test_pull_initial_sessions_timeout_continues_to_next():
     """Test _pull_initial_sessions continues to next computer on timeout."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     mock_cache = MagicMock()
@@ -183,10 +183,10 @@ async def test_pull_initial_sessions_timeout_continues_to_next():
 @pytest.mark.asyncio
 async def test_pull_initial_sessions_malformed_response_skips():
     """Test _pull_initial_sessions skips malformed responses and continues."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     mock_cache = MagicMock()
@@ -209,10 +209,10 @@ async def test_pull_initial_sessions_malformed_response_skips():
 @pytest.mark.asyncio
 async def test_pull_initial_sessions_error_status_skips():
     """Test _pull_initial_sessions skips when remote returns error status."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     mock_cache = MagicMock()
@@ -235,10 +235,10 @@ async def test_pull_initial_sessions_error_status_skips():
 @pytest.mark.asyncio
 async def test_pull_initial_sessions_empty_computers():
     """Test _pull_initial_sessions handles empty computer list."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     mock_cache = MagicMock()
@@ -258,10 +258,10 @@ async def test_pull_initial_sessions_empty_computers():
 @pytest.mark.asyncio
 async def test_pull_remote_projects_happy_path():
     """Test pull_remote_projects successfully pulls projects from remote."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
 
     mock_cache = MagicMock()
     adapter.cache = mock_cache
@@ -293,10 +293,10 @@ async def test_pull_remote_projects_happy_path():
 @pytest.mark.asyncio
 async def test_pull_remote_projects_no_cache():
     """Test pull_remote_projects skips when cache is unavailable."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.cache = None
     adapter.send_request = AsyncMock()
 
@@ -311,10 +311,10 @@ async def test_pull_remote_projects_no_cache():
 @pytest.mark.asyncio
 async def test_pull_remote_projects_timeout():
     """Test pull_remote_projects handles timeout gracefully."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
 
     mock_cache = MagicMock()
     adapter.cache = mock_cache
@@ -333,10 +333,10 @@ async def test_pull_remote_projects_timeout():
 @pytest.mark.asyncio
 async def test_pull_remote_todos_happy_path():
     """Test pull_remote_todos successfully pulls todos from remote."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
 
     mock_cache = MagicMock()
     adapter.cache = mock_cache
@@ -369,10 +369,10 @@ async def test_pull_remote_todos_happy_path():
 @pytest.mark.asyncio
 async def test_pull_remote_todos_no_cache():
     """Test pull_remote_todos skips when cache is unavailable."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.cache = None
     adapter.send_request = AsyncMock()
 
@@ -387,10 +387,10 @@ async def test_pull_remote_todos_no_cache():
 @pytest.mark.asyncio
 async def test_pull_remote_projects_with_todos_happy_path():
     """Test pull_remote_projects_with_todos pulls projects and todos from remote."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
 
     mock_cache = MagicMock()
     adapter.cache = mock_cache
@@ -435,10 +435,10 @@ async def test_pull_remote_projects_with_todos_happy_path():
 @pytest.mark.asyncio
 async def test_pull_remote_projects_with_todos_no_cache():
     """Test pull_remote_projects_with_todos skips when cache is unavailable."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.cache = None
     adapter.send_request = AsyncMock()
 
@@ -451,10 +451,10 @@ async def test_pull_remote_projects_with_todos_no_cache():
 @pytest.mark.asyncio
 async def test_pull_remote_projects_with_todos_fallbacks_to_projects():
     """Fallback to list_projects when projects-with-todos is unsupported."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.cache = MagicMock()
 
     adapter.send_request = AsyncMock(return_value="msg-901")
@@ -477,10 +477,10 @@ async def test_pull_remote_projects_with_todos_fallbacks_to_projects():
 @pytest.mark.asyncio
 async def test_heartbeat_populates_cache():
     """Test that heartbeat processing populates cache with computer info."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.computer_name = "LocalPC"
 
     mock_cache = MagicMock()

@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS hook_outbox (
 CREATE INDEX IF NOT EXISTS idx_hook_outbox_pending ON hook_outbox(delivered_at, next_attempt_at);
 
 -- Tmux outbox for local CLI (telec) commands (durable with response)
-CREATE TABLE IF NOT EXISTS rest_outbox (
+CREATE TABLE IF NOT EXISTS api_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
@@ -114,5 +114,5 @@ CREATE TABLE IF NOT EXISTS rest_outbox (
     response TEXT                     -- JSON response envelope from handler
 );
 
-CREATE INDEX IF NOT EXISTS idx_rest_outbox_pending ON rest_outbox(delivered_at, next_attempt_at);
-CREATE INDEX IF NOT EXISTS idx_rest_outbox_request ON rest_outbox(request_id);
+CREATE INDEX IF NOT EXISTS idx_api_outbox_pending ON api_outbox(delivered_at, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_api_outbox_request ON api_outbox(request_id);

@@ -9,11 +9,11 @@ import pytest
 @pytest.mark.asyncio
 async def test_startup_refreshes_remote_snapshot():
     """Adapter startup should trigger a remote snapshot refresh."""
-    from teleclaude.adapters.redis_adapter import RedisAdapter
     from teleclaude.core.cache import DaemonCache
+    from teleclaude.transport.redis_transport import RedisTransport
 
     mock_client = MagicMock()
-    adapter = RedisAdapter(mock_client)
+    adapter = RedisTransport(mock_client)
     adapter.cache = DaemonCache()
 
     adapter._connect_with_backoff = AsyncMock()

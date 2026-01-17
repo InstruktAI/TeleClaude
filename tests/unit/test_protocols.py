@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from teleclaude.adapters.redis_adapter import RedisAdapter
 from teleclaude.core.protocols import RemoteExecutionProtocol
+from teleclaude.transport.redis_transport import RedisTransport
 
 
 def test_remote_execution_protocol_runtime_checkable():
@@ -26,10 +26,10 @@ def test_remote_execution_protocol_runtime_checkable():
     assert isinstance(mock_adapter, RemoteExecutionProtocol)
 
 
-def test_redis_adapter_implements_protocol():
-    """Test that RedisAdapter implements RemoteExecutionProtocol."""
-    # RedisAdapter should be recognized as implementing the protocol
-    assert issubclass(RedisAdapter, RemoteExecutionProtocol)
+def test_redis_transport_implements_protocol():
+    """Test that RedisTransport implements RemoteExecutionProtocol."""
+    # RedisTransport should be recognized as implementing the protocol
+    assert issubclass(RedisTransport, RemoteExecutionProtocol)
 
 
 def test_protocol_methods_signature():

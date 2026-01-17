@@ -271,7 +271,14 @@ class MessageOperationsMixin:
         self._ensure_started()
 
         try:
+            logger.debug(
+                "[TELEGRAM %s] delete_message: chat_id=%s message_id=%s",
+                session.session_id[:8],
+                self.supergroup_id,
+                message_id,
+            )
             await self._delete_message_with_retry(int(message_id))
+            logger.debug("[TELEGRAM %s] delete_message: SUCCESS message_id=%s", session.session_id[:8], message_id)
             return True
         except BadRequest as e:
             logger.warning("Failed to delete message %s: %s", message_id, e)

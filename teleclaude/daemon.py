@@ -22,8 +22,7 @@ from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
-from teleclaude.adapters.redis_adapter import RedisAdapter
-from teleclaude.adapters.rest_adapter import RESTAdapter
+from teleclaude.api_server import APIServer
 from teleclaude.config import config  # config.py loads .env at import time
 from teleclaude.constants import MCP_SOCKET_PATH
 from teleclaude.core import (
@@ -38,6 +37,7 @@ from teleclaude.core import (
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agent_coordinator import AgentCoordinator
 from teleclaude.core.agents import AgentName, get_agent_command
+from teleclaude.core.api_events import ApiOutboxMetadata, ApiOutboxPayload, ApiOutboxResponse
 from teleclaude.core.cache import DaemonCache
 from teleclaude.core.codex_watcher import CodexWatcher
 from teleclaude.core.db import db
@@ -64,13 +64,13 @@ from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent
 from teleclaude.core.output_poller import OutputPoller
-from teleclaude.core.rest_events import RestOutboxMetadata, RestOutboxPayload, RestOutboxResponse
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
 from teleclaude.core.task_registry import TaskRegistry
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.logging_config import setup_logging
 from teleclaude.mcp_server import TeleClaudeMCPServer
+from teleclaude.transport.redis_transport import RedisTransport
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -112,18 +112,18 @@ STARTUP_RETRY_DELAYS = [10, 20, 40]  # Exponential backoff in seconds
 # MCP server health monitoring
 MCP_WATCH_INTERVAL_S = float(os.getenv("MCP_WATCH_INTERVAL_S", "2"))
 MCP_WATCH_FAILURE_THRESHOLD = int(os.getenv("MCP_WATCH_FAILURE_THRESHOLD", "3"))
-MCP_WATCH_RESTART_MAX = int(os.getenv("MCP_WATCH_RESTART_MAX", "3"))
-MCP_WATCH_RESTART_WINDOW_S = float(os.getenv("MCP_WATCH_RESTART_WINDOW_S", "60"))
-MCP_WATCH_RESTART_TIMEOUT_S = float(os.getenv("MCP_WATCH_RESTART_TIMEOUT_S", "2"))
+MCP_WATCH_APIART_MAX = int(os.getenv("MCP_WATCH_APIART_MAX", "3"))
+MCP_WATCH_APIART_WINDOW_S = float(os.getenv("MCP_WATCH_APIART_WINDOW_S", "60"))
+MCP_WATCH_APIART_TIMEOUT_S = float(os.getenv("MCP_WATCH_APIART_TIMEOUT_S", "2"))
 MCP_SOCKET_HEALTH_TIMEOUT_S = float(os.getenv("MCP_SOCKET_HEALTH_TIMEOUT_S", "0.5"))
 MCP_SOCKET_HEALTH_PROBE_INTERVAL_S = float(os.getenv("MCP_SOCKET_HEALTH_PROBE_INTERVAL_S", "10"))
 MCP_SOCKET_HEALTH_ACCEPT_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_ACCEPT_GRACE_S", "5"))
 MCP_SOCKET_HEALTH_STARTUP_GRACE_S = float(os.getenv("MCP_SOCKET_HEALTH_STARTUP_GRACE_S", "5"))
 
-# REST server restart policy (centralized in lifecycle)
-REST_RESTART_MAX = int(os.getenv("REST_RESTART_MAX", "5"))
-REST_RESTART_WINDOW_S = float(os.getenv("REST_RESTART_WINDOW_S", "60"))
-REST_RESTART_BACKOFF_S = float(os.getenv("REST_RESTART_BACKOFF_S", "1"))
+# API server restart policy (centralized in lifecycle)
+API_APIART_MAX = int(os.getenv("API_APIART_MAX", "5"))
+API_APIART_WINDOW_S = float(os.getenv("API_APIART_WINDOW_S", "60"))
+API_APIART_BACKOFF_S = float(os.getenv("API_APIART_BACKOFF_S", "1"))
 
 # Resource monitoring
 RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
@@ -159,11 +159,11 @@ def _get_rss_kb() -> int | None:
 
 
 # Tmux outbox worker (telec)
-REST_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("REST_OUTBOX_POLL_INTERVAL_S", "0.5"))
-REST_OUTBOX_BATCH_SIZE: int = int(os.getenv("REST_OUTBOX_BATCH_SIZE", "25"))
-REST_OUTBOX_LOCK_TTL_S: float = float(os.getenv("REST_OUTBOX_LOCK_TTL_S", "30"))
-REST_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("REST_OUTBOX_BASE_BACKOFF_S", "1"))
-REST_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("REST_OUTBOX_MAX_BACKOFF_S", "60"))
+API_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("API_OUTBOX_POLL_INTERVAL_S", "0.5"))
+API_OUTBOX_BATCH_SIZE: int = int(os.getenv("API_OUTBOX_BATCH_SIZE", "25"))
+API_OUTBOX_LOCK_TTL_S: float = float(os.getenv("API_OUTBOX_LOCK_TTL_S", "30"))
+API_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("API_OUTBOX_BASE_BACKOFF_S", "1"))
+API_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("API_OUTBOX_MAX_BACKOFF_S", "60"))
 
 # Agent auto-command startup detection
 AGENT_START_TIMEOUT_S = 5.0
@@ -312,7 +312,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self._last_mcp_probe_ok: bool | None = None
         self._last_mcp_restart_at = 0.0
         self.hook_outbox_task: asyncio.Task[object] | None = None
-        self.rest_outbox_task: asyncio.Task[object] | None = None
+        self.api_outbox_task: asyncio.Task[object] | None = None
 
         self.lifecycle = DaemonLifecycle(
             client=self.client,
@@ -325,9 +325,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             mcp_watch_factory=lambda: asyncio.create_task(self._mcp_watch_loop()),
             set_last_mcp_restart_at=self._set_last_mcp_restart_at,
             init_voice_handler=init_voice_handler,
-            rest_restart_max=REST_RESTART_MAX,
-            rest_restart_window_s=REST_RESTART_WINDOW_S,
-            rest_restart_backoff_s=REST_RESTART_BACKOFF_S,
+            api_restart_max=API_APIART_MAX,
+            api_restart_window_s=API_APIART_WINDOW_S,
+            api_restart_backoff_s=API_APIART_BACKOFF_S,
         )
 
     def _log_background_task_exception(self, task_name: str) -> Callable[[asyncio.Task[object]], None]:
@@ -426,13 +426,13 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             now = asyncio.get_running_loop().time()
             if (
                 self._mcp_restart_window_start == 0.0
-                or (now - self._mcp_restart_window_start) > MCP_WATCH_RESTART_WINDOW_S
+                or (now - self._mcp_restart_window_start) > MCP_WATCH_APIART_WINDOW_S
             ):
                 self._mcp_restart_window_start = now
                 self._mcp_restart_attempts = 0
 
             self._mcp_restart_attempts += 1
-            if self._mcp_restart_attempts > MCP_WATCH_RESTART_MAX:
+            if self._mcp_restart_attempts > MCP_WATCH_APIART_MAX:
                 logger.error(
                     "MCP restart limit exceeded; shutting down daemon",
                     reason=reason,
@@ -445,22 +445,22 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 "Restarting MCP server",
                 reason=reason,
                 attempt=self._mcp_restart_attempts,
-                window_s=MCP_WATCH_RESTART_WINDOW_S,
+                window_s=MCP_WATCH_APIART_WINDOW_S,
             )
 
             try:
-                await asyncio.wait_for(self.mcp_server.stop(), timeout=MCP_WATCH_RESTART_TIMEOUT_S)
+                await asyncio.wait_for(self.mcp_server.stop(), timeout=MCP_WATCH_APIART_TIMEOUT_S)
             except asyncio.TimeoutError:
-                logger.warning("Timed out stopping MCP server listener", timeout_s=MCP_WATCH_RESTART_TIMEOUT_S)
+                logger.warning("Timed out stopping MCP server listener", timeout_s=MCP_WATCH_APIART_TIMEOUT_S)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("MCP server stop failed: %s", exc, exc_info=True)
 
             if self.mcp_task:
                 self.mcp_task.cancel()
                 try:
-                    await asyncio.wait_for(self.mcp_task, timeout=MCP_WATCH_RESTART_TIMEOUT_S)
+                    await asyncio.wait_for(self.mcp_task, timeout=MCP_WATCH_APIART_TIMEOUT_S)
                 except asyncio.TimeoutError:
-                    logger.warning("Timed out cancelling MCP server task", timeout_s=MCP_WATCH_RESTART_TIMEOUT_S)
+                    logger.warning("Timed out cancelling MCP server task", timeout_s=MCP_WATCH_APIART_TIMEOUT_S)
                 except asyncio.CancelledError:
                     pass
                 except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -664,19 +664,19 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return False
         return True
 
-    def _rest_outbox_backoff(self, attempt: int) -> float:
-        """Compute exponential backoff for REST outbox retries."""
+    def _api_outbox_backoff(self, attempt: int) -> float:
+        """Compute exponential backoff for API outbox retries."""
         safe_attempt = max(1, attempt)
-        delay: float = float(REST_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
-        return min(delay, float(REST_OUTBOX_MAX_BACKOFF_S))
+        delay: float = float(API_OUTBOX_BASE_BACKOFF_S) * (2.0 ** (safe_attempt - 1))
+        return min(delay, float(API_OUTBOX_MAX_BACKOFF_S))
 
-    def _is_retryable_rest_error(self, exc: Exception) -> bool:
-        """Return True if REST dispatch errors should be retried."""
+    def _is_retryable_api_error(self, exc: Exception) -> bool:
+        """Return True if API dispatch errors should be retried."""
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
         return True
 
-    def _coerce_message_metadata(self, metadata: RestOutboxMetadata) -> MessageMetadata:
+    def _coerce_message_metadata(self, metadata: ApiOutboxMetadata) -> MessageMetadata:
         """Build MessageMetadata from outbox metadata payload."""
         adapter_type = metadata.get("adapter_type")
         message_thread_id = metadata.get("message_thread_id")
@@ -710,21 +710,21 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             launch_intent=launch_intent,
         )
 
-    async def _dispatch_rest_event(
+    async def _dispatch_api_event(
         self,
         event_type: str,
-        payload: RestOutboxPayload,
+        payload: ApiOutboxPayload,
         metadata: MessageMetadata,
-    ) -> RestOutboxResponse:
-        """Dispatch a REST-origin event directly via AdapterClient."""
+    ) -> ApiOutboxResponse:
+        """Dispatch a API-origin event directly via AdapterClient."""
         response = await self.client.handle_event(
             cast(EventType, event_type),
             cast(dict[str, object], payload),  # noqa: loose-dict - AdapterClient expects loose dict
             metadata,
         )
         if isinstance(response, dict):
-            return cast(RestOutboxResponse, response)
-        return cast(RestOutboxResponse, {"status": "success", "data": response})
+            return cast(ApiOutboxResponse, response)
+        return cast(ApiOutboxResponse, {"status": "success", "data": response})
 
     async def _dispatch_hook_event(
         self,
@@ -830,70 +830,70 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     )
                     await db.mark_hook_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
-    async def _rest_outbox_worker(self) -> None:
-        """Drain REST outbox for REST client commands with responses."""
+    async def _api_outbox_worker(self) -> None:
+        """Drain API outbox for API client commands with responses."""
         while not self.shutdown_event.is_set():
             now = datetime.now(timezone.utc)
             now_iso = now.isoformat()
-            lock_cutoff = (now - timedelta(seconds=REST_OUTBOX_LOCK_TTL_S)).isoformat()
-            rows = await db.fetch_rest_outbox_batch(now_iso, REST_OUTBOX_BATCH_SIZE, lock_cutoff)
+            lock_cutoff = (now - timedelta(seconds=API_OUTBOX_LOCK_TTL_S)).isoformat()
+            rows = await db.fetch_api_outbox_batch(now_iso, API_OUTBOX_BATCH_SIZE, lock_cutoff)
 
             if not rows:
-                await asyncio.sleep(REST_OUTBOX_POLL_INTERVAL_S)
+                await asyncio.sleep(API_OUTBOX_POLL_INTERVAL_S)
                 continue
 
             for row in rows:
                 if self.shutdown_event.is_set():
                     break
-                claimed = await db.claim_rest_outbox(row["id"], now_iso, lock_cutoff)
+                claimed = await db.claim_api_outbox(row["id"], now_iso, lock_cutoff)
                 if not claimed:
                     continue
 
                 try:
-                    payload = cast(RestOutboxPayload, json.loads(row["payload"]))
+                    payload = cast(ApiOutboxPayload, json.loads(row["payload"]))
                 except json.JSONDecodeError as exc:
                     error_str = f"Invalid payload JSON: {exc}"
                     error_payload: dict[str, str] = {"status": "error", "error": ""}
                     error_payload["error"] = error_str
                     response_json = json.dumps(error_payload)
-                    await db.mark_rest_outbox_delivered(row["id"], response_json, error_str)
+                    await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
                     continue
 
                 try:
-                    metadata_raw = cast(RestOutboxMetadata, json.loads(row["metadata"]))
+                    metadata_raw = cast(ApiOutboxMetadata, json.loads(row["metadata"]))
                     metadata = self._coerce_message_metadata(metadata_raw)
                     if not metadata.adapter_type:
-                        metadata.adapter_type = "rest"
+                        metadata.adapter_type = "api"
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     error_str: str = f"Invalid metadata JSON: {exc}"
                     error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
                     response_json = json.dumps(error_payload)
-                    await db.mark_rest_outbox_delivered(row["id"], response_json, error_str)
+                    await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
                     continue
 
                 try:
-                    response = await self._dispatch_rest_event(row["event_type"], payload, metadata)
+                    response = await self._dispatch_api_event(row["event_type"], payload, metadata)
                     response_json = json.dumps(response)
-                    await db.mark_rest_outbox_delivered(row["id"], response_json)
+                    await db.mark_api_outbox_delivered(row["id"], response_json)
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     attempt = int(row.get("attempt_count", 0)) + 1
                     error_str: str = str(exc)
-                    if not self._is_retryable_rest_error(exc):
+                    if not self._is_retryable_api_error(exc):
                         error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
                         response_json = json.dumps(error_payload)
-                        await db.mark_rest_outbox_delivered(row["id"], response_json, error_str)
+                        await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
                         continue
 
-                    delay = self._rest_outbox_backoff(attempt)
+                    delay = self._api_outbox_backoff(attempt)
                     next_attempt = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
                     logger.error(
-                        "REST outbox dispatch failed (retrying)",
+                        "API outbox dispatch failed (retrying)",
                         row_id=row["id"],
                         attempt=attempt,
                         next_attempt_in_s=round(delay, 2),
                         error=error_str,
                     )
-                    await db.mark_rest_outbox_failed(row["id"], attempt, next_attempt, error_str)
+                    await db.mark_api_outbox_failed(row["id"], attempt, next_attempt, error_str)
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -1540,14 +1540,14 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             _args: Deploy arguments (verify_health currently unused)
         """
         # Get Redis adapter for status updates
-        redis_adapter_base = self.client.adapters.get("redis")
-        if not redis_adapter_base or not isinstance(redis_adapter_base, RedisAdapter):
+        redis_transport_base = self.client.adapters.get("redis")
+        if not redis_transport_base or not isinstance(redis_transport_base, RedisTransport):
             logger.error("Redis adapter not available, cannot update deploy status")
             return
 
-        redis_adapter: RedisAdapter = redis_adapter_base
+        redis_transport: RedisTransport = redis_transport_base
         status_key = f"system_status:{config.computer.name}:deploy"
-        redis_client = redis_adapter._require_redis()
+        redis_client = redis_transport._require_redis()
 
         async def update_status(payload: DeployStatusPayload | DeployErrorPayload) -> None:
             await redis_client.set(status_key, json.dumps(payload))
@@ -1859,8 +1859,8 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         self.hook_outbox_task.add_done_callback(self._log_background_task_exception("hook_outbox"))
         logger.info("Hook outbox worker started")
 
-        self.rest_outbox_task = asyncio.create_task(self._rest_outbox_worker())
-        self.rest_outbox_task.add_done_callback(self._log_background_task_exception("rest_outbox"))
+        self.api_outbox_task = asyncio.create_task(self._api_outbox_worker())
+        self.api_outbox_task.add_done_callback(self._log_background_task_exception("api_outbox"))
         logger.info("Tmux outbox worker started")
 
         self.resource_monitor_task = asyncio.create_task(self._resource_monitor_loop())
@@ -1910,10 +1910,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 pass
             logger.info("Hook outbox worker stopped")
 
-        if self.rest_outbox_task:
-            self.rest_outbox_task.cancel()
+        if self.api_outbox_task:
+            self.api_outbox_task.cancel()
             try:
-                await self.rest_outbox_task
+                await self.api_outbox_task
             except asyncio.CancelledError:
                 pass
             logger.info("Tmux outbox worker stopped")
@@ -2096,7 +2096,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_agent_resume(
                 context, agent_name, args, self.client, self._execute_terminal_command
             )
-        elif command == TeleClaudeEvents.AGENT_RESTART:
+        elif command == TeleClaudeEvents.AGENT_APIART:
             agent_name = args.pop(0) if args else ""
             return await command_handlers.handle_agent_restart(
                 context, agent_name, args, self.client, self._execute_terminal_command
@@ -2184,10 +2184,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     def _collect_resource_snapshot(self, reason: str) -> dict[str, int | float | str | None]:
         """Collect a lightweight resource snapshot for diagnostics."""
-        rest_adapter_base = self.client.adapters.get("rest")
-        rest_ws_clients: int | None = None
-        if rest_adapter_base and isinstance(rest_adapter_base, RESTAdapter):
-            rest_ws_clients = len(rest_adapter_base._ws_clients)
+        api_adapter_base = self.client.adapters.get("api")
+        api_ws_clients: int | None = None
+        if api_adapter_base and isinstance(api_adapter_base, APIServer):
+            api_ws_clients = len(api_adapter_base._ws_clients)
 
         mcp_connections: int | None = None
         if self.mcp_server:
@@ -2205,7 +2205,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             "asyncio_tasks": len(cast(set[asyncio.Task[object]], asyncio.all_tasks())),
             "tracked_tasks": self.task_registry.task_count(),
             "mcp_connections": mcp_connections,
-            "rest_ws_clients": rest_ws_clients,
+            "api_ws_clients": api_ws_clients,
         }
         return snapshot
 

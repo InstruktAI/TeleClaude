@@ -177,7 +177,7 @@ def _quick_start(agent: str, mode: str, prompt: str | None) -> None:
 
 
 async def _quick_start_via_api(agent: str, mode: str, prompt: str | None) -> CreateSessionResult:
-    """Create a session via REST API and return the response."""
+    """Create a session via API and return the response."""
     api = TelecAPIClient()
     await api.connect()
     try:

@@ -27,13 +27,13 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
     daemon = daemon_with_mocked_telegram
 
     # Mock Redis adapter to simulate incoming create_session command
-    redis_adapter = daemon.client.adapters.get("redis")
-    if not redis_adapter:
+    redis_transport = daemon.client.adapters.get("redis")
+    if not redis_transport:
         pytest.skip("Redis adapter not configured")
 
     # Create mock Redis instance
     mock_redis = AsyncMock()
-    redis_adapter.redis = mock_redis
+    redis_transport.redis = mock_redis
 
     # Track handle_event calls to verify /cd and /claude were called
     original_handle_event = daemon.client.handle_event
@@ -69,7 +69,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
             nonlocal response_sent
             response_sent = {"request_id": req_id, "data": response_data}
 
-        redis_adapter.send_response = mock_send_response
+        redis_transport.send_response = mock_send_response
 
         # Mock _start_output_stream_listener to verify it's called
         listener_started = []
@@ -77,7 +77,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
         def mock_start_listener(session_id):
             listener_started.append(session_id)
 
-        with patch.object(redis_adapter, "_start_output_stream_listener", side_effect=mock_start_listener):
+        with patch.object(redis_transport, "_start_output_stream_listener", side_effect=mock_start_listener):
             # Simulate incoming /new_session message through Redis stream
             # This is the standardized flow after refactoring
             message_data = {
@@ -90,7 +90,7 @@ async def test_ai_to_ai_session_initialization_with_claude_startup(daemon_with_m
             }
 
             # Call _handle_incoming_message (the real entry point for Redis messages)
-            await redis_adapter._handle_incoming_message(request_id, message_data)
+            await redis_transport._handle_incoming_message(request_id, message_data)
 
             # Wait for async operations to complete
             await asyncio.sleep(0.01)
@@ -137,12 +137,12 @@ async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram
     """
     daemon = daemon_with_mocked_telegram
 
-    redis_adapter = daemon.client.adapters.get("redis")
-    if not redis_adapter:
+    redis_transport = daemon.client.adapters.get("redis")
+    if not redis_transport:
         pytest.skip("Redis adapter not configured")
 
     mock_redis = AsyncMock()
-    redis_adapter.redis = mock_redis
+    redis_transport.redis = mock_redis
 
     # Track handle_event calls
     handle_event_calls = []
@@ -162,7 +162,7 @@ async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram
             nonlocal response_sent
             response_sent = {"request_id": req_id, "data": response_data}
 
-        redis_adapter.send_response = mock_send_response
+        redis_transport.send_response = mock_send_response
 
         # Simulate incoming /new_session message through Redis stream
         message_data = {
@@ -175,7 +175,7 @@ async def test_ai_to_ai_session_without_project_path(daemon_with_mocked_telegram
             b"channel_metadata": b"{}",
         }
 
-        await redis_adapter._handle_incoming_message(request_id, message_data)
+        await redis_transport._handle_incoming_message(request_id, message_data)
 
         await asyncio.sleep(0.01)
 
@@ -212,12 +212,12 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     """
     daemon = daemon_with_mocked_telegram
 
-    redis_adapter = daemon.client.adapters.get("redis")
-    if not redis_adapter:
+    redis_transport = daemon.client.adapters.get("redis")
+    if not redis_transport:
         pytest.skip("Redis adapter not configured")
 
     mock_redis = AsyncMock()
-    redis_adapter.redis = mock_redis
+    redis_transport.redis = mock_redis
 
     # Create session
     request_id = "test-request-789"
@@ -235,7 +235,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
         nonlocal response_sent
         response_sent = {"request_id": req_id, "data": response_data}
 
-    redis_adapter.send_response = mock_send_response
+    redis_transport.send_response = mock_send_response
 
     # Simulate incoming /new_session message through Redis stream
     message_data = {
@@ -248,7 +248,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
         b"channel_metadata": b"{}",
     }
 
-    await redis_adapter._handle_incoming_message(request_id, message_data)
+    await redis_transport._handle_incoming_message(request_id, message_data)
 
     # Get created session
     sessions = await daemon.db.list_sessions()

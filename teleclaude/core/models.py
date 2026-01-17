@@ -21,7 +21,7 @@ JsonDict = dict[str, JsonValue]
 
 
 def asdict_exclude_none(
-    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | RedisAdapterMetadata | dict[str, JsonValue]",
+    obj: "SessionAdapterMetadata | TelegramAdapterMetadata | RedisTransportMetadata | dict[str, JsonValue]",
 ) -> JsonDict:
     """Convert dataclass to dict, recursively excluding None values."""
 
@@ -131,7 +131,7 @@ class TelegramAdapterMetadata:
 
 
 @dataclass
-class RedisAdapterMetadata:  # pylint: disable=too-many-instance-attributes
+class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
     """Redis-specific adapter metadata."""
 
     channel_id: Optional[str] = None
@@ -149,7 +149,7 @@ class SessionAdapterMetadata:
     """Typed metadata container for all adapters."""
 
     telegram: Optional[TelegramAdapterMetadata] = None
-    redis: Optional[RedisAdapterMetadata] = None
+    redis: Optional[RedisTransportMetadata] = None
 
     def to_json(self) -> str:
         """Serialize to JSON string, excluding None fields."""
@@ -160,7 +160,7 @@ class SessionAdapterMetadata:
         """Deserialize from JSON string, filtering unknown fields per adapter."""
         data_obj: object = json.loads(raw)
         telegram_metadata: Optional[TelegramAdapterMetadata] = None
-        redis_metadata: Optional[RedisAdapterMetadata] = None
+        redis_metadata: Optional[RedisTransportMetadata] = None
 
         if isinstance(data_obj, dict):
             tg_raw = data_obj.get("telegram")
@@ -194,7 +194,7 @@ class SessionAdapterMetadata:
                 else:
                     channel_meta_str = None
 
-                redis_metadata = RedisAdapterMetadata(
+                redis_metadata = RedisTransportMetadata(
                     channel_id=_get_str("channel_id"),
                     output_stream=_get_str("output_stream"),
                     target_computer=_get_str("target_computer"),

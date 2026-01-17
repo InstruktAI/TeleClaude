@@ -1,10 +1,10 @@
-# TUI Data Requirements and REST Mapping (Target)
+# TUI Data Requirements and API Mapping (Target)
 
-This document maps each TUI view to the minimal REST data it needs, using resource-only endpoints.
+This document maps each TUI view to the minimal API data it needs, using resource-only endpoints.
 
 Source of truth:
 - Resource models: `teleclaude/core/models.py`
-- TUI models: `teleclaude/cli/models.py` (target aligned to REST DTOs)
+- TUI models: `teleclaude/cli/models.py` (target aligned to API DTOs)
 
 ## Views and Data Needs
 
@@ -17,7 +17,7 @@ Data needed:
 - Projects (metadata only for tree nodes)
 - Sessions summary (local and remote)
 
-REST mapping:
+API mapping:
 - GET /computers
 - GET /projects?computer=*
 - GET /sessions?computer=*
@@ -36,7 +36,7 @@ Data needed:
 - Projects (metadata)
 - Todos (per project)
 
-REST mapping:
+API mapping:
 - GET /computers
 - GET /projects?computer=*
 - GET /todos?computer=* or GET /todos?project=* (unfiltered allowed when needed)
@@ -45,12 +45,12 @@ REST mapping:
 
 Purpose: agent availability status.
 
-REST mapping:
+API mapping:
 - GET /agents/availability
 
 ## Startup Flow (Target)
 
-1) TUI calls REST for data, cache-backed:
+1) TUI calls API for data, cache-backed:
    - /computers
    - /projects
    - /todos

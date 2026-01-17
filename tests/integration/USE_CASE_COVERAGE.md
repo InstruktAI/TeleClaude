@@ -153,7 +153,7 @@ async def test_origin_adapter_receives_output():
 
 @pytest.mark.integration
 async def test_redis_observer_skipped_no_ui():
-    """Test RedisAdapter (has_ui=False) skipped for broadcasts."""
+    """Test RedisTransport (has_ui=False) skipped for broadcasts."""
     # Setup: Session with telegram origin, redis as observer
     # Execute: Send command
     # Assert: Output sent to telegram (origin)
