@@ -208,7 +208,35 @@ class TestOutputPollerPoll:
                 for event in events[:-1]:
                     assert isinstance(event, OutputChanged)
                 # Last event is ProcessExited
-                assert isinstance(events[-1], ProcessExited)
+        assert isinstance(events[-1], ProcessExited)
+
+    async def test_initial_blank_output_is_suppressed(self, poller, tmp_path):
+        """Blank initial output should not emit OutputChanged until real output arrives."""
+        output_file = tmp_path / "output.txt"
+
+        with patch("teleclaude.core.output_poller.tmux_bridge") as mock_terminal:
+            _init_terminal_mock(mock_terminal)
+            with patch("teleclaude.core.output_poller.asyncio.sleep", new_callable=AsyncMock):
+                with patch("teleclaude.core.output_poller.time.time", make_advancing_time_mock()):
+                    with _patch_reader(["   ", "real output\n", None]):
+                        call_count = 0
+
+                        async def session_exists_mock(name, log_missing=True):
+                            nonlocal call_count
+                            call_count += 1
+                            return call_count < 6
+
+                        mock_terminal.session_exists = session_exists_mock
+                        mock_terminal.is_process_running = AsyncMock(return_value=True)
+                        mock_terminal.get_current_directory = AsyncMock(return_value="/test/dir")
+
+                        events = []
+                        async for event in poller.poll("test-blank", "test-tmux", output_file):
+                            events.append(event)
+
+                output_events = [e for e in events if isinstance(e, OutputChanged)]
+                assert output_events
+                assert output_events[0].output.strip()
 
     async def test_output_change_emits_after_interval_even_if_stable(self, poller, tmp_path):
         """Paranoid test that output still emits after the interval even when nothing changes."""

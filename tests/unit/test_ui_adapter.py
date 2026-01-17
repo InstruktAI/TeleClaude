@@ -117,27 +117,6 @@ class TestSendOutputUpdate:
         adapter._send_message_mock.assert_called_once()
         adapter._edit_message_mock.assert_not_called()
 
-    async def test_skips_blank_output_without_message_id(self, test_db):
-        """Skip sending output when blank and no message_id exists yet."""
-        adapter = MockUiAdapter()
-        session = await test_db.create_session(
-            computer_name="TestPC",
-            tmux_session_name="test",
-            origin_adapter="telegram",
-            title="Test Session",
-        )
-
-        result = await adapter.send_output_update(
-            session,
-            "   ",
-            time.time(),
-            time.time(),
-        )
-
-        assert result is None
-        adapter._send_message_mock.assert_not_called()
-        adapter._edit_message_mock.assert_not_called()
-
     async def test_edits_existing_message_when_message_id_exists(self, test_db):
         """Paranoid test editing existing message when message_id exists."""
         adapter = MockUiAdapter()

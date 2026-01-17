@@ -62,6 +62,7 @@ async def test_poller_watch_recreates_missing_tmux_session():
         origin_adapter="rest",
         title="Test Session 2",
         adapter_metadata=SessionAdapterMetadata(),
+        active_agent="claude",
     )
 
     with (

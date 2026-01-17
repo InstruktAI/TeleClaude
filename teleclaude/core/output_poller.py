@@ -173,7 +173,7 @@ class OutputPoller:
                     logger.info("Process exited for %s, stopping poll", session_id[:8])
 
                     # Send a final snapshot if the last observed output wasn't emitted yet.
-                    if previous_output and previous_output != last_sent_output:
+                    if previous_output and previous_output != last_sent_output and previous_output.strip():
                         yield OutputChanged(
                             session_id=session_id,
                             output=previous_output,
@@ -218,7 +218,13 @@ class OutputPoller:
                 # (or when we have never sent output yet). This avoids UI spam when idle.
                 did_yield = False
                 if elapsed_since_last_yield >= current_update_interval:
-                    if pending_output or (not output_sent_at_least_once and current_cleaned.strip()):
+                    should_send = False
+                    if output_sent_at_least_once:
+                        should_send = pending_output
+                    else:
+                        should_send = bool(current_cleaned.strip())
+
+                    if should_send:
                         # Send rendered TUI snapshot to UI
                         yield OutputChanged(
                             session_id=session_id,
@@ -235,6 +241,9 @@ class OutputPoller:
                         # Update last yield time (ONLY after yielding, not on every change!)
                         last_yield_time = current_time
                         did_yield = True
+                    elif pending_output and not output_sent_at_least_once:
+                        # Suppress empty initial output until something real appears.
+                        pending_output = False
                 else:
                     # Skip per-tick logging; summarized in idle summaries.
                     pass
@@ -242,7 +251,8 @@ class OutputPoller:
                 # Exit condition 2: tmux pane fully exited (shell ended)
                 if await tmux_bridge.is_pane_dead(tmux_session_name):
                     # Force a final snapshot if output changed since last yield (or nothing was sent yet).
-                    if pending_output or output_changed or not output_sent_at_least_once:
+                    should_emit_final = pending_output or output_changed or output_sent_at_least_once
+                    if should_emit_final and current_cleaned.strip():
                         yield OutputChanged(
                             session_id=session_id,
                             output=current_cleaned,
