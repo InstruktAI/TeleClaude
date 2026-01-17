@@ -148,6 +148,10 @@ class AdapterClient:
             all_ui=all_ui,
         )
 
+    def _ui_broadcast_enabled(self) -> bool:
+        """Return True when UI updates should broadcast to all UI adapters."""
+        return config.ui_delivery.scope == "all_ui"
+
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
         return [
             (adapter_type, adapter) for adapter_type, adapter in self.adapters.items() if isinstance(adapter, UiAdapter)
@@ -318,6 +322,7 @@ class AdapterClient:
         session: "Session",
         method: str,
         *args: object,
+        broadcast: Optional[bool] = None,
         **kwargs: object,
     ) -> object:
         """Route operation to origin UI adapter + broadcast to observers.
@@ -335,6 +340,7 @@ class AdapterClient:
             First truthy result, or None if no truthy results
         """
         plan = self._ui_delivery_plan(session)
+        do_broadcast = self._ui_broadcast_enabled() if broadcast is None else broadcast
 
         def make_task(adapter: UiAdapter) -> Awaitable[object]:
             return cast(Awaitable[object], getattr(adapter, method)(session, *args, **kwargs))
@@ -352,7 +358,8 @@ class AdapterClient:
         result = await cast(Awaitable[object], getattr(plan.origin, method)(session, *args, **kwargs))
 
         # Broadcast to observers (best-effort)
-        await self._broadcast_to_observers(session, plan.observers, method, make_task)
+        if do_broadcast:
+            await self._broadcast_to_observers(session, plan.observers, method, make_task)
 
         return result
 
@@ -380,7 +387,10 @@ class AdapterClient:
         Returns:
             message_id from origin adapter, or None if send failed
         """
-        # Feedback mode: delete old feedback before sending new
+        plan = self._ui_delivery_plan(session)
+        broadcast = self._ui_broadcast_enabled() and not feedback
+
+        # Feedback mode: delete old feedback before sending new (origin only)
         if feedback:
             pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
             if pending:
@@ -393,7 +403,10 @@ class AdapterClient:
             failed = 0
             for msg_id in pending:
                 try:
-                    ok = await self.delete_message(session, msg_id)
+                    if plan.origin:
+                        ok = await cast(Awaitable[object], plan.origin.delete_message(session, msg_id))
+                    else:
+                        ok = await self.delete_message(session, msg_id)
                     if ok:
                         deleted += 1
                     else:
@@ -410,8 +423,14 @@ class AdapterClient:
                 )
                 await db.clear_pending_deletions(session.session_id, deletion_type="feedback")
 
-        # Send message
-        result = await self._route_to_ui(session, "send_message", text, metadata=metadata)
+        # Send message (origin-only for feedback; otherwise obey broadcast scope)
+        result = await self._route_to_ui(
+            session,
+            "send_message",
+            text,
+            metadata=metadata,
+            broadcast=broadcast,
+        )
         message_id = str(result) if result else None
 
         # Track for deletion if ephemeral
@@ -438,7 +457,13 @@ class AdapterClient:
         Returns:
             True if origin edit succeeded
         """
-        result = await self._route_to_ui(session, "edit_message", message_id, text)
+        result = await self._route_to_ui(
+            session,
+            "edit_message",
+            message_id,
+            text,
+            broadcast=self._ui_broadcast_enabled(),
+        )
         return bool(result)
 
     async def delete_message(self, session: "Session", message_id: str) -> bool:
@@ -451,7 +476,12 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        result = await self._route_to_ui(session, "delete_message", message_id)
+        result = await self._route_to_ui(
+            session,
+            "delete_message",
+            message_id,
+            broadcast=self._ui_broadcast_enabled(),
+        )
         return bool(result)
 
     async def send_file(
@@ -471,7 +501,13 @@ class AdapterClient:
         Returns:
             message_id from origin adapter
         """
-        result = await self._route_to_ui(session, "send_file", file_path, caption=caption)
+        result = await self._route_to_ui(
+            session,
+            "send_file",
+            file_path,
+            caption=caption,
+            broadcast=self._ui_broadcast_enabled(),
+        )
         return str(result) if result else ""
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -515,24 +551,30 @@ class AdapterClient:
                     exc,
                 )
 
-        # Broadcast to ALL UI adapters
-        tasks = []
-        for adapter_type, adapter in self.adapters.items():
-            if isinstance(adapter, UiAdapter):
-                tasks.append(
-                    (
-                        adapter_type,
-                        adapter.send_output_update(
-                            session_to_send,
-                            output,
-                            started_at,
-                            last_output_changed_at,
-                            is_final,
-                            exit_code,
-                            render_markdown,
-                        ),
-                    )
+        # Send output updates based on UI delivery scope
+        plan = self._ui_delivery_plan(session_to_send)
+        broadcast = self._ui_broadcast_enabled()
+        if broadcast or not plan.origin:
+            targets = plan.all_ui
+        else:
+            targets = [(plan.origin_type or "", plan.origin)]
+
+        tasks: list[tuple[str, Awaitable[object]]] = []
+        for adapter_type, adapter in targets:
+            tasks.append(
+                (
+                    adapter_type,
+                    adapter.send_output_update(
+                        session_to_send,
+                        output,
+                        started_at,
+                        last_output_changed_at,
+                        is_final,
+                        exit_code,
+                        render_markdown,
+                    ),
                 )
+            )
 
         if not tasks:
             logger.warning("No UI adapters available for session %s", session.session_id[:8])
@@ -1131,6 +1173,9 @@ class AdapterClient:
         Skips both the origin adapter and the source adapter (where message came from)
         to prevent echoing messages back to the sender.
         """
+        # User input echoing is disabled; edit/output updates already convey interaction.
+        return
+
         action_text = self._format_event_for_observers(event, payload)
         if not action_text:
             return

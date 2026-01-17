@@ -194,6 +194,9 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         is_master = False
         trusted_bots: list[str] = []
 
+    class MockUiDelivery:
+        scope = "origin_only"
+
     test_config = type(
         "Config",
         (),
@@ -203,6 +206,7 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
             "polling": MockPolling(),
             "redis": MockRedis(),
             "telegram": MockTelegram(),
+            "ui_delivery": MockUiDelivery(),
             "agents": {
                 "claude": config_module.AgentConfig(
                     command="mock_claude_command --arg",

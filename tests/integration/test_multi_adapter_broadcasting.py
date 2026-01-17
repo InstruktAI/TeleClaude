@@ -256,6 +256,7 @@ async def test_ui_observer_receives_broadcasts():
     5. Verify slack (observer with has_ui=True) also receives message
     """
 
+    from teleclaude import config as config_module
     from teleclaude.adapters.ui_adapter import UiAdapter
 
     class MockSlackAdapter(UiAdapter):
@@ -328,6 +329,8 @@ async def test_ui_observer_receives_broadcasts():
     test_db = Db(db_path)
     await test_db.initialize()
 
+    prior_scope = config_module.config.ui_delivery.scope
+    config_module.config.ui_delivery.scope = "all_ui"
     try:
         with patch("teleclaude.core.db.db", test_db):
             with patch("teleclaude.core.adapter_client.db", test_db):
@@ -361,6 +364,7 @@ async def test_ui_observer_receives_broadcasts():
                 assert call_text == "Test output"
 
     finally:
+        config_module.config.ui_delivery.scope = prior_scope
         await test_db.close()
         Path(db_path).unlink(missing_ok=True)
 
@@ -378,6 +382,7 @@ async def test_observer_failure_does_not_affect_origin():
     5. Verify slack exception logged but not raised
     """
 
+    from teleclaude import config as config_module
     from teleclaude.adapters.ui_adapter import UiAdapter
 
     class MockSlackAdapterFailing(UiAdapter):
@@ -450,6 +455,8 @@ async def test_observer_failure_does_not_affect_origin():
     test_db = Db(db_path)
     await test_db.initialize()
 
+    prior_scope = config_module.config.ui_delivery.scope
+    config_module.config.ui_delivery.scope = "all_ui"
     try:
         with patch("teleclaude.core.db.db", test_db):
             with patch("teleclaude.core.adapter_client.db", test_db):
@@ -481,6 +488,7 @@ async def test_observer_failure_does_not_affect_origin():
                 assert len(slack_adapter.send_message_calls) == 1
 
     finally:
+        config_module.config.ui_delivery.scope = prior_scope
         await test_db.close()
         Path(db_path).unlink(missing_ok=True)
 
