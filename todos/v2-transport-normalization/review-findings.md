@@ -74,3 +74,14 @@
 Priority fixes:
 1. Fix Redis command normalization so list/get requests dispatch to command handlers (not `system_command`).
 2. Route remaining Telegram/REST entry points through the normalization layer to meet requirements.
+
+---
+
+## Fixes Applied
+
+| Issue | Fix | Commit |
+|-------|-----|--------|
+| Redis command strings fall through to system_command handler | Modified `handle_internal_command` to use command name as event type for SystemCommand, allowing query/list commands to route properly | 0a9dc17 |
+| Telegram /new_session, /claude, /gemini, /codex, /agent_resume bypass normalization | Updated handlers to use CommandMapper.map_telegram_input() and handle_internal_command | 77b8de7 |
+| REST end_session, agent_restart, get_transcript bypass normalization | Added mappings in CommandMapper, updated endpoints to use handle_internal_command, added session_id field to SystemCommand | 9bb77b8 |
+| stop_notification and input_notification lack validation | Added argument count validation and decode failure logging, return noop for invalid inputs | e41a058 |
