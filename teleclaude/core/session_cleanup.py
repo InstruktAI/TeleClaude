@@ -111,9 +111,9 @@ async def terminate_session(
     if not session:
         logger.debug("Session %s not found for termination", session_id[:8])
         return False
-    if session.closed_at and not delete_db:
-        logger.debug("Session %s already closed", session_id[:8])
-        return False
+    already_closed = bool(session.closed_at)
+    if already_closed and not delete_db:
+        logger.debug("Session %s already closed; proceeding with cleanup", session_id[:8])
 
     logger.info("Terminating session %s (%s)", session_id[:8], reason)
 
@@ -136,9 +136,10 @@ async def terminate_session(
         await db.delete_session(session.session_id)
         logger.info("Deleted session %s from database", session.session_id[:8])
     else:
-        await db.close_session(session.session_id)
-        logger.info("Closed session %s in database", session.session_id[:8])
-    return True
+        if not already_closed:
+            await db.close_session(session.session_id)
+            logger.info("Closed session %s in database", session.session_id[:8])
+    return not already_closed or delete_db
 
 
 async def cleanup_stale_session(session_id: str, adapter_client: "AdapterClient") -> bool:
