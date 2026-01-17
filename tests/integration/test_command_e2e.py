@@ -6,7 +6,9 @@ import asyncio
 import pytest
 
 from teleclaude.core import tmux_bridge
+from teleclaude.core.events import CommandEventContext
 from teleclaude.core.models import MessageMetadata
+from teleclaude.types.commands import CreateSessionCommand
 
 
 @pytest.mark.asyncio
@@ -25,8 +27,15 @@ async def test_short_lived_command(daemon_with_mocked_telegram):
     assert daemon.mock_command_mode == "short"
 
     # Create a test session
-    context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
     project_path = "/tmp"
+    create_cmd = CreateSessionCommand(project_path=project_path, adapter_type="telegram", title="Short Test")
+    context = CommandEventContext(
+        session_id="sess-ctx",
+        args=[],
+        adapter_type="telegram",
+        project_path=project_path,
+        internal_command=create_cmd,
+    )
     await daemon.handle_command(
         "new_session",
         ["Short", "Test"],
@@ -81,8 +90,15 @@ async def test_long_running_command(daemon_with_mocked_telegram):
     daemon.mock_command_mode = "long"
 
     # Create a test session
-    context = {"adapter_type": "telegram", "user_id": 12345, "chat_id": -67890, "message_thread_id": None}
     project_path = "/tmp"
+    create_cmd = CreateSessionCommand(project_path=project_path, adapter_type="telegram", title="Long Test")
+    context = CommandEventContext(
+        session_id="sess-ctx",
+        args=[],
+        adapter_type="telegram",
+        project_path=project_path,
+        internal_command=create_cmd,
+    )
     await daemon.handle_command(
         "new_session",
         ["Long", "Test"],

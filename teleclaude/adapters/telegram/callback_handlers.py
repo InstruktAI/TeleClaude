@@ -364,15 +364,17 @@ class CallbackHandlersMixin:
         # Acknowledge immediately
         await query.answer("Creating session...", show_alert=False)
 
-        # Emit NEW_SESSION event with project_path in metadata
-        logger.info("_handle_session_start: emitting NEW_SESSION with project_path=%s", project_path)
-        await self.client.handle_event(
-            event=TeleClaudeEvents.NEW_SESSION,
-            payload={
-                "args": [],
-            },
-            metadata=self._metadata(project_path=project_path),
+        # Normalize create-session intent
+        logger.info("_handle_session_start: creating session with project_path=%s", project_path)
+        metadata = self._metadata(project_path=project_path)
+        from teleclaude.core.command_mapper import CommandMapper
+
+        cmd = CommandMapper.map_telegram_input(
+            event="new_session",
+            args=[],
+            metadata=metadata,
         )
+        await self.client.handle_internal_command(cmd, metadata=metadata)
 
     async def _handle_agent_start(self, query: object, action: str, args: list[str]) -> None:
         """Handle agent start callbacks (c, cr, g, gr, cx, cxr)."""
@@ -416,16 +418,18 @@ class CallbackHandlersMixin:
         # Acknowledge immediately
         await query.answer(f"Creating session with {mode_label}...", show_alert=False)
 
-        # Emit NEW_SESSION event with project_path and auto_command in metadata
+        # Normalize create-session intent with auto_command
         logger.info(
-            "_handle_agent_start: emitting NEW_SESSION with project_path=%s, auto_command=%s",
+            "_handle_agent_start: creating session with project_path=%s, auto_command=%s",
             project_path,
             auto_command,
         )
-        await self.client.handle_event(
-            event=TeleClaudeEvents.NEW_SESSION,
-            payload={
-                "args": [],
-            },
-            metadata=self._metadata(project_path=project_path, auto_command=auto_command),
+        metadata = self._metadata(project_path=project_path, auto_command=auto_command)
+        from teleclaude.core.command_mapper import CommandMapper
+
+        cmd = CommandMapper.map_telegram_input(
+            event="new_session",
+            args=[],
+            metadata=metadata,
         )
+        await self.client.handle_internal_command(cmd, metadata=metadata)

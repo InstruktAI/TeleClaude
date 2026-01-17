@@ -149,16 +149,18 @@ class CommandHandlersMixin:
             await self.send_feedback(session, "Usage: /rename <new name>")
             return
 
-        await self.client.handle_event(
-            event=TeleClaudeEvents.RENAME,
-            payload={
-                "command": self._event_to_command("rename"),
-                "args": context.args or [],
-                "session_id": session.session_id,
-                "message_id": str(update.effective_message.message_id),
-            },
-            metadata=self._metadata(),
+        metadata = self._metadata()
+        metadata.channel_metadata = metadata.channel_metadata or {}
+        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        from teleclaude.core.command_mapper import CommandMapper
+
+        cmd = CommandMapper.map_telegram_input(
+            event="rename",
+            args=context.args or [],
+            metadata=metadata,
+            session_id=session.session_id,
         )
+        await self.client.handle_internal_command(cmd, metadata=metadata)
 
     async def _handle_cd(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cd command - change directory or list trusted directories."""
@@ -173,16 +175,18 @@ class CommandHandlersMixin:
 
         # If args provided, change to that directory
         if context.args:
-            await self.client.handle_event(
-                event=TeleClaudeEvents.CD,
-                payload={
-                    "command": self._event_to_command("cd"),
-                    "args": context.args or [],
-                    "session_id": session.session_id,
-                    "message_id": str(update.effective_message.message_id),
-                },
-                metadata=self._metadata(),
+            metadata = self._metadata()
+            metadata.channel_metadata = metadata.channel_metadata or {}
+            metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+            from teleclaude.core.command_mapper import CommandMapper
+
+            cmd = CommandMapper.map_telegram_input(
+                event="cd",
+                args=context.args or [],
+                metadata=metadata,
+                session_id=session.session_id,
             )
+            await self.client.handle_internal_command(cmd, metadata=metadata)
             return
 
         # No args - show trusted directories as buttons (track command message for deletion)
@@ -269,12 +273,15 @@ class CommandHandlersMixin:
         assert update.effective_user is not None
         assert update.effective_message is not None
 
-        await self.client.handle_event(
-            event=TeleClaudeEvents.AGENT_RESTART,
-            payload={
-                "args": [],  # Restart uses stored native_session_id; no args expected.
-                "session_id": session.session_id,
-                "message_id": str(update.effective_message.message_id),
-            },
-            metadata=self._metadata(),
+        metadata = self._metadata()
+        metadata.channel_metadata = metadata.channel_metadata or {}
+        metadata.channel_metadata["message_id"] = str(update.effective_message.message_id)
+        from teleclaude.core.command_mapper import CommandMapper
+
+        cmd = CommandMapper.map_telegram_input(
+            event="agent_restart",
+            args=[],  # Restart uses stored native_session_id; no args expected.
+            metadata=metadata,
+            session_id=session.session_id,
         )
+        await self.client.handle_internal_command(cmd, metadata=metadata)

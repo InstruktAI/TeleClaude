@@ -1976,20 +1976,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         internal_cmd = cast(Optional[InternalCommand], getattr(context, "internal_command", None))
 
         if command == TeleClaudeEvents.NEW_SESSION:
-            create_cmd: CreateSessionCommand
-            if isinstance(internal_cmd, CreateSessionCommand):
-                create_cmd = internal_cmd
-            else:
-                # Fallback/Legacy: Map to internal command
-                create_cmd = CreateSessionCommand(
-                    project_path=metadata.project_path or "",
-                    title=metadata.title or (args[0] if args else None),
-                    subdir=metadata.subdir,
-                    adapter_type=metadata.adapter_type or "unknown",
-                    channel_metadata=metadata.channel_metadata,
-                    launch_intent=metadata.launch_intent,
-                    auto_command=metadata.auto_command,
-                )
+            if not isinstance(internal_cmd, CreateSessionCommand):
+                raise ValueError("Missing CreateSessionCommand for new_session")
+            create_cmd = internal_cmd
 
             return await session_launcher.create_session(
                 create_cmd,

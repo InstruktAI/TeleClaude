@@ -65,11 +65,18 @@ class CommandMapper:
                 agent_name=agent_name,
             )
 
+        if event == "agent_restart":
+            return SystemCommand(
+                command="agent_restart",
+                args=args,
+                session_id=session_id,
+            )
+
         if event == "exit":
             return CloseSessionCommand(session_id=session_id or "")
 
         # Fallback for other commands
-        return SystemCommand(command=event, args=args)
+        return SystemCommand(command=event, args=args, session_id=session_id)
 
     @staticmethod
     def map_redis_input(

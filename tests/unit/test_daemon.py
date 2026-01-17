@@ -27,6 +27,7 @@ from teleclaude.core.models import (
     TelegramAdapterMetadata,
 )
 from teleclaude.daemon import COMMAND_EVENTS, TeleClaudeDaemon
+from teleclaude.types.commands import CreateSessionCommand
 
 
 @pytest.fixture
@@ -292,11 +293,13 @@ async def test_new_session_auto_command_agent_then_message():
     with patch("teleclaude.core.session_launcher.handle_create_session", new_callable=AsyncMock) as mock_create:
         mock_create.return_value = {"session_id": "sess-123"}
 
-        context = CommandEventContext(session_id="sess-ctx", args=[])
-        metadata = MessageMetadata(
+        create_cmd = CreateSessionCommand(
+            project_path="/tmp",
             adapter_type="redis",
             auto_command="agent_then_message codex slow /prompts:next-review next-machine",
         )
+        context = CommandEventContext(session_id="sess-ctx", args=[], internal_command=create_cmd)
+        metadata = MessageMetadata(adapter_type="redis")
 
         result = await daemon.handle_command(
             TeleClaudeEvents.NEW_SESSION,

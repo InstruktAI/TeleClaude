@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import shlex
 from collections.abc import Callable, Coroutine
-from typing import Optional, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -127,11 +126,7 @@ async def create_session(
     """Dispatch to the appropriate session creation intent."""
     intent = cmd.launch_intent
     if not intent or intent.kind == SessionLaunchKind.EMPTY:
-        # Check if there's an auto_command (legacy or explicit)
         auto_command = cmd.auto_command
-        if not auto_command and cmd.channel_metadata:
-            auto_command = cast(Optional[str], cmd.channel_metadata.get("auto_command"))
-
         if auto_command:
             return await create_agent_session_with_auto_command(
                 cmd,

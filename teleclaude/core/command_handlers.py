@@ -130,44 +130,18 @@ async def _execute_control_key(
 
 
 async def handle_create_session(  # pylint: disable=too-many-locals  # Session creation requires many variables
-    cmd_or_context: CreateSessionCommand | EventContext,
-    client_or_args: "AdapterClient | list[str]" = None,
-    metadata: Optional[MessageMetadata] = None,
-    client: Optional["AdapterClient"] = None,
+    cmd: CreateSessionCommand,
+    client: "AdapterClient",
 ) -> dict[str, str]:
     """Create a new tmux session.
 
     Args:
-        cmd_or_context: CreateSessionCommand model OR EventContext (legacy)
-        client_or_args: AdapterClient OR list of args (legacy)
-        metadata: Message metadata (legacy)
-        client: AdapterClient (legacy)
+        cmd: CreateSessionCommand model
+        client: AdapterClient
 
     Returns:
         Minimal session payload with session_id
     """
-    if isinstance(cmd_or_context, CreateSessionCommand):
-        cmd = cmd_or_context
-        # client is the second arg if first is cmd
-        actual_client = client_or_args
-    else:
-        # Legacy mapping
-        actual_client = client
-        args = cast(list[str], client_or_args)
-        cmd = CreateSessionCommand(
-            project_path=metadata.project_path if metadata else "",
-            title=metadata.title if metadata else (args[0] if args else None),
-            subdir=metadata.subdir if metadata else None,
-            adapter_type=metadata.adapter_type if metadata else "unknown",
-            channel_metadata=metadata.channel_metadata if metadata else None,
-            launch_intent=metadata.launch_intent if metadata else None,
-        )
-
-    if actual_client is None:
-        raise ValueError("AdapterClient is required for session creation")
-
-    actual_client_typed = cast(AdapterClient, actual_client)
-
     # Get adapter_type from command
     adapter_type = cmd.adapter_type
     if not adapter_type:
@@ -269,7 +243,7 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     )
 
     # Create channel via client (session object passed, adapter_metadata updated in DB)
-    await actual_client_typed.create_channel(
+    await client.create_channel(
         session=session,
         title=title,
         origin_adapter=str(adapter_type),
@@ -306,7 +280,7 @@ You can now send commands to this session.
 """
 
         try:
-            await actual_client_typed.send_message(session, welcome, ephemeral=False)
+            await client.send_message(session, welcome, ephemeral=False)
         except Exception as exc:
             logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
 
@@ -320,7 +294,7 @@ You can now send commands to this session.
         tmux_name,
         working_dir,
     )
-    await cleanup_session_resources(session, actual_client_typed)
+    await cleanup_session_resources(session, client)
     await db.close_session(session.session_id)
     logger.error("Failed to create tmux session")
     raise RuntimeError("Failed to create tmux session")

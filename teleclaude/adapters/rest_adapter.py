@@ -347,8 +347,14 @@ class RESTAdapter(BaseAdapter):
         ) -> dict[str, object]:  # guard: loose-dict - REST API boundary
             """End session - local sessions only (remote session management via MCP tools)."""
             try:
-                result = await command_handlers.handle_end_session(session_id, self.client)
-                return dict(result)
+                metadata = self._metadata()
+                cmd = CommandMapper.map_rest_input(
+                    "end_session",
+                    {"session_id": session_id},
+                    metadata,
+                )
+                result = await self.client.handle_internal_command(cmd, metadata=metadata)
+                return {"status": "success", "result": result}
             except Exception as e:
                 logger.error("Failed to end session %s: %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to end session: {e}") from e

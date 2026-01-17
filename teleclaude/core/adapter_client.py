@@ -802,6 +802,11 @@ class AdapterClient:
         if metadata is None:
             metadata = MessageMetadata(adapter_type="internal")
 
+        if "message_id" not in payload and metadata.channel_metadata:
+            message_id = metadata.channel_metadata.get("message_id")
+            if message_id is not None:
+                payload["message_id"] = str(message_id)
+
         # Inject command into payload for context builder
         payload["internal_command"] = command
 

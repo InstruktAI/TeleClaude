@@ -292,21 +292,17 @@ def test_create_session_populates_tmux_session_name(test_client, mock_adapter_cl
 
 def test_end_session_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session endpoint calls command handler."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_end_session", new_callable=AsyncMock
-    ) as mock_handler:
-        mock_handler.return_value = {"status": "success", "message": "Session ended"}
+    mock_adapter_client.handle_internal_command.return_value = {"status": "success", "data": {"ok": True}}
 
-        response = test_client.delete("/sessions/sess-123?computer=local")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "success"
+    response = test_client.delete("/sessions/sess-123?computer=local")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
 
-        # Verify handler was called with session_id and client
-        mock_handler.assert_called_once()
-        call_args = mock_handler.call_args
-        assert call_args.args[0] == "sess-123"
-        assert call_args.args[1] == mock_adapter_client
+    # Verify internal command dispatch
+    call_args = mock_adapter_client.handle_internal_command.call_args
+    cmd = call_args[0][0]
+    assert cmd.session_id == "sess-123"
 
 
 def test_send_message_success(test_client, mock_adapter_client):  # type: ignore[explicit-any, unused-ignore]
@@ -745,16 +741,13 @@ def test_list_projects_handler_exception(test_client):  # type: ignore[explicit-
         assert "Failed to list projects" in response.json()["detail"]
 
 
-def test_end_session_handler_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
+def test_end_session_handler_exception(test_client, rest_adapter):  # type: ignore[explicit-any, unused-ignore]
     """Test end_session returns 500 when command handler raises exception."""
-    with patch(
-        "teleclaude.adapters.rest_adapter.command_handlers.handle_end_session", new_callable=AsyncMock
-    ) as mock_handler:
-        mock_handler.side_effect = Exception("Session not found")
+    rest_adapter.client.handle_internal_command = AsyncMock(side_effect=Exception("Session not found"))
 
-        response = test_client.delete("/sessions/sess-123?computer=local")
-        assert response.status_code == 500
-        assert "Failed to end session" in response.json()["detail"]
+    response = test_client.delete("/sessions/sess-123?computer=local")
+    assert response.status_code == 500
+    assert "Failed to end session" in response.json()["detail"]
 
 
 def test_get_agent_availability_db_exception(test_client):  # type: ignore[explicit-any, unused-ignore]
