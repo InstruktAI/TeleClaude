@@ -465,17 +465,19 @@ class Db:
             deletion_type: Type of deletion - 'user_input' (cleaned on next user input)
                           or 'feedback' (cleaned when next feedback is sent)
         """
-        await self.conn.execute(
-            "INSERT OR IGNORE INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, ?)",
-            (session_id, message_id, deletion_type),
-        )
-        await self.conn.commit()
-        if deletion_type == "feedback":
-            logger.debug(
-                "Pending deletion added: session=%s message_id=%s deletion_type=%s",
+        try:
+            await self.conn.execute(
+                "INSERT INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, ?)",
+                (session_id, message_id, deletion_type),
+            )
+            await self.conn.commit()
+        except Exception as e:
+            logger.error(
+                "Failed to add pending deletion: session=%s message_id=%s deletion_type=%s error=%s",
                 session_id[:8],
                 message_id,
                 deletion_type,
+                e,
             )
 
     async def clear_pending_deletions(
@@ -492,12 +494,6 @@ class Db:
             (session_id, deletion_type),
         )
         await self.conn.commit()
-        if deletion_type == "feedback":
-            logger.debug(
-                "Pending deletions cleared: session=%s deletion_type=%s",
-                session_id[:8],
-                deletion_type,
-            )
 
     async def delete_session(self, session_id: str) -> None:
         """Delete session and handle event.
