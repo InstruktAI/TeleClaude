@@ -1,6 +1,6 @@
 # Cache Contract
 
-This document describes the cache as a single smart in-memory layer that sits between API calls and underlying data sources.
+This document describes the cache as a snapshot layer that sits between API calls and underlying data sources.
 
 ## Simple Architecture Overview
 
@@ -8,14 +8,14 @@ This document describes the cache as a single smart in-memory layer that sits be
 flowchart TB
   TUI[TUI (API + WS)]
   API[API\n(thin, read-only)]
-  CACHE[Smart Cache\n(single source of truth)]
+  CACHE[Snapshot Cache\n(read-only)]
   LOCAL[Local sources\n(DB, command handlers)]
-  REMOTE[Remote sources\n(Redis adapter calls)]
+  EVENTS[Domain events\n(from core)]
   WS[WS pushes\n(from cache updates)]
 
   TUI --> API --> CACHE
   CACHE --> LOCAL
-  CACHE --> REMOTE
+  EVENTS --> CACHE
   CACHE --> WS --> TUI
 ```
 
@@ -54,7 +54,7 @@ Sessions are split into two layers:
 
 ## Summary - Consolidated Model
 
-- **Single smart cache** is the only read path for API.
+- **Single snapshot cache** is the only read path for API.
 - **Always serve stale**, refresh in the background based on TTL.
 - **Project invalidation** uses heartbeat digests:
   - Heartbeat includes an opaque **projects digest** per computer.

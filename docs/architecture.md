@@ -11,12 +11,17 @@ flowchart LR
     end
 
     subgraph ServiceInterfaces["Service Interfaces"]
-        APIServer["API Server"]
+        APIServer["API Server (HTTP + WS)"]
         MCPServer["MCP Server"]
-        TGAdapter["Telegram Adapter"]
+        TGAdapter["Telegram Adapter (UI)"]
+    end
+
+    subgraph Transport
+        RedisTransport["Redis Transport (optional)"]
     end
 
     subgraph Core["Core (Command Pipeline)"]
+        AdapterClient["AdapterClient"]
         Ingress["Command Ingress"]
         Queue["Command Queue (SQLite)"]
         Worker["Command Worker"]
@@ -25,7 +30,6 @@ flowchart LR
         Hooks["Hook Receiver (AgentCoordinator)"]
         Events["Domain Events"]
         Cache["Read Cache (Snapshots)"]
-        RedisIngress["Redis Transport Listener"]
         NextMachine["Next Machine (Orchestrator)"]
     end
 
@@ -40,10 +44,12 @@ flowchart LR
     MCPClient --> MCPServer
     TGUser --> TGAdapter
 
-    APIServer --> Ingress
-    MCPServer --> Ingress
-    TGAdapter --> Ingress
-    RedisIngress --> Ingress
+    APIServer --> AdapterClient
+    MCPServer --> AdapterClient
+    TGAdapter --> AdapterClient
+    RedisTransport --> AdapterClient
+
+    AdapterClient --> Ingress
 
     Ingress --> Queue
     Queue --> Worker
@@ -52,19 +58,28 @@ flowchart LR
     Worker --> TMUX
     Worker --> Poller
     Worker --> FS
+    Poller --> AdapterClient
 
     Poller --> Events
     Hooks --> Events
     Sessions --> Events
     Events --> Cache
 
+    Cache --> APIServer
+    Cache --> MCPServer
+
     Sessions --> SQLite
     Queue --> SQLite
     Hooks --> SQLite
     Cache --> SQLite
 
-    RedisIngress --> Redis
-    Redis --> RedisIngress
+    RedisTransport --> Redis
+    Redis --> RedisTransport
+
+    Note["UI delivery scope:\n- origin_only (default)\n- all_ui (optional)\nFeedback is origin-only\nAI-to-AI skips feedback\nNo user input echo"]:::note
+    AdapterClient -.-> Note
+
+    classDef note fill:#f6f6f6,stroke:#888,color:#333,stroke-width:1px;
 ```
 
 ## Protocol-Based Capabilities
