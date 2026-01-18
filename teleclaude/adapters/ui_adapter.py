@@ -331,7 +331,7 @@ class UiAdapter(BaseAdapter):
     ) -> str | None:
         """Send feedback message - deletes old feedback first.
 
-        Delegates to client.send_message(feedback=True) for unified cleanup behavior.
+        Delegates to client.send_feedback for unified cleanup behavior.
 
         Args:
             session: Session object
@@ -341,9 +341,7 @@ class UiAdapter(BaseAdapter):
         Returns:
             message_id of sent feedback message
         """
-        return await self.client.send_message(
-            session, message, metadata=metadata or MessageMetadata(parse_mode=""), feedback=True
-        )
+        return await self.client.send_feedback(session, message, metadata=metadata or MessageMetadata(parse_mode=""))
 
     async def _pre_handle_user_input(self, _session: "Session") -> None:
         """Called before handling user input - cleanup ephemeral messages.

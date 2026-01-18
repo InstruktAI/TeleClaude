@@ -676,3 +676,55 @@ async def test_send_message_persistent_not_tracked():
         await client.send_message(session, "hello", ephemeral=False)
 
     assert mock_db.add_pending_deletion.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_send_feedback_origin_only_even_when_broadcast_enabled():
+    """Feedback is always origin-only, even when UI broadcast is enabled."""
+    client = AdapterClient()
+
+    telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
+    slack_adapter = DummyTelegramAdapter(client, send_message_return="slack-feedback")
+    client.register_adapter("telegram", telegram_adapter)
+    client.register_adapter("slack", slack_adapter)
+
+    session = Session(
+        session_id="session-800",
+        computer_name="test",
+        tmux_session_name="tc_session_800",
+        origin_adapter="telegram",
+        title="Test Session",
+    )
+
+    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+        with patch("teleclaude.core.adapter_client.config") as mock_config:
+            mock_config.ui_delivery.scope = "all_ui"
+            message_id = await client.send_feedback(session, "hello")
+
+    assert message_id == "tg-feedback"
+    assert telegram_adapter.send_message.call_count == 1
+    assert slack_adapter.send_message.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_send_feedback_skipped_for_ai_to_ai():
+    """Feedback is skipped for AI-to-AI sessions."""
+    client = AdapterClient()
+
+    telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
+    client.register_adapter("telegram", telegram_adapter)
+
+    session = Session(
+        session_id="session-801",
+        computer_name="test",
+        tmux_session_name="tc_session_801",
+        origin_adapter="telegram",
+        title="Test Session",
+        initiator_session_id="initiator-123",
+    )
+
+    with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
+        message_id = await client.send_feedback(session, "hello")
+
+    assert message_id is None
+    assert telegram_adapter.send_message.call_count == 0

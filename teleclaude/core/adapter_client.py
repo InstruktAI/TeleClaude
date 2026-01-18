@@ -450,6 +450,21 @@ class AdapterClient:
 
         return message_id
 
+    async def send_feedback(
+        self,
+        session: "Session",
+        message: str,
+        *,
+        metadata: MessageMetadata | None = None,
+    ) -> str | None:
+        """Send feedback message (origin-only, AI-to-AI skipped)."""
+        return await self.send_message(
+            session,
+            message,
+            metadata=metadata,
+            feedback=True,
+        )
+
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in ALL UiAdapters (origin + observers).
 

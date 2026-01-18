@@ -1679,7 +1679,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             logger.warning("Session %s not found for message", sid[:8])
             return None
-        return await self.client.send_message(session, msg, metadata=metadata, feedback=True)
+        return await self.client.send_feedback(session, msg, metadata=metadata)
 
     async def _send_status_callback(
         self,
