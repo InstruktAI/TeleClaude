@@ -387,6 +387,10 @@ class AdapterClient:
         Returns:
             message_id from origin adapter, or None if send failed
         """
+        # Skip feedback for AI-to-AI sessions (listeners already deliver)
+        if feedback and session.initiator_session_id:
+            return None
+
         plan = self._ui_delivery_plan(session)
         broadcast = self._ui_broadcast_enabled() and not feedback
 

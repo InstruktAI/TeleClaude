@@ -222,6 +222,7 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     # Create session
     request_id = "test-request-789"
     project_path = "/tmp/test-project"
+    os.makedirs(project_path, exist_ok=True)
     {
         b"title": b"Test Tmux Execution",
         b"project_path": project_path.encode("utf-8"),
