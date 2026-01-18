@@ -15,7 +15,7 @@ TeleClaude uses Python's `Protocol` pattern to distinguish between two types of 
 
 This separation enables clean architecture where:
 
-- **Message broadcasting** uses all adapters with `has_ui=True`
+- **UI delivery** is scoped (origin-only by default; optional all-UI broadcast)
 - **Cross-computer orchestration** uses only transport adapters implementing `RemoteExecutionProtocol`
 
 ---
@@ -81,9 +81,9 @@ class RemoteExecutionProtocol(Protocol):
 
 ### Two Types of Operations
 
-#### 1. Message Broadcasting (Local Sessions)
+#### 1. UI Delivery (Local Sessions)
 
-Distributes tmux output to all connected clients.
+Delivers UI updates to the initiating adapter by default, with optional broadcast to all UI adapters.
 
 ```python
 # Used by: Daemon, OutputPoller
@@ -92,9 +92,11 @@ await adapter_client.send_message(session_id, "Tmux output here")
 
 **Behavior:**
 
-- Sends to **origin adapter** (CRITICAL - failure throws exception)
-- Broadcasts to **observer adapters** with `has_ui=True` (best-effort)
-- RedisTransport skipped (has_ui=False, pure transport)
+- **Origin-only by default** (`ui_delivery.scope: origin_only`)
+- **Optional broadcast** (`ui_delivery.scope: all_ui`)
+- **Feedback messages** are always origin-only
+- **AI-to-AI sessions** skip feedback messages (listeners already deliver)
+- **User input echo** is disabled (edit/output updates convey interaction)
 
 #### 2. Cross-Computer Orchestration (Remote Sessions)
 

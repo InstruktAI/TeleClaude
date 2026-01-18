@@ -41,6 +41,9 @@
 ## UX (Telegram)
 - Feedback cleanup: delete prior feedback before sending new feedback.
 - User input cleanup: delete prior inputs on next input.
+- Feedback is origin-only; observer adapters never receive feedback.
+- AI-to-AI sessions skip feedback (listeners already deliver).
+- User input echo is disabled.
 
 ## Multi‑Computer
 - Only master bot registers Telegram commands.
