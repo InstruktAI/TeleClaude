@@ -62,7 +62,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent
+from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session, SessionLaunchIntent
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
@@ -1676,7 +1676,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             logger.warning("Session %s not found for message", sid[:8])
             return None
-        return await self.client.send_message(session, msg, metadata=metadata, cleanup_trigger="next_notice")
+        return await self.client.send_message(
+            session, msg, metadata=metadata, cleanup_trigger=CleanupTrigger.NEXT_NOTICE
+        )
 
     async def _send_status_callback(
         self,
@@ -1689,7 +1691,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             logger.warning("Session %s not found for message", sid[:8])
             return None
-        return await self.client.send_message(session, msg, metadata=metadata, cleanup_trigger="next_turn")
+        return await self.client.send_message(session, msg, metadata=metadata, cleanup_trigger=CleanupTrigger.NEXT_TURN)
 
     async def _delete_feedback_message(self, sid: str, message_id: str) -> None:
         session = await db.get_session(sid)

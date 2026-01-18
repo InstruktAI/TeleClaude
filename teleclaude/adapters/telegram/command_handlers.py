@@ -13,7 +13,7 @@ from telegram.ext import ContextTypes
 
 from teleclaude.core.db import db
 from teleclaude.core.events import EventType, TeleClaudeEvents
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import CleanupTrigger, MessageMetadata
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -137,7 +137,7 @@ class CommandHandlersMixin:
                 session,
                 "Usage: /rename <new name>",
                 metadata=self._metadata(),
-                cleanup_trigger="next_notice",
+                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
             return
 
@@ -185,7 +185,7 @@ class CommandHandlersMixin:
             session,
             "**Select a directory:**",
             metadata=MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown"),
-            cleanup_trigger="next_notice",
+            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
         )
 
     async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:

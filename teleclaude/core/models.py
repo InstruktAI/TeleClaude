@@ -273,6 +273,13 @@ class SessionLaunchKind(Enum):
     AGENT_RESUME = "agent_resume"
 
 
+class CleanupTrigger(Enum):
+    """When an ephemeral UI message should be removed."""
+
+    NEXT_NOTICE = "next_notice"
+    NEXT_TURN = "next_turn"
+
+
 @dataclass
 class Session:  # pylint: disable=too-many-instance-attributes
     """Represents a tmux session."""

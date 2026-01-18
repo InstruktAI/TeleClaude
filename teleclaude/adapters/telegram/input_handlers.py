@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes
 
 from teleclaude.core.db import db
 from teleclaude.core.events import TeleClaudeEvents, UiCommands
-from teleclaude.core.models import MessageMetadata
+from teleclaude.core.models import CleanupTrigger, MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
 
 if TYPE_CHECKING:
@@ -289,7 +289,7 @@ Usage:
                 session,
                 f"❌ Failed to download voice message: {error_msg}",
                 metadata=self._metadata(),
-                cleanup_trigger="next_notice",
+                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
 
     async def _handle_file_attachment(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:

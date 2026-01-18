@@ -91,6 +91,7 @@ python_version = "3.11"
 files = ["**/*.py"]
 exclude = ["^venv/", "^.venv/"]
 follow_imports = "silent"  # TODO: Revisit - changed from "skip" to allow pydantic BaseModel resolution
+enable_error_code = ["literal-required"]
 
 # Enable ALL strict mode flags
 strict = true

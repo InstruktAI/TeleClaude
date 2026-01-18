@@ -11,6 +11,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import Db
 from teleclaude.core.models import (
+    CleanupTrigger,
     MessageMetadata,
     Session,
     SessionAdapterMetadata,
@@ -342,7 +343,7 @@ class TestSendMessageNotice:
 
         # Patch adapter_client's db reference to use test_db
         with patch("teleclaude.core.adapter_client.db", test_db):
-            msg_id = await client.send_message(session, "Ephemeral notice", cleanup_trigger="next_notice")
+            msg_id = await client.send_message(session, "Ephemeral notice", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
         # Notices use deletion_type="feedback", not "user_input"
         pending = await test_db.get_pending_deletions(session.session_id, deletion_type="feedback")

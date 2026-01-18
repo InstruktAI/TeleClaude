@@ -22,7 +22,7 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.models import MessageMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import CleanupTrigger, MessageMetadata, TelegramAdapterMetadata
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
 
@@ -142,7 +142,7 @@ class UiAdapter(BaseAdapter):
                     session,
                     f"❌ {error_message}",
                     metadata=self._metadata(),
-                    cleanup_trigger="next_notice",
+                    cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )
         except Exception as e:
             logger.error("Failed to send error feedback for session %s: %s", session_id, e)
@@ -369,7 +369,7 @@ class UiAdapter(BaseAdapter):
                 session,
                 message,
                 metadata=metadata,
-                cleanup_trigger="next_notice",
+                cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
             )
 
         # Delegate to utility module
@@ -506,5 +506,5 @@ class UiAdapter(BaseAdapter):
                     session,
                     summary,
                     metadata=MessageMetadata(adapter_type="internal"),
-                    cleanup_trigger="next_notice",
+                    cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
                 )

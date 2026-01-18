@@ -26,6 +26,7 @@ from teleclaude.core.models import (
     AgentResumeArgs,
     AgentStartArgs,
     CdArgs,
+    CleanupTrigger,
     ComputerInfo,
     MessageMetadata,
     ProjectInfo,
@@ -793,7 +794,7 @@ async def handle_ctrl_command(
             session,
             "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)",
             metadata=MessageMetadata(),
-            cleanup_trigger="next_notice",
+            cleanup_trigger=CleanupTrigger.NEXT_NOTICE,
         )
 
         # Track both command message AND feedback message for deletion
@@ -1078,7 +1079,7 @@ async def handle_cd_session(
             lines.append(f"{idx}. {display_text}")
 
         response = "\n".join(lines)
-        await client.send_message(session, response, cleanup_trigger="next_turn")
+        await client.send_message(session, response, cleanup_trigger=CleanupTrigger.NEXT_TURN)
         # Note: Notice message auto-tracked by send_message(ephemeral=True)
         return
 

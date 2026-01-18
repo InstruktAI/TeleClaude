@@ -42,7 +42,13 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
     VoiceEventContext,
 )
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, RedisTransportMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import (
+    ChannelMetadata,
+    CleanupTrigger,
+    MessageMetadata,
+    RedisTransportMetadata,
+    TelegramAdapterMetadata,
+)
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -369,7 +375,7 @@ class AdapterClient:
         message: str,
         *,
         metadata: MessageMetadata | None = None,
-        cleanup_trigger: Literal["next_notice", "next_turn"] = "next_notice",
+        cleanup_trigger: CleanupTrigger = CleanupTrigger.NEXT_NOTICE,
         ephemeral: bool = True,
     ) -> str | None:
         """Send a UI message (origin-only).
@@ -379,15 +385,15 @@ class AdapterClient:
             message: Message text
             metadata: Adapter-specific metadata
             cleanup_trigger: When this message should be removed.
-                - "next_notice": removed on next notice message
-                - "next_turn": removed on next user turn
+                - CleanupTrigger.NEXT_NOTICE: removed on next notice message
+                - CleanupTrigger.NEXT_TURN: removed on next user turn
             ephemeral: If True (default), track message for deletion.
                       Use False for persistent content (agent output, MCP results).
 
         Returns:
             message_id from origin adapter, or None if send failed
         """
-        notice_mode = cleanup_trigger == "next_notice"
+        notice_mode = cleanup_trigger == CleanupTrigger.NEXT_NOTICE
 
         # Skip feedback for AI-to-AI sessions (listeners already deliver)
         if notice_mode and session.initiator_session_id:

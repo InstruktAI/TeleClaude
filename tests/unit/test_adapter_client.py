@@ -11,6 +11,7 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.models import (
+    CleanupTrigger,
     PeerInfo,
     Session,
     SessionAdapterMetadata,
@@ -699,7 +700,7 @@ async def test_send_message_notice_origin_only_even_when_broadcast_enabled():
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
         with patch("teleclaude.core.adapter_client.config") as mock_config:
             mock_config.ui_delivery.scope = "all_ui"
-            message_id = await client.send_message(session, "hello", cleanup_trigger="next_notice")
+            message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id == "tg-feedback"
     assert telegram_adapter.send_message.call_count == 1
@@ -724,7 +725,7 @@ async def test_send_message_notice_skipped_for_ai_to_ai():
     )
 
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
-        message_id = await client.send_message(session, "hello", cleanup_trigger="next_notice")
+        message_id = await client.send_message(session, "hello", cleanup_trigger=CleanupTrigger.NEXT_NOTICE)
 
     assert message_id is None
     assert telegram_adapter.send_message.call_count == 0
