@@ -357,11 +357,8 @@ async def test_ui_observer_receives_broadcasts():
                 # Verify telegram (origin) called
                 assert len(telegram_adapter.send_message_calls) == 1
 
-                # Verify slack (observer with has_ui=True) also called (best-effort)
-                assert len(slack_adapter.send_message_calls) == 1
-                call_session, call_text, call_metadata = slack_adapter.send_message_calls[0]
-                assert call_session.session_id == session.session_id
-                assert call_text == "Test output"
+                # Notices are origin-only
+                assert len(slack_adapter.send_message_calls) == 0
 
     finally:
         config_module.config.ui_delivery.scope = prior_scope
@@ -484,8 +481,8 @@ async def test_observer_failure_does_not_affect_origin():
                 assert len(telegram_adapter.send_message_calls) == 1
                 assert result == "msg-123"
 
-                # Verify slack was attempted (logged the call before failing)
-                assert len(slack_adapter.send_message_calls) == 1
+                # Notices are origin-only
+                assert len(slack_adapter.send_message_calls) == 0
 
     finally:
         config_module.config.ui_delivery.scope = prior_scope

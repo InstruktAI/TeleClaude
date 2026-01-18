@@ -24,7 +24,7 @@ class MockUiAdapter(UiAdapter):
     ADAPTER_KEY = "telegram"  # Use telegram key for testing (reuses existing metadata structure)
 
     def __init__(self):
-        # Create mock client with async send_message for send_feedback delegation
+        # Create mock client with async send_message for notice delegation
         mock_client = MagicMock()
         mock_client.on = MagicMock()  # Mock event registration
         mock_client.send_message = AsyncMock(return_value="msg-123")
@@ -319,11 +319,11 @@ class TestSendExitMessage:
 
 
 @pytest.mark.asyncio
-class TestSendFeedback:
-    """Paranoid test send_feedback method (ephemeral message tracking)."""
+class TestSendMessageNotice:
+    """Paranoid test notice messages (ephemeral message tracking)."""
 
-    async def test_tracks_feedback_for_deletion(self, test_db):
-        """Paranoid test that send_feedback tracks message for deletion via AdapterClient."""
+    async def test_tracks_notice_for_deletion(self, test_db):
+        """Paranoid test that send_message tracks notice for deletion via AdapterClient."""
         from teleclaude.core.adapter_client import AdapterClient
 
         # Create real AdapterClient and adapter
@@ -342,11 +342,11 @@ class TestSendFeedback:
 
         # Patch adapter_client's db reference to use test_db
         with patch("teleclaude.core.adapter_client.db", test_db):
-            msg_id = await adapter.send_feedback(session, "Ephemeral feedback")
+            msg_id = await client.send_message(session, "Ephemeral notice", cleanup_trigger="next_notice")
 
-        # Feedback uses deletion_type="feedback", not "user_input"
+        # Notices use deletion_type="feedback", not "user_input"
         pending = await test_db.get_pending_deletions(session.session_id, deletion_type="feedback")
-        assert msg_id in pending, "Feedback message should be tracked for deletion"
+        assert msg_id in pending, "Notice message should be tracked for deletion"
 
 
 class TestFormatMessage:

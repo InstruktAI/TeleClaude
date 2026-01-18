@@ -412,7 +412,6 @@ async def daemon_with_mocked_telegram(monkeypatch, tmp_path):
         telegram_adapter.update_channel_title = AsyncMock(return_value=True)  # type: ignore[method-assign]
         telegram_adapter.delete_channel = AsyncMock(return_value=True)  # type: ignore[method-assign]
         telegram_adapter.send_general_message = AsyncMock(return_value="msg-456")  # type: ignore[method-assign]
-        telegram_adapter.send_feedback = AsyncMock(return_value="feedback-123")  # type: ignore[method-assign]
         telegram_adapter.send_output_update = AsyncMock(return_value="output-msg-123")  # type: ignore[method-assign]
         telegram_adapter._cleanup_pending_deletions = AsyncMock()  # type: ignore[method-assign]
 

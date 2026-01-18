@@ -44,7 +44,6 @@ class InputHandlersMixin:
     - _get_session_from_topic(update: Update) -> Optional[Session]
     - _topic_owned_by_this_bot(update: Update, topic_id: int) -> bool
     - _delete_orphan_topic(topic_id: int) -> None
-    - send_feedback(session: Session, text: str, metadata: MessageMetadata) -> str
     """
 
     # Abstract properties/attributes (declared for type hints)
@@ -72,17 +71,6 @@ class InputHandlersMixin:
 
         async def _delete_orphan_topic(self, topic_id: int) -> None:
             """Delete orphan topic."""
-            ...
-
-        async def send_feedback(
-            self,
-            session: "Session",
-            message: str,
-            *,
-            metadata: MessageMetadata | None = None,
-            persistent: bool = False,
-        ) -> str | None:
-            """Send feedback message to session."""
             ...
 
     # =========================================================================
@@ -297,9 +285,11 @@ Usage:
         except Exception as e:
             error_msg = str(e) if str(e).strip() else "Unknown error"
             logger.error("Failed to download voice message: %s", error_msg)
-            await self.send_feedback(
+            await self.client.send_message(
                 session,
                 f"❌ Failed to download voice message: {error_msg}",
+                metadata=self._metadata(),
+                cleanup_trigger="next_notice",
             )
 
     async def _handle_file_attachment(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:

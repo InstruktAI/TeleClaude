@@ -290,19 +290,6 @@ async def handle_create_session(  # pylint: disable=too-many-locals  # Session c
     )
 
     if success:
-        welcome = f"""Session created!
-
-Computer: {computer_name}
-Working directory: {working_dir}
-
-You can now send commands to this session.
-"""
-
-        try:
-            await client.send_message(session, welcome, ephemeral=False)
-        except Exception as exc:
-            logger.error("Failed to send welcome message for %s: %s", session_id[:8], exc)
-
         logger.info("Created session: %s", session.session_id)
         return {"session_id": session_id, "tmux_session_name": tmux_name}
 
@@ -806,6 +793,7 @@ async def handle_ctrl_command(
             session,
             "Usage: /ctrl <key> (e.g., /ctrl d for CTRL+D)",
             metadata=MessageMetadata(),
+            cleanup_trigger="next_notice",
         )
 
         # Track both command message AND feedback message for deletion
@@ -819,7 +807,7 @@ async def handle_ctrl_command(
                 session.session_id[:8],
             )
 
-        # Note: Feedback message auto-tracked by send_message(ephemeral=True)
+        # Note: Notice message auto-tracked by send_message(ephemeral=True)
 
         return
 
@@ -1090,8 +1078,8 @@ async def handle_cd_session(
             lines.append(f"{idx}. {display_text}")
 
         response = "\n".join(lines)
-        await client.send_message(session, response)
-        # Note: Help message auto-tracked by send_message(ephemeral=True)
+        await client.send_message(session, response, cleanup_trigger="next_turn")
+        # Note: Notice message auto-tracked by send_message(ephemeral=True)
         return
 
     # Change to specified directory

@@ -165,7 +165,7 @@ async def test_handle_voice_rejects_no_active_process():
         audio_path = f.name
 
     try:
-        mock_send_feedback = AsyncMock(return_value="msg-123")
+        mock_send_message = AsyncMock(return_value="msg-123")
 
         # Mock session and db
         mock_session = MagicMock()
@@ -181,11 +181,11 @@ async def test_handle_voice_rejects_no_active_process():
             mock_polling.return_value = False  # No active process
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
 
         # Verify rejection message sent
-        mock_send_feedback.assert_called_once()
-        call_args = mock_send_feedback.call_args[0]
+        mock_send_message.assert_called_once()
+        call_args = mock_send_message.call_args[0]
         assert "requires an active process" in call_args[1]
         assert result is None
 
@@ -205,7 +205,7 @@ async def test_handle_voice_returns_none_when_session_missing():
         audio_path = f.name
 
     try:
-        mock_send_feedback = AsyncMock(return_value="msg-123")
+        mock_send_message = AsyncMock(return_value="msg-123")
 
         with (
             patch("teleclaude.core.voice_message_handler.db.get_session", new_callable=AsyncMock) as mock_get,
@@ -213,10 +213,10 @@ async def test_handle_voice_returns_none_when_session_missing():
             mock_get.return_value = None
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
 
         assert result is None
-        mock_send_feedback.assert_not_called()
+        mock_send_message.assert_not_called()
 
     finally:
         Path(audio_path).unlink(missing_ok=True)
@@ -232,7 +232,7 @@ async def test_handle_voice_forwards_transcription_to_process():
         audio_path = f.name
 
     try:
-        mock_send_feedback = AsyncMock(return_value="msg-123")
+        mock_send_message = AsyncMock(return_value="msg-123")
 
         # Mock session with tmux name
         mock_session = MagicMock()
@@ -259,7 +259,7 @@ async def test_handle_voice_forwards_transcription_to_process():
                 "test-session-123",
                 audio_path,
                 context,
-                mock_send_feedback,
+                mock_send_message,
                 delete_message=mock_delete,
             )
 
@@ -271,8 +271,8 @@ async def test_handle_voice_forwards_transcription_to_process():
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_transcribes_without_feedback_channel():
-    """Paranoid test that handle_voice still transcribes when feedback can't be sent."""
+async def test_handle_voice_transcribes_without_notice_channel():
+    """Paranoid test that handle_voice still transcribes when notice can't be sent."""
 
     # Create temp audio file
     with tempfile.NamedTemporaryFile(mode="wb", suffix=".ogg", delete=False) as f:
@@ -280,7 +280,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
         audio_path = f.name
 
     try:
-        mock_send_feedback = AsyncMock(return_value=None)
+        mock_send_message = AsyncMock(return_value=None)
 
         # Mock session with tmux name
         mock_session = MagicMock()
@@ -302,7 +302,7 @@ async def test_handle_voice_transcribes_without_feedback_channel():
             mock_transcribe.return_value = "Transcribed text"
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
 
         assert result == "Transcribed text"
 
@@ -322,7 +322,7 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
         audio_path = f.name
 
     try:
-        mock_send_feedback = AsyncMock(return_value="msg-123")
+        mock_send_message = AsyncMock(return_value="msg-123")
 
         # Mock session with tmux name
         mock_session = MagicMock()
@@ -344,11 +344,11 @@ async def test_handle_voice_cleans_up_temp_file_on_error():
             mock_transcribe.return_value = None  # Transcription failed
 
             context = VoiceEventContext(session_id="test-session-123", file_path=audio_path, duration=5.0)
-            result = await handle_voice("test-session-123", audio_path, context, mock_send_feedback)
+            result = await handle_voice("test-session-123", audio_path, context, mock_send_message)
 
         # Verify error message sent
-        assert mock_send_feedback.call_count >= 2  # "Transcribing..." + error
-        last_call = mock_send_feedback.call_args_list[-1]
+        assert mock_send_message.call_count >= 2  # "Transcribing..." + error
+        last_call = mock_send_message.call_args_list[-1]
         assert "failed" in last_call[0][1].lower()
         assert result is None
 

@@ -872,14 +872,17 @@ class MCPHandlersMixin:
         try:
             # MCP send_result creates persistent messages (AI responses to user)
             message_id = await self.client.send_message(
-                session=session, text=formatted_content, metadata=metadata, ephemeral=False
+                session=session, message=formatted_content, metadata=metadata, ephemeral=False
             )
             return {"status": "success", "message_id": message_id}
         except Exception as e:
             logger.warning("MarkdownV2 send failed, falling back to plain text: %s", e)
             try:
                 message_id = await self.client.send_message(
-                    session=session, text=content[:4096], metadata=MessageMetadata(parse_mode=""), ephemeral=False
+                    session=session,
+                    message=content[:4096],
+                    metadata=MessageMetadata(parse_mode=""),
+                    ephemeral=False,
                 )
                 return {
                     "status": "success",

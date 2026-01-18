@@ -138,7 +138,12 @@ class UiAdapter(BaseAdapter):
         try:
             session = await db.get_session(session_id)
             if session:
-                await self.send_feedback(session, f"❌ {error_message}", metadata=self._metadata())
+                await self.client.send_message(
+                    session,
+                    f"❌ {error_message}",
+                    metadata=self._metadata(),
+                    cleanup_trigger="next_notice",
+                )
         except Exception as e:
             logger.error("Failed to send error feedback for session %s: %s", session_id, e)
 
@@ -322,27 +327,6 @@ class UiAdapter(BaseAdapter):
             if new_id:
                 await self._store_output_message_id(session, new_id)
 
-    async def send_feedback(
-        self,
-        session: "Session",
-        message: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> str | None:
-        """Send feedback message - deletes old feedback first.
-
-        Delegates to client.send_feedback for unified cleanup behavior.
-
-        Args:
-            session: Session object
-            message: Feedback message text
-            metadata: Adapter-specific metadata (optional)
-
-        Returns:
-            message_id of sent feedback message
-        """
-        return await self.client.send_feedback(session, message, metadata=metadata or MessageMetadata(parse_mode=""))
-
     async def _pre_handle_user_input(self, _session: "Session") -> None:
         """Called before handling user input - cleanup ephemeral messages.
 
@@ -365,22 +349,35 @@ class UiAdapter(BaseAdapter):
 
         Flow:
         1. Validate session and check if process is running
-        2. Send "Transcribing..." feedback to user
+        2. Send "Transcribing..." notice to user
         3. Transcribe audio using voice_message_handler.py
         4. Send transcribed text to tmux
-        5. Send feedback on success/failure
+        5. Send notice on success/failure
 
         Args:
             session_id: Session ID
             audio_file_path: Path to audio file (any format supported by Whisper)
             context: Platform-specific metadata (user_id, duration, etc.)
         """
+
+        async def _send_notice(sid: str, message: str, metadata: MessageMetadata) -> Optional[str]:
+            session = await db.get_session(sid)
+            if not session:
+                logger.warning("Session %s not found for message", sid[:8])
+                return None
+            return await self.client.send_message(
+                session,
+                message,
+                metadata=metadata,
+                cleanup_trigger="next_notice",
+            )
+
         # Delegate to utility module
         await handle_voice(
             session_id=session_id,
             audio_path=audio_file_path,
             context=context,  # type: ignore[arg-type]
-            send_message=self.send_feedback,  # type: ignore[arg-type]
+            send_message=_send_notice,
             delete_message=self._delete_message_by_session_id,
         )
 
@@ -505,4 +502,9 @@ class UiAdapter(BaseAdapter):
                     len(summary),
                     list(updated_fields.keys()),
                 )
-                await self.send_feedback(session, summary, metadata=MessageMetadata(adapter_type="internal"))
+                await self.client.send_message(
+                    session,
+                    summary,
+                    metadata=MessageMetadata(adapter_type="internal"),
+                    cleanup_trigger="next_notice",
+                )

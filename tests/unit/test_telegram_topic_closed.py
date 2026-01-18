@@ -37,9 +37,6 @@ class DummyHandlers(InputHandlersMixin):
     async def _delete_orphan_topic(self, topic_id: int) -> None:  # type: ignore[override]
         return None
 
-    async def send_feedback(self, session, message: str, *, metadata=None, persistent: bool = False):  # type: ignore[override]
-        return None
-
 
 @pytest.mark.asyncio
 async def test_topic_closed_ignores_new_session() -> None:

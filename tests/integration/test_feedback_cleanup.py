@@ -102,7 +102,7 @@ async def test_send_message_ephemeral_auto_tracks(daemon_with_mocked_telegram):
     msg_id = await daemon.client.send_message(session, "Ephemeral feedback", metadata=MessageMetadata())
 
     # Verify it was auto-tracked
-    pending = await daemon.db.get_pending_deletions(session.session_id)
+    pending = await daemon.db.get_pending_deletions(session.session_id, deletion_type="feedback")
     assert msg_id in pending, "Ephemeral message should be auto-tracked"
 
 

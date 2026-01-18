@@ -35,7 +35,6 @@ class CommandHandlersMixin:
     - _get_session_from_topic(update: Update) -> Optional[Session]
     - _require_session_from_topic(update: Update) -> Optional[Session]
     - _pre_handle_user_input(session: Session) -> None
-    - send_feedback(session: Session, text: str, metadata: MessageMetadata) -> str
     """
 
     # Abstract properties/attributes (declared for type hints)
@@ -70,17 +69,6 @@ class CommandHandlersMixin:
 
         async def _pre_handle_user_input(self, session: "Session") -> None:
             """Pre-handle user input (delete old messages)."""
-            ...
-
-        async def send_feedback(
-            self,
-            session: "Session",
-            message: str,
-            *,
-            metadata: MessageMetadata | None = None,
-            persistent: bool = False,
-        ) -> str | None:
-            """Send feedback message to session."""
             ...
 
     # =========================================================================
@@ -145,7 +133,12 @@ class CommandHandlersMixin:
             # Track command message for deletion
             await self._pre_handle_user_input(session)
             await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
-            await self.send_feedback(session, "Usage: /rename <new name>")
+            await self.client.send_message(
+                session,
+                "Usage: /rename <new name>",
+                metadata=self._metadata(),
+                cleanup_trigger="next_notice",
+            )
             return
 
         await self.client.handle_event(
@@ -188,10 +181,11 @@ class CommandHandlersMixin:
         await self._pre_handle_user_input(session)
         await db.add_pending_deletion(session.session_id, str(update.effective_message.message_id))
         reply_markup = self._build_project_keyboard("cd")
-        await self.send_feedback(
+        await self.client.send_message(
             session,
             "**Select a directory:**",
             metadata=MessageMetadata(reply_markup=reply_markup, parse_mode="Markdown"),
+            cleanup_trigger="next_notice",
         )
 
     async def _handle_agent_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE, agent_name: str) -> None:

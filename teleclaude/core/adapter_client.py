@@ -366,40 +366,42 @@ class AdapterClient:
     async def send_message(
         self,
         session: "Session",
-        text: str,
+        message: str,
         *,
         metadata: MessageMetadata | None = None,
+        cleanup_trigger: Literal["next_notice", "next_turn"] = "next_notice",
         ephemeral: bool = True,
-        feedback: bool = False,
     ) -> str | None:
-        """Send message to ALL UiAdapters (origin + observers).
+        """Send a UI message (origin-only).
 
         Args:
             session: Session object (daemon already fetched it)
-            text: Message text
+            message: Message text
             metadata: Adapter-specific metadata
+            cleanup_trigger: When this message should be removed.
+                - "next_notice": removed on next notice message
+                - "next_turn": removed on next user turn
             ephemeral: If True (default), track message for deletion.
                       Use False for persistent content (agent output, MCP results).
-            feedback: If True, delete old feedback before sending and track as feedback.
-                     Feedback is cleaned when next feedback arrives.
-                     If False (default), track for deletion on next user input.
 
         Returns:
             message_id from origin adapter, or None if send failed
         """
+        notice_mode = cleanup_trigger == "next_notice"
+
         # Skip feedback for AI-to-AI sessions (listeners already deliver)
-        if feedback and session.initiator_session_id:
+        if notice_mode and session.initiator_session_id:
             return None
 
         plan = self._ui_delivery_plan(session)
-        broadcast = self._ui_broadcast_enabled() and not feedback
+        broadcast = False
 
-        # Feedback mode: delete old feedback before sending new (origin only)
-        if feedback:
+        # Notice mode: delete old notices before sending new (origin only)
+        if notice_mode and ephemeral:
             pending = await db.get_pending_deletions(session.session_id, deletion_type="feedback")
             if pending:
                 logger.debug(
-                    "Feedback cleanup: session=%s pending_count=%d",
+                    "Notice cleanup: session=%s pending_count=%d",
                     session.session_id[:8],
                     len(pending),
                 )
@@ -416,11 +418,11 @@ class AdapterClient:
                     else:
                         failed += 1
                 except Exception as e:
-                    logger.debug("Best-effort feedback deletion failed: %s", e)
+                    logger.debug("Best-effort notice deletion failed: %s", e)
                     failed += 1
             if pending:
                 logger.debug(
-                    "Feedback cleanup result: session=%s deleted=%d failed=%d",
+                    "Notice cleanup result: session=%s deleted=%d failed=%d",
                     session.session_id[:8],
                     deleted,
                     failed,
@@ -431,7 +433,7 @@ class AdapterClient:
         result = await self._route_to_ui(
             session,
             "send_message",
-            text,
+            message,
             metadata=metadata,
             broadcast=broadcast,
         )
@@ -439,31 +441,16 @@ class AdapterClient:
 
         # Track for deletion if ephemeral
         if ephemeral and message_id:
-            deletion_type: Literal["user_input", "feedback"] = "feedback" if feedback else "user_input"
+            deletion_type: Literal["user_input", "feedback"] = "feedback" if notice_mode else "user_input"
             await db.add_pending_deletion(session.session_id, message_id, deletion_type=deletion_type)
-            if feedback:
+            if notice_mode:
                 logger.debug(
-                    "Feedback tracked for deletion: session=%s message_id=%s",
+                    "Notice tracked for deletion: session=%s message_id=%s",
                     session.session_id[:8],
                     message_id,
                 )
 
         return message_id
-
-    async def send_feedback(
-        self,
-        session: "Session",
-        message: str,
-        *,
-        metadata: MessageMetadata | None = None,
-    ) -> str | None:
-        """Send feedback message (origin-only, AI-to-AI skipped)."""
-        return await self.send_message(
-            session,
-            message,
-            metadata=metadata,
-            feedback=True,
-        )
 
     async def edit_message(self, session: "Session", message_id: str, text: str) -> bool:
         """Edit message in ALL UiAdapters (origin + observers).
@@ -741,8 +728,21 @@ class AdapterClient:
         Returns:
             True if origin deletion succeeded
         """
-        result = await self._route_to_ui(session, "delete_channel")
-        return bool(result)
+        plan = self._ui_delivery_plan(session)
+        origin_ok = False
+        for adapter_type, adapter in plan.all_ui:
+            try:
+                ok = await adapter.delete_channel(session)
+                if adapter_type == plan.origin_type and ok:
+                    origin_ok = True
+            except Exception as exc:
+                logger.warning(
+                    "UI adapter %s failed delete_channel for session %s: %s",
+                    adapter_type,
+                    session.session_id[:8],
+                    exc,
+                )
+        return origin_ok
 
     async def discover_peers(self, redis_enabled: bool | None = None) -> list[dict[str, object]]:  # noqa: loose-dict - Adapter peer data
         """Discover peers from all registered adapters.

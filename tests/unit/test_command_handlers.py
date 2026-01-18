@@ -117,8 +117,8 @@ async def test_handle_new_session_creates_session(mock_initialized_db):
 
 
 @pytest.mark.asyncio
-async def test_handle_create_session_sends_welcome_before_output(mock_initialized_db, monkeypatch):
-    """Welcome message must be sent before output message creation."""
+async def test_handle_create_session_does_not_send_welcome(mock_initialized_db, monkeypatch):
+    """Session creation should not emit a welcome message."""
     order: list[str] = []
 
     mock_context = MagicMock(spec=EventContext)
@@ -157,7 +157,7 @@ async def test_handle_create_session_sends_welcome_before_output(mock_initialize
 
             await command_handlers.handle_create_session(mock_context, ["Test", "Title"], mock_metadata, mock_client)
 
-    assert order == ["welcome"]
+    assert order == []
     assert mock_client.send_output_update.await_count == 0
 
 

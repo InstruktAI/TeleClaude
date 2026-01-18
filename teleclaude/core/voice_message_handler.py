@@ -176,7 +176,7 @@ async def handle_voice(
         session_id: Session ID
         audio_path: Path to downloaded audio file
         context: Typed voice event context
-        send_message: Async function to send user feedback (session_id, message, append_to_existing)
+        send_message: Async function to send UI notices (session_id, message, metadata)
     """
     logger.info("=== DAEMON HANDLE_VOICE CALLED ===")
     logger.info("Session ID: %s", session_id[:8])
@@ -210,7 +210,7 @@ async def handle_voice(
 
     # Voice message accepted - transcribe and forward through message pipeline.
 
-    # Send transcribing status if feedback channel is available
+    # Send transcribing status if notice channel is available
     msg_id = await send_message(
         session_id,
         "🎤 Transcribing...",
@@ -218,7 +218,7 @@ async def handle_voice(
     )
     if msg_id is None:
         logger.info(
-            "Feedback not sent for session %s (non-UI adapter or topic unavailable); continuing transcription",
+            "Notice not sent for session %s (non-UI adapter or topic unavailable); continuing transcription",
             session_id[:8],
         )
 

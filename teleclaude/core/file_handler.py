@@ -75,7 +75,7 @@ async def handle_file(
         file_path: Path to downloaded file
         filename: Original filename
         context: Typed file event context
-        send_message: Async function to send user feedback (session_id, message, metadata)
+        send_message: Async function to send UI notices (session_id, message, metadata)
     """
     logger.info("=== FILE HANDLER CALLED ===")
     logger.info("Session ID: %s", session_id[:8])

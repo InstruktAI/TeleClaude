@@ -657,7 +657,7 @@ async def test_process_agent_stop_uses_registered_transcript_when_payload_missin
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
-    daemon.client.send_feedback = AsyncMock()
+    daemon.client.send_message = AsyncMock()
     daemon.client.send_output_update = AsyncMock()
     daemon.agent_coordinator = MagicMock()
     daemon.agent_coordinator.handle_stop = AsyncMock()
@@ -701,7 +701,7 @@ async def test_process_agent_stop_sets_native_session_id_from_payload(tmp_path):
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
-    daemon.client.send_feedback = AsyncMock()
+    daemon.client.send_message = AsyncMock()
     daemon.client.send_output_update = AsyncMock()
     daemon.agent_coordinator = MagicMock()
     daemon.agent_coordinator.handle_stop = AsyncMock()
@@ -847,7 +847,7 @@ async def test_process_agent_stop_does_not_seed_transcript_output(tmp_path):
 
     daemon = TeleClaudeDaemon.__new__(TeleClaudeDaemon)
     daemon.client = MagicMock()
-    daemon.client.send_feedback = AsyncMock()
+    daemon.client.send_message = AsyncMock()
     daemon.client.send_output_update = AsyncMock()
     daemon.agent_coordinator = MagicMock()
     daemon.agent_coordinator.handle_stop = AsyncMock()

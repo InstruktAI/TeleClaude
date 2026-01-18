@@ -1662,10 +1662,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         msg: str,
         metadata: MessageMetadata | None = None,
     ) -> Optional[str]:
-        """Callback for handlers that need to send feedback messages.
-
-        Uses send_feedback to delete old feedback before sending new.
-        Wraps AdapterClient.send_feedback to match handler signature.
+        """Callback for handlers that need to send notices.
 
         Args:
             sid: Session ID
@@ -1679,7 +1676,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if not session:
             logger.warning("Session %s not found for message", sid[:8])
             return None
-        return await self.client.send_feedback(session, msg, metadata=metadata)
+        return await self.client.send_message(session, msg, metadata=metadata, cleanup_trigger="next_notice")
 
     async def _send_status_callback(
         self,
@@ -1687,12 +1684,12 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         msg: str,
         metadata: MessageMetadata | None = None,
     ) -> Optional[str]:
-        """Callback for status updates that should survive feedback cycles."""
+        """Callback for status updates that should survive notice cycles."""
         session = await db.get_session(sid)
         if not session:
             logger.warning("Session %s not found for message", sid[:8])
             return None
-        return await self.client.send_message(session, msg, metadata=metadata, feedback=False)
+        return await self.client.send_message(session, msg, metadata=metadata, cleanup_trigger="next_turn")
 
     async def _delete_feedback_message(self, sid: str, message_id: str) -> None:
         session = await db.get_session(sid)

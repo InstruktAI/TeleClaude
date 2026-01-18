@@ -650,7 +650,7 @@ async def test_send_message_ephemeral_tracks_for_deletion():
 
     assert mock_db.add_pending_deletion.call_count == 1
     _, kwargs = mock_db.add_pending_deletion.call_args
-    assert kwargs == {"deletion_type": "user_input"}
+    assert kwargs == {"deletion_type": "feedback"}
     assert mock_db.add_pending_deletion.call_args.args == ("session-790", "tg-msg-2")
 
 
@@ -679,8 +679,8 @@ async def test_send_message_persistent_not_tracked():
 
 
 @pytest.mark.asyncio
-async def test_send_feedback_origin_only_even_when_broadcast_enabled():
-    """Feedback is always origin-only, even when UI broadcast is enabled."""
+async def test_send_message_notice_origin_only_even_when_broadcast_enabled():
+    """Notices are always origin-only, even when UI broadcast is enabled."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -699,7 +699,7 @@ async def test_send_feedback_origin_only_even_when_broadcast_enabled():
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
         with patch("teleclaude.core.adapter_client.config") as mock_config:
             mock_config.ui_delivery.scope = "all_ui"
-            message_id = await client.send_feedback(session, "hello")
+            message_id = await client.send_message(session, "hello", cleanup_trigger="next_notice")
 
     assert message_id == "tg-feedback"
     assert telegram_adapter.send_message.call_count == 1
@@ -707,8 +707,8 @@ async def test_send_feedback_origin_only_even_when_broadcast_enabled():
 
 
 @pytest.mark.asyncio
-async def test_send_feedback_skipped_for_ai_to_ai():
-    """Feedback is skipped for AI-to-AI sessions."""
+async def test_send_message_notice_skipped_for_ai_to_ai():
+    """Notices are skipped for AI-to-AI sessions."""
     client = AdapterClient()
 
     telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-feedback")
@@ -724,7 +724,37 @@ async def test_send_feedback_skipped_for_ai_to_ai():
     )
 
     with patch("teleclaude.core.adapter_client.db", new=AsyncMock()):
-        message_id = await client.send_feedback(session, "hello")
+        message_id = await client.send_message(session, "hello", cleanup_trigger="next_notice")
 
     assert message_id is None
     assert telegram_adapter.send_message.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_channel_always_broadcasts():
+    """delete_channel should hit all UI adapters regardless of delivery scope."""
+    client = AdapterClient()
+
+    telegram_adapter = DummyTelegramAdapter(client, send_message_return="tg-msg")
+    slack_adapter = DummyTelegramAdapter(client, send_message_return="slack-msg")
+    telegram_adapter.delete_channel = AsyncMock(return_value=True)
+    slack_adapter.delete_channel = AsyncMock(return_value=True)
+
+    client.register_adapter("telegram", telegram_adapter)
+    client.register_adapter("slack", slack_adapter)
+
+    session = Session(
+        session_id="session-900",
+        computer_name="test",
+        tmux_session_name="tc_session_900",
+        origin_adapter="telegram",
+        title="Test Session",
+    )
+
+    with patch("teleclaude.core.adapter_client.config") as mock_config:
+        mock_config.ui_delivery.scope = "origin_only"
+        ok = await client.delete_channel(session)
+
+    assert ok is True
+    assert telegram_adapter.delete_channel.call_count == 1
+    assert slack_adapter.delete_channel.call_count == 1
