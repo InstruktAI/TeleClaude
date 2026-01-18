@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.db import Db
 
 
@@ -141,5 +142,5 @@ async def test_api_outbox_enqueue_and_fetch(tmp_path):
         await session_mgr.close()
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v"])

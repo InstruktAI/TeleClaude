@@ -2,21 +2,25 @@
 
 import asyncio
 import json
-import sqlite3
+import os
+import tempfile
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Optional, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, Optional, TypedDict
 
 import aiosqlite
 from instrukt_ai_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.config import config
+from teleclaude.constants import DB_IN_MEMORY
 
+from . import db_models
 from .api_events import ApiOutboxMetadata, ApiOutboxPayload
 from .events import TeleClaudeEvents
-from .models import MessageMetadata, Session, SessionAdapterMetadata
+from .models import MessageMetadata, Session, SessionAdapterMetadata, SessionField
 from .voice_assignment import VoiceConfig
 
 if TYPE_CHECKING:
@@ -45,6 +49,69 @@ class ApiOutboxRow(TypedDict):
 class Db:
     """Database interface for tmux sessions and state management."""
 
+    @staticmethod
+    def _serialize_adapter_metadata(
+        value: SessionAdapterMetadata
+        | dict[str, object]  # guard: loose-dict - Adapter metadata JSON payload.
+        | str
+        | None,
+    ) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            return json.dumps(value)
+        return value.to_json()
+
+    @staticmethod
+    def _coerce_datetime(value: datetime | str | None) -> datetime | None:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value
+        return Db._parse_iso_datetime(value)
+
+    @staticmethod
+    def _to_core_session(row: db_models.Session) -> Session:
+        adapter_metadata = (
+            SessionAdapterMetadata.from_json(row.adapter_metadata)
+            if isinstance(row.adapter_metadata, str) and row.adapter_metadata
+            else SessionAdapterMetadata()
+        )
+        return Session(
+            session_id=row.session_id,
+            computer_name=row.computer_name,
+            tmux_session_name=row.tmux_session_name,
+            origin_adapter=row.origin_adapter,
+            title=row.title or "",
+            adapter_metadata=adapter_metadata,
+            created_at=Db._coerce_datetime(row.created_at),
+            last_activity=Db._coerce_datetime(row.last_activity),
+            closed_at=Db._coerce_datetime(row.closed_at),
+            project_path=row.project_path,
+            subdir=row.subdir,
+            description=row.description,
+            initiated_by_ai=bool(row.initiated_by_ai) if row.initiated_by_ai is not None else False,
+            initiator_session_id=row.initiator_session_id,
+            output_message_id=row.output_message_id,
+            last_input_adapter=row.last_input_adapter,
+            notification_sent=bool(row.notification_sent) if row.notification_sent is not None else False,
+            native_session_id=row.native_session_id,
+            native_log_file=row.native_log_file,
+            active_agent=row.active_agent,
+            thinking_mode=row.thinking_mode,
+            tui_log_file=row.tui_log_file,
+            tui_capture_started=bool(row.tui_capture_started) if row.tui_capture_started is not None else False,
+            last_message_sent=row.last_message_sent,
+            last_message_sent_at=Db._coerce_datetime(row.last_message_sent_at),
+            last_feedback_received=row.last_feedback_received,
+            last_feedback_received_at=Db._coerce_datetime(row.last_feedback_received_at),
+            working_slug=row.working_slug,
+        )
+
     def __init__(self, db_path: str) -> None:
         """Initialize database.
 
@@ -52,8 +119,11 @@ class Db:
             db_path: Path to SQLite database file
         """
         self.db_path = db_path
-        self._db: Optional[aiosqlite.Connection] = None
+        self._engine: Optional[AsyncEngine] = None
+        self._sessionmaker: Optional[object] = None
         self._client: Optional["AdapterClient"] = None
+        self.conn: aiosqlite.Connection | None = None
+        self._temp_db_path: str | None = None
 
     async def initialize(self) -> None:
         """Initialize database, create tables, and run migrations."""
@@ -62,75 +132,96 @@ class Db:
         # Ensure parent directory exists
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # Connect to database
-        self._db = await aiosqlite.connect(self.db_path)
-        self._db.row_factory = aiosqlite.Row
-        await self._db.execute("PRAGMA journal_mode = WAL")
-        await self._db.execute("PRAGMA synchronous = NORMAL")
-        await self._db.execute("PRAGMA busy_timeout = 5000")
+        db_path = self.db_path
+        use_uri = False
+        if self.db_path == DB_IN_MEMORY:
+            temp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+            self._temp_db_path = temp_file.name
+            temp_file.close()
+            db_path = self._temp_db_path
 
-        # Load and execute base schema (CREATE TABLE IF NOT EXISTS - safe for existing DBs)
+        # Ensure schema + migrations via aiosqlite (single-shot bootstrap)
+        self.conn = await aiosqlite.connect(db_path, uri=use_uri)
+        self.conn.row_factory = aiosqlite.Row
+        await self.conn.execute("PRAGMA journal_mode = WAL")
+        await self.conn.execute("PRAGMA synchronous = NORMAL")
+        await self.conn.execute("PRAGMA busy_timeout = 5000")
+
         schema_path = Path(__file__).parent / "schema.sql"
         with open(schema_path, "r", encoding="utf-8") as f:
             schema_sql = f.read()
 
-        await self._db.executescript(schema_sql)
-        await self._db.commit()
+        await self.conn.executescript(schema_sql)
+        await self.conn.commit()
 
-        # Run pending migrations (adds columns, migrates data)
-        await run_pending_migrations(self._db)
+        await run_pending_migrations(self.conn)
+
+        # Async engine for runtime access
+        db_url = f"sqlite+aiosqlite:///{db_path}"
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from sqlalchemy.orm import sessionmaker
+
+        connect_args = {"uri": True} if use_uri else {}
+        self._engine = create_async_engine(db_url, future=True, connect_args=connect_args)
+        self._sessionmaker = sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
+
+        async with self._engine.begin() as conn:
+            from sqlalchemy import text
+
+            await conn.execute(text("PRAGMA journal_mode = WAL"))
+            await conn.execute(text("PRAGMA synchronous = NORMAL"))
+            await conn.execute(text("PRAGMA busy_timeout = 5000"))
 
         await self._normalize_adapter_metadata()
 
     async def _normalize_adapter_metadata(self) -> None:
         """Normalize adapter_metadata types (e.g., topic_id stored as string)."""
-        cursor = await self.conn.execute("SELECT session_id, adapter_metadata FROM sessions")
-        rows = await cursor.fetchall()
-        if not rows:
-            return
+        from sqlalchemy.exc import OperationalError
 
-        any_updated = False
-        for row in rows:
-            raw = cast(object, row["adapter_metadata"])
-            if not isinstance(raw, str) or not raw:
-                continue
+        async with self._session() as session:
+            from sqlmodel import select
+
             try:
-                parsed: object = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(parsed, dict):
-                continue
-            tg = parsed.get("telegram")
-            row_updated = False
-            if isinstance(tg, dict):
-                topic_id = tg.get("topic_id")
-                if isinstance(topic_id, str) and topic_id.isdigit():
-                    tg["topic_id"] = int(topic_id)
-                    row_updated = True
-            if row_updated:
-                session_id = cast(str, row["session_id"])
-                await self.conn.execute(
-                    "UPDATE sessions SET adapter_metadata = ? WHERE session_id = ?",
-                    (json.dumps(parsed), session_id),
-                )
-                any_updated = True
+                result = await session.exec(select(db_models.Session))
+            except OperationalError:
+                return
+            rows = result.all()
+            if not rows:
+                return
 
-        if any_updated:
-            await self.conn.commit()
+            any_updated = False
+            for row in rows:
+                raw = row.adapter_metadata
+                if not isinstance(raw, str) or not raw:
+                    continue
+                try:
+                    parsed: object = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(parsed, dict):
+                    continue
+                tg = parsed.get("telegram")
+                row_updated = False
+                if isinstance(tg, dict):
+                    topic_id = tg.get("topic_id")
+                    if isinstance(topic_id, str) and topic_id.isdigit():
+                        tg["topic_id"] = int(topic_id)
+                        row_updated = True
+                if row_updated:
+                    row.adapter_metadata = json.dumps(parsed)
+                    session.add(row)
+                    any_updated = True
 
-    @property
-    def conn(self) -> aiosqlite.Connection:
-        """Get database connection, asserting it's initialized.
+            if any_updated:
+                await session.commit()
 
-        Returns:
-            Active database connection
-
-        Raises:
-            RuntimeError: If database not initialized
-        """
-        if self._db is None:
+    def _session(self) -> SqlAsyncSession:
+        if self._sessionmaker is None:
             raise RuntimeError("Database not initialized - call initialize() first")
-        return self._db
+        return self._sessionmaker()  # type: ignore[call-arg]
+
+    def is_initialized(self) -> bool:
+        return self._sessionmaker is not None
 
     def set_client(self, client: "AdapterClient") -> None:
         """Wire database to AdapterClient for event emission.
@@ -142,8 +233,15 @@ class Db:
 
     async def close(self) -> None:
         """Close database connection."""
-        if self._db:
-            await self._db.close()
+        if self._engine:
+            await self._engine.dispose()
+        if self.conn:
+            await self.conn.close()
+        if self._temp_db_path:
+            try:
+                os.remove(self._temp_db_path)
+            except OSError:
+                pass
 
     async def create_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Database insert requires all session fields
         self,
@@ -196,33 +294,24 @@ class Db:
             initiator_session_id=initiator_session_id,
         )
 
-        data = session.to_dict()
-        await self.conn.execute(
-            """
-            INSERT INTO sessions (
-                session_id, computer_name, title, tmux_session_name,
-                origin_adapter, adapter_metadata, created_at,
-                last_activity, project_path, subdir, description,
-                working_slug, initiator_session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                data["session_id"],
-                data["computer_name"],
-                data["title"],
-                data["tmux_session_name"],
-                data["origin_adapter"],
-                data["adapter_metadata"],
-                data["created_at"],
-                data["last_activity"],
-                data.get("project_path"),
-                data.get("subdir"),
-                data["description"],
-                data["working_slug"],
-                data.get("initiator_session_id"),
-            ),
+        db_row = db_models.Session(
+            session_id=session.session_id,
+            computer_name=session.computer_name,
+            title=session.title,
+            tmux_session_name=session.tmux_session_name,
+            origin_adapter=session.origin_adapter,
+            adapter_metadata=self._serialize_adapter_metadata(session.adapter_metadata),
+            created_at=session.created_at,
+            last_activity=session.last_activity,
+            project_path=session.project_path,
+            subdir=session.subdir,
+            description=session.description,
+            working_slug=session.working_slug,
+            initiator_session_id=session.initiator_session_id,
         )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            db_session.add(db_row)
+            await db_session.commit()
 
         client = self._client
         if client:
@@ -243,13 +332,11 @@ class Db:
         Returns:
             Session object or None if not found
         """
-        cursor = await self.conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
-        row = await cursor.fetchone()
-
-        if not row:
-            return None
-
-        return Session.from_dict(dict(row))
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.Session, session_id)
+            if not row:
+                return None
+            return self._to_core_session(row)
 
     async def get_session_by_field(self, field: str, value: object) -> Optional[Session]:
         """Get session by field value.
@@ -261,13 +348,19 @@ class Db:
         Returns:
             Session object or None if not found
         """
-        cursor = await self.conn.execute(_field_query(field), (value,))
-        row = await cursor.fetchone()
-
-        if not row:
+        column = getattr(db_models.Session, field, None)
+        if column is None:
             return None
+        async with self._session() as db_session:
+            from sqlmodel import select
 
-        return Session.from_dict(dict(row))
+            result = await db_session.exec(
+                select(db_models.Session).where(column == value, db_models.Session.closed_at.is_(None))
+            )
+            row = result.first()
+            if not row:
+                return None
+            return self._to_core_session(row)
 
     async def list_sessions(
         self,
@@ -285,24 +378,21 @@ class Db:
         Returns:
             List of Session objects
         """
-        query = "SELECT * FROM sessions WHERE 1=1"
-        params: list[object] = []
+        from sqlmodel import select
 
+        stmt = select(db_models.Session)
         if not include_closed:
-            query += " AND closed_at IS NULL"
+            stmt = stmt.where(db_models.Session.closed_at.is_(None))
         if computer_name:
-            query += " AND computer_name = ?"
-            params.append(computer_name)
+            stmt = stmt.where(db_models.Session.computer_name == computer_name)
         if origin_adapter:
-            query += " AND origin_adapter = ?"
-            params.append(origin_adapter)
+            stmt = stmt.where(db_models.Session.origin_adapter == origin_adapter)
+        stmt = stmt.order_by(db_models.Session.last_activity.desc())
 
-        query += " ORDER BY last_activity DESC"
-
-        cursor = await self.conn.execute(query, params)
-        rows = await cursor.fetchall()
-
-        return [Session.from_dict(dict(row)) for row in rows]
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [self._to_core_session(row) for row in rows]
 
     async def update_session(self, session_id: str, **fields: object) -> None:
         """Update session fields and handle events.
@@ -314,51 +404,72 @@ class Db:
         if not fields:
             return
 
-        # Fetch current state to avoid redundant writes
-        current = await self.get_session(session_id)
-        if not current:
-            logger.warning("Attempted to update non-existent session: %s", session_id[:8])
-            return
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.Session, session_id)
+            if not row:
+                logger.warning("Attempted to update non-existent session: %s", session_id[:8])
+                return
 
-        # Prune fields that haven't changed
-        current_dict = current.to_dict()
-        updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
-        for key, value in fields.items():
-            current_val = current_dict.get(key)
-            # Handle serialization comparison for metadata
-            if key == "adapter_metadata" and not isinstance(value, str):
-                if isinstance(value, dict):
-                    serialized = json.dumps(value)
-                elif hasattr(value, "__dataclass_fields__"):
-                    serialized = json.dumps(asdict(value))  # type: ignore[call-overload,misc]
+            updates: dict[str, object] = {}  # guard: loose-dict - Dynamic update payload
+            for key, value in fields.items():
+                field = None
+                if isinstance(key, SessionField):
+                    field = key
                 else:
-                    serialized = str(value)
-                if current_val != serialized:
-                    updates[key] = serialized
-            elif current_val != value:
-                updates[key] = value
+                    try:
+                        field = SessionField(str(key))
+                    except ValueError:
+                        field = None
+                attr_name = field.value if field else str(key)
+                if not hasattr(row, attr_name):
+                    continue
+                current_val = getattr(row, attr_name)
+                if field == SessionField.ADAPTER_METADATA:
+                    serialized = self._serialize_adapter_metadata(value)
+                    if current_val != serialized:
+                        updates[attr_name] = serialized
+                    continue
+                if isinstance(value, str) and attr_name in {
+                    "created_at",
+                    "last_activity",
+                    "closed_at",
+                    "last_message_sent_at",
+                    "last_feedback_received_at",
+                }:
+                    parsed = self._parse_iso_datetime(value)
+                    if parsed and current_val != parsed:
+                        updates[attr_name] = parsed
+                    continue
+                if current_val != value:
+                    updates[attr_name] = value
 
-        if not updates:
-            logger.trace("Skipping redundant update for session %s", session_id[:8])
-            return
+            if not updates:
+                logger.trace("Skipping redundant update for session %s", session_id[:8])
+                return
 
-        if "last_message_sent" in updates and "last_message_sent_at" not in updates:
-            updates["last_message_sent_at"] = datetime.now(timezone.utc).isoformat()
-        if "last_feedback_received" in updates and "last_feedback_received_at" not in updates:
-            updates["last_feedback_received_at"] = datetime.now(timezone.utc).isoformat()
-            summary_val = updates.get("last_feedback_received")
-            summary_len = len(str(summary_val)) if summary_val is not None else 0
-            logger.debug(
-                "Summary updated: session=%s len=%d",
-                session_id[:8],
-                summary_len,
-            )
+            now = datetime.now(timezone.utc)
+            if (
+                SessionField.LAST_MESSAGE_SENT.value in updates
+                and SessionField.LAST_MESSAGE_SENT_AT.value not in updates
+            ):
+                updates[SessionField.LAST_MESSAGE_SENT_AT.value] = now
+            if (
+                SessionField.LAST_FEEDBACK_RECEIVED.value in updates
+                and SessionField.LAST_FEEDBACK_RECEIVED_AT.value not in updates
+            ):
+                updates[SessionField.LAST_FEEDBACK_RECEIVED_AT.value] = now
+                summary_val = updates.get(SessionField.LAST_FEEDBACK_RECEIVED.value)
+                summary_len = len(str(summary_val)) if summary_val is not None else 0
+                logger.debug(
+                    "Summary updated: session=%s len=%d",
+                    session_id[:8],
+                    summary_len,
+                )
 
-        set_clause = ", ".join(f"{key} = ?" for key in updates)
-        values = list(updates.values()) + [session_id]
-
-        await self.conn.execute(f"UPDATE sessions SET {set_clause} WHERE session_id = ?", values)
-        await self.conn.commit()
+            for key, value in updates.items():
+                setattr(row, key, value)
+            db_session.add(row)
+            await db_session.commit()
 
         # Emit SESSION_UPDATED event (UI handlers will update channel titles)
         # Only handle if client is set (tests and standalone tools don't set client)
@@ -388,7 +499,7 @@ class Db:
             return
         if session.closed_at:
             return
-        await self.update_session(session_id, closed_at=datetime.now(timezone.utc).isoformat())
+        await self.update_session(session_id, closed_at=datetime.now(timezone.utc))
         if self._client:
             try:
                 await self._client.handle_event(
@@ -405,11 +516,7 @@ class Db:
         Args:
             session_id: Session ID
         """
-        await self.conn.execute(
-            "UPDATE sessions SET last_activity = ? WHERE session_id = ?",
-            (datetime.now(timezone.utc).isoformat(), session_id),
-        )
-        await self.conn.commit()
+        await self.update_session(session_id, last_activity=datetime.now(timezone.utc))
 
     # State management functions (DB-backed via ux_state)
 
@@ -447,12 +554,16 @@ class Db:
         Returns:
             List of message IDs to delete (empty list if none)
         """
-        cursor = await self.conn.execute(
-            "SELECT message_id FROM pending_message_deletions WHERE session_id = ? AND deletion_type = ?",
-            (session_id, deletion_type),
+        from sqlmodel import select
+
+        stmt = select(db_models.PendingMessageDeletion.message_id).where(
+            db_models.PendingMessageDeletion.session_id == session_id,
+            db_models.PendingMessageDeletion.deletion_type == deletion_type,
         )
-        rows = await cursor.fetchall()
-        return [str(row[0]) for row in rows]  # type: ignore[misc]  # sqlite rows are untyped
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [str(row) for row in rows]
 
     async def add_pending_deletion(
         self, session_id: str, message_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"
@@ -466,18 +577,22 @@ class Db:
                           or 'feedback' (cleaned when next feedback is sent)
         """
         try:
-            await self.conn.execute(
-                "INSERT INTO pending_message_deletions (session_id, message_id, deletion_type) VALUES (?, ?, ?)",
-                (session_id, message_id, deletion_type),
-            )
-            await self.conn.commit()
-        except Exception as e:
+            async with self._session() as db_session:
+                db_session.add(
+                    db_models.PendingMessageDeletion(
+                        session_id=session_id,
+                        message_id=message_id,
+                        deletion_type=deletion_type,
+                    )
+                )
+                await db_session.commit()
+        except Exception as exc:
             logger.error(
                 "Failed to add pending deletion: session=%s message_id=%s deletion_type=%s error=%s",
                 session_id[:8],
                 message_id,
                 deletion_type,
-                e,
+                exc,
             )
 
     async def clear_pending_deletions(
@@ -489,11 +604,14 @@ class Db:
             session_id: Session identifier
             deletion_type: Type of deletion to clear
         """
-        await self.conn.execute(
-            "DELETE FROM pending_message_deletions WHERE session_id = ? AND deletion_type = ?",
-            (session_id, deletion_type),
+        stmt = (
+            db_models.PendingMessageDeletion.__table__.delete()
+            .where(db_models.PendingMessageDeletion.session_id == session_id)
+            .where(db_models.PendingMessageDeletion.deletion_type == deletion_type)
         )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            await db_session.exec(stmt)  # type: ignore[arg-type]
+            await db_session.commit()
 
     async def delete_session(self, session_id: str) -> None:
         """Delete session and handle event.
@@ -504,8 +622,11 @@ class Db:
         # Get session before deleting for event emission
         session = await self.get_session(session_id)
 
-        await self.conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
-        await self.conn.commit()
+        async with self._session() as db_session:
+            await db_session.exec(
+                db_models.Session.__table__.delete().where(db_models.Session.session_id == session_id)
+            )  # type: ignore[arg-type]
+            await db_session.commit()
         logger.debug("Deleted session %s from database", session_id[:8])
 
         if session and self._client:
@@ -527,17 +648,17 @@ class Db:
         Returns:
             Number of sessions
         """
-        query = "SELECT COUNT(*) as count FROM sessions WHERE 1=1"
-        params: list[object] = []
+        from sqlalchemy import func
+        from sqlmodel import select
 
+        stmt = select(func.count()).select_from(db_models.Session)
         if computer_name:
-            query += " AND computer_name = ?"
-            params.append(computer_name)
+            stmt = stmt.where(db_models.Session.computer_name == computer_name)
 
-        cursor = await self.conn.execute(query, params)
-        row = await cursor.fetchone()
-        count: int = int(row["count"]) if row else 0  # type: ignore[misc]  # Row access is Any from aiosqlite
-        return count
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            count = result.one()
+            return int(count)
 
     async def get_sessions_by_adapter_metadata(
         self,
@@ -561,28 +682,30 @@ class Db:
             List of matching sessions
         """
         # SQLite JSON functions - adapter_metadata is nested: {adapter_type: {metadata_key: value}}
-        # NOTE: We do NOT filter by origin_adapter - observer adapters need to find
-        # sessions where they have metadata even if they weren't the initiator
-        query = f"""
+        base_query = f"""
             SELECT * FROM sessions
-            WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
-            """
+            WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = :value
+        """
         if not include_closed:
-            query += " AND closed_at IS NULL"
-        params: list[object] = [metadata_value]
-        if isinstance(metadata_value, int):
-            query = f"""
-                SELECT * FROM sessions
-                WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
-                   OR json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = ?
-                """
-            if not include_closed:
-                query += " AND closed_at IS NULL"
-            params.append(str(metadata_value))
+            base_query += " AND closed_at IS NULL"
 
-        cursor = await self.conn.execute(query, params)
-        rows = await cursor.fetchall()
-        return [Session.from_dict(dict(row)) for row in rows]
+        params: dict[str, object] = {"value": metadata_value}  # guard: loose-dict - SQL params.
+        if isinstance(metadata_value, int):
+            base_query = f"""
+                SELECT * FROM sessions
+                WHERE json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = :value
+                   OR json_extract(adapter_metadata, '$.{adapter_type}.{metadata_key}') = :value_str
+            """
+            if not include_closed:
+                base_query += " AND closed_at IS NULL"
+            params["value_str"] = str(metadata_value)
+
+        async with self._session() as db_session:
+            from sqlalchemy import text
+
+            result = await db_session.execute(text(base_query), params)
+            rows = result.mappings().all()
+            return [Session.from_dict(dict(row)) for row in rows]
 
     async def get_sessions_by_title_pattern(self, pattern: str, include_closed: bool = False) -> list[Session]:
         """Get sessions where title starts with the given pattern.
@@ -593,30 +716,40 @@ class Db:
         Returns:
             List of matching sessions
         """
-        query = """
-            SELECT * FROM sessions
-            WHERE title LIKE ?
-        """
+        from sqlmodel import select
+
+        stmt = select(db_models.Session).where(db_models.Session.title.like(f"{pattern}%"))
         if not include_closed:
-            query += " AND closed_at IS NULL"
-        query += " ORDER BY created_at DESC"
-        cursor = await self.conn.execute(query, (f"{pattern}%",))
-        rows = await cursor.fetchall()
-        return [Session.from_dict(dict(row)) for row in rows]
+            stmt = stmt.where(db_models.Session.closed_at.is_(None))
+        stmt = stmt.order_by(db_models.Session.created_at.desc())
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [self._to_core_session(row) for row in rows]
 
     async def get_all_sessions(self) -> list[Session]:
         """Get all sessions ordered by last activity."""
-        cursor = await self.conn.execute("SELECT * FROM sessions ORDER BY last_activity DESC")
-        rows = await cursor.fetchall()
-        return [Session.from_dict(dict(row)) for row in rows]
+        from sqlmodel import select
+
+        stmt = select(db_models.Session).order_by(db_models.Session.last_activity.desc())
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [self._to_core_session(row) for row in rows]
 
     async def get_active_sessions(self) -> list[Session]:
         """Get all sessions ordered by last activity."""
-        cursor = await self.conn.execute("SELECT * FROM sessions WHERE closed_at IS NULL ORDER BY last_activity DESC")
-        rows = await cursor.fetchall()
-        all_sessions = [Session.from_dict(dict(row)) for row in rows]
+        from sqlmodel import select
 
-        return all_sessions
+        stmt = (
+            select(db_models.Session)
+            .where(db_models.Session.closed_at.is_(None))
+            .order_by(db_models.Session.last_activity.desc())
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [self._to_core_session(row) for row in rows]
 
     async def set_notification_flag(self, session_id: str, value: bool) -> None:
         """Set notification_sent flag in UX state.
@@ -660,10 +793,9 @@ class Db:
         Returns:
             Setting value or None if not found
         """
-        cursor = await self.conn.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
-        row = await cursor.fetchone()
-        value: str = str(row[0]) if row else ""  # type: ignore[misc]  # Row access is Any from aiosqlite
-        return value if row else None
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.SystemSetting, key)
+            return row.value if row else None
 
     async def set_system_setting(self, key: str, value: str) -> None:
         """Set system setting value (upsert).
@@ -672,17 +804,14 @@ class Db:
             key: Setting key
             value: Setting value
         """
-        await self.conn.execute(
-            """
-            INSERT INTO system_settings (key, value, updated_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (key, value),
-        )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.SystemSetting, key)
+            if row is None:
+                row = db_models.SystemSetting(key=key, value=value)
+            else:
+                row.value = value
+            db_session.add(row)
+            await db_session.commit()
 
     # Voice assignment methods
 
@@ -693,26 +822,23 @@ class Db:
             voice_id: Either teleclaude session ID or Agent session ID
             voice: VoiceConfig to assign
         """
-        await self.conn.execute(
-            """
-            INSERT INTO voice_assignments (id, voice_name, elevenlabs_id, macos_voice, openai_voice)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                voice_name = excluded.voice_name,
-                elevenlabs_id = excluded.elevenlabs_id,
-                macos_voice = excluded.macos_voice,
-                openai_voice = excluded.openai_voice,
-                assigned_at = CURRENT_TIMESTAMP
-            """,
-            (
-                voice_id,
-                voice.name,
-                voice.elevenlabs_id,
-                voice.macos_voice,
-                voice.openai_voice,
-            ),
-        )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.VoiceAssignment, voice_id)
+            if row is None:
+                row = db_models.VoiceAssignment(
+                    id=voice_id,
+                    voice_name=voice.name,
+                    elevenlabs_id=voice.elevenlabs_id,
+                    macos_voice=voice.macos_voice,
+                    openai_voice=voice.openai_voice,
+                )
+            else:
+                row.voice_name = voice.name
+                row.elevenlabs_id = voice.elevenlabs_id
+                row.macos_voice = voice.macos_voice
+                row.openai_voice = voice.openai_voice
+            db_session.add(row)
+            await db_session.commit()
         logger.debug("Assigned voice '%s' to %s", voice.name, voice_id[:8])
 
     async def get_voice(self, voice_id: str) -> Optional[VoiceConfig]:
@@ -724,21 +850,16 @@ class Db:
         Returns:
             VoiceConfig or None if no voice assigned
         """
-        cursor = await self.conn.execute(
-            "SELECT voice_name, elevenlabs_id, macos_voice, openai_voice FROM voice_assignments WHERE id = ?",
-            (voice_id,),
-        )
-        row = await cursor.fetchone()
-
-        if not row:
-            return None
-
-        return VoiceConfig(
-            name=row["voice_name"],  # type: ignore[misc]  # Row access is Any from aiosqlite
-            elevenlabs_id=row["elevenlabs_id"] or "",  # type: ignore[misc]  # Row access is Any from aiosqlite
-            macos_voice=row["macos_voice"] or "",  # type: ignore[misc]  # Row access is Any from aiosqlite
-            openai_voice=row["openai_voice"] or "",  # type: ignore[misc]  # Row access is Any from aiosqlite
-        )
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.VoiceAssignment, voice_id)
+            if not row:
+                return None
+            return VoiceConfig(
+                name=row.voice_name,
+                elevenlabs_id=row.elevenlabs_id or "",
+                macos_voice=row.macos_voice or "",
+                openai_voice=row.openai_voice or "",
+            )
 
     async def cleanup_stale_voice_assignments(self, max_age_days: int = 7) -> int:
         """Delete voice assignments older than max_age_days.
@@ -749,13 +870,13 @@ class Db:
         Returns:
             Number of records deleted
         """
-        cursor = await self.conn.execute(
-            """DELETE FROM voice_assignments
-            WHERE assigned_at < datetime('now', ? || ' days')""",
-            (f"-{max_age_days}",),
-        )
-        await self.conn.commit()
-        deleted = cursor.rowcount
+        from sqlalchemy import text
+
+        stmt = text("DELETE FROM voice_assignments WHERE assigned_at < datetime('now', :delta || ' days')")
+        async with self._session() as db_session:
+            result = await db_session.execute(stmt, {"delta": f"-{max_age_days}"})
+            await db_session.commit()
+            deleted = result.rowcount or 0
         if deleted > 0:
             logger.info(
                 "Cleaned up %d stale voice assignments (older than %d days)",
@@ -775,35 +896,29 @@ class Db:
         Returns:
             Dict with 'available', 'unavailable_until', 'reason' or None if not found
         """
-        cursor = await self.conn.execute(
-            "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
-            (agent,),
-        )
-        row = await cursor.fetchone()
-        if not row:
-            return None
-        unavailable_until = cast(Optional[str], row["unavailable_until"])
-        if unavailable_until is not None:
-            parsed_until = self._parse_iso_datetime(unavailable_until)
-            if parsed_until and parsed_until < datetime.now(timezone.utc):
-                await self.conn.execute(
-                    """UPDATE agent_availability
-                       SET available = 1, unavailable_until = NULL, reason = NULL
-                       WHERE agent = ?""",
-                    (agent,),
-                )
-                await self.conn.commit()
-                return {
-                    "available": True,
-                    "unavailable_until": None,
-                    "reason": None,
-                }
-        reason = cast(Optional[str], row["reason"])
-        return {
-            "available": bool(row["available"]),  # type: ignore[misc]  # Row access is Any from aiosqlite
-            "unavailable_until": unavailable_until,
-            "reason": reason,
-        }
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.AgentAvailability, agent)
+            if not row:
+                return None
+            unavailable_until = row.unavailable_until
+            if unavailable_until is not None:
+                parsed_until = self._parse_iso_datetime(unavailable_until)
+                if parsed_until and parsed_until < datetime.now(timezone.utc):
+                    row.available = 1
+                    row.unavailable_until = None
+                    row.reason = None
+                    db_session.add(row)
+                    await db_session.commit()
+                    return {
+                        "available": True,
+                        "unavailable_until": None,
+                        "reason": None,
+                    }
+            return {
+                "available": bool(row.available) if row.available is not None else False,
+                "unavailable_until": unavailable_until,
+                "reason": row.reason,
+            }
 
     @staticmethod
     def _parse_iso_datetime(value: str) -> datetime | None:
@@ -826,14 +941,21 @@ class Db:
             unavailable_until: ISO timestamp when agent becomes available again
             reason: Reason for unavailability (e.g., "quota_exhausted", "rate_limited")
         """
-        await self.conn.execute(
-            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
-               VALUES (?, 0, ?, ?)
-               ON CONFLICT(agent) DO UPDATE SET
-                 available = 0, unavailable_until = excluded.unavailable_until, reason = excluded.reason""",
-            (agent, unavailable_until, reason),
-        )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.AgentAvailability, agent)
+            if row is None:
+                row = db_models.AgentAvailability(
+                    agent=agent,
+                    available=0,
+                    unavailable_until=unavailable_until,
+                    reason=reason,
+                )
+            else:
+                row.available = 0
+                row.unavailable_until = unavailable_until
+                row.reason = reason
+            db_session.add(row)
+            await db_session.commit()
         logger.info("Marked agent %s unavailable until %s (%s)", agent, unavailable_until, reason)
 
     async def mark_agent_available(self, agent: str) -> None:
@@ -842,14 +964,16 @@ class Db:
         Args:
             agent: Agent name (e.g., "claude", "gemini", "codex")
         """
-        await self.conn.execute(
-            """INSERT INTO agent_availability (agent, available, unavailable_until, reason)
-               VALUES (?, 1, NULL, NULL)
-               ON CONFLICT(agent) DO UPDATE SET
-                 available = 1, unavailable_until = NULL, reason = NULL""",
-            (agent,),
-        )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            row = await db_session.get(db_models.AgentAvailability, agent)
+            if row is None:
+                row = db_models.AgentAvailability(agent=agent, available=1)
+            else:
+                row.available = 1
+                row.unavailable_until = None
+                row.reason = None
+            db_session.add(row)
+            await db_session.commit()
         logger.info("Marked agent %s available", agent)
 
     async def clear_expired_agent_availability(self) -> int:
@@ -859,14 +983,16 @@ class Db:
             Number of agents reset to available
         """
         now = datetime.now(timezone.utc).isoformat()
-        cursor = await self.conn.execute(
-            """UPDATE agent_availability
-               SET available = 1, unavailable_until = NULL, reason = NULL
-               WHERE unavailable_until IS NOT NULL AND unavailable_until < ?""",
-            (now,),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE agent_availability SET available = 1, unavailable_until = NULL, reason = NULL "
+            "WHERE unavailable_until IS NOT NULL AND unavailable_until < :now"
         )
-        await self.conn.commit()
-        cleared = cursor.rowcount
+        async with self._session() as db_session:
+            result = await db_session.execute(stmt, {"now": now})
+            await db_session.commit()
+            cleared = result.rowcount or 0
         if cleared > 0:
             logger.info("Cleared availability for %d agents (TTL expired)", cleared)
         return cleared
@@ -880,19 +1006,21 @@ class Db:
         """Persist a hook event in the outbox for durable delivery."""
         now = datetime.now(timezone.utc).isoformat()
         payload_json = json.dumps(payload)
-        cursor = await self.conn.execute(
-            """
-            INSERT INTO hook_outbox (
-                session_id, event_type, payload, created_at, next_attempt_at, attempt_count
-            ) VALUES (?, ?, ?, ?, ?, 0)
-            """,
-            (session_id, event_type, payload_json, now, now),
-        )
-        await self.conn.commit()
-        row_id = cursor.lastrowid
-        if row_id is None:
-            raise RuntimeError("Failed to insert hook outbox row")
-        return int(row_id)
+        async with self._session() as db_session:
+            row = db_models.HookOutbox(
+                session_id=session_id,
+                event_type=event_type,
+                payload=payload_json,
+                created_at=now,
+                next_attempt_at=now,
+                attempt_count=0,
+            )
+            db_session.add(row)
+            await db_session.commit()
+            await db_session.refresh(row)
+            if row.id is None:
+                raise RuntimeError("Failed to insert hook outbox row")
+            return int(row.id)
 
     async def fetch_hook_outbox_batch(
         self,
@@ -901,64 +1029,58 @@ class Db:
         lock_cutoff_iso: str,
     ) -> list[HookOutboxRow]:
         """Fetch a batch of due hook events."""
-        cursor = await self.conn.execute(
-            """
-            SELECT id, session_id, event_type, payload, attempt_count
-            FROM hook_outbox
-            WHERE delivered_at IS NULL
-              AND next_attempt_at <= ?
-              AND (locked_at IS NULL OR locked_at <= ?)
-            ORDER BY created_at
-            LIMIT ?
-            """,
-            (now_iso, lock_cutoff_iso, limit),
+        from sqlmodel import select
+
+        stmt = (
+            select(db_models.HookOutbox)
+            .where(db_models.HookOutbox.delivered_at.is_(None))
+            .where(db_models.HookOutbox.next_attempt_at <= now_iso)
+            .where((db_models.HookOutbox.locked_at.is_(None)) | (db_models.HookOutbox.locked_at <= lock_cutoff_iso))
+            .order_by(db_models.HookOutbox.created_at)
+            .limit(limit)
         )
-        rows = await cursor.fetchall()
-        typed_rows: list[HookOutboxRow] = []
-        for row in rows:
-            row_id = cast(int, row["id"])
-            session_id = cast(str, row["session_id"])
-            event_type = cast(str, row["event_type"])
-            payload = cast(str, row["payload"])
-            attempt_count = cast(int, row["attempt_count"])
-            typed_rows.append(
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [
                 HookOutboxRow(
-                    id=row_id,
-                    session_id=session_id,
-                    event_type=event_type,
-                    payload=payload,
-                    attempt_count=attempt_count,
+                    id=row.id or 0,
+                    session_id=row.session_id,
+                    event_type=row.event_type,
+                    payload=row.payload,
+                    attempt_count=row.attempt_count or 0,
                 )
-            )
-        return typed_rows
+                for row in rows
+            ]
 
     async def claim_hook_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """Claim a hook outbox row for processing."""
-        cursor = await self.conn.execute(
-            """
-            UPDATE hook_outbox
-            SET locked_at = ?
-            WHERE id = ?
-              AND delivered_at IS NULL
-              AND (locked_at IS NULL OR locked_at <= ?)
-            """,
-            (now_iso, row_id, lock_cutoff_iso),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE hook_outbox SET locked_at = :now "
+            "WHERE id = :row_id AND delivered_at IS NULL "
+            "AND (locked_at IS NULL OR locked_at <= :cutoff)"
         )
-        await self.conn.commit()
-        return cursor.rowcount == 1
+        async with self._session() as db_session:
+            result = await db_session.execute(
+                stmt,
+                {"now": now_iso, "row_id": row_id, "cutoff": lock_cutoff_iso},
+            )
+            await db_session.commit()
+            return (result.rowcount or 0) == 1
 
     async def mark_hook_outbox_delivered(self, row_id: int, error: str | None = None) -> None:
         """Mark a hook outbox row delivered (optionally capturing last error)."""
         now = datetime.now(timezone.utc).isoformat()
-        await self.conn.execute(
-            """
-            UPDATE hook_outbox
-            SET delivered_at = ?, last_error = ?, locked_at = NULL
-            WHERE id = ?
-            """,
-            (now, error, row_id),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE hook_outbox SET delivered_at = :now, last_error = :error, locked_at = NULL WHERE id = :row_id"
         )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            await db_session.execute(stmt, {"now": now, "error": error, "row_id": row_id})
+            await db_session.commit()
 
     async def mark_hook_outbox_failed(
         self,
@@ -968,15 +1090,23 @@ class Db:
         error: str,
     ) -> None:
         """Record a hook outbox failure and schedule a retry."""
-        await self.conn.execute(
-            """
-            UPDATE hook_outbox
-            SET attempt_count = ?, next_attempt_at = ?, last_error = ?, locked_at = NULL
-            WHERE id = ?
-            """,
-            (attempt_count, next_attempt_at, error, row_id),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE hook_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
+            "last_error = :error, locked_at = NULL WHERE id = :row_id"
         )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            await db_session.execute(
+                stmt,
+                {
+                    "attempt": attempt_count,
+                    "next_attempt": next_attempt_at,
+                    "error": error,
+                    "row_id": row_id,
+                },
+            )
+            await db_session.commit()
 
     async def enqueue_api_event(
         self,
@@ -989,19 +1119,22 @@ class Db:
         now = datetime.now(timezone.utc).isoformat()
         payload_json = json.dumps(payload)
         metadata_json = json.dumps(metadata)
-        cursor = await self.conn.execute(
-            """
-            INSERT INTO api_outbox (
-                request_id, event_type, payload, metadata, created_at, next_attempt_at, attempt_count
-            ) VALUES (?, ?, ?, ?, ?, ?, 0)
-            """,
-            (request_id, event_type, payload_json, metadata_json, now, now),
-        )
-        await self.conn.commit()
-        row_id = cursor.lastrowid
-        if row_id is None:
-            raise RuntimeError("Failed to insert API outbox row")
-        return int(row_id)
+        async with self._session() as db_session:
+            row = db_models.ApiOutbox(
+                request_id=request_id,
+                event_type=event_type,
+                payload=payload_json,
+                meta_json=metadata_json,
+                created_at=now,
+                next_attempt_at=now,
+                attempt_count=0,
+            )
+            db_session.add(row)
+            await db_session.commit()
+            await db_session.refresh(row)
+            if row.id is None:
+                raise RuntimeError("Failed to insert API outbox row")
+            return int(row.id)
 
     async def fetch_api_outbox_batch(
         self,
@@ -1010,53 +1143,47 @@ class Db:
         lock_cutoff_iso: str,
     ) -> list[ApiOutboxRow]:
         """Fetch a batch of due API outbox events."""
-        cursor = await self.conn.execute(
-            """
-            SELECT id, request_id, event_type, payload, metadata, attempt_count
-            FROM api_outbox
-            WHERE delivered_at IS NULL
-              AND next_attempt_at <= ?
-              AND (locked_at IS NULL OR locked_at <= ?)
-            ORDER BY created_at
-            LIMIT ?
-            """,
-            (now_iso, lock_cutoff_iso, limit),
+        from sqlmodel import select
+
+        stmt = (
+            select(db_models.ApiOutbox)
+            .where(db_models.ApiOutbox.delivered_at.is_(None))
+            .where(db_models.ApiOutbox.next_attempt_at <= now_iso)
+            .where((db_models.ApiOutbox.locked_at.is_(None)) | (db_models.ApiOutbox.locked_at <= lock_cutoff_iso))
+            .order_by(db_models.ApiOutbox.created_at)
+            .limit(limit)
         )
-        rows = await cursor.fetchall()
-        typed_rows: list[ApiOutboxRow] = []
-        for row in rows:
-            row_id = cast(int, row["id"])
-            request_id = cast(str, row["request_id"])
-            event_type = cast(str, row["event_type"])
-            payload = cast(str, row["payload"])
-            metadata = cast(str, row["metadata"])
-            attempt_count = cast(int, row["attempt_count"])
-            typed_rows.append(
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            rows = result.all()
+            return [
                 ApiOutboxRow(
-                    id=row_id,
-                    request_id=request_id,
-                    event_type=event_type,
-                    payload=payload,
-                    metadata=metadata,
-                    attempt_count=attempt_count,
+                    id=row.id or 0,
+                    request_id=row.request_id,
+                    event_type=row.event_type,
+                    payload=row.payload,
+                    metadata=row.meta_json,
+                    attempt_count=row.attempt_count or 0,
                 )
-            )
-        return typed_rows
+                for row in rows
+            ]
 
     async def claim_api_outbox(self, row_id: int, now_iso: str, lock_cutoff_iso: str) -> bool:
         """Claim a API outbox row for processing."""
-        cursor = await self.conn.execute(
-            """
-            UPDATE api_outbox
-            SET locked_at = ?
-            WHERE id = ?
-              AND delivered_at IS NULL
-              AND (locked_at IS NULL OR locked_at <= ?)
-            """,
-            (now_iso, row_id, lock_cutoff_iso),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE api_outbox SET locked_at = :now "
+            "WHERE id = :row_id AND delivered_at IS NULL "
+            "AND (locked_at IS NULL OR locked_at <= :cutoff)"
         )
-        await self.conn.commit()
-        return cursor.rowcount == 1
+        async with self._session() as db_session:
+            result = await db_session.execute(
+                stmt,
+                {"now": now_iso, "row_id": row_id, "cutoff": lock_cutoff_iso},
+            )
+            await db_session.commit()
+            return (result.rowcount or 0) == 1
 
     async def mark_api_outbox_delivered(
         self,
@@ -1066,15 +1193,23 @@ class Db:
     ) -> None:
         """Mark a API outbox row delivered with response payload."""
         now = datetime.now(timezone.utc).isoformat()
-        await self.conn.execute(
-            """
-            UPDATE api_outbox
-            SET delivered_at = ?, last_error = ?, locked_at = NULL, response = ?
-            WHERE id = ?
-            """,
-            (now, error, response_json, row_id),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE api_outbox SET delivered_at = :now, last_error = :error, "
+            "locked_at = NULL, response = :response WHERE id = :row_id"
         )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            await db_session.execute(
+                stmt,
+                {
+                    "now": now,
+                    "error": error,
+                    "response": response_json,
+                    "row_id": row_id,
+                },
+            )
+            await db_session.commit()
 
     async def mark_api_outbox_failed(
         self,
@@ -1084,39 +1219,57 @@ class Db:
         error: str,
     ) -> None:
         """Record a API outbox failure and schedule a retry."""
-        await self.conn.execute(
-            """
-            UPDATE api_outbox
-            SET attempt_count = ?, next_attempt_at = ?, last_error = ?, locked_at = NULL
-            WHERE id = ?
-            """,
-            (attempt_count, next_attempt_at, error, row_id),
+        from sqlalchemy import text
+
+        stmt = text(
+            "UPDATE api_outbox SET attempt_count = :attempt, next_attempt_at = :next_attempt, "
+            "last_error = :error, locked_at = NULL WHERE id = :row_id"
         )
-        await self.conn.commit()
+        async with self._session() as db_session:
+            await db_session.execute(
+                stmt,
+                {
+                    "attempt": attempt_count,
+                    "next_attempt": next_attempt_at,
+                    "error": error,
+                    "row_id": row_id,
+                },
+            )
+            await db_session.commit()
 
 
 def _field_query(field: str) -> str:
     """Build query to find session by direct column value."""
     return (
-        f"SELECT session_id FROM sessions WHERE {field} = ? AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
+        f"SELECT session_id FROM sessions WHERE {field} = :value "
+        "AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
     )
 
 
 def _fetch_session_id_sync(db_path: str, query: str, value: object) -> str | None:
-    conn = sqlite3.connect(db_path, timeout=5.0)
-    try:
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA busy_timeout = 5000")
+    """Sync helper for raw session_id queries.
+
+    guard: allow-string-compare
+    """
+    from sqlalchemy import create_engine, text
+    from sqlmodel import Session as SqlSession
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with SqlSession(engine) as session:
+        session.exec(text("PRAGMA journal_mode = WAL"))
+        session.exec(text("PRAGMA busy_timeout = 5000"))
         try:
-            cursor = conn.execute(query, (value,))
-        except sqlite3.OperationalError as exc:
+            result = session.exec(text(query), {"value": value})
+        except Exception as exc:  # noqa: BLE001 - Boundary DB operation
             if "no such table" in str(exc).lower():
                 return None
             raise
-        row = cast(tuple[object, ...] | None, cursor.fetchone())
-        return str(row[0]) if row else None
-    finally:
-        conn.close()
+        row = result.first()
+        if row is None:
+            return None
+        if isinstance(row, tuple):
+            return str(row[0])
+        return str(row)
 
 
 def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str | None:
@@ -1127,7 +1280,7 @@ def get_session_id_by_field_sync(db_path: str, field: str, value: object) -> str
 def get_session_id_by_tmux_name_sync(db_path: str, tmux_name: str) -> str | None:
     """Sync helper to find session_id by tmux session name."""
     query = (
-        "SELECT session_id FROM sessions WHERE tmux_session_name = ? "
+        "SELECT session_id FROM sessions WHERE tmux_session_name = :value "
         "AND closed_at IS NULL ORDER BY last_activity DESC LIMIT 1"
     )
     return _fetch_session_id_sync(db_path, query, tmux_name)

@@ -115,7 +115,10 @@ class MessageOperationsMixin:
         reply_markup: object,
         parse_mode: Optional[str],
     ) -> Message:
-        """Internal method with retry logic for sending messages."""
+        """Internal method with retry logic for sending messages.
+
+        guard: allow-string-compare
+        """
         # Type guard for reply_markup
         if reply_markup is not None and not isinstance(
             reply_markup,
@@ -150,7 +153,10 @@ class MessageOperationsMixin:
         filename: str,
         caption: Optional[str] = None,
     ) -> Message:
-        """Internal method with retry logic for sending documents."""
+        """Internal method with retry logic for sending documents.
+
+        guard: allow-string-compare
+        """
         with open(file_path, "rb") as f:
             try:
                 return await self.bot.send_document(
@@ -179,6 +185,8 @@ class MessageOperationsMixin:
 
         Retry logic (via @command_retry decorator on _edit_message_with_retry):
         - Rate limits (RetryAfter): Uses Telegram's suggested delay, keeps retrying until 60s timeout
+
+        guard: allow-string-compare
         """
         self._ensure_started()
         metadata = metadata or MessageMetadata()

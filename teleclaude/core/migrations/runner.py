@@ -8,6 +8,8 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import INIT_FILE_NAME
+
 logger = get_logger(__name__)
 
 MIGRATIONS_DIR = Path(__file__).parent
@@ -40,7 +42,7 @@ async def run_pending_migrations(db: aiosqlite.Connection) -> int:
 
     # Find migration files (###_name.py pattern)
     migration_files = sorted(
-        f for f in MIGRATIONS_DIR.glob("*.py") if re.match(r"^\d{3}_", f.name) and f.name != "__init__.py"
+        f for f in MIGRATIONS_DIR.glob("*.py") if re.match(r"^\d{3}_", f.name) and f.name != INIT_FILE_NAME
     )
 
     applied_count = 0

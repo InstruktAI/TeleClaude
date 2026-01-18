@@ -31,8 +31,11 @@ from teleclaude.cli.tui.tree import (
     SessionNode,
     TreeNode,
     build_tree,
+    is_computer_node,
+    is_project_node,
+    is_session_node,
 )
-from teleclaude.cli.tui.types import CursesWindow
+from teleclaude.cli.tui.types import ActivePane, CursesWindow, FocusLevelType, NodeType
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import ConfirmModal, StartSessionModal
 
@@ -90,7 +93,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         self.collapsed_sessions: set[str] = set()  # Session IDs that are collapsed
         # State tracking for color coding (detect changes between refreshes)
         self._prev_state: dict[str, dict[str, str]] = {}  # session_id -> {input, output}
-        self._active_field: dict[str, str] = {}  # session_id -> "input" | "output" | "none"
+        self._active_field: dict[str, ActivePane] = {}
         # Store sessions for child lookup
         self._sessions: list[SessionInfo] = []
         # Store computers for SSH connection lookup
@@ -216,7 +219,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
             # If activity is old or unparseable, always show as idle
             if is_idle_by_time:
-                self._active_field[session_id] = "none"
+                self._active_field[session_id] = ActivePane.NONE
                 self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
                 continue
 
@@ -226,11 +229,11 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 # First time seeing this session with recent activity
                 # Show output as highlighted if present, otherwise input, otherwise idle
                 if curr_output:
-                    self._active_field[session_id] = "output"
+                    self._active_field[session_id] = ActivePane.OUTPUT
                 elif curr_input:
-                    self._active_field[session_id] = "input"
+                    self._active_field[session_id] = ActivePane.INPUT
                 else:
-                    self._active_field[session_id] = "none"
+                    self._active_field[session_id] = ActivePane.NONE
                 self._prev_state[session_id] = {"input": curr_input, "output": curr_output}
                 continue
 
@@ -243,10 +246,10 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
             if output_changed:
                 # New output → output is bright (AI just responded)
-                self._active_field[session_id] = "output"
+                self._active_field[session_id] = ActivePane.OUTPUT
             elif input_changed:
                 # New input → input is bright (processing)
-                self._active_field[session_id] = "input"
+                self._active_field[session_id] = ActivePane.INPUT
             # Note: Don't set to "none" here - keep previous active state
             # until it becomes idle by time threshold
 
@@ -259,7 +262,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         def walk(nodes: list[TreeNode]) -> bool:
             for node in nodes:
-                if node.type == "session":
+                if is_session_node(node):
                     node_session_id = node.data.session.session_id
                     if node_session_id == session_id:
                         node.data = SessionDisplayInfo(
@@ -287,7 +290,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # If focused on a computer, filter to that computer's children
         if self.focus.computer:
             for node in self.tree:
-                if node.type == "computer" and node.data.computer.name == self.focus.computer:
+                if is_computer_node(node) and node.data.computer.name == self.focus.computer:
                     nodes = node.children
                     logger.debug("Filtered to computer '%s': %d children", self.focus.computer, len(nodes))
                     break
@@ -298,7 +301,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         # If also focused on a project, filter to that project's children
         if self.focus.project and nodes:
             for node in nodes:
-                if node.type == "project" and node.data.path == self.focus.project:
+                if is_project_node(node) and node.data.path == self.focus.project:
                     nodes = node.children
                     logger.debug("Filtered to project '%s': %d children", self.focus.project, len(nodes))
                     break
@@ -327,17 +330,17 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         result: list[TreeNode] = []
         for node in nodes:
             display_node: TreeNode
-            if node.type == "computer":
+            if is_computer_node(node):
                 display_node = ComputerNode(
-                    type="computer",
+                    type=NodeType.COMPUTER,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
                     parent=node.parent,
                 )
-            elif node.type == "project":
+            elif is_project_node(node):
                 display_node = ProjectNode(
-                    type="project",
+                    type=NodeType.PROJECT,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
@@ -345,7 +348,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 )
             else:
                 display_node = SessionNode(
-                    type="session",
+                    type=NodeType.SESSION,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
@@ -367,13 +370,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             return back_hint.strip() if back_hint else ""
 
         selected = self.flat_items[self.selected_index]
-        if selected.type == "session":
+        if is_session_node(selected):
             # Show toggle state in action bar
             tmux_session = selected.data.session.tmux_session_name or ""
             is_previewing = self.pane_manager.active_session == tmux_session
             preview_action = "[Enter] Hide Preview" if is_previewing else "[Enter] Preview"
             return f"{back_hint}{preview_action}  [←/→] Collapse/Expand  [R] Restart  [k] Kill"
-        if selected.type == "project":
+        if is_project_node(selected):
             return f"{back_hint}[n] Untitled"
         # computer
         return f"{back_hint}[→] View Projects"
@@ -397,13 +400,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         item = self.flat_items[self.selected_index]
         logger.debug("drill_down: item.type=%s", item.type)
 
-        if item.type == "computer":
-            self.focus.push("computer", item.data.computer.name)
+        if is_computer_node(item):
+            self.focus.push(FocusLevelType.COMPUTER, item.data.computer.name)
             self.rebuild_for_focus()
             self.selected_index = 0
             logger.debug("drill_down: pushed computer focus")
             return True
-        if item.type == "session":
+        if is_session_node(item):
             # Expand this session (if not already expanded)
             session_id = item.data.session.session_id
             if session_id in self.collapsed_sessions:
@@ -429,7 +432,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         item = self.flat_items[self.selected_index]
         logger.debug("collapse_selected: item.type=%s", item.type)
 
-        if item.type == "session":
+        if is_session_node(item):
             session_id = item.data.session.session_id
             if session_id not in self.collapsed_sessions:
                 self.collapsed_sessions.add(session_id)
@@ -458,7 +461,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
             nodes: Tree nodes to scan
         """
         for node in nodes:
-            if node.type == "session":
+            if is_session_node(node):
                 self.collapsed_sessions.add(node.data.session.session_id)
             if node.children:
                 self._collect_all_session_ids(node.children)
@@ -474,13 +477,13 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         enter_start = time.perf_counter()
         item = self.flat_items[self.selected_index]
 
-        if item.type == "computer":
+        if is_computer_node(item):
             # Drill down into computer (same as right arrow)
             self.drill_down()
-        elif item.type == "project":
+        elif is_project_node(item):
             # Start new session on project
             self._start_session_for_project(stdscr, item.data)
-        elif item.type == "session":
+        elif is_session_node(item):
             # Double-click on ID line shows parent only; otherwise toggle split
             session_id = item.data.session.session_id
             is_collapsed = session_id in self.collapsed_sessions
@@ -654,7 +657,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if key == ord("n"):
             # Start new session - only on project
-            if selected.type == "project":
+            if is_project_node(selected):
                 logger.debug("handle_key: starting new session on project")
                 self._start_session_for_project(stdscr, selected.data)
             else:
@@ -663,7 +666,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
 
         if key == ord("k"):
             # Kill selected session
-            if selected.type != "session":
+            if not is_session_node(selected):
                 logger.debug("handle_key: 'k' ignored, not on a session")
                 return  # Only kill sessions, not computers/projects
 
@@ -770,21 +773,21 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         """
         indent = "  " * item.depth
 
-        if item.type == "computer":
+        if is_computer_node(item):
             name = item.data.computer.name
             session_count = item.data.session_count
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}🖥  {name} {suffix}"
             return [line[:width]]
 
-        if item.type == "project":
+        if is_project_node(item):
             path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}📁 {path} {suffix}"
             return [line[:width]]
 
-        if item.type == "session":
+        if is_session_node(item):
             return self._format_session(item, width, selected)
 
         return [""]
@@ -934,14 +937,14 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
 
-        if item.type == "computer":
+        if is_computer_node(item):
             name = item.data.computer.name
             session_count = item.data.session_count
             suffix = f"({session_count})" if session_count else ""
             line = f"{indent}🖥  {name} {suffix}"
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
-        if item.type == "project":
+        if is_project_node(item):
             path = item.data.path
             session_count = len(item.children)
             suffix = f"({session_count})" if session_count else ""
@@ -951,7 +954,7 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
                 attr = curses.A_DIM
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
-        if item.type == "session":
+        if is_session_node(item):
             return self._render_session(stdscr, row, item, width, selected)
         return 1
 
@@ -1029,9 +1032,9 @@ class SessionsView(ScrollableViewMixin[TreeNode], BaseView):
         lines_used += 1
 
         # Determine which field is "active" (highlight) based on state tracking
-        active = self._active_field.get(session_id, "none")
-        input_attr = highlight_attr if active == "input" else muted_attr
-        output_attr = highlight_attr if active == "output" else muted_attr
+        active = self._active_field.get(session_id, ActivePane.NONE)
+        input_attr = highlight_attr if active is ActivePane.INPUT else muted_attr
+        output_attr = highlight_attr if active is ActivePane.OUTPUT else muted_attr
 
         # Line 3: Last input (only if content exists)
         last_input = (session.last_input or "").strip()

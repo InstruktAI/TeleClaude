@@ -6,13 +6,17 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from teleclaude.cli.tui.types import TodoStatus
+
+EMPTY_STRING = ""
+
 
 @dataclass
 class TodoItem:
     """Parsed todo item from roadmap.md."""
 
     slug: str
-    status: str  # "pending", "ready", "in_progress"
+    status: TodoStatus
     description: str | None
     has_requirements: bool
     has_impl_plan: bool
@@ -21,10 +25,10 @@ class TodoItem:
 
 
 # Status marker mapping
-STATUS_MAP: dict[str, str] = {
-    " ": "pending",
-    ".": "ready",
-    ">": "in_progress",
+STATUS_MAP: dict[str, TodoStatus] = {
+    " ": TodoStatus.PENDING,
+    ".": TodoStatus.READY,
+    ">": TodoStatus.IN_PROGRESS,
 }
 
 
@@ -63,7 +67,7 @@ def parse_roadmap(project_path: str) -> list[TodoItem]:
                 next_line = lines[j]
                 if next_line.startswith("      "):  # 6 spaces = indented
                     description += next_line.strip() + " "
-                elif next_line.strip() == "":
+                elif next_line.strip() == EMPTY_STRING:
                     continue
                 else:
                     break
@@ -80,7 +84,7 @@ def parse_roadmap(project_path: str) -> list[TodoItem]:
             todos.append(
                 TodoItem(
                     slug=slug,
-                    status=STATUS_MAP.get(status_char, "pending"),
+                    status=STATUS_MAP.get(status_char, TodoStatus.PENDING),
                     description=description.strip() or None,
                     has_requirements=has_requirements,
                     has_impl_plan=has_impl_plan,

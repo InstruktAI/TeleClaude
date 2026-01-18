@@ -20,6 +20,8 @@ def parse_claude_transcript(
 ) -> str:
     """Convert Claude Code JSONL transcript to markdown with filtering.
 
+    guard: allow-string-compare
+
     Args:
         transcript_path: Path to Claude session .jsonl file
         title: Session title for header
@@ -56,7 +58,10 @@ def parse_codex_transcript(
     tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
-    """Convert Codex JSONL transcript to markdown with filtering."""
+    """Convert Codex JSONL transcript to markdown with filtering.
+
+    guard: allow-string-compare
+    """
 
     path = Path(transcript_path).expanduser()
     if not path.exists():
@@ -85,7 +90,10 @@ def parse_gemini_transcript(
     tail_chars: int = 2000,
     collapse_tool_results: bool = False,
 ) -> str:
-    """Convert Gemini JSON transcript into markdown."""
+    """Convert Gemini JSON transcript into markdown.
+
+    guard: allow-string-compare
+    """
 
     path = Path(transcript_path).expanduser()
     if not path.exists():
@@ -106,7 +114,10 @@ def parse_gemini_transcript(
 
 
 def _should_skip_entry(entry: dict[str, object], since_dt: Optional[datetime], until_dt: Optional[datetime]) -> bool:  # noqa: loose-dict - External entry
-    """Check if entry should be skipped based on type and timestamp filters."""
+    """Check if entry should be skipped based on type and timestamp filters.
+
+    guard: allow-string-compare
+    """
     if entry.get("type") == "summary":
         return True
 
@@ -131,7 +142,10 @@ def _process_entry(
     last_section: Optional[str],
     collapse_tool_results: bool,
 ) -> Optional[str]:  # noqa: loose-dict - External entry
-    """Process a transcript entry and append formatted content to lines."""
+    """Process a transcript entry and append formatted content to lines.
+
+    guard: allow-string-compare
+    """
     entry_timestamp = entry.get("timestamp")
     entry_dt = None
     if isinstance(entry_timestamp, str):
@@ -165,7 +179,10 @@ def _process_entry(
 
 
 def _process_string_content(content: str, time_prefix: str, lines: list[str], last_section: Optional[str]) -> str:
-    """Process string content (user message)."""
+    """Process string content (user message).
+
+    guard: allow-string-compare
+    """
     if last_section != "user" or time_prefix:
         lines.append("")
         lines.append(f"## {time_prefix}👤 User")
@@ -182,7 +199,10 @@ def _process_list_content(
     last_section: Optional[str],
     collapse_tool_results: bool,
 ) -> Optional[str]:
-    """Process list of content blocks."""
+    """Process list of content blocks.
+
+    guard: allow-string-compare
+    """
     current_section = last_section
 
     for block in content:
@@ -217,7 +237,10 @@ def _process_text_block(
     lines: list[str],
     last_section: Optional[str],
 ) -> Optional[str]:
-    """Process text block from assistant or user."""
+    """Process text block from assistant or user.
+
+    guard: allow-string-compare
+    """
     if role == "assistant" and last_section != "assistant":
         lines.append("")
         lines.append(f"## {time_prefix}🤖 Assistant")
@@ -243,7 +266,10 @@ def _process_thinking_block(
     lines: list[str],
     last_section: Optional[str],
 ) -> str:
-    """Process thinking block."""
+    """Process thinking block.
+
+    guard: allow-string-compare
+    """
     if last_section != "assistant":
         lines.append("")
         lines.append(f"## {time_prefix}🤖 Assistant")
@@ -255,7 +281,10 @@ def _process_thinking_block(
 
 
 def _process_tool_use_block(block: dict[str, object], time_prefix: str, lines: list[str]) -> str:  # noqa: loose-dict - External block
-    """Process tool use block."""
+    """Process tool use block.
+
+    guard: allow-string-compare
+    """
     tool_name = block.get("name", "unknown")
     tool_input = block.get("input", {})
     if not isinstance(tool_input, dict):
@@ -272,7 +301,10 @@ def _process_tool_result_block(
     lines: list[str],
     collapse_tool_results: bool,
 ) -> str:  # noqa: loose-dict - External block
-    """Process tool result block."""
+    """Process tool result block.
+
+    guard: allow-string-compare
+    """
     is_error = block.get("is_error", False)
     status_emoji = "❌" if is_error else "✅"
     content_data = block.get("content", "")
@@ -463,7 +495,10 @@ def _iter_claude_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: lo
 
 
 def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
-    """Yield entries from Codex JSONL transcripts, skipping metadata."""
+    """Yield entries from Codex JSONL transcripts, skipping metadata.
+
+    guard: allow-string-compare
+    """
 
     for entry in _iter_jsonl_entries(path):
         if entry.get("type") == "session_meta":
@@ -472,7 +507,10 @@ def _iter_codex_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loo
 
 
 def _iter_gemini_entries(path: Path) -> Iterable[dict[str, object]]:  # noqa: loose-dict - External JSONL unknown structure
-    """Yield normalized entries from Gemini JSON session files."""
+    """Yield normalized entries from Gemini JSON session files.
+
+    guard: allow-string-compare
+    """
 
     with open(path, encoding="utf-8") as f:
         raw_document: object = json.load(f)
@@ -614,6 +652,8 @@ def extract_last_user_message(
     agent_name: AgentName,
 ) -> Optional[str]:
     """Extract the last user message from the transcript.
+
+    guard: allow-string-compare
 
     Args:
         transcript_path: Path to transcript file

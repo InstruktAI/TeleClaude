@@ -10,6 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.core.agent_parsers import CodexParser
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db, db
 from teleclaude.core.events import AgentHookEvents, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
@@ -19,6 +20,11 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+JSON_TYPE_KEY = "type"
+JSON_PAYLOAD_KEY = "payload"
+ENTRY_TYPE_SESSION_META = "session_meta"
+ENTRY_TYPE_EVENT_MSG = "event_msg"
 CODEX_BIND_BACKFILL_BYTES = 65536
 
 
@@ -59,7 +65,7 @@ class CodexWatcher:
         """Re-attach to existing Codex sessions with known log files after restart."""
         sessions = await self._db.get_active_sessions()
         for session in sessions:
-            if session.active_agent != "codex" or not session.native_log_file:
+            if session.active_agent != AgentName.CODEX.value or not session.native_log_file:
                 continue
 
             file_path = Path(session.native_log_file).expanduser()
@@ -82,7 +88,7 @@ class CodexWatcher:
 
     async def _scan_directory(self) -> None:
         """Scan the Codex session directory for new session files."""
-        agent_cfg = config.agents["codex"]
+        agent_cfg = config.agents[AgentName.CODEX.value]
         dir_path = Path(agent_cfg.session_dir).expanduser()
         pattern = agent_cfg.log_pattern or "*.jsonl"
         files = [f for f in dir_path.rglob(pattern) if f.is_file()]
@@ -91,7 +97,7 @@ class CodexWatcher:
 
         codex_sessions: list["Session"] = []
         for session in await self._db.get_active_sessions():
-            if session.active_agent == "codex":
+            if session.active_agent == AgentName.CODEX.value:
                 codex_sessions.append(session)
 
         if not codex_sessions:
@@ -177,9 +183,9 @@ class CodexWatcher:
                 if not line.strip():
                     continue
                 data = cast(dict[str, object], json.loads(line))  # noqa: loose-dict - External JSONL data
-                if data.get("type") != "session_meta":
+                if data.get(JSON_TYPE_KEY) != ENTRY_TYPE_SESSION_META:
                     continue
-                payload = cast(dict[str, object], data["payload"])  # noqa: loose-dict - External JSONL payload
+                payload = cast(dict[str, object], data[JSON_PAYLOAD_KEY])  # noqa: loose-dict - External JSONL payload
                 timestamp = payload["timestamp"]
                 ts_value = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00")).timestamp()
                 self._log_timestamps[file_path] = ts_value
@@ -282,11 +288,14 @@ class CodexWatcher:
 
                     try:
                         entry = cast(dict[str, object], json.loads(line))  # noqa: loose-dict - External JSONL entry
-                        entry_type = str(entry.get("type"))
+                        entry_type = str(entry.get(JSON_TYPE_KEY))
                         entry_type_counts[entry_type] = entry_type_counts.get(entry_type, 0) + 1
-                        if entry_type == "event_msg":
-                            payload = cast(dict[str, object], entry.get("payload", {}))  # noqa: loose-dict - External JSONL payload
-                            payload_type = str(payload.get("type"))
+                        if entry_type == ENTRY_TYPE_EVENT_MSG:
+                            payload = cast(
+                                dict[str, object],  # noqa: loose-dict - External JSONL payload
+                                entry.get(JSON_PAYLOAD_KEY, {}),  # noqa: loose-dict - External JSONL payload
+                            )
+                            payload_type = str(payload.get(JSON_TYPE_KEY))
                             event_msg_counts[payload_type] = event_msg_counts.get(payload_type, 0) + 1
 
                         # Parse and emit events (only if JSON parsing succeeded)

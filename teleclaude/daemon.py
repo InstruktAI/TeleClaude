@@ -24,7 +24,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.api_server import APIServer
 from teleclaude.config import config  # config.py loads .env at import time
-from teleclaude.constants import MCP_SOCKET_PATH
+from teleclaude.constants import ENV_ENABLE, MAIN_MODULE, MCP_SOCKET_PATH, Platform, ResultStatus, SystemCommand
 from teleclaude.core import (
     command_handlers,
     polling_coordinator,
@@ -62,7 +62,14 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.file_handler import handle_file
 from teleclaude.core.lifecycle import DaemonLifecycle
-from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session, SessionLaunchIntent
+from teleclaude.core.models import (
+    AdapterType,
+    CleanupTrigger,
+    MessageMetadata,
+    Session,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+)
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_utils import get_output_file, parse_session_title, resolve_working_dir
 from teleclaude.core.summarizer import summarize
@@ -128,7 +135,7 @@ API_APIART_BACKOFF_S = float(os.getenv("API_APIART_BACKOFF_S", "1"))
 # Resource monitoring
 RESOURCE_SNAPSHOT_INTERVAL_S = float(os.getenv("RESOURCE_SNAPSHOT_INTERVAL_S", "60"))
 LAUNCHD_WATCH_INTERVAL_S = float(os.getenv("LAUNCHD_WATCH_INTERVAL_S", "300"))
-LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", "1") == "1"
+LAUNCHD_WATCH_ENABLED = os.getenv("TELECLAUDE_LAUNCHD_WATCH", ENV_ENABLE) == ENV_ENABLE
 
 # Hook outbox worker
 HOOK_OUTBOX_POLL_INTERVAL_S: float = float(os.getenv("HOOK_OUTBOX_POLL_INTERVAL_S", "1"))
@@ -136,6 +143,9 @@ HOOK_OUTBOX_BATCH_SIZE: int = int(os.getenv("HOOK_OUTBOX_BATCH_SIZE", "25"))
 HOOK_OUTBOX_LOCK_TTL_S: float = float(os.getenv("HOOK_OUTBOX_LOCK_TTL_S", "30"))
 HOOK_OUTBOX_BASE_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_BASE_BACKOFF_S", "1"))
 HOOK_OUTBOX_MAX_BACKOFF_S: float = float(os.getenv("HOOK_OUTBOX_MAX_BACKOFF_S", "60"))
+
+SOURCE_KEY = "source"
+TMUX_EMPTY_VALUE = "-"
 
 
 def _get_fd_count() -> int | None:
@@ -153,7 +163,7 @@ def _get_rss_kb() -> int | None:
     except (ValueError, OSError):
         return None
 
-    if sys.platform == "darwin":
+    if sys.platform == Platform.DARWIN.value:
         return int(rss / 1024)
     return rss
 
@@ -659,7 +669,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return min(delay, float(HOOK_OUTBOX_MAX_BACKOFF_S))
 
     def _is_retryable_hook_error(self, exc: Exception) -> bool:
-        """Return True if hook dispatch errors should be retried."""
+        """Return True if hook dispatch errors should be retried.
+
+        guard: allow-string-compare
+        """
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
         return True
@@ -671,7 +684,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         return min(delay, float(API_OUTBOX_MAX_BACKOFF_S))
 
     def _is_retryable_api_error(self, exc: Exception) -> bool:
-        """Return True if API dispatch errors should be retried."""
+        """Return True if API dispatch errors should be retried.
+
+        guard: allow-string-compare
+        """
         if isinstance(exc, ValueError) and "not found" in str(exc):
             return False
         return True
@@ -724,7 +740,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         )
         if isinstance(response, dict):
             return cast(ApiOutboxResponse, response)
-        return cast(ApiOutboxResponse, {"status": "success", "data": response})
+        return cast(ApiOutboxResponse, {"status": ResultStatus.SUCCESS.value, "data": response})
 
     async def _dispatch_hook_event(
         self,
@@ -754,7 +770,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 {
                     "session_id": session_id,
                     "message": str(data.get("message", "")),
-                    "source": str(data.get("source")) if "source" in data else None,
+                    SOURCE_KEY: str(data.get(SOURCE_KEY)) if SOURCE_KEY in data else None,
                     "details": data.get("details") if isinstance(data.get("details"), dict) else None,
                 },
             )
@@ -774,7 +790,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         if isinstance(response, dict):
             response_dict = cast(dict[str, object], response)  # noqa: loose-dict - Adapter response payload
             status = response_dict.get("status")
-            if status == "error":
+            if status == ResultStatus.ERROR.value:
                 raise ValueError(str(response_dict.get("error")))
 
     async def _hook_outbox_worker(self) -> None:
@@ -853,7 +869,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     payload = cast(ApiOutboxPayload, json.loads(row["payload"]))
                 except json.JSONDecodeError as exc:
                     error_str = f"Invalid payload JSON: {exc}"
-                    error_payload: dict[str, str] = {"status": "error", "error": ""}
+                    error_payload: dict[str, str] = {"status": ResultStatus.ERROR.value, "error": ""}
                     error_payload["error"] = error_str
                     response_json = json.dumps(error_payload)
                     await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
@@ -866,7 +882,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         metadata.adapter_type = "api"
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     error_str: str = f"Invalid metadata JSON: {exc}"
-                    error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
+                    error_payload: dict[str, str] = {"status": ResultStatus.ERROR.value, "error": error_str}  # type: ignore[misc]
                     response_json = json.dumps(error_payload)
                     await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
                     continue
@@ -879,7 +895,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                     attempt = int(row.get("attempt_count", 0)) + 1
                     error_str: str = str(exc)
                     if not self._is_retryable_api_error(exc):
-                        error_payload: dict[str, str] = {"status": "error", "error": error_str}  # type: ignore[misc]
+                        error_payload: dict[str, str] = {"status": ResultStatus.ERROR.value, "error": error_str}  # type: ignore[misc]
                         response_json = json.dumps(error_payload)
                         await db.mark_api_outbox_delivered(row["id"], response_json, error_str)
                         continue
@@ -1027,9 +1043,9 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         logger.info("Handling system command '%s' from %s", ctx.command, ctx.from_computer)
 
-        if ctx.command == "deploy":
+        if ctx.command == SystemCommand.DEPLOY.value:
             await self._handle_deploy(ctx.args)
-        elif ctx.command == "health_check":
+        elif ctx.command == SystemCommand.HEALTH_CHECK.value:
             await self._handle_health_check()
         else:
             logger.warning("Unknown system command: %s", ctx.command)
@@ -1233,7 +1249,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 last_message_sent_at=datetime.now(timezone.utc).isoformat(),
             )
 
-        if cmd_name == "agent_then_message":
+        if cmd_name == SessionLaunchKind.AGENT_THEN_MESSAGE.value:
             return await self._handle_agent_then_message(session_id, auto_args)
 
         if cmd_name == TeleClaudeEvents.AGENT_START and auto_args:
@@ -1241,17 +1257,17 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             await command_handlers.handle_agent_start(
                 auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
             )
-            return {"status": "success"}
+            return {"status": ResultStatus.SUCCESS.value}
 
         if cmd_name == TeleClaudeEvents.AGENT_RESUME and auto_args:
             agent_name = auto_args.pop(0)
             await command_handlers.handle_agent_resume(
                 auto_context, agent_name, auto_args, self.client, self._execute_terminal_command
             )
-            return {"status": "success"}
+            return {"status": ResultStatus.SUCCESS.value}
 
         logger.warning("Unknown or malformed auto_command: %s", auto_command)
-        return {"status": "error", "message": f"Unknown or malformed auto_command: {auto_command}"}
+        return {"status": ResultStatus.ERROR.value, "message": f"Unknown or malformed auto_command: {auto_command}"}
 
     async def _handle_agent_then_message(self, session_id: str, args: list[str]) -> dict[str, str]:
         """Start agent, wait for TUI to stabilize, then inject message."""
@@ -1259,13 +1275,16 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         logger.debug("agent_then_message: started for session=%s", session_id[:8])
 
         if len(args) < 3:
-            return {"status": "error", "message": "agent_then_message requires agent, thinking_mode, message"}
+            return {
+                "status": ResultStatus.ERROR.value,
+                "message": "agent_then_message requires agent, thinking_mode, message",
+            }
 
         agent_name = args[0]
         thinking_mode = args[1]
         message = " ".join(args[2:]).strip()
         if not message:
-            return {"status": "error", "message": "agent_then_message requires a non-empty message"}
+            return {"status": ResultStatus.ERROR.value, "message": "agent_then_message requires a non-empty message"}
 
         await db.update_session(
             session_id,
@@ -1290,7 +1309,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         session = await db.get_session(session_id)
         if not session:
-            return {"status": "error", "message": "Session not found after creation"}
+            return {"status": ResultStatus.ERROR.value, "message": "Session not found after creation"}
 
         # Step 1: Wait for output to stabilize (TUI banner + MCP loading complete)
         # We integrate the "process running" check into stabilization logic.
@@ -1319,7 +1338,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
         # Verify agent is actually running before injecting message
         if not await tmux_io.is_process_running(session):
             logger.error("agent_then_message: process not running after stabilization (session=%s)", session_id[:8])
-            return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
+            return {
+                "status": ResultStatus.ERROR.value,
+                "message": "Agent process exited/failed to start before message injection",
+            }
 
         # Step 2: Inject the message immediately (TUI should be ready)
         logger.debug("agent_then_message: injecting message to session=%s", session_id[:8])
@@ -1334,7 +1356,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             active_agent=session.active_agent,
         )
         if not pasted:
-            return {"status": "error", "message": "Failed to paste command into tmux"}
+            return {"status": ResultStatus.ERROR.value, "message": "Failed to paste command into tmux"}
 
         await db.update_last_activity(session_id)
         await self._poll_and_send_output(session_id, session.tmux_session_name)
@@ -1346,10 +1368,10 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 "agent_then_message timed out waiting for command acceptance (session=%s)",
                 session_id[:8],
             )
-            return {"status": "error", "message": "Timeout waiting for command acceptance"}
+            return {"status": ResultStatus.ERROR.value, "message": "Timeout waiting for command acceptance"}
 
         logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
-        return {"status": "success", "message": "Message injected after agent start"}
+        return {"status": ResultStatus.SUCCESS.value, "message": "Message injected after agent start"}
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
         output = await tmux_bridge.capture_pane(session.tmux_session_name)
@@ -1589,7 +1611,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 error_msg = f"{stderr_msg}\n{stdout_msg}".strip()
                 logger.error("Deploy: git pull failed: %s", error_msg)
                 git_error_payload: DeployErrorPayload = {
-                    "status": "error",
+                    "status": ResultStatus.ERROR.value,
                     "error": f"git pull failed: {error_msg}",
                 }
                 await update_status(git_error_payload)
@@ -1614,7 +1636,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             except asyncio.TimeoutError:
                 logger.error("Deploy: make install timed out after 60s")
                 timeout_payload: DeployErrorPayload = {
-                    "status": "error",
+                    "status": ResultStatus.ERROR.value,
                     "error": "make install timed out after 60s",
                 }
                 await update_status(timeout_payload)
@@ -1624,7 +1646,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                 error_msg = install_stderr.decode("utf-8")
                 logger.error("Deploy: make install failed: %s", error_msg)
                 install_error_payload: DeployErrorPayload = {
-                    "status": "error",
+                    "status": ResultStatus.ERROR.value,
                     "error": f"make install failed: {error_msg}",
                 }
                 await update_status(install_error_payload)
@@ -1645,7 +1667,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
         except Exception as e:
             logger.error("Deploy failed: %s", e, exc_info=True)
-            exception_payload: DeployErrorPayload = {"status": "error", "error": str(e)}
+            exception_payload: DeployErrorPayload = {"status": ResultStatus.ERROR.value, "error": str(e)}
             await update_status(exception_payload)
 
     async def _handle_health_check(self) -> None:
@@ -2000,7 +2022,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             tail_chars = 5000
 
             def _normalize_placeholder(value: str) -> Optional[str]:
-                return None if value == "-" else value
+                return None if value == TMUX_EMPTY_VALUE else value
 
             if len(args) == 1:
                 # Either tail_chars or since_timestamp
@@ -2100,7 +2122,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
             return await command_handlers.handle_agent_restart(
                 context, agent_name, args, self.client, self._execute_terminal_command
             )
-        elif command == "exit":
+        elif command == SystemCommand.EXIT.value:
             return await command_handlers.handle_exit_session(context, self.client)
 
         return None
@@ -2236,7 +2258,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
 
     async def _launchd_watch_loop(self) -> None:
         """Periodically log launchd state for this job on macOS."""
-        if platform.system().lower() != "darwin":
+        if platform.system().lower() != Platform.DARWIN.value:
             return
         last_output: str | None = None
         while not self.shutdown_event.is_set():
@@ -2282,7 +2304,7 @@ class TeleClaudeDaemon:  # pylint: disable=too-many-instance-attributes  # Daemo
                         exc,
                     )
 
-            if session.origin_adapter == "telegram":
+            if session.origin_adapter == AdapterType.TELEGRAM.value:
                 if (
                     not session.adapter_metadata
                     or not session.adapter_metadata.telegram
@@ -2521,5 +2543,5 @@ async def main() -> None:
             daemon._release_lock()
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     asyncio.run(main())

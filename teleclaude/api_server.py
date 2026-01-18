@@ -38,8 +38,19 @@ from teleclaude.api_models import (
     TodoDTO,
 )
 from teleclaude.config import config
-from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.constants import (
+    API_SOCKET_PATH,
+    DATA_TYPE_PREPARATION,
+    DATA_TYPE_PROJECTS,
+    DATA_TYPE_SESSIONS,
+    DATA_TYPE_TODOS,
+    LOCAL_COMPUTER,
+    CacheEvent,
+    ResultStatus,
+    WsAction,
+)
 from teleclaude.core import command_handlers
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import (
@@ -199,14 +210,14 @@ class APIServer(BaseAdapter):
 
                 # No cache: serve local sessions only (respect computer filter)
                 if not self.cache:
-                    if computer and computer not in ("local", config.computer.name):
+                    if computer and computer not in (LOCAL_COMPUTER, config.computer.name):
                         return []
                     return [SessionSummaryDTO.from_core(s, computer=s.computer) for s in local_sessions]
 
                 # With cache, merge local + cached sessions
                 if computer:
                     cached_filtered = self.cache.get_sessions(computer)
-                    if computer in ("local", config.computer.name):
+                    if computer in (LOCAL_COMPUTER, config.computer.name):
                         by_id = {s.session_id: s for s in local_sessions}
                         for s in cached_filtered:
                             by_id.setdefault(s.session_id, s)
@@ -308,10 +319,10 @@ class APIServer(BaseAdapter):
                 if not isinstance(envelope, dict):
                     raise HTTPException(status_code=500, detail="Invalid session creation response")
 
-                status = str(envelope.get("status", "error"))
-                if status != "success":
+                status = str(envelope.get("status", ResultStatus.ERROR.value))
+                if status != ResultStatus.SUCCESS.value:
                     error_msg = str(envelope.get("error", "Session creation failed"))
-                    return CreateSessionResponseDTO(status="error", error=error_msg)
+                    return CreateSessionResponseDTO(status=ResultStatus.ERROR.value, error=error_msg)
 
                 data = envelope.get("data")
                 if not isinstance(data, dict):
@@ -329,7 +340,7 @@ class APIServer(BaseAdapter):
                         tmux_session_name = session.tmux_session_name
 
                 return CreateSessionResponseDTO(
-                    status="success",
+                    status=ResultStatus.SUCCESS.value,
                     session_id=str(session_id) if session_id else None,
                     tmux_session_name=str(tmux_session_name) if tmux_session_name else None,
                 )
@@ -375,7 +386,7 @@ class APIServer(BaseAdapter):
                     },
                     metadata=self._metadata(),
                 )
-                return {"status": "success", "result": result}
+                return {"status": ResultStatus.SUCCESS.value, "result": result}
             except Exception as e:
                 logger.error("send_message failed (session=%s): %s", session_id, e, exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to send message: {e}") from e
@@ -519,7 +530,7 @@ class APIServer(BaseAdapter):
             """Get agent availability."""
             from teleclaude.core.db import db
 
-            agents: list[Literal["claude", "gemini", "codex"]] = ["claude", "gemini", "codex"]
+            agents: tuple[str, ...] = AgentName.choices()
             result: dict[str, AgentAvailabilityDTO] = {}
 
             for agent in agents:
@@ -563,7 +574,7 @@ class APIServer(BaseAdapter):
             """
             try:
                 if not self.cache:
-                    if project and (computer in (None, "local")):
+                    if project and (computer in (None, LOCAL_COMPUTER)):
                         raw_todos = await command_handlers.handle_list_todos(project)
                         return [
                             TodoDTO(
@@ -646,15 +657,15 @@ class APIServer(BaseAdapter):
                 data: dict[str, object] = data_raw  # guard: loose-dict - WebSocket message
 
                 # Handle subscription messages
-                if "subscribe" in data:
-                    subscribe_data = data["subscribe"]
+                if WsAction.SUBSCRIBE.value in data:
+                    subscribe_data = data[WsAction.SUBSCRIBE.value]
 
                     # Support both old format (string) and new format (dict)
                     if isinstance(subscribe_data, str):
                         # Old format: {"subscribe": "sessions"}
                         # Treat as subscription to "local" computer for backward compatibility
                         topic = subscribe_data
-                        computer = "local"
+                        computer = LOCAL_COMPUTER
                         if computer not in self._client_subscriptions[websocket]:
                             self._client_subscriptions[websocket][computer] = set()
                         self._client_subscriptions[websocket][computer].add(topic)
@@ -697,8 +708,8 @@ class APIServer(BaseAdapter):
                         self._update_cache_interest()
 
                 # Handle unsubscribe messages
-                elif "unsubscribe" in data:
-                    unsubscribe_data = data["unsubscribe"]
+                elif WsAction.UNSUBSCRIBE.value in data:
+                    unsubscribe_data = data[WsAction.UNSUBSCRIBE.value]
 
                     if isinstance(unsubscribe_data, dict):
                         # New format: {"unsubscribe": {"computer": "raspi"}}
@@ -800,16 +811,16 @@ class APIServer(BaseAdapter):
 
     async def _pull_remote_on_interest(self, computer: str, data_type: str) -> None:
         """Pull remote data immediately after subscription."""
-        if computer == "local":
+        if computer == LOCAL_COMPUTER:
             return
         adapter = self.client.adapters.get("redis")
         if not isinstance(adapter, RedisTransport):
             return
 
         await adapter.refresh_peers_from_heartbeats()
-        if data_type in ("projects", "preparation"):
+        if data_type in (DATA_TYPE_PROJECTS, DATA_TYPE_PREPARATION):
             await adapter.pull_remote_projects_with_todos(computer)
-        elif data_type == "sessions":
+        elif data_type == DATA_TYPE_SESSIONS:
             await adapter.pull_interested_sessions()
 
     def _refresh_stale_projects(self, computers: set[str]) -> None:
@@ -821,7 +832,7 @@ class APIServer(BaseAdapter):
             return
 
         for computer in sorted(computers):
-            if computer == "local":
+            if computer == LOCAL_COMPUTER:
                 continue
             coro = adapter.pull_remote_projects_with_todos(computer)
             if self.task_registry:
@@ -831,7 +842,7 @@ class APIServer(BaseAdapter):
 
     def _refresh_stale_todos(self, computer: str, project_path: str) -> None:
         """Trigger background refresh for stale todo cache entries."""
-        if not self.cache or not project_path or computer == "local":
+        if not self.cache or not project_path or computer == LOCAL_COMPUTER:
             return
         cache_key = f"{computer}:{project_path}"
         if not self.cache.is_stale(cache_key, 300):
@@ -854,17 +865,17 @@ class APIServer(BaseAdapter):
             computer: Computer name to filter data by
         """
         try:
-            if data_type == "sessions":
+            if data_type == DATA_TYPE_SESSIONS:
                 # Send current sessions from cache for this computer
                 if self.cache:
                     cached_sessions = self.cache.get_sessions(computer)
                     sessions = [SessionSummaryDTO.from_core(s, computer=s.computer) for s in cached_sessions]
                     event = SessionsInitialEventDTO(data=SessionsInitialDataDTO(sessions=sessions, computer=computer))
                     await websocket.send_json(event.model_dump(exclude_none=True))
-            elif data_type in ("preparation", "projects"):
+            elif data_type in (DATA_TYPE_PREPARATION, DATA_TYPE_PROJECTS):
                 # Send current projects from cache for this computer
                 if self.cache:
-                    cached_projects = self.cache.get_projects(computer if computer != "local" else None)
+                    cached_projects = self.cache.get_projects(computer if computer != LOCAL_COMPUTER else None)
                     projects: list[ProjectDTO] = []
                     for proj in cached_projects:
                         projects.append(
@@ -877,11 +888,13 @@ class APIServer(BaseAdapter):
                         )
 
                     event = ProjectsInitialEventDTO(
-                        event="projects_initial" if data_type == "projects" else "preparation_initial",
+                        event=CacheEvent.PROJECTS_INITIAL.value
+                        if data_type == DATA_TYPE_PROJECTS
+                        else CacheEvent.PREPARATION_INITIAL.value,
                         data=ProjectsInitialDataDTO(projects=projects, computer=computer),
                     )
                     await websocket.send_json(event.model_dump(exclude_none=True))
-            elif data_type == "todos":
+            elif data_type == DATA_TYPE_TODOS:
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
         except Exception as e:
@@ -894,11 +907,11 @@ class APIServer(BaseAdapter):
             event: Event type (e.g., "session_updated", "computer_updated")
             data: Event data
         """
-        if event == "session_updated":
+        if event == CacheEvent.SESSION_UPDATED.value:
             return
         # Convert to DTO payload if necessary
         payload: dict[str, object]  # guard: loose-dict - WebSocket payload assembly
-        if event == "session_created":
+        if event == CacheEvent.SESSION_CREATED.value:
             if isinstance(data, SessionSummary):
                 dto = SessionSummaryDTO.from_core(data, computer=data.computer)
                 # Proper cast for Mypy Literal
@@ -911,7 +924,7 @@ class APIServer(BaseAdapter):
                 payload = {"event": event, "data": data}
             else:
                 payload = {"event": event, "data": data}
-        elif event == "session_removed":
+        elif event == CacheEvent.SESSION_REMOVED.value:
             if isinstance(data, dict):
                 payload = SessionRemovedEventDTO(
                     data=SessionRemovedDataDTO(session_id=str(data.get("session_id", "")))
@@ -919,12 +932,12 @@ class APIServer(BaseAdapter):
             else:
                 payload = {"event": event, "data": data}
         elif event in (
-            "computer_updated",
-            "project_updated",
-            "projects_updated",
-            "todos_updated",
-            "projects_snapshot",
-            "todos_snapshot",
+            CacheEvent.COMPUTER_UPDATED.value,
+            CacheEvent.PROJECT_UPDATED.value,
+            CacheEvent.PROJECTS_UPDATED.value,
+            CacheEvent.TODOS_UPDATED.value,
+            CacheEvent.PROJECTS_SNAPSHOT.value,
+            CacheEvent.TODOS_SNAPSHOT.value,
         ):
             computer: str | None = None
             project_path: str | None = None
@@ -944,16 +957,16 @@ class APIServer(BaseAdapter):
                     path_val = getattr(data, "path")
                     if isinstance(path_val, str):
                         project_path = path_val
-                if event == "computer_updated" and computer is None and hasattr(data, "name"):
+                if event == CacheEvent.COMPUTER_UPDATED.value and computer is None and hasattr(data, "name"):
                     name_val = getattr(data, "name")
                     if isinstance(name_val, str):
                         computer = name_val
 
             normalized_event: Literal["computer_updated", "project_updated", "projects_updated", "todos_updated"]
-            if event == "projects_snapshot":
-                normalized_event = "projects_updated"
-            elif event == "todos_snapshot":
-                normalized_event = "todos_updated"
+            if event == CacheEvent.PROJECTS_SNAPSHOT.value:
+                normalized_event = CacheEvent.PROJECTS_UPDATED.value
+            elif event == CacheEvent.TODOS_SNAPSHOT.value:
+                normalized_event = CacheEvent.TODOS_UPDATED.value
             else:
                 normalized_event = event
 

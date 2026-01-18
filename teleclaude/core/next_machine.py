@@ -14,30 +14,98 @@ import os
 import re
 import subprocess
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import Literal, Mapping, cast
+from typing import Mapping, cast
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import Db
+from teleclaude.core.models import ThinkingMode
 from teleclaude.core.session_utils import parse_session_title
 
 logger = get_logger(__name__)
 
+
+class PhaseName(str, Enum):
+    BUILD = "build"
+    REVIEW = "review"
+
+
+class PhaseStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETE = "complete"
+    APPROVED = "approved"
+    CHANGES_REQUESTED = "changes_requested"
+
+
+class RoadmapMarker(str, Enum):
+    PENDING = " "
+    READY = "."
+    IN_PROGRESS = ">"
+    DONE = "x"
+
+
+class RoadmapBox(str, Enum):
+    PENDING = "[ ]"
+    READY = "[.]"
+    IN_PROGRESS = "[>]"
+    DONE = "[x]"
+
+
+class WorktreeScript(str, Enum):
+    PREPARE = "worktree:prepare"
+
+
+DEFAULT_INPUT_SLUG = "input"
+SCRIPTS_KEY = "scripts"
+UNCHECKED_TASK_MARKER = "- [ ]"
+REVIEW_APPROVE_MARKER = "[x] APPROVE"
+PAREN_OPEN = "("
+
 # Fallback matrices: task_type -> [(agent, thinking_mode), ...]
 PREPARE_FALLBACK: dict[str, list[tuple[str, str]]] = {
-    "prepare": [("claude", "slow"), ("codex", "slow"), ("gemini", "slow")],
+    "prepare": [
+        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
+        (AgentName.CODEX.value, ThinkingMode.SLOW.value),
+        (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
+    ],
 }
 
 WORK_FALLBACK: dict[str, list[tuple[str, str]]] = {
-    "bugs": [("codex", "med"), ("claude", "med"), ("gemini", "med")],
-    "build": [("gemini", "med"), ("claude", "med"), ("codex", "med")],
-    "review": [("codex", "slow"), ("claude", "slow"), ("gemini", "slow")],
-    "fix": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
-    "finalize": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
-    "defer": [("claude", "med"), ("gemini", "med"), ("codex", "med")],
+    "bugs": [
+        (AgentName.CODEX.value, ThinkingMode.MED.value),
+        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
+    ],
+    "build": [
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
+        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
+        (AgentName.CODEX.value, ThinkingMode.MED.value),
+    ],
+    "review": [
+        (AgentName.CODEX.value, ThinkingMode.SLOW.value),
+        (AgentName.CLAUDE.value, ThinkingMode.SLOW.value),
+        (AgentName.GEMINI.value, ThinkingMode.SLOW.value),
+    ],
+    "fix": [
+        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
+        (AgentName.CODEX.value, ThinkingMode.MED.value),
+    ],
+    "finalize": [
+        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
+        (AgentName.CODEX.value, ThinkingMode.MED.value),
+    ],
+    "defer": [
+        (AgentName.CLAUDE.value, ThinkingMode.MED.value),
+        (AgentName.GEMINI.value, ThinkingMode.MED.value),
+        (AgentName.CODEX.value, ThinkingMode.MED.value),
+    ],
 }
 
 # Post-completion instructions for each command (used in format_tool_call)
@@ -120,13 +188,13 @@ def format_tool_call(
     """Format a literal tool call for the orchestrator to execute."""
     # Codex requires /prompts: prefix for custom commands
     agent_key = agent.strip().lower()
-    formatted_command = f"/prompts:{command}" if agent_key.startswith("codex") else command
+    formatted_command = f"/prompts:{command}" if agent_key.startswith(AgentName.CODEX.value) else command
 
     # Get post-completion instructions for this command
     post_completion = POST_COMPLETION.get(command, "")
     if post_completion:
         next_call_display = next_call.strip()
-        if next_call_display and "(" not in next_call_display:
+        if next_call_display and PAREN_OPEN not in next_call_display:
             next_call_display = f"{next_call_display}()"
         # Substitute {args} and {next_call} placeholders
         post_completion = post_completion.format(args=args, next_call=next_call_display)
@@ -225,7 +293,7 @@ def format_hitl_guidance(context: str) -> str:
 
 def _slugify(value: str) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return base or "input"
+    return base or DEFAULT_INPUT_SLUG
 
 
 def _ensure_unique_slug(cwd: str, base: str) -> str:
@@ -258,7 +326,7 @@ async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str 
         return None, "No active sessions found to capture input."
     session = sessions[0]
     _, description = parse_session_title(session.title or "")
-    base = _slugify(description or "input")
+    base = _slugify(description or DEFAULT_INPUT_SLUG)
     slug = await asyncio.to_thread(_ensure_unique_slug, cwd, base)
 
     todo_dir = Path(cwd) / "todos" / slug
@@ -300,12 +368,9 @@ async def _create_input_todo_from_latest_session(db: Db, cwd: str) -> tuple[str 
 
 
 # Valid phases and statuses for state.json
-Phase = Literal["build", "review"]
-PhaseStatus = Literal["pending", "complete", "approved", "changes_requested"]
-
 DEFAULT_STATE: dict[str, str | bool | dict[str, bool | list[str]]] = {
-    "build": "pending",
-    "review": "pending",
+    PhaseName.BUILD.value: PhaseStatus.PENDING.value,
+    PhaseName.REVIEW.value: PhaseStatus.PENDING.value,
     "deferrals_processed": False,
     "breakdown": {"assessed": False, "todos": []},
 }
@@ -344,7 +409,11 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, str | bool | dict[st
         relative_path = state_path.relative_to(cwd)
         repo.index.add([str(relative_path)])
         # Create descriptive commit message
-        phases_done = [p for p, s in state.items() if isinstance(s, str) and s in ("complete", "approved")]
+        phases_done = [
+            p
+            for p, s in state.items()
+            if isinstance(s, str) and s in (PhaseStatus.COMPLETE.value, PhaseStatus.APPROVED.value)
+        ]
         msg = f"state({slug}): {', '.join(phases_done) if phases_done else 'init'}"
         repo.index.commit(msg)
         logger.info("Committed state update for %s", slug)
@@ -401,22 +470,22 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
 def is_build_complete(cwd: str, slug: str) -> bool:
     """Check if build phase is complete."""
     state = read_phase_state(cwd, slug)
-    build = state.get("build")
-    return isinstance(build, str) and build == "complete"
+    build = state.get(PhaseName.BUILD.value)
+    return isinstance(build, str) and build == PhaseStatus.COMPLETE.value
 
 
 def is_review_approved(cwd: str, slug: str) -> bool:
     """Check if review phase is approved."""
     state = read_phase_state(cwd, slug)
-    review = state.get("review")
-    return isinstance(review, str) and review == "approved"
+    review = state.get(PhaseName.REVIEW.value)
+    return isinstance(review, str) and review == PhaseStatus.APPROVED.value
 
 
 def is_review_changes_requested(cwd: str, slug: str) -> bool:
     """Check if review requested changes."""
     state = read_phase_state(cwd, slug)
-    review = state.get("review")
-    return isinstance(review, str) and review == "changes_requested"
+    review = state.get(PhaseName.REVIEW.value)
+    return isinstance(review, str) and review == PhaseStatus.CHANGES_REQUESTED.value
 
 
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
@@ -543,7 +612,7 @@ def has_pending_bugs(cwd: str) -> bool:
     if not bugs_path.exists():
         return False
     content = read_text_sync(bugs_path)
-    return "[ ]" in content
+    return RoadmapBox.PENDING.value in content
 
 
 def get_archive_path(cwd: str, slug: str) -> str | None:
@@ -624,7 +693,12 @@ def update_roadmap_state(cwd: str, slug: str, new_state: str) -> bool:
         repo = Repo(cwd)
         configure_git_env(repo, cwd)
         repo.index.add(["todos/roadmap.md"])
-        state_names = {" ": "pending", ".": "ready", ">": "in-progress", "x": "done"}
+        state_names = {
+            RoadmapMarker.PENDING.value: "pending",
+            RoadmapMarker.READY.value: "ready",
+            RoadmapMarker.IN_PROGRESS.value: "in-progress",
+            RoadmapMarker.DONE.value: "done",
+        }
         msg = f"roadmap({slug}): mark {state_names.get(new_state, new_state)}"
         repo.index.commit(msg)
         logger.info("Updated roadmap state for %s to %s", slug, new_state)
@@ -737,7 +811,7 @@ def check_dependencies_satisfied(cwd: str, slug: str, deps: dict[str, list[str]]
             continue
 
         dep_state = roadmap_items[dep]
-        if dep_state != "x":
+        if dep_state != RoadmapMarker.DONE.value:
             # Dependency exists but not completed
             return False
 
@@ -825,11 +899,11 @@ def parse_impl_plan_done(cwd: str, slug: str) -> bool:
                 group_num = int(group_match.group(1))
                 in_target_group = 1 <= group_num <= 4
 
-            if in_target_group and line.strip().startswith("- [ ]"):
+            if in_target_group and line.strip().startswith(UNCHECKED_TASK_MARKER):
                 return False
     else:
         # Any other format: check for ANY unchecked items
-        if "- [ ]" in content:
+        if UNCHECKED_TASK_MARKER in content:
             return False
 
     return True
@@ -848,9 +922,9 @@ def check_review_status(cwd: str, slug: str) -> str:
         return "missing"
 
     content = read_text_sync(review_path)
-    if "[x] APPROVE" in content:
-        return "approved"
-    return "changes_requested"
+    if REVIEW_APPROVE_MARKER in content:
+        return PhaseStatus.APPROVED.value
+    return PhaseStatus.CHANGES_REQUESTED.value
 
 
 # =============================================================================
@@ -880,7 +954,7 @@ async def get_available_agent(
     # Clear expired availability first
     await db.clear_expired_agent_availability()
 
-    fallback_list = fallback_matrix.get(task_type, [("claude", "med")])
+    fallback_list = fallback_matrix.get(task_type, [(AgentName.CLAUDE.value, ThinkingMode.MED.value)])
     soonest_unavailable: tuple[str, str, str | None] | None = None
 
     for agent, thinking_mode in fallback_list:
@@ -1090,7 +1164,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
         try:
             with open(package_json, "r", encoding="utf-8") as f:
                 data: dict[str, dict[str, str]] = json.load(f)
-            if "scripts" not in data or "worktree:prepare" not in data["scripts"]:
+            if SCRIPTS_KEY not in data or WorktreeScript.PREPARE.value not in data[SCRIPTS_KEY]:
                 msg = f"package.json exists but 'worktree:prepare' script not found in {cwd}"
                 logger.error(msg)
                 raise RuntimeError(msg)
@@ -1103,7 +1177,7 @@ def _prepare_worktree(cwd: str, slug: str) -> None:
         logger.info("Preparing worktree with: npm run worktree:prepare -- %s", slug)
         try:
             result = subprocess.run(
-                ["npm", "run", "worktree:prepare", "--", slug],
+                ["npm", "run", WorktreeScript.PREPARE.value, "--", slug],
                 cwd=cwd,
                 check=True,
                 capture_output=True,
@@ -1187,7 +1261,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
     # 1. Resolve slug
     resolved_slug = slug
 
-    if resolved_slug == "input":
+    if resolved_slug == DEFAULT_INPUT_SLUG:
         created_slug, note = await _create_input_todo_from_latest_session(db, cwd)
         if created_slug:
             return format_hitl_guidance(
@@ -1326,8 +1400,8 @@ async def next_prepare(db: Db, slug: str | None, cwd: str, hitl: bool = True) ->
 
     # 4. Both exist - mark as ready if pending (avoid downgrading [>] or [x])
     current_state = await asyncio.to_thread(get_roadmap_state, cwd, resolved_slug)
-    if current_state == " ":  # Only transition pending -> ready
-        await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, ".")
+    if current_state == RoadmapMarker.PENDING.value:  # Only transition pending -> ready
+        await asyncio.to_thread(update_roadmap_state, cwd, resolved_slug, RoadmapMarker.READY.value)
     # else: already [.], [>], or [x] - no state change needed
     return format_prepared(resolved_slug)
 
@@ -1374,7 +1448,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
 
         state: str = match.group(1)
-        if state == " ":
+        if state == RoadmapMarker.PENDING.value:
             # Item is [ ] (pending) - not prepared yet
             return format_error(
                 "ITEM_NOT_READY",
@@ -1447,7 +1521,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
 
     # 7. Check build status (from state.json in worktree)
     if not await asyncio.to_thread(is_build_complete, worktree_cwd, resolved_slug):
-        agent, mode = await get_available_agent(db, "build", WORK_FALLBACK)
+        agent, mode = await get_available_agent(db, PhaseName.BUILD.value, WORK_FALLBACK)
         return format_tool_call(
             command="next-build",
             args=resolved_slug,
@@ -1481,7 +1555,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                     f'Merge or rebase main into trees/{resolved_slug}, then call teleclaude__next_work(slug="{resolved_slug}") again.'
                 ),
             )
-        agent, mode = await get_available_agent(db, "review", WORK_FALLBACK)
+        agent, mode = await get_available_agent(db, PhaseName.REVIEW.value, WORK_FALLBACK)
         return format_tool_call(
             command="next-review",
             args=resolved_slug,

@@ -1,9 +1,10 @@
 """Build project-centric tree from API data."""
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TypeGuard
 
 from teleclaude.cli.models import ComputerInfo, ProjectInfo, SessionInfo
+from teleclaude.cli.tui.types import NodeType
 
 
 @dataclass(frozen=True)
@@ -25,7 +26,7 @@ class SessionDisplayInfo:
 
 @dataclass
 class ComputerNode:
-    type: Literal["computer"]
+    type: NodeType
     data: ComputerDisplayInfo
     depth: int
     children: list["TreeNode"] = field(default_factory=list)
@@ -34,7 +35,7 @@ class ComputerNode:
 
 @dataclass
 class ProjectNode:
-    type: Literal["project"]
+    type: NodeType
     data: ProjectInfo
     depth: int
     children: list["TreeNode"] = field(default_factory=list)
@@ -43,7 +44,7 @@ class ProjectNode:
 
 @dataclass
 class SessionNode:
-    type: Literal["session"]
+    type: NodeType
     data: SessionDisplayInfo
     depth: int
     children: list["TreeNode"] = field(default_factory=list)
@@ -51,6 +52,21 @@ class SessionNode:
 
 
 TreeNode = ComputerNode | ProjectNode | SessionNode
+
+
+def is_computer_node(node: TreeNode) -> TypeGuard[ComputerNode]:
+    """Return True when the tree node is a computer node."""
+    return node.type == NodeType.COMPUTER
+
+
+def is_project_node(node: TreeNode) -> TypeGuard[ProjectNode]:
+    """Return True when the tree node is a project node."""
+    return node.type == NodeType.PROJECT
+
+
+def is_session_node(node: TreeNode) -> TypeGuard[SessionNode]:
+    """Return True when the tree node is a session node."""
+    return node.type == NodeType.SESSION
 
 
 def build_tree(
@@ -86,7 +102,7 @@ def build_tree(
 
     for computer in computers:
         comp_node = ComputerNode(
-            type="computer",
+            type=NodeType.COMPUTER,
             data=computer,
             depth=0,
             children=[],
@@ -100,7 +116,7 @@ def build_tree(
 
         for project in comp_projects:
             proj_node = ProjectNode(
-                type="project",
+                type=NodeType.PROJECT,
                 data=project,
                 depth=1,
                 children=[],
@@ -171,7 +187,7 @@ def _build_session_node(
     """
     session_data = SessionDisplayInfo(session=session, display_index=str(index))
     node = SessionNode(
-        type="session",
+        type=NodeType.SESSION,
         data=session_data,
         depth=depth,
         children=[],

@@ -10,6 +10,7 @@ import asyncio
 import tempfile
 import traceback
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +28,19 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+
+class IncomingFileType(str, Enum):
+    """Supported inbound file types."""
+
+    DOCUMENT = "document"
+    PHOTO = "photo"
+
+
+FILE_SUBDIR: dict[IncomingFileType, str] = {
+    IncomingFileType.DOCUMENT: "files",
+    IncomingFileType.PHOTO: "photos",
+}
 
 
 class InputHandlersMixin:
@@ -306,23 +320,26 @@ Usage:
         # Get file object (either document or photo)
         file_obj: Document | PhotoSize | None = None
         file_name: str | None = None
-        file_type: str | None = None
+        file_type: IncomingFileType | None = None
 
         if message.document:
             file_obj = message.document
             file_name = message.document.file_name or f"document_{message.message_id}"
-            file_type = "document"
+            file_type = IncomingFileType.DOCUMENT
         elif message.photo:
             # Photos come as array, get largest one
             file_obj = message.photo[-1]  # PhotoSize, not Document
             file_name = f"photo_{message.message_id}.jpg"
-            file_type = "photo"
+            file_type = IncomingFileType.PHOTO
 
         if not file_obj:
             return
 
+        if file_type is None:
+            logger.error("file_type is None, cannot route file attachment")
+            return
         # Determine subdirectory based on file type
-        subdir = "photos" if file_type == "photo" else "files"
+        subdir = FILE_SUBDIR.get(file_type, "files")
         session_workspace = get_session_output_dir(session.session_id) / subdir
         session_workspace.mkdir(parents=True, exist_ok=True)
         if file_name is None:

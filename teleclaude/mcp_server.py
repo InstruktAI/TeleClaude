@@ -4,8 +4,9 @@ import asyncio
 import json
 import os
 import types
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, Awaitable, Callable, TypedDict, cast
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -16,11 +17,12 @@ from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage, TextContent, Tool
 
 from teleclaude.config import config
-from teleclaude.constants import MCP_SOCKET_PATH
+from teleclaude.constants import MCP_SOCKET_PATH, ResultStatus
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, RunAgentCommandArgs, StartSessionArgs
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.mcp.handlers import MCPHandlersMixin
+from teleclaude.mcp.protocol import McpMethod
 from teleclaude.mcp.tool_definitions import get_tool_definitions
 from teleclaude.mcp.types import MCPHealthSnapshot, RemoteRequestError
 
@@ -34,6 +36,28 @@ MCP_SESSION_DATA_MAX_CHARS = int(os.getenv("MCP_SESSION_DATA_MAX_CHARS", "48000"
 MCP_HANDSHAKE_TIMEOUT_S = float(os.getenv("MCP_HANDSHAKE_TIMEOUT_S", "0.0"))
 MCP_CONNECTION_SHUTDOWN_TIMEOUT_S = float(os.getenv("MCP_CONNECTION_SHUTDOWN_TIMEOUT_S", "2.0"))
 MCP_TOOLS_CHANGED_WINDOW_S = float(os.getenv("MCP_TOOLS_CHANGED_WINDOW_S", "30.0"))
+
+
+class ToolName(str, Enum):
+    HELP = "teleclaude__help"
+    LIST_COMPUTERS = "teleclaude__list_computers"
+    LIST_PROJECTS = "teleclaude__list_projects"
+    LIST_SESSIONS = "teleclaude__list_sessions"
+    START_SESSION = "teleclaude__start_session"
+    SEND_MESSAGE = "teleclaude__send_message"
+    RUN_AGENT_COMMAND = "teleclaude__run_agent_command"
+    GET_SESSION_DATA = "teleclaude__get_session_data"
+    DEPLOY = "teleclaude__deploy"
+    SEND_FILE = "teleclaude__send_file"
+    SEND_RESULT = "teleclaude__send_result"
+    STOP_NOTIFICATIONS = "teleclaude__stop_notifications"
+    END_SESSION = "teleclaude__end_session"
+    NEXT_PREPARE = "teleclaude__next_prepare"
+    NEXT_WORK = "teleclaude__next_work"
+    MARK_PHASE = "teleclaude__mark_phase"
+    SET_DEPENDENCIES = "teleclaude__set_dependencies"
+    MARK_AGENT_UNAVAILABLE = "teleclaude__mark_agent_unavailable"
+
 
 # State file for tracking MCP tool signatures across restarts
 _STATE_FILE_PATH = Path(__file__).parent.parent / ".state.json"
@@ -197,7 +221,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
             response_data = await self.client.read_response(message_id, timeout=timeout)
             envelope = json.loads(response_data.strip())
 
-            if envelope.get("status") == "error":
+            if envelope.get("status") == ResultStatus.ERROR.value:
                 error_msg = envelope.get("error", "Unknown error")
                 raise RemoteRequestError(f"Remote error: {error_msg}")
 
@@ -327,7 +351,8 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
             caller_session_id = str(arguments.pop("caller_session_id")) if arguments.get("caller_session_id") else None
 
             logger.debug("MCP tool call", tool=name, caller=caller_session_id)
-            if name == "teleclaude__help":
+
+            async def _handle_help() -> list[TextContent]:
                 text = (
                     "TeleClaude MCP Server\n"
                     "\n"
@@ -339,22 +364,23 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     "if a local Telegram user session is configured.\n"
                 )
                 return [TextContent(type="text", text=text)]
-            if name == "teleclaude__list_computers":
+
+            async def _handle_list_computers() -> list[TextContent]:
                 return self._json_response(await self.teleclaude__list_computers())
 
-            if name == "teleclaude__list_projects":
+            async def _handle_list_projects() -> list[TextContent]:
                 return self._json_response(await self.teleclaude__list_projects(self._str_arg(arguments, "computer")))
 
-            if name == "teleclaude__list_sessions":
+            async def _handle_list_sessions() -> list[TextContent]:
                 computer_obj = arguments.get("computer", "local") if arguments else "local"
                 computer: str | None = None if computer_obj is None else str(computer_obj)
                 return self._json_response(await self.teleclaude__list_sessions(computer))
 
-            if name == "teleclaude__start_session":
+            async def _handle_start_session() -> list[TextContent]:
                 args = StartSessionArgs.from_mcp(arguments or {}, caller_session_id)
                 return self._json_response(await self.teleclaude__start_session(**args.__dict__))
 
-            if name == "teleclaude__send_message":
+            async def _handle_send_message() -> list[TextContent]:
                 chunks = [
                     chunk
                     async for chunk in self.teleclaude__send_message(
@@ -366,11 +392,11 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                 ]
                 return [TextContent(type="text", text="".join(chunks))]
 
-            if name == "teleclaude__run_agent_command":
+            async def _handle_run_agent_command() -> list[TextContent]:
                 args = RunAgentCommandArgs.from_mcp(arguments or {}, caller_session_id)
                 return self._json_response(await self.teleclaude__run_agent_command(**args.__dict__))
 
-            if name == "teleclaude__get_session_data":
+            async def _handle_get_session_data() -> list[TextContent]:
                 since = self._str_arg(arguments, "since_timestamp") or None
                 until = self._str_arg(arguments, "until_timestamp") or None
                 tail_obj = arguments.get("tail_chars") if arguments else None
@@ -386,12 +412,12 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 )
 
-            if name == "teleclaude__deploy":
+            async def _handle_deploy() -> list[TextContent]:
                 computers_obj = arguments.get("computers") if arguments else None
                 targets = [c for c in computers_obj if isinstance(c, str)] if isinstance(computers_obj, list) else None
                 return self._json_response(await self.teleclaude__deploy(targets))
 
-            if name == "teleclaude__send_file":
+            async def _handle_send_file() -> list[TextContent]:
                 caption = self._str_arg(arguments, "caption") or None
                 return [
                     TextContent(
@@ -402,7 +428,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 ]
 
-            if name == "teleclaude__send_result":
+            async def _handle_send_result() -> list[TextContent]:
                 return self._json_response(
                     await self.teleclaude__send_result(
                         self._str_arg(arguments, "session_id"),
@@ -411,7 +437,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 )
 
-            if name == "teleclaude__stop_notifications":
+            async def _handle_stop_notifications() -> list[TextContent]:
                 return self._json_response(
                     await self.teleclaude__stop_notifications(
                         self._str_arg(arguments, "computer"),
@@ -420,25 +446,25 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 )
 
-            if name == "teleclaude__end_session":
+            async def _handle_end_session() -> list[TextContent]:
                 return self._json_response(
                     await self.teleclaude__end_session(
                         self._str_arg(arguments, "computer"), self._str_arg(arguments, "session_id")
                     )
                 )
 
-            if name == "teleclaude__next_prepare":
+            async def _handle_next_prepare() -> list[TextContent]:
                 slug = self._str_arg(arguments, "slug") or None
                 cwd = self._str_arg(arguments, "cwd") or None
                 hitl = cast(bool, arguments.get("hitl", True)) if arguments else True
                 return [TextContent(type="text", text=await self.teleclaude__next_prepare(slug, cwd, hitl))]
 
-            if name == "teleclaude__next_work":
+            async def _handle_next_work() -> list[TextContent]:
                 slug = self._str_arg(arguments, "slug") or None
                 cwd = self._str_arg(arguments, "cwd") or None
                 return [TextContent(type="text", text=await self.teleclaude__next_work(slug, cwd))]
 
-            if name == "teleclaude__mark_phase":
+            async def _handle_mark_phase() -> list[TextContent]:
                 cwd = self._str_arg(arguments, "cwd") or None
                 return [
                     TextContent(
@@ -452,7 +478,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 ]
 
-            if name == "teleclaude__set_dependencies":
+            async def _handle_set_dependencies() -> list[TextContent]:
                 after_raw = arguments.get("after", []) if arguments else []
                 after = [str(a) for a in after_raw] if isinstance(after_raw, list) else []
                 cwd = self._str_arg(arguments, "cwd") or None
@@ -463,7 +489,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 ]
 
-            if name == "teleclaude__mark_agent_unavailable":
+            async def _handle_mark_agent_unavailable() -> list[TextContent]:
                 until = self._str_arg(arguments, "unavailable_until") or None
                 clear = bool(arguments.get("clear")) if arguments else False
                 return [
@@ -478,7 +504,35 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                     )
                 ]
 
-            raise ValueError(f"Unknown tool: {name}")
+            tool_handlers: dict[ToolName, Callable[[], Awaitable[list[TextContent]]]] = {
+                ToolName.HELP: _handle_help,
+                ToolName.LIST_COMPUTERS: _handle_list_computers,
+                ToolName.LIST_PROJECTS: _handle_list_projects,
+                ToolName.LIST_SESSIONS: _handle_list_sessions,
+                ToolName.START_SESSION: _handle_start_session,
+                ToolName.SEND_MESSAGE: _handle_send_message,
+                ToolName.RUN_AGENT_COMMAND: _handle_run_agent_command,
+                ToolName.GET_SESSION_DATA: _handle_get_session_data,
+                ToolName.DEPLOY: _handle_deploy,
+                ToolName.SEND_FILE: _handle_send_file,
+                ToolName.SEND_RESULT: _handle_send_result,
+                ToolName.STOP_NOTIFICATIONS: _handle_stop_notifications,
+                ToolName.END_SESSION: _handle_end_session,
+                ToolName.NEXT_PREPARE: _handle_next_prepare,
+                ToolName.NEXT_WORK: _handle_next_work,
+                ToolName.MARK_PHASE: _handle_mark_phase,
+                ToolName.SET_DEPENDENCIES: _handle_set_dependencies,
+                ToolName.MARK_AGENT_UNAVAILABLE: _handle_mark_agent_unavailable,
+            }
+
+            try:
+                tool_name = ToolName(name)
+            except ValueError as exc:
+                raise ValueError(f"Unknown tool: {name}") from exc
+            handler = tool_handlers.get(tool_name)
+            if not handler:
+                raise ValueError(f"Unknown tool: {name}")
+            return await handler()
 
     async def start(self) -> None:
         """Start MCP server on Unix socket."""
@@ -614,7 +668,7 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                                 message = JSONRPCMessage.model_validate_json(line.decode("utf-8"))
                                 dump = message.model_dump()
                                 method = dump.get("method")
-                                if method != "notifications/initialized":
+                                if method != McpMethod.NOTIFICATIONS_INITIALIZED.value:
                                     logger.trace(
                                         "MCP reader received: method=%s id=%s",
                                         method,
@@ -623,7 +677,10 @@ class TeleClaudeMCPServer(MCPHandlersMixin):
                                 await read_stream_writer.send(SessionMessage(message))
 
                                 # Emit tools/list_changed after handshake if tools changed
-                                if method == "notifications/initialized" and self._should_emit_tools_changed():
+                                if (
+                                    method == McpMethod.NOTIFICATIONS_INITIALIZED.value
+                                    and self._should_emit_tools_changed()
+                                ):
                                     notification = '{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}\n'
                                     writer.write(notification.encode("utf-8"))
                                     await writer.drain()

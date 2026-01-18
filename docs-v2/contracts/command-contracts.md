@@ -1,6 +1,6 @@
 # Command Contracts (Internal)
 
-These describe internal command payloads. The REST API translates its public request
+These describe internal command payloads. The API server translates its public request
 shapes into these internal commands.
 
 ## create_session

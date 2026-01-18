@@ -28,8 +28,8 @@ Return the status of an asynchronous request by `request_id`.
 
 ## Request Requirements
 
-### REST Requests
-Each endpoint accepts a REST‑native payload and is translated into the internal command contract.
+### API Requests
+Each endpoint accepts an HTTP‑native payload and is translated into the internal command contract.
 
 Payload fields and implicit behavior are defined in `docs-v2/contracts/command-contracts.md`.
 

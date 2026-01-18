@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Optional
 from instrukt_ai_logging import get_logger
 from telegram import Message
 
+from teleclaude.constants import ComputerStatus
 from teleclaude.core.db import db
 from teleclaude.core.ux_state import (
     get_system_ux_state,
@@ -110,7 +111,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
         # Restore message IDs from previous session (if any)
         try:
-            ux_state = await get_system_ux_state(db._db)
+            ux_state = await get_system_ux_state(db)
             self.my_ping_message_id = ux_state.registry.ping_message_id
             self.my_pong_message_id = ux_state.registry.pong_message_id
             if self.my_ping_message_id or self.my_pong_message_id:
@@ -147,13 +148,16 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
                 logger.debug(
                     "Registry polled: %d total, %d online",
                     len(self.computers),
-                    len([c for c in self.computers.values() if c["status"] == "online"]),
+                    len([c for c in self.computers.values() if c["status"] == ComputerStatus.ONLINE.value]),
                 )
             except Exception as e:
                 logger.error("Registry poll failed: %s", e)
 
     async def _send_ping(self) -> None:
-        """Send or edit /registry_ping command to General topic."""
+        """Send or edit /registry_ping command to General topic.
+
+        guard: allow-string-compare
+        """
         # Include timestamp so Telegram accepts the edit
         text = f"/registry_ping by {self.bot_username} at {datetime.now().strftime('%H:%M:%S')}"
 
@@ -168,7 +172,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
                 # Persist message ID
                 await update_system_ux_state(
-                    db._db,
+                    db,
                     registry_ping_message_id=self.my_ping_message_id,
                     registry_pong_message_id=self.my_pong_message_id,
                 )
@@ -210,6 +214,8 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
         Called by telegram_adapter when /registry_ping command is received.
         All bots respond with /pong command (commands are visible to all bots).
+
+        guard: allow-string-compare
         """
         text = f"/pong by {self.computer_name} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
@@ -224,7 +230,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
                 # Persist message ID
                 await update_system_ux_state(
-                    db._db,
+                    db,
                     registry_ping_message_id=self.my_ping_message_id,
                     registry_pong_message_id=self.my_pong_message_id,
                 )
@@ -298,7 +304,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
                 self.computers[computer_name] = {
                     "name": computer_name,
                     "bot_username": bot_username,
-                    "status": "online" if is_online else "offline",
+                    "status": ComputerStatus.ONLINE.value if is_online else ComputerStatus.OFFLINE.value,
                     "last_seen": last_seen,
                     "last_seen_ago": f"{int(seconds_ago)}s ago",
                 }
@@ -314,7 +320,7 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
         Returns:
             List of dicts with computer info, sorted by name.
         """
-        computers = [c for c in self.computers.values() if c["status"] == "online"]
+        computers = [c for c in self.computers.values() if c["status"] == ComputerStatus.ONLINE.value]
         return sorted(computers, key=lambda c: str(c["name"]))
 
     def get_all_computers(self) -> list[dict[str, object]]:  # noqa: loose-dict - Computer registry data
@@ -323,7 +329,9 @@ class ComputerRegistry:  # pylint: disable=too-many-instance-attributes  # Regis
 
     def is_computer_online(self, computer_name: str) -> bool:
         """Check if specific computer is currently online."""
-        return computer_name in self.computers and self.computers[computer_name]["status"] == "online"
+        return (
+            computer_name in self.computers and self.computers[computer_name]["status"] == ComputerStatus.ONLINE.value
+        )
 
     def get_computer_info(self, computer_name: str) -> Optional[dict[str, object]]:  # noqa: loose-dict - Computer registry data
         """Get info for specific computer (or None if not found)."""

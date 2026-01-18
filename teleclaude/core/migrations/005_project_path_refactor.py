@@ -8,6 +8,12 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import (
+    COLUMN_PROJECT_PATH,
+    COLUMN_SUBDIR,
+    COLUMN_WORKING_DIRECTORY,
+)
+
 logger = get_logger(__name__)
 
 
@@ -18,7 +24,7 @@ async def up(db: aiosqlite.Connection) -> None:
     existing_columns = [cast(str, row[1]) for row in rows]
 
     # If working_directory is already gone and project_path exists, we're done
-    if "working_directory" not in existing_columns and "project_path" in existing_columns:
+    if COLUMN_WORKING_DIRECTORY not in existing_columns and COLUMN_PROJECT_PATH in existing_columns:
         logger.info("Sessions table already refactored; skipping migration")
         return
 
@@ -94,7 +100,7 @@ async def up(db: aiosqlite.Connection) -> None:
     common_columns = [col for col in desired_columns if col in existing_columns]
 
     # We also want to backfill project_path from working_directory if it exists
-    if "working_directory" in existing_columns:
+    if COLUMN_WORKING_DIRECTORY in existing_columns:
         # Initial copy of common columns
         cols_str = ", ".join(common_columns)
         await db.execute(f"INSERT INTO sessions_new ({cols_str}) SELECT {cols_str} FROM sessions")
@@ -106,10 +112,10 @@ async def up(db: aiosqlite.Connection) -> None:
         logger.info("Backfilled project_path from legacy working_directory")
     else:
         # Just copy common columns (including project_path/subdir if they already existed)
-        if "project_path" in existing_columns:
-            common_columns.append("project_path")
-        if "subdir" in existing_columns:
-            common_columns.append("subdir")
+        if COLUMN_PROJECT_PATH in existing_columns:
+            common_columns.append(COLUMN_PROJECT_PATH)
+        if COLUMN_SUBDIR in existing_columns:
+            common_columns.append(COLUMN_SUBDIR)
 
         cols_str = ", ".join(common_columns)
         await db.execute(f"INSERT INTO sessions_new ({cols_str}) SELECT {cols_str} FROM sessions")

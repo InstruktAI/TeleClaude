@@ -13,7 +13,8 @@ from teleclaude.cli.tui.theme import (
     get_modal_border_attr,
     get_selection_attr,
 )
-from teleclaude.cli.tui.types import CursesWindow
+from teleclaude.cli.tui.types import CursesWindow, NotificationLevel
+from teleclaude.constants import ResultStatus
 
 logger = get_logger(__name__)
 
@@ -223,7 +224,7 @@ class StartSessionModal:
         self._ensure_selected_agent_available()
         if not self._is_agent_available(self.AGENTS[self.selected_agent]):
             if self.notify:
-                self.notify("No agents available to start a session", "error")
+                self.notify("No agents available to start a session", NotificationLevel.ERROR)
             return None
 
         agent = self.AGENTS[self.selected_agent]
@@ -233,7 +234,7 @@ class StartSessionModal:
         message = None if native_session_id else self.prompt
 
         if self.notify:
-            self.notify("Starting session...", "info")
+            self.notify("Starting session...", NotificationLevel.INFO)
         self.start_requested = True
 
         async def _do_create() -> None:
@@ -249,14 +250,14 @@ class StartSessionModal:
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.error("Failed to start session: %s", exc, exc_info=True)
                 if self.notify:
-                    self.notify(f"Start failed: {exc}", "error")
+                    self.notify(f"Start failed: {exc}", NotificationLevel.ERROR)
                 return
 
-            if result.status != "success":
+            if result.status != ResultStatus.SUCCESS.value:
                 error_msg = result.error or "Unknown error"
                 logger.error("Session start failed: %s", error_msg)
                 if self.notify:
-                    self.notify(f"Start failed: {error_msg}", "error")
+                    self.notify(f"Start failed: {error_msg}", NotificationLevel.ERROR)
 
         self._schedule_session_start(_do_create())
         return None

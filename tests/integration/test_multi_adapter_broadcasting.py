@@ -10,6 +10,7 @@ import pytest
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.db import Db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session
@@ -724,5 +725,5 @@ async def test_discover_peers_respects_redis_enabled_flag():
         Path(db_path).unlink(missing_ok=True)
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v", "-s"])

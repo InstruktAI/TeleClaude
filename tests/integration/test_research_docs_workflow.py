@@ -7,6 +7,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from teleclaude.constants import MAIN_MODULE
+
 # Add root to sys.path
 sys.path.append(os.getcwd())
 
@@ -103,5 +105,5 @@ key: value
         self.assertIn("- Last Updated:", index_content)
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     unittest.main()

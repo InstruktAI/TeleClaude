@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.constants import MAIN_MODULE
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import tmux_bridge
@@ -273,5 +275,5 @@ async def test_ai_to_ai_cd_and_claude_commands_execute_in_tmux(daemon_with_mocke
     # The actual Claude startup is tested in test_claude_command_e2e.py
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v"])

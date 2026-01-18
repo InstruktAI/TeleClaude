@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import tempfile
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -26,6 +27,49 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+CALLBACK_SEPARATOR = ":"
+
+
+class CallbackAction(str, Enum):
+    """Supported Telegram callback actions."""
+
+    DOWNLOAD_FULL = "download_full"
+    SESSION_SELECT = "ssel"
+    CHANGE_DIR = "cd"
+    CLAUDE_SELECT = "csel"
+    CLAUDE_RESUME_SELECT = "crsel"
+    GEMINI_SELECT = "gsel"
+    GEMINI_RESUME_SELECT = "grsel"
+    CODEX_SELECT = "cxsel"
+    CODEX_RESUME_SELECT = "cxrsel"
+    CANCEL = "ccancel"
+    SESSION_START = "s"
+    CLAUDE_START = "c"
+    CLAUDE_RESUME_START = "cr"
+    GEMINI_START = "g"
+    GEMINI_RESUME_START = "gr"
+    CODEX_START = "cx"
+    CODEX_RESUME_START = "cxr"
+
+
+AGENT_SELECT_ACTIONS: set[CallbackAction] = {
+    CallbackAction.CLAUDE_SELECT,
+    CallbackAction.CLAUDE_RESUME_SELECT,
+    CallbackAction.GEMINI_SELECT,
+    CallbackAction.GEMINI_RESUME_SELECT,
+    CallbackAction.CODEX_SELECT,
+    CallbackAction.CODEX_RESUME_SELECT,
+}
+
+AGENT_START_ACTIONS: set[CallbackAction] = {
+    CallbackAction.CLAUDE_START,
+    CallbackAction.CLAUDE_RESUME_START,
+    CallbackAction.GEMINI_START,
+    CallbackAction.GEMINI_RESUME_START,
+    CallbackAction.CODEX_START,
+    CallbackAction.CODEX_RESUME_START,
+}
 
 
 class CallbackHandlersMixin:
@@ -92,25 +136,29 @@ class CallbackHandlersMixin:
 
         # Parse callback data
         data = query.data
-        if not data or ":" not in data:
+        if not data or CALLBACK_SEPARATOR not in data:
             return
 
-        action, *args = data.split(":", 1)
+        action_raw, *args = data.split(CALLBACK_SEPARATOR, 1)
+        try:
+            action = CallbackAction(action_raw)
+        except ValueError:
+            return
 
-        if action == "download_full":
+        if action is CallbackAction.DOWNLOAD_FULL:
             await self._handle_download_full(query, args)
-        elif action == "ssel":
+        elif action is CallbackAction.SESSION_SELECT:
             await self._handle_session_select(query)
-        elif action == "cd":
+        elif action is CallbackAction.CHANGE_DIR:
             await self._handle_cd_callback(query, args)
-        elif action in ("csel", "crsel", "gsel", "grsel", "cxsel", "cxrsel"):
-            await self._handle_agent_select(query, action)
-        elif action == "ccancel":
+        elif action in AGENT_SELECT_ACTIONS:
+            await self._handle_agent_select(query, action.value)
+        elif action is CallbackAction.CANCEL:
             await self._handle_cancel(query, args)
-        elif action == "s":
+        elif action is CallbackAction.SESSION_START:
             await self._handle_session_start(query, args)
-        elif action in ("c", "cr", "g", "gr", "cx", "cxr"):
-            await self._handle_agent_start(query, action, args)
+        elif action in AGENT_START_ACTIONS:
+            await self._handle_agent_start(query, action.value, args)
 
     async def _handle_download_full(self, query: object, args: list[str]) -> None:
         """Handle download_full callback to download session transcript."""

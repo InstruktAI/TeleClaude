@@ -4,6 +4,8 @@ import os
 
 import pytest
 
+from teleclaude.constants import MAIN_MODULE
+
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
 
 from teleclaude.core import session_cleanup, tmux_bridge
@@ -191,5 +193,5 @@ async def test_close_session_deletes_from_db(daemon_with_mocked_telegram):
     assert retrieved.closed_at is not None
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v", "-s"])

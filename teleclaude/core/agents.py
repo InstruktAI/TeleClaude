@@ -24,10 +24,21 @@ class AgentName(str, Enum):
                 return member
         raise ValueError(f"Unknown agent '{value}'")
 
+    @classmethod
+    def choices(cls) -> tuple[str, ...]:
+        """Return all agent names as a tuple of string values."""
+        return tuple(member.value for member in cls)
+
 
 def normalize_agent_name(value: str) -> str:
     """Normalize and validate an agent name, returning the canonical value."""
     return AgentName.from_str(value).value
+
+
+def is_agent_title(title: str) -> bool:
+    """Return True if a tmux pane title appears to belong to any known agent."""
+    lowered = title.lower()
+    return any(agent.value in lowered for agent in AgentName)
 
 
 def _get_agent_config(agent: str) -> AgentConfig:

@@ -474,8 +474,8 @@ class TelegramAdapter(
             logger.error("Make sure the bot is added to the group as a member!")
 
         # Restore registry_message_id from system UX state (for clean UX after restart)
-        if db._db:  # Check connection exists
-            system_state = await get_system_ux_state(db._db)
+        if db.is_initialized():
+            system_state = await get_system_ux_state(db)
         else:
             raise AdapterError("Database connection not available")
         if system_state.registry.ping_message_id:
@@ -758,7 +758,10 @@ class TelegramAdapter(
         return InlineKeyboardMarkup(keyboard)
 
     async def _send_heartbeat(self) -> None:
-        """Send or edit [REGISTRY] heartbeat message in General topic."""
+        """Send or edit [REGISTRY] heartbeat message in General topic.
+
+        guard: allow-string-compare
+        """
         text = f"[REGISTRY] {self.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
         # Get bot info for @mention
@@ -791,8 +794,8 @@ class TelegramAdapter(
                 )
 
                 # Persist to system UX state (for clean UX after restart)
-                if db._db:
-                    await update_system_ux_state(db._db, registry_ping_message_id=self.registry_message_id)
+                if db.is_initialized():
+                    await update_system_ux_state(db, registry_ping_message_id=self.registry_message_id)
             except BadRequest as e:
                 logger.error("Failed to post heartbeat - Full error details: %s", e)
                 logger.error("Error type: %s, Error message: %s", type(e).__name__, str(e))

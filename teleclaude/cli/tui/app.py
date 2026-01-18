@@ -26,12 +26,14 @@ from teleclaude.cli.models import (
 )
 from teleclaude.cli.tui.pane_manager import TmuxPaneManager
 from teleclaude.cli.tui.theme import get_tab_line_attr, init_colors
-from teleclaude.cli.tui.types import CursesWindow
+from teleclaude.cli.tui.tree import is_session_node
+from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NotificationLevel
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.banner import BANNER_HEIGHT, render_banner
 from teleclaude.cli.tui.widgets.footer import Footer
 from teleclaude.cli.tui.widgets.tab_bar import TabBar
+from teleclaude.constants import LOCAL_COMPUTER
 
 # Allow nested event loops (required for async calls inside curses sync loop)
 nest_asyncio.apply()
@@ -82,7 +84,7 @@ def _key_name(key: int) -> str:
 class FocusLevel:
     """A single level in the focus stack."""
 
-    type: str  # "computer" or "project"
+    type: FocusLevelType
     name: str  # Computer name or project path
 
 
@@ -92,7 +94,7 @@ class FocusContext:
 
     stack: list[FocusLevel] = field(default_factory=list)
 
-    def push(self, level_type: str, name: str) -> None:
+    def push(self, level_type: FocusLevelType, name: str) -> None:
         """Push a new focus level."""
         self.stack.append(FocusLevel(type=level_type, name=name))
 
@@ -111,7 +113,7 @@ class FocusContext:
     def computer(self) -> str | None:
         """Get focused computer name, if any."""
         for level in self.stack:
-            if level.type == "computer":
+            if level.type is FocusLevelType.COMPUTER:
                 return level.name
         return None
 
@@ -119,7 +121,7 @@ class FocusContext:
     def project(self) -> str | None:
         """Get focused project path, if any."""
         for level in self.stack:
-            if level.type == "project":
+            if level.type is FocusLevelType.PROJECT:
                 return level.name
         return None
 
@@ -129,9 +131,9 @@ class FocusContext:
             return ""
         parts: list[str] = []
         for level in self.stack:
-            if level.type == "computer":
+            if level.type is FocusLevelType.COMPUTER:
                 parts.append(level.name)
-            elif level.type == "project":
+            elif level.type is FocusLevelType.PROJECT:
                 # Show just the last directory name
                 parts.append(level.name.split("/")[-1] or level.name)
         return " > ".join(parts)
@@ -142,7 +144,7 @@ class Notification:
     """A temporary notification message."""
 
     message: str
-    level: str  # "info", "error", "success"
+    level: NotificationLevel
     expires_at: float  # timestamp when it should disappear
 
 
@@ -266,16 +268,16 @@ class TelecApp:
             logger.debug("Data refresh complete")
         except Exception as e:
             logger.error("Failed to refresh data: %s", e, exc_info=True)
-            self.notify(f"Refresh failed: {e}", "error")
+            self.notify(f"Refresh failed: {e}", NotificationLevel.ERROR)
 
-    def notify(self, message: str, level: str = "info") -> None:
+    def notify(self, message: str, level: NotificationLevel = NotificationLevel.INFO) -> None:
         """Show a temporary notification.
 
         Args:
             message: Message to display
             level: Notification level ("info", "error", "success")
         """
-        duration = NOTIFICATION_DURATION_ERROR if level == "error" else NOTIFICATION_DURATION_INFO
+        duration = NOTIFICATION_DURATION_ERROR if level is NotificationLevel.ERROR else NOTIFICATION_DURATION_INFO
         self.notification = Notification(
             message=message,
             level=level,
@@ -285,9 +287,9 @@ class TelecApp:
     def _sync_focus_subscriptions(self) -> None:
         """Subscribe/unsubscribe remote computers based on current focus."""
         current = self.focus.computer
-        if not current or current == "local":
+        if not current or current == LOCAL_COMPUTER:
             for computer in list(self._subscribed_computers):
-                if computer != "local":
+                if computer != LOCAL_COMPUTER:
                     self.api.unsubscribe(computer)
                     self._subscribed_computers.discard(computer)
             return
@@ -665,16 +667,16 @@ class TelecApp:
             view = self.views.get(self.current_view)
             if isinstance(view, SessionsView) and view.flat_items:
                 selected = view.flat_items[view.selected_index]
-                if selected.type == "session":
+                if is_session_node(selected):
                     session_id = selected.data.session.session_id
                     if session_id:
                         logger.debug("Agent restart requested for session %s", session_id[:8])
                         try:
                             asyncio.get_event_loop().run_until_complete(self.api.agent_restart(session_id))
-                            self.notify("Agent restart triggered", "info")
+                            self.notify("Agent restart triggered", NotificationLevel.INFO)
                         except Exception as e:
                             logger.error("Error restarting agent: %s", e)
-                            self.notify(f"Restart failed: {e}", "error")
+                            self.notify(f"Restart failed: {e}", NotificationLevel.ERROR)
 
         # View-specific actions
         else:
@@ -784,9 +786,9 @@ class TelecApp:
         prefix = "  📍 "
         parts: list[str] = []
         for level in self.focus.stack:
-            if level.type == "computer":
+            if level.type is FocusLevelType.COMPUTER:
                 parts.append(level.name)
-            elif level.type == "project":
+            elif level.type is FocusLevelType.PROJECT:
                 parts.append(level.name.split("/")[-1] or level.name)
 
         try:
@@ -830,9 +832,9 @@ class TelecApp:
         start_col = max(0, (width - msg_len) // 2)
 
         # Color based on level
-        if self.notification.level == "error":
+        if self.notification.level is NotificationLevel.ERROR:
             attr = curses.color_pair(1) | curses.A_BOLD  # Red
-        elif self.notification.level == "success":
+        elif self.notification.level is NotificationLevel.SUCCESS:
             attr = curses.color_pair(2) | curses.A_BOLD  # Green
         else:
             attr = curses.A_REVERSE  # Info - inverted

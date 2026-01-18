@@ -3,6 +3,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+from teleclaude.constants import MAIN_MODULE
+
 # Add root to sys.path
 sys.path.append(os.getcwd())
 from scripts.research_docs import update_index
@@ -62,5 +64,5 @@ class TestResearchDocs(unittest.TestCase):
         self.assertEqual(written_data.count("## Existing\n"), 1)
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     unittest.main()

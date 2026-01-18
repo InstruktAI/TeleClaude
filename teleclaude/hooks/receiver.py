@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,9 +24,13 @@ from adapters import claude as claude_adapter  # noqa: E402
 from adapters import codex as codex_adapter  # noqa: E402
 from adapters import gemini as gemini_adapter  # noqa: E402
 
+
 from teleclaude.config import config  # noqa: E402
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS  # noqa: E402
+from teleclaude.core.agents import AgentName  # noqa: E402
+from teleclaude.core import db_models  # noqa: E402
+from teleclaude.constants import MAIN_MODULE, UI_MESSAGE_MAX_CHARS  # noqa: E402
 from teleclaude.hooks.adapters.models import NormalizedHookPayload  # noqa: E402
+from teleclaude.core.events import AgentHookEvents  # noqa: E402
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
@@ -57,7 +60,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--agent",
         required=True,
-        choices=("claude", "codex", "gemini"),
+        choices=AgentName.choices(),
         help="Agent name for adapter selection",
     )
     parser.add_argument("event_type", nargs="?", default=None, help="Hook event type")
@@ -117,38 +120,23 @@ def _enqueue_hook_event(
     db_path = config.database.path
     now = datetime.now(timezone.utc).isoformat()
     payload_json = json.dumps(data)
+    from sqlalchemy import create_engine, text
+    from sqlmodel import Session as SqlSession
 
-    conn = sqlite3.connect(db_path, timeout=5.0)
-    try:
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA busy_timeout = 5000")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS hook_outbox (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                next_attempt_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                attempt_count INTEGER DEFAULT 0,
-                last_error TEXT,
-                delivered_at TEXT,
-                locked_at TEXT
-            )
-            """
+    engine = create_engine(f"sqlite:///{db_path}")
+    with SqlSession(engine) as session:
+        session.exec(text("PRAGMA journal_mode = WAL"))
+        session.exec(text("PRAGMA busy_timeout = 5000"))
+        row = db_models.HookOutbox(
+            session_id=session_id,
+            event_type=event_type,
+            payload=payload_json,
+            created_at=now,
+            next_attempt_at=now,
+            attempt_count=0,
         )
-        conn.execute(
-            """
-            INSERT INTO hook_outbox (
-                session_id, event_type, payload, created_at, next_attempt_at, attempt_count
-            ) VALUES (?, ?, ?, ?, ?, 0)
-            """,
-            (session_id, event_type, payload_json, now, now),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+        session.add(row)
+        session.commit()
 
 
 def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str | None, str | None]:
@@ -156,7 +144,7 @@ def _extract_native_identity(agent: str, data: Mapping[str, Any]) -> tuple[str |
     native_session_id: str | None = None
     native_log_file: str | None = None
 
-    if agent == "codex":
+    if agent == AgentName.CODEX.value:
         raw_id = data.get("thread-id")
     else:
         raw_id = data.get("session_id")
@@ -189,30 +177,34 @@ class NormalizeFn(Protocol):
 
 
 def _get_adapter(agent: str) -> NormalizeFn:
-    if agent == "claude":
+    if agent == AgentName.CLAUDE.value:
         return claude_adapter.normalize_payload
-    if agent == "codex":
+    if agent == AgentName.CODEX.value:
         return codex_adapter.normalize_payload
-    if agent == "gemini":
+    if agent == AgentName.GEMINI.value:
         return gemini_adapter.normalize_payload
     raise ValueError(f"Unknown agent '{agent}'")
 
 
 def _normalize_event_type(agent: str, event_type: str | None) -> str | None:
+    """Normalize raw hook event types.
+
+    guard: allow-string-compare
+    """
     if event_type is None:
         return None
 
     normalized = event_type.strip().lower().replace("-", "_")
 
-    if agent == "gemini":
+    if agent == AgentName.GEMINI.value:
         if normalized == "after_agent":
-            return "stop"
+            return AgentHookEvents.AGENT_STOP
         if normalized == "before_agent":
-            return "prompt"
+            return AgentHookEvents.AGENT_PROMPT
 
-    if agent == "claude":
+    if agent == AgentName.CLAUDE.value:
         if normalized == "user_prompt_submit":
-            return "prompt"
+            return AgentHookEvents.AGENT_PROMPT
 
     return event_type
 
@@ -230,7 +222,7 @@ def main() -> None:
     )
 
     # Read input based on agent type
-    if args.agent == "codex":
+    if args.agent == AgentName.CODEX.value:
         # Codex notify passes JSON as command-line argument, event is always "stop"
         raw_input = args.event_type or ""
         try:
@@ -299,5 +291,5 @@ def main() -> None:
     _enqueue_hook_event(teleclaude_session_id, event_type, data)
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     main()

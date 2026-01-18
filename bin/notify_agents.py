@@ -32,6 +32,8 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
+from teleclaude.constants import MAIN_MODULE
+
 
 @dataclass
 class AlertState:
@@ -263,5 +265,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     raise SystemExit(main())

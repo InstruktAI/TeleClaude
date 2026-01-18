@@ -8,6 +8,8 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import COLUMN_WORKING_SLUG
+
 logger = get_logger(__name__)
 
 
@@ -22,7 +24,7 @@ async def up(db: aiosqlite.Connection) -> None:
         existing_columns.add(col_name)
 
     # Add working_slug if missing
-    if "working_slug" not in existing_columns:
+    if COLUMN_WORKING_SLUG not in existing_columns:
         await db.execute("ALTER TABLE sessions ADD COLUMN working_slug TEXT")
         await db.commit()
         logger.info("Added working_slug column to sessions table")

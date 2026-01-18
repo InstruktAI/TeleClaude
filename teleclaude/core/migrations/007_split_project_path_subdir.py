@@ -8,6 +8,8 @@ from __future__ import annotations
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import COLUMN_PROJECT_PATH, COLUMN_SUBDIR
+
 logger = get_logger(__name__)
 
 
@@ -15,7 +17,7 @@ async def up(db: aiosqlite.Connection) -> None:
     """Split worktree project_path into project_path + subdir."""
     cursor = await db.execute("PRAGMA table_info(sessions)")
     columns: set[str] = {str(row[1]) for row in await cursor.fetchall()}
-    if "project_path" not in columns or "subdir" not in columns:
+    if COLUMN_PROJECT_PATH not in columns or COLUMN_SUBDIR not in columns:
         logger.info("Skipping worktree split migration: columns missing")
         return
 

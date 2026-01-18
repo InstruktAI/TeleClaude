@@ -236,7 +236,11 @@ async def cleanup_orphan_mcp_wrappers() -> int:
             if len(parts) < 3:
                 continue
             pid_str, ppid_str, command = parts
-            if ppid_str != "1":
+            try:
+                ppid = int(ppid_str)
+            except ValueError:
+                continue
+            if ppid != 1:
                 continue
             if _MCP_WRAPPER_MATCH not in command:
                 continue

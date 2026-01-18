@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Iterable, Optional
 
+from teleclaude.constants import RELATIVE_CURRENT
 from teleclaude.core.db import db
 
 # Session workspace directory (workspace/{session_id}/)
@@ -207,7 +208,7 @@ def split_project_path_and_subdir(
         return str(resolved_target), None
 
     rel = resolved_target.relative_to(best_root)
-    subdir = str(rel) if str(rel) != "." else None
+    subdir = str(rel) if str(rel) != RELATIVE_CURRENT else None
     return str(best_root), subdir
 
 

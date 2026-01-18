@@ -17,6 +17,7 @@ from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
+from teleclaude.constants import AdapterKey, AdapterOp, UiScope
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     COMMAND_EVENTS,
@@ -43,6 +44,7 @@ from teleclaude.core.events import (
     VoiceEventContext,
 )
 from teleclaude.core.models import (
+    AdapterType,
     ChannelMetadata,
     CleanupTrigger,
     MessageMetadata,
@@ -156,7 +158,7 @@ class AdapterClient:
 
     def _ui_broadcast_enabled(self) -> bool:
         """Return True when UI updates should broadcast to all UI adapters."""
-        return config.ui_delivery.scope == "all_ui"
+        return config.ui_delivery.scope == UiScope.ALL.value
 
     def _ui_adapters(self) -> list[tuple[str, UiAdapter]]:
         return [
@@ -190,7 +192,7 @@ class AdapterClient:
                     session.session_id[:8],
                     result,
                 )
-                if adapter_type == "telegram" and self._is_missing_thread_error(result):
+                if adapter_type == AdapterType.TELEGRAM.value and self._is_missing_thread_error(result):
                     missing_thread_error = result
                     telegram_index = index
             output.append((adapter_type, result))
@@ -198,7 +200,7 @@ class AdapterClient:
         if missing_thread_error:
             updated_session = await self._handle_missing_telegram_thread(session, missing_thread_error)
             telegram_adapter = next(
-                (adapter for adapter_type, adapter in ui_adapters if adapter_type == "telegram"),
+                (adapter for adapter_type, adapter in ui_adapters if adapter_type == AdapterType.TELEGRAM.value),
                 None,
             )
             if telegram_adapter:
@@ -208,9 +210,9 @@ class AdapterClient:
                         session.title = updated_session.title
                     retry_result = await task_factory(telegram_adapter)
                     if telegram_index is not None:
-                        output[telegram_index] = ("telegram", retry_result)
+                        output[telegram_index] = (AdapterType.TELEGRAM.value, retry_result)
                     else:
-                        output.append(("telegram", retry_result))
+                        output.append((AdapterType.TELEGRAM.value, retry_result))
                 except Exception as exc:
                     logger.warning(
                         "UI adapter telegram failed %s retry for session %s: %s",
@@ -238,24 +240,24 @@ class AdapterClient:
         # API adapter (local HTTP API)
         api_server = APIServer(self, task_registry=self.task_registry)
         await api_server.start()
-        self.adapters["api"] = api_server
+        self.adapters[AdapterKey.API.value] = api_server
 
         # Telegram adapter
         if os.getenv("TELEGRAM_BOT_TOKEN"):
             telegram = TelegramAdapter(self)
             await telegram.start()  # Raises if fails → daemon crashes
-            self.adapters["telegram"] = telegram  # Register ONLY after success
+            self.adapters[AdapterType.TELEGRAM.value] = telegram  # Register ONLY after success
             logger.info("Started telegram adapter")
 
         # Redis adapter
         if config.redis.enabled:
             redis = RedisTransport(self, task_registry=self.task_registry)
             await redis.start()  # Raises if fails → daemon crashes
-            self.adapters["redis"] = redis  # Register ONLY after success
+            self.adapters[AdapterType.REDIS.value] = redis  # Register ONLY after success
             logger.info("Started redis adapter")
 
         # Validate at least one adapter started
-        if len(self.adapters) == 1 and "api" in self.adapters:
+        if len(self.adapters) == 1 and AdapterKey.API.value in self.adapters:
             raise ValueError("No adapters started - check config.yml and .env")
 
         logger.info("Started %d adapter(s): %s", len(self.adapters), list(self.adapters.keys()))
@@ -298,7 +300,7 @@ class AdapterClient:
             (adapter_type, task_factory(adapter)) for adapter_type, adapter in observers
         ]
 
-        if operation == "delete_message":
+        if operation == AdapterOp.DELETE_MESSAGE.value:
             logger.debug(
                 "Broadcast delete to observers: session=%s origin=%s observers=%s",
                 session.session_id[:8],
@@ -490,7 +492,7 @@ class AdapterClient:
         """
         result = await self._route_to_ui(
             session,
-            "delete_message",
+            AdapterOp.DELETE_MESSAGE.value,
             message_id,
             broadcast=self._ui_broadcast_enabled(),
         )
@@ -606,7 +608,7 @@ class AdapterClient:
                     session_to_send.session_id[:8],
                     result,
                 )
-                if adapter_type == "telegram" and self._is_missing_thread_error(result):
+                if adapter_type == AdapterType.TELEGRAM.value and self._is_missing_thread_error(result):
                     missing_thread_error = result
             elif isinstance(result, str) and not first_success:
                 first_success = result
@@ -614,7 +616,7 @@ class AdapterClient:
 
         if missing_thread_error:
             updated_session = await self._handle_missing_telegram_thread(session_to_send, missing_thread_error)
-            telegram_adapter = self.adapters.get("telegram")
+            telegram_adapter = self.adapters.get(AdapterType.TELEGRAM.value)
             if isinstance(telegram_adapter, UiAdapter):
                 try:
                     retry_session = updated_session or session_to_send
@@ -655,7 +657,7 @@ class AdapterClient:
         return text[:200]
 
     def _needs_ui_channel(self, session: "Session") -> bool:
-        telegram_adapter = self.adapters.get("telegram")
+        telegram_adapter = self.adapters.get(AdapterType.TELEGRAM.value)
         if isinstance(telegram_adapter, UiAdapter):
             telegram_meta = session.adapter_metadata.telegram
             if not telegram_meta or not telegram_meta.topic_id:
@@ -664,6 +666,10 @@ class AdapterClient:
 
     @staticmethod
     def _is_missing_thread_error(error: Exception) -> bool:
+        """Return True if Telegram indicates the topic/thread is missing.
+
+        guard: allow-string-compare
+        """
         error_text = str(error).lower()
         return (
             "message thread not found" in error_text or "topic_deleted" in error_text or "topic deleted" in error_text
@@ -1340,18 +1346,18 @@ class AdapterClient:
             for adapter_type, channel_id in all_channel_ids.items():
                 adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
                 if not adapter_meta:
-                    if adapter_type == "telegram":
+                    if adapter_type == AdapterType.TELEGRAM.value:
                         adapter_meta = TelegramAdapterMetadata()
-                    elif adapter_type == "redis":
+                    elif adapter_type == AdapterType.REDIS.value:
                         adapter_meta = RedisTransportMetadata()
                     else:
                         continue
                     setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
 
                 # Store channel_id - telegram uses topic_id, redis uses channel_id
-                if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
+                if adapter_type == AdapterType.TELEGRAM.value and isinstance(adapter_meta, TelegramAdapterMetadata):
                     adapter_meta.topic_id = int(channel_id)
-                elif adapter_type == "redis" and isinstance(adapter_meta, RedisTransportMetadata):
+                elif adapter_type == AdapterType.REDIS.value and isinstance(adapter_meta, RedisTransportMetadata):
                     adapter_meta.channel_id = channel_id
 
             await db.update_session(session_id, adapter_metadata=updated_session.adapter_metadata)
@@ -1371,7 +1377,7 @@ class AdapterClient:
 
         pending: list[tuple[str, UiAdapter]] = []
         for adapter_type, adapter in ui_adapters:
-            if adapter_type == "telegram":
+            if adapter_type == AdapterType.TELEGRAM.value:
                 telegram_meta = session.adapter_metadata.telegram
                 if telegram_meta and telegram_meta.topic_id:
                     continue
@@ -1407,13 +1413,13 @@ class AdapterClient:
         for adapter_type, channel_id in channel_ids.items():
             adapter_meta: object = getattr(updated_session.adapter_metadata, adapter_type, None)
             if not adapter_meta:
-                if adapter_type == "telegram":
+                if adapter_type == AdapterType.TELEGRAM.value:
                     adapter_meta = TelegramAdapterMetadata()
                     setattr(updated_session.adapter_metadata, adapter_type, adapter_meta)
                 else:
                     continue
 
-            if adapter_type == "telegram" and isinstance(adapter_meta, TelegramAdapterMetadata):
+            if adapter_type == AdapterType.TELEGRAM.value and isinstance(adapter_meta, TelegramAdapterMetadata):
                 adapter_meta.topic_id = int(channel_id)
 
         await db.update_session(session.session_id, adapter_metadata=updated_session.adapter_metadata)

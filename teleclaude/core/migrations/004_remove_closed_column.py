@@ -8,6 +8,8 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import COLUMN_CLOSED
+
 logger = get_logger(__name__)
 
 
@@ -17,7 +19,7 @@ async def up(db: aiosqlite.Connection) -> None:
     rows = await cursor.fetchall()
     existing_columns = [cast(str, row[1]) for row in rows]
 
-    if "closed" not in existing_columns:
+    if COLUMN_CLOSED not in existing_columns:
         logger.info("Legacy closed column not present; skipping migration")
         return
 

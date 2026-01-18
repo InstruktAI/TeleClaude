@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
@@ -137,7 +138,7 @@ class AgentCoordinator:
         source_computer = payload.source_computer
 
         # 1. Notify local listeners
-        computer = source_computer or "local"
+        computer = source_computer or LOCAL_COMPUTER
         await notify_input_request(session_id, computer, str(message))
 
         # 2. Forward to remote initiator (skip if already forwarded from remote)
@@ -164,7 +165,7 @@ class AgentCoordinator:
         """Notify local listeners via tmux injection."""
         target_session = await db.get_session(target_session_id)
         display_title = title or (target_session.title if target_session else "Unknown")
-        computer = source_computer or "local"
+        computer = source_computer or LOCAL_COMPUTER
         await notify_stop(target_session_id, computer, title=display_title)
 
     async def _forward_stop_to_initiator(self, session_id: str) -> None:

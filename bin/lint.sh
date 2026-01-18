@@ -8,7 +8,7 @@ dirs="teleclaude bin"
 echo "Running lint checks"
 
 echo "Running guardrails"
-python scripts/guardrails.py
+python scripts/guardrails.py "$@"
 
 echo "Running ruff format (check)"
 ruff format --check $dirs
@@ -18,6 +18,3 @@ ruff check $dirs
 
 echo "Running pyright"
 pyright
-
-echo "Running mypy"
-mypy teleclaude

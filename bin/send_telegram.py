@@ -21,6 +21,8 @@ from pathlib import Path
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
+from teleclaude.constants import MAIN_MODULE
+
 
 def _post_form(url: str, data: dict[str, str], timeout_s: float) -> dict:
     encoded = urllib.parse.urlencode(data).encode("utf-8")
@@ -179,5 +181,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     raise SystemExit(main())

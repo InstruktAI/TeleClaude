@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import LOCAL_COMPUTER
+
 logger = get_logger(__name__)
 
 
@@ -290,7 +292,7 @@ async def notify_stop(
         Number of listeners successfully notified
     """
     title_part = f' "{title}"' if title else ""
-    location_part = f" on {computer}" if computer != "local" else ""
+    location_part = f" on {computer}" if computer != LOCAL_COMPUTER else ""
     message = (
         f"Session {target_session_id[:8]}{location_part}{title_part} finished its turn. "
         f"Use teleclaude__get_session_data(computer='{computer}', "

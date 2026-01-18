@@ -20,6 +20,13 @@ from typing import MutableMapping, TypedDict
 
 from instrukt_ai_logging import configure_logging, get_logger
 
+from teleclaude.constants import MAIN_MODULE
+from teleclaude.mcp.protocol import McpMethod
+
+PARAM_CWD = "cwd"
+RESULT_KEY = "result"
+EMPTY_STRING = ""
+
 configure_logging("teleclaude")
 
 logger = get_logger("teleclaude.mcp_wrapper")
@@ -27,7 +34,7 @@ logger = get_logger("teleclaude.mcp_wrapper")
 MCP_SOCKET = "/tmp/teleclaude.sock"
 # Map parameter names to env var names. Special value None means use os.getcwd()
 CONTEXT_TO_INJECT: dict[str, str | None] = {
-    "cwd": None,  # Special: inject os.getcwd() instead of env var
+    PARAM_CWD: None,  # Special: inject os.getcwd() instead of env var
 }
 RECONNECT_DELAY = 5
 CONNECTION_TIMEOUT = 10
@@ -102,7 +109,7 @@ def _extract_request_meta(raw_line: bytes) -> tuple[object | None, str | None, s
         return None, None, None
     method = msg.get("method")
     tool_name: str | None = None
-    if method == "tools/call":
+    if method == McpMethod.TOOLS_CALL.value:
         params = msg.get("params")
         if isinstance(params, dict):
             tool_name = params.get("name") if isinstance(params.get("name"), str) else None
@@ -123,7 +130,7 @@ def _read_session_id_marker() -> str | None:
 
 
 def _get_response_timeout(method: str | None, tool_name: str | None) -> float:
-    if method == "tools/call" and tool_name:
+    if method == McpMethod.TOOLS_CALL.value and tool_name:
         return LONG_RUNNING_TOOL_TIMEOUTS.get(tool_name, RESPONSE_TIMEOUT)
     return RESPONSE_TIMEOUT
 
@@ -273,12 +280,12 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
 
     for param_name, env_var in CONTEXT_TO_INJECT.items():
         existing = arguments.get(param_name)
-        has_value = existing is not None and (not isinstance(existing, str) or existing != "")
+        has_value = existing is not None and (not isinstance(existing, str) or existing != EMPTY_STRING)
         if has_value:
             continue
         if env_var is None:
             # Special case: cwd uses os.getcwd()
-            if param_name == "cwd":
+            if param_name == PARAM_CWD:
                 arguments[param_name] = os.getcwd()
         else:
             env_value = os.environ.get(env_var)
@@ -286,7 +293,9 @@ def inject_context(params: MutableMapping[str, object]) -> MutableMapping[str, o
                 arguments[param_name] = env_value
 
     caller_existing = arguments.get("caller_session_id")
-    has_caller = caller_existing is not None and (not isinstance(caller_existing, str) or caller_existing != "")
+    has_caller = caller_existing is not None and (
+        not isinstance(caller_existing, str) or caller_existing != EMPTY_STRING
+    )
     if not has_caller:
         marker_value = _read_session_id_marker()
         if marker_value:
@@ -309,7 +318,7 @@ def process_message(
     message: MutableMapping[str, object],
 ) -> MutableMapping[str, object]:
     """Process outgoing messages, injecting context where needed."""
-    if message.get("method") == "tools/call":
+    if message.get("method") == McpMethod.TOOLS_CALL.value:
         params = message.get("params")
         if isinstance(params, MutableMapping):
             message["params"] = inject_context(params)
@@ -471,7 +480,7 @@ class MCPProxy:
 
         # When triggered by "initialize", handle_initialize() handles the handshake directly,
         # so we skip _startup_resync() to avoid duplicate initialize requests.
-        skip_resync = reason == "initialize"
+        skip_resync = reason == McpMethod.INITIALIZE.value
 
         async def _runner() -> None:
             async with self._reconnect_lock:
@@ -718,7 +727,7 @@ class MCPProxy:
 
                 request_id, method, tool_name = _extract_request_meta(line)
 
-                if method == "tools/list" and request_id is not None:
+                if method == McpMethod.TOOLS_LIST.value and request_id is not None:
                     refresh_tool_cache_if_needed()
                     if not self.connected.is_set() or not self.writer:
                         await self._send_tools_list_cached(request_id)
@@ -730,10 +739,10 @@ class MCPProxy:
                     msg = json.loads(line.decode())
                     if isinstance(msg, MutableMapping):
                         # Capture client handshake messages for replay across backend restarts.
-                        if msg.get("method") == "initialize":
+                        if msg.get("method") == McpMethod.INITIALIZE.value:
                             self._client_initialize_request = (json.dumps(msg) + "\n").encode("utf-8")
                             self._client_initialize_id = msg.get("id")
-                        elif msg.get("method") == "notifications/initialized":
+                        elif msg.get("method") == McpMethod.NOTIFICATIONS_INITIALIZED.value:
                             self._client_initialized_notification = (json.dumps(msg) + "\n").encode("utf-8")
 
                         msg = process_message(msg)
@@ -837,7 +846,7 @@ class MCPProxy:
                 self._suppress_backend_init_messages = False
                 # Avoid sending a duplicate notifications/initialized during
                 # startup when the client itself sends it right after initialize.
-                if method == "notifications/initialized" and request_id is None:
+                if method == McpMethod.NOTIFICATIONS_INITIALIZED.value and request_id is None:
                     continue
 
             try:
@@ -915,7 +924,7 @@ class MCPProxy:
                             self._suppress_backend_init_messages
                             and isinstance(msg, dict)
                             and msg.get("id") == self._client_initialize_id
-                            and "result" in msg
+                            and RESULT_KEY in msg
                         ):
                             self._backend_init_response.set()
                             continue
@@ -925,16 +934,16 @@ class MCPProxy:
                     if isinstance(msg, dict):
                         response_id = msg.get("id")
                         if (
-                            "result" in msg
-                            and isinstance(msg.get("result"), dict)
-                            and isinstance(msg["result"].get("tools"), list)
+                            RESULT_KEY in msg
+                            and isinstance(msg.get(RESULT_KEY), dict)
+                            and isinstance(msg[RESULT_KEY].get("tools"), list)
                         ):
                             # Cache tools/list response for startup fallbacks.
-                            tools = msg["result"]["tools"]
+                            tools = msg[RESULT_KEY]["tools"]
                             if isinstance(tools, list):
                                 updated = _update_tool_cache(tools, "backend")
                                 if updated is not None:
-                                    msg["result"]["tools"] = updated
+                                    msg[RESULT_KEY]["tools"] = updated
                         if response_id in self._pending_requests:
                             self._pending_requests.pop(response_id, None)
                             started_at = self._pending_started.pop(response_id, None)
@@ -985,10 +994,10 @@ class MCPProxy:
             line_str = line.decode()
             msg = json.loads(line_str)
 
-            if msg.get("method") == "initialize":
+            if msg.get("method") == McpMethod.INITIALIZE.value:
                 # Delay backend connection until we know a real client is present.
                 # This prevents orphaned wrappers from consuming backend sockets.
-                self._schedule_reconnect("initialize")
+                self._schedule_reconnect(McpMethod.INITIALIZE.value)
                 request_id = msg.get("id", 1)
                 self._client_initialize_request = line
                 self._client_initialize_id = request_id
@@ -1166,5 +1175,5 @@ def main():
     asyncio.run(proxy.run())
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     main()

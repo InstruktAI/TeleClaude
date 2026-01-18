@@ -39,4 +39,4 @@ queued → running → failed
 
 ## Naming
 
-Public REST responses use `request_id` as the external alias of `command_id`.
+Public API responses use `request_id` as the external alias of `command_id`.

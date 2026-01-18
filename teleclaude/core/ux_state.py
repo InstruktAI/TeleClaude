@@ -10,26 +10,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-import aiosqlite
 from instrukt_ai_logging import get_logger
+
+from teleclaude.core.db import Db
 
 logger = get_logger(__name__)
 
-# Module-level DB connection (set by daemon on startup)
-_db: Optional[aiosqlite.Connection] = None
-
 # Sentinel value to distinguish "not provided" from None
 _UNSET = object()
-
-
-async def init(db_path: str) -> None:
-    """Initialize ux_state module with database connection.
-
-    Must be called once by daemon on startup.
-    """
-    global _db
-    _db = await aiosqlite.connect(db_path)
-    _db.row_factory = aiosqlite.Row
 
 
 class UXStateContext(Enum):
@@ -83,7 +71,7 @@ class SystemUXState:
         }
 
 
-async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
+async def get_system_ux_state(db: Db) -> SystemUXState:
     """Get typed UX state for system.
 
     Args:
@@ -94,10 +82,17 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
     """
     try:
         # Load from system_settings table
-        cursor = await db.execute("SELECT value FROM system_settings WHERE key = 'ux_state'")
-        row = await cursor.fetchone()
-        if row:
-            data_raw: object = json.loads(row[0])  # type: ignore[misc]  # Row access is Any from aiosqlite
+        if hasattr(db, "get_system_setting"):
+            value = await db.get_system_setting("ux_state")
+        else:
+            cursor = await db.execute(  # type: ignore[attr-defined]
+                "SELECT value FROM system_settings WHERE key = ?",
+                ("ux_state",),
+            )
+            row = await cursor.fetchone()
+            value = row[0] if row else None
+        if value:
+            data_raw: object = json.loads(value)
             if not isinstance(data_raw, dict):
                 logger.warning("Invalid system ux_state format")
                 return SystemUXState()
@@ -112,7 +107,7 @@ async def get_system_ux_state(db: aiosqlite.Connection) -> SystemUXState:
 
 
 async def update_system_ux_state(
-    db: aiosqlite.Connection,
+    db: Db,
     *,
     registry_topic_id: Optional[int] | object = _UNSET,
     registry_ping_message_id: Optional[int] | object = _UNSET,
@@ -140,17 +135,15 @@ async def update_system_ux_state(
 
         # Store
         ux_state_json = json.dumps(existing.to_dict())
-        await db.execute(
-            """
-            INSERT INTO system_settings (key, value, updated_at)
-            VALUES ('ux_state', ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(key) DO UPDATE SET
-                value = excluded.value,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (ux_state_json,),
-        )
-        await db.commit()
+        if hasattr(db, "set_system_setting"):
+            await db.set_system_setting("ux_state", ux_state_json)
+        else:
+            await db.execute(  # type: ignore[attr-defined]
+                "INSERT INTO system_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("ux_state", ux_state_json),
+            )
+            await db.commit()  # type: ignore[attr-defined]
         logger.debug("Updated system UX state")
 
     except Exception as e:

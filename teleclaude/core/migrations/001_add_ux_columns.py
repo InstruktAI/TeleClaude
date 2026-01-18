@@ -9,6 +9,8 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import COLUMN_UX_STATE
+
 logger = get_logger(__name__)
 
 # Columns to add (name -> type definition)
@@ -51,7 +53,7 @@ async def up(db: aiosqlite.Connection) -> None:
         logger.info("Added columns: %s", ", ".join(added_columns))
 
     # Migrate data from ux_state JSON if column exists
-    if "ux_state" in existing_columns:
+    if COLUMN_UX_STATE in existing_columns:
         await _migrate_ux_state_data(db)
 
 

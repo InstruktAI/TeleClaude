@@ -3,6 +3,8 @@
 This module defines shared constants to ensure consistency.
 """
 
+from enum import Enum
+
 # MCP Configuration
 MCP_SOCKET_PATH = "/tmp/teleclaude.sock"
 API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
@@ -10,6 +12,114 @@ API_SOCKET_PATH = "/tmp/teleclaude-api.sock"
 # Internal configuration (not user-configurable)
 DIRECTORY_CHECK_INTERVAL = 5  # Seconds between directory change checks
 UI_MESSAGE_MAX_CHARS = 3900  # Telegram limit minus formatting overhead
+
+# Common protocol tokens (internal canonical strings)
+MAIN_MODULE = "__main__"
+LOCAL_COMPUTER = "local"
+ENV_ENABLE = "1"
+
+
+class ResultStatus(str, Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+    SENT = "sent"
+    SKIPPED = "skipped"
+    TIMEOUT = "timeout"
+    UNKNOWN = "unknown"
+    DEPLOYED = "deployed"
+
+
+class ComputerStatus(str, Enum):
+    ONLINE = "online"
+    OFFLINE = "offline"
+    RESTARTING = "restarting"
+
+
+class SystemCommand(str, Enum):
+    DEPLOY = "deploy"
+    HEALTH_CHECK = "health_check"
+    EXIT = "exit"
+
+
+class Platform(str, Enum):
+    DARWIN = "darwin"
+
+
+# Redis payload message types
+REDIS_MSG_SYSTEM = "system"
+
+# Redis event types
+EVENT_NEW_SESSION = "new_session"
+
+# Output stream markers
+OUTPUT_COMPLETE_MARKER = "[Output Complete]"
+OUTPUT_SYSTEM_PREFIX = "["
+OUTPUT_HOURGLASS_MARKER = "⏳"
+# File suffixes
+# (Boundary formats keep literals at parse sites.)
+
+# JSON field names (internal normalized schema)
+FIELD_KIND = "kind"
+FIELD_ADAPTER_METADATA = "adapter_metadata"
+FIELD_COMPUTER = "computer"
+FIELD_COMMAND = "command"
+
+
+# Misc markers / defaults
+RELATIVE_CURRENT = "."
+TC_WORKDIR = "TC WORKDIR"
+DB_IN_MEMORY = ":memory:"
+
+# Fallback labels
+LABEL_TOOL = "tool"
+
+# Markdown tokens
+MARKDOWN_FENCE = "```"
+MARKDOWN_INLINE_CODE = "`"
+
+
+# Cache/event names
+class CacheEvent(str, Enum):
+    SESSION_CREATED = "session_created"
+    SESSION_UPDATED = "session_updated"
+    SESSION_REMOVED = "session_removed"
+    PROJECTS_SNAPSHOT = "projects_snapshot"
+    TODOS_SNAPSHOT = "todos_snapshot"
+    PROJECTS_INITIAL = "projects_initial"
+    PREPARATION_INITIAL = "preparation_initial"
+    COMPUTER_UPDATED = "computer_updated"
+    PROJECTS_UPDATED = "projects_updated"
+    PROJECT_UPDATED = "project_updated"
+    TODOS_UPDATED = "todos_updated"
+
+
+# Cache key separator
+CACHE_KEY_SEPARATOR = ":"
+
+# Cache data types
+DATA_TYPE_SESSIONS = "sessions"
+DATA_TYPE_TODOS = "todos"
+DATA_TYPE_PROJECTS = "projects"
+DATA_TYPE_PREPARATION = "preparation"
+
+
+# WebSocket subscription keys
+class WsAction(str, Enum):
+    SUBSCRIBE = "subscribe"
+    UNSUBSCRIBE = "unsubscribe"
+
+
+class AdapterKey(str, Enum):
+    API = "api"
+
+
+class AdapterOp(str, Enum):
+    DELETE_MESSAGE = "delete_message"
+
+
+class UiScope(str, Enum):
+    ALL = "all_ui"
+
 
 # Redis internal settings
 REDIS_MAX_CONNECTIONS = 10

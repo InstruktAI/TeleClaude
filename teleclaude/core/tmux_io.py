@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import string
+from signal import Signals
 from typing import Optional
 
 from instrukt_ai_logging import get_logger
@@ -110,7 +111,13 @@ async def send_arrow_key(session: Session, direction: str, count: int = 1) -> bo
     return await tmux_bridge.send_arrow_key(session.tmux_session_name, direction, count)
 
 
-async def send_signal(session: Session, signal: str) -> bool:
+async def send_signal(session: Session, signal: Signals | str) -> bool:
+    if isinstance(signal, str):
+        try:
+            signal = Signals[signal]
+        except KeyError:
+            logger.warning("Unknown signal %s for session %s", signal, session.session_id[:8])
+            return False
     return await tmux_bridge.send_signal(session.tmux_session_name, signal)
 
 

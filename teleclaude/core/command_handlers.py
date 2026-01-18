@@ -12,12 +12,14 @@ import shlex
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from signal import SIGINT, SIGKILL
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypedDict, cast
 
 import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.constants import TC_WORKDIR
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agents import AgentName, get_agent_command
 from teleclaude.core.db import db
@@ -101,7 +103,7 @@ def with_session(
         @with_session
         async def handle_cancel(session: Session, context: EventContext, ...) -> None:
             # session is already validated and injected
-            await tmux_io.send_signal(session, "SIGINT")
+            await tmux_io.send_signal(session, SIGINT.name)
     """
 
     @functools.wraps(func)
@@ -432,7 +434,7 @@ async def handle_list_todos(project_path: str) -> list[TodoInfo]:
                 next_line = lines[j]
                 if next_line.startswith("      "):  # 6 spaces = indented
                     description += next_line.strip() + " "
-                elif next_line.strip() == "":
+                elif not next_line.strip():
                     continue
                 else:
                     break
@@ -619,7 +621,7 @@ async def handle_cancel_command(
     success = await _execute_control_key(
         tmux_io.send_signal,
         session,
-        "SIGINT",
+        SIGINT.name,
     )
 
     if double and success:
@@ -628,7 +630,7 @@ async def handle_cancel_command(
         success = await _execute_control_key(
             tmux_io.send_signal,
             session,
-            "SIGINT",
+            SIGINT.name,
         )
 
     if success:
@@ -660,7 +662,7 @@ async def handle_kill_command(
     success = await _execute_control_key(
         tmux_io.send_signal,
         session,
-        "SIGKILL",
+        SIGKILL.name,
     )
 
     if success:
@@ -1087,7 +1089,7 @@ async def handle_cd_session(
     target_dir = cd_args.path
 
     # Handle TC WORKDIR special case
-    if target_dir == "TC WORKDIR":
+    if target_dir == TC_WORKDIR:
         target_dir = os.path.expanduser(config.computer.default_working_dir)
     cd_command = f"cd {shlex.quote(target_dir)}"
 
@@ -1386,10 +1388,10 @@ async def handle_agent_restart(
     )
 
     # Kill any existing process (send CTRL+C twice).
-    sent = await tmux_io.send_signal(session, "SIGINT")
+    sent = await tmux_io.send_signal(session, SIGINT.name)
     if sent:
         await asyncio.sleep(0.2)
-        await tmux_io.send_signal(session, "SIGINT")
+        await tmux_io.send_signal(session, SIGINT.name)
         await asyncio.sleep(0.5)
 
     ready = await tmux_io.wait_for_shell_ready(session)
@@ -1428,7 +1430,7 @@ async def handle_claude_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_start(session, context, "claude", args, client, execute_terminal_command)
+    await handle_agent_start(session, context, AgentName.CLAUDE.value, args, client, execute_terminal_command)
 
 
 @with_session
@@ -1446,7 +1448,7 @@ async def handle_claude_resume_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_resume(session, context, "claude", [], client, execute_terminal_command)
+    await handle_agent_resume(session, context, AgentName.CLAUDE.value, [], client, execute_terminal_command)
 
 
 @with_session
@@ -1466,7 +1468,7 @@ async def handle_gemini_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_start(session, context, "gemini", args, client, execute_terminal_command)
+    await handle_agent_start(session, context, AgentName.GEMINI.value, args, client, execute_terminal_command)
 
 
 @with_session
@@ -1484,7 +1486,7 @@ async def handle_gemini_resume_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_resume(session, context, "gemini", [], client, execute_terminal_command)
+    await handle_agent_resume(session, context, AgentName.GEMINI.value, [], client, execute_terminal_command)
 
 
 @with_session
@@ -1504,7 +1506,7 @@ async def handle_codex_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_start(session, context, "codex", args, client, execute_terminal_command)
+    await handle_agent_start(session, context, AgentName.CODEX.value, args, client, execute_terminal_command)
 
 
 @with_session
@@ -1522,4 +1524,4 @@ async def handle_codex_resume_session(
         client: AdapterClient for sending feedback
         execute_terminal_command: Function to execute tmux command
     """
-    await handle_agent_resume(session, context, "codex", [], client, execute_terminal_command)
+    await handle_agent_resume(session, context, AgentName.CODEX.value, [], client, execute_terminal_command)

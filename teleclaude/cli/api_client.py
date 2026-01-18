@@ -4,6 +4,7 @@ import json
 import threading
 import time
 from collections.abc import Callable
+from http import HTTPMethod
 from typing import TypeAlias
 
 import httpx
@@ -226,7 +227,7 @@ class TelecAPIClient:
 
     async def _request(
         self,
-        method: str,
+        method: HTTPMethod | str,
         url: str,
         *,
         timeout: float | None = None,
@@ -253,11 +254,16 @@ class TelecAPIClient:
         request_timeout = timeout if timeout is not None else 5.0
 
         try:
-            if method == "GET":
+            try:
+                method_enum = HTTPMethod(method)
+            except ValueError as e:
+                raise APIError(f"Unsupported HTTP method: {method}") from e
+
+            if method_enum is HTTPMethod.GET:
                 resp = await self._client.get(url, params=params, timeout=request_timeout)
-            elif method == "POST":
+            elif method_enum is HTTPMethod.POST:
                 resp = await self._client.post(url, params=params, json=json_body, timeout=request_timeout)
-            elif method == "DELETE":
+            elif method_enum is HTTPMethod.DELETE:
                 resp = await self._client.delete(url, params=params, timeout=request_timeout)
             else:
                 raise APIError(f"Unsupported HTTP method: {method}")

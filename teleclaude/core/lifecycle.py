@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
+from teleclaude.constants import ComputerStatus, ResultStatus
 from teleclaude.core.db import db
 from teleclaude.core.models import SessionSummary
 from teleclaude.transport.redis_transport import RedisTransport
@@ -105,10 +106,16 @@ class DaemonLifecycle:
                 if status_data:
                     try:
                         status_raw: object = json.loads(status_data.decode("utf-8"))  # type: ignore[misc]
-                        if isinstance(status_raw, dict) and status_raw.get("status") == "restarting":  # type: ignore[misc]
+                        if isinstance(status_raw, dict) and status_raw.get("status") == ComputerStatus.RESTARTING.value:  # type: ignore[misc]
                             await redis_transport.redis.set(
                                 status_key,
-                                json.dumps({"status": "deployed", "timestamp": time.time(), "pid": os.getpid()}),  # type: ignore[misc]
+                                json.dumps(
+                                    {
+                                        "status": ResultStatus.DEPLOYED.value,
+                                        "timestamp": time.time(),
+                                        "pid": os.getpid(),
+                                    }  # type: ignore[misc]
+                                ),
                             )
                             logger.info("Deployment complete, daemon restarted successfully (PID: %s)", os.getpid())
                     except (json.JSONDecodeError, Exception) as e:

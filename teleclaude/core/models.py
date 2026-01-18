@@ -6,6 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, cast
 
+from teleclaude.constants import FIELD_ADAPTER_METADATA, FIELD_COMMAND, FIELD_COMPUTER
 from teleclaude.types import SystemStats
 
 if TYPE_CHECKING:
@@ -255,10 +256,10 @@ class SessionLaunchIntent:
 
     @classmethod
     def from_dict(cls, data: Dict[str, object]) -> "SessionLaunchIntent":
-        if "kind" not in data or data["kind"] is None:
+        if FIELD_KIND not in data or data[FIELD_KIND] is None:
             raise ValueError("launch_intent.kind is required")
         return cls(
-            kind=SessionLaunchKind(str(data["kind"])),
+            kind=SessionLaunchKind(str(data[FIELD_KIND])),
             agent=cast(Optional[str], data.get("agent")),
             thinking_mode=cast(Optional[str], data.get("thinking_mode")),
             message=cast(Optional[str], data.get("message")),
@@ -273,11 +274,34 @@ class SessionLaunchKind(Enum):
     AGENT_RESUME = "agent_resume"
 
 
+FIELD_KIND = "kind"
+
+
 class CleanupTrigger(Enum):
     """When an ephemeral UI message should be removed."""
 
     NEXT_NOTICE = "next_notice"
     NEXT_TURN = "next_turn"
+
+
+class SessionField(Enum):
+    """Session field names used in updates/events."""
+
+    ADAPTER_METADATA = "adapter_metadata"
+    TITLE = "title"
+    PROJECT_PATH = "project_path"
+    SUBDIR = "subdir"
+    LAST_MESSAGE_SENT = "last_message_sent"
+    LAST_MESSAGE_SENT_AT = "last_message_sent_at"
+    LAST_FEEDBACK_RECEIVED = "last_feedback_received"
+    LAST_FEEDBACK_RECEIVED_AT = "last_feedback_received_at"
+
+
+class TranscriptFormat(str, Enum):
+    """Output format for session transcripts."""
+
+    MARKDOWN = "markdown"
+    HTML = "html"
 
 
 @dataclass
@@ -363,8 +387,8 @@ class Session:  # pylint: disable=too-many-instance-attributes
         )
 
         adapter_metadata: SessionAdapterMetadata
-        if "adapter_metadata" in data and isinstance(data["adapter_metadata"], str):
-            adapter_metadata = SessionAdapterMetadata.from_json(data["adapter_metadata"])
+        if FIELD_ADAPTER_METADATA in data and isinstance(data[FIELD_ADAPTER_METADATA], str):
+            adapter_metadata = SessionAdapterMetadata.from_json(data[FIELD_ADAPTER_METADATA])
         else:
             adapter_metadata = SessionAdapterMetadata()
 
@@ -527,7 +551,7 @@ class RunAgentCommandArgs:
         caller_session_id: Optional[str],
     ) -> "RunAgentCommandArgs":
         """Build args from MCP tool call."""
-        if not arguments or "computer" not in arguments or "command" not in arguments:
+        if not arguments or FIELD_COMPUTER not in arguments or FIELD_COMMAND not in arguments:
             raise ValueError("Arguments required for teleclaude__run_agent_command: computer, command")
 
         thinking_mode_raw = str(arguments.get("thinking_mode", ThinkingMode.SLOW))
@@ -540,8 +564,8 @@ class RunAgentCommandArgs:
         project_arg = arguments.get("project")
 
         return cls(
-            computer=str(arguments["computer"]),
-            command=str(arguments["command"]),
+            computer=str(arguments[FIELD_COMPUTER]),
+            command=str(arguments[FIELD_COMMAND]),
             args=str(arguments.get("args", "")),
             session_id=str(session_id_arg) if session_id_arg else None,
             project=str(project_arg) if project_arg else None,

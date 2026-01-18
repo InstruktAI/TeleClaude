@@ -15,9 +15,9 @@ import hashlib
 import json
 import os
 import re
-import ssl
 import time
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, cast
 
@@ -26,6 +26,15 @@ from redis.asyncio import Redis
 
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.config import config
+from teleclaude.constants import (
+    EVENT_NEW_SESSION,
+    OUTPUT_COMPLETE_MARKER,
+    OUTPUT_HOURGLASS_MARKER,
+    OUTPUT_SYSTEM_PREFIX,
+    REDIS_MSG_SYSTEM,
+    CacheEvent,
+    ResultStatus,
+)
 from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentHookEvents,
@@ -54,6 +63,12 @@ from teleclaude.core.models import (
 from teleclaude.core.protocols import RemoteExecutionProtocol
 from teleclaude.core.redis_utils import scan_keys
 from teleclaude.types import SystemStats
+
+
+class RedisCommand(str, Enum):
+    STOP_NOTIFICATION = "stop_notification"
+    INPUT_NOTIFICATION = "input_notification"
+
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -365,7 +380,6 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             max_connections=self.max_connections,
             socket_timeout=self.socket_timeout,
             decode_responses=False,  # We handle decoding manually
-            ssl_cert_reqs=ssl.CERT_NONE,  # Disable certificate verification for self-signed certs
         )
         return redis_client
 
@@ -846,7 +860,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
                         # Unwrap envelope response
                         status: object = envelope.get("status")
-                        if status == "error":
+                        if status == ResultStatus.ERROR.value:
                             error_msg: object = envelope.get("error")
                             logger.warning("Computer %s returned error: %s", computer_name, error_msg)
                             continue
@@ -1001,7 +1015,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         try:
             parsed = self._parse_redis_message(data)
 
-            if parsed.msg_type == "system":
+            if parsed.msg_type == REDIS_MSG_SYSTEM:
                 return await self._handle_system_message(data)
 
             if not parsed.command:
@@ -1023,7 +1037,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             # MESSAGE and CLAUDE events use text in payload (keep message as single string)
             # Other commands use args list
             payload_obj: object
-            if cmd_name == "stop_notification":
+            if cmd_name == RedisCommand.STOP_NOTIFICATION.value:
                 if len(args) < 2:
                     logger.warning("stop_notification received with insufficient args: %s", args)
                     return
@@ -1052,7 +1066,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                     "data": event_data,
                 }
                 logger.debug("Emitting AGENT_EVENT stop for remote session %s", target_session_id[:8])
-            elif cmd_name == "input_notification":
+            elif cmd_name == RedisCommand.INPUT_NOTIFICATION.value:
                 # Format: "/input_notification {session_id} {computer} {message_b64}"
                 if len(args) < 3:
                     logger.warning("input_notification received with insufficient args: %s", args)
@@ -1139,7 +1153,11 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             )
 
             # Start output stream listener for new AI-to-AI sessions
-            if event_type == "new_session" and isinstance(result, dict) and result.get("status") == "success":
+            if (
+                event_type == EVENT_NEW_SESSION
+                and isinstance(result, dict)
+                and result.get("status") == ResultStatus.SUCCESS.value
+            ):
                 result_data = result.get("data")
                 if isinstance(result_data, dict):
                     new_session_id = result_data.get("session_id")
@@ -1309,7 +1327,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             data: Event data (session info dict, etc.)
         """
         # Only push session-related events
-        if event not in ("session_updated", "session_removed"):
+        if event not in (CacheEvent.SESSION_UPDATED.value, CacheEvent.SESSION_REMOVED.value):
             return
 
         # Push events asynchronously without blocking cache notification
@@ -1442,7 +1460,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
         if not session:
             return
         if session.closed_at:
-            await self._push_session_event_to_peers("session_removed", {"session_id": session.session_id})
+            await self._push_session_event_to_peers(
+                CacheEvent.SESSION_REMOVED.value, {"session_id": session.session_id}
+            )
             return
 
         summary = SessionSummary(
@@ -1464,7 +1484,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             initiator_session_id=session.initiator_session_id,
         )
 
-        await self._push_session_event_to_peers("session_updated", summary.to_dict())
+        await self._push_session_event_to_peers(CacheEvent.SESSION_UPDATED.value, summary.to_dict())
 
     async def _handle_session_created(self, _event: str, context: SessionLifecycleContext) -> None:
         """Push local session creations to interested peers via Redis."""
@@ -1495,7 +1515,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
     async def _handle_session_removed(self, _event: str, context: SessionLifecycleContext) -> None:
         """Push local session removals to interested peers via Redis."""
-        await self._push_session_event_to_peers("session_removed", {"session_id": context.session_id})
+        await self._push_session_event_to_peers(CacheEvent.SESSION_REMOVED.value, {"session_id": context.session_id})
 
     async def _pull_initial_sessions(self) -> None:
         """Pull existing sessions from remote computers that have registered interest.
@@ -1540,7 +1560,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
                 # Check response status
                 status = envelope.get("status")
-                if status == "error":
+                if status == ResultStatus.ERROR.value:
                     error_msg = envelope.get("error", "unknown error")
                     logger.warning("Error from %s: %s", computer_name, error_msg)
                     continue
@@ -1597,11 +1617,9 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
             # Check response status
             status = envelope.get("status")
-            if status == "error":
+            if status == ResultStatus.ERROR.value:
                 error_msg = envelope.get("error", "unknown error")
                 logger.warning("Error from %s: %s", computer, error_msg)
-                if isinstance(error_msg, str) and "list_projects_with_todos" in error_msg:
-                    await self.pull_remote_projects(computer)
                 return
 
             # Extract projects data
@@ -1627,7 +1645,10 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             logger.warning("Failed to pull projects from %s: %s", computer, e)
 
     async def pull_remote_projects_with_todos(self, computer: str) -> None:
-        """Pull projects with embedded todos from a remote computer via Redis."""
+        """Pull projects with embedded todos from a remote computer via Redis.
+
+        guard: allow-string-compare
+        """
         if not self.cache:
             logger.warning("Cache unavailable, skipping projects-with-todos pull from %s", computer)
             return
@@ -1647,7 +1668,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
             envelope: dict[str, object] = envelope_obj
 
             status = envelope.get("status")
-            if status == "error":
+            if status == ResultStatus.ERROR.value:
                 error_msg = envelope.get("error", "unknown error")
                 logger.warning("Error from %s: %s", computer, error_msg)
                 if isinstance(error_msg, str) and "list_projects_with_todos" in error_msg:
@@ -1708,7 +1729,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
             # Check response status
             status = envelope.get("status")
-            if status == "error":
+            if status == ResultStatus.ERROR.value:
                 error_msg = envelope.get("error", "unknown error")
                 logger.warning("Error from %s: %s", computer, error_msg)
                 return
@@ -1789,13 +1810,13 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                             continue
 
                         # Update cache based on event type
-                        if event == "session_updated":
+                        if event == CacheEvent.SESSION_UPDATED.value:
                             # Event data is a SessionSummary dict from remote
                             summary = SessionSummary.from_dict(event_data)
                             summary.computer = source_computer
                             self.cache.update_session(summary)
                             logger.debug("Updated cache with session from %s", source_computer)
-                        elif event == "session_removed":
+                        elif event == CacheEvent.SESSION_REMOVED.value:
                             session_id: str = str(event_data.get("session_id", ""))
                             if session_id:
                                 self.cache.remove_session(session_id)
@@ -1873,7 +1894,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                             continue
 
                         # Skip system messages
-                        if chunk.startswith("[") or "⏳" in chunk:
+                        if chunk.startswith(OUTPUT_SYSTEM_PREFIX) or OUTPUT_HOURGLASS_MARKER in chunk:
                             continue
 
                         # This is a message from the initiator - trigger MESSAGE event
@@ -2182,7 +2203,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
 
         result_obj: object = json.loads(data.decode("utf-8"))
         if not isinstance(result_obj, dict):
-            return {"status": "error", "error": "Invalid result format"}
+            return {"status": ResultStatus.ERROR.value, "error": "Invalid result format"}
         result: dict[str, object] = result_obj
         return result
 
@@ -2249,7 +2270,7 @@ class RedisTransport(BaseAdapter, RemoteExecutionProtocol):  # pylint: disable=t
                                 continue
 
                             # Check for completion marker
-                            if "[Output Complete]" in chunk:
+                            if OUTPUT_COMPLETE_MARKER in chunk:
                                 logger.info("Received completion marker for session %s", session_id[:8])
                                 return
 

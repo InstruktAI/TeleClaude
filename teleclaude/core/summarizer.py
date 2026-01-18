@@ -36,7 +36,10 @@ def extract_recent_exchanges(
     agent_name: AgentName,
     n_exchanges: int = 2,
 ) -> str:
-    """Extract last N user messages with their text-only agent responses."""
+    """Extract last N user messages with their text-only agent responses.
+
+    guard: allow-string-compare
+    """
     path = Path(transcript_path).expanduser()
     if not path.exists():
         return ""

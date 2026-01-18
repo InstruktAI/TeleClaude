@@ -5,6 +5,7 @@ import asyncio
 
 import pytest
 
+from teleclaude.constants import MAIN_MODULE
 from teleclaude.core import tmux_bridge
 from teleclaude.core.models import MessageMetadata
 
@@ -137,5 +138,5 @@ async def test_long_running_command(daemon_with_mocked_telegram):
         daemon.mock_command_mode = "short"
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     pytest.main([__file__, "-v"])

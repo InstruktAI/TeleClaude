@@ -13,6 +13,7 @@ import os
 import subprocess
 from typing import Optional
 
+from teleclaude.cli.tui.types import ThemeMode
 from teleclaude.config import config
 
 # Agent color pair IDs (initialized after curses.start_color())
@@ -47,6 +48,8 @@ _TAB_LINE_PAIR_ID = 23
 # Track current mode for reference
 _is_dark_mode: bool = True
 
+_APPLE_DARK_LABEL = "Dark"
+
 
 def _get_tmux_socket_path() -> Optional[str]:
     tmux_env = os.environ.get("TMUX")
@@ -73,7 +76,7 @@ def _get_tmux_appearance_mode() -> Optional[str]:
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     mode = (result.stdout or "").strip().lower()
-    if mode in {"dark", "light"}:
+    if mode in {ThemeMode.DARK.value, ThemeMode.LIGHT.value}:
         return mode
     return None
 
@@ -89,7 +92,7 @@ def is_dark_mode() -> bool:
     """
     tmux_mode = _get_tmux_appearance_mode()
     if tmux_mode:
-        return tmux_mode == "dark"
+        return tmux_mode == ThemeMode.DARK.value
     try:
         result = subprocess.run(
             ["defaults", "read", "-g", "AppleInterfaceStyle"],
@@ -97,7 +100,7 @@ def is_dark_mode() -> bool:
             text=True,
             timeout=1,
         )
-        return "Dark" in result.stdout
+        return _APPLE_DARK_LABEL in result.stdout
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         # Default to dark mode if detection fails (non-macOS, etc.)
         return True

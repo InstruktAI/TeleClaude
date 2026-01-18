@@ -14,12 +14,14 @@ import shutil
 import termios
 import time
 from pathlib import Path
+from signal import SIGINT, SIGKILL, SIGTERM, Signals
 from typing import Dict, List, Optional
 
 import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
+from teleclaude.core.agents import AgentName
 
 logger = get_logger(__name__)
 
@@ -586,7 +588,7 @@ async def _send_keys_tmux(
     """Send keys to tmux (session must already exist)."""
     # Gemini CLI can't handle '!' character - escape it
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
-    send_text = text.replace("!", r"\!") if active_agent == "gemini" else text
+    send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
     # Send command (no pipes - don't leak file descriptors)
     # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
@@ -630,7 +632,7 @@ async def _send_keys_tmux(
     return True
 
 
-async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
+async def send_signal(session_name: str, signal: Signals = SIGINT) -> bool:
     """Send signal to a tmux session.
 
     Args:
@@ -641,7 +643,7 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
         True if successful, False otherwise
     """
     try:
-        if signal == "SIGKILL":
+        if signal is SIGKILL:
             # SIGKILL requires finding the process PID and killing it directly
             # Get the shell PID in the tmux pane
             cmd = [config.computer.tmux_binary, "display-message", "-p", "-t", session_name, "#{pane_pid}"]
@@ -706,9 +708,9 @@ async def send_signal(session_name: str, signal: str = "SIGINT") -> bool:
             return True
 
         # Handle SIGINT and SIGTERM via tmux send-keys
-        if signal == "SIGINT":
+        if signal is SIGINT:
             key = "C-c"
-        elif signal == "SIGTERM":
+        elif signal is SIGTERM:
             key = "C-\\"
         else:
             logger.error("Unsupported signal: %s", signal)
@@ -1036,7 +1038,7 @@ async def session_exists(session_name: str, log_missing: bool = True) -> bool:
                     tmux_processes = [  # type: ignore[misc]
                         {"pid": p.pid, "create_time": p.create_time()}  # type: ignore[misc]
                         for p in psutil.process_iter(["pid", "name", "create_time"])  # type: ignore[misc]
-                        if "tmux" in p.info["name"].lower()  # type: ignore[misc]
+                        if Path(config.computer.tmux_binary).name.lower() in p.info["name"].lower()  # type: ignore[misc]
                     ]
 
                     # Get system metrics
@@ -1143,7 +1145,7 @@ async def is_pane_dead(session_name: str) -> bool:
         panes = [line.strip() for line in lines if line.strip()]
         if not panes:
             return False
-        return all(pane == "1" for pane in panes)
+        return all(int(pane) == 1 for pane in panes if pane.isdigit())
     except Exception:
         return False
 

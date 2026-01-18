@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 
 
+from teleclaude.constants import MAIN_MODULE
 def update_index(title: str, filename: str, source: str, purpose: str, output_dir: str = "docs/3rd") -> None:
     """Update index.md with the new or updated entry."""
     index_path = os.path.join(output_dir, "index.md")
@@ -87,5 +88,5 @@ def main() -> None:
     print(f"Successfully updated {doc_path} and {index_path}")
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     main()

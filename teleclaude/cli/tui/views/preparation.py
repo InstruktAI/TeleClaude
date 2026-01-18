@@ -9,7 +9,7 @@ import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Literal, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence, TypeGuard
 
 from instrukt_ai_logging import get_logger
 
@@ -25,7 +25,7 @@ from teleclaude.cli.models import (
 from teleclaude.cli.tui.pane_manager import ComputerInfo, TmuxPaneManager
 from teleclaude.cli.tui.session_launcher import attach_tmux_from_result
 from teleclaude.cli.tui.todos import TodoItem, parse_roadmap
-from teleclaude.cli.tui.types import CursesWindow
+from teleclaude.cli.tui.types import CursesWindow, FocusLevelType, NodeType, TodoFileFlag, TodoStatus
 from teleclaude.cli.tui.views.base import BaseView, ScrollableViewMixin
 from teleclaude.cli.tui.widgets.modal import StartSessionModal
 from teleclaude.config import config
@@ -77,7 +77,7 @@ class PrepFileDisplayInfo:
 
 @dataclass
 class PrepComputerNode:
-    type: Literal["computer"]
+    type: NodeType
     data: PrepComputerDisplayInfo
     depth: int = 0
     children: list["PrepTreeNode"] = field(default_factory=list)
@@ -85,7 +85,7 @@ class PrepComputerNode:
 
 @dataclass
 class PrepProjectNode:
-    type: Literal["project"]
+    type: NodeType
     data: PrepProjectDisplayInfo
     depth: int = 0
     children: list["PrepTreeNode"] = field(default_factory=list)
@@ -93,7 +93,7 @@ class PrepProjectNode:
 
 @dataclass
 class PrepTodoNode:
-    type: Literal["todo"]
+    type: NodeType
     data: PrepTodoDisplayInfo
     depth: int = 0
     children: list["PrepTreeNode"] = field(default_factory=list)
@@ -101,13 +101,29 @@ class PrepTodoNode:
 
 @dataclass
 class PrepFileNode:
-    type: Literal["file"]
+    type: NodeType
     data: PrepFileDisplayInfo
     depth: int = 0
     children: list["PrepTreeNode"] = field(default_factory=list)
 
 
 PrepTreeNode = PrepComputerNode | PrepProjectNode | PrepTodoNode | PrepFileNode
+
+
+def _is_computer_node(node: PrepTreeNode) -> TypeGuard[PrepComputerNode]:
+    return node.type == NodeType.COMPUTER
+
+
+def _is_project_node(node: PrepTreeNode) -> TypeGuard[PrepProjectNode]:
+    return node.type == NodeType.PROJECT
+
+
+def _is_todo_node(node: PrepTreeNode) -> TypeGuard[PrepTodoNode]:
+    return node.type == NodeType.TODO
+
+
+def _is_file_node(node: PrepTreeNode) -> TypeGuard[PrepFileNode]:
+    return node.type == NodeType.FILE
 
 
 class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
@@ -119,16 +135,16 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
     Files can be selected for view/edit actions.
     """
 
-    STATUS_MARKERS: dict[str, str] = {
-        "pending": "[ ]",
-        "ready": "[.]",
-        "in_progress": "[>]",
+    STATUS_MARKERS: dict[TodoStatus, str] = {
+        TodoStatus.PENDING: "[ ]",
+        TodoStatus.READY: "[.]",
+        TodoStatus.IN_PROGRESS: "[>]",
     }
 
     # Known files in todo folders
     TODO_FILES = [
-        ("requirements.md", "Requirements", "has_requirements"),
-        ("implementation-plan.md", "Implementation Plan", "has_impl_plan"),
+        ("requirements.md", "Requirements", TodoFileFlag.HAS_REQUIREMENTS),
+        ("implementation-plan.md", "Implementation Plan", TodoFileFlag.HAS_IMPL_PLAN),
     ]
 
     def __init__(
@@ -268,7 +284,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         for computer in computers:
             comp_name = computer.computer.name
             comp_node = PrepComputerNode(
-                type="computer",
+                type=NodeType.COMPUTER,
                 data=computer,
                 depth=0,
             )
@@ -278,7 +294,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             for project in comp_projects:
                 project_path = project.path
                 proj_node = PrepProjectNode(
-                    type="project",
+                    type=NodeType.PROJECT,
                     data=PrepProjectDisplayInfo(project=project),
                     depth=1,
                 )
@@ -287,7 +303,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
                 todos = todos_by_project.get(project_path, [])
                 for todo in todos:
                     todo_node = PrepTodoNode(
-                        type="todo",
+                        type=NodeType.TODO,
                         data=PrepTodoDisplayInfo(
                             todo=todo,
                             project_path=project_path,
@@ -315,7 +331,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         # Filter by focused computer
         if self.focus.computer:
             for node in self.tree:
-                if node.type == "computer" and node.data.computer.name == self.focus.computer:
+                if _is_computer_node(node) and node.data.computer.name == self.focus.computer:
                     nodes = [node]
                     logger.debug("Filtered to computer '%s'", self.focus.computer)
                     break
@@ -345,30 +361,30 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         result: list[PrepTreeNode] = []
         for node in nodes:
             display_node: PrepTreeNode
-            if node.type == "computer":
+            if _is_computer_node(node):
                 display_node = PrepComputerNode(
-                    type="computer",
+                    type=NodeType.COMPUTER,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
                 )
-            elif node.type == "project":
+            elif _is_project_node(node):
                 display_node = PrepProjectNode(
-                    type="project",
+                    type=NodeType.PROJECT,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
                 )
-            elif node.type == "todo":
+            elif _is_todo_node(node):
                 display_node = PrepTodoNode(
-                    type="todo",
+                    type=NodeType.TODO,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
                 )
             else:
                 display_node = PrepFileNode(
-                    type="file",
+                    type=NodeType.FILE,
                     data=node.data,
                     depth=base_depth,
                     children=node.children,
@@ -376,10 +392,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             result.append(display_node)
 
             # Always expand computers and projects
-            if node.type in ("computer", "project"):
+            if _is_computer_node(node) or _is_project_node(node):
                 result.extend(self._flatten_tree(node.children, base_depth + 1))
             # Expand todos if in expanded set - add file children
-            elif node.type == "todo":
+            elif _is_todo_node(node):
                 slug = node.data.todo.slug
                 if slug in self.expanded_todos:
                     result.extend(self._create_file_nodes(node, base_depth + 1))
@@ -399,9 +415,13 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         file_nodes: list[PrepTreeNode] = []
         for idx, (filename, display_name, has_flag) in enumerate(self.TODO_FILES, start=1):
             todo_info = todo_node.data
-            exists = todo_info.todo.has_requirements if has_flag == "has_requirements" else todo_info.todo.has_impl_plan
+            exists = (
+                todo_info.todo.has_requirements
+                if has_flag is TodoFileFlag.HAS_REQUIREMENTS
+                else todo_info.todo.has_impl_plan
+            )
             file_node = PrepFileNode(
-                type="file",
+                type=NodeType.FILE,
                 data=PrepFileDisplayInfo(
                     filename=filename,
                     display_name=display_name,
@@ -429,21 +449,31 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
 
         item = self.flat_items[self.selected_index]
 
-        if item.type == "computer":
+        if _is_computer_node(item):
             return f"{back_hint}[->] Focus Computer"
-        if item.type == "project":
+        if _is_project_node(item):
             return f"{back_hint}[Enter] Prepare Project"
-        if item.type == "file":
+        if _is_file_node(item):
             # File actions
             if item.data.exists:
                 return f"{back_hint}[v] View  [e] Edit"
             return f"{back_hint}[e] Create"
-        if item.type == "todo":
-            if item.data.todo.status == "ready":
+        if _is_todo_node(item):
+            if item.data.todo.status == TodoStatus.READY:
                 return f"{back_hint}[Enter/s] Start  [p] Prepare"
             return f"{back_hint}[p] Prepare"
 
         return back_hint.strip() if back_hint else ""
+
+    @staticmethod
+    def _coerce_todo_status(status: TodoStatus | str) -> TodoStatus | None:
+        """Convert todo status value to enum when possible."""
+        if isinstance(status, TodoStatus):
+            return status
+        try:
+            return TodoStatus(status)
+        except ValueError:
+            return None
 
     # move_up() and move_down() inherited from ScrollableViewMixin
 
@@ -461,7 +491,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         logger.debug("collapse_selected: item.type=%s", item.type)
 
         # If on a file, collapse parent todo
-        if item.type == "file":
+        if _is_file_node(item):
             slug = item.data.slug
             if slug in self.expanded_todos:
                 self.expanded_todos.discard(slug)
@@ -471,7 +501,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             logger.debug("collapse_selected: file's parent todo not expanded")
             return False
 
-        if item.type == "todo":
+        if _is_todo_node(item):
             slug = item.data.todo.slug
             if slug in self.expanded_todos:
                 self.expanded_todos.discard(slug)
@@ -497,13 +527,13 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         item = self.flat_items[self.selected_index]
         logger.debug("drill_down: item.type=%s", item.type)
 
-        if item.type == "computer":
-            self.focus.push("computer", item.data.computer.name)
+        if _is_computer_node(item):
+            self.focus.push(FocusLevelType.COMPUTER, item.data.computer.name)
             self.rebuild_for_focus()
             self.selected_index = 0
             logger.debug("drill_down: pushed computer focus")
             return True
-        if item.type == "todo":
+        if _is_todo_node(item):
             # Expand todo to show file children
             slug = item.data.todo.slug
             if slug not in self.expanded_todos:
@@ -521,7 +551,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         logger.debug("expand_all: expanding all todos (currently %d items)", len(self.flat_items))
         count = 0
         for item in self.flat_items:
-            if item.type == "todo":
+            if _is_todo_node(item):
                 self.expanded_todos.add(item.data.todo.slug)
                 count += 1
         logger.debug("expand_all: expanded %d todos, now expanded_todos=%s", count, self.expanded_todos)
@@ -543,16 +573,16 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         if not item:
             return
 
-        if item.type == "computer":
+        if _is_computer_node(item):
             self.drill_down()
-        elif item.type == "project":
+        elif _is_project_node(item):
             self._prepare_project(item.data, stdscr)
-        elif item.type == "todo":
-            if item.data.todo.status == "ready":
+        elif _is_todo_node(item):
+            if item.data.todo.status == TodoStatus.READY:
                 self._start_work(item.data, stdscr)
             else:
                 self.drill_down()
-        elif item.type == "file":
+        elif _is_file_node(item):
             # Enter on file = view if exists
             if item.data.exists:
                 self._view_file(item.data, stdscr)
@@ -789,7 +819,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         logger.debug("handle_key: selected item.type=%s", item.type)
 
         # File-specific actions
-        if item.type == "file":
+        if _is_file_node(item):
             if key == ord("v") and item.data.exists:
                 logger.debug("handle_key: viewing file")
                 self._view_file(item.data, stdscr)
@@ -799,8 +829,8 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             return
 
         # Todo-specific actions
-        if item.type == "todo":
-            if key == ord("s") and item.data.todo.status == "ready":
+        if _is_todo_node(item):
+            if key == ord("s") and item.data.todo.status == TodoStatus.READY:
                 self._start_work(item.data, stdscr)
             elif key == ord("p"):
                 self._prepare(item.data, stdscr)
@@ -866,24 +896,24 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         """
         indent = "  " * item.depth
 
-        if item.type == "computer":
+        if _is_computer_node(item):
             name = item.data.computer.name
             project_count = item.data.project_count
             suffix = f"({project_count})" if project_count else ""
             line = f"{indent}🖥  {name} {suffix}"
             return [line[:width]]
 
-        if item.type == "project":
+        if _is_project_node(item):
             path = item.data.project.path
             todo_count = len(item.children)
             suffix = f"({todo_count})" if todo_count else ""
             line = f"{indent}📁 {path} {suffix}"
             return [line[:width]]
 
-        if item.type == "todo":
+        if _is_todo_node(item):
             return self._format_todo(item, width)
 
-        if item.type == "file":
+        if _is_file_node(item):
             return self._format_file(item, width, item.data.index)
 
         return [""]
@@ -906,7 +936,11 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indicator = "v" if is_expanded else ">"
 
         # Status marker and label
-        marker = self.STATUS_MARKERS.get(item.data.todo.status, "[ ]")
+        status_enum = self._coerce_todo_status(item.data.todo.status)
+        if status_enum is None:
+            marker = "[ ]"
+        else:
+            marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
         status_label = item.data.todo.status
 
         line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"
@@ -1005,7 +1039,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indent = "  " * item.depth
         attr = curses.A_REVERSE if selected else 0
 
-        if item.type == "computer":
+        if _is_computer_node(item):
             name = item.data.computer.name
             project_count = item.data.project_count
             suffix = f"({project_count})" if project_count else ""
@@ -1013,7 +1047,7 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
 
-        if item.type == "project":
+        if _is_project_node(item):
             path = item.data.project.path
             todo_count = len(item.children)
             suffix = f"({todo_count})" if todo_count else ""
@@ -1024,10 +1058,10 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
             stdscr.addstr(row, 0, line[:width], attr)  # type: ignore[attr-defined]
             return 1
 
-        if item.type == "todo":
+        if _is_todo_node(item):
             return self._render_todo(stdscr, row, item, width, selected)
 
-        if item.type == "file":
+        if _is_file_node(item):
             return self._render_file(stdscr, row, item, width, selected, item.data.index)
 
         return 1
@@ -1061,7 +1095,11 @@ class PreparationView(ScrollableViewMixin[PrepTreeNode], BaseView):
         indicator = "v" if is_expanded else ">"
 
         # Status marker and label
-        marker = self.STATUS_MARKERS.get(item.data.todo.status, "[ ]")
+        status_enum = self._coerce_todo_status(item.data.todo.status)
+        if status_enum is None:
+            marker = "[ ]"
+        else:
+            marker = self.STATUS_MARKERS.get(status_enum, "[ ]")
         status_label = item.data.todo.status
 
         line = f"{indent}{marker} {indicator} {slug}  [{status_label}]"

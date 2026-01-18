@@ -95,6 +95,7 @@ enable_error_code = ["literal-required"]
 
 # Enable ALL strict mode flags
 strict = true
+strict_equality = true
 no_strict_optional = true
 
 # Additional strictness beyond --strict (ban ALL forms of Any)

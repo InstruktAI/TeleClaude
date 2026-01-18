@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 
+from teleclaude.constants import MAIN_MODULE
 # Define the valid MCP handshake messages
 INIT_MSG = {
     "jsonrpc": "2.0",
@@ -89,5 +90,5 @@ def run_test():
         wrapper.terminate()
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     run_test()

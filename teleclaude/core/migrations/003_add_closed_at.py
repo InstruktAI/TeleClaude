@@ -8,6 +8,8 @@ from typing import cast
 import aiosqlite
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.migrations.constants import COLUMN_CLOSED_AT
+
 logger = get_logger(__name__)
 
 
@@ -20,7 +22,7 @@ async def up(db: aiosqlite.Connection) -> None:
         col_name = cast(str, row[1])
         existing_columns.add(col_name)
 
-    if "closed_at" not in existing_columns:
+    if COLUMN_CLOSED_AT not in existing_columns:
         await db.execute("ALTER TABLE sessions ADD COLUMN closed_at TIMESTAMP")
         await db.commit()
         logger.info("Added closed_at column to sessions table")

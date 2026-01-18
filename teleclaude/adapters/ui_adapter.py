@@ -22,7 +22,13 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.db import db
 from teleclaude.core.events import SessionUpdatedContext, TeleClaudeEvents, UiCommands
-from teleclaude.core.models import CleanupTrigger, MessageMetadata, TelegramAdapterMetadata
+from teleclaude.core.models import (
+    AdapterType,
+    CleanupTrigger,
+    MessageMetadata,
+    SessionField,
+    TelegramAdapterMetadata,
+)
 from teleclaude.core.session_utils import get_output_file
 from teleclaude.core.voice_message_handler import handle_voice
 
@@ -234,7 +240,7 @@ class UiAdapter(BaseAdapter):
             else:
                 display_output = full_status
 
-            if self.ADAPTER_KEY == "telegram":
+            if self.ADAPTER_KEY == AdapterType.TELEGRAM.value:
                 display_output = telegramify_markdown(display_output)
         else:
             display_output = self.format_message(tmux_output, full_status)
@@ -242,7 +248,7 @@ class UiAdapter(BaseAdapter):
         # Platform-specific metadata (inline keyboards, etc.)
         metadata = self._build_output_metadata(session, is_truncated)
         if render_markdown and not metadata.parse_mode:
-            metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == "telegram" else "Markdown"
+            metadata.parse_mode = "MarkdownV2" if self.ADAPTER_KEY == AdapterType.TELEGRAM.value else "Markdown"
 
         # Try to edit existing message
         if await self._try_edit_output_message(session, display_output, metadata):
@@ -454,16 +460,18 @@ class UiAdapter(BaseAdapter):
         title_updated = False
 
         # Handle direct title update (from summary)
-        if "title" in updated_fields:
-            new_title = str(updated_fields["title"])
+        if SessionField.TITLE.value in updated_fields:
+            new_title = str(updated_fields[SessionField.TITLE.value])
             await self.client.update_channel_title(session, new_title)
             logger.info("Synced title to UiAdapters for session %s: %s", session_id[:8], new_title)
             title_updated = True
 
         # project_path/subdir update adjusts the path portion in the title
-        if not title_updated and ("project_path" in updated_fields or "subdir" in updated_fields):
-            project_path = str(updated_fields.get("project_path") or session.project_path or "")
-            subdir = str(updated_fields.get("subdir") or session.subdir or "")
+        if not title_updated and (
+            SessionField.PROJECT_PATH.value in updated_fields or SessionField.SUBDIR.value in updated_fields
+        ):
+            project_path = str(updated_fields.get(SessionField.PROJECT_PATH.value) or session.project_path or "")
+            subdir = str(updated_fields.get(SessionField.SUBDIR.value) or session.subdir or "")
             new_path = project_path
             if subdir:
                 new_path = str(Path(project_path) / subdir)
@@ -493,7 +501,7 @@ class UiAdapter(BaseAdapter):
                 logger.info("Updated title for session %s to: %s", session_id[:8], new_title)
 
         # Handle summary output updates
-        if "last_feedback_received" in updated_fields:
+        if SessionField.LAST_FEEDBACK_RECEIVED.value in updated_fields:
             summary = session.last_feedback_received or ""
             if summary:
                 logger.debug(

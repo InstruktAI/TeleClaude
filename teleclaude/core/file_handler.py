@@ -15,6 +15,7 @@ from typing import Awaitable, Callable, Optional
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agents import is_agent_title
 from teleclaude.core.db import db
 from teleclaude.core.events import FileEventContext
 from teleclaude.core.models import MessageMetadata
@@ -38,7 +39,7 @@ def sanitize_filename(filename: str) -> str:
 
 
 async def is_agent_running(tmux_session_name: str) -> bool:
-    """Detect if Claude Code is running in the tmux session.
+    """Detect if any known agent is running in the tmux session.
 
     Strategy: Check pane title for "claude" keyword
 
@@ -53,8 +54,7 @@ async def is_agent_running(tmux_session_name: str) -> bool:
         if not output:
             return False
 
-        title_lower = output.lower()
-        return "claude" in title_lower
+        return is_agent_title(output)
 
     except Exception as e:
         logger.warning("Failed to detect Claude Code in session %s: %s", tmux_session_name, e)

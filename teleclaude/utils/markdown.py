@@ -5,6 +5,8 @@ from typing import Protocol
 
 from telegramify_markdown import markdownify as _markdownify
 
+from teleclaude.constants import MARKDOWN_FENCE, MARKDOWN_INLINE_CODE
+
 
 class MarkdownifyFn(Protocol):
     def __call__(
@@ -68,16 +70,16 @@ def escape_markdown_v2(text: str) -> str:
 
     while i < len(text):
         # Check for code block delimiters (```)
-        if text[i : i + 3] == "```":
+        if text[i : i + 3] == MARKDOWN_FENCE:
             in_code_block = not in_code_block
-            result.append("```")
+            result.append(MARKDOWN_FENCE)
             i += 3
             continue
 
         # Check for inline code delimiters (`)
-        if text[i] == "`" and not in_code_block:
+        if text[i] == MARKDOWN_INLINE_CODE and not in_code_block:
             in_inline_code = not in_inline_code
-            result.append("`")
+            result.append(MARKDOWN_INLINE_CODE)
             i += 1
             continue
 
@@ -112,8 +114,10 @@ def _escape_nested_backticks(text: str) -> str:
     def escape_nested_backticks(match: re.Match[str]) -> str:
         lang = str(match.group(1) or "")
         block_content = str(match.group(2))
-        escaped = block_content.replace("```", "`\u200b``")
-        return f"```{lang}\n{escaped}```"
+        escaped = block_content.replace(
+            MARKDOWN_FENCE, f"{MARKDOWN_INLINE_CODE}\u200b{MARKDOWN_INLINE_CODE}{MARKDOWN_INLINE_CODE}"
+        )
+        return f"{MARKDOWN_FENCE}{lang}\n{escaped}{MARKDOWN_FENCE}"
 
     return re.sub(r"```(\w*)\n(.*?)```", escape_nested_backticks, text, flags=re.DOTALL)
 

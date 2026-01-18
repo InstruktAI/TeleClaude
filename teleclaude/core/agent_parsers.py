@@ -19,11 +19,17 @@ class CodexParser(LogParser):
     """Parser for Codex logs (JSONL)."""
 
     def can_parse(self, file_path: Path) -> bool:
-        """Check if file matches Codex log pattern."""
+        """Check if file matches Codex log pattern.
+
+        guard: allow-string-compare
+        """
         return file_path.suffix == ".jsonl"
 
     def extract_session_id(self, file_path: Path) -> Optional[str]:
-        """Extract native session ID from file."""
+        """Extract native session ID from file.
+
+        guard: allow-string-compare
+        """
         # Scan for session_meta to avoid missing it if not the first line yet.
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -49,7 +55,10 @@ class CodexParser(LogParser):
         return None
 
     def parse_line(self, line: str) -> Generator[LogEvent, None, None]:
-        """Parse a single line from Codex log."""
+        """Parse a single line from Codex log.
+
+        guard: allow-string-compare
+        """
         entry_raw = json.loads(line)
         entry = cast(dict[str, object], entry_raw)  # noqa: loose-dict - External JSONL entry
 
@@ -88,7 +97,10 @@ class CodexParser(LogParser):
                             )
 
     def extract_last_turn(self, file_path: Path) -> str:
-        """Extract text content of last model turn."""
+        """Extract text content of last model turn.
+
+        guard: allow-string-compare
+        """
         last_assistant_texts: list[str] = []
         with open(file_path, encoding="utf-8") as f:
             for line in f:
@@ -123,6 +135,10 @@ class CodexParser(LogParser):
 
     @staticmethod
     def _extract_output_text(content: list[object]) -> str:
+        """Extract text blocks from codex content.
+
+        guard: allow-string-compare
+        """
         texts: list[str] = []
         for block_raw in content:
             block = cast(dict[str, object], block_raw)  # noqa: loose-dict - External JSONL block

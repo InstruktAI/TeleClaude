@@ -4,6 +4,8 @@
 import re
 from pathlib import Path
 
+from teleclaude.constants import MAIN_MODULE
+
 
 def fix_file(file_path: Path) -> None:
     """Add timeout wrappers to all subprocess wait() and communicate() calls."""
@@ -35,7 +37,7 @@ def fix_file(file_path: Path) -> None:
     print(f"Fixed {file_path}")
 
 
-if __name__ == "__main__":
+if __name__ == MAIN_MODULE:
     file_path = Path("teleclaude/core/terminal_bridge.py")
     if not file_path.exists():
         print(f"Error: {file_path} not found")

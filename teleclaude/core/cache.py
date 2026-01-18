@@ -10,6 +10,7 @@ from typing import Callable, Generic, TypeVar
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSummary, TodoInfo
 
 logger = get_logger(__name__)
@@ -181,7 +182,7 @@ class DaemonCache:
                 continue
 
             # Include computer name derived from key for optimistic rendering
-            comp_name = key.split(":", 1)[0] if ":" in key else ""
+            comp_name = key.split(CACHE_KEY_SEPARATOR, 1)[0] if CACHE_KEY_SEPARATOR in key else ""
             project = cached.data
             project.computer = comp_name
             projects.append(project)
@@ -206,11 +207,11 @@ class DaemonCache:
 
         for cached in self._sessions.values():
             session = cached.data
-            session_computer = local_name if session.computer == "local" else session.computer
+            session_computer = local_name if session.computer == LOCAL_COMPUTER else session.computer
             # Filter by computer if specified
             if computer is not None:
                 # Handle 'local' alias convention
-                if computer == "local":
+                if computer == LOCAL_COMPUTER:
                     if session_computer != local_name:
                         continue
                 # Handle specific computer name (can be local or remote)
@@ -259,7 +260,7 @@ class DaemonCache:
         """
         entries: list[TodoCacheEntry] = []
         for key, cached in self._todos.items():
-            comp_name, path = key.split(":", 1) if ":" in key else ("", key)
+            comp_name, path = key.split(CACHE_KEY_SEPARATOR, 1) if CACHE_KEY_SEPARATOR in key else ("", key)
             if computer and comp_name != computer:
                 continue
             if project_path and path != project_path:
